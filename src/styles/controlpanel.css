@@ -3,7 +3,7 @@
    `.cp` is a SIZE container that fills its parent; everything inside scales with cqmin (1cqmin = 1% of the
    shorter side of the panel, ~2.5px on a phone, ~5px on desktop). Narrow layout: `@container cp (max-width: 420px)`. */
 
-.cp {
+.cp, .cp-docked-actions, .cp-paperscope {
   --cp-ink: #14302d;
   --cp-ink-2: #46605c;
   --cp-line: #1d3b37;
@@ -17,6 +17,8 @@
   --cp-red-hot: #c81d34;
   --cp-rose: #ffe1dc;
   --cp-mono: ui-monospace, 'Cascadia Mono', Consolas, 'Courier New', monospace;
+}
+.cp {
   position: absolute;
   inset: 0;
   container: cp / size;
@@ -48,15 +50,17 @@
 .cp-who { display: flex; align-items: center; gap: 2cqmin; min-width: 0; }
 .cp-token {
   flex: none;
-  width: clamp(26px, 8.4cqmin, 46px);
-  height: clamp(26px, 8.4cqmin, 46px);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  width: clamp(28px, 8.8cqmin, 48px);
+  height: clamp(28px, 8.8cqmin, 48px);
   border-radius: 50%;
-  background:
-    radial-gradient(circle at 34% 28%, #ffffffaa 0 12%, transparent 13%),
-    radial-gradient(circle at 50% 50%, var(--pc) 0 56%, #0003 58% 66%, var(--pc) 68%);
+  background: var(--pc);
   border: 2px solid var(--cp-line);
   box-shadow: 0 2px 0 #1d3b3755;
 }
+.cp-token > svg { width: 84%; height: 84%; }
 .cp-who__txt { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; }
 .cp-who__row { display: flex; align-items: baseline; gap: .5em; min-width: 0; }
 .cp-who__name {
@@ -233,6 +237,9 @@
 .cp-landed.is-buying { background: #fff1c2; }
 .cp-landed.is-buying .cp-landed__txt small { color: var(--cp-ink); }
 .cp-landed.is-rent .cp-landed__txt small { color: var(--cp-red); }
+.cp-landed.is-good { background: #e6f5e8; }
+.cp-landed.is-warn { background: #fff1c2; }
+.cp-landed.is-warn .cp-landed__txt small { color: #8a4f00; }
 
 /* ---------------------------------------------------------------- Manage tab */
 .cp-empty { display: grid; gap: .3em; padding: 1.2em; text-align: center; color: var(--cp-ink-2); }
@@ -308,13 +315,18 @@
 }
 @media (hover: none) { .cp-kbd { display: none; } }
 
-/* Buy + Shield: a slim full-width row under Skip / Buy */
+/* full-width rows under the primary: Ride (Auto / Metro / MMTS), Put up for auction */
 .cp-actions[data-wide] { flex-wrap: wrap; }
 .cp-wide { flex: 1 1 100%; order: 3; flex-wrap: wrap; row-gap: 0; column-gap: .6em; min-height: 44px; padding-block: .15em; background: #e4f1fb; }
-.cp-hint { flex: 1 1 100%; order: 4; margin: 0; display: flex; align-items: center; justify-content: center; gap: .4em; min-width: 0; font-size: max(.8em, 11px); font-weight: 750; line-height: 1.2; color: var(--cp-ink-2); }
+.cp-wide.is-skip { background: #fff3d6; }
+.cp-wide.is-skip .hg-icon { color: #8a4f00; }
+/* the hint sits ABOVE the buttons and always wraps instead of truncating (phones included) */
+.cp-hint { flex: 1 1 100%; order: -1; margin: 0; display: flex; align-items: center; justify-content: center; gap: .4em; min-width: 0; font-size: max(.82em, 12px); font-weight: 750; line-height: 1.25; text-align: center; color: var(--cp-ink-2); }
 .cp-hint .hg-icon { flex: none; color: #c25a00; }
-.cp-hint__txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cp-hint__short { display: none; }
+.cp-hint__txt { min-width: 0; }
+.cp-hint.is-traffic { padding: .3em .6em; border: 1.5px solid #e0a800; border-radius: 8px; background: #fff3c9; color: var(--cp-ink); }
+/* secondary buttons may carry a small second line (traffic choices) */
+.cp-sec .cp-btn__sub { display: block; }
 .cp-wide .hg-icon { color: var(--cp-blue); }
 .cp-wide__sub { font-size: .74em; font-weight: 700; color: var(--cp-ink-2); }
 
@@ -370,33 +382,15 @@
 .cp-dots i:nth-child(3) { animation-delay: .3s; }
 @keyframes cp-dot { 0%, 80%, 100% { opacity: .25; transform: scale(.8); } 40% { opacity: 1; transform: scale(1.1); } }
 
-/* snatch window: a big red button (or a status slot) whose bar drains over the 3 seconds */
-.cp-primary.is-snatch,
-.cp-primary.is-wait.is-snatch { min-height: max(56px, 11cqmin); overflow: hidden; }
-.cp-primary.is-snatch .cp-btn__sub { display: block; }
-.cp-primary.is-wait.is-snatch { flex-direction: column; gap: 1px; border-style: solid; background: var(--cp-rose); color: var(--cp-ink); }
-.cp-primary.is-wait.is-snatch .cp-btn__sub { color: var(--cp-ink-2); opacity: 1; }
-.cp-primary.is-wait.is-snatch .cp-btn__label { white-space: normal; text-align: center; }
-.cp-meter { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: #fffcf3; transform-origin: left center; will-change: transform; }
-.cp-primary.is-wait.is-snatch .cp-meter { background: var(--cp-red-hot); }
-.cp-meter__secs { min-width: 2.3em; text-align: center; font-variant-numeric: tabular-nums; }
-.cp-actions[data-kind="snatch"] .cp-primary.is-snatch:not(:disabled) { animation: cp-snatch .7s ease-in-out infinite; }
-@keyframes cp-snatch {
-  0%, 100% { box-shadow: 0 3px 0 var(--cp-line), 0 0 0 0 #c81d3400; }
-  50% { box-shadow: 0 3px 0 var(--cp-line), 0 0 0 6px #c81d3466; }
+/* it is your move: a gold halo breathes around the Roll button three times, then rests (opacity only, no repaint loop) */
+.cp-actions[data-kind="roll"] .cp-primary.is-roll::after {
+  content: ''; position: absolute; inset: -2px; border-radius: inherit; pointer-events: none;
+  box-shadow: 0 0 0 5px #ffc83d88; opacity: 0; will-change: opacity;
+  animation: cp-nudge 1.6s var(--ease-std) 3;
 }
-.cp-landed.is-snatch { background: var(--cp-rose); }
-.cp-landed.is-snatch .cp-landed__txt small { color: #8f1224; font-weight: 750; }
-.cp-note { margin: .6em .6em 0; padding: .45em .7em; border: 2px solid var(--cp-line); border-radius: 8px; background: var(--cp-rose); font-size: .9em; font-weight: 750; }
-
-/* it is your move: the Roll button breathes */
-.cp-actions[data-kind="roll"] .cp-primary.is-roll { animation: cp-nudge 1.6s ease-in-out infinite; }
-@keyframes cp-nudge {
-  0%, 100% { box-shadow: 0 3px 0 var(--cp-line), 0 0 0 0 #ffc83d00; }
-  50% { box-shadow: 0 3px 0 var(--cp-line), 0 0 0 5px #ffc83d88; }
-}
-[data-motion="reduced"] .cp *, [data-rm] .cp * { animation: none !important; }
-@media (prefers-reduced-motion: reduce) { .cp * { animation: none !important; transition: none !important; } }
+@keyframes cp-nudge { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+[data-motion="reduced"] .cp *, [data-rm] .cp *, [data-motion="reduced"] .cp *::after, [data-rm] .cp *::after { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { .cp *, .cp *::after { animation: none !important; transition: none !important; } }
 
 /* ---------------------------------------------------------------- narrow panel (phones) */
 @container cp (max-width: 420px) {
@@ -414,17 +408,14 @@
   .cp-tab .hg-icon { width: 13px; height: 13px; }
   .cp-log { min-height: 3.1em; padding: .35em .5em; }
   .cp-btn--lg { font-size: 1.12em; }
-  .cp-btn__sub { display: none; }
+  .cp-btn__sub { font-size: .7em; }
   .cp-actions { gap: 1.2cqmin; }
   .cp-actions__sec .cp-btn { padding: 0 .55em; font-size: .9em; }
   .cp-wide { min-height: 30px; font-size: .92em; }
   .cp-wide__sub { display: none; }
-  .cp-hint { line-height: 1; }
-  /* the long hint stays for screen readers; sighted phone users get the short "Set a trap" beside the icon */
-  .cp-hint__txt { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .cp-hint__short { display: inline; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cp-event { padding: .25em .5em; gap: .4em; }
-  .cp-event__text, .cp-event__chip small { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .cp-event__text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: .78em; }
+  .cp-event__chip small { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
 
 /* ---------------------------------------------------------------- 44px tap targets
@@ -488,3 +479,76 @@
 .cp-event__chip i { width: 1em; height: 1em; border-radius: 50%; border: 1.5px solid var(--cp-line); background: var(--gc, #999); }
 .cp-event__chip small { font-size: 1em; font-weight: 750; }
 @keyframes cp-event-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+
+/* ---------------------------------------------------------------- polish pass */
+/* whose turn: gold for "your turn" so the one moment that needs you stands out */
+.cp-who__turn { transition: background 0.2s, color 0.2s; }
+.cp-who__turn.is-mine { background: var(--cp-gold); color: var(--cp-ink); box-shadow: 0 0 0 1.5px var(--cp-line); }
+
+/* odds toggle: 20-22px looks, an invisible hit area of at least 44 x 44 centred on it */
+.cp-odds { position: relative; transition: background var(--dur-1) var(--ease-std); }
+.cp-odds::after {
+  content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px);
+  transform: translate(-50%, -50%);
+}
+.cp-odds:focus-visible { outline: 3px solid #f08a00; outline-offset: 2px; }
+
+/* folder tabs: the open tab wears a gold lip; switching panes settles in.
+   Short tabs (30-40px in small panels) get an invisible hit area that reaches up to 44px over the timer row above. */
+.cp-tab { transition: background var(--dur-1) var(--ease-std), color var(--dur-1) var(--ease-std); }
+.cp-tab::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: max(100%, 44px); }
+.cp-tab.is-on { box-shadow: inset 0 3px 0 var(--cp-gold); }
+.cp-badge { box-shadow: 0 1px 0 #1d3b3755; }
+@keyframes cp-pane-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.cp-pane > .cp-buy, .cp-pane > .cp-scroll { animation: cp-pane-in var(--dur-2) var(--ease-out); }
+
+/* log: the newest lines read first, older ones step back; a welcoming empty state */
+.cp-log__line { opacity: 0.8; }
+.cp-log__line:nth-last-child(-n + 3) { opacity: 1; }
+.cp-log__line.is-good::before, .cp-log__line.is-bad::before, .cp-log__line.is-cheer::before { opacity: 1; font-weight: 800; }
+.cp-log__empty { padding: 1.4em 0.5em; text-align: center; font-family: var(--font-body, system-ui, sans-serif); font-style: normal; font-weight: 700; color: var(--cp-ink-2); }
+.cp-log__empty::before { content: '\1F3B2'; display: block; margin-bottom: 0.25em; font-size: 2em; line-height: 1; }
+@container cp (max-width: 420px) { .cp-log__empty { padding: 0.3em 0.2em; } .cp-log__empty::before { display: none; } }
+
+/* buttons: primary actions get a lit top edge; hover lifts 1px */
+.cp-primary:not(.is-wait):not(:disabled) { box-shadow: 0 3px 0 var(--cp-line), inset 0 1px 0 #ffffff66; }
+.cp-btn:hover:not(:disabled) { transform: translateY(-1px); }
+.cp-btn:active:not(:disabled) { transform: translateY(2px); }
+.cp-btn--gold { background: linear-gradient(180deg, #ffd65e, var(--cp-gold)); }
+.cp-btn--green { background: linear-gradient(180deg, #22a066, var(--cp-green)); }
+.cp-btn--red { background: linear-gradient(180deg, #d9304a, var(--cp-red-hot)); }
+
+/* event banner: a tactile card with a lit edge */
+.cp-event { box-shadow: 0 2px 0 #1d3b3730, inset 0 1px 0 #ffffffaa; }
+
+/* tiny panels (~245px): tab icons give way so "Manage" never truncates */
+@container cp (max-width: 300px) { .cp-tab .hg-icon { display: none; } }
+
+/* ---------------------------------------------------------------- Hustle: turn header, timer, event chips */
+.cp-who .tt-ring { flex: none; }
+.cp-top__dice { flex: none; display: flex; flex-direction: column; align-items: center; gap: .35em; }
+.cp-who__tags .hg-chai, .cp-who__tags .hg-traffic { font-size: .78em; }
+.cp-timer { flex: none; }
+.cp-timer .tt-bar__txt { font-size: .85em; }
+.cp-event__chips { flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .3em; max-width: 45%; }
+.cp-event__chip.is-amount { padding-left: .55em; background: #fff3c9; }
+.cp--docked .cp-pane { border-radius: 9px; }
+
+/* ---------------------------------------------------------------- the action row in the phone dock (outside the .cp container) */
+.cp-actions.is-dock { flex-wrap: wrap; gap: 8px; }
+.cp-actions.is-dock .cp-btn { font-size: 15px; }
+.cp-actions.is-dock .cp-btn--lg { min-height: 54px; font-size: 18px; border-radius: 12px; }
+.cp-actions.is-dock .cp-actions__sec { flex: 0 1 auto; gap: 8px; }
+.cp-actions.is-dock .cp-actions__sec .cp-btn { min-height: 54px; min-width: 64px; padding: 0 .7em; font-size: 14px; }
+.cp-actions.is-dock .cp-wide { min-height: 44px; font-size: 14px; }
+.cp-actions.is-dock .cp-hint { color: #fff3c9; }
+.cp-actions.is-dock .cp-hint.is-traffic { color: var(--cp-ink); }
+.cp-actions.is-dock .cp-primary.is-wait { min-height: 54px; }
+.cp-actions.is-dock .cp-kbd { display: none; }
+.cp .hg-chai { color: #7a4a12; background: #f6e2c4; }
+.cp .hg-chai:not(.is-on) { opacity: .5; }
+.cp .hg-traffic { color: #8f1224; background: #fbd3da; }
+/* dock with two or more secondaries (traffic): the primary takes the first row, the others share the next */
+.cp-actions.is-dock[data-sec="2"] .cp-primary, .cp-actions.is-dock[data-sec="3"] .cp-primary { flex: 1 1 100%; order: 1; }
+.cp-actions.is-dock[data-sec="2"] .cp-actions__sec, .cp-actions.is-dock[data-sec="3"] .cp-actions__sec { flex: 1 1 100%; order: 2; }
+.cp-actions.is-dock[data-sec="2"] .cp-actions__sec .cp-btn, .cp-actions.is-dock[data-sec="3"] .cp-actions__sec .cp-btn { flex: 1 1 0; min-height: 48px; }

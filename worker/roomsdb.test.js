@@ -114,7 +114,7 @@ describe('row mapping', () => {
     expect(rowSignature(roomRow(room({ visibility: 'private' })))).not.toBe(base);
     expect(rowSignature(roomRow(room({ status: 'playing' })))).not.toBe(base);
     expect(rowSignature(roomRow(room({ maxPlayers: 5 })))).not.toBe(base);
-    expect(rowSignature(roomRow(room({ settings: { goal: 5 } })))).not.toBe(base);
+    expect(rowSignature(roomRow(room({ settings: { mode: 'classic' } })))).not.toBe(base);
     expect(rowSignature(roomRow(room({ players: room().players.slice(0, 2) })))).not.toBe(base);
   });
 
@@ -125,7 +125,7 @@ describe('row mapping', () => {
       host_name: 'Host',
       player_count: 2,
       max_players: 4,
-      settings: { goal: 70000, maxRounds: 50 },
+      settings: { mode: 'quick', dice: 'lucky', auctionOnDecline: true },
       created_at: new Date('2026-10-16T10:00:00Z'),
     });
     expect(out).toEqual({
@@ -134,7 +134,7 @@ describe('row mapping', () => {
       hostName: 'Host',
       players: 2,
       maxPlayers: 4,
-      summary: 'Target ₹70,000 · 50 rounds',
+      summary: 'Quick Chai Break · 12 rounds · richest wins',
       createdAt: '2026-10-16T10:00:00.000Z',
     });
     // an unknown game still lists (without a summary)

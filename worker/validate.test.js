@@ -64,21 +64,27 @@ describe('avatar / uuid / chat / emote', () => {
 });
 
 describe('sanitizeAction forces the player id and drops everything unexpected', () => {
-  it('parameter-less actions (including rules v2)', () => {
+  it('parameter-less actions (Hustle rules)', () => {
     const simple = [
-      'ROLL', 'PAY_BAIL', 'BUY', 'SKIP_BUY', 'END_TURN', 'RESIGN',
-      'PAY_DEBT', 'USE_JAIL_CARD', 'TRADE_ACCEPT', 'TRADE_REJECT', 'TRADE_CANCEL',
+      'ROLL', 'PAY_TRAFFIC', 'USE_CHAI', 'BUY', 'SKIP_BUY', 'RIDE', 'END_TURN', 'RESIGN',
+      'PAY_DEBT', 'TRADE_ACCEPT', 'TRADE_REJECT', 'TRADE_CANCEL',
     ];
     for (const type of simple) {
-      expect(sanitizeAction({ type, playerId: 'victim', dice: [6, 6], extra: 1 }, 'me')).toEqual({ type, playerId: 'me' });
+      expect(sanitizeAction({ type, playerId: 'victim', dice: [6], shield: true, extra: 1 }, 'me')).toEqual({ type, playerId: 'me' });
+    }
+  });
+
+  it('the retired actions are refused', () => {
+    for (const type of ['PAY_BAIL', 'USE_JAIL_CARD', 'SNATCH', 'SNATCH_CLOSE', 'PLACE_TRAP']) {
+      expect(sanitizeAction({ type, tile: 3 }, 'me'), type).toBeNull();
     }
   });
 
   it('tile actions need a valid tile', () => {
     for (const type of ['UPGRADE', 'MORTGAGE', 'UNMORTGAGE', 'SELL_BUILDING']) {
       expect(sanitizeAction({ type, tile: 5 }, 'me')).toEqual({ type, tile: 5, playerId: 'me' });
-      expect(sanitizeAction({ type, tile: 39 }, 'me')).toEqual({ type, tile: 39, playerId: 'me' }); // the last of the 40 squares
-      expect(sanitizeAction({ type, tile: 40 }, 'me')).toBeNull();
+      expect(sanitizeAction({ type, tile: 35 }, 'me')).toEqual({ type, tile: 35, playerId: 'me' }); // the last of the 36 squares
+      expect(sanitizeAction({ type, tile: 36 }, 'me')).toBeNull();
       expect(sanitizeAction({ type, tile: -1 }, 'me')).toBeNull();
       expect(sanitizeAction({ type, tile: '5' }, 'me')).toBeNull();
       expect(sanitizeAction({ type }, 'me')).toBeNull();

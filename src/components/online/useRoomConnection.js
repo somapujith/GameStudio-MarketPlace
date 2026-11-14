@@ -13,16 +13,18 @@ const ERROR_TTL = 6000;
 /**
  * Socket + room state for ONE room code. No game presentation: the lobby uses this directly.
  *
- * Returns { room, view, chat, connection, error, errorId, fatal, send, leave }
+ * Returns { room, view, chat, connection, error, errorId, fatal, send, pickPiece, leave }
  *  - room        the last `{t:'room'}` payload (null until it arrives)
  *  - view        the last `{t:'state'}` engine state (null until a game is running)
  *  - connection  'connecting' | 'open' | 'closed'   (reconnects show up as 'connecting')
  *  - error       transient server error text (auto-clears), `errorId` changes on every new one
  *  - fatal       null | { kind: 'kicked'|'join'|'auth'|'closed'|'left', message }  (the socket is closed)
  *  - send(msg, {queue})  JSON to the room; queued while connecting unless queue:false
+ *  - pickPiece(piece)    lobby only: asks for a free game piece (`{t:'piece', piece}`); false when not connected.
+ *                        A taken / unknown piece comes back as a normal `error` (so the caller can roll back).
  *  - leave()     sends {t:'leave'} and closes for good
  *
- * `onState({state, events, seq, fresh})` fires for every state; `fresh` = first state after (re)connect,
+ * `onState({state, events, seq, fresh, clock})` fires for every state; `fresh` = first state after (re)connect,
  * i.e. the events must NOT be animated. `onChat(entry)` fires once per new chat message.
  */
 export function useRoomConnection(code, { onState, onChat } = {}) {
@@ -112,15 +114,16 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
           break;
         }
         case 'state': {
-          const { state, events, seq } = msg;
+          const { state, events, seq, clock } = msg;
           if (!state) break;
           const list = Array.isArray(events) ? events : [];
-          const fresh = st.fresh || list.length === 0;
+          // only the first state after (re)connect is a snapshot; an applied action without events (a sealed bid) is not
+          const fresh = st.fresh;
           if (!fresh && typeof seq === 'number' && seq <= st.lastSeq) break; // duplicate / out-of-order
           st.fresh = false;
           if (typeof seq === 'number') st.lastSeq = seq;
           // presenter first, then `view`: the board must never render a state its display has not got yet
-          handlers.current.onState?.({ state, events: list, seq, fresh });
+          handlers.current.onState?.({ state, events: list, seq, fresh, clock: clock ?? null });
           setView(state);
           break;
         }
@@ -189,6 +192,8 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
 
   const send = useCallback((msg, opts) => (sockRef.current ? sockRef.current.send(msg, opts) : false), []);
 
+  const pickPiece = useCallback((piece) => (typeof piece === 'string' && piece && sockRef.current ? sockRef.current.send({ t: 'piece', piece }, { queue: false }) : false), []);
+
   const leave = useCallback(() => {
     const sock = sockRef.current;
     if (sock) {
@@ -210,6 +215,7 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
     errorId: error ? error.id : 0,
     fatal: fatal || authFatal,
     send,
+    pickPiece,
     leave,
   };
 }

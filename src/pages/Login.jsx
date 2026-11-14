@@ -10,6 +10,7 @@ import { paths } from '@/platform/paths.js';
 import { safeNext } from '@/components/online/codes.js';
 import { Loading } from '@/components/online/StatusPanel.jsx';
 import '@/styles/online.css';
+import '@/styles/x-social.css';
 
 const NAME_MAX = 24;
 
@@ -72,7 +73,15 @@ export default function Login() {
   const isGuestUser = !!(user && user.isGuest);
 
   return (
-    <div className="ho-page ho-login">
+    <div className="ho-page ho-login xs-login">
+      <nav className="xs-backrow" aria-label="Back">
+        <Link to={paths.hub()} className="xs-back">
+          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Back to games
+        </Link>
+      </nav>
       <header className="ho-hero ho-hero--hub">
         <div className="ho-hero__glow" aria-hidden="true" />
         <div className="ho-hero__inner">

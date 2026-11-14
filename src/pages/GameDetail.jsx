@@ -3,10 +3,11 @@ import { Link, useParams } from 'react-router-dom';
 import CodeSheet from '@/components/shell/nav/CodeSheet.jsx';
 import { radioKeyNav } from '@/components/shell/ui.jsx';
 import { featuredGame, getGame } from '@/games/registry.js';
+import { useAuth } from '@/lib/auth.jsx';
 import { BRAND } from '@/platform/brand.js';
 import { paths } from '@/platform/paths.js';
 import { GameIcon } from '@/platform/home/GameArt.jsx';
-import GameHero from '@/platform/game/GameHero.jsx';
+import GameHero, { Cover, playersLabel } from '@/platform/game/GameHero.jsx';
 import HubIcon from '@/platform/game/HubIcon.jsx';
 import Unavailable from '@/platform/game/Unavailable.jsx';
 import { themeVars } from '@/platform/game/color.js';
@@ -14,6 +15,10 @@ import { useNotify } from '@/platform/game/notify.js';
 import useDocTitle from '@/platform/game/useDocTitle.js';
 import { defaultSeats, seatOptions } from '@/platform/game/seats.js';
 import useHostRoom from '@/platform/game/useHostRoom.js';
+import { GameTopPlayers, HowToPlay, OpenTables, YourRecord } from '@/platform/game/DetailSections.jsx';
+import '@/styles/x-lobby.css';
+
+const DEFAULT_HINT = 'You get a code to share. Friends join, then you start.';
 
 const Back = () => (
   <Link to={paths.hub()} className="hub-back">
@@ -21,57 +26,89 @@ const Back = () => (
   </Link>
 );
 
-/** Quick start: how many players -> Create table (a private room) -> the lobby, where friends are invited. */
+/**
+ * Quick start: how many players -> Create table (a private room) -> the lobby, where friends are invited.
+ * Below it: how to play, your record, top players and open tables for this game (all from the manifest / API).
+ */
 function LiveDetail({ game }) {
   const { host, busy } = useHostRoom(game);
+  const { user } = useAuth() || {};
   const [codeOpen, setCodeOpen] = useState(false);
   const options = seatOptions(game.players);
   const [seats, setSeats] = useState(() => defaultSeats(options));
 
   return (
-    <div className="hub-page hub-detail hub-quick" style={themeVars(game.theme)}>
+    <div className="hub-page hub-detail hub-quick xl-detail" style={themeVars(game.theme)}>
       <Back />
-      <section className="hub-quick__card" aria-labelledby="hub-quick-title">
-        <header className="hub-quick__head">
-          <GameIcon game={game} size={64} />
-          <div className="hub-quick__titles">
-            <h1 id="hub-quick-title" className="hub-quick__title">
-              {game.name}
-            </h1>
-            {game.tagline && <p className="hub-quick__tagline">{game.tagline}</p>}
+      <div className="xl-detail__grid">
+        <section className="hub-quick__card xl-detail__main" aria-labelledby="hub-quick-title">
+          <div className="hub-quick__banner" aria-hidden="true">
+            <Cover game={game} />
+            <span className="hub-quick__facts">
+              <HubIcon name="users" size={14} /> {playersLabel(game.players)}
+              {game.duration && (
+                <>
+                  <i /> <HubIcon name="clock" size={14} /> {game.duration}
+                </>
+              )}
+            </span>
           </div>
-        </header>
+          <div className="hub-quick__body">
+            <header className="hub-quick__head">
+              <GameIcon game={game} size={56} />
+              <div className="hub-quick__titles">
+                <h1 id="hub-quick-title" className="hub-quick__title">
+                  {game.name}
+                </h1>
+                {game.tagline && <p className="hub-quick__tagline">{game.tagline}</p>}
+              </div>
+            </header>
 
-        <div className="hub-quick__step">
-          <h2 id="hub-seats-h" className="hub-quick__label">
-            How many players?
-          </h2>
-          <div className="hub-quick__seats" role="radiogroup" aria-labelledby="hub-seats-h" onKeyDown={radioKeyNav}>
-            {options.map((n) => (
-              <button
-                key={n}
-                type="button"
-                role="radio"
-                aria-checked={n === seats}
-                className={`hub-quick__seat${n === seats ? ' is-on' : ''}`}
-                onClick={() => setSeats(n)}
-                disabled={busy}
-              >
-                {n}
-              </button>
-            ))}
+            <div className="hub-quick__step">
+              <h2 id="hub-seats-h" className="hub-quick__label">
+                How many players?
+              </h2>
+              <div className="hub-quick__seats" role="radiogroup" aria-labelledby="hub-seats-h" onKeyDown={radioKeyNav}>
+                {options.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    role="radio"
+                    aria-checked={n === seats}
+                    className={`hub-quick__seat${n === seats ? ' is-on' : ''}`}
+                    onClick={() => setSeats(n)}
+                    disabled={busy}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+              <p className="hub-quick__seatnote" aria-live="polite">
+                You + {seats - 1} {seats - 1 === 1 ? 'friend' : 'friends'}
+              </p>
+            </div>
+
+            <button type="button" className="hub-btn hub-btn--accent hub-btn--lg hub-btn--block hub-quick__create" onClick={() => host({ maxPlayers: seats })} disabled={busy} aria-busy={busy}>
+              {busy ? 'Creating table...' : 'Create table'}
+            </button>
+            <p className="hub-faint hub-quick__hint">{typeof game.createHint === 'string' && game.createHint ? game.createHint : DEFAULT_HINT}</p>
+
+            <div className="hub-quick__or" role="separator">
+              <span>Got a code?</span>
+            </div>
+            <button type="button" className="hub-quick__join" onClick={() => setCodeOpen(true)}>
+              <HubIcon name="hash" size={18} /> Join with a code
+            </button>
           </div>
+        </section>
+
+        <div className="xl-detail__side">
+          <HowToPlay game={game} />
+          <YourRecord game={game} user={user} />
+          <GameTopPlayers game={game} />
+          <OpenTables game={game} onCreate={() => host({ maxPlayers: seats })} busy={busy} />
         </div>
-
-        <button type="button" className="hub-btn hub-btn--accent hub-btn--lg hub-btn--block" onClick={() => host({ maxPlayers: seats })} disabled={busy} aria-busy={busy}>
-          {busy ? 'Creating table...' : 'Create table'}
-        </button>
-        <p className="hub-faint hub-quick__hint">You get a code to share. Friends join, then you set the cash limit and start.</p>
-
-        <button type="button" className="hub-quick__join" onClick={() => setCodeOpen(true)}>
-          <HubIcon name="hash" size={16} /> Join with a code
-        </button>
-      </section>
+      </div>
 
       <CodeSheet open={codeOpen} onClose={() => setCodeOpen(false)} />
     </div>

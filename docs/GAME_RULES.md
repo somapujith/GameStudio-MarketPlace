@@ -1,179 +1,226 @@
-# Hyderabad Tycoon: game rules, state machine and wire protocol
+# Hyderabad Tycoon: game rules, state machine and wire protocol (Hyderabad Hustle rules)
 
-This is the authoritative description of the game as it is built. It is the contract between the rules engine
-(`shared/engine.js`), the room server (`worker/GameRoom.js`, `worker/games/hyderabad-tycoon.js`, `worker/validate.js`,
-`worker/settings.js`, `worker/mask.js`) and the client (`src/lib/session/*`, `src/components/game/*`,
-`src/components/online/*`). Board data lives in `shared/board.js` (spec: `hyderabad-monopoly.md`).
-Every section was checked against the code on 2026-10-31. Where code and contract disagree in a way that looks like a bug,
-it is listed in section 14 (Known discrepancies) instead of being papered over. Sections marked **[contract]** are the
-spec the code was written to; they were re-verified against the code.
+This is the authoritative description of the game as it is built. The game keeps its id `hyderabad-tycoon` and its
+name **Hyderabad Tycoon**, but since 2026-11-15 it plays the **Hyderabad Hustle** ruleset (design source:
+`Hyderabad_Hustle_Game_Concept.md`, build contract: `docs/HUSTLE_PLAN.md` section 3). It is the contract between the
+rules engine (`shared/engine.js` + `shared/{board,cards,events,modes,pieces,dice,bots}.js`), the room server
+(`worker/GameRoom.js`, `worker/games/hyderabad-tycoon.js`, `worker/validate.js`, `worker/settings.js`,
+`worker/mask.js`) and the client (`src/lib/session/*`, `src/components/game/*`, `src/components/online/*`).
+Snatch, Shield, Traps, jail / bail / the Get-Out-of-Jail card, utilities, stations-as-property and the end-cash goal
+are **gone**.
 
-Contents: 1 fixed decisions · 2 settings · 3 turn flow · 4 dice, movement, jail · 5 squares and money rules ·
-6 auctions · 7 bankruptcy and game end · 8 wire protocol · 9 Snatch · 10 tokens and Shield · 11 city events ·
-12 UI contract for 10 and 11 · 13 traps · 14 known discrepancies.
+Contents: 1 fixed decisions · 2 settings, constants and the board · 3 turn flow · 4 dice and movement · 5 squares and
+money · 6 auctions · 7 bankruptcy and game end · 8 wire protocol · 9 city events · 10 cards · 11 pieces ·
+12 balance and simulation · 13 known discrepancies.
 
 ## 1. Fixed decisions
 
-* **One die, always.** There is no two-dice mode. `cfg.diceCount` does not exist. `state.dice` is a
-  one-element array `[d]` (`[0]` = not rolled yet) and every `dice` event carries a one-element array.
-  A **six rolls again**; a six in jail **leaves jail** (see 4). The `dice` setting only chooses how the
-  die is drawn (`lucky` helps the player behind, `fair` is uniform).
-* **Humans only (2-6 per room).** There are no bots, no ready toggle and no public-table browsing in the product.
-  The server still *auto-plays* an idle or disconnected human seat with the engine's move chooser
-  (`shared/bots.js`, see 8.8). Auto-play never snatches, shields or sets traps, and never offers trades.
-* **English only.** There are no voice lines, subtitles or translated strings anywhere.
-* **Server authoritative.** Clients send intents, the room forces `playerId`, validates through the adapter allow-list and the
-  engine, applies the action and broadcasts `{state, events, seq}`.
-* **Online only.** No offline, story or campaign mode. Every game is played in a room.
+* **One die, always.** `state.dice` is a one-element array `[d]` (`[0]` = not rolled yet) and every `dice` event
+  carries a one-element array. A **six rolls again** (`state.extraRoll`). The `dice` setting only chooses how the die
+  is drawn (`lucky` helps the player behind, `fair` is uniform).
+* **Humans only (2-6 per room), online only.** No bots in the product, no pass-and-play. The server *auto-plays* an
+  idle or disconnected seat with the engine's move chooser (`shared/bots.js`, see 8.8). Auto-play never rides a
+  transport shortcut, never offers trades, and pays its way out of a traffic jam only with comfortable cash.
+* **English only.** No voice lines or translated strings.
+* **Server authoritative.** Clients send intents, the room forces `playerId`, validates through the adapter allow-list
+  and the engine, applies the action and broadcasts `{state, events, seq, clock}`.
+* **Heritage rule.** Players buy fictional commercial ventures in each precinct, never the landmarks themselves.
+* **Money** is whole rupees. ₹1L = ₹1,00,000. Format with `formatINR` / `compactINR` (`shared/format.js`).
 
-## 2. Settings and constants
+## 2. Settings, constants and the board
 
-Host settings (validated by `worker/settings.js`, mirrored in `src/games/hyderabad-tycoon/settings.js`; `settings.test.js`
-fails when the two drift):
+Host settings (validated by `worker/settings.js`, mirrored in `src/games/hyderabad-tycoon/settings.js`;
+`settings.test.js` fails when the two drift):
 
 | Key | Accepted | Default | Notes |
 |---|---|---|---|
-| `goal` | integer 10,000 - 1,000,000 | 70,000 | "End cash limit": first to this **net worth** wins. The only setting the lobby shows. |
-| `startCash` | integer 5,000 - 100,000 | 15,000 | not shown in the lobby |
-| `maxRounds` | exactly `30`, `50` or `null` (unlimited) | 50 | richest wins when the rounds run out; not shown |
-| `dice` | `'lucky'` \| `'fair'` | `'lucky'` | not shown |
-| `auctionOnDecline` | boolean | `true` | a skipped tile goes to a sealed auction; not shown |
-| `snatches` | integer 0 - 3 | 1 | Snatch tokens each player starts with (0 turns the whole token system off); not shown |
-| `snatchMs` | integer 1,000 - 10,000 | 3,000 | length of the Snatch window; not shown |
+| `mode` | `'standard'` \| `'quick'` \| `'classic'` | `'standard'` | The only setting the lobby shows (`lobbySettings: ['mode']`). |
+| `dice` | `'lucky'` \| `'fair'` | `'lucky'` | not shown in the lobby |
+| `auctionOnDecline` | boolean | `true` | a skipped (or unaffordable) district goes to a sealed auction |
 | `maxPlayers` | integer 2 - 6 (room setting, also accepted inside `settings`) | 4 | seats |
 
-Engine-only values (in `state.cfg`, not host-settable): `passStart` 2,000 (salary), `bailFine` 500, `jailTurns` 1.
-Unknown keys (`debug`, `seed`, echoed engine values) are ignored by the server. The room stores the 7 host keys; `room.settings`
-(what the lobby shows) is the engine's full normalised `cfg`, which is also what `state.cfg` becomes at start.
+Modes (`shared/modes.js` `MODES`, re-exported by the engine):
 
-Constants in `shared/board.js`: `BOARD_SIZE` 40, `START_TILE` 0, `JAIL_TILE` 10, `PARKING_TILE` 20 (Irani Chai & Biryani Break),
-`GO_TO_JAIL_TILE` 30, `MAX_LEVEL` 5 (Hotel), `TOKEN_CAP` 3, `LAPS_PER_TOKEN` 3, `TRAPS_EACH` 1, `SELL_RATIO` 0.5,
-`UNMORTGAGE_INTEREST` 0.1. `shared/events.js`: `EVENT_EVERY` 5.
+| mode | label | rounds | start cash |
+|---|---|---|---|
+| `standard` | Standard City Hustle | 20 | ₹15,00,000 |
+| `quick` | Quick Chai Break | 12 | ₹20,00,000 |
+| `classic` | Classic Long Game | until one player is left (`maxRounds: null`; safety cap `ROUND_CAP` = 60) | ₹15,00,000 |
+
+`state.cfg` = `{ mode, startCash, passStart, maxRounds|null, dice, auctionOnDecline, trafficFine, chaiCap }`
+(`passStart` 2,00,000, `trafficFine` 25,000, `chaiCap` 1). Unknown keys (`debug`, `seed`, the retired `goal`,
+`startCash`, `maxRounds`, `snatches`, `snatchMs`) are ignored by the server. The engine's `normalizeSettings` also
+accepts `startCash`, `passStart`, `maxRounds` and `trafficFine` overrides (`SETTING_LIMITS`), for tests and the
+simulator only. The room stores the 3 host keys; `room.settings` (what the lobby shows) is the engine's full `cfg`.
+
+Constants (`shared/board.js`): `BOARD_SIZE` 36, `GRID` 10, `START_TILE` 0, `TRAFFIC_TILE` 9, `CHAI_TILE` 18,
+`MUNICIPAL_TILE` 27, `AUCTION_TILE` 32, `TRANSPORT_TILES` [5, 14, 23], `CORNER_TILES`, `MAX_LEVEL` 2, `SET_BONUS.full`
+1.5, `UPGRADE_RATIO` 0.5, `SELL_RATIO` 0.5, `MORTGAGE_RATIO` 0.5, `UNMORTGAGE_INTEREST` 0.1, `START_CASH` 15,00,000,
+`QUICK_START_CASH` 20,00,000, `PASS_START` 2,00,000, `TRAFFIC_FINE` 25,000, `CHAI_CAP` 1, `CHAI_MIN_RENT` 20,000,
+`MUNICIPAL_BASE` 40,000, `MUNICIPAL_PER_LEVEL` 10,000, `BAZAAR_MIN_RATIO` 0.5, `DECLINE_MIN_RATIO` 0.1.
+Helpers: `isBuyable rentTable rentFor(tile, level, fullSet) upgradeCost sellRefund mortgageValue unmortgageCost
+levelName(tile, level) nextTransport municipalFor auctionMinBid tilePosition tileSide`.
+Deprecated aliases kept so older UI code still builds: `JAIL_TILE` (= `TRAFFIC_TILE`), `HOTEL_LEVEL` (= `MAX_LEVEL`),
+`LEVEL_NAMES` (generic `['Business', 'Expanded', 'Flagship']`; use `levelName(tile, level)`).
+`shared/events.js`: `EVENT_EVERY` 3.
+
+### 2.1 The board (36 tiles, clockwise, 10x10 ring)
+
+`tilePosition(i) -> {col,row}` (row 0 = top): START is the **bottom-left** corner; play goes up the left side, right
+along the top, down the right, left along the bottom. Corners: 0 START, 9 Traffic Jam (top-left), 18 Chai Adda
+(top-right), 27 Municipal Charges (bottom-right). `tileSide(i)` = `left` (0-9) · `top` (10-18) · `right` (19-27) ·
+`bottom` (28-35).
+
+| id | tile | type | collection | price / fare |
+|---:|---|---|---|---:|
+| 0 | START — Namma Hyderabad | start | | |
+| 1, 3, 4 | Sultan Bazaar, Monda Market, Begum Bazaar | property | bazaar | 60,000 / 70,000 / 80,000 |
+| 2, 21 | Nawabi Luck | card `luck` | | |
+| 5 | Auto Stand | transport | | fare 25,000 -> 14 |
+| 6, 7, 8 | Laad Bazaar, Charminar Precinct, Chowmahalla Precinct | property | oldcity | 1,00,000 / 1,10,000 / 1,20,000 |
+| 9 | Traffic Jam | traffic | | |
+| 10, 11, 13 | Malakpet, Mehdipatnam, Tolichowki | property | everyday | 1,40,000 / 1,50,000 / 1,60,000 |
+| 12, 30 | City Drama | card `drama` | | |
+| 14 | Metro Interchange | transport | | fare 35,000 -> 23 |
+| 15, 16, 17 | Sainikpuri, Patny Centre, Paradise Circle | property | twin | 1,80,000 / 1,90,000 / 2,00,000 |
+| 18 | Chai Adda | chai | | |
+| 19, 20, 22 | Lumbini Park Precinct, Tank Bund, Necklace Road | property | lake | 2,20,000 / 2,30,000 / 2,40,000 |
+| 23 | MMTS Express | transport | | fare 45,000 -> 5 (passes START) |
+| 24, 25, 26 | Film Nagar, Banjara Hills, Jubilee Hills | property | luxury | 2,60,000 / 2,70,000 / 2,80,000 |
+| 27 | Municipal Charges | municipal | | 40,000 + 10,000 per upgrade level owned |
+| 28, 29, 31 | Kondapur, Madhapur, HITEC City | property | cyber | 3,00,000 / 3,20,000 / 3,40,000 |
+| 32 | Bazaar Auction | auction | | |
+| 33, 34, 35 | Gachibowli, Kokapet, Financial District | property | newcity | 3,60,000 / 3,80,000 / 4,00,000 |
+
+Every tile has `name`, `short`, a one-line `lore`, `art` and `emoji`. `GROUPS[g]` = `{ id, name, color, ink, tiles,
+levelNames: [L0, L1, L2], theme }` (themes `bazaar food transit venue tech`), e.g. Cyberabad = Startup Office ->
+Business Centre -> Tech Campus. Only `property` tiles can be bought (`isBuyable`).
 
 ## 3. Turn flow (phases)
 
-`state.phase` is one of: `roll`, `buy`, `snatch`, `auction`, `manage`, `debt`, `over`.
+`state.phase` is one of: `roll`, `buy`, `auction`, `manage`, `debt`, `over`.
 
 ```
 roll   --ROLL--> move clockwise, then land:
-                   free property/station/utility, cash >= price -> buy
-                   free tile, cash < price                       -> manage (nothing is offered, NO auction)
-                   tile owned by someone else                    -> rent (debt if short, bankrupt if hopeless)
-                   tax / card square / Go to Jail                -> paid / drawn / jail
-                   someone else's trap on the tile               -> jail, the tile's own effect is skipped
-roll   --PLACE_TRAP--> roll   (turn player, before rolling; does not end the turn)
-buy    --BUY--> snatch   (if some other active player holds a token) --SNATCH_CLOSE--> manage | auction (snatch bidding)
-buy    --BUY--> manage   (nobody holds a token)
-buy    --BUY {shield:true}--> manage   (spends a token, no window)
-buy    --SKIP_BUY--> auction (auctionOnDecline) | manage
-manage --END_TURN--> roll of the next active player
+                   unowned district, cash >= price            -> buy
+                   unowned district, cash < price             -> auction (reason 'unaffordable', if auctionOnDecline) | manage
+                   district of someone else                   -> rent (debt if short, bankrupt if hopeless)
+                   transport stop                             -> manage, state.ride offered
+                   Traffic Jam / "stuck" card                 -> stuck, the turn ends at once (extra roll lost)
+                   Chai Adda / Municipal / card / Bazaar Auction -> chai / tax / card effect / auction (reason 'bazaar')
+roll   (stuck)  --PAY_TRAFFIC | USE_CHAI--> roll (unstuck, roll normally)
+roll   (stuck)  --ROLL--> wait: no move, stuck clears, the turn ends
+buy    --BUY--> manage            buy --SKIP_BUY--> auction (reason 'decline', if auctionOnDecline) | manage
+manage --RIDE--> manage (moved to the next stop)     manage --END_TURN--> roll of the next active player
 manage --ROLL--> ...    (only while state.extraRoll, i.e. after a six)
-any    --payment too big--> debt --PAY_DEBT--> returnPhase (manage)
+any    --payment too big--> debt --PAY_DEBT--> returnPhase
 ```
 
-Also legal in `roll` / `manage` (turn player): `UPGRADE`, `MORTGAGE`, `UNMORTGAGE`, `SELL_BUILDING`, `TRADE_OFFER`.
-Out of turn, anybody may `BID` (auction), `SNATCH` (snatch window), answer a trade addressed to them, or `RESIGN`;
-the debtor may mortgage / sell / pay in `debt`.
-One **round** = every active (non-bankrupt) player has taken one turn (bonus rolls do not count). `state.round` starts at 1 and
-increases when play wraps past the last seat. A city event may be drawn at the start of a round (11).
+Also legal in `roll` / `manage` of your own turn: `UPGRADE`, `MORTGAGE`, `UNMORTGAGE`, `SELL_BUILDING`, `TRADE_OFFER`.
+Out of turn, anybody may `BID` (auction), answer a trade addressed to them, or `RESIGN`; the debtor may mortgage /
+sell / pay in `debt`. One **round** = every active player has taken one turn (bonus rolls do not count).
+`state.round` starts at 1 and increases when play wraps past the last seat; a city event may start with it (9).
 Seat order is shuffled with a CSPRNG when the host presses Start; seat 0 plays first.
 
-## 4. Dice, movement, jail
+## 4. Dice and movement
 
-* ROLL draws one die. Movement is clockwise, tile 39 wraps to 0; passing or landing on START pays
-  salary (2,000) exactly once (also for cards that move you forward). Moving backwards never pays.
-* A six grants one extra roll (`state.extraRoll`). Three sixes in a row are NOT special. Being thrown in jail removes the extra roll.
-* **Lucky dice** (`shared/dice.js`, `DICE_RULES`, all disclosed in the Rules sheet): a bounded bias on the six faces. Comeback (below 0.8x /
-  0.5x of the average net worth: more weight on useful landings, less on landings with rent >= 25% of cash), mercy (after 2 turns paying rent
-  >= 1,000: less weight on landings with rent >= 1,000), pity six (after 6 non-sixes a six is 1.5x), anti-streak (after 2 sixes in a turn a six is
-  0.5x); each face is clamped to 0.6x-1.5x before normalising. The `dice` event reports the strongest rule in `assist` (or `null`). `fair` is uniform.
-* **Jail.** Go to Jail (tile 30), the "Police Naka-Bandi" card and a sprung trap send you to tile 10 with no salary and end the turn
-  (extra roll lost). In jail, before rolling you may `PAY_BAIL` (500, needs the cash) or `USE_JAIL_CARD`. If you roll instead:
-  **a six leaves jail and moves that many squares** (no extra roll, event `jail` reason `six`); any other number is a failed roll: with
-  the default `jailTurns` of 1 the player is released at once (`jail_stay` then `jail` reason `served`) and **the turn ends: no move, no bail**.
-  So a jailed player normally loses exactly one turn and moves again on the one after.
+* ROLL draws one die. Movement is clockwise, tile 35 wraps to 0; passing **or** landing on START pays the salary
+  (2,00,000) exactly once per move (rolls, card moves and rides alike) and counts a lap. Moving backwards never pays.
+* A six grants one extra roll; three sixes are not special. Getting stuck removes the extra roll.
+* **Lucky dice** (`shared/dice.js`, `DICE_RULES`, disclosed in the Rules sheet): comeback (below 0.8x / 0.5x of the
+  average net worth: more weight on useful landings, less on landings with rent >= 25% of cash), mercy (after 2 turns
+  paying rent >= 20,000: less weight on landings with rent >= 20,000), pity six (after 6 non-sixes a six is 1.5x),
+  anti-streak (after 2 sixes in a turn a six is 0.5x); each face is clamped to 0.6x-1.5x before normalising. The
+  `dice` event reports the strongest rule in `assist` (or `null`). `fair` is uniform. A stuck player only gets pity
+  (their ROLL does not move them; `landingOdds` reports their own tile with probability 1).
+* **Transport (5, 14, 23)**: landing sets `state.ride = { player, from, to: nextTransport(from), fare }`. `RIDE` pays
+  the fare to the bank (cash reason `fare`), emits `ride` and then a `move` with `ride: true` to the next stop
+  (MMTS -> Auto Stand passes START and pays the salary). Arriving has no further effect. The offer ends with
+  `END_TURN` or `ROLL`.
+* **Traffic Jam (9)** and the "stuck" cards set `player.stuck = true` (`traffic` event, reason `tile` | `card`), the
+  extra roll is lost and the turn ends. Next turn, in `roll`: `PAY_TRAFFIC` (25,000, cash reason `traffic`),
+  `USE_CHAI` (spends a chai) - then roll normally - or `ROLL` = wait (no dice, no move, `stuck` clears, turn ends;
+  `traffic` reason `waited`). Upgrading, mortgaging and trading are allowed while stuck.
 
-## 5. Squares, rent, building, mortgage, tax, cards
+## 5. Squares and money rules
 
-Exactly as `hyderabad-monopoly.md` / `shared/board.js` (verified by an automated audit):
-property rent table (base, 1-4 houses, hotel), the full colour set doubles base rent of UNBUILT tiles
-and unlocks building, stations 250/500/1000/2000 by number owned, utilities 40x / 100x the die,
-GHMC tax = the lower of 2,000 and 10% of net worth (rounded to 10), ORR challan 1,000, Irani Chai & Biryani Break does nothing
-(except earn a token, 10.2), mortgage = `tile.mortgage`, lifting costs +10%, building cost = `houseCost`, even building (and even selling),
-selling a building refunds 50% of `houseCost`. Mortgaged tiles collect no rent and block building on their whole colour.
-24-card shared deck (Nawab ka Farman and Hyderabadi Khazana squares both draw from it; one card is Get Out of Jail Free and is kept
-until used).
+* **Buying**: an unowned district you can afford offers `BUY` at its price, or `SKIP_BUY` (sealed auction when
+  `auctionOnDecline`). A district you cannot afford goes straight to auction (same switch). A bought district is
+  level 0 = its first business (`levelName(tile, 0)`).
+* **Rent** = `rentTable(tile)[level]`: base 10% of the price, level 1 = round1000(base x 1.9), level 2 =
+  round1000(base x 3.5) (HITEC City 34,000 / 65,000 / 1,19,000). Owning the whole collection pays **1.5x on level-0
+  tiles only**. A mortgaged district collects nothing. City events (9) and the owner's "rents x2" card boost
+  (`player.rentBoost`, until that player's next turn) multiply on top. `previewRent(state, tile)` gives the exact
+  figure the visitor would owe before chai.
+* **Upgrades**: `MAX_LEVEL` 2, each costs 50% of the price (30,000 - 2,00,000). Needs only ownership, an unmortgaged
+  tile, your turn in `roll`/`manage` and the cash: no full set, no even-building rule, no limit per turn.
+  `SELL_BUILDING` refunds 50% of one upgrade's cost (any order).
+* **Mortgage**: 50% of the price, only at level 0 (sell that tile's upgrades first); lifting costs +10%.
+* **Chai Adda (18)**: +1 chai (`player.chai`, cap 1; nothing happens at the cap). A chai is spent **automatically** on
+  the next rent payment of at least 20,000 (halves it, `chai` event reason `rent` with `saved`, `stats.chaiSaved`), or
+  manually with `USE_CHAI` to leave traffic.
+* **Municipal Charges (27)**: pay 40,000 + 10,000 per upgrade level you own (`municipalDue`), cash reason `tax`.
+* **Bazaar Auction (32)**: if any district is unowned a seeded-random one goes to a sealed auction (reason `bazaar`,
+  min bid 50% of its price); the lander bids like everyone. None unowned: nothing.
+* **Cards (2, 21 Nawabi Luck; 12, 30 City Drama)**: see 10.
+* **Trades** move districts (with their upgrades and mortgages) and cash. Only districts can be traded.
+* **Net worth** = cash + price of each unmortgaged district + (price - mortgage value) for mortgaged ones + 50% of the
+  upgrade costs paid (levels x upgradeCost x 0.5) - unpaid debt (the open `state.debt` and its `rest`).
+* `liquidationValue` = for each owned district: levels x sell refund + its mortgage value if not mortgaged yet.
 
 ## 6. Auctions
 
-Sealed, simultaneous. `pending = { type:'auction', tile, minBid, bids }`. `BID {amount}` once per
-player (0 = pass), amount `>= minBid` and `<= cash`. Highest valid bid wins, ties go to the earliest
-seat counted from the current turn player. Players who cannot afford `minBid` are auto-passed.
-`minBid = max(10, round(price * 0.1 / 10) * 10)`. Everyone active may bid, including the player who skipped. The winner pays the bank.
-No valid bid: the tile stays unowned. After the auction the phase goes to `pending.returnPhase || 'manage'`.
-Auctions open only for a **skipped** tile (`SKIP_BUY` with `auctionOnDecline`) and for Snatch bidding (9.5); an unaffordable tile is not offered at all.
+Sealed, simultaneous. `pending = { type:'auction', tile, minBid, bids, reason, returnPhase }`, reason `'decline'` |
+`'unaffordable'` | `'bazaar'`. `BID {amount}` once per player (0 = pass), amount `>= minBid` and `<= cash`. Highest
+valid bid wins; ties go to the earliest seat counted from the current turn player. Players who cannot afford `minBid`
+are auto-passed. `minBid` = 10% of the price (rounded to 1,000, at least 1,000) for decline / unaffordable, 50% for
+the Bazaar Auction (`auctionMinBid`). Everyone active may bid, including the lander. The winner pays the bank.
+No valid bid: the district stays unowned. Afterwards the phase is `returnPhase` (`manage`).
 
 ## 7. Bankruptcy and game end
 
-### 7.1 Net worth and liquidation value
-* `netWorth` = cash + for each owned tile (`price`, or `price - mortgage` if mortgaged) + `level * houseCost`.
-* `liquidationValue` = for each owned tile: `level * round(houseCost * 0.5)` plus the `mortgage` value if it is not mortgaged yet.
-
-### 7.2 Debt phase
-A payment (rent, tax, card, including the several payees of a "pay each player" card) that the payer's **cash cannot cover** is handled so:
+### 7.1 Debt phase
+A payment (rent, municipal tax, card, wedding-season charge, including the several payees of a "pay every player"
+card) that the payer's **cash cannot cover** is handled so:
 * cash >= amount: paid at once (`cash` events, creditor gets the money).
 * cash < amount but `cash + liquidationValue >= amount`: the game pauses in `phase 'debt'` with
-  `state.debt = { player, amount, creditor|null, reason: 'rent'|'tax'|'card', returnPhase, rest }` and a `debt` event.
-  `rest` holds the remaining payments of the same cause, replayed after the debt is settled. `creditor` is `null` for the bank.
-* otherwise: immediate bankruptcy (7.3), no debt phase.
+  `state.debt = { player, amount, creditor|null, reason: 'rent'|'tax'|'card'|'event', returnPhase, rest }` and a `debt`
+  event. `rest` holds the remaining payments of the same cause, replayed after the debt is settled.
+* otherwise: immediate bankruptcy (7.2).
 
-In the debt phase **the debtor acts even when it is not their turn**; only `MORTGAGE`, `SELL_BUILDING`, `PAY_DEBT` and `RESIGN` are legal
-(anything else, including `UNMORTGAGE` and `UPGRADE`, fails with `Raise cash and settle the debt first`). `PAY_DEBT` needs
-`cash >= amount` (`Raise ₹X more first`), moves the money, sets `phase = returnPhase` and runs `rest`. The debtor has the normal 45 s
-decision timer; auto-play mortgages the cheapest tile first, then sells buildings (tallest first), then pays; if the engine refuses three
-auto moves in a row the player is resigned (8.8). Mortgaging needs the whole colour free of buildings, selling must be even.
+In the debt phase **the debtor acts even when it is not their turn**; only `MORTGAGE`, `SELL_BUILDING`, `PAY_DEBT` and
+`RESIGN` are legal (anything else fails with `Raise cash and settle the debt first`). `PAY_DEBT` needs
+`cash >= amount` (`Raise ₹X more first`). Auto-play mortgages the cheapest district first, then sells upgrades, then pays.
 
-### 7.3 Bankruptcy (`bankruptPlayer`)
-Triggered by an unpayable debt (7.2) or by `RESIGN` (7.4). In order:
-1. Every building the player owns is sold to the bank (`level` events reason `bankrupt`, `cash` reason `liquidate`).
-2. If a **creditor** exists (a player who is not bankrupt): all the cash goes to them (`cash` events), and they receive every property
-   (`own` reason `bankrupt`, `owner` = creditor; mortgaged tiles stay mortgaged; `set_complete` fires for sets they now hold). If the creditor is the bank
-   (tax, card to the bank, resign outside a debt): every property becomes unowned and unmortgaged (`own` with `owner: null`).
-3. Jail cards go back to the deck, the player's placed traps are removed, `cash = 0`, jail cleared, a pending trade of theirs is cancelled
-   (`trade_rejected` reason `bankrupt`), and a `bankrupt` event is emitted. `player.bankrupt = true`; the seat stays in `state.players`.
+### 7.2 Bankruptcy
+Triggered by an unpayable debt or by `RESIGN`. Every upgrade is sold to the bank (`level` events reason `bankrupt`,
+`cash` reason `liquidate`). A **creditor** player gets all the cash and every district (`own` reason `bankrupt`;
+mortgaged stays mortgaged; `set_complete` for collections they now hold). With the bank as creditor every district
+becomes unowned and unmortgaged. Then `cash = 0`, `stuck` / `chai` / `rentBoost` are cleared, a pending trade of theirs
+is cancelled (`trade_rejected` reason `bankrupt`), a ride offer is dropped, `player.outOrder` records the order of
+going out, and a `bankrupt` event is emitted. Bankrupt players never act again and are skipped in turn order.
 
-Bankrupt players never act again, are never eligible for Snatch, are skipped in turn order (a bankrupt turn player's turn ends automatically
-once no auction / debt / snatch window is open) and are not counted by anything that says "active players".
+### 7.3 Resign
+`RESIGN` is legal at any time for any non-bankrupt player. In their own debt: bankruptcy to the debt's creditor, then
+`rest` is replayed. Otherwise: bankruptcy to the bank. In an auction their bid becomes 0. A pending trade involving
+them is cancelled. `{t:'leave'}` from a running game resigns the player and marks the seat `left`.
 
-### 7.4 Resign
-`RESIGN` is legal at any time for any non-bankrupt player, even out of turn and during a trade, auction, debt or snatch window.
-* In their own debt: bankruptcy to the debt's creditor with the debt's reason, then `rest` is replayed.
-* Otherwise: bankruptcy to the bank (properties unowned).
-* In an auction: their bid becomes 0 (and the auction may resolve). In a snatch window: they are removed from `claims`; the window keeps running.
-  A resigning **buyer** loses the tile to the bank at once, so the tile (now unowned) can still be snatched for free when the window closes;
-  if nobody snatches it, it stays unowned.
-* In a pending trade involving them: cancelled.
+### 7.4 Winning (`checkWin`, after **every** applied action)
+1. **Last standing** (`winReason 'last_standing'`): at most one non-bankrupt player is left.
+2. **Rounds** (`'rounds'`): `state.round > maxRounds` (classic: `> ROUND_CAP` 60), i.e. the moment the last player of
+   the final round ends their turn. The **richest** active player wins: highest net worth, then most cash, then seat
+   order.
 
-Sending `{t:'leave'}` from a running game resigns the player (if the game is not over) and marks the seat `left`, then closes their sockets.
+There is no end-cash goal. Ending sets `phase 'over'`, clears `pending`, `trade`, `debt`, `ride`, `extraRoll`, fills
+`winner` and `winReason`, and emits `{type:'win', player, reason, worth}`. Every later action fails with
+`The game is over`. A room nobody is connected to for 5 minutes is **abandoned** (finished, not recorded).
 
-### 7.5 Winning (`checkWin`, run after **every** applied action)
-Checked in this order; the first that applies ends the game:
-1. **Last standing** (`winReason 'last_standing'`): at most one non-bankrupt player is left. That player wins (no winner if everyone went bankrupt at once).
-2. **Net worth** (`'net_worth'`): at least one active player has `netWorth >= cfg.goal`. The one with the **highest** net worth wins; a tie goes to the
-   earliest seat. This can fire in the middle of anybody's turn (for example when a player receives rent or a snatched property).
-3. **Rounds** (`'rounds'`): `cfg.maxRounds` is a number and `state.round > maxRounds`, that is the moment the last player of round `maxRounds`
-   ends their turn. The **richest** active player wins; ties go to the player with the **most cash**, then the earliest seat. `maxRounds = null` never triggers this.
-
-Ending sets `phase 'over'`, clears `pending`, `trade`, `debt` and `extraRoll`, fills `winner` and `winReason`, and emits
-`{type:'win', player, reason, worth}` (the winner's final net worth). Every action after that is refused with `The game is over`.
-A room that nobody is connected to for 5 minutes (or where every seat has left) is **abandoned**: `status 'finished'`, but `state.phase` is not `'over'`
-and nothing is recorded.
-
-### 7.6 Result and ranks
-When the room finishes, the adapter's `result()` is written once to Neon (`worker/match.js`):
-`{ winnerId, reason, rounds: min(round, maxRounds) or round when unlimited, standings: [{ id, rank, score: round(net worth), stats: { rentEarned, hotelsBuilt } }] }`.
-`standings()` ranks by net worth (descending), then non-bankrupt before bankrupt, then seat. XP, coins, Elo rating and per-game stats come from the
-ranks (`worker/xp.js`, `worker/rating.js`). See section 14 for a case where rank 1 is not the winner.
+### 7.5 Result and ranks
+`standings(state)` = active players by net worth, then cash, then seat; bankrupt players after them, the last to go
+out first: `[{ id, cash, worth, rank, bankrupt }]`. Rank 1 is always the winner. The adapter's `result()` is written
+once to Neon: `{ winnerId, reason, rounds: min(round, maxRounds ?? 60), standings: [{ id, rank, score: round(net
+worth), stats: { rentEarned, hotelsBuilt /* districts raised to level 2 */ } }], legacy: { goal: null, maxRounds,
+diceMode, mode } }`. The legacy users columns get best_worth = final net worth and rent_earned.
 
 ## 8. Wire protocol
 
@@ -206,12 +253,14 @@ ranks (`worker/xp.js`, `worker/rating.js`). See section 14 for a case where rank
 * When the host starts the game, everybody receives `room` (status `playing`) and then the first `state` (`seq` 1, `events: []`).
 * Heartbeat: the client sends `{"t":"ping"}` every 20 s; the Durable Object answers `{"t":"pong"}` from an auto-response without waking up.
 
+
 ### 8.2 Client -> server
 
 | `t` | Fields | Who / when | Errors (`{t:'error', message}`) |
 |---|---|---|---|
 | `ping` | | anyone | none (reply `pong`) |
-| `settings` | `settings`: object with any of `goal startCash maxRounds dice auctionOnDecline snatches snatchMs maxPlayers` | host, lobby only. The patch is merged over the current settings and re-validated. | `Only the host can change settings.` · `Settings are locked once the game starts.` · `Settings must be an object.` · `Winning target must be a whole number between 10000 and 1000000.` · `Start cash must be a whole number between 5000 and 100000.` · `Round limit must be 30, 50 or unlimited (null).` · `Dice must be 'lucky' or 'fair'.` · `Auction on decline must be true or false.` · `Snatch tokens must be a whole number between 0 and 3.` · `Snatch window must be between 1000 and 10000 ms.` · `Players must be between 2 and 6.` · `There are already more players than that.` |
+| `settings` | `settings`: object with any of `mode dice auctionOnDecline maxPlayers` | host, lobby only. The patch is merged over the current settings and re-validated. | `Only the host can change settings.` · `Settings are locked once the game starts.` · `Settings must be an object.` · `Mode must be one of 'standard', 'quick', 'classic'.` · `Dice must be 'lucky' or 'fair'.` · `Auction on decline must be true or false.` · `Players must be between 2 and 6.` · `There are already more players than that.` |
+| `piece` | `piece`: one of the adapter's `pieces` (`pearl auto handi chai bat camera`) | any member, lobby only; picks a free piece | an `error` when the piece is taken or unknown |
 | `kick` | `id`: user id | host, lobby only. Removes the player and bans them for 10 minutes. | `Only the host can remove players.` · `Players can only be removed in the lobby.` · `That player is not in the room.` · `You cannot remove yourself.` |
 | `start` | | host, lobby, at least `minPlayers` (2) seated | `Only the host can start the game.` · `The game has already started.` · `You need at least 2 players to start.` · `Too many players for this room.` · `Could not start the game.` |
 | `action` | `action`: object (8.5) | any member while `status 'playing'` | `No game is in progress.` · `Invalid action.` (failed the allow-list) · the engine's reason (for example `Not your turn`) |
@@ -223,15 +272,15 @@ Common errors for everything except `ping`: `You are not in this room.` (sender 
 
 **Legacy, accepted but not used by the shipped client:** `{t:'ready', ready:boolean}` (lobby only; `The game has already started.` / `Invalid ready value.`) sets the
 `ready` flag shown in `room.players`; `{t:'visibility', visibility:'private'|'public'}` (host, lobby only; `Only the host can change who can see this room.` /
-`Visibility is locked once the game starts.` / `Visibility must be private or public.`). Starting never requires anyone to be ready. See section 14.
+`Visibility is locked once the game starts.` / `Visibility must be private or public.`). Starting never requires anyone to be ready. See section 13.
 
 ### 8.3 Server -> client
 
 | `t` | Payload | When |
 |---|---|---|
 | `pong` | | reply to `ping` |
-| `room` | `room` (below) | on every join, leave, disconnect, reconnect, settings change, kick, start, game over and abandon. Not after every action. |
-| `state` | `state`, `events`, `seq` | after every applied action (to every socket, each with its own redacted view), and once to a socket that connects while a game exists (`events: []`). Exception: a sealed `SNATCH` press that leaves the window open is **not broadcast** and does not change `seq`; only the presser receives a snapshot (`events: []`, same `seq`) so their button locks. |
+| `room` | `room` (below) | on every join, leave, disconnect, reconnect, settings change, piece pick, kick, start, game over and abandon. Not after every action. |
+| `state` | `state`, `events`, `seq`, `clock` | after every applied action (to every socket, each with its own redacted view), and once to a socket that connects while a game exists (`events: []`). `clock = { deadline: epochMs\|null, waitingFor: playerId[] }` = when the decision timer (45 s after the animation) auto-plays. |
 | `error` | `message` | a rejected request (8.2), a refused join (8.1) or `This room has expired.` |
 | `chat` | `id`, `from` (user id), `name`, `text`, `emote`, `ts` (ms) | every accepted chat message, to all sockets including the sender |
 | `kicked` | | to the removed player's sockets, just before they are closed |
@@ -240,104 +289,90 @@ Common errors for everything except `ping`: `You are not in this room.` (sender 
 ```
 { code, status: 'lobby'|'playing'|'finished', hostId, maxPlayers, gameId, visibility: 'private'|'public',
   settings,                      // the engine's full normalised cfg (see 2)
-  players: [{ id, name, avatar, ready, connected }] }   // join order; `ready` is legacy (host true, others false unless a client sent `ready`)
+  players: [{ id, name, avatar, ready, connected, piece: string|null, cosmetics: { frame?, dice?, title? } }] }
 ```
-`connected` = the user has at least one open socket. There is no `isBot`. A finished room whose game was abandoned still says `finished`.
+Pieces chosen in the lobby are passed to `createGame` as `players[i].piece`; the engine keeps a requested free piece
+and gives everyone else the first free one (11).
 
 ### 8.4 The `state` shape (everything the client receives)
 
 ```
 state = {
-  cfg: { startCash, goal, passStart, jailTurns, bailFine, maxRounds: number|null, dice: 'lucky'|'fair',
-         auctionOnDecline, snatches, snatchMs },
-  rng: 0, deck: [], deckPos: number,              // rng and deck are server secrets: always sent as 0 / [] (8.7)
+  cfg: { mode, startCash, passStart, maxRounds: number|null, dice, auctionOnDecline, trafficFine, chaiCap },
+  rng: 0, deck: [], deckPos: { luck, drama },     // rng and deck are server secrets: always sent as 0 / [] (8.7)
   round, turn /*index into players*/, turnCount,
-  phase: 'roll'|'buy'|'snatch'|'auction'|'manage'|'debt'|'over',
+  phase: 'roll'|'buy'|'auction'|'manage'|'debt'|'over',
   extraRoll: boolean, dice: [d],                  // [0] = no roll yet
-  owners: (playerId|null)[40], levels: number[40] /*0-5*/, mortgaged: boolean[40],
-  pending: null | buy | snatch | auction,         // shapes below
+  owners: (playerId|null)[36], levels: number[36] /*0-2*/, mortgaged: boolean[36],
+  pending: null | { type:'buy', tile, price } | { type:'auction', tile, minBid, bids, reason, returnPhase },
+  ride: null | { player, from, to, fare },        // a transport ride on offer to the turn player
   trade: null | { id, from, to, give:{cash,tiles[]}, get:{cash,tiles[]} },   // `give` leaves `from`, `get` leaves `to`
   debt:  null | { player, amount, creditor: playerId|null, reason, returnPhase, rest: [{from,to,amount,reason}] },
-  tradeSeq,
-  traps: [{ tile, owner }],                       // SECRET: each viewer receives only their own (13.3)
-  event: null | { id, title, text, kind, round, group?, mult?, amount? },   // the current city event (11)
-  winner: playerId|null, winReason: 'last_standing'|'net_worth'|'rounds'|null,
-  players: [{ id, name, avatar, color, isBot /*always false online*/, bot /*null*/,
-              cash, pos, jailTurns, jailCards, sixes, rollsSinceSix, rentStreak, rentThisTurn, lastOfferTurn,
-              snatches /*tokens, public*/, laps /*times START was passed, public*/, traps /*traps still in hand, public*/,
-              bankrupt,
-              stats: { rentPaid, rentEarned, taxPaid, propertiesBought, upgrades, jailed, biggestRent } }]
+  tradeSeq, outCount,
+  event: null | { id, title, text, kind, round, group?, groups?, mult?, upgradedOnly?, amount?, bonus? },   // 9
+  winner: playerId|null, winReason: 'last_standing'|'rounds'|null,
+  players: [{ id, name, avatar, color, piece, cash, pos, stuck, chai, laps, bankrupt, outOrder,
+              sixes, rollsSinceSix, rentStreak, rentThisTurn, rentBoost, lastOfferTurn, isBot /*false online*/, bot /*null*/,
+              stats: { rentPaid, rentEarned, taxPaid, propertiesBought, upgrades, biggestRent, rides, chaiSaved } }]
 }
 ```
+The client computes `getOptions(state, me)` from `shared/engine.js` on the (redacted) view. Keys:
+`roll payTraffic useChai buy skipBuy ride endTurn upgrade[] bid mortgage[] unmortgage[] sellBuilding[] debt payDebt
+trade tradeOffer tradeSent sets[] resign` (everything false / null / [] when it is not that player's moment).
+`roll` is also true while stuck (it means "wait"); `payTraffic` = the fine or `false`; `useChai` boolean;
+`ride` = `{ to, fare } | null`; `upgrade[]` = `{ tile, cost, level }`; `bid` = `{ tile, min, max }`;
+`sets[]` = `{ group, owned, size, multiplier }`. Other queries: `previewRent`, `municipalDue`, `canUpgrade`,
+`netWorth`, `liquidationValue`, `standings`.
 
-`pending` shapes:
-```
-buy:     { type:'buy', tile, price }
-snatch:  { type:'snatch', tile, buyer, price, eligible: playerId[], claims: playerId[] /*redacted*/, ms, returnPhase:'manage' }
-auction: { type:'auction', tile, minBid, bids: { [playerId]: amount } /*other players' amounts redacted to 0*/,
-           // snatch bidding only:
-           snatch?: true, buyer?, claimants?: playerId[], returnPhase? }
-```
-The client does not receive an "options" object: it computes `getOptions(state, me)` from `shared/engine.js` on the (redacted) view.
-Its keys: `roll bail buy skipBuy shield endTurn upgrade[] bid mortgage[] unmortgage[] sellBuilding[] debt payDebt useJailCard trap trade tradeOffer tradeSent sets[] snatch snatched resign`
-(everything false / null / [] when it is not that player's moment).
-
-`seq` starts at 1 when the game starts and grows by one per applied action (a player's, an auto-played one, or the server's `SNATCH_CLOSE`). Rejected actions and still-open sealed `SNATCH` presses do not change it.
-The state in every `state` message is the **full** state, never a delta.
+`seq` starts at 1 when the game starts and grows by one per applied action. The state is always the **full** state.
 
 ### 8.5 Client actions (allow-list in `worker/validate.js` `sanitizeAction`)
-`playerId` is always overwritten with the socket's user; unknown fields are dropped; anything not listed (including `SNATCH_CLOSE`) fails with `Invalid action.`
-Legality is then decided by the engine (its message is sent back as `error`).
+`playerId` is always overwritten with the socket's user; unknown fields are dropped; anything not listed (including the
+retired `PAY_BAIL USE_JAIL_CARD SNATCH SNATCH_CLOSE PLACE_TRAP` and `BUY.shield`) fails with `Invalid action.`
+Tile fields are integers 0-35.
 
 | `type` | Fields | Legal when | Engine errors (selection) |
 |---|---|---|---|
-| `ROLL` | | your turn, phase `roll`, or `manage` with `extraRoll` | `Not your turn` · `Decide about the property first` · `An auction is in progress` · `You already rolled. End your turn` |
-| `PAY_BAIL` | | your turn, phase `roll`, in jail, cash >= 500 | `You are not in jail` · `Bail costs ₹500` · `You can only pay bail before rolling` |
-| `USE_JAIL_CARD` | | as above, holding the card | `You have no Get Out of Jail Free card` |
-| `BUY` | `shield?: true` | your turn, phase `buy`, cash >= price. `shield` also needs a token and another active player holding one. | `Nothing to buy right now` · `Not enough cash` · `You have no Snatch token to shield with` · `Nobody could snatch it, no need to shield` |
+| `ROLL` | | your turn, phase `roll` (while stuck: wait), or `manage` with `extraRoll` | `Not your turn` · `Decide about the district first` · `An auction is in progress` · `You already rolled. End your turn` |
+| `PAY_TRAFFIC` | | your turn, phase `roll`, stuck, cash >= 25,000 | `You are not stuck in traffic` · `Getting out costs ₹25,000` · `You can only pay before rolling` |
+| `USE_CHAI` | | your turn, phase `roll`, stuck, chai > 0 | `You have no chai token` · `You can only use chai before rolling` |
+| `BUY` | | your turn, phase `buy`, cash >= price | `Nothing to buy right now` · `Not enough cash` |
 | `SKIP_BUY` | | your turn, phase `buy` | `Nothing to skip right now` |
-| `PLACE_TRAP` | `tile` (int 0-39) | your turn, phase `roll`, you hold a trap | `You can only set a trap before you roll` · `You have no trap left` · `You cannot trap that square` |
-| `UPGRADE` | `tile` | your turn, `roll`/`manage`, full colour, even building, cash >= `houseCost`, nothing mortgaged in the colour | `Own all of <colour> to build here` · `Build evenly: ...` · `Already fully built (Hotel)` · `Need ₹X more` ... |
-| `MORTGAGE` | `tile` | your tile, colour without buildings, `roll`/`manage` of your turn or your own debt | `Sell the buildings in this colour first` · `Already mortgaged` |
-| `UNMORTGAGE` | `tile` | your mortgaged tile, `roll`/`manage` of your turn, cash >= cost | `This tile is not mortgaged` · `Need ₹X more` |
-| `SELL_BUILDING` | `tile` | your tile with buildings, tallest of its colour first | `Nothing built here` · `Sell evenly: ...` |
-| `PAY_DEBT` | | you are the debtor, cash >= amount | `You do not owe anything right now` · `This is not your debt` |
+| `RIDE` | | your turn, phase `manage`, `state.ride` is yours, cash >= fare | `There is no ride to take` · `The fare is ₹X` |
+| `UPGRADE` | `tile` | your turn, `roll`/`manage`, own district, level < 2, unmortgaged, cash >= cost | `Already a Tech Campus` · `Unmortgage this district first` · `Need ₹X more` |
+| `SELL_BUILDING` | `tile` | your district with an upgrade, `roll`/`manage` of your turn or your own debt | `Nothing to sell here` |
+| `MORTGAGE` | `tile` | your level-0 district, `roll`/`manage` of your turn or your own debt | `Sell its upgrades first` · `Already mortgaged` |
+| `UNMORTGAGE` | `tile` | your mortgaged district, `roll`/`manage` of your turn, cash >= cost | `This district is not mortgaged` · `Need ₹X more` |
+| `PAY_DEBT` | | you are the debtor, cash >= amount | `You do not owe anything right now` · `Raise ₹X more first` |
 | `END_TURN` | | your turn, phase `manage`, no `extraRoll` | `You cannot end your turn yet` · `You rolled a six. Roll again` |
 | `BID` | `amount` (int 0 - 100,000,000; 0 = pass) | auction, once per player | `There is no auction right now` · `You already placed your bid` · `The minimum bid is ₹X` · `You cannot bid more than your cash` |
-| `TRADE_OFFER` | `to` (user id, not you), `give`/`get`: `{cash:int>=0, tiles:int[]}` (unique, on board, not both empty) | your turn, `roll`/`manage`, nothing pending | `Finish the current step before trading` · `Pick another active player to trade with` · `You do not have that much cash` · `Sell the buildings in <colour> before trading <tile>` |
+| `TRADE_OFFER` | `to`, `give`/`get`: `{cash:int>=0, tiles:int[]}` (unique, on board, not both empty) | your turn, `roll`/`manage`, nothing pending | `Finish the current step before trading` · `Only districts can be traded` · `You do not have that much cash` |
 | `TRADE_ACCEPT` / `TRADE_REJECT` | | the recipient of the pending offer | `There is no trade offer` · `This offer is not for you` |
 | `TRADE_CANCEL` | | the offerer | `Only the player who made the offer can cancel it` |
-| `SNATCH` | | an eligible player who has not pressed (9.4) | `There is nothing to snatch` · `You cannot snatch this one` · `You already pressed Snatch` |
-| `RESIGN` | | any non-bankrupt player, any time (7.4) | `You are out of the game` |
+| `RESIGN` | | any non-bankrupt player, any time (7.3) | `You are out of the game` |
 
-While a trade is pending only the three trade answers and `RESIGN` are legal (`A trade offer is waiting for an answer`); while the phase is `debt`
-see 7.2; while it is `snatch` only `SNATCH` and `RESIGN` (`Wait for the snatch window`). After the game ends: `The game is over`.
+While a trade is pending only the three trade answers and `RESIGN` are legal (`A trade offer is waiting for an
+answer`); while the phase is `debt` see 7.1. After the game ends: `The game is over`.
 
 ### 8.6 Events (`events` in a `state` message, replayed by the client presenter and written to the log)
 
 | `type` | Fields |
 |---|---|
 | `dice` | `player, values:[d], assist: null\|'comeback'\|'mercy'\|'pity'\|'antibust'` |
-| `move` | `player, from, to, path: tile[] (excluding from), passedStart, teleport?` |
+| `move` | `player, from, to, path: tile[] (excluding from), passedStart, teleport?, ride?` |
 | `land` | `player, tile` |
-| `cash` | `player, delta (signed), reason, other?` - reasons `salary rent tax buy upgrade auction card bail liquidate mortgage unmortgage sell trade event` (a transfer emits one event per side; `other` = counterparty) |
-| `own` | `tile, owner (id\|null), reason: 'buy'\|'auction'\|'snatch'\|'trade'\|'bankrupt'` |
+| `cash` | `player, delta (signed), reason, other?` - reasons `salary rent tax buy upgrade auction card fare traffic liquidate mortgage unmortgage sell trade event` (a transfer emits one event per side; `other` = counterparty) |
+| `own` | `tile, owner (id\|null), reason: 'buy'\|'auction'\|'trade'\|'bankrupt'` |
 | `level` | `tile, level, reason: 'upgrade'\|'sell'\|'bankrupt'` |
-| `jail` | `player, jailed: boolean, reason` - `gotojail card trap` (jailed) · `six bail served card_used` (released) |
-| `jail_stay` | `player, left` |
-| `card` | `player, cardId, kind: 'good'\|'bad'\|'neutral', deck: 'chance'\|'chest', title, text` |
-| `auction_start` | `tile, minBid, reason?: 'snatch', eligible?` |
-| `auction_end` | `tile, winner (id\|null), amount, bids: {id: amount}` (reveals every bid), `reason?: 'snatch', buyer?` |
-| `snatch_open` | `tile, buyer, price, eligible, ms` |
-| `snatch_end` | `tile, buyer, outcome: 'none'\|'snatched'\|'bidding', winner?, claimants?` |
-| `snatch_token` | `player, snatches` (a token was spent) |
-| `shield` | `player, tile` |
-| `token_earned` | `player, reason: 'lap'\|'chai', snatches` |
-| `city_event` | `id, title, text, kind, round, group?, mult?, amount?` |
-| `trap_placed` | `player` (never names the tile) |
-| `trap_sprung` | `tile, owner, victim` |
+| `ride` | `player, from, to, fare` (after the fare's `cash`, before its `move`) |
+| `traffic` | `player, stuck: boolean, reason: 'tile'\|'card'\|'paid'\|'chai'\|'waited'` |
+| `chai` | `player, chai /*new count*/, change: 1\|-1, reason: 'adda'\|'card'\|'rent'\|'traffic', saved? /*rupees saved*/` |
+| `card` | `player, cardId, kind: 'good'\|'bad'\|'neutral', deck: 'luck'\|'drama', title, text` |
+| `auction_start` | `tile, minBid, reason: 'bazaar'\|'decline'\|'unaffordable'` |
+| `auction_end` | `tile, winner (id\|null), amount, bids: {id: amount}` (reveals every bid), `reason` |
+| `city_event` | same fields as `state.event` (emitted before that round's first `turn` event) |
 | `mortgage` / `unmortgage` | `player, tile, value` / `player, tile, cost` |
-| `set_complete` | `player, group` (a colour was completed; held back until a Snatch window closes) |
+| `set_complete` | `player, group` |
 | `debt` | `player, amount, creditor` |
 | `bankrupt` | `player` |
 | `trade_offer` / `trade_done` | `id, from, to, give, get` |
@@ -345,40 +380,50 @@ see 7.2; while it is `snatch` only `SNATCH` and `RESIGN` (`Wait for the snatch w
 | `turn` | `player, round` |
 | `win` | `player (id\|null), reason, worth` |
 
+Order of a typical roll: `dice, move, (cash salary), land, ...effect`. A stuck turn that waits: `traffic (waited), turn`.
+
 ### 8.7 Redaction (what each viewer is not told)
-`worker/mask.js` (`adapter.redact`) runs for every recipient. It always returns a copy with the engine secrets removed (one stripped copy is cached per authoritative state), so each socket gets its own payload.
-* **Sealed bids:** while `pending.type === 'auction'`, `pending.bids` keeps every key but shows `0` for every player except the viewer (so "has bid" is visible, the amount is not).
-  `auction_end.bids` reveals all amounts.
-* **Snatch presses:** while `pending.type === 'snatch'`, `pending.claims` is `[viewerId]` if the viewer pressed, else `[]`. Presses emit no event; `snatch_end.claimants` reveals the pressers at the close. Once snatch bidding starts,
-  `pending.claimants` is public (a claimant who passes with 0 is still recognised).
-* **Traps:** `state.traps` is cut down to the viewer's own; `trap_placed` does not name the tile, `trap_sprung` does.
-* **Engine secrets:** `state.rng` is sent as `0` and `state.deck` as `[]`, so a client cannot compute the next die, card or city event (nothing in the client reads them). `deckPos` is still sent.
-* Public: `player.snatches`, `player.laps`, `player.traps` (count in hand), `jailCards`, all cash and properties.
+`worker/mask.js` (`adapter.redact`) runs for every recipient. It always returns a copy with the engine secrets removed
+(`state.rng` -> `0`, `state.deck` -> `[]`; one stripped copy is cached per authoritative state), so a client cannot
+compute the next die, card or city event. **Sealed bids:** while `pending.type === 'auction'`, `pending.bids` keeps
+every key but shows `0` for every player except the viewer; `auction_end.bids` reveals all amounts. Everything else is
+public (cash, districts, chai, stuck, pieces, `deckPos`).
 
 ### 8.8 Timers, auto-play and presence (server side, Durable Object alarms)
-* **Decision timer, 45 s (`TURN_MS`).** Everyone the game is waiting for (the turn player; the debtor in a debt; every player who has not bid in an auction; the recipient and the
-  offerer of a pending trade) gets 45 s, counted from when the client animation of the last applied action ends (`lastApplyAt + animationMs`; the clock restarts after every applied
-  action, including other players' bids). Animation estimate: dice 900 ms, 170 ms per step moved, card 1,500, `auction_end` and `city_event` 1,500, `trap_sprung` 900, `win` 2,500, capped at 6 s; the game start adds 1.5 s.
-* When it fires the player is flagged **idle** and the engine's move chooser plays one move for them. An idle player is auto-played ~900 ms per move (~400 ms for bids, never faster than the animation) until they send any `action`
-  (or reconnect), which clears the flag.
-* **Disconnect grace, 15 s.** A member with no open socket is auto-played once 15 s have passed since the last socket closed (or since a restart noticed it). Reconnecting cancels it.
-* **Trade, 30 s.** A pending trade offer is auto-rejected (`TRADE_REJECT` for the recipient) 30 s after it appears. If the recipient is out of the game the offerer's offer is cancelled after 0.9 s.
-* **Snatch window, `pending.ms` (3 s default) + 400 ms grace** (`SNATCH_GRACE_MS`, so a press sent at the end of the client countdown still arrives). Started when the `snatch_open` state is sent. The room issues `SNATCH_CLOSE` when it ends; derived from state, so it survives eviction. Nobody is auto-played in it.
-* What auto-play does (`idleAction`): in a snatch window nothing; a pending trade is rejected / cancelled; otherwise the engine's move chooser: buys when its heuristic likes the tile else skips, bids, lifts mortgages and builds when rich,
-  pays bail / uses the jail card, rolls, ends the turn, settles debts (mortgage cheapest first, sell buildings last). It never snatches, shields, sets a trap or proposes a trade.
-* **Safety net:** if the engine refuses three automated moves in a row for the same player, that player is resigned; if resigning is not possible the game is called off (finished, abandoned).
-* **Lobby:** a member with no socket for 60 s is dropped from the lobby (host passes on); a lobby with no players left expires in about 10 minutes.
-* **Abandon:** no non-left member connected for 5 minutes (or every seat has left) while playing: `status 'finished'`, not recorded.
-* **Expiry:** 24 h after the last activity the room sends `error` `This room has expired.`, closes all sockets (4004) and deletes itself and its listing row.
-* **Persistence:** the whole room record is in Durable Object storage after every change. When a game ends the match is written to Neon once (retries after 2 s, 10 s, 30 s, 2 min, then every 10 min, at most 8 attempts; an abandoned game is never written).
-* Per-user limits: 3 sockets per room; chat 1 message / 700 ms.
+* **Decision timer, 45 s (`TURN_MS`).** Everyone the game is waiting for (the turn player; the debtor in a debt; every
+  player who has not bid in an auction; the recipient and the offerer of a pending trade) gets 45 s, counted from when
+  the client animation of the last applied action ends (`lastApplyAt + animationMs`). It is announced in
+  `state.clock`. The animation estimate (`estimateAnimMs(events, state?)` in the adapter) uses the presenter's own
+  table, `ANIM_MS` / `LONG_TRIP` / `MAX_ANIM_MS` from `shared/timing.js`: dice + afterDice; step x path length (a trip
+  longer than `LONG_TRIP` squares hops faster: step x max(0.3, LONG_TRIP / length) per square); teleport; land; rent
+  out/in; cash; own; level (x1.5 for level 2); set_complete; mortgage; trade; debt; card; auctionStart / auctionEnd;
+  cityEvent; ride; chai; traffic (jail when stuck, jailStay when waited, else quiet); bankrupt; turn (turn, a new
+  round max(round, turn), the final round finalRound - this needs the state; without it every turn counts as a new
+  round); win; capped at `MAX_ANIM_MS` (8 s). The game start adds 1.5 s. The client's `playbackSpeed` may only make
+  playback faster (or 0.75x), so the server never waits less than the speed-1 estimate.
+* When it fires the player is flagged **idle** and the engine's move chooser plays one move for them (~900 ms per
+  move, ~400 ms for bids, never faster than the animation) until they send any `action` (or reconnect).
+* **Disconnect grace, 15 s.** A member with no open socket is auto-played once 15 s have passed since the last socket
+  closed. Reconnecting cancels it.
+* **Trade, 30 s.** A pending trade offer is auto-rejected (`TRADE_REJECT` for the recipient) 30 s after it appears
+  (`adapter.deadlines`). If the recipient is out of the game the offerer's offer is cancelled after 0.9 s.
+* What auto-play does (`idleAction`): a pending trade is rejected / cancelled; otherwise the move chooser buys when its
+  heuristic likes the district else skips, bids, lifts mortgages and upgrades when rich, pays a traffic fine only with
+  comfortable cash (else waits), rolls, ends the turn, settles debts. It never rides and never proposes a trade.
+* **Safety net:** if the engine refuses three automated moves in a row for the same player, that player is resigned.
+* **Lobby:** a member with no socket for 60 s is dropped; an empty lobby expires in about 10 minutes.
+* **Abandon:** no non-left member connected for 5 minutes while playing: `status 'finished'`, not recorded.
+* **Expiry:** 24 h after the last activity the room sends `error` `This room has expired.` and deletes itself.
+* **Persistence:** the room record is in Durable Object storage after every change; a finished match is written to
+  Neon once (with retries). A stored game from the old rules (40 squares, jail, snatch) cannot be resumed:
+  `upgradeRecord` calls it off (finished, abandoned, unrecorded), drops old snatch timers and replaces old lobby
+  settings with the Hustle defaults.
 
 ### 8.9 Reconnect and resync
 * The client socket (`src/lib/socket.js`) reconnects with exponential backoff (about 0.5 s to 8 s, jittered), also on `online` and tab-visible events, and stops for close codes 1008, 4001, 4003, 4004, 4009.
 * On every (re)connect the server sends `room` (to everyone) and then the current redacted `state` with `events: []` to the new socket. The client treats the first state after a connect as a **snapshot**
   (`fresh`): it resets the presenter instead of animating, so nothing plays twice. A `room` message with `status 'lobby'` resets the client's `seq` tracking.
 * There is **no resync request**: every `state` is the full state, so a missed message only costs the animation of its events. The client ignores a `state` whose `seq` is not newer than the last one it saw (unless it is a snapshot).
-* The snatch UI reads the latest state, not the animation queue (9.10). A rejected action releases the client's "waiting for the server" lock (also after 5 s with no answer).
 * A member who disconnects keeps their seat for the whole game (lobby: 60 s).
 
 ### 8.10 HTTP endpoints of the pre-game flow
@@ -393,216 +438,84 @@ All JSON, same origin, cookie session; errors are `{ "error": "message" }`. (Ful
 | `GET /api/rooms/open?game=<id>&limit=20` | none | public lobbies with a free seat, active in the last hour. Not used by the current UI. |
 | `POST /api/invites` `{ code, userId }` | signed-in, non-guest | the inviter must be a member of a lobby and a friend of `userId`; pushes `{t:'invite', from, code, gameId, gameName}` to that friend's `/ws/user` |
 
-Pre-game flow: game page (`/games/:gameId`: pick players, **Create table**) -> `POST /api/rooms` -> `/lobby/:code` (open the socket: connecting seats you) -> host adjusts the end cash limit (`settings`) and presses
+Pre-game flow: game page (`/games/:gameId`: pick players, **Create table**) -> `POST /api/rooms` -> `/lobby/:code` (open the socket: connecting seats you) -> host picks the game mode (`settings`), players pick pieces (`piece`) and presses
 **Start** (`start`) -> everyone navigates to `/play/:gameId/online/:code` when `room.status` becomes `playing`. A finished room offers "New room, same settings" (a fresh `POST /api/rooms`); a game cannot be restarted in the same room.
 
-## 9. Snatch **[contract]**
 
-### 9.1 Idea
-Every player starts with `cfg.snatches` (default **1**) **Snatch tokens**. When a player **buys** a
-property, the other players with a token get a **3 second** window (`cfg.snatchMs`, plus a 400 ms server grace) to hit **Snatch**.
+## 9. City events ("Hyderabad Rush Hour")
 
-### 9.2 When a window opens
-Only after a successful `BUY` of a free tile on landing (property, station or utility), without Shield. It does NOT
-open for auction wins, trades, card effects or mortgage changes. It opens only if at least one player is
-**eligible**: not the buyer, not bankrupt, `snatches > 0`. Otherwise the buy completes normally.
+`shared/events.js` exports `CITY_EVENTS`, `EVENT_EVERY = 3`, `RUSH_FLAVOUR`, `FESTIVALS`. When the round counter rises
+to a multiple of 3 (3, 6, 9, ...; never round 1, never after the last round) one event is drawn with the seeded rng and
+lasts that round. `state.event = { id, title, text, kind, round, group?, groups?, mult?, upgradedOnly?, amount?,
+bonus? }` is public and cleared when the next round begins; `{ type: 'city_event', ...same fields }` is emitted before
+that round's first `turn` event.
 
-### 9.3 State
-```
-player.snatches: number                       // public, shown to everyone
-phase: 'snatch'
-pending: {
-  type: 'snatch',
-  tile: number, buyer: playerId, price: number,   // price the buyer paid
-  eligible: playerId[],                           // fixed when the window opens
-  claims: playerId[],                             // REDACTED: a viewer only ever sees [] or [viewerId]
-  ms: number,                                     // = cfg.snatchMs
-  returnPhase: 'manage'                           // phase to restore (same rule as debt.returnPhase)
-}
-options.snatch   = { tile, ms } | null            // computed by getOptions on the client: truthy only for an eligible player who has not pressed
-options.snatched = true | undefined               // eligible player who already pressed (UI: "locked in")
-```
-The buyer has already paid and already owns the tile in the state during the window (so a crash or
-reconnect can never lose the purchase); resolution moves it if needed.
+| id | kind | effect during the round |
+|---|---|---|
+| `rush_hour` | rent | one random collection that someone owns (else any) pays **1.5x** rent (`group`, `mult` 1.5); title and text per collection (Cyberabad office traffic, Old City shopping, lakefront visitors, cricket crowds, ...) |
+| `biryani_boom` | rent | upgraded (level >= 1) districts in `oldcity` + `everyday` pay **2x** (`groups`, `mult` 2, `upgradedOnly`) |
+| `wedding_season` | cash | each upgraded, unmortgaged `lake` / `luxury` district pays its owner **20,000** (`bonus`), then every active player pays **30,000** (`amount: -30000`; debt rules apply, reason `event`) |
+| `festival` | cash | every active player receives **50,000** (`amount: 50000`); a Bonalu, Bathukamma or Eid festive title and text |
+| `monsoon` | rent | one collection (picked like rush hour) pays **half** rent (`group`, `mult` 0.5) |
 
-### 9.4 Actions
-* `{ type: 'SNATCH' }` (client). Valid only in phase `snatch`, by an eligible player who has not
-  pressed. Errors: `There is nothing to snatch`, `You cannot snatch this one`, `You already pressed
-  Snatch`. Pressing is **sealed**: it emits no event, is not broadcast and does not change `seq` (only the presser gets a snapshot, 8.3). If after the press every eligible player who is still in the game has
-  pressed, the window resolves immediately (same code path as the timer).
-* `{ type: 'SNATCH_CLOSE' }` (server only, carries no player). Issued by the room when the timer fires. The adapter's
-  `sanitizeAction` rejects it from clients. The engine rejects it outside phase `snatch` (`There is nothing to snatch`).
-* While the phase is `snatch`, every other action is rejected with `Wait for the snatch window` except
-  `SNATCH` and `RESIGN` (a resigning claimant is removed from `claims`; a resigning buyer: see 7.4), plus chat/emotes.
+Rent changes apply through the engine's rent calculation, so `previewRent`, the odds overlay and the UI always agree.
 
-### 9.5 Resolution (`SNATCH_CLOSE`, or the last eligible press)
-Let `C = claims` (bankrupt players dropped; empty if the tile now belongs to somebody other than the buyer or the bank).
-* **|C| = 0**: nothing happens, the buyer keeps the tile. Phase returns to `returnPhase`.
-* **|C| = 1** (player S): the tile moves to S **for free**, S spends **1** token. **The buyer is NOT
-  refunded**: the price they paid stays paid. Phase returns to `returnPhase`.
-* **|C| >= 2**: **sealed bidding** among exactly the claimants. Reuse the auction machinery: `phase =
-  'auction'`, `pending = { type:'auction', tile, minBid, bids, snatch: true, buyer, claimants: playerId[], returnPhase }` (`claimants` is public from this point on, so a claimant who passes with 0 is still recognised as one) with
-  `bids[q] = 0` pre-filled for every non-claimant and every claimant who cannot afford `minBid` (so they auto-pass). `minBid` is the same minimum as a
-  skipped-tile auction. The winner pays the bid to the bank, receives the tile, and spends **1** token;
-  losing claimants keep their tokens (a token is spent only by whoever ends up with the tile). If nobody
-  places a valid bid the tile stays with the buyer and no token is spent. The buyer is never refunded and
-  never takes part.
+## 10. Cards
 
-### 9.6 Events (server -> clients, public, in `events`)
-```
-{ type: 'snatch_open', tile, buyer, price, eligible: playerId[], ms }
-{ type: 'snatch_end',  tile, buyer, outcome: 'none' | 'snatched' | 'bidding',
-                       winner?: playerId,            // outcome 'snatched'
-                       claimants?: playerId[] }      // outcome 'snatched' (1) or 'bidding' (>=2); revealed only now
-{ type: 'own',  tile, owner, reason: 'snatch' }      // 'auction' for snatch bidding
-{ type: 'auction_start', tile, minBid, reason: 'snatch', eligible: playerId[] }   // existing event, extra fields
-{ type: 'auction_end', ..., reason: 'snatch', buyer }                              // existing event, extra fields
-{ type: 'snatch_token', player, snatches }           // after a token is spent (public)
-```
-No event is ever emitted for an individual press (sealing). `set_complete` for the winner of the tile (or for the buyer when they keep it) is emitted after the window resolves.
+Two decks in `shared/cards.js` (`LUCK_CARDS` 18 cards, `DRAMA_CARDS` 18 cards, `DECKS`, `DECK_NAMES`, `cardById`).
+Each is shuffled with the seeded rng at the start (`state.deck = { luck, drama }`, secret) and reshuffled when it runs
+out (`state.deckPos`). A card = one funny hook (`title`), one short sentence (`text`), one effect:
 
-### 9.7 Timers and persistence
-`adapter.deadlines(state)` returns, while `phase === 'snatch'`:
-`{ key: 'snatch:<turnCount>:<tile>', afterMs: pending.ms + SNATCH_GRACE_MS (400), playerId: pending.buyer, action: { type: 'SNATCH_CLOSE' } }`.
-The timer survives Durable Object eviction (it is derived from state, like the trade timer). While the
-phase is `snatch`: `turnPlayerId` = the buyer, `pendingPlayerIds` = `eligible` players who have not pressed
-(the idle watchdog must not auto-play anyone), `idleAction` = null,
-`animationMs([...])` adds nothing (the window is real time and starts when the state is sent).
-
-### 9.8 Redaction
-See 8.7.
-The viewer's own `options.snatched` comes from their own claim. Nobody can learn another player's press before the close.
-
-### 9.9 Auto-play and the simulator
-Idle / disconnected auto-play never snatches (tokens simply stay unspent). The simulator's bots (`scripts/simulate.js`, `botSnatchAction` in `shared/bots.js`) may
-snatch with a trivial policy (snatch when the tile completes the bot's colour set or costs >= 1,500),
-purely so the simulation exercises the code.
-
-### 9.10 Client rules **[contract]**
-* The snatch UI is driven by the **latest authoritative state** (`session.view`), NOT the delayed
-  animation `display`: the window is real time and must never be eaten by the presenter's queue.
-  When a state arrives (new `seq`) with `pending.type === 'snatch'`, record `receivedAt = performance.now()`
-  and count down `pending.ms` from it. Never trust the client clock for the result, the server decides.
-  A `SNATCH` press is sent immediately (not blocked by `busy` / the awaiting lock) and at most once per window.
-* Eligible player (`options.snatch`): show a large **SNATCH!** button (the primary action, >= 44 px,
-  Space/Enter shortcut) with a depleting ring, the tile name/price and "free, the buyer keeps paying".
-  After pressing: disabled "Snatch locked in" state (from `options.snatched`).
-* Everyone else (buyer, players without a token): status line "<buyer> bought <tile>. Snatch window...",
-  with the same countdown, no button.
-* The board highlights the contested tile with a pulsing ring. The scoreboard shows each player's token
-  count (lightning icon x n). Results appear in the log: see 9.11.
-* Snatch bidding reuses the existing auction sheet (only claimants see the bid form; others see "Snatchers
-  are bidding for <tile>").
-
-### 9.11 Log lines (`src/lib/messages.js`)
-* `snatch_open`: "<Buyer> bought <Tile> for <price>. Snatch window open (3s)!"
-* `snatch_end` none: "Nobody snatched. <Tile> stays with <Buyer>."
-* `snatch_end` snatched: "<Winner> SNATCHED <Tile> from <Buyer> for free! (<Buyer> still paid <price>)"
-* `snatch_end` bidding: "<A> and <B> both snatched! Sealed bidding for <Tile>."
-* auction end with `reason: 'snatch'` and no winner: "Nobody bid. <Tile> stays with <Buyer>."
-
-### 9.12 Test matrix (`shared/snatch.test.js`, `worker/snatch.test.js`)
-No eligible player -> no window; 1 claimant -> transfer, token spent, buyer cash unchanged by the snatch;
-2 and 3 claimants -> bidding among claimants only, winner pays bid + spends token, losers keep tokens,
-no-bid -> buyer keeps; press twice -> error; buyer cannot snatch; no-token player cannot; non-snatch
-action during the window -> error; early close when all eligible pressed; `SNATCH_CLOSE` from a client is
-rejected by `sanitizeAction`; redaction hides other players' presses; snatch after a six keeps the extra roll;
-resigning claimant; bankrupt players are never eligible; tokens public; deadlines() shape; determinism
-(same seed + same actions = same result).
-
-## 10. Tokens: Shield and earning more **[contract]**
-
-One currency: `player.snatches` (shown as Snatch tokens, cap **TOKEN_CAP = 3**, in `shared/board.js`). A token can be
-spent on a Snatch (section 9) or on a **Shield**. Every rule here is off when `cfg.snatches === 0` (nobody starts with tokens and nobody can earn any).
-
-### 10.1 Shield
-* `{ type: 'BUY', shield: true }`. Buys exactly like BUY, then spends **1** token and **no Snatch window opens** for this purchase.
-* Valid only if the buyer has a token AND at least one other active player has a token. Errors:
-  `You have no Snatch token to shield with` / `Nobody could snatch it, no need to shield`.
-* `getOptions` adds `options.shield = true` in the buy phase when both conditions hold (and the buyer can afford the tile).
-* Events: the usual buy events, then `{ type: 'shield', player, tile }` and `{ type: 'snatch_token', player, snatches }`.
-  The set celebration (`set_complete`) fires immediately (nothing can change hands).
-* Idle auto-play never shields.
-
-### 10.2 Earning tokens
-* Every **3rd** time a player passes or lands on START (`player.laps` counts passes; `LAPS_PER_TOKEN = 3`) they earn **+1**.
-* Landing on **Irani Chai & Biryani Break** (tile 20), by dice or by a card, earns **+1** (not if a trap sprang there first).
-* Earning never exceeds TOKEN_CAP (silent at the cap: no event, and the lap still counts).
-  Event: `{ type: 'token_earned', player, reason: 'lap' | 'chai', snatches }`.
-
-## 11. City events **[contract]**
-
-`shared/events.js` exports `CITY_EVENTS` and `EVENT_EVERY = 5`. When the round counter rises to a multiple of EVENT_EVERY
-(5, 10, 15, ...) a random event (seeded rng, so deterministic) is drawn and lasts until the next round starts. There is never an event in round 1.
-`state.event = null | { id, title, text, kind, group?, mult?, amount?, round }`; it is public and cleared when the next
-round begins. Event: `{ type: 'city_event', ...same fields }` (emitted before that round's first `turn` event).
-
-| id | effect during the round |
+| effect | meaning |
 |---|---|
-| monsoon | one colour group (random among groups somebody owns, else any group) pays **half** rent |
-| ipl | one colour group (same pick) pays **double** rent |
-| metro_strike | stations pay **no** rent |
-| tax_holiday | GHMC property tax and the ORR challan cost **0** |
-| bonalu | every active player gets **+500** once, at the start of the round (cash reason `event`) |
+| `cash {amount}` | + from the bank / - to the bank (debt rules apply), reason `card` |
+| `moveTo {tile}` | travel clockwise to `tile` (salary when passing START), then that tile takes effect |
+| `moveBy {n}` | forwards (salary applies) or backwards (never salary), then that tile takes effect |
+| `nextTransport` | travel clockwise to the next Auto / Metro / MMTS stop (a ride is then offered) |
+| `stuck` | stuck in traffic where you stand (`traffic` reason `card`), the turn ends |
+| `rentBoost {mult}` | your rents x mult until your next turn begins (`player.rentBoost`) |
+| `chai` | +1 chai (nothing at the cap), `chai` reason `card` |
+| `collectFromAll {amount}` / `payAll {amount}` | every other active player pays you / you pay each of them |
+| `perLevel {amount}` / `perProperty {amount}` | pay the bank per upgrade level / per district you own |
 
-`kind` is `rent` (monsoon, ipl, metro_strike), `tax` (tax_holiday) or `cash` (bonalu); `group` + `mult` (0.5 | 2) only for monsoon/ipl, `amount` only for bonalu.
+The concept doc's six examples are in: Shaadi ka season! (pay 50,000) · Biryani franchise goes viral (+80,000) ·
+Ameerpet traffic. Baigan! (stuck) · Cricket night at Uppal! (rents x2) · The landlord wants an advance (pay 35,000) ·
+An investor is impressed! (+1,00,000); plus Take the Metro to HITEC City, collect 10,000 from every player, 15,000
+per upgrade, a free chai, and more. Card moves never end on another card tile (depth limit 2).
 
-Rent changes apply through `rentOf`, so `previewRent`, the odds overlay and the UI all agree. A mortgaged tile still pays 0.
+## 11. Pieces
 
-## 12. UI contract for sections 10 and 11
-* Action bar in the buy phase: a second button **Buy + Shield** (`{ type: 'BUY', shield: true }`, shows the token) next to
-  Buy, shown when `options.shield`.
-* A **city event banner** (title, one line, the affected colour chip) is shown while `view.event` is set, in the control
-  panel and announced via aria-live; the affected group's tiles get a subtle ring on the board.
-* Log lines: `city_event` "<title> <text>", `shield` "<Player> shielded <Tile>: no snatching!", `token_earned`
-  "<Player> earned a Snatch token (lap bonus | Chai break)". Cash reason `event`: "Festival gift".
-* Rules sheet: a "Tokens, Shield and city events" section. The player sheet shows lap progress ("2/3 laps to a token").
+`PIECES` (`shared/pieces.js`, re-exported by `shared/board.js`): `pearl` Pearl · `auto` Auto-rickshaw · `handi`
+Biryani handi · `chai` Irani chai glass · `bat` Cricket bat · `camera` Film camera. `createGame({ players:[{ id,
+name, avatar, piece? }] })` keeps a requested free piece (seat order decides a clash) and gives everyone else the
+first free one; `player.piece` is always set and unique. Player colours are unchanged (`PLAYER_COLORS`).
 
-## 13. Traps **[contract]**
+## 12. Balance and simulation
 
-Every player starts with **1 trap** (`TRAPS_EACH = 1`, in `shared/board.js`). There is no fine: a sprung trap throws the victim in jail.
+`node scripts/simulate.js [--games N] [--players 2,4,6] [--modes standard,quick,classic] [--set k=v] [--bot k=v]`
+plays bot-only games, checks invariants after every action (cash, ownership, levels, mortgages, phases, debts, ride
+offers, unique pieces, winner = rank 1) and prints balance numbers. 300 games per row, default bots (2026-11-15):
 
-### 13.1 Placing
-* `{ type: 'PLACE_TRAP', tile }`. Only the turn player, only in phase `roll` (their turn, **before rolling**; this includes a
-  jailed player). Any tile **except Go to Jail (30)**. A player can have only as many traps on the board as they were given
-  (so one; the count in hand never refills), and cannot put a second trap on a tile where they already have one.
-* Errors: `Not your turn`, `You can only set a trap before you roll`, `You have no trap left`, `You cannot trap that square`.
-* Placing does not end the turn: the player still rolls afterwards. Idle auto-play never places traps.
-* `getOptions` adds `options.trap = true` when placing is possible right now.
+| mode, players | rounds / turns | districts owned after round 3 / 5 | ended by bankruptcy | final net-worth spread (richest - poorest) | upgrades / game |
+|---|---|---|---|---|---|
+| standard, 2 | 20 / 40 | 19% / 31% | 0% | ₹4.5L | 19 |
+| standard, 4 | 20 / 80 | 31% / 50% | 0% | ₹7.6L | 35 |
+| standard, 6 | 20 / 120 | 39% / 63% | 0% | ₹10.0L | 47 |
+| quick, 4 | 12 / 48 | 32% / 50% | 0% | ₹4.8L | 37 |
+| classic, 4 | 60 (cap) / 239 | 32% / 50% | 0% | ₹19.7L | 55 |
 
-### 13.2 Springing
-* A trap springs when a player **other than its owner lands** on its tile (stops there; passing over does nothing; landing through a card move counts,
-  a teleport to jail does not). It springs before the tile's own effect (rent, tax, card, buy offer, Chai token).
-* Effect: the victim is **thrown in jail**: moved to Chanchalguda Jail exactly like Go to Jail (no salary, the turn ends, any
-  extra roll is lost, jail event reason `trap`), and the tile's own effect is skipped. The trap is then **removed** (one-shot). The owner is immune and their trap stays until someone else lands on it. If two players have traps
-  on the same tile, both are removed (the victim goes to jail once).
-* A bankrupt player's traps are removed.
+The standard and quick economies behave as designed: districts sell steadily (about half by round 5 with 4 players),
+everybody can afford upgrades, rents average ₹55-65k a payment and the winner ends around ₹20-22L. No numbers were
+changed from the concept doc's recommended defaults. Known balance caveat: with ₹2L per lap and these rents nobody is
+squeezed out, so **classic games run to the 60-round cap** (also with ₹1L laps or aggressive bots); the seat that
+moves first wins a little more often (about 30% in 4-player games).
 
-### 13.3 State, secrecy and events
-* `state.traps = [{ tile, owner }]` is **secret**: `redact(state, viewer)` keeps only the viewer's own traps (anybody who is not a player sees none).
-* `player.traps` = traps still in hand (public, 0 or 1). So everyone can see who has already set theirs, nobody sees where.
-* Events (identical for everybody, so they never reveal the tile before it springs):
-  `{ type: 'trap_placed', player }` and `{ type: 'trap_sprung', tile, owner, victim }` (this one reveals the tile),
-  followed by the usual jail events (`move` with teleport, `jail` with reason `trap`). No cash changes hands.
-* Old saved states without `traps` / `player.traps` behave as no traps.
+## 13. Known discrepancies (open items, not hidden)
 
-### 13.4 UI contract
-* While `options.trap` is true the control panel shows a hint under the Roll button: "Tap any tile to set your trap" with a
-  trap icon. Tapping a tile opens its deed; the deed shows a **Set trap here** button (`{ type: 'PLACE_TRAP', tile }`).
-* The board shows the viewer's own traps (a small warning-triangle badge, "your trap" in the label). Nobody else's.
-* Log: `trap_placed` "<Player> set a trap somewhere...", `trap_sprung` "<Victim> walked into <Owner>'s trap on <Tile> and was thrown in jail!". Rules sheet gets a "Traps" paragraph. The scoreboard shows a trap icon for players who still hold theirs.
-
-## 14. Known discrepancies (code vs contract; open items, not hidden)
-
-(Fixed during this audit and no longer listed: `state.rng` / `state.deck` used to be sent to clients unmasked; `worker/mask.js` now zeroes them, see 8.7.)
-
-1. **Rank 1 can differ from the winner on a rounds finish.** The `rounds` win breaks a net-worth tie by most cash (`shared/engine.js:919-933`), but `standings()` breaks it by seat
-   (`shared/engine.js:199-203`), and `result()` ranks from `standings()` (`worker/games/hyderabad-tycoon.js:258-283`). The winner can be recorded as rank 2 (affects Elo, XP and the podium order).
-   Bankrupt players are also ranked by seat among themselves, not by when they went out.
-2. **`ready` and `visibility` messages are still live on the server although the product has neither.** `worker/GameRoom.js:466-471` and `:510-545` (and `ready` in `roomView`, `:175`) are
-   unreachable from the shipped UI; the header comment (`:6-7`) still says players "ready up". Harmless, but the dead handlers and the `ready` field in `room.players` should either go or be documented as API.
-3. **Kick wording.** The kick dialog says the player "can rejoin with the code" (`src/pages/Lobby.jsx:267`), but the server bans a removed player for 10 minutes (`worker/GameRoom.js:34`, `:555`, `:385-386`).
-4. **A player who left a running game is un-flagged on reconnect.** `handleUpgrade` clears `member.left` (`worker/GameRoom.js:399`); the player is already bankrupt, but they reappear in "Continue playing" (`memberIds` filters on `left`, `worker/roomsdb.js:106`)
-   and count as present for the abandon check.
-5. **Rules text offers a setting the lobby does not.** The lucky-dice help text says "The host can switch to Fair dice" (`src/components/game/ui/helpers.js:175`), but the lobby only exposes the end cash limit.
-6. Comments only: `src/lib/socket.js:8` and `src/lib/session/useOnlineGame.js:26` still use `{t:'ready'}` as their example message.
+1. **Classic mode does not end by bankruptcy in simulation** (12): it effectively plays as "60 rounds, richest wins".
+   A harsher economy for classic only (higher rents, smaller laps) would be a product decision.
+2. **`ready` and `visibility` messages are still live on the server although the product has neither** (`worker/GameRoom.js`).
+3. **Kick wording.** The kick dialog says the player "can rejoin with the code", but the server bans a removed player for 10 minutes.
+4. **A player who left a running game is un-flagged on reconnect** (`handleUpgrade` clears `member.left`).
+5. `adapter.animationMs(events, state)` takes the state after the action as an optional second argument; without it
+   every `turn` event is timed as a new round (slightly long, never short) and the final-round pause is not known.

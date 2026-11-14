@@ -113,10 +113,19 @@ function createStore(key, normalize) {
 // Settings
 // ---------------------------------------------------------------------------------------------
 
+export const THEMES = Object.freeze(['system', 'dark', 'light']);
+export const PLAYBACK_SPEEDS = Object.freeze([0.75, 1, 1.5, 2]);
+
 export const DEFAULT_APP_SETTINGS = Object.freeze({
   sfx: true,
   volume: 0.8,
   reducedMotion: false,
+  /** Hub colour theme ('system' follows the OS). Game screens keep their own theme. */
+  theme: 'system',
+  /** In-game animation speed multiplier (1 = normal; higher = faster playback). */
+  playbackSpeed: 1,
+  /** Short vibrations on your turn, rent paid, etc. (phones that support navigator.vibrate). */
+  haptics: true,
 });
 
 /** Unknown keys (e.g. the voice/subtitle settings of older builds) are ignored, never an error. */
@@ -126,6 +135,9 @@ function normalizeSettings(p) {
     sfx: src.sfx === undefined ? DEFAULT_APP_SETTINGS.sfx : !!src.sfx,
     volume: clamp(num(src.volume, DEFAULT_APP_SETTINGS.volume), 0, 1),
     reducedMotion: !!src.reducedMotion,
+    theme: THEMES.includes(src.theme) ? src.theme : DEFAULT_APP_SETTINGS.theme,
+    playbackSpeed: PLAYBACK_SPEEDS.includes(Number(src.playbackSpeed)) ? Number(src.playbackSpeed) : DEFAULT_APP_SETTINGS.playbackSpeed,
+    haptics: src.haptics === undefined ? DEFAULT_APP_SETTINGS.haptics : !!src.haptics,
   };
 }
 
@@ -152,15 +164,19 @@ export function useSettings() {
 // Level curve and profile
 // ---------------------------------------------------------------------------------------------
 
-/** Total XP at which `level` starts (level 1 = 0, 2 = 100, 3 = 300, 4 = 600, ...). */
-export const xpForLevel = (level) => 50 * level * (level - 1);
+// Same curve as the server (worker/xp.js `xpToNext`): level L -> L+1 costs 100 + (L - 1) * 50 XP.
+/** Total XP at which `level` starts (level 1 = 0, 2 = 100, 3 = 250, 4 = 450, ...). */
+export const xpForLevel = (level) => {
+  const n = Math.max(0, level - 1);
+  return 100 * n + 25 * n * (n - 1);
+};
 /** XP needed to go from `level` to `level + 1`. */
-export const xpNeeded = (level) => 100 * level;
+export const xpNeeded = (level) => 100 + (Math.max(1, level) - 1) * 50;
 
 /** `pct` is 0..100 (progress inside the current level). */
 export function levelInfo(xp) {
   const x = Math.max(0, Math.floor(num(xp, 0)));
-  let level = Math.max(1, Math.floor((1 + Math.sqrt(1 + (4 * x) / 50)) / 2));
+  let level = 1;
   while (xpForLevel(level + 1) <= x) level += 1;
   while (level > 1 && xpForLevel(level) > x) level -= 1;
   const into = x - xpForLevel(level);

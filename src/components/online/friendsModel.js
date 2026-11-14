@@ -1,5 +1,7 @@
-// Pure state transitions for the Friends page (optimistic updates + live socket events). Unit-tested.
-// data = { friends: [...], incoming: [...], outgoing: [...] }, each entry { id, name, avatar, friendCode, online, level }.
+// Pure state transitions for the Friends page (optimistic updates + live socket events) and the invites inbox. Unit-tested.
+// data = { friends: [...], incoming: [...], outgoing: [...] },
+// each entry { id, name, avatar, friendCode, online, level, equipped: { frame?, dice?, title? } }.
+import { cleanEquipped, cosmeticById } from '@shared/cosmetics.js';
 
 const same = (a, b) => a != null && b != null && String(a) === String(b);
 const without = (list, id) => list.filter((x) => !same(x.id, id));
@@ -13,6 +15,7 @@ const clean = (u) => ({
   friendCode: u.friendCode || '',
   online: !!u.online,
   level: Number.isFinite(u.level) ? u.level : 1,
+  equipped: cleanEquipped(u.equipped),
 });
 
 /** Online first, then alphabetical (case-insensitive). Returns a new array. */
@@ -46,7 +49,11 @@ export function addFriend(data, user) {
 
 function stripEmpty(u) {
   const o = {};
-  for (const [k, v] of Object.entries(u)) if (v !== '' && v != null) o[k] = v;
+  for (const [k, v] of Object.entries(u)) {
+    if (v === '' || v == null) continue;
+    if (k === 'equipped' && !Object.keys(v).length) continue;
+    o[k] = v;
+  }
   return o;
 }
 
@@ -77,3 +84,110 @@ export function addIncoming(data, from) {
 
 export const countOnline = (data) => data.friends.filter((f) => f.online).length;
 export const isEmpty = (data) => !data.friends.length && !data.incoming.length && !data.outgoing.length;
+
+// ---------------------------------------------------------------- cosmetics on a person
+
+/** `{ frame, title }` catalogue items (or null) for anyone with an `equipped` object. */
+export function cosmeticsOf(person) {
+  const eq = cleanEquipped(person && person.equipped);
+  return { frame: eq.frame ? cosmeticById(eq.frame) : null, title: eq.title ? cosmeticById(eq.title) : null };
+}
+
+// ---------------------------------------------------------------- invites inbox
+
+/** Invites older than this are gone server-side too (GET /api/invites returns < 2 h). */
+export const INVITE_TTL_MS = 2 * 60 * 60 * 1000;
+
+function toMs(v) {
+  if (Number.isFinite(v)) return v < 1e12 ? v * 1000 : v; // seconds or ms
+  if (typeof v === 'string' && v) {
+    const n = Date.parse(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+/** Dedupe key: one entry per (room, sender). */
+export const inviteKey = (inv) => `${inv && inv.code ? inv.code : ''}:${inv && inv.from && inv.from.id != null ? inv.from.id : ''}`;
+
+/**
+ * A stored invite (GET /api/invites row) or a realtime `{t:'invite', from, code, gameId, gameName}` message ->
+ * `{ key, id|null, from:{id,name,avatar}, code, gameId, gameName, createdAt (ms), live }`, or null when unusable.
+ */
+export function normalizeInvite(raw, now = Date.now()) {
+  if (!raw || typeof raw !== 'object' || typeof raw.code !== 'string' || !raw.code) return null;
+  const f = raw.from && typeof raw.from === 'object' ? raw.from : {};
+  const inv = {
+    id: raw.id != null && raw.id !== '' ? String(raw.id) : null,
+    from: { id: f.id != null ? f.id : null, name: typeof f.name === 'string' && f.name ? f.name : 'A friend', avatar: Number.isInteger(f.avatar) ? f.avatar : 0 },
+    code: raw.code,
+    gameId: typeof raw.gameId === 'string' ? raw.gameId : null,
+    gameName: typeof raw.gameName === 'string' && raw.gameName ? raw.gameName : null,
+    createdAt: toMs(raw.createdAt) ?? now,
+    live: raw.id == null || raw.t === 'invite',
+  };
+  inv.key = inviteKey(inv);
+  return inv;
+}
+
+/** Newest first; one per key (a stored copy wins over a live one, but keeps the newest time). Drops stale ones. */
+export function mergeInvites(...lists) {
+  const now = typeof lists[lists.length - 1] === 'number' ? lists.pop() : Date.now();
+  const byKey = new Map();
+  for (const list of lists) {
+    for (const inv of Array.isArray(list) ? list : []) {
+      if (!inv || !inv.key) continue;
+      const prev = byKey.get(inv.key);
+      if (!prev) {
+        byKey.set(inv.key, inv);
+        continue;
+      }
+      const stored = prev.id ? prev : inv.id ? inv : prev;
+      const other = stored === prev ? inv : prev;
+      byKey.set(inv.key, { ...other, ...stored, createdAt: Math.max(prev.createdAt, inv.createdAt), live: !stored.id });
+    }
+  }
+  return [...byKey.values()].filter((i) => now - i.createdAt < INVITE_TTL_MS).sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/** Remove one invite (by key) from a list. */
+export const dropInvite = (list, key) => (Array.isArray(list) ? list.filter((i) => i.key !== key) : []);
+
+/** "just now", "4 min ago", "1 h ago", "yesterday", "3 d ago". */
+export function relativeTime(ts, now = Date.now()) {
+  const t = toMs(ts);
+  if (t == null) return '';
+  const s = Math.max(0, Math.round((now - t) / 1000));
+  if (s < 45) return 'just now';
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} h ago`;
+  const d = Math.round(h / 24);
+  return d === 1 ? 'yesterday' : `${d} d ago`;
+}
+
+/**
+ * Honest feedback after POST /api/invites (`{ ok, delivered }`): delivered = their app got it right now;
+ * otherwise the server kept it and they will find it in their inbox later.
+ */
+export function inviteFeedback(res, name) {
+  const who = name || 'your friend';
+  if (res && res.delivered === false) return { text: "Invite saved — they'll see it when they're back", tone: 'info', state: 'saved' };
+  return { text: `Invite sent to ${who}`, tone: 'good', state: 'sent' };
+}
+
+// ---------------------------------------------------------------- enter / exit lists
+
+/**
+ * Re-insert items that are animating out (`gone`: Map key -> { item, index }) into the live list, near where they were.
+ * Returns [{ key, item, leaving }].
+ */
+export function withLeaving(items, gone, keyOf) {
+  const out = (items || []).map((item) => ({ key: keyOf(item), item, leaving: false }));
+  if (!gone || !gone.size) return out;
+  const live = new Set(out.map((x) => x.key));
+  const extra = [...gone.entries()].filter(([k]) => !live.has(k)).sort((a, b) => a[1].index - b[1].index);
+  for (const [key, { item, index }] of extra) out.splice(Math.min(index, out.length), 0, { key, item, leaving: true });
+  return out;
+}

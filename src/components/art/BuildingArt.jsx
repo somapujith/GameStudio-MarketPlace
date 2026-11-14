@@ -1,6 +1,9 @@
-// Property illustrations: plot -> Kirana -> Apartments -> Mall -> glass Tower (isometric, tinted by group colour).
+// Property illustrations (isometric, tinted by group colour).
+//   <BuildingArt theme="bazaar|food|transit|venue|tech" level={0..2} />  Hyderabad Hustle businesses (HustleBuildings.jsx)
+//   <BuildingArt level={0..5} color="#..." />                          classic: plot -> Kirana -> Apartments -> Mall -> Tower -> Hotel
+// `group` (a GROUPS id) is accepted too and maps to its theme. Deliberately independent of @shared/board.js level constants.
 import { memo } from 'react';
-import { MAX_LEVEL, LEVEL_NAMES } from '@shared/board.js';
+import { ThemeModel, THEME_LEVEL_NAMES, THEME_ACCENT, THEME_SCALE, THEMES } from './HustleBuildings.jsx';
 import { PAL, tone, lighten, darken } from './palette.js';
 import Hotel from './Hotel.jsx';
 import { Box, Pad, Cyl, Cone, Dome, Face, Gable, Disc, Shade, Tree, Bush, Letters, Windows, archPath, pt, Poly, Slab, lettersWidth } from './iso.jsx';
@@ -380,6 +383,36 @@ function Tower({ c }) {
   );
 }
 
+const MAX_LEVEL = 5; // classic ladder (Plot .. Hotel)
+const LEVEL_NAMES = ['Empty plot', 'Kirana shop', 'Apartments', 'Mall', 'Tower', 'Hotel'];
+
+/** Group id -> building theme (Hyderabad Hustle collections). */
+export const GROUP_THEME = {
+  bazaar: 'bazaar',
+  oldcity: 'food',
+  everyday: 'food',
+  twin: 'transit',
+  lake: 'venue',
+  luxury: 'venue',
+  cyber: 'tech',
+  newcity: 'tech',
+};
+const GROUP_ACCENT = {
+  bazaar: '#c98b4a', oldcity: '#e2725b', everyday: '#f2b134', twin: '#3fb68b',
+  lake: '#3aa7e0', luxury: '#b06ad9', cyber: '#4f7cff', newcity: '#1fb5a6',
+};
+
+const GROUP_LEVEL_NAMES = {
+  bazaar: ['Stall', 'Shop', 'Trading Hub'],
+  oldcity: ['Irani Cafe', 'Biryani House', 'Food Franchise'],
+  everyday: ['Tiffin Centre', 'Restaurant', 'Food Court'],
+  twin: ['Kiosk', 'Showroom', 'Transit Mall'],
+  lake: ['Snack Kiosk', 'Boathouse Cafe', 'Lakeside Resort'],
+  luxury: ['Studio', 'Entertainment Venue', 'Premium Complex'],
+  cyber: ['Startup Office', 'Business Centre', 'Tech Campus'],
+  newcity: ['Co-working Floor', 'Corporate Tower', 'Skyline Campus'],
+};
+
 function BuildingModel({ level = 0, color = PAL.saffron }) {
   const L = Math.max(0, Math.min(MAX_LEVEL, level | 0));
   switch (L) {
@@ -392,10 +425,12 @@ function BuildingModel({ level = 0, color = PAL.saffron }) {
   }
 }
 
-function BuildingArtBase({ level = 0, color = PAL.saffron, size = 96, className, title }) {
-  const L = Math.max(0, Math.min(MAX_LEVEL, level | 0));
-  const s = [1, 1, 0.96, 0.92, 0.84, 0.8][L] ?? 0.8;
-  const label = title === undefined ? undefined : title || LEVEL_NAMES[L];
+function BuildingArtBase({ theme, group, level = 0, color, size = 96, className, title }) {
+  const th = THEMES.includes(theme) ? theme : GROUP_THEME[group] || null;
+  const L = th ? Math.max(0, Math.min(2, level | 0)) : Math.max(0, Math.min(MAX_LEVEL, level | 0));
+  const s = th ? THEME_SCALE[th][L] : [1, 1, 0.96, 0.92, 0.84, 0.8][L] ?? 0.8;
+  const c = color || (th ? GROUP_ACCENT[group] || THEME_ACCENT[th] : PAL.saffron);
+  const label = title === undefined ? undefined : title || (th ? (GROUP_LEVEL_NAMES[group] || THEME_LEVEL_NAMES[th])[L] : LEVEL_NAMES[L]);
   return (
     <svg
       className={className}
@@ -409,11 +444,12 @@ function BuildingArtBase({ level = 0, color = PAL.saffron, size = 96, className,
       aria-hidden={label ? undefined : true}
       focusable="false"
     >
+      {label ? <title>{label}</title> : null}
       <g transform={`translate(80 112) scale(${s})`}>
         <g transform="translate(0 -39)">
           <Slab w={78} d={78} t={6} r={7} top="#5f58a8" />
         </g>
-        <BuildingModel level={L} color={color} />
+        {th ? <ThemeModel theme={th} level={L} color={c} /> : <BuildingModel level={L} color={c} />}
       </g>
     </svg>
   );
@@ -421,3 +457,4 @@ function BuildingArtBase({ level = 0, color = PAL.saffron, size = 96, className,
 
 export const BuildingArt = memo(BuildingArtBase);
 export default BuildingArt;
+export { THEMES, THEME_LEVEL_NAMES };

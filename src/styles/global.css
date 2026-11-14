@@ -523,8 +523,9 @@ code {
   border-radius: inherit;
   background: linear-gradient(90deg, var(--teal), var(--lime) 45%, var(--gold));
   box-shadow: 0 0 12px rgba(141, 224, 90, 0.5);
-  transition: width 0.8s var(--ease);
-  min-width: 6px;
+  width: 100%;
+  transform-origin: left center; /* fill = transform: scaleX(pct) set inline (XpBar in shell/ui.jsx) */
+  transition: transform 0.8s var(--ease);
 }
 
 /* ---------- avatars & coins ---------- */
@@ -617,9 +618,8 @@ code {
 .hh-skel {
   display: inline-block;
   max-width: 100%;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.16) 50%, rgba(255, 255, 255, 0.06) 100%);
-  background-size: 200% 100%;
-  animation: hh-shimmer 1.4s linear infinite;
+  background: rgba(255, 255, 255, 0.12);
+  animation: hh-breathe 1.4s var(--ease-std) infinite alternate;
 }
 
 .hh-empty {
@@ -948,9 +948,9 @@ code {
 
 /* ---------- keyframes ---------- */
 
-@keyframes hh-shimmer {
+@keyframes hh-breathe {
   to {
-    background-position: -200% 0;
+    opacity: 0.45;
   }
 }
 @keyframes hh-fade {
@@ -1145,3 +1145,150 @@ h1, h2, h3, h4 { letter-spacing: -.025em; }
 .hh-empty__icon { color: var(--teal); border-color: rgba(85,214,194,.2); background: rgba(85,214,194,.08); }
 .hh-empty__title { font-size: 17px; }
 .hh-empty__text { font-size: 13px; line-height: 1.65; }
+
+/* ==========================================================================
+   Hub theming (owner: theme). Hub screens speak --hub-* (hub.css); the shared widgets above still speak the
+   Tycoon tokens (tokens.css). Inside the hub chrome, and everywhere while the light theme is on (the app only
+   sets data-theme='light' on hub routes, game routes are always 'dark'), the Tycoon names point at the hub
+   palette, so modals, toasts, toggles, cards and error/loading screens match the page around them.
+   ========================================================================== */
+.hub-app,
+:root[data-theme='light'] {
+  --bg-0: var(--hub-bg);
+  --bg-1: var(--hub-bg-2);
+  --bg-2: var(--hub-surface-2);
+  --surface: var(--hub-surface);
+  --surface-2: var(--hub-surface-2);
+  --surface-3: var(--hub-surface-3);
+  --line: var(--hub-line);
+  --line-strong: var(--hub-line-2);
+  --text: var(--hub-text);
+  --text-dim: var(--hub-dim);
+  --text-faint: var(--hub-faint);
+  --cream: var(--hub-text);
+  --gold: var(--hub-gold);
+  --good: var(--hub-good);
+  --bad: var(--hub-bad);
+  --rose: var(--hub-bad);
+  --sky: var(--hub-info);
+  --glass: var(--hub-surface);
+  --glass-line: var(--hub-line);
+  --grad-indigo: linear-gradient(160deg, var(--hub-surface-3), var(--hub-surface-2) 70%);
+  --shadow-1: var(--hub-shadow-s);
+  --shadow-2: var(--hub-shadow);
+  /* the shell accent (teal "grad-gold") becomes the hub violet; text on it flips to white */
+  --grad-gold: var(--hub-brand-fill);
+  --teal: var(--hub-brand);
+}
+:is(.hub-app, :root[data-theme='light']) :is(.btn--primary, .hh-iconbtn.is-on, .hh-pageheader__icon, .hh-seg__opt.is-on, .hh-skip) {
+  --btn-fg: var(--hub-on-brand);
+  --btn-edge: transparent;
+  color: var(--hub-on-brand);
+  box-shadow: none;
+}
+
+/* ---------- light theme: page, focus, selection, scrollbars, code ---------- */
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+:root[data-theme='light'],
+:root[data-theme='light'] body {
+  background-color: var(--hub-bg);
+  background-image: none;
+}
+:root[data-theme='light'] :focus-visible {
+  outline-color: var(--hub-focus);
+}
+:root[data-theme='light'] ::selection {
+  background: rgba(var(--hub-brand-rgb), 0.22);
+  color: var(--hub-text);
+}
+:root[data-theme='light'] * {
+  scrollbar-color: var(--hub-scroll) transparent;
+}
+:root[data-theme='light'] ::-webkit-scrollbar-thumb {
+  background-color: var(--hub-scroll);
+}
+:root[data-theme='light'] code {
+  background: rgba(var(--hub-tint), 0.07);
+}
+.hub-app :focus-visible {
+  outline-color: var(--hub-focus);
+}
+
+/* ---------- light theme: shared widgets that assumed a dark page ---------- */
+:root[data-theme='light'] :is(.btn--ghost, .hh-iconbtn, .chip, .hh-pill, .hh-toggle__icon, .hh-medal--plain, .hh-seg__opt:hover:not(.is-on)) {
+  --btn-bg: rgba(var(--hub-tint), 0.05);
+  background-color: rgba(var(--hub-tint), 0.06);
+}
+:root[data-theme='light'] .hh-iconbtn:hover:not(:disabled) {
+  background-color: rgba(var(--hub-tint), 0.11);
+}
+:root[data-theme='light'] .btn {
+  border-color: var(--hub-line-2);
+}
+:root[data-theme='light'] .hh-switch {
+  background: rgba(var(--hub-tint), 0.14);
+}
+:root[data-theme='light'] .hh-switch[aria-checked='true'] {
+  background: var(--hub-brand-fill);
+}
+:root[data-theme='light'] .hh-seg,
+:root[data-theme='light'] .hh-xp__track {
+  background: rgba(var(--hub-tint), 0.05);
+}
+:root[data-theme='light'] .hh-skel {
+  background: var(--hub-skel-hi);
+}
+:root[data-theme='light'] .hh-error__detail {
+  background: rgba(var(--hub-tint), 0.06);
+  color: var(--hub-bad-ink);
+}
+:root[data-theme='light'] .hh-avring--dim {
+  background: rgba(var(--hub-tint), 0.18);
+}
+:root[data-theme='light'] .hh-avring__dot {
+  border-color: var(--hub-surface);
+}
+
+/* dialogs + toasts float above hub pages: hub surfaces, softer scrim, sheet shadow */
+:root[data-theme='light'] .hh-modal {
+  background: var(--hub-overlay);
+}
+:root[data-theme='light'] .hh-modal__panel {
+  background: var(--hub-surface);
+  border-color: var(--hub-line-2);
+  box-shadow: var(--hub-shadow-l);
+}
+:root[data-theme='light'] .hh-toast {
+  color: var(--hub-text);
+  background: var(--hub-glass-2);
+  border-color: var(--hub-line-2);
+  box-shadow: var(--hub-shadow);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+:root[data-theme='light'] .hh-toast--gold {
+  border-color: rgba(var(--hub-gold-rgb), 0.55);
+}
+:root[data-theme='light'] .hh-toast--gold .hh-icon {
+  color: var(--hub-gold);
+}
+.hub-app .hh-modal__panel,
+.hub-app .hh-toast {
+  color: var(--hub-text);
+}
+
+/* ---------- reduced motion: route view-transitions too (they are not matched by *) ---------- */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+:root[data-motion='reduced']::view-transition-group(*),
+:root[data-motion='reduced']::view-transition-old(*),
+:root[data-motion='reduced']::view-transition-new(*) {
+  animation: none !important;
+}

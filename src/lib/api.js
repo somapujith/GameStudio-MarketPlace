@@ -111,6 +111,50 @@ export const getFriendByCode = (friendCode, opts) => api.get(`/api/friends/by-co
 /** POST /api/invites: push an invite to room `code` to a friend (the server adds the game's id and name). */
 export const sendInvite = (code, userId, opts) => api.post('/api/invites', { code, userId }, opts);
 
+// ---- hub features (contract: docs/HUSTLE_PLAN.md section 4) -----------------------------------
+
+/** GET /api/rooms/mine -> { rooms: [{ code, gameId, status:'lobby'|'playing', players, maxPlayers }] } (signed in). */
+export const getMyRooms = (opts) => api.get('/api/rooms/mine', opts);
+
+/** GET /api/rooms/open?game=&limit= -> { rooms: [{ code, gameId, hostName, players, maxPlayers, summary?, createdAt }] }. */
+export function getOpenRooms({ gameId, limit = 20 } = {}, opts) {
+  const q = new URLSearchParams();
+  if (gameId) q.set('game', gameId);
+  q.set('limit', String(limit));
+  return api.get(`/api/rooms/open?${q}`, opts);
+}
+
+/** GET /api/games -> { games: [{ id, name, minPlayers, maxPlayers, openTables }] }. */
+export const getGamesLive = (opts) => api.get('/api/games', opts);
+
+/** POST /api/me/daily -> { reward, streak, coins, daily } ; 409 when already claimed today. */
+export const claimDailyReward = (opts) => api.post('/api/me/daily', {}, opts);
+
+/** GET /api/me/matches?limit= -> { matches: [{ id, gameId, endedAt, rounds, playerCount, rank, won, score, players:[{ name, avatar, rank, score, isMe }] }] }. */
+export const getMyMatches = (limit = 20, opts) => api.get(`/api/me/matches?limit=${enc(limit)}`, opts);
+
+/** GET /api/shop -> { items: [{ ...cosmetic, owned, equipped }], coins, equipped: { frame?, dice?, title? } }. */
+export const getShop = (opts) => api.get('/api/shop', opts);
+
+/** POST /api/shop/buy { itemId } -> { coins, owned: itemId[] } ; 402 not enough coins, 409 already owned. */
+export const buyCosmetic = (itemId, opts) => api.post('/api/shop/buy', { itemId }, opts);
+
+/** POST /api/shop/equip { kind, itemId|null } -> { equipped }. */
+export const equipCosmetic = (kind, itemId, opts) => api.post('/api/shop/equip', { kind, itemId: itemId ?? null }, opts);
+
+/** GET /api/invites -> { invites: [{ id, from:{ id, name, avatar }, code, gameId, gameName, createdAt }] } (fresh, room still in lobby). */
+export const getInvites = (opts) => api.get('/api/invites', opts);
+
+/** POST /api/invites/:id/dismiss -> { ok: true }. */
+export const dismissInvite = (id, opts) => api.post(`/api/invites/${enc(id)}/dismiss`, {}, opts);
+
+/** GET /api/push/key -> { key: string|null } (VAPID public key; null when push is not configured). */
+export const getPushKey = (opts) => api.get('/api/push/key', opts);
+
+/** POST /api/push/subscribe { subscription } -> { ok: true }. DELETE-style unsubscribe: POST /api/push/unsubscribe { endpoint }. */
+export const pushSubscribe = (subscription, opts) => api.post('/api/push/subscribe', { subscription }, opts);
+export const pushUnsubscribe = (endpoint, opts) => api.post('/api/push/unsubscribe', { endpoint }, opts);
+
 /** Best human message for anything thrown by `api.*` (or anything else). */
 export function errorMessage(err, fallback = 'Something went wrong') {
   if (err && typeof err.message === 'string' && err.message) {

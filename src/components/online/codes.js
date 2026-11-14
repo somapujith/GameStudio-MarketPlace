@@ -156,20 +156,33 @@ export function friendShareText(friendCode, origin) {
 }
 
 /**
- * Can the current user enter this room? `info` is GET /api/rooms/:code.
- * Returns a human message when not, or null when fine. Players already in the room may always come back
+ * Why the current user cannot enter this room, as a kind: 'missing' | 'finished' | 'playing' | 'full', or null
+ * when they can. `info` is GET /api/rooms/:code. Players already in the room may always come back
  * (reconnect to a running game, rejoin a full lobby).
  */
-export function roomProblem(info, myId) {
-  if (!info || info.exists === false) return 'No room with that code. Check it and try again.';
+export function roomProblemKind(info, myId) {
+  if (!info || info.exists === false) return 'missing';
   if (info.isMember === true) return null;
   const players = Array.isArray(info.players) ? info.players : null;
   if (players && myId != null && players.some((p) => p && p.id != null && String(p.id) === String(myId))) return null;
-  if (info.status === 'finished') return 'That game has already ended.';
-  if (info.status === 'playing') return 'That game has already started.';
+  if (info.status === 'finished') return 'finished';
+  if (info.status === 'playing') return 'playing';
   const count = players ? players.length : Number(info.players);
-  if (Number.isFinite(count) && Number.isFinite(info.maxPlayers) && info.maxPlayers > 0 && count >= info.maxPlayers) return 'That room is full.';
+  if (Number.isFinite(count) && Number.isFinite(info.maxPlayers) && info.maxPlayers > 0 && count >= info.maxPlayers) return 'full';
   return null;
+}
+
+const PROBLEM_TEXT = {
+  missing: 'No room with that code. Check it and try again.',
+  finished: 'That game has already ended.',
+  playing: 'That game has already started.',
+  full: 'That room is full.',
+};
+
+/** Can the current user enter this room? A human message when not, or null when fine (see `roomProblemKind`). */
+export function roomProblem(info, myId) {
+  const kind = roomProblemKind(info, myId);
+  return kind ? PROBLEM_TEXT[kind] : null;
 }
 
 /** Player count from a room-info payload (`players` is a count over HTTP, a list elsewhere). */

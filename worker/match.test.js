@@ -17,18 +17,18 @@ const U1 = '00000000-0000-4000-8000-000000000001';
 const U2 = '00000000-0000-4000-8000-000000000002';
 const U3 = '00000000-0000-4000-8000-000000000003';
 
-function finishedTycoonRoom() {
+function finishedTycoonRoom(settings) {
   const players = [
     { id: U1, name: 'Host', avatar: 1 },
     { id: U2, name: 'Guest', avatar: 2 },
     { id: U3, name: 'Third', avatar: 3 },
   ];
-  const state = engine.createGame({ players, seed: 11 });
+  const state = engine.createGame({ players, settings, seed: 11 });
   state.players[0].stats.rentEarned = 1234;
   state.owners[1] = U1;
   state.phase = 'over';
   state.winner = U1;
-  state.winReason = 'net_worth';
+  state.winReason = 'rounds';
   state.round = 9;
   return {
     code: 'ABCD23',
@@ -50,12 +50,15 @@ describe('buildMatchRecord (game-agnostic, via the adapter)', () => {
       roomCode: 'ABCD23',
       rounds: 9,
       winnerId: U1,
-      winReason: 'net_worth',
-      goal: 70000,
-      maxRounds: 50,
+      winReason: 'rounds',
+      goal: null, // the Hustle rules have no end-cash goal
+      maxRounds: 20, // standard mode
       diceMode: 'lucky',
       playerCount: 3,
     });
+    // the legacy columns follow the mode / dice the game ran with (classic = no round limit)
+    expect(buildMatchRecord(finishedTycoonRoom({ mode: 'quick', dice: 'fair' }), tycoon)).toMatchObject({ maxRounds: 12, diceMode: 'fair', goal: null });
+    expect(buildMatchRecord(finishedTycoonRoom({ mode: 'classic' }), tycoon)).toMatchObject({ maxRounds: null, rounds: 9 });
     expect(rec.startedAt).toBe('2026-10-16T10:00:00.000Z');
     expect(rec.players).toHaveLength(3);
     const host = rec.players.find((p) => p.user_id === U1);

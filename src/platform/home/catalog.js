@@ -49,3 +49,21 @@ export function groupByCategory() {
   if (strays.length) out.push({ id: 'other', label: 'More games', icon: null, games: strays });
   return out;
 }
+
+/** Pseudo-category id of the single "Coming soon" row on the home page. */
+export const SOON_ID = 'soon';
+
+/**
+ * Home layout: live games grouped by category (only categories that have a live game, strays under "More games"),
+ * plus every coming-soon teaser in ONE row. -> { cats: [{ id, label, icon, games }], soon: { id, label, icon, games } | null }
+ */
+export function homeCatalog() {
+  const live = liveList();
+  const cats = categoryList();
+  const known = new Set(cats.map((c) => c.id));
+  const out = cats.map((c) => ({ ...c, games: live.filter((g) => g.category === c.id) })).filter((c) => c.games.length);
+  const strays = live.filter((g) => !known.has(g.category));
+  if (strays.length) out.push({ id: 'other', label: 'More games', icon: null, games: strays });
+  const teasers = soonList().filter((g) => !live.some((l) => l.id === g.id));
+  return { cats: out, soon: teasers.length ? { id: SOON_ID, label: 'Coming soon', icon: SOON_ID, games: teasers } : null };
+}

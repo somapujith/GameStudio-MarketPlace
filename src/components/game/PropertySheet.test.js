@@ -1,10 +1,10 @@
-// Render smoke test: every one of the 40 tiles opens as a title deed / rule card without throwing.
+// Render tests for the Hustle deed: every one of the 36 squares opens, districts show their three themed businesses,
+// the set bonus, city events and the owner's actions; special squares explain their rule.
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { GROUP_TILES, TILES, TRANSPORT_RENT, rentFor } from '@shared/board.js';
+import { TILES } from '@shared/board.js';
 import { createGame } from '@shared/index.js';
-import { formatINR } from '@shared/format.js';
 
 // The sheet portals into document.body and the art pulls in SVG-heavy modules: render the content inline.
 const captured = vi.hoisted(() => ({ footer: null }));
@@ -18,137 +18,173 @@ vi.mock('@/components/art/index.js', () => ({
   Avatar: () => null,
   TileIcon: () => null,
   BuildingArt: () => null,
+  PieceArt: ({ piece }) => createElement('i', { 'data-piece': piece }),
 }));
 
-const { default: PropertySheet } = await import('./PropertySheet.jsx');
+const { default: PropertySheet, HERITAGE_NOTE, squareRule } = await import('./PropertySheet.jsx');
 
+const HITEC = 31;
 const sessionFor = (patch = {}) => {
-  const view = createGame({ players: [{ id: 'me' }, { id: 'b1' }], seed: 7 });
+  const view = createGame({ players: [{ id: 'me', name: 'Asha' }, { id: 'b1', name: 'Ravi' }], seed: 7 });
   return { me: 'me', view, display: null, options: {}, busy: false, dispatch() {}, ...patch };
 };
 const html = (session, tileId) => renderToStaticMarkup(createElement(PropertySheet, { session, tileId, onClose() {} }));
-const text = (markup) => markup.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#x27;/g, "'").replace(/\s+/g, ' ');
+const text = (markup) => markup.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/\s+/g, ' ');
 
-describe('PropertySheet title deeds', () => {
-  it('renders all 40 tiles', () => {
-    expect(TILES).toHaveLength(40);
+/** First element in a React tree whose text content includes `label` and that has an onClick. */
+function findButton(node, label) {
+  const textOf = (n) => (n == null || typeof n === 'boolean' ? '' : typeof n === 'string' || typeof n === 'number' ? String(n)
+    : Array.isArray(n) ? n.map(textOf).join('') : textOf(n.props?.children));
+  const walk = (n) => {
+    if (!n || typeof n !== 'object') return null;
+    if (Array.isArray(n)) { for (const c of n) { const f = walk(c); if (f) return f; } return null; }
+    if (n.props?.onClick && textOf(n).includes(label)) return n.props.onClick;
+    return walk(n.props?.children);
+  };
+  return walk(node);
+}
+
+describe('PropertySheet: every square', () => {
+  it('renders all 36 squares with their name and no snatch / trap / jail leftovers', () => {
+    expect(TILES).toHaveLength(36);
     for (const t of TILES) {
-      const out = text(html(sessionFor(), t.id));
+      const out = text(html(sessionFor({ options: { roll: true } }), t.id));
       expect(out, t.name).toContain(t.name);
+      for (const gone of ['Snatch', 'trap', 'Shield', 'jail', 'Jail']) expect(out, `${t.name}: ${gone}`).not.toContain(gone);
     }
   });
+});
 
-  it('prints the whole rent table of a property and the full-set note', () => {
-    const koti = TILES.find((t) => t.name === 'Koti');
-    const out = text(html(sessionFor(), koti.id));
-    expect(out).toContain('Title deed');
-    for (let i = 0; i <= 5; i++) expect(out).toContain(formatINR(rentFor(koti, i)));
-    expect(out).toContain('With 4 houses (Tower)');
-    expect(out).toContain('With HOTEL');
-    expect(out).toContain(`Mortgage value ${formatINR(koti.mortgage)}`);
-    expect(out).toContain(`Houses cost ${formatINR(koti.houseCost)} each`);
-    expect(out).toContain('doubled');
+describe('PropertySheet: the HITEC City deed', () => {
+  it('shows the collection, identity, lore with the heritage note, price and the three businesses', () => {
+    const out = text(html(sessionFor(), HITEC));
+    expect(out).toContain('Cyberabad');
+    expect(out).toContain('Tech and office growth');
+    expect(out).toContain(TILES[HITEC].lore);
+    expect(out).toContain(HERITAGE_NOTE);
+    expect(out).toContain('₹3,40,000');
+    expect(out).toMatch(/Startup Office ₹34,000/);
+    expect(out).toMatch(/Business Centre ₹65,000/);
+    expect(out).toMatch(/Tech Campus ₹1,19,000/);
+    expect(out).toContain('×1.5 with the full set');
+    expect(out).toContain('Upgrade ₹1,70,000 each step');
+    expect(out).toContain('Mortgage value ₹1,70,000');
+    expect(out).toContain('Unowned');
+    expect(out).toContain('District for sale');
   });
 
-  it('highlights the current building level and the stations owned', () => {
+  it('highlights the current business and names the owner with their piece', () => {
     const s = sessionFor();
-    const [a, b] = GROUP_TILES.pink;
-    s.view.owners[a] = 'me';
-    s.view.owners[b] = 'me';
-    s.view.levels[a] = 2;
-    const deed = html(s, a);
+    s.view.owners[HITEC] = 'me';
+    s.view.levels[HITEC] = 1;
+    const deed = html(s, HITEC);
     expect(deed.match(/class="is-current"/g)).toHaveLength(1);
-    expect(deed).toMatch(/is-current"><th[^>]*>With 2 houses/);
-
-    const stations = TILES.filter((t) => t.type === 'transport');
-    stations.slice(0, 3).forEach((t) => { s.view.owners[t.id] = 'me'; });
-    const st = html(s, stations[0].id);
-    expect(st).toMatch(/is-current"><th[^>]*>If 3 stations are owned/);
-    TRANSPORT_RENT.slice(1).forEach((r) => expect(text(st)).toContain(formatINR(r)));
+    expect(deed).toMatch(/is-current"><th[^>]*>.*?Business Centre/);
+    expect(deed).toContain(`data-piece="${s.view.players[0].piece}"`);
+    expect(text(deed)).toContain('You');
+    expect(text(deed)).toContain('Business Centre · next: Tech Campus');
   });
 
-  it('shows the mortgaged face instead of the rent table', () => {
+  it('applies the full set bonus to the first business only', () => {
     const s = sessionFor();
-    const t = TILES[1];
+    for (const t of [28, 29, 31]) s.view.owners[t] = 'b1';
+    const out = text(html(s, HITEC));
+    expect(out).toContain('Full set: ×1.5 = ₹51,000');
+    expect(out).toContain('Ravi owns the full set');
+  });
+
+  it('shows an active rent event on its collection', () => {
+    const s = sessionFor();
+    s.view.owners[HITEC] = 'b1';
+    s.view.event = { id: 'rush_hour', kind: 'rent', title: 'Rush Hour: Cyberabad office traffic', group: 'cyber', mult: 1.5, round: s.view.round };
+    const out = text(html(s, HITEC));
+    expect(out).toContain('Rush Hour: Cyberabad office traffic : rent ×1.5 this round');
+    expect(out).toContain('Rush Hour: Cyberabad office traffic: ₹51,000');
+    // not on another collection
+    expect(text(html(s, 1))).not.toContain('Rush Hour');
+  });
+
+  it('says when an event only lifts upgraded businesses', () => {
+    const s = sessionFor();
+    s.view.event = { id: 'biryani_boom', kind: 'rent', title: 'Biryani Business Boom', groups: ['oldcity', 'everyday'], mult: 2, upgradedOnly: true, round: s.view.round };
+    const out = text(html(s, 7));
+    expect(out).toContain('rent ×2 on upgraded businesses this round');
+  });
+
+  it('offers Upgrade / Sell / Mortgage from the options and dispatches them', () => {
+    const dispatch = vi.fn();
+    const s = sessionFor({
+      dispatch,
+      options: { upgrade: [{ tile: HITEC, cost: 170000 }], sellBuilding: [{ tile: HITEC, refund: 85000 }] },
+    });
+    s.view.owners[HITEC] = 'me';
+    s.view.levels[HITEC] = 1;
+    const out = text(html(s, HITEC));
+    expect(out).toContain('Upgrade to Tech Campus · ₹1,70,000');
+    expect(out).toContain('Sell Business Centre +₹85,000');
+    findButton(captured.footer, 'Upgrade to Tech Campus')();
+    expect(dispatch).toHaveBeenCalledWith({ type: 'UPGRADE', tile: HITEC });
+    findButton(captured.footer, 'Sell Business Centre')();
+    expect(dispatch).toHaveBeenCalledWith({ type: 'SELL_BUILDING', tile: HITEC });
+  });
+
+  it('shows the top business and the mortgage action on level 0', () => {
+    const s = sessionFor({ options: { mortgage: [{ tile: 1, value: 30000 }] } });
+    s.view.owners[1] = 'me';
+    expect(text(html(s, 1))).toContain('Mortgage +₹30,000');
+    s.view.levels[1] = 2;
+    expect(text(html(s, 1))).toContain('Top business: Trading Hub');
+  });
+
+  it('shows the mortgaged face instead of the ladder', () => {
+    const s = sessionFor({ options: { unmortgage: [{ tile: 1, cost: 33000 }] } });
     s.view.owners[1] = 'me';
     s.view.mortgaged[1] = true;
     const out = text(html(s, 1));
     expect(out).toContain('Mortgaged');
-    expect(out).toContain(`for ${formatINR(t.mortgage)}`);
-    expect(out).not.toContain('With 1 house');
+    expect(out).toContain('for ₹30,000');
+    expect(out).toContain('Unmortgage ₹33,000');
+    expect(out).not.toContain('Trading Hub ₹');
   });
 
-  it('explains the rule of the special squares', () => {
-    const s = sessionFor();
-    expect(text(html(s, 0))).toContain('Collect');
-    expect(text(html(s, 4))).toContain('10% of your total worth');
-    expect(text(html(s, 38))).toContain('Pay ₹1,000');
-    expect(text(html(s, 2))).toContain('Hyderabadi Khazana card');
-    expect(text(html(s, 7))).toContain('Nawab ka Farman card');
-    expect(text(html(s, 10))).toContain('bail');
-    expect(text(html(s, 20))).toContain('Rest stop');
-    expect(text(html(s, 30))).toContain('Chanchalguda Jail');
-  });
-
-  it('keeps the buy and skip actions for a pending purchase', () => {
+  it('keeps Buy and Skip for a pending purchase', () => {
     const s = sessionFor({ options: { buy: true, skipBuy: true } });
-    s.view.pending = { type: 'buy', tile: 6, price: 1000 };
+    s.view.pending = { type: 'buy', tile: 6, price: 100000 };
     const out = text(html(s, 6));
-    expect(out).toContain('Buy for ₹1,000');
+    expect(out).toContain('Buy for ₹1,00,000');
     expect(out).toContain('Skip');
   });
 });
 
-describe('PropertySheet trap action', () => {
-  const findClick = (node, cls) => {
-    if (!node || typeof node !== 'object') return null;
-    if (Array.isArray(node)) {
-      for (const n of node) { const f = findClick(n, cls); if (f) return f; }
-      return null;
-    }
-    const props = node.props || {};
-    if (typeof props.className === 'string' && props.className.includes(cls) && props.onClick) return props.onClick;
-    return findClick(props.children, cls);
-  };
-
-  it('offers Set trap here with its one-line explanation while options.trap is on', () => {
-    const out = text(html(sessionFor({ options: { trap: true, roll: true } }), 6));
-    expect(out).toContain('Set trap here');
-    expect(out).toContain('Hidden. The first rival to land here is thrown in jail.');
+describe('PropertySheet: special squares', () => {
+  const s = sessionFor();
+  it('explains START, transport, cards, traffic, chai, municipal and the bazaar auction', () => {
+    expect(text(html(s, 0))).toContain('Collect ₹2,00,000 every time you pass or land on START');
+    const metro = text(html(s, 14));
+    expect(metro).toContain('Pay ₹35,000 to ride ahead to MMTS Express');
+    expect(metro).toContain('Meter kharab hai');
+    expect(text(html(s, 2))).toContain('Draw a Nawabi Luck card');
+    expect(text(html(s, 12))).toContain('Draw a City Drama card');
+    expect(text(html(s, 9))).toContain('pay ₹25,000, spend a chai token, or wait');
+    expect(text(html(s, 18))).toContain('Grab a chai token');
+    expect(text(html(s, 27))).toContain('Pay ₹40,000 + ₹10,000 per upgrade level you own');
+    expect(text(html(s, 32))).toContain('a random unowned district goes under the hammer');
   });
 
-  it('dispatches PLACE_TRAP for that tile and closes the sheet', () => {
+  it('prices Municipal Charges for my upgrades', () => {
+    const v = sessionFor().view;
+    v.owners[1] = 'me'; v.levels[1] = 2;
+    v.owners[3] = 'me'; v.levels[3] = 1;
+    expect(squareRule(TILES[27], { state: v, me: 'me' }).note).toContain('₹70,000');
+  });
+
+  it('offers the ride when I stand on the stop and the option is open', () => {
     const dispatch = vi.fn();
-    const onClose = vi.fn();
-    renderToStaticMarkup(createElement(PropertySheet, { session: sessionFor({ options: { trap: true }, dispatch }), tileId: 6, onClose }));
-    const click = findClick(captured.footer, 'hg-trap-btn');
-    expect(click).toBeTypeOf('function');
-    click();
-    expect(dispatch).toHaveBeenCalledWith({ type: 'PLACE_TRAP', tile: 6 });
-    expect(onClose).toHaveBeenCalled();
-  });
-
-  it('works on non-property squares but never on Go to Jail', () => {
-    const s = sessionFor({ options: { trap: true } });
-    for (const id of [0, 2, 4, 10, 20]) expect(text(html(s, id))).toContain('Set trap here');
-    expect(text(html(s, 30))).not.toContain('Set trap here');
-  });
-
-  it('hides the button when placing is not possible', () => {
-    expect(text(html(sessionFor({ options: {} }), 6))).not.toContain('Set trap here');
-    expect(text(html(sessionFor(), 6))).not.toContain('Hidden. The first rival');
-  });
-
-  it('says the trap is set instead of offering another one on the same tile', () => {
-    const s = sessionFor({ options: { trap: true } });
-    s.view.traps = [{ tile: 6, owner: 'me' }];
-    const here = text(html(s, 6));
-    expect(here).toContain('Your trap is set here');
-    expect(here).not.toContain('Set trap here');
-    expect(text(html(s, 8))).toContain('Set trap here');
-    expect(text(html(s, 8))).not.toContain('Your trap is set here');
-    // someone else's trap is never shown
-    s.view.traps = [{ tile: 6, owner: 'b1' }];
-    expect(text(html(s, 6))).not.toContain('Your trap is set here');
+    const ss = sessionFor({ dispatch, options: { ride: { to: 14, fare: 25000 } } });
+    ss.view.players[0].pos = 5;
+    const out = text(html(ss, 5));
+    expect(out).toContain('Ride to Metro Interchange · ₹25,000');
+    findButton(captured.footer, 'Ride to')();
+    expect(dispatch).toHaveBeenCalledWith({ type: 'RIDE' });
   });
 });

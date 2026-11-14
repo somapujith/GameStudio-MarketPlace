@@ -1,14 +1,35 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
-import { Avatar } from '@/components/art/index.js';
 import { api, errorMessage, getFriendByCode } from '@/lib/api.js';
 import { useAuth } from '@/lib/auth.jsx';
 import { paths } from '@/platform/paths.js';
 import { parseFriendLink } from '@/components/online/codes.js';
+import { FriendAvatar, FriendTitle } from '@/components/online/InviteFriends.jsx';
 import InviteToGameSheet from '@/components/online/InviteToGameSheet.jsx';
-import StatusPanel, { Loading } from '@/components/online/StatusPanel.jsx';
+import StatusPanel from '@/components/online/StatusPanel.jsx';
 import { useToasts } from '@/components/online/Toasts.jsx';
 import '@/styles/online.css';
+import '@/styles/x-social.css';
+
+const REL_LABEL = { friends: 'Friends', outgoing: 'Request sent', incoming: 'Wants to be friends', me: 'You' };
+
+/** Placeholder card shaped like the real one, so the page does not jump when the lookup lands. */
+function CardSkeleton({ text }) {
+  return (
+    <div className="ho-page ho-join">
+      <section className="ho-card ho-friendlink xs-fl xs-fl--skel" aria-busy="true">
+        <span className="xs-fl__ring">
+          <span className="ho-skel ho-skel--circle xs-fl__skelava" aria-hidden="true" />
+        </span>
+        <span className="ho-skel ho-skel--line xs-fl__skelline" aria-hidden="true" />
+        <span className="ho-skel ho-skel--line xs-fl__skelline xs-fl__skelline--short" aria-hidden="true" />
+        <p className="ho-muted" role="status">
+          {text}
+        </p>
+      </section>
+    </div>
+  );
+}
 
 /**
  * /f/:code (a friend link): "Add <name>?" with Add / Cancel, or the current relation when there is nothing to add
@@ -36,11 +57,7 @@ export default function FriendLink() {
     );
   }
   if (loading) {
-    return (
-      <div className="ho-page ho-join">
-        <Loading text="Opening the friend link..." />
-      </div>
-    );
+    return <CardSkeleton text="Opening the friend link..." />;
   }
   const here = paths.friendLink(code);
   if (!user) {
@@ -136,11 +153,7 @@ function FriendCard({ code, me }) {
   const cancelRequest = () => act('cancel', () => api.del(`/api/friends/${encodeURIComponent(person.id)}`), 'Request cancelled', 'Could not cancel the request');
 
   if (phase === 'loading') {
-    return (
-      <div className="ho-page ho-join">
-        <Loading text="Looking up this friend..." />
-      </div>
-    );
+    return <CardSkeleton text="Looking up this friend..." />;
   }
   if (phase === 'notfound') {
     return (
@@ -175,6 +188,7 @@ function FriendCard({ code, me }) {
     );
   }
 
+  const relKey = isMe ? 'me' : relation;
   let title;
   let body;
   let actions;
@@ -193,7 +207,7 @@ function FriendCard({ code, me }) {
     );
   } else if (relation === 'friends') {
     title = `You and ${person.name} are friends`;
-    body = 'Already connected. Invite them to a game whenever they are online.';
+    body = 'Already connected. Invite them to a game any time: if they are offline, the invite waits for them.';
     actions = (
       <>
         <button type="button" className="ho-btn ho-btn--primary" onClick={() => setSheet(true)}>
@@ -247,11 +261,12 @@ function FriendCard({ code, me }) {
 
   return (
     <div className="ho-page ho-join">
-      <section className="ho-card ho-friendlink" aria-labelledby="ho-fl-title">
-        <div className="ho-friendlink__avatar">
-          <Avatar preset={Number.isInteger(person.avatar) ? person.avatar : 0} size={96} />
+      <section className={`ho-card ho-friendlink xs-fl xs-fl--${relKey}`} aria-labelledby="ho-fl-title">
+        <div className="ho-friendlink__avatar xs-fl__ring">
+          <FriendAvatar person={person} size={96} />
         </div>
-        <span className="ho-eyebrow">Friend link</span>
+        <span className="ho-eyebrow xs-eyebrow">Friend link</span>
+        {REL_LABEL[relKey] && <span className={`xs-relchip xs-relchip--${relKey}`}>{REL_LABEL[relKey]}</span>}
         <h1 id="ho-fl-title" className="ho-h1">
           {title}
         </h1>
@@ -260,6 +275,7 @@ function FriendCard({ code, me }) {
           {Number.isFinite(person.level) && <span> · Level {person.level}</span>}
           <span className="ho-chip ho-chip--static ho-friendlink__code">{person.friendCode || code}</span>
         </p>
+        <FriendTitle person={person} />
         <p className="ho-muted" aria-live="polite">
           {body}
         </p>

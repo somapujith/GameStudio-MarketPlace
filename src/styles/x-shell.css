@@ -1,0 +1,662 @@
+/* ==========================================================================
+   H-SHELL layer: sliding nav indicator, coin chip, toasts, celebration overlay, install card, route skeletons.
+   Uses --hub-* colours (dark + light palettes from hub.css) and motion tokens from tokens.css.
+   Classes: .xs-ind* .xs-coins* .xs-toast* .xs-cel* .xs-install* .xs-sk*
+   ========================================================================== */
+
+/* ---------- sliding active indicator (tab bar + rail) ---------- */
+.xs-ind-list {
+  position: relative;
+}
+.xs-ind-list > li:not(.xs-ind) {
+  position: relative;
+  z-index: 1;
+}
+.xs-ind {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  list-style: none;
+  pointer-events: none;
+  will-change: transform;
+  transition:
+    transform var(--dur-3) var(--ease-out),
+    opacity var(--dur-2) var(--ease-std);
+}
+.xs-ind--tab {
+  border-radius: 999px;
+  background: var(--hub-brand-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hub-brand) 26%, transparent);
+}
+.xs-ind-host .hub-tab.is-active .hub-tab__icon {
+  background: transparent;
+}
+.xs-ind--rail {
+  border-radius: 18px;
+  background: var(--hub-brand-soft);
+}
+.xs-ind--rail::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 50%;
+  width: 4px;
+  height: 26px;
+  margin-top: -13px;
+  border-radius: 0 4px 4px 0;
+  background: var(--hub-brand);
+}
+@media (min-width: 900px) {
+  .xs-ind-host .hub-rail__link.is-active {
+    background: transparent;
+  }
+  .xs-ind-host .hub-rail__link.is-active::before {
+    display: none;
+  }
+}
+@media (min-width: 1200px) {
+  .xs-ind--rail::before {
+    left: -16px;
+  }
+}
+
+/* ---------- coin chip (links to the shop) ---------- */
+.xs-coins {
+  position: relative;
+  min-height: 44px;
+  text-decoration: none;
+  transition:
+    background var(--dur-1) var(--ease-std),
+    border-color var(--dur-1) var(--ease-std),
+    transform var(--dur-1) var(--ease-out);
+}
+.xs-coins:hover {
+  background: rgba(255, 200, 87, 0.17);
+  border-color: rgba(255, 200, 87, 0.5);
+}
+.xs-coins:active {
+  transform: scale(0.96);
+}
+.xs-coins:focus-visible {
+  outline: 2px solid var(--hub-brand);
+  outline-offset: 2px;
+}
+.xs-coins__icon {
+  transition: transform var(--dur-3) var(--ease-spring);
+}
+.xs-coins.is-up .xs-coins__icon {
+  transform: scale(1.22) rotate(-12deg);
+}
+.xs-coins.is-up {
+  border-color: rgba(255, 200, 87, 0.7);
+  background: rgba(255, 200, 87, 0.2);
+}
+.xs-coins.is-down b {
+  color: var(--hub-dim);
+}
+.xs-coins__dot {
+  position: absolute;
+  top: 3px;
+  right: 1px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ff5d73;
+  box-shadow: 0 0 0 2px var(--hub-bg);
+  animation: xs-dot-pulse 2.4s var(--ease-std) infinite;
+}
+@keyframes xs-dot-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.25);
+  }
+}
+
+/* ---------- toasts ---------- */
+/* Position per route (<html data-route> from ThemeSync). Full-screen pages with a taller sticky header can
+   override `--page-header-h` on :root. Game screens: top edge, so the bottom action dock stays free. */
+:root[data-route='lobby'] .hh-toasts.xs-toasts {
+  top: calc(var(--safe-top, 0px) + var(--page-header-h, 76px) + 8px);
+}
+:root[data-route='game'] .hh-toasts.xs-toasts {
+  top: calc(var(--safe-top, 0px) + var(--page-header-h, 8px) + 4px);
+  z-index: 80;
+}
+:root[data-route='game'] .xs-toast {
+  min-height: 40px;
+  font-size: 13px;
+}
+.xs-toast {
+  position: relative;
+  color: var(--hub-text, var(--text));
+  background: var(--hub-surface-2, var(--surface-2));
+  border-color: var(--hub-line-2, var(--line-strong));
+  cursor: pointer;
+  padding-right: 6px;
+  animation: xs-toast-in var(--dur-3) var(--ease-out) both;
+  transform-origin: 50% 0;
+}
+.xs-toast.is-leaving {
+  pointer-events: none;
+  animation: xs-toast-out var(--dur-2) var(--ease-in) both;
+}
+.xs-toast--good,
+.hh-toast--good.xs-toast {
+  border-color: color-mix(in srgb, var(--hub-good) 45%, transparent);
+}
+.hh-toast--bad.xs-toast {
+  border-color: color-mix(in srgb, var(--hub-bad) 50%, transparent);
+}
+.xs-toast__msg {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.3;
+}
+.xs-toast__action {
+  flex: none;
+  min-height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #fff;
+  background: var(--hub-brand);
+  transition: background var(--dur-1) var(--ease-std);
+}
+.xs-toast__action:hover {
+  background: var(--hub-brand-2);
+}
+.xs-toast__close {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px; /* full --hub-tap hit area; the negative margin keeps the toast's height */
+  height: 44px;
+  margin: -6px -8px -6px -4px;
+  border-radius: 50%;
+  color: var(--hub-faint);
+  transition: background var(--dur-1) var(--ease-std), color var(--dur-1) var(--ease-std);
+}
+.xs-toast__close:hover {
+  color: var(--hub-text);
+  background: rgba(127, 127, 127, 0.16);
+}
+.xs-toast__close .hh-icon {
+  color: inherit !important;
+}
+@keyframes xs-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.96);
+  }
+}
+@keyframes xs-toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+  }
+}
+
+/* ---------- celebration overlay ---------- */
+.xs-cel {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  overflow: hidden;
+  cursor: pointer;
+  background: radial-gradient(60% 50% at 50% 45%, rgba(10, 12, 32, 0.55), rgba(5, 7, 20, 0.72));
+  animation: xs-fade-in var(--dur-2) var(--ease-out) both;
+  -webkit-tap-highlight-color: transparent;
+}
+.xs-cel.is-leaving {
+  animation: xs-fade-out var(--dur-2) var(--ease-in) both;
+}
+.xs-cel__card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: min(86vw, 340px);
+  padding: 34px 24px 20px;
+  border-radius: 28px;
+  text-align: center;
+  color: var(--hub-text);
+  background: linear-gradient(180deg, var(--hub-surface-2), var(--hub-surface));
+  border: 1px solid var(--cel-edge, rgba(255, 200, 87, 0.45));
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45), 0 0 46px var(--cel-glow, rgba(255, 200, 87, 0.28));
+  animation: xs-cel-pop var(--dur-4) var(--ease-spring) both;
+}
+.xs-cel.is-leaving .xs-cel__card {
+  animation: xs-cel-out var(--dur-2) var(--ease-in) both;
+}
+.xs-cel--badge,
+.xs-cel--purchase {
+  --cel-edge: color-mix(in srgb, var(--hub-brand) 60%, transparent);
+  --cel-glow: color-mix(in srgb, var(--hub-brand) 40%, transparent);
+  --cel-a: #b3a9ff;
+  --cel-b: var(--hub-brand-2);
+}
+.xs-cel__rays {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  width: 230px;
+  height: 230px;
+  margin-left: -115px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: repeating-conic-gradient(from 0deg, var(--cel-glow, rgba(255, 200, 87, 0.3)) 0deg 10deg, transparent 10deg 30deg);
+  -webkit-mask: radial-gradient(closest-side, #000 30%, transparent 100%);
+  mask: radial-gradient(closest-side, #000 30%, transparent 100%);
+  opacity: 0.55;
+  animation: xs-spin 9s linear infinite;
+}
+.xs-cel__medal {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 84px;
+  height: 84px;
+  margin-bottom: 6px;
+  border-radius: 50%;
+  color: #4a2a00;
+  background: radial-gradient(circle at 35% 30%, #fff3c4, var(--cel-a, #ffc857) 45%, var(--cel-b, #ff8a3d));
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--cel-a, #ffc857) 25%, transparent), 0 10px 26px rgba(0, 0, 0, 0.35);
+  animation: xs-cel-medal var(--dur-4) var(--ease-spring) 80ms both;
+}
+.xs-cel--badge .xs-cel__medal,
+.xs-cel--purchase .xs-cel__medal {
+  color: #fff;
+}
+.xs-cel__title {
+  position: relative;
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.xs-cel--level .xs-cel__title,
+.xs-cel--coins .xs-cel__title {
+  background: linear-gradient(180deg, #ffe7a3, #ffb347);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+:root[data-theme='light'] .xs-cel--level .xs-cel__title,
+:root[data-theme='light'] .xs-cel--coins .xs-cel__title {
+  background: linear-gradient(180deg, #d98a00, #b45f00);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+.xs-cel__text {
+  position: relative;
+  max-width: 28ch;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--hub-dim);
+}
+.xs-cel__hint {
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--hub-faint);
+}
+.xs-cel__shower {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.xs-cel__coin {
+  position: absolute;
+  top: -40px;
+  left: calc(50% + var(--x, 0vw));
+  animation: xs-coin-fall var(--dur, 1200ms) var(--ease-in) var(--delay, 0ms) both;
+}
+.xs-cel__coin .hh-coin {
+  display: block;
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.35));
+}
+.xs-cel.is-reduced,
+.xs-cel.is-reduced .xs-cel__card,
+.xs-cel.is-reduced .xs-cel__medal {
+  animation-name: xs-fade-in;
+  animation-timing-function: linear;
+}
+.xs-cel.is-reduced .xs-cel__rays {
+  animation: none;
+}
+@keyframes xs-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes xs-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes xs-cel-pop {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.86);
+  }
+}
+@keyframes xs-cel-out {
+  to {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+@keyframes xs-cel-medal {
+  from {
+    transform: scale(0.3) rotate(-30deg);
+  }
+}
+@keyframes xs-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes xs-coin-fall {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  12% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--dx, 0px), 105vh, 0) rotate(var(--rot, 180deg));
+  }
+}
+
+/* ---------- install card ---------- */
+.xs-install {
+  position: fixed;
+  left: var(--hub-gutter, 16px);
+  right: var(--hub-gutter, 16px);
+  bottom: calc(64px + var(--safe-bottom, 0px) + 12px);
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 440px;
+  margin: 0 auto;
+  padding: 12px 8px 12px 12px;
+  border-radius: 20px;
+  color: var(--hub-text);
+  background: linear-gradient(180deg, var(--hub-surface-2), var(--hub-surface));
+  border: 1px solid var(--hub-line-2);
+  box-shadow: var(--hub-shadow);
+  animation: xs-install-in var(--dur-3) var(--ease-out) both;
+}
+.xs-install__mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: var(--hub-brand-soft);
+}
+.xs-install__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--hub-dim);
+}
+.xs-install__text b {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--hub-text);
+}
+.xs-install__text em {
+  font-style: normal;
+  font-weight: 800;
+  color: var(--hub-text);
+}
+.xs-install__share {
+  vertical-align: -3px;
+  color: var(--hub-brand);
+}
+.xs-install__go {
+  flex: none;
+  min-height: 44px;
+}
+.xs-install__x {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  color: var(--hub-faint);
+}
+.xs-install__x:hover {
+  color: var(--hub-text);
+  background: rgba(127, 127, 127, 0.14);
+}
+@media (min-width: 900px) {
+  .xs-install {
+    left: auto;
+    right: 24px;
+    bottom: 24px;
+    width: 380px;
+  }
+}
+@keyframes xs-install-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+/* ---------- route skeletons ---------- */
+.xs-sk {
+  animation: none;
+}
+.xs-sk .hub-skel {
+  background-color: transparent;
+}
+:root[data-theme='light'] .xs-sk .hub-skel {
+  background-image: linear-gradient(90deg, rgba(27, 29, 51, 0.06) 0%, rgba(27, 29, 51, 0.12) 50%, rgba(27, 29, 51, 0.06) 100%);
+}
+.xs-sk-head {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.xs-sk-title {
+  width: min(55%, 260px);
+  height: 30px;
+  border-radius: 10px;
+}
+.xs-sk-w30 {
+  width: 30%;
+}
+.xs-sk-w40 {
+  width: 40%;
+}
+.xs-sk-w70 {
+  width: 70%;
+}
+.xs-sk-col {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.xs-sk-hero {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: 420px;
+  border-radius: var(--hub-r-xl, 26px);
+}
+.xs-sk-strip,
+.xs-sk-chips {
+  display: flex;
+  gap: 12px;
+  overflow: hidden;
+}
+.xs-sk-ava {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+}
+.xs-sk-chip {
+  width: 92px;
+  height: 40px;
+  border-radius: 999px;
+}
+.xs-sk-seat {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+}
+.xs-sk-cards {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(240px, 1fr);
+  gap: 14px;
+  overflow: hidden;
+}
+.xs-sk-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.xs-sk-cover {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--hub-r-l, 20px);
+}
+.xs-sk-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.xs-sk-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 10px 14px;
+  border-radius: var(--hub-r-m, 16px);
+  background: var(--hub-surface);
+  border: 1px solid var(--hub-line);
+}
+.xs-sk-row .hub-skel--dot {
+  width: 42px;
+  height: 42px;
+}
+.xs-sk-pill {
+  width: 64px;
+  height: 32px;
+  border-radius: 999px;
+}
+.xs-sk-panel {
+  padding: 20px;
+  border-radius: var(--hub-r-xl, 26px);
+  background: var(--hub-surface);
+  border: 1px solid var(--hub-line);
+}
+.xs-sk-profile {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.xs-sk-avatar {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+}
+.xs-sk-bar {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+}
+.xs-sk-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.xs-sk-tile {
+  width: 100%;
+  height: 96px;
+  border-radius: var(--hub-r-l, 20px);
+}
+.xs-sk-tile--tall {
+  height: 168px;
+}
+.xs-sk-block {
+  width: 100%;
+  height: 180px;
+  border-radius: var(--hub-r-l, 20px);
+}
+.xs-sk-block--short {
+  height: 110px;
+}
+.xs-sk-game {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  max-width: 560px;
+  width: 100%;
+  margin: 0 auto;
+}
+.xs-sk-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+}
+.xs-sk-btn {
+  width: 100%;
+  height: 54px;
+  border-radius: 999px;
+}
+@media (min-width: 720px) {
+  .xs-sk-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .xs-sk-grid--shop {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* ---------- reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .xs-ind,
+  .xs-coins__icon {
+    transition: none;
+  }
+  .xs-coins__dot,
+  .xs-cel__rays {
+    animation: none;
+  }
+}
+:root[data-motion='reduced'] .xs-ind,
+:root[data-motion='reduced'] .xs-coins__icon {
+  transition: none;
+}
+:root[data-motion='reduced'] .xs-coins__dot,
+:root[data-motion='reduced'] .xs-cel__rays {
+  animation: none;
+}

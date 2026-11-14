@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { paths } from '@/platform/paths.js';
 import HubIcon from '@/platform/game/HubIcon.jsx';
 import Ava from '@/platform/home/Ava.jsx';
 import { useApi, useApiGate } from '@/platform/home/useApi.js';
 import { useAccount } from '../hooks.js';
+import FriendSheet from './FriendSheet.jsx';
+import Framed from './Framed.jsx';
 
 /** A friendly inline message with an optional action, used for every non-list state of the strip. */
 function Prompt({ icon, title, children, action, quiet }) {
@@ -21,8 +24,12 @@ function Prompt({ icon, title, children, action, quiet }) {
   );
 }
 
-/** Home > "Friends online" strip. Signed-out and guest players get a sign-in prompt; network trouble degrades quietly. */
+/**
+ * Home > "Friends online" strip (online first, cosmetic frames). Tapping a friend opens a quick-action sheet
+ * (invite to a table / view friends). Signed-out and guest players get a sign-in prompt; network trouble degrades quietly.
+ */
 export default function FriendsStrip() {
+  const [picked, setPicked] = useState(null);
   const { account, guest, loading } = useAccount();
   const { ready } = useApiGate();
   const remote = useApi('/api/friends', { enabled: ready && account });
@@ -108,10 +115,18 @@ export default function FriendsStrip() {
         </li>
         {sorted.slice(0, 14).map((f) => (
           <li key={f.id}>
-            <Link to={paths.friends()} className={`hh2-friend ${f.online ? 'is-online' : ''}`} aria-label={`${f.name}, ${f.online ? 'online' : 'offline'}`}>
-              <Ava preset={f.avatar} size={56} dot={f.online ? 'on' : 'off'} />
+            <button
+              type="button"
+              className={`hh2-friend xh-friend ${f.online ? 'is-online' : ''}`}
+              aria-haspopup="dialog"
+              aria-label={`${f.name}, ${f.online ? 'online' : 'offline'}. Quick actions`}
+              onClick={() => setPicked(f)}
+            >
+              <Framed frame={f.equipped?.frame} size={56}>
+                <Ava preset={f.avatar} size={56} dot={f.online ? 'on' : 'off'} />
+              </Framed>
               <span className="hh2-friend__name">{f.name}</span>
-            </Link>
+            </button>
           </li>
         ))}
       </ul>
@@ -133,6 +148,7 @@ export default function FriendsStrip() {
         )}
       </div>
       {body}
+      {picked && <FriendSheet friend={picked} onClose={() => setPicked(null)} />}
     </section>
   );
 }

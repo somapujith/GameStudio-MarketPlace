@@ -164,3 +164,48 @@ CREATE INDEX IF NOT EXISTS rooms_listing_idx
 
 CREATE INDEX IF NOT EXISTS rooms_members_idx
   ON rooms USING gin (member_ids);
+
+-- ---------------------------------------------------------------------------------------------
+-- Hub features (docs/HUSTLE_PLAN.md section 4). Additive + idempotent only.
+-- ---------------------------------------------------------------------------------------------
+
+-- Server-side daily reward (replaces the device-only streak). last_daily = the IST calendar day of the last claim.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_streak integer NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_daily date;
+
+-- Cosmetics: what a player owns and what they have equipped ({ frame?, dice?, title? }, ids from shared/cosmetics.js).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS equipped jsonb NOT NULL DEFAULT '{}';
+
+CREATE TABLE IF NOT EXISTS user_items (
+  user_id     uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  item_id     text NOT NULL,
+  price_paid  integer NOT NULL DEFAULT 0,
+  acquired_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, item_id)
+);
+
+-- Stored game invites, so a friend who was offline still sees them (fresh for 2 hours).
+CREATE TABLE IF NOT EXISTS invites (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  from_id    uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  to_id      uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  room_code  text NOT NULL,
+  game_id    text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  dismissed  boolean NOT NULL DEFAULT false
+);
+
+CREATE INDEX IF NOT EXISTS invites_to_idx
+  ON invites (to_id, created_at DESC);
+
+-- Web push subscriptions (only used when VAPID keys are configured).
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  endpoint   text PRIMARY KEY,
+  user_id    uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  p256dh     text NOT NULL,
+  auth       text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS push_subscriptions_user_idx
+  ON push_subscriptions (user_id);

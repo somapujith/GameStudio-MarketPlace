@@ -1,100 +1,109 @@
-import { memo, useState } from 'react';
-import { GRID, tilePosition, tileSide } from '@shared/board.js';
+import { memo, useRef, useState } from 'react';
+import * as Art from '@/components/art/index.js';
+import { pawnPlacement } from './fx/geometry.js';
 import '@/styles/board.css';
 
-// Offsets (as a fraction of the tile's own width/height, from its centre) so up to 6 pawns fan out
-// without overlapping.
-const FAN = {
-  1: [[0, 0.02]],
-  2: [[-0.22, 0.04], [0.22, 0.04]],
-  3: [[-0.2, -0.15], [0.2, -0.15], [0, 0.2]],
-  4: [[-0.21, -0.19], [0.21, -0.19], [-0.21, 0.2], [0.21, 0.2]],
-  5: [[-0.27, -0.2], [0, -0.2], [0.27, -0.2], [-0.14, 0.2], [0.14, 0.2]],
-  6: [[-0.27, -0.2], [0, -0.2], [0.27, -0.2], [-0.27, 0.2], [0, 0.2], [0.27, 0.2]],
-};
-// Pawn diameter in edge-tile units (--hb-u) by crowd size.
-const DIAMETER = { 1: 0.46, 2: 0.38, 3: 0.33, 4: 0.3, 5: 0.25, 6: 0.25 };
+export { pawnPlacement } from './fx/geometry.js';
 
-// Corner tiles keep their icon + label pill in the lower third, so the fan sits in the upper ~60%
-// of the tile. A corner is 1.4 edge tiles wide, so its pawns are larger in absolute terms.
-const CORNERS = new Set([0, 10, 20, 30]);
-const CORNER_FAN = {
-  1: [[0, -0.12]],
-  2: [[-0.2, -0.14], [0.2, -0.14]],
-  3: [[-0.2, -0.24], [0.2, -0.24], [0, -0.03]],
-  4: [[-0.2, -0.25], [0.2, -0.25], [-0.2, 0], [0.2, 0]],
-  5: [[-0.3, -0.27], [0, -0.27], [0.3, -0.27], [-0.15, -0.02], [0.15, -0.02]],
-  6: [[-0.3, -0.27], [0, -0.27], [0.3, -0.27], [-0.3, -0.02], [0, -0.02], [0.3, -0.02]],
-};
-const CORNER_DIAMETER = { 1: 0.6, 2: 0.48, 3: 0.42, 4: 0.38, 5: 0.32, 6: 0.32 };
+// Looked up by name so the board still renders before the art kit ships PieceArt.
+const PIECE_ART = 'PieceArt';
+const INITIAL = { pearl: 'P', auto: 'A', handi: 'H', chai: 'C', bat: 'B', camera: 'F' };
 
-// Track geometry in edge-tile units, mirroring `.hb-grid` in board.css: the two corner tracks are
-// CORNER_W wide, the nine between them are 1.
-const CORNER_W = 1.4;
-const TOTAL = CORNER_W * 2 + (GRID - 2);
-const trackSize = (i) => (i === 0 || i === GRID - 1 ? CORNER_W : 1);
-const trackStart = (i) => (i === 0 ? 0 : CORNER_W + (i - 1));
-
-// Edge tiles keep their colour band / icon on the inner side, so the pawn rests a little towards the outer edge.
-const OUTWARD = 0.08;
-const PUSH = { bottom: [0, 1], top: [0, -1], left: [-1, 0], right: [1, 0] };
-
-/** Where a pawn sits: percentage coordinates inside the 11x11 grid overlay, and its diameter in edge-tile units. */
-export function pawnPlacement(pos, slot = 0, count = 1) {
-  const { col, row } = tilePosition(pos);
-  const n = Math.min(6, Math.max(1, count));
-  const corner = CORNERS.has(pos);
-  const fan = corner ? CORNER_FAN : FAN;
-  let [ox, oy] = (fan[n] || fan[1])[Math.min(slot, n - 1)];
-  if (!corner) {
-    const [px, py] = PUSH[tileSide(pos)];
-    ox += px * OUTWARD;
-    oy += py * OUTWARD;
+/**
+ * A player's piece (pearl, auto, handi, chai, bat, camera) tinted by the player's colour: the art kit's
+ * PieceArt when it exists (on its coloured base unless `base={false}`), else a coloured disc with the piece's
+ * initial. Used by the pawn and the tile's owner chip.
+ */
+export function PieceToken({ piece, color = '#ffd23f', size = 24, base = true, className = '' }) {
+  const PieceArt = Art[PIECE_ART];
+  if (typeof PieceArt === 'function' || (PieceArt && typeof PieceArt === 'object')) {
+    return (
+      <span className={`hb-piece${className ? ` ${className}` : ''}`}>
+        <PieceArt piece={piece || 'pearl'} color={color} size={size} base={base} />
+      </span>
+    );
   }
-  return {
-    x: ((trackStart(col) + trackSize(col) * (0.5 + ox)) / TOTAL) * 100,
-    y: ((trackStart(row) + trackSize(row) * (0.5 + oy)) / TOTAL) * 100,
-    d: (corner ? CORNER_DIAMETER : DIAMETER)[n],
-  };
+  return (
+    <span className={`hb-piece hb-piece--fallback${className ? ` ${className}` : ''}`} style={{ '--c': color }}>
+      <b>{INITIAL[piece] || ''}</b>
+    </span>
+  );
 }
 
 /**
- * A single player disc. `pos` is the tile id (the presenter steps it one tile at a time),
- * `slot`/`count` say how many pawns share the tile. Hidden when bankrupt.
+ * One player's piece on the board. `pos` is the tile id: the presenter steps it one tile at a time and the
+ * pawn glides there with `transform: translate()` (never left/top) while its inner hop replays the
+ * lift-carry-set-down for every step, over `--hb-step` (the presenter's `display.stepMs`, set on the layer).
+ *
+ *  motion: null (walk) | 'ride' (fast hop with a little vehicle trail) | 'teleport' (one arc over the board)
+ *  stuck:  stuck in traffic: a small cone with a brake light
+ *  bankrupt: fades and shrinks out (hidden straight away if it already was when the pawn mounted)
  */
-function PawnImpl({ name = '', color = '#ffd23f', pos = 0, slot = 0, count = 1, isTurn = false, jailed = false, bankrupt = false, tileName = '' }) {
-  // Re-key the hop and shadow whenever the pawn moves, so the lift-carry-set-down replays per step.
+function PawnImpl({
+  id = '',
+  name = '',
+  color = '#ffd23f',
+  piece = 'pearl',
+  pos = 0,
+  slot = 0,
+  count = 1,
+  isTurn = false,
+  stuck = false,
+  motion = null,
+  bankrupt = false,
+  tileName = '',
+}) {
+  // Re-key the hop and shadow whenever the pawn moves, so the motion replays per step.
   const [seen, setSeen] = useState(pos);
   const [steps, setSteps] = useState(0);
   if (seen !== pos) {
     setSeen(pos);
     setSteps(steps + 1);
   }
-  if (bankrupt) return null;
+  const outAtMount = useRef(bankrupt);
+  if (bankrupt && outAtMount.current) return null;
 
   const { x, y, d } = pawnPlacement(pos, slot, count);
   const style = {
-    '--x': `${x}%`,
-    '--y': `${y}%`,
+    '--x': x / 100,
+    '--y': y / 100,
     '--pd': d,
     '--c': color,
-    zIndex: isTurn ? 20 : 10 + slot,
+    zIndex: isTurn ? 30 : 10 + slot,
   };
-  const cls = ['hb-pawn'];
+  const kind = motion === 'ride' || motion === 'teleport' ? motion : 'walk';
+  const cls = ['hb-pawn', `is-${kind}`];
   if (isTurn) cls.push('is-turn');
-  if (jailed) cls.push('is-jailed');
+  if (stuck) cls.push('is-stuck');
+  if (bankrupt) cls.push('is-out');
+  const moving = steps ? ' is-step' : '';
 
   return (
-    <div className={cls.join(' ')} style={style} role="img" aria-label={`${name}${tileName ? ` on ${tileName}` : ''}${isTurn ? ', current turn' : ''}`}>
+    <div
+      className={cls.join(' ')}
+      style={style}
+      role="img"
+      data-fx-pawn={id || undefined}
+      aria-label={`${name}${tileName ? ` on ${tileName}` : ''}${stuck ? ', stuck in traffic' : ''}${isTurn ? ', current turn' : ''}${bankrupt ? ', bankrupt' : ''}`}
+    >
       <span className="hb-pawn__body">
         {/* The shadow stays on the board while the pawn is lifted, then tightens as it is set down. */}
-        <span className={`hb-pawn__shadow${steps ? ' is-step' : ''}`} key={`s${steps}`} />
-        <span className={`hb-pawn__hop${steps ? ' is-step' : ''}`} key={steps}>
-          <span className="hb-pawn__disc">
-            <span className="hb-pawn__dot" />
-          </span>
+        <span className={`hb-pawn__shadow${moving}`} key={`s${steps}`} />
+        {kind === 'ride' && steps ? <span className="hb-pawn__trail" key={`t${steps}`} /> : null}
+        <span className={`hb-pawn__hop${moving}`} key={steps}>
+          <PieceToken piece={piece} color={color} size={48} className="hb-pawn__piece" />
           {isTurn && <span className="hb-pawn__marker" />}
         </span>
+        {stuck && (
+          <span className="hb-pawn__stuck" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <path className="hb-cone" d="M9.6 3h4.8l4.3 15H5.3z" />
+              <path className="hb-cone__band" d="M8.4 8.6h7.2l.9 3.2H7.5z" />
+              <rect className="hb-cone__foot" x="3" y="18" width="18" height="3" rx="1.2" />
+            </svg>
+            <i className="hb-pawn__brake" />
+          </span>
+        )}
       </span>
     </div>
   );

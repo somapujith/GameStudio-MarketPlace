@@ -1,4 +1,4 @@
-// Public surface of the Hyderabad Tycoon engine (browser + Cloudflare Worker).
+// Public surface of the Hyderabad Tycoon engine (Hyderabad Hustle rules; browser + Cloudflare Worker).
 export * from './board.js';
 export * from './format.js';
 export * from './rng.js';

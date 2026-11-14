@@ -16,6 +16,8 @@ export const paths = {
   friendLink: (friendCode) => `/f/${enc(friendCode)}`,
   leaderboard: (gameId) => (gameId ? `/leaderboard?game=${enc(gameId)}` : '/leaderboard'),
   profile: () => '/profile',
+  /** Cosmetics shop (spend coins). */
+  shop: () => '/shop',
   login: (next) => (next ? `/login?next=${enc(next)}` : '/login'),
 };
 

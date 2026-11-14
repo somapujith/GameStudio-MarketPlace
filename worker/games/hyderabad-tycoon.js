@@ -1,54 +1,120 @@
-// Server adapter for Hyderabad Tycoon (docs/MARKETPLACE.md section 5). Everything the generic
-// GameRoom / persistence code needs to know about this game lives here: it wraps the rules engine
-// (shared/index.js) and the Tycoon-only helpers worker/{mask,settings,validate}.js.
+// Server adapter for Hyderabad Tycoon (Hyderabad Hustle rules; docs/MARKETPLACE.md section 5, docs/GAME_RULES.md).
+// Everything the generic GameRoom / persistence code needs to know about this game lives here: it wraps the rules
+// engine (shared/index.js) and the Tycoon-only helpers worker/{mask,settings,validate}.js.
 import * as engine from '../../shared/index.js';
-import { MAX_LEVEL, BOARD_SIZE } from '../../shared/board.js';
-import { formatINR } from '../../shared/format.js';
+import { MAX_LEVEL, BOARD_SIZE, PIECES } from '../../shared/board.js';
+import { ANIM_MS, LONG_TRIP, MAX_ANIM_MS } from '../../shared/timing.js';
 import { maskStateFor } from '../mask.js';
 import { sanitizeSettings, normalizeSettings, ROOM_DEFAULTS, MAX_PLAYERS_MIN, MAX_PLAYERS_MAX } from '../settings.js';
 import { sanitizeAction, EMOTES } from '../validate.js';
 
 export const ID = 'hyderabad-tycoon';
 export const TRADE_MS = 30_000; // an unanswered trade offer is auto-rejected after this
-const SNATCH_FALLBACK_MS = 3000; // used only if a state somehow lacks `pending.ms`
-export const SNATCH_GRACE_MS = 400; // the server closes the window this long after the UI countdown ends (network latency)
 const TRADE_VOID_MS = 900; // an offer to a player who is out of the game is cancelled right away
-const MAX_ANIM_MS = 6000;
 const AUTO_MOVE_MS = 900; // pause before an idle / disconnected player's move is played for them
 const BID_MOVE_MS = 400; // sealed bids are quick
 const START_ANIM_MS = 1500; // the client plays a short "game start" intro
 
 // ------------------------------------------------------------------ pure helpers (also used by tests)
 
-/** Rough client-side animation time of an action's events (the next move waits for it). */
-export function estimateAnimMs(events) {
+/** Did this `turn` event start a new round? Needs the state (the first active seat opens every round). */
+function roundChange(ev, state) {
+  if (!state || !Array.isArray(state.players)) return true; // unknown: assume the longer pause
+  const first = state.players.find((p) => !p.bankrupt);
+  return !!first && first.id === ev.player;
+}
+
+/**
+ * Client animation time of an action's events at playback speed 1 (the next automated move and the decision timer
+ * wait for it). Mirrors the presenter (src/lib/session/usePresenter.js), both read shared/timing.js ANIM_MS.
+ * `state` (the state after the action) is optional: with it, round changes and the final round are told apart.
+ */
+export function estimateAnimMs(events, state = null) {
+  const A = ANIM_MS;
   let ms = 0;
   for (const ev of events || []) {
     switch (ev.type) {
       case 'dice':
-        ms += 900;
+        ms += A.dice + A.afterDice;
         break;
-      case 'move':
-        ms += 170 * (ev.path ? ev.path.length : 0);
+      case 'move': {
+        const len = Array.isArray(ev.path) ? ev.path.length : 0;
+        if (ev.teleport || len === 0) ms += A.teleportPre + A.teleport;
+        else ms += A.step * Math.max(0.3, Math.min(1, LONG_TRIP / len)) * len;
+        break;
+      }
+      case 'land':
+        ms += A.land;
+        break;
+      case 'cash':
+        if (ev.reason === 'rent') ms += ev.delta < 0 ? A.rentOut : A.rentIn;
+        else if (['salary', 'tax', 'event', 'fare', 'traffic', 'liquidate'].includes(ev.reason)) ms += A.cash;
+        else ms += A.quiet;
+        break;
+      case 'own':
+        ms += ev.reason === 'buy' || ev.reason === 'auction' ? A.own : A.quiet;
+        break;
+      case 'level':
+        if (ev.reason === 'upgrade') ms += ev.level >= MAX_LEVEL ? A.level * 1.5 : A.level;
+        else if (ev.reason === 'sell') ms += A.cash;
+        else ms += A.quiet;
+        break;
+      case 'set_complete':
+        ms += A.setComplete;
+        break;
+      case 'mortgage':
+      case 'unmortgage':
+        ms += A.mortgage;
+        break;
+      case 'trade_offer':
+      case 'trade_done':
+      case 'trade_rejected':
+        ms += A.trade;
+        break;
+      case 'debt':
+        ms += A.debt;
         break;
       case 'card':
-        ms += 1500;
+        ms += A.card;
+        break;
+      case 'auction_start':
+        ms += A.auctionStart;
         break;
       case 'auction_end':
+        ms += A.auctionEnd;
+        break;
       case 'city_event':
-        ms += 1500;
+        ms += A.cityEvent;
         break;
-      case 'trap_sprung':
-        ms += 900;
+      case 'ride':
+        ms += A.ride;
         break;
+      case 'chai':
+        ms += A.chai;
+        break;
+      case 'traffic':
+        ms += ev.stuck ? A.jail : ev.reason === 'waited' ? A.jailStay : A.quiet;
+        break;
+      case 'bankrupt':
+        ms += A.bankrupt;
+        break;
+      case 'turn': {
+        if (!roundChange(ev, state)) ms += A.turn;
+        else {
+          const max = Number(state?.cfg?.maxRounds);
+          const final = Number.isFinite(max) && max > 0 && ev.round === max;
+          ms += final ? A.finalRound : Math.max(A.round, A.turn);
+        }
+        break;
+      }
       case 'win':
-        ms += 2500;
+        ms += A.win;
         break;
       default:
         break;
     }
   }
-  return Math.min(ms, MAX_ANIM_MS);
+  return Math.min(Math.round(ms), MAX_ANIM_MS);
 }
 
 /**
@@ -56,15 +122,10 @@ export function estimateAnimMs(events) {
  * - pending trade: the player who must answer it (`trade.to`);
  * - debt phase: the debtor (even when it is not their turn);
  * - auction: everyone who has not bid yet;
- * - snatch window: the eligible players who have not pressed yet (nobody is auto-played in it);
  * - otherwise the turn player.
  */
 export function pendingActors(state) {
   if (!state || state.phase === 'over') return [];
-  if (state.phase === 'snatch' && state.pending && state.pending.type === 'snatch') {
-    const claims = state.pending.claims || [];
-    return state.players.filter((p) => !p.bankrupt && state.pending.eligible.includes(p.id) && !claims.includes(p.id)).map((p) => p.id);
-  }
   if (state.trade) {
     const to = state.players.find((p) => p.id === state.trade.to);
     return to && !to.bankrupt ? [to.id] : [];
@@ -80,23 +141,36 @@ export function pendingActors(state) {
   return tp && !tp.bankrupt ? [tp.id] : [];
 }
 
-/** The move an automated player (an idle or disconnected player, played on their behalf) should make right now. */
+/**
+ * The move an automated player (an idle or disconnected human, played on their behalf) should make right now.
+ * The engine's chooser never rides a shortcut and never offers a trade for a human seat, and pays a traffic fine
+ * only with comfortable cash (otherwise it waits the jam out).
+ */
 export function autoMove(state, playerId, rnd = Math.random) {
   let action = engine.chooseBotAction(state, playerId, rnd);
-  // Safety net for a phase the brain declines to act in: a debtor tries to pay (the engine
-  // rejects it if they cannot, and repeated rejections end in RESIGN).
+  if (action && (action.type === 'RIDE' || action.type === 'TRADE_OFFER')) {
+    action = { type: state.extraRoll ? 'ROLL' : 'END_TURN', playerId }; // belt and braces: never for a human seat
+  }
+  // Safety net for a phase the brain declines to act in: a debtor tries to pay (the engine rejects it if they
+  // cannot, and repeated rejections end in RESIGN).
   if (!action && state.phase === 'debt' && state.debt && state.debt.player === playerId) {
     action = { type: 'PAY_DEBT', playerId };
   }
   return action;
 }
 
-/** True when a stored game state was made on the current board (a 28-tile state has a shorter `owners`). */
-export const isCurrentBoard = (state) => Array.isArray(state?.owners) && state.owners.length === BOARD_SIZE;
+/** True when a stored game state was made with the current (Hustle, 36-tile) rules. */
+export const isCurrentBoard = (state) =>
+  Array.isArray(state?.owners) && state.owners.length === BOARD_SIZE && typeof state?.cfg?.mode === 'string';
 
-const hotelsBuilt = (p, meta) => {
-  const n = Number(meta?.hotels?.[p.id] ?? p.stats?.hotelsBuilt ?? p.stats?.hotels ?? 0);
+const topLevels = (p, meta) => {
+  const n = Number(meta?.hotels?.[p.id] ?? 0);
   return Number.isFinite(n) && n > 0 ? Math.min(Math.round(n), 100) : 0;
+};
+
+const MODE_SUMMARY = (s) => {
+  const m = engine.MODES[s.mode] || engine.MODES.standard;
+  return m.rounds ? `${m.label} · ${m.rounds} rounds · richest wins` : `${m.label} · last one standing wins`;
 };
 
 // ------------------------------------------------------------------ the adapter
@@ -110,6 +184,8 @@ const adapter = {
   defaultSettings: ROOM_DEFAULTS,
   /** Soundboard keys accepted in `{t:'chat', emote}`. */
   emotes: EMOTES,
+  /** Pieces a lobby player may pick (`{t:'piece', piece}`); passed to createGame as `players[i].piece`. */
+  pieces: PIECES.map((p) => p.id),
   /** Client animation time after the game starts (the first move waits for it). */
   startAnimMs: START_ANIM_MS,
 
@@ -122,16 +198,12 @@ const adapter = {
 
   /** Settings as the lobby shows them: exactly what createGame runs with (state.cfg). */
   lobbySettings(settings) {
-    const chosen = normalizeSettings(settings);
-    return typeof engine.normalizeSettings === 'function'
-      ? engine.normalizeSettings(chosen)
-      : { ...engine.DEFAULT_SETTINGS, ...chosen };
+    return engine.normalizeSettings(normalizeSettings(settings));
   },
 
-  /** One line for open-table cards, e.g. "Target ₹70,000 · 50 rounds". */
+  /** One line for open-table cards, e.g. "Standard City Hustle · 20 rounds · richest wins". */
   summarize(settings) {
-    const s = normalizeSettings(settings);
-    return `Target ${formatINR(s.goal)} · ${s.maxRounds === null ? 'unlimited rounds' : `${s.maxRounds} rounds`}`;
+    return MODE_SUMMARY(normalizeSettings(settings));
   },
 
   createGame({ players, settings, seed }) {
@@ -140,8 +212,9 @@ const adapter = {
         id: p.id,
         name: p.name,
         avatar: p.avatar,
+        ...(typeof p.piece === 'string' ? { piece: p.piece } : {}),
       })),
-      settings: normalizeSettings(settings), // goal, startCash, maxRounds (null = unlimited), dice, auctionOnDecline
+      settings: normalizeSettings(settings), // mode, dice, auctionOnDecline
       seed,
     });
   },
@@ -153,7 +226,6 @@ const adapter = {
 
   /** The player the idle timer waits for (the debtor during the debt phase). */
   turnPlayerId(state) {
-    if (state && state.phase === 'snatch' && state.pending && state.pending.type === 'snatch') return state.pending.buyer ?? null;
     return pendingActors(state)[0] ?? null;
   },
 
@@ -172,17 +244,6 @@ const adapter = {
 
   /** Timers besides the turn timer: an unanswered trade offer is auto-rejected after 30 s. */
   deadlines(state) {
-    // The Snatch window: the room itself closes it (SNATCH_CLOSE has no player and clients cannot send it).
-    // The key carries the tile and turn count, so two windows in a row are two timers.
-    if (state && state.phase === 'snatch' && state.pending && state.pending.type === 'snatch') {
-      const pend = state.pending;
-      return [{
-        key: `snatch:${state.turnCount ?? 0}:${pend.tile}`,
-        afterMs: (Number.isFinite(pend.ms) ? pend.ms : SNATCH_FALLBACK_MS) + SNATCH_GRACE_MS,
-        playerId: pend.buyer,
-        action: { type: 'SNATCH_CLOSE' },
-      }];
-    }
     const t = state && state.phase !== 'over' ? state.trade : null;
     if (!t) return [];
     const to = state.players.find((p) => p.id === t.to);
@@ -195,7 +256,6 @@ const adapter = {
 
   /** Auto-play for an AFK / disconnected player. Ignoring a trade offer means rejecting it. */
   idleAction(state, playerId) {
-    if (state && state.phase === 'snatch') return null; // auto-play never snatches and never acts during the window
     const t = state && state.trade;
     if (t) {
       if (t.to === playerId) return { type: 'TRADE_REJECT', playerId };
@@ -213,12 +273,13 @@ const adapter = {
 
   isOver: (state) => !!state && state.phase === 'over',
 
+  /** `animationMs(events, state?)`: pass the state after the action so round changes are timed exactly. */
   animationMs: estimateAnimMs,
 
   /** Pause before an automated move (bids are quicker). */
   moveDelayMs: (action) => (action && action.type === 'BID' ? BID_MOVE_MS : AUTO_MOVE_MS),
 
-  /** Rooms stored by the previous version kept hotels / the trade clock in their own fields. */
+  /** Rooms stored by the previous versions kept hotels / the trade clock in their own fields. */
   upgradeRecord(r) {
     if (r.hotels && !(r.meta && r.meta.hotels)) r.meta = { ...r.meta, hotels: r.hotels };
     if (r.tradeId != null && !(r.deadlines && Object.keys(r.deadlines).length)) {
@@ -227,8 +288,9 @@ const adapter = {
     delete r.hotels;
     delete r.tradeId;
     delete r.tradeAt;
-    // Room record v3 = the 40-square board. A game stored on the old 28-tile board cannot be resumed
-    // (its owners / levels / positions mean different tiles): drop it and call the room off, unrecorded.
+    // A game stored with the old rules (28 or 40 squares, jail, snatch) cannot be resumed on the Hustle board:
+    // drop it and call the room off, unrecorded. Snatch timers of such a room are dropped too.
+    if (r.deadlines) for (const k of Object.keys(r.deadlines)) if (k.startsWith('snatch:')) delete r.deadlines[k];
     if (r.state && !isCurrentBoard(r.state)) {
       r.state = null;
       if (r.status !== 'lobby') {
@@ -237,9 +299,11 @@ const adapter = {
         r.endedAt ||= Date.now();
       }
     }
+    // Lobby settings from the old rules (goal, maxRounds, snatches ...) are replaced by the Hustle defaults.
+    if (r.settings && typeof r.settings === 'object' && !('mode' in r.settings)) r.settings = normalizeSettings(r.settings);
   },
 
-  /** Fold the events of an applied action into the per-match `meta` (hotels built per player). */
+  /** Fold the events of an applied action into the per-match `meta` (districts raised to the top level, per player). */
   track(meta, events, state) {
     let hotels = null;
     for (const ev of events || []) {
@@ -254,13 +318,17 @@ const adapter = {
     return hotels ? { ...meta, hotels } : meta;
   },
 
-  /** Final standings. `score` is net worth; `legacy` feeds the old users.* columns / matches columns. */
+  /**
+   * Final standings by net worth (rank 1 = the winner). `score` is the final net worth; `stats.rentEarned` is the rent
+   * collected and `stats.hotelsBuilt` counts districts raised to the top level. `legacy` feeds the old users.* columns
+   * (best_worth = final net worth, rent_earned) and the matches max_rounds / dice_mode columns.
+   */
   result(state, meta) {
     const table = engine.standings(state);
     const byId = new Map(state.players.map((p) => [p.id, p]));
     const rawMax = state.cfg && state.cfg.maxRounds;
-    const maxRounds = Number.isFinite(rawMax) ? rawMax : null; // null = unlimited
-    const rounds = maxRounds ? Math.min(state.round, maxRounds) : state.round;
+    const maxRounds = Number.isFinite(rawMax) ? rawMax : null; // null = no limit (classic)
+    const rounds = Math.min(state.round, maxRounds ?? engine.ROUND_CAP);
     return {
       winnerId: state.winner || null,
       reason: state.winReason || null,
@@ -271,13 +339,14 @@ const adapter = {
           id: row.id,
           rank: row.rank,
           score: Math.round(row.worth),
-          stats: { rentEarned: Math.round(p.stats?.rentEarned || 0), hotelsBuilt: hotelsBuilt(p, meta) },
+          stats: { rentEarned: Math.round(p.stats?.rentEarned || 0), hotelsBuilt: topLevels(p, meta) },
         };
       }),
       legacy: {
-        goal: Number.isFinite(state.cfg?.goal) ? state.cfg.goal : null,
+        goal: null,
         maxRounds,
         diceMode: state.cfg?.dice === 'fair' ? 'fair' : 'lucky',
+        mode: state.cfg?.mode || 'standard',
       },
     };
   },

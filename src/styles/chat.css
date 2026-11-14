@@ -11,3 +11,17 @@
 .table-chat__history b { flex: none; max-width: 100px; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .table-chat__history span { overflow-wrap: anywhere; min-width: 0; }
 .table-chat :focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+/* quick reactions above the composer */
+.table-chat__reacts { display: flex; gap: 4px; padding: 2px 0 8px; overflow-x: auto; scrollbar-width: none; }
+.table-chat__reacts::-webkit-scrollbar { display: none; }
+.table-chat__react {
+  flex: 1 1 0; min-width: 0; min-height: 44px; display: grid; place-items: center; padding: 0; cursor: pointer;
+  font-size: 22px; line-height: 1; border-radius: 14px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.05);
+  transition: transform var(--dur-1) var(--ease-spring), background var(--dur-1) var(--ease-std);
+}
+.table-chat__react:hover:not(:disabled) { background: rgba(255, 255, 255, 0.11); transform: translateY(-2px); }
+.table-chat__react:active:not(:disabled) { transform: scale(0.9); }
+.table-chat__react:disabled { opacity: 0.4; cursor: default; }
+.table-chat__history li.is-emote span { font-weight: 700; }
+.table-chat__em { white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .table-chat__react { transition: none; } }

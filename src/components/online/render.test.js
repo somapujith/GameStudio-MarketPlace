@@ -28,6 +28,9 @@ const { default: GameIcon } = await import('./GameIcon.jsx');
 const { default: InviteToGameSheet } = await import('./InviteToGameSheet.jsx');
 const { InviteBanner, noticeContent } = await import('./InviteBanner.jsx');
 const { getGame } = await import('@/games/registry.js');
+const { default: PiecePicker } = await import('@/platform/game/PiecePicker.jsx');
+const { HowToPlay, YourRecord, OpenTables, howToPlaySteps, recordTiles } = await import('@/platform/game/DetailSections.jsx');
+const { pieceChoices } = await import('./lobbyModel.js');
 
 const base = {
   user: null,
@@ -200,13 +203,48 @@ const OTHER_GAME = {
   summarize: (s) => `${s.mode} · ${s.time}s`,
 };
 
+// A game whose lobby shows one field of a bigger schema (like the first game does), with table rules.
+const ONE_FIELD_GAME = {
+  id: 'one-field',
+  name: 'One Field Game',
+  players: { min: 2, max: 6 },
+  settings: [
+    {
+      key: 'goal',
+      label: 'End cash limit',
+      type: 'stepper',
+      format: 'inr',
+      min: 10000,
+      max: 1000000,
+      step: 5000,
+      options: [30000, 50000, 70000, 100000].map((value) => ({ value, label: `₹${value.toLocaleString('en-IN')}` })),
+      default: 70000,
+      help: 'First player to reach this net worth wins.',
+    },
+    { key: 'maxRounds', label: 'Rounds', type: 'segmented', options: [{ value: 30, label: '30' }, { value: 50, label: '50' }, { value: null, label: 'Unlimited' }], default: 50 },
+    { key: 'startCash', label: 'Start cash', type: 'segmented', format: 'inr', options: [{ value: 15000, label: '₹15,000' }], default: 15000 },
+    { key: 'dice', label: 'Dice', type: 'segmented', options: [{ value: 'lucky', label: 'Lucky' }, { value: 'fair', label: 'Fair' }], default: 'lucky' },
+    { key: 'auctionOnDecline', label: 'Auction skipped properties', type: 'toggle', default: true },
+  ],
+  lobbySettings: ['goal'],
+  tableRules: 'Single die - sealed bidding on a tie',
+  summarize: (s = {}) => `First to reach ₹${Number(s.goal ?? 70000).toLocaleString('en-IN')} wins`,
+};
+
 describe('SettingsPanel (schema renderer)', () => {
-  const tycoon = getGame('hyderabad-tycoon');
+  const tycoon = ONE_FIELD_GAME;
   const settings = { goal: 70000, startCash: 15000, maxRounds: 50, dice: 'lucky', auctionOnDecline: true };
   const props = { game: tycoon, settings, onSend() {}, errorId: 0 };
 
-  it('the first game shows only its end-cash limit: quick picks, a custom stepper, one summary line', () => {
-    expect(tycoon.lobbySettings).toEqual(['goal']);
+  it('the live game manifest gives the lobby what it needs (tolerant of missing fields)', () => {
+    const live = getGame('hyderabad-tycoon');
+    expect(live).toBeTruthy();
+    if (live.lobbySettings) for (const key of live.lobbySettings) expect(live.settings.some((f) => f.key === key), key).toBe(true);
+    expect(() => renderToString(h(SettingsPanel, { ...props, game: live, settings: {}, isHost: true }))).not.toThrow();
+    expect(() => renderToString(h(SettingsPanel, { ...props, game: live, settings: {}, isHost: false }))).not.toThrow();
+  });
+
+  it('a one-field lobby shows only that field: quick picks, a custom stepper, one summary line', () => {
     const html = renderToString(h(SettingsPanel, { ...props, isHost: true }));
     expect(html).toContain('End cash limit');
     expect(html).toContain('Custom'); // stepper with quick picks
@@ -216,9 +254,9 @@ describe('SettingsPanel (schema renderer)', () => {
     expect(html).not.toContain('role="switch"');
     expect(html).not.toContain('Max players'); // seats are chosen on the game page, not here
     expect(html).toContain('Table rules');
-    expect(html).toContain('Single die - 1 Snatch each - sealed bidding on a tie');
+    expect(html).toContain('Single die - sealed bidding on a tie');
     expect(html).not.toContain('>Game settings<'); // a single field is its own title
-    expect(html).not.toContain('Hyderabad Tycoon'); // the panel itself carries no game name
+    expect(html).not.toContain('One Field Game'); // the panel itself carries no game name
   });
   it('a game without lobbySettings shows every setting of its schema', () => {
     const all = { ...tycoon, lobbySettings: undefined };
@@ -231,7 +269,7 @@ describe('SettingsPanel (schema renderer)', () => {
     const html = renderToString(h(SettingsPanel, { ...props, isHost: false, settings: { ...settings, goal: 100000, maxRounds: null, dice: 'fair' } }));
     expect(html).toContain('First to reach ₹1,00,000 wins');
     expect(html).toContain('Set by the host');
-    expect(html).toContain('Single die - 1 Snatch each - sealed bidding on a tie');
+    expect(html).toContain('Single die - sealed bidding on a tie');
     expect(html).not.toContain('ho-chip');
     expect(html).not.toContain('Rounds');
     expect(html).not.toContain('role="radio"');
@@ -276,6 +314,35 @@ describe('small components', () => {
     const other = renderToString(h(Seat, { player: { ...p, id: 'b', name: 'Bela', connected: false }, canRemove: true, onRemove() {} }));
     expect(other).toContain('Remove Bela from the room');
     expect(other).toContain('Reconnecting');
+  });
+  it('Seat: piece badge, equipped title and away state', () => {
+    const p = { id: 'a', name: 'Anil', avatar: 1, connected: false, piece: 'auto', cosmetics: { title: 'title-chai', frame: 'frame-lake' } };
+    const html = renderToString(h(Seat, { player: p, piece: { id: 'auto', name: 'Auto-rickshaw' }, color: '#ff4d6d' }));
+    expect(html).toContain('Piece: Auto-rickshaw');
+    expect(html).toContain('Chai Connoisseur');
+    expect(html).toContain('Disconnected');
+    expect(html).toContain('is-away');
+    const bare = renderToString(h(Seat, { player: { id: 'b', name: 'Bela' } }));
+    expect(bare).not.toContain('Piece:');
+  });
+  it('PiecePicker: my pick is checked, a taken piece names its owner and is disabled', () => {
+    const pieces = [
+      { id: 'pearl', name: 'Pearl' },
+      { id: 'auto', name: 'Auto-rickshaw' },
+      { id: 'chai', name: 'Chai' },
+    ];
+    const players = [
+      { id: 'me', name: 'Me', piece: 'pearl' },
+      { id: 'b', name: 'Bela', avatar: 3, piece: 'auto' },
+    ];
+    const { choices } = pieceChoices(pieces, players, 'me');
+    const html = renderToString(h(PiecePicker, { choices, color: '#3ddc97', onPick() {} }));
+    expect(html).toContain('Your piece');
+    expect(html).toContain('role="radiogroup"');
+    expect((html.match(/aria-checked="true"/g) || []).length).toBe(1);
+    expect(html).toContain('Auto-rickshaw, taken by Bela');
+    expect((html.match(/disabled=""/g) || []).length).toBe(1);
+    expect(renderToString(h(PiecePicker, { choices: [], onPick() {} }))).toBe('');
   });
   it('EmptySeat waits for a player', () => {
     const html = renderToString(h(EmptySeat));
@@ -329,5 +396,50 @@ describe('small components', () => {
     expect(noticeContent({ kind: 'invite', from: null }).target).toBeNull();
     expect(noticeContent({ kind: 'friend_request', from: { name: 'Mira' } })).toMatchObject({ target: '/friends', actionLabel: 'View' });
     expect(noticeContent({ kind: 'friend_accepted', from: { name: 'Mira' } }).title).toContain('accepted');
+  });
+});
+
+describe('game detail sections', () => {
+  const GAME = {
+    id: 'other',
+    name: 'Other Game',
+    players: { min: 2, max: 4 },
+    howToPlay: [
+      { title: 'Roll', text: 'Throw the die.' },
+      { title: 'Trade', text: 'Swap with friends.' },
+      { nope: true },
+      { title: 'Build', text: 'Make it bigger.' },
+      { title: 'Win', text: 'Be the best.' },
+      { title: 'Extra', text: 'Ignored.' },
+    ],
+    stats: [{ key: 'bestScore', label: 'Best score' }, { key: 'rating', label: 'Rating' }],
+  };
+  it('how to play: up to four clean steps, nothing at all without them', () => {
+    expect(howToPlaySteps(GAME).map((s) => s.title)).toEqual(['Roll', 'Trade', 'Build', 'Win']);
+    const html = renderToString(h(HowToPlay, { game: GAME }));
+    expect(html).toContain('How to play');
+    expect(html).toContain('Swap with friends.');
+    expect(html).not.toContain('Extra');
+    expect(renderToString(h(HowToPlay, { game: { id: 'x' } }))).toBe('');
+  });
+  it('your record: the per-game stats, zeros and a hint when there are none, hidden when signed out', () => {
+    const user = { id: 'u', gameStats: { other: { games: 12, wins: 5, bestScore: 1234, rating: 1050 } } };
+    const { tiles, empty } = recordTiles(GAME, user);
+    expect(empty).toBe(false);
+    expect(tiles.map((t) => [t.label, t.value])).toEqual([
+      ['Games', '12'],
+      ['Wins', '5'],
+      ['Best score', '1,234'],
+      ['Rating', '1,050'],
+    ]);
+    const html = renderToString(h(StaticRouter, { location: '/games/other' }, h(YourRecord, { game: GAME, user: { id: 'u' } })));
+    expect(html).toContain('Your record');
+    expect(html).toContain('Play your first table');
+    expect(renderToString(h(YourRecord, { game: GAME, user: null }))).toBe('');
+  });
+  it('open tables start in a loading state (no request during SSR)', () => {
+    const html = renderToString(h(StaticRouter, { location: '/games/other' }, h(AuthContext.Provider, { value: { ...base, loading: true } }, h(OpenTables, { game: GAME }))));
+    expect(html).toContain('Open tables');
+    expect(html).toContain('aria-busy="true"');
   });
 });

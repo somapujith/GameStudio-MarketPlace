@@ -1,30 +1,21 @@
-// Tap a scoreboard row: that player's cash, net worth, stats and properties (grouped by colour set).
-// StatsSheet ("View stats") shows the same for every player at once, like the reference game's stats popup.
-import { Avatar } from '@/components/art/index.js';
-import { formatINR } from '@shared/format.js';
-import * as shared from '@shared/index.js';
+// Tap a scoreboard row: that player's piece, status (turn, stuck in traffic, chai token), net worth split into
+// cash / districts / upgrades, match stats (rent, taxes, rides, chai saved ...) and districts by collection.
+// StatsSheet ("View stats") shows every player at once, richest first.
+import '@/styles/sheets.css';
+import { formatINR, compactINR } from '@shared/format.js';
 import Sheet from './ui/Sheet.jsx';
 import Pill from './ui/Pill.jsx';
 import Icon from './ui/Icon.jsx';
+import PlayerToken, { artPart, cosmeticsOf } from './ui/PlayerToken.jsx';
 import TileChip from './ui/TileChip.jsx';
-import { SnatchTokens, TrapReady, liveSnatches } from './MoneyBar.jsx';
-import { activePlayer, setProgress, settingsSummary, useHeld, useWorths } from './ui/helpers.js';
+import { activePlayer, pieceName, setProgress, settingsSummary, useHeld, useStateLike, worthParts } from './ui/helpers.js';
 
-const LAPS_PER_TOKEN = Number(shared.LAPS_PER_TOKEN) > 0 ? Number(shared.LAPS_PER_TOKEN) : 3;
-
-/** "2/3 laps to a token": progress towards the next lap bonus (hidden when laps are unknown). */
-function LapProgress({ laps }) {
-  if (!Number.isFinite(laps)) return null;
-  const n = laps % LAPS_PER_TOKEN;
-  return <span className="hg-lapprog" style={{ fontSize: 12, opacity: 0.75, alignSelf: 'center' }} title="Passing START three times earns a Snatch token">{n}/{LAPS_PER_TOKEN} laps to a token</span>;
-}
-
-/** One card per colour set the player has a tile in: set name, n/total, tile chips with their building level. */
+/** One card per collection the player has a district in: name, n/total, chips with their business level. */
 function SetCards({ rows, state, onOpenTile }) {
   return (
     <ul className="hg-setlist">
       {rows.map((r) => (
-        <li key={r.set.id} className="hg-setcard" style={{ '--sc': r.set.color }}>
+        <li key={r.set.id} className={`hg-setcard${r.full ? ' is-full' : ''}`} style={{ '--sc': r.set.color }}>
           <div className="hg-setcard-head">
             <i className="hg-setdot" />
             <b>{r.set.name}</b>
@@ -32,7 +23,7 @@ function SetCards({ rows, state, onOpenTile }) {
           </div>
           <div className="hg-chips">
             {r.owned.map((t) => (
-              <TileChip key={t} tileId={t} level={state.levels[t] || 0} mortgaged={!!state.mortgaged?.[t]} onClick={onOpenTile} />
+              <TileChip key={t} tileId={t} level={state.levels?.[t] || 0} mortgaged={!!state.mortgaged?.[t]} onClick={onOpenTile} />
             ))}
           </div>
         </li>
@@ -41,55 +32,103 @@ function SetCards({ rows, state, onOpenTile }) {
   );
 }
 
-function PlayerTags({ session, p }) {
-  const tokens = liveSnatches(session, p);
+/** Status pills: bankrupt, turn, stuck in traffic, chai token. */
+export function PlayerTags({ session, p }) {
+  const over = session.view?.phase === 'over';
   return (
     <div className="hg-ps-tags">
       {p.bankrupt ? <Pill tone="bad">Bankrupt</Pill> : null}
-      {!p.bankrupt && p.jailTurns > 0 ? <Pill tone="warn" icon={<Icon name="lock" size={12} />}>In jail</Pill> : null}
-      {activePlayer(session)?.id === p.id && !p.bankrupt && session.view?.phase !== 'over' ? <Pill tone="blue">Turn</Pill> : null}
-      {p.bankrupt ? null : <SnatchTokens count={tokens} />}
-      {p.bankrupt ? null : <TrapReady count={p.traps} />}
-      {p.bankrupt || !Number.isFinite(tokens) ? null : <LapProgress laps={p.laps} />}
+      {!p.bankrupt && activePlayer(session)?.id === p.id && !over ? <Pill tone="blue">Turn</Pill> : null}
+      {!p.bankrupt && p.stuck ? <Pill tone="warn" icon={<span aria-hidden="true">🚦</span>}>Stuck in traffic</Pill> : null}
+      {!p.bankrupt && p.chai > 0 ? <Pill tone="gold" icon={<span aria-hidden="true">☕</span>}>Chai token{p.chai > 1 ? ` ×${p.chai}` : ''}</Pill> : null}
     </div>
+  );
+}
+
+/** Cash / districts / upgrades as numbers and one stacked bar. */
+export function WorthBreakdown({ parts, compact = false }) {
+  const pos = Math.max(1, parts.cash + parts.districts + parts.upgrades);
+  const seg = (v) => `${Math.max(0, (v / pos) * 100)}%`;
+  return (
+    <div className={`hg-worth${compact ? ' is-compact' : ''}`}>
+      <div className="hg-worth-total">
+        <span>Net worth</span>
+        <b>{formatINR(parts.total)}</b>
+      </div>
+      <div className="hg-worth-bar" aria-hidden="true">
+        <i className="is-cash" style={{ width: seg(parts.cash) }} />
+        <i className="is-land" style={{ width: seg(parts.districts) }} />
+        <i className="is-up" style={{ width: seg(parts.upgrades) }} />
+      </div>
+      <dl className="hg-worth-parts">
+        <div className="is-cash"><dt>Cash</dt><dd>{compact ? compactINR(parts.cash) : formatINR(parts.cash)}</dd></div>
+        <div className="is-land"><dt>Districts</dt><dd>{compact ? compactINR(parts.districts) : formatINR(parts.districts)}</dd></div>
+        <div className="is-up"><dt>Upgrades</dt><dd>{compact ? compactINR(parts.upgrades) : formatINR(parts.upgrades)}</dd></div>
+        {parts.debt > 0 ? <div className="is-debt"><dt>Debt</dt><dd>&minus;{compact ? compactINR(parts.debt) : formatINR(parts.debt)}</dd></div> : null}
+      </dl>
+    </div>
+  );
+}
+
+function StatGrid({ stats, laps }) {
+  if (!stats && !Number.isFinite(laps)) return null;
+  const s = stats || {};
+  const items = [
+    ['Rent earned', formatINR(s.rentEarned || 0)],
+    ['Rent paid', formatINR(s.rentPaid || 0)],
+    ['Biggest rent', formatINR(s.biggestRent || 0)],
+    ['Taxes & fees', formatINR(s.taxPaid || 0)],
+    ['Bought', String(s.propertiesBought || 0)],
+    ['Upgrades', String(s.upgrades || 0)],
+    ['Rides', String(s.rides || 0)],
+    ['Chai saved', formatINR(s.chaiSaved || 0)],
+  ];
+  if (Number.isFinite(laps)) items.push(['Laps', String(laps)]);
+  return (
+    <dl className="hg-stats hg-stats--grid">
+      {items.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}
+    </dl>
   );
 }
 
 export default function PlayerSheet({ session, playerId, onClose, onOpenTile }) {
   const id = useHeld(playerId);
-  const { worths, state } = useWorths(session);
+  const state = useStateLike(session);
   const p = id != null ? state.players.find((x) => x.id === id) : null;
-  const full = id != null ? session.view?.players?.find((x) => x.id === id) : null;
+  const live = id != null ? session.view?.players?.find((x) => x.id === id) : null;
   const rows = id != null ? setProgress(state.owners, id) : [];
-  const count = rows.reduce((n, r) => n + r.owned.length, 0);
-  const stats = full?.stats;
+  const parts = p ? worthParts(state, p.id) : null;
+  const shown = live ? { ...p, chai: live.chai ?? p?.chai, stuck: live.stuck ?? p?.stuck } : p;
+  const cos = p ? cosmeticsOf(session, p) : null;
+  const TitleChip = cos?.title ? artPart('TitleChip') : null;
 
   return (
     <Sheet open={playerId != null} onClose={onClose} ariaLabel={p ? `${p.name} details` : 'Player details'} className="hg-playersheet"
       header={p ? (
         <div className="hg-ps-head" data-drag="" style={{ '--pc': p.color }}>
-          <span className="hg-pc-ring"><Avatar preset={p.avatar} size={56} /></span>
+          <PlayerToken player={p} size={56} frame={cos?.frame} />
           <div className="hg-ps-who">
             <h2>{p.name}{p.id === session.me ? <small> (you)</small> : null}</h2>
-            <PlayerTags session={session} p={p} />
+            {p.piece || TitleChip ? (
+              <p className="hg-ps-piece">
+                {p.piece ? pieceName(p.piece) : null}
+                {TitleChip ? <TitleChip title={cos.title} size="sm" /> : null}
+              </p>
+            ) : null}
+            <PlayerTags session={session} p={shown} />
           </div>
         </div>
       ) : null}
     >
       {p ? (
         <>
-          <dl className="hg-stats">
-            <div><dt>Cash</dt><dd>{formatINR(p.cash)}</dd></div>
-            <div><dt>Net worth</dt><dd className="is-good">{formatINR(worths[p.id] ?? p.cash)}</dd></div>
-            <div><dt>Properties</dt><dd>{count}</dd></div>
-            {stats ? <div><dt>Rent earned</dt><dd>{formatINR(stats.rentEarned)}</dd></div> : null}
-            {stats ? <div><dt>Rent paid</dt><dd>{formatINR(stats.rentPaid)}</dd></div> : null}
-            {stats ? <div><dt>Biggest rent</dt><dd>{formatINR(stats.biggestRent)}</dd></div> : null}
-          </dl>
+          <WorthBreakdown parts={parts} />
+          <h3 className="hg-h3">This match</h3>
+          <StatGrid stats={live?.stats || p.stats} laps={live?.laps ?? p.laps} />
 
-          <h3 className="hg-h3">Properties</h3>
+          <h3 className="hg-h3">Districts</h3>
           {rows.length === 0 ? (
-            <p className="hg-empty">{p.bankrupt ? 'All assets went back to the bank.' : 'No properties yet.'}</p>
+            <p className="hg-empty">{p.bankrupt ? 'All districts went back to the bank.' : 'No districts yet.'}</p>
           ) : (
             <SetCards rows={rows} state={state} onOpenTile={onOpenTile} />
           )}
@@ -99,45 +138,40 @@ export default function PlayerSheet({ session, playerId, onClose, onOpenTile }) 
   );
 }
 
-/** Every player at a glance: cash, net worth and properties grouped by colour set (richest first). */
+/** Every player at a glance: net worth split and districts by collection (richest first). */
 export function StatsSheet({ session, open, onClose, onOpenTile }) {
-  const { worths, leaderId, state } = useWorths(session);
+  const state = useStateLike(session);
   const summary = settingsSummary(session.display?.cfg || session.view?.cfg, session.display?.goal);
   const list = state.players
-    .map((p) => ({ p, worth: worths[p.id] ?? p.cash, rows: setProgress(state.owners, p.id) }))
-    .sort((a, b) => (Number(!!a.p.bankrupt) - Number(!!b.p.bankrupt)) || (b.worth - a.worth));
+    .map((p) => ({ p, parts: worthParts(state, p.id), rows: setProgress(state.owners, p.id) }))
+    .sort((a, b) => (Number(!!a.p.bankrupt) - Number(!!b.p.bankrupt)) || (b.parts.total - a.parts.total));
+  const alive = list.filter((x) => !x.p.bankrupt);
+  const leaderId = alive.length > 1 && alive[0].parts.total > alive[1].parts.total ? alive[0].p.id : null;
 
   return (
     <Sheet open={open} onClose={onClose} title="Player stats" className="hg-statssheet" desktop="modal">
       <p className="hg-summary hg-st-sum">{summary}</p>
       <ol className="hg-st-list">
-        {list.map(({ p, worth, rows }) => {
-          const count = rows.reduce((n, r) => n + r.owned.length, 0);
-          return (
-            <li key={p.id} className={`hg-st-player${p.bankrupt ? ' is-out' : ''}`} style={{ '--pc': p.color }}>
-              <div className="hg-st-head">
-                <span className="hg-pc-ring"><Avatar preset={p.avatar} size={40} /></span>
-                <div className="hg-st-who">
-                  <h3>
-                    {leaderId === p.id ? <Icon name="crown" size={16} className="hg-mb-crown" /> : null}
-                    {p.name}{p.id === session.me ? <small> (you)</small> : null}
-                  </h3>
-                  <PlayerTags session={session} p={p} />
-                </div>
+        {list.map(({ p, parts, rows }) => (
+          <li key={p.id} className={`hg-st-player${p.bankrupt ? ' is-out' : ''}`} style={{ '--pc': p.color }}>
+            <div className="hg-st-head">
+              <PlayerToken player={p} size={40} frame={cosmeticsOf(session, p)?.frame} />
+              <div className="hg-st-who">
+                <h3>
+                  {leaderId === p.id ? <Icon name="crown" size={16} className="hg-mb-crown" /> : null}
+                  {p.name}{p.id === session.me ? <small> (you)</small> : null}
+                </h3>
+                <PlayerTags session={session} p={p} />
               </div>
-              <dl className="hg-stats">
-                <div><dt>Cash</dt><dd>{formatINR(p.cash)}</dd></div>
-                <div><dt>Net worth</dt><dd className="is-good">{formatINR(worth)}</dd></div>
-                <div><dt>Properties</dt><dd>{count}</dd></div>
-              </dl>
-              {rows.length === 0 ? (
-                <p className="hg-empty">{p.bankrupt ? 'All assets went back to the bank.' : 'No properties yet.'}</p>
-              ) : (
-                <SetCards rows={rows} state={state} onOpenTile={onOpenTile} />
-              )}
-            </li>
-          );
-        })}
+            </div>
+            <WorthBreakdown parts={parts} compact />
+            {rows.length === 0 ? (
+              <p className="hg-empty">{p.bankrupt ? 'All districts went back to the bank.' : 'No districts yet.'}</p>
+            ) : (
+              <SetCards rows={rows} state={state} onOpenTile={onOpenTile} />
+            )}
+          </li>
+        ))}
       </ol>
     </Sheet>
   );

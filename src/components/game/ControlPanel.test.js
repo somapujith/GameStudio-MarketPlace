@@ -1,404 +1,359 @@
+// Control panel + action row under the Hustle rules (docs/HUSTLE_PLAN.md 3.7). The engine is not under test:
+// views and options are built by hand, so these tests hold for the old and the new board alike.
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { createGame, getOptions } from '@shared/index.js';
-import ControlPanel, { TradePane, landedInfo } from './ControlPanel.jsx';
-import { buildActionSpec, shortcutAction } from './ActionBar.jsx';
-import ActionBar from './ActionBar.jsx';
-import MyProperties from './MyProperties.jsx';
+import { TILES } from '@shared/board.js';
+import ControlPanel, { TABS, TradePane, landedInfo, panelBadges } from './ControlPanel.jsx';
+import ActionBar, { buildActionSpec, rideLabel, rideVehicle, shortcutAction } from './ActionBar.jsx';
+import MoneyBar, { ChaiToken } from './MoneyBar.jsx';
 import { LogList } from './LogPanel.jsx';
-import { recordSnatch, snatchInfo, useSnatchClock } from './snatch.js';
 
 /** renderToString separates adjacent text nodes with comment markers; drop them so text assertions read naturally. */
 const html = (node) => renderToString(node).replaceAll('<!-- -->', '');
 
-const mkState = () => createGame({ players: [{ id: 'me', name: 'Nithin' }, { id: 'rav', name: 'Ravi' }], seed: 7 });
+const N = TILES.length;
+const PROP = TILES.find((t) => t.type === 'property');
+const STOPS = TILES.filter((t) => t.type === 'transport');
 
-/** A session shaped like useOnlineGame's: display mirrors view, options come from the engine. */
-function mkSession(state, extra = {}) {
-  const me = extra.me || 'me';
+const P = (id, name, extra = {}) => ({
+  id, name, avatar: 0, color: id === 'me' ? '#ff4d6d' : '#3ddc97', cash: 1500000, pos: 0, stuck: false, chai: 0, bankrupt: false, ...extra,
+});
+
+function mkView(extra = {}) {
+  return {
+    phase: 'roll', turn: 0, round: 3, turnCount: 5, extraRoll: false,
+    players: [P('me', 'Nithin'), P('rav', 'Ravi')],
+    owners: Array(N).fill(null), levels: Array(N).fill(0), mortgaged: Array(N).fill(false),
+    cfg: { mode: 'standard', maxRounds: 20, startCash: 1500000, passStart: 200000, dice: 'lucky', auctionOnDecline: true, trafficFine: 25000, chaiCap: 1 },
+    pending: null, trade: null, debt: null, event: null, dice: [], ride: null,
+    ...extra,
+  };
+}
+
+/** A session shaped like useOnlineGame's: display mirrors view, options by hand. */
+function mkSession(view, extra = {}) {
   const display = {
-    players: state.players, owners: state.owners, levels: state.levels, mortgaged: state.mortgaged,
-    turn: state.turn, round: state.round, dice: state.dice, phase: state.phase, cfg: state.cfg,
+    players: view.players, owners: view.owners, levels: view.levels, mortgaged: view.mortgaged,
+    turn: view.turn, round: view.round, dice: view.dice, phase: view.phase, cfg: view.cfg,
   };
   return {
-    mode: 'online', me, view: state, display, busy: false, rolling: false, result: null,
-    options: getOptions(state, me), log: [], dispatch: () => {}, ...extra,
+    mode: 'online', me: 'me', view, display, busy: false, rolling: false, result: null,
+    options: {}, log: [], dispatch: () => {}, clock: null, roomPlayers: [], ...extra,
   };
 }
 
-/** Ravi has just bought tile 1 (Dilsukhnagar, 600); `eligible` may snatch it. Options are set by hand: the engine is not under test. */
-function mkSnatch({ me = 'me', eligible = ['me'], claims = [], busy = false, snatched, ms = 3000 } = {}) {
-  const s = mkState();
-  s.owners[1] = 'rav';
-  s.turn = 1;
-  s.phase = 'snatch';
-  s.turnCount = 4;
-  s.pending = { type: 'snatch', tile: 1, buyer: 'rav', price: 600, eligible, claims, ms, returnPhase: 'manage' };
-  const canPress = eligible.includes(me) && !claims.includes(me);
-  return mkSession(s, { me, busy, options: { snatch: canPress ? { tile: 1, ms } : null, snatched } });
-}
+const keys = (spec) => spec.secondaries.map((x) => x.key);
 
-describe('buildActionSpec', () => {
-  it('offers Roll on my turn, with End turn nowhere yet', () => {
-    const spec = buildActionSpec(mkSession(mkState()));
+describe('buildActionSpec: rolling and ending', () => {
+  it('offers Roll (Space) on my turn, nothing else yet', () => {
+    const spec = buildActionSpec(mkSession(mkView(), { options: { roll: true } }));
     expect(spec.kind).toBe('roll');
+    expect(spec.primary.action).toEqual({ type: 'ROLL' });
+    expect(spec.primary.kbd).toBe('Space');
+    expect(spec.secondaries).toEqual([]);
+  });
+
+  it('describes a six as rolling again', () => {
+    const spec = buildActionSpec(mkSession(mkView({ phase: 'manage', extraRoll: true }), { options: { roll: true } }));
+    expect(spec.primary.label).toBe('Roll again');
+    expect(spec.sr).toBe('Six! Roll again');
+  });
+
+  it('offers End turn as the primary in manage', () => {
+    const spec = buildActionSpec(mkSession(mkView({ phase: 'manage' }), { options: { endTurn: true, upgrade: [1, 3] } }));
+    expect(spec.kind).toBe('end');
+    expect(spec.primary.action).toEqual({ type: 'END_TURN' });
+    expect(spec.upgrades).toBe(2);
+  });
+
+  it('shows a waiting status while another player is on turn', () => {
+    const spec = buildActionSpec(mkSession(mkView(), { me: 'rav' }));
+    expect(spec.primary).toBeNull();
+    expect(spec.label).toBe('Waiting for Nithin');
+    expect(spec.waitFor.id).toBe('me');
+  });
+
+  it('is a quiet busy slot while the presenter animates', () => {
+    expect(buildActionSpec(mkSession(mkView(), { busy: true, options: { roll: true } })).kind).toBe('busy');
+  });
+});
+
+describe('buildActionSpec: buying', () => {
+  const buyView = () => mkView({ phase: 'buy', pending: { type: 'buy', tile: PROP.id, price: PROP.price } });
+
+  it('offers Buy with the name and price, and "Put up for auction" on its own row', () => {
+    const spec = buildActionSpec(mkSession(buyView(), { options: { buy: true, skipBuy: true } }));
+    expect(spec.kind).toBe('buy');
+    expect(spec.primary.label).toBe(`Buy ${PROP.short ?? PROP.name}`);
+    expect(spec.primary.action).toEqual({ type: 'BUY' });
+    const skip = spec.secondaries.find((x) => x.key === 'skip');
+    expect(skip.label).toBe('Put up for auction');
+    expect(skip.wide).toBe(true);
+    expect(skip.action).toEqual({ type: 'SKIP_BUY' });
+  });
+
+  it('says "Skip" when declining does not start an auction', () => {
+    const v = buyView();
+    v.cfg.auctionOnDecline = false;
+    const spec = buildActionSpec(mkSession(v, { options: { buy: true, skipBuy: true } }));
+    expect(spec.secondaries.find((x) => x.key === 'skip').label).toBe('Skip');
+  });
+
+  it('makes the auction the primary when the buyer cannot afford the district', () => {
+    const v = buyView();
+    v.players[0].cash = 10;
+    const spec = buildActionSpec(mkSession(v, { options: { skipBuy: true } }));
+    expect(spec.kind).toBe('skip');
+    expect(spec.primary.label).toBe('Put up for auction');
+    expect(spec.primary.sub).toMatch(/^Need ₹/);
+  });
+
+  it('never fires Buy or the auction from Space / Enter', () => {
+    const spec = buildActionSpec(mkSession(buyView(), { options: { buy: true, skipBuy: true } }));
+    expect(shortcutAction(spec, { key: ' ' })).toBeNull();
+    expect(shortcutAction(spec, { key: 'Enter' })).toBeNull();
+  });
+});
+
+describe('buildActionSpec: traffic jam', () => {
+  const stuck = (opts) => mkSession(mkView({ players: [P('me', 'Nithin', { stuck: true, chai: opts.useChai ? 1 : 0 }), P('rav', 'Ravi')] }), { options: { roll: true, ...opts } });
+
+  it('offers Use chai first when I hold one, then Pay and Wait it out', () => {
+    const spec = buildActionSpec(stuck({ payTraffic: 25000, useChai: true }));
+    expect(spec.kind).toBe('traffic');
+    expect(spec.primary.action).toEqual({ type: 'USE_CHAI' });
+    expect(keys(spec)).toEqual(['pay', 'wait']);
+    expect(spec.secondaries[0].label).toBe('Pay ₹25,000');
+    expect(spec.secondaries[0].action).toEqual({ type: 'PAY_TRAFFIC' });
+    expect(spec.secondaries[1].action).toEqual({ type: 'ROLL' });
+    expect(spec.secondaries[1].label).toBe('Wait it out');
+    expect(spec.hint.text).toMatch(/Traffic Jam/);
+  });
+
+  it('offers Pay as the primary without chai', () => {
+    const spec = buildActionSpec(stuck({ payTraffic: 25000, useChai: false }));
+    expect(spec.primary.label).toBe('Pay ₹25,000');
+    expect(keys(spec)).toEqual(['wait']);
+  });
+
+  it('only offers Wait it out when the fine is unaffordable and there is no chai', () => {
+    const spec = buildActionSpec(stuck({ payTraffic: false, useChai: false }));
+    expect(spec.primary.label).toBe('Wait it out');
     expect(spec.primary.action).toEqual({ type: 'ROLL' });
     expect(spec.secondaries).toEqual([]);
   });
 
-  it('shows a waiting status while another player is on turn', () => {
-    const spec = buildActionSpec(mkSession(mkState(), { me: 'rav' }));
-    expect(spec.primary).toBeNull();
-    expect(spec.label).toBe('Waiting for Nithin');
-  });
-
-  it('offers Buy with the tile name and price, and Skip beside it', () => {
-    const s = mkState();
-    s.phase = 'buy';
-    s.players[0].pos = 1;
-    s.pending = { type: 'buy', tile: 1, price: 600 };
-    const spec = buildActionSpec(mkSession(s));
-    expect(spec.kind).toBe('buy');
-    expect(spec.primary.label).toBe('Buy Dilsukhnagar');
-    expect(spec.primary.amount).toBe('₹600');
-    expect(spec.secondaries.map((x) => x.key)).toContain('skip');
-  });
-
-  it('describes a six as rolling again, never as doubles', () => {
-    const s = mkState();
-    s.phase = 'manage';
-    s.extraRoll = true;
-    const spec = buildActionSpec(mkSession(s));
-    expect(spec.primary.label).toBe('Roll again');
-    expect(spec.sr).toBe('Six! Roll again');
+  it('never fires a traffic choice from Space', () => {
+    expect(shortcutAction(buildActionSpec(stuck({ payTraffic: 25000 })), { key: ' ' })).toBeNull();
   });
 });
 
-/** A buy-phase session; `shield` mirrors options.shield (the engine is not under test). */
-function mkBuy({ shield = false } = {}) {
-  const s = mkState();
-  s.phase = 'buy';
-  s.players[0].pos = 1;
-  s.pending = { type: 'buy', tile: 1, price: 600 };
-  const session = mkSession(s);
-  session.options = { ...session.options, shield: shield || undefined };
-  return session;
-}
-
-/** Depth-first find of the element whose className includes `cls` in an unrendered tree (ActionBar has no hooks). */
-function findByClass(node, cls) {
-  if (!node || typeof node !== 'object') return null;
-  if (Array.isArray(node)) {
-    for (const n of node) {
-      const f = findByClass(n, cls);
-      if (f) return f;
-    }
-    return null;
-  }
-  if (typeof node.props?.className === 'string' && node.props.className.includes(cls)) return node;
-  return findByClass(node.props?.children, cls);
-}
-
-describe('Buy + Shield', () => {
-  it('is absent without options.shield', () => {
-    const session = mkBuy();
-    const spec = buildActionSpec(session);
-    expect(spec.secondaries.map((x) => x.key)).toEqual(['skip']);
-    const out = html(createElement(ActionBar, { spec, fire: () => () => {}, session }));
-    expect(out).not.toContain('Buy + Shield');
+describe('rides', () => {
+  it('names the vehicle from the stop', () => {
+    expect(rideVehicle({ name: 'Auto Stand' })).toBe('Auto');
+    expect(rideVehicle({ name: 'Metro Interchange' })).toBe('Metro');
+    expect(rideVehicle({ name: 'MMTS Express' })).toBe('MMTS');
+    expect(rideVehicle({ name: 'Somewhere' })).toBe('ride');
   });
 
-  it('appears beside Buy with options.shield, and Buy stays the primary', () => {
-    const session = mkBuy({ shield: true });
-    const spec = buildActionSpec(session);
-    expect(spec.primary.action).toEqual({ type: 'BUY' });
-    const shield = spec.secondaries.find((x) => x.key === 'shield');
-    expect(shield).toMatchObject({ label: 'Buy + Shield', sub: '1 token - nobody can snatch it', icon: 'shield', action: { type: 'BUY', shield: true } });
-    expect(shield.kbd).toBeUndefined();
-    const out = html(createElement(ActionBar, { spec, fire: () => () => {}, session }));
-    expect(out).toContain('Buy + Shield');
-    expect(out).toContain('1 token - nobody can snatch it');
-    expect(out).toContain('cp-wide is-shield');
-    expect(out).toContain('>Skip<');
-    expect(spec.sr).toContain('shield');
+  it('offers the ride as a full-width row beside End turn', () => {
+    const from = STOPS[0]?.id ?? 5;
+    const to = STOPS[1]?.id ?? 14;
+    const v = mkView({ phase: 'manage', players: [P('me', 'Nithin', { pos: from }), P('rav', 'Ravi')] });
+    const spec = buildActionSpec(mkSession(v, { options: { endTurn: true, ride: { to, fare: 25000 } } }));
+    expect(spec.primary.action).toEqual({ type: 'END_TURN' });
+    const ride = spec.secondaries.find((x) => x.key === 'ride');
+    expect(ride.wide).toBe(true);
+    expect(ride.action).toEqual({ type: 'RIDE' });
+    expect(ride.label).toBe(rideLabel({ to, fare: 25000 }, from));
+    expect(ride.label).toMatch(/^(Take the (Auto|Metro|MMTS)|Ride) to .+ for ₹25,000$/);
   });
 
-  it('dispatches { type: BUY, shield: true } when pressed', () => {
-    const session = mkBuy({ shield: true });
-    const spec = buildActionSpec(session);
-    const fired = [];
-    const tree = ActionBar({ spec, fire: (a) => () => fired.push(a), session });
-    findByClass(tree, 'is-shield').props.onClick();
-    expect(fired).toEqual([{ type: 'BUY', shield: true }]);
-    findByClass(tree, 'cp-primary').props.onClick();
-    expect(fired[1]).toEqual({ type: 'BUY' });
-  });
-
-  it('is not fired by Space or Enter', () => {
-    const spec = buildActionSpec(mkBuy({ shield: true }));
-    expect(shortcutAction(spec, { key: ' ', target: null })).toBeNull();
-    expect(shortcutAction(spec, { key: 'Enter', target: null })).toBeNull();
-  });
-
-  it('is not offered when the buyer cannot afford the tile (Skip becomes primary)', () => {
-    const session = mkBuy({ shield: true });
-    session.view.players[0].cash = 100;
-    session.options = { ...session.options, buy: false };
-    const spec = buildActionSpec(session);
-    expect(spec.secondaries.some((x) => x.key === 'shield')).toBe(false);
-  });
-});
-
-describe('trap hint', () => {
-  const withTrap = (trap) => {
-    const session = mkSession(mkState());
-    session.options = { ...session.options, trap };
-    return session;
-  };
-
-  it('shows under Roll while options.trap is true and is gone when it is false', () => {
-    const on = buildActionSpec(withTrap(true));
-    expect(on.hint).toMatchObject({ key: 'trap', text: 'Tap any tile to set your trap' });
-    const outOn = html(createElement(ActionBar, { spec: on, fire: () => () => {}, session: withTrap(true) }));
-    expect(outOn).toContain('cp-hint is-trap');
-    expect(outOn).toContain('Tap any tile to set your trap');
-    expect(outOn).toContain('Set a trap');
-    expect(outOn.indexOf('cp-primary')).toBeLessThan(outOn.indexOf('cp-hint'));
-    const off = buildActionSpec(withTrap(false));
-    expect(off.hint).toBeUndefined();
-    expect(html(createElement(ActionBar, { spec: off, fire: () => () => {}, session: withTrap(false) }))).not.toContain('cp-hint');
-  });
-
-  it('keeps Roll the primary and Space / Enter firing only Roll', () => {
-    const spec = buildActionSpec(withTrap(true));
-    expect(spec.kind).toBe('roll');
-    expect(spec.primary.action).toEqual({ type: 'ROLL' });
-    expect(spec.secondaries.some((x) => x.action?.type === 'PLACE_TRAP')).toBe(false);
-    expect(shortcutAction(spec, { key: ' ', target: null })).toEqual({ type: 'ROLL' });
-    expect(shortcutAction(spec, { key: 'Enter', target: null })).toEqual({ type: 'ROLL' });
-  });
-
-  it('has no hint outside the roll state', () => {
-    expect(buildActionSpec(mkBuy({ shield: true })).hint).toBeUndefined();
+  it('is absent without options.ride', () => {
+    const spec = buildActionSpec(mkSession(mkView({ phase: 'manage' }), { options: { endTurn: true, ride: null } }));
+    expect(keys(spec)).not.toContain('ride');
   });
 });
 
 describe('Space / Enter shortcut', () => {
-  const key = (k = ' ', extra = {}) => ({ key: k, target: null, ...extra });
-  const spec = (session) => buildActionSpec(session);
+  const ev = (over = {}) => ({ key: ' ', target: null, ...over });
 
   it('fires Roll and End turn, which advertise a kbd', () => {
-    expect(shortcutAction(spec(mkSession(mkState())), key())).toEqual({ type: 'ROLL' });
-    expect(shortcutAction(spec(mkSession(mkState())), key('Enter'))).toEqual({ type: 'ROLL' });
-    const s = mkState();
-    s.phase = 'manage';
-    expect(shortcutAction(spec(mkSession(s)), key())).toEqual({ type: 'END_TURN' });
-  });
-
-  it('never fires Buy or Skip', () => {
-    const s = mkState();
-    s.phase = 'buy';
-    s.pending = { type: 'buy', tile: 1, price: 600 };
-    const buy = spec(mkSession(s));
-    expect(buy.primary.action).toEqual({ type: 'BUY' });
-    expect(shortcutAction(buy, key())).toBeNull();
-    // too poor to buy: the primary becomes Skip, which must not be a keypress either
-    s.players[0].cash = 100;
-    const skip = spec(mkSession(s));
-    expect(skip.primary.action).toEqual({ type: 'SKIP_BUY' });
-    expect(shortcutAction(skip, key())).toBeNull();
-  });
-
-  it('fires Snatch for an eligible player', () => {
-    expect(shortcutAction(spec(mkSnatch()), key())).toEqual({ type: 'SNATCH' });
+    expect(shortcutAction(buildActionSpec(mkSession(mkView(), { options: { roll: true } })), ev())).toEqual({ type: 'ROLL' });
+    expect(shortcutAction(buildActionSpec(mkSession(mkView({ phase: 'manage' }), { options: { endTurn: true } })), ev({ key: 'Enter' }))).toEqual({ type: 'END_TURN' });
   });
 
   it('stands down for sheets, typing, modifiers, repeats and other keys', () => {
-    const roll = spec(mkSession(mkState()));
-    expect(shortcutAction(roll, key(), true)).toBeNull();
-    expect(shortcutAction(roll, key(' ', { target: { tagName: 'BUTTON' } }))).toBeNull();
-    expect(shortcutAction(roll, key(' ', { target: { tagName: 'INPUT' } }))).toBeNull();
-    expect(shortcutAction(roll, key(' ', { ctrlKey: true }))).toBeNull();
-    expect(shortcutAction(roll, key(' ', { repeat: true }))).toBeNull();
-    expect(shortcutAction(roll, key('a'))).toBeNull();
-    expect(shortcutAction(null, key())).toBeNull();
+    const spec = buildActionSpec(mkSession(mkView(), { options: { roll: true } }));
+    expect(shortcutAction(spec, ev(), true)).toBeNull();
+    expect(shortcutAction(spec, ev({ target: { tagName: 'INPUT' } }))).toBeNull();
+    expect(shortcutAction(spec, ev({ ctrlKey: true }))).toBeNull();
+    expect(shortcutAction(spec, ev({ repeat: true }))).toBeNull();
+    expect(shortcutAction(spec, ev({ key: 'a' }))).toBeNull();
   });
 });
 
-describe('snatch window', () => {
-  it('reads the window from the latest state, even while the presenter is busy', () => {
-    const session = mkSnatch({ busy: true });
-    const sn = snatchInfo(session);
-    expect(sn).toMatchObject({ tileId: 1, price: 600, buyerName: 'Ravi', eligible: true, pressed: false, canPress: true, ms: 3000 });
-    expect(buildActionSpec(session).kind).toBe('snatch'); // not 'busy'
+describe('landedInfo (Hustle squares)', () => {
+  const T = [
+    { id: 0, type: 'start', name: 'START' },
+    { id: 1, type: 'property', name: 'Sultan Bazaar', price: 60000, group: 'bazaar' },
+    { id: 2, type: 'card', deck: 'luck', name: 'Nawabi Luck' },
+    { id: 3, type: 'transport', name: 'Auto Stand', fare: 25000 },
+    { id: 4, type: 'traffic', name: 'Traffic Jam' },
+    { id: 5, type: 'chai', name: 'Chai Adda' },
+    { id: 6, type: 'municipal', name: 'Municipal Charges' },
+    { id: 7, type: 'auction', name: 'Bazaar Auction' },
+    { id: 8, type: 'card', deck: 'drama', name: 'City Drama' },
+  ];
+  const s = () => mkView();
+  const at = (pos, extra = {}) => P('me', 'Nithin', { pos, ...extra });
+
+  it('says what an unowned district costs, and who owns a taken one', () => {
+    const v = s();
+    expect(landedInfo(v, at(1), 'me', 4, T).detail).toBe('For sale ₹60,000');
+    v.owners[1] = 'rav';
+    expect(landedInfo(v, at(1), 'me', 4, T).detail).toMatch(/^Owned by Ravi · rent ₹/);
+    v.mortgaged[1] = true;
+    expect(landedInfo(v, at(1), 'me', 4, T).detail).toBe('Owned by Ravi · mortgaged, no rent');
+    v.owners[1] = 'me';
+    expect(landedInfo(v, at(1), 'me', 4, T).tone).toBe('mine');
   });
 
-  it('is eligible from pending.eligible even when options are blanked', () => {
-    const session = mkSnatch();
-    session.options = { snatch: null, snatched: false };
-    expect(snatchInfo(session).canPress).toBe(true);
-  });
-
-  it('gives an eligible player a big SNATCH! primary that is free', () => {
-    const spec = buildActionSpec(mkSnatch());
-    expect(spec.kind).toBe('snatch');
-    expect(spec.primary).toMatchObject({ key: 'snatch', label: 'SNATCH!', kbd: 'Space', action: { type: 'SNATCH' } });
-    expect(spec.primary.sub).toBe('free - Ravi still pays');
-    expect(spec.secondaries).toEqual([]);
-  });
-
-  it('shows "Snatch locked in" with no button after pressing (from claims or options.snatched)', () => {
-    for (const session of [mkSnatch({ claims: ['me'] }), mkSnatch({ snatched: true })]) {
-      const spec = buildActionSpec(session);
-      expect(spec.primary).toBeNull();
-      expect(spec.label).toBe('Snatch locked in');
-      expect(snatchInfo(session)).toMatchObject({ pressed: true, canPress: false });
-    }
-  });
-
-  it('shows the buyer and everyone without a token a plain status, no button', () => {
-    const watcher = buildActionSpec(mkSnatch({ eligible: [] }));
-    expect(watcher.primary).toBeNull();
-    expect(watcher.label).toBe('Ravi bought Dilsukhnagar');
-    expect(watcher.sub).toBe('Snatch window…');
-    const buyer = buildActionSpec(mkSnatch({ me: 'rav', eligible: ['me'] }));
-    expect(buyer.primary).toBeNull();
-    expect(buyer.label).toBe('You bought Dilsukhnagar');
-  });
-
-  it('counts down from when the window first showed up', () => {
-    const session = mkSnatch();
-    const Probe = () => {
-      const c = useSnatchClock(session);
-      return createElement('p', null, c ? `${c.seconds}s ${Math.round(c.fraction * 100)}%` : 'none');
-    };
-    expect(html(createElement(Probe))).toContain('3s 100%');
-    expect(html(createElement(Probe))).toContain('3s'); // a re-render of the same window does not restart it
-    recordSnatch(null);
-    const none = mkSession(mkState());
-    const Idle = () => createElement('p', null, String(useSnatchClock(none)));
-    expect(html(createElement(Idle))).toContain('null');
-  });
-
-  it('renders SNATCH! with its seconds and a drain bar, and locks the other tabs', () => {
-    const session = mkSnatch();
-    const spec = buildActionSpec(session);
-    const out = html(createElement(ActionBar, { spec, fire: () => () => {}, session }));
-    expect(out).toContain('cp-primary is-snatch');
-    expect(out).toContain('SNATCH!');
-    expect(out).toContain('3s');
-    expect(out).toContain('cp-meter');
-    expect(out).toContain('free - Ravi still pays');
-  });
-
-  it('puts the contested tile and price on the Buy tab and disables building and trading', () => {
-    const session = mkSnatch();
-    session.view.owners[3] = 'me';
-    session.display.owners = session.view.owners;
-    const panel = html(createElement(ControlPanel, { session, onOpenTile: () => {}, onOpenTrade: () => {} }));
-    expect(panel).toContain('Dilsukhnagar');
-    expect(panel).toContain('Ravi paid ₹600. Snatch it free!');
-    expect(panel).toContain('data-kind="snatch"');
-    const manage = html(createElement(MyProperties, { session, onOpenTile: () => {} }));
-    expect(manage).toContain('Snatch window open');
-    // even if the engine still said trades were fine, the Trade tab holds still until the window closes
-    session.options = { ...session.options, trade: { canOffer: true } };
-    const trade = html(createElement(TradePane, { session, onOpenTrade: () => {}, snatching: true }));
-    expect(trade).toMatch(/<button[^>]*disabled[^>]*>.*Propose a trade/);
-    expect(trade).toContain('Trading waits until the snatch window closes.');
-  });
-});
-
-describe('landedInfo', () => {
-  const state = () => {
-    const s = mkState();
-    return { ...s, players: s.players.map((p) => ({ ...p })) };
-  };
-  const at = (s, pos) => ({ ...s.players[0], pos });
-
-  it('says what an unowned property costs', () => {
-    const s = state();
-    expect(landedInfo(s, at(s, 1), 'me').detail).toBe('For sale ₹600');
-  });
-
-  it('shows rent for a rival-owned property and "Yours" for mine', () => {
-    const s = state();
-    s.owners[1] = 'rav';
-    const rival = landedInfo(s, at(s, 1), 'me');
-    expect(rival.tone).toBe('rent');
-    expect(rival.detail).toMatch(/^Owned by Ravi · rent ₹\d/);
-    s.owners[1] = 'me';
-    expect(landedInfo(s, at(s, 1), 'me').tone).toBe('mine');
-  });
-
-  it('describes mortgaged, tax, card and corner tiles', () => {
-    const s = state();
-    s.owners[1] = 'rav';
-    s.mortgaged[1] = true;
-    expect(landedInfo(s, at(s, 1), 'me').detail).toBe('Owned by Ravi · mortgaged, no rent');
-    expect(landedInfo(s, at(s, 4), 'me').detail).toContain('₹2,000');
-    expect(landedInfo(s, at(s, 2), 'me').detail).toMatch(/^Draw a/);
-    expect(landedInfo(s, at(s, 10), 'me').detail).toBe('Just visiting');
-    expect(landedInfo(s, { ...at(s, 10), jailTurns: 1 }, 'me').detail).toBe('In jail');
-    expect(landedInfo(s, at(s, 0), 'me').detail).toMatch(/^Collect ₹/);
+  it('describes cards, rides, traffic, chai, municipal charges, the auction and START', () => {
+    const v = s();
+    expect(landedInfo(v, at(2), 'me', 4, T).detail).toBe('Draw a Nawabi Luck card');
+    expect(landedInfo(v, at(8), 'me', 4, T).detail).toBe('Draw a City Drama card');
+    expect(landedInfo(v, at(3), 'me', 4, T).detail).toBe('Take the Auto to the next stop for ₹25,000');
+    expect(landedInfo(v, at(4, { stuck: true }), 'me', 4, T).tone).toBe('warn');
+    expect(landedInfo(v, at(4, { stuck: true }), 'me', 4, T).detail).toContain('₹25,000');
+    expect(landedInfo(v, at(5), 'me', 4, T).detail).toBe('Chai Adda · free chai token');
+    expect(landedInfo(v, at(5, { chai: 1 }), 'me', 4, T).detail).toContain('already');
+    expect(landedInfo(v, at(6), 'me', 4, T).detail).toBe('Pay ₹40,000');
+    v.owners[1] = 'me';
+    v.levels[1] = 2;
+    expect(landedInfo(v, at(6), 'me', 4, T).detail).toBe('Pay ₹60,000 (₹40,000 + ₹10,000 x 2 upgrades)');
+    expect(landedInfo(v, at(7), 'me', 4, T).detail).toMatch(/Auction/);
+    expect(landedInfo(v, at(0), 'me', 4, T).detail).toBe('Collect ₹2,00,000 when you pass');
   });
 });
 
 describe('<ControlPanel>', () => {
-  it('renders the three tabs, the log, the landed line and the Roll button', () => {
-    const s = mkState();
-    const session = mkSession(s, { log: [{ id: 1, text: 'Nithin rolled 4', tone: 'info' }] });
+  it('renders Play / Manage / Trade, the log, the landed line, the Roll button and one die', () => {
+    const session = mkSession(mkView(), { options: { roll: true }, log: [{ id: 1, text: 'Nithin rolled 4', tone: 'info' }] });
     const out = html(createElement(ControlPanel, { session, onOpenTile: () => {}, onOpenTrade: () => {} }));
-    for (const label of ['Buy', 'Manage', 'Trade']) expect(out).toContain(`>${label}<`);
+    for (const t of TABS) expect(out).toContain(`>${t.label}<`);
     expect(out).toContain('role="tablist"');
     expect(out).toContain('Nithin rolled 4');
-    expect(out).toContain('Rajiv Gandhi Airport'); // the START tile the first player stands on
+    expect(out).toContain(TILES[0].name);
     expect(out).toContain('cp-primary is-roll');
-    expect(out).toContain('>Roll<');
-    expect((out.match(/class="cp-cube"/g) || []).length).toBe(1); // one die
+    expect((out.match(/class="cp-cube"/g) || []).length).toBe(1);
+    expect(out).not.toMatch(/snatch|shield|trap|bail|jail card/i);
   });
 
   it('shows the waiting state instead of a button when it is not my turn', () => {
-    const session = mkSession(mkState(), { me: 'rav' });
-    const out = html(createElement(ControlPanel, { session }));
+    const out = html(createElement(ControlPanel, { session: mkSession(mkView(), { me: 'rav' }) }));
     expect(out).toContain('Waiting for Nithin');
     expect(out).toContain('is-wait');
   });
 
+  it('docked (phones): no tabs and no action row in the board centre', () => {
+    const out = html(createElement(ControlPanel, { session: mkSession(mkView(), { options: { roll: true } }), docked: true }));
+    expect(out).not.toContain('role="tablist"');
+    expect(out).not.toContain('cp-primary');
+    expect(out).toContain('cp-log');
+  });
+
+  it('shows the decision timer bar and the ring while the clock waits for me', () => {
+    const clock = { deadline: Date.now() + 30000, waitingFor: ['me'] };
+    const out = html(createElement(ControlPanel, { session: mkSession(mkView(), { options: { roll: true }, clock }) }));
+    expect(out).toContain('tt-bar is-mine');
+    expect(out).toContain('Your move');
+    expect(out).toContain('tt-ring is-on');
+    expect(out).not.toContain('is-warn');
+  });
+
+  it('warns only the local player in the last 10 seconds', () => {
+    const mine = html(createElement(ControlPanel, { session: mkSession(mkView(), { clock: { deadline: Date.now() + 6000, waitingFor: ['me'] } }) }));
+    expect(mine).toContain('tt-bar is-mine is-warn');
+    const theirs = html(createElement(ControlPanel, { session: mkSession(mkView(), { me: 'rav', clock: { deadline: Date.now() + 6000, waitingFor: ['me'] } }) }));
+    expect(theirs).toContain('Waiting for Nithin');
+    expect(theirs).not.toContain('is-warn');
+  });
+
+  it('hides the timer without a deadline', () => {
+    const out = html(createElement(ControlPanel, { session: mkSession(mkView(), { clock: { deadline: null, waitingFor: [] } }) }));
+    expect(out).not.toContain('tt-bar');
+    expect(out).not.toContain('tt-ring is-on');
+  });
+
+  it('shows the chai token and the traffic tag of the player on turn', () => {
+    const v = mkView({ players: [P('me', 'Nithin', { chai: 1, stuck: true }), P('rav', 'Ravi')] });
+    const out = html(createElement(ControlPanel, { session: mkSession(v, { options: { roll: true, payTraffic: 25000, useChai: true } }) }));
+    expect(out).toContain('hg-chai is-on');
+    expect(out).toContain('Stuck in traffic');
+    expect(out).toContain('Use chai');
+    expect(out).toContain('Wait it out');
+  });
+
   it('keeps the log empty-state friendly', () => {
-    const out = html(createElement(LogList, { log: [], variant: 'mono' }));
-    expect(out).toContain('Your story starts with a roll.');
+    expect(html(createElement(LogList, { log: [], variant: 'mono' }))).toContain('Your story starts with a roll.');
   });
 });
 
-describe('<MyProperties> (Manage tab)', () => {
-  it('lists a full colour set with Build and Mortgage actions gated by session.options', () => {
-    const s = mkState();
-    s.owners[1] = 'me';
-    s.owners[3] = 'me';
-    const session = mkSession(s);
-    const out = html(createElement(MyProperties, { session, onOpenTile: () => {} }));
-    expect(out).toContain('2/2 Brown');
-    expect(out).toContain('Full set');
-    expect(out).toContain('Dilsukhnagar');
-    expect(out).toContain('Malakpet');
-    expect(out).toMatch(/Build[^<]*₹500/);
-    expect(out).toContain('Mortgage +₹300');
+describe('<ActionBar>', () => {
+  it('renders the traffic hint above the buttons and every secondary with its sub line', () => {
+    const v = mkView({ players: [P('me', 'Nithin', { stuck: true })] });
+    const spec = buildActionSpec(mkSession(v, { options: { roll: true, payTraffic: 25000 } }));
+    const out = html(createElement(ActionBar, { spec, fire: () => () => {} }));
+    expect(out.indexOf('cp-hint')).toBeLessThan(out.indexOf('cp-primary'));
+    expect(out).toContain('No move this turn');
+    expect(out).toContain('Pay ₹25,000');
+  });
+});
+
+describe('<TradePane> and badges', () => {
+  it('explains why trading is unavailable off-turn', () => {
+    const out = html(createElement(TradePane, { session: mkSession(mkView(), { me: 'rav' }) }));
+    expect(out).toContain('You can propose a trade on your own turn.');
   });
 
-  it('shows an empty state with nothing owned', () => {
-    const out = html(createElement(MyProperties, { session: mkSession(mkState()) }));
-    expect(out).toContain('No properties yet.');
+  it('badges Manage with upgrade count and Trade with an open offer', () => {
+    const v = mkView({ trade: { from: 'rav', to: 'me' } });
+    const b = panelBadges({ upgrades: 2 }, mkSession(v));
+    expect(b.manage.text).toBe(2);
+    expect(b.trade.text).toBe('!');
+  });
+});
+
+describe('<MoneyBar>', () => {
+  const room = [{ id: 'me', connected: true }, { id: 'rav', connected: false, cosmetics: {} }];
+
+  it('marks a disconnected player as reconnecting and anchors every avatar for fx', () => {
+    const out = html(createElement(MoneyBar, { session: mkSession(mkView(), { roomPlayers: room }) }));
+    expect(out).toContain('data-fx-player="me"');
+    expect(out).toContain('data-fx-player="rav"');
+    expect(out.split('</li>')[1]).toContain('Reconnecting');
+    expect(out.split('</li>')[0]).not.toContain('Reconnecting');
   });
 
-  it('offers Unmortgage and no Build for a mortgaged tile', () => {
-    const s = mkState();
-    s.owners[1] = 'me';
-    s.mortgaged[1] = true;
-    const out = html(createElement(MyProperties, { session: mkSession(s) }));
-    expect(out).toContain('Mortgaged');
-    expect(out).toContain('Unmortgage ₹330');
-    expect(out).not.toMatch(/>Build /);
+  it('shows chai and traffic, and no snatch tokens', () => {
+    const v = mkView({ players: [P('me', 'Nithin', { chai: 1 }), P('rav', 'Ravi', { stuck: true })] });
+    const out = html(createElement(MoneyBar, { session: mkSession(v) }));
+    expect(out).toContain('hg-chai is-on');
+    expect(out).toContain('Stuck in traffic');
+    expect(out).not.toMatch(/snatch/i);
+  });
+
+  it('compact: a horizontal strip of chips with the player on turn marked', () => {
+    const out = html(createElement(MoneyBar, { session: mkSession(mkView(), { roomPlayers: room }), compact: true }));
+    expect(out).toContain('hg-strip__list');
+    expect(out).toContain('hg-chip is-turn is-me');
+    expect(out).toContain('Reconnecting');
+  });
+
+  it('ChaiToken hides at 0 only when asked', () => {
+    expect(html(createElement(ChaiToken, { count: 0, hideEmpty: true }))).toBe('');
+    expect(html(createElement(ChaiToken, { count: 0 }))).toContain('No chai token');
   });
 });

@@ -174,3 +174,18 @@ describe('roomProblem', () => {
     expect(roomProblem(room({ players: 2, maxPlayers: 4 }), 'me')).toBeNull();
   });
 });
+
+import { roomProblemKind } from './codes.js';
+
+describe('roomProblemKind', () => {
+  const room = (over = {}) => ({ exists: true, status: 'lobby', players: 1, maxPlayers: 4, ...over });
+  it('names each blocked state so the join page can explain it', () => {
+    expect(roomProblemKind(room(), 'me')).toBeNull();
+    expect(roomProblemKind(null, 'me')).toBe('missing');
+    expect(roomProblemKind(room({ exists: false }), 'me')).toBe('missing');
+    expect(roomProblemKind(room({ status: 'finished' }), 'me')).toBe('finished');
+    expect(roomProblemKind(room({ status: 'playing' }), 'me')).toBe('playing');
+    expect(roomProblemKind(room({ players: 4 }), 'me')).toBe('full');
+    expect(roomProblemKind(room({ status: 'playing', isMember: true }), 'me')).toBeNull();
+  });
+});

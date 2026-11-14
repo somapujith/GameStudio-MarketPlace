@@ -29,6 +29,8 @@ const { GameRoom, TURN_MS, GRACE_MS } = await import('./GameRoom.js');
 const { pendingActors, estimateAnimMs, autoMove, TRADE_MS } = await import('./games/hyderabad-tycoon.js');
 const { persistMatch } = await import('./match.js');
 const engine = await import('../shared/index.js');
+const { ANIM_MS, MAX_ANIM_MS } = await import('../shared/timing.js');
+const { PIECES, MUNICIPAL_TILE } = await import('../shared/board.js');
 
 // ---- fakes ---------------------------------------------------------------------------
 
@@ -177,10 +179,17 @@ afterEach(() => {
 // FakeSocket for server is the second of each pair; accepted ones are recorded in ctx.sockets.
 
 describe('pure helpers', () => {
-  it('estimateAnimMs adds up dice + steps and is capped', () => {
+  it('estimateAnimMs adds up dice + steps from shared/timing.js and is capped', () => {
     expect(estimateAnimMs([])).toBe(0);
-    expect(estimateAnimMs([{ type: 'dice' }, { type: 'move', path: [1, 2, 3] }])).toBe(900 + 170 * 3);
-    expect(estimateAnimMs([{ type: 'move', path: new Array(500).fill(1) }])).toBeLessThanOrEqual(6000);
+    expect(estimateAnimMs([{ type: 'dice' }, { type: 'move', path: [1, 2, 3] }])).toBe(ANIM_MS.dice + ANIM_MS.afterDice + ANIM_MS.step * 3);
+    expect(estimateAnimMs([{ type: 'move', path: new Array(500).fill(1) }])).toBe(MAX_ANIM_MS);
+    // with the post-action state, a plain hand-off is told apart from a new round and from the final round
+    const s = engine.createGame({ players: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }], seed: 1 });
+    const first = s.players[0].id;
+    const second = s.players[1].id;
+    expect(estimateAnimMs([{ type: 'turn', player: second, round: 1 }], s)).toBe(ANIM_MS.turn);
+    expect(estimateAnimMs([{ type: 'turn', player: first, round: 2 }], s)).toBe(Math.max(ANIM_MS.round, ANIM_MS.turn));
+    expect(estimateAnimMs([{ type: 'turn', player: first, round: s.cfg.maxRounds }], s)).toBe(ANIM_MS.finalRound);
   });
 
   it('pendingActors: turn player / auction bidders / debtor / trade recipient', () => {
@@ -221,11 +230,12 @@ describe('lobby', () => {
 
   it('rejects a bad init (settings are validated again inside the room)', async () => {
     const h = new Harness();
-    const res = await h.init(user(1), { maxRounds: 120 });
+    const res = await h.init(user(1), { mode: 'marathon' });
     expect(res.status).toBe(400);
-    expect((await res.json()).error).toMatch(/Round limit/);
+    expect((await res.json()).error).toMatch(/Mode must be one of/);
     const h2 = new Harness();
-    expect((await h2.init(user(1), { goal: 5 })).status).toBe(400);
+    expect((await h2.init(user(1), { dice: 'loaded' })).status).toBe(400);
+    expect(h2.room.room).toBeNull();
   });
 
   it('unknown rooms close with 4004', async () => {
@@ -245,24 +255,29 @@ describe('lobby', () => {
     const h = new Harness();
     await h.init();
     const host = await h.connect(user(1));
-    expect(host.last('room').room.settings).toMatchObject({ goal: 70000, startCash: 15000, maxRounds: 50, dice: 'lucky', auctionOnDecline: true });
+    expect(host.last('room').room.settings).toMatchObject({ mode: 'standard', startCash: 1500000, maxRounds: 20, dice: 'lucky', auctionOnDecline: true });
+    expect(host.last('room').room.settings).not.toHaveProperty('goal');
     const guest = await h.connect(user(2));
 
-    await h.say(guest, { t: 'settings', settings: { goal: 30000 } });
+    await h.say(guest, { t: 'settings', settings: { mode: 'quick' } });
     expect(guest.last('error').message).toMatch(/host/);
 
-    for (const bad of [{ goal: 5 }, { maxRounds: 120 }, { maxRounds: 0 }, { maxRounds: '30' }, { startCash: 1 }, { dice: 'loaded' }, { auctionOnDecline: 'yes' }]) {
+    for (const bad of [{ mode: 'marathon' }, { mode: 3 }, { mode: null }, { dice: 'loaded' }, { auctionOnDecline: 'yes' }, { maxPlayers: 9 }]) {
       const before = host.of('error').length;
       await h.say(host, { t: 'settings', settings: bad });
       expect(host.of('error').length, JSON.stringify(bad)).toBe(before + 1);
     }
-    expect(h.room.room.settings).toMatchObject({ goal: 70000, maxRounds: 50 });
+    expect(h.room.room.settings).toEqual({ mode: 'standard', dice: 'lucky', auctionOnDecline: true });
 
-    await h.say(host, { t: 'settings', settings: { goal: 100000, maxRounds: null, startCash: 20000, dice: 'fair', auctionOnDecline: false, debug: true } });
+    // only mode / dice / auction reach the room: retired or engine-only keys are dropped
+    await h.say(host, { t: 'settings', settings: { mode: 'quick', dice: 'fair', auctionOnDecline: false, debug: true, goal: 100000, startCash: 1 } });
     const s = host.last('room').room.settings;
-    expect(s).toMatchObject({ goal: 100000, maxRounds: null, startCash: 20000, dice: 'fair', auctionOnDecline: false });
+    expect(s).toMatchObject({ mode: 'quick', startCash: 2000000, maxRounds: 12, dice: 'fair', auctionOnDecline: false });
     expect(s.debug).toBeUndefined();
-    expect(guest.last('room').room.settings.maxRounds).toBeNull();
+    expect(s.goal).toBeUndefined();
+    expect(guest.last('room').room.settings.mode).toBe('quick');
+    await h.say(host, { t: 'settings', settings: { mode: 'classic' } });
+    expect(guest.last('room').room.settings).toMatchObject({ mode: 'classic', maxRounds: null, dice: 'fair' }); // earlier picks kept
   });
 
   it('kick, ready, capacity and start rules', async () => {
@@ -416,29 +431,31 @@ describe('game start', () => {
 
 
   it('passes the normalised settings to the engine (state.cfg matches room.settings)', async () => {
-    const h = await startedGame({ goal: 50000, startCash: 20000, maxRounds: 30, dice: 'fair', auctionOnDecline: false });
+    const h = await startedGame({ mode: 'quick', dice: 'fair', auctionOnDecline: false });
     const cfg = h.state.cfg;
-    expect(cfg).toMatchObject({ goal: 50000, startCash: 20000, maxRounds: 30 });
-    expect(h.state.players.every((p) => p.cash === 20000)).toBe(true);
-    // rules v2 settings are forwarded too (once the engine knows them)
-    if ('dice' in cfg) expect(cfg.dice).toBe('fair');
-    if ('auctionOnDecline' in cfg) expect(cfg.auctionOnDecline).toBe(false);
+    expect(cfg).toMatchObject({ mode: 'quick', startCash: 2000000, maxRounds: 12, dice: 'fair', auctionOnDecline: false });
+    expect(h.state.players.every((p) => p.cash === 2000000)).toBe(true);
+    // the pieces picked in the lobby are the pieces the engine plays with
+    const seats = h.host.last('room').room.players;
+    expect(new Set(seats.map((p) => p.piece)).size).toBe(2);
+    for (const p of h.state.players) expect(p.piece).toBe(seats.find((x) => x.id === p.id).piece);
+    expect(seats.every((p) => PIECES.some((x) => x.id === p.piece))).toBe(true);
     // what the lobby showed is exactly what the engine runs with
     expect(h.host.last('room').room.settings).toEqual(h.state.cfg);
     expect(h.host.last('room').room.status).toBe('playing');
     expect(h.host.last('state')).toMatchObject({ seq: 1, events: [] });
   });
 
-  it('unlimited rounds stay unlimited', async () => {
-    const h = await startedGame({ maxRounds: null });
-    expect(h.room.room.settings.maxRounds).toBeNull();
-    const m = h.state.cfg.maxRounds;
-    expect(m === null || m === Infinity || m === undefined).toBe(true);
+  it('classic mode has no round limit (the room and the engine agree)', async () => {
+    const h = await startedGame({ mode: 'classic' });
+    expect(h.room.room.settings.mode).toBe('classic');
+    expect(h.state.cfg.maxRounds).toBeNull();
+    expect(h.host.last('room').room.settings.maxRounds).toBeNull();
   });
 
   it('locks settings and joining once started; members can rejoin', async () => {
     const h = await startedGame();
-    await h.say(h.host, { t: 'settings', settings: { goal: 30000 } });
+    await h.say(h.host, { t: 'settings', settings: { mode: 'quick' } });
     expect(h.host.last('error').message).toMatch(/locked/);
     const res = await h.room.fetch({
       url: 'https://x/ws',
@@ -479,7 +496,7 @@ describe('game flow', () => {
   });
 
   it('plays a whole game on its own (both players idle, so the server plays for them) and persists exactly once', async () => {
-    const h = await startedGame({ goal: 12000, maxRounds: 30, startCash: 5000 });
+    const h = await startedGame({ mode: 'quick' }); // 12 rounds
     let steps = 0;
     while (h.room.room.status === 'playing' && steps < 6000) {
       await h.tick();
@@ -492,14 +509,15 @@ describe('game flow', () => {
     expect(h.room.room.persisted).toBe(true);
     expect(persistMatch).toHaveBeenCalledTimes(1);
     const rec = persisted[0];
-    expect(rec).toMatchObject({ roomCode: 'ABCD23', playerCount: 2, maxRounds: 30, goal: 12000 });
+    expect(rec).toMatchObject({ roomCode: 'ABCD23', playerCount: 2, maxRounds: 12, goal: null, diceMode: 'lucky' });
     expect(rec.id).toBe(h.room.room.matchId);
     expect(rec.players).toHaveLength(2);
     expect(rec.players.map((p) => p.rank).sort()).toEqual([1, 2]);
     expect(rec.players.every((p) => p.is_bot === false)).toBe(true);
     expect(rec.users.map((u) => u.user_id).sort()).toEqual([U(1), U(2)]); // every seat is a real user with stats / xp
-    expect(['net_worth', 'last_standing', 'rounds']).toContain(rec.winReason);
-    if (rec.winReason === 'rounds') expect(rec.rounds).toBeLessThanOrEqual(30);
+    expect(['last_standing', 'rounds']).toContain(rec.winReason);
+    expect(rec.rounds).toBeLessThanOrEqual(12);
+    expect(rec.winnerId).toBe(rec.players.find((p) => p.rank === 1).user_id); // standings agree with the winner
     // seq only ever went up, and the room told everyone it finished
     const seqs = h.host.of('state').map((m) => m.seq);
     expect([...seqs].sort((a, b) => a - b)).toEqual(seqs);
@@ -511,7 +529,7 @@ describe('game flow', () => {
 
   it('retries a failed persist with backoff and still writes once', async () => {
     persistMatch.mockRejectedValueOnce(new Error('neon down'));
-    const h = await startedGame({ goal: 10000, startCash: 5000, maxRounds: 30 });
+    const h = await startedGame({ mode: 'quick' });
     let steps = 0;
     while (h.room.room.status === 'playing' && steps < 6000) {
       await h.tick();
@@ -699,7 +717,7 @@ describe('rules v2: trades and debts', () => {
     const from = h.state.players[h.state.turn].id;
     const to = from === U(1) ? U(2) : U(1);
     const sockFrom = from === U(1) ? a : b;
-    r.state.owners[1] = to; // the recipient owns Miyapur
+    r.state.owners[1] = to; // the recipient owns Sultan Bazaar
     await h.say(sockFrom, { t: 'action', action: { type: 'TRADE_OFFER', to, give: { cash: 100, tiles: [] }, get: { cash: 0, tiles: [1] } } });
     expect(h.state.trade).toMatchObject({ from, to });
     const tradeKey = `trade:${h.state.trade.id}`;
@@ -744,13 +762,13 @@ describe('rules v2: trades and debts', () => {
     st.cfg.debug = true; // test-only: lets the harness force the dice (the real server never sets it)
     st.turn = st.players.findIndex((p) => p.id === U(1));
     const me = st.players[st.turn];
-    me.cash = 300;
-    me.pos = 35;
+    me.cash = 10_000;
+    me.pos = MUNICIPAL_TILE - 3;
     for (const t of [1, 3, 6]) st.owners[t] = U(1);
-    const res = await h.room.applyAndBroadcast({ type: 'ROLL', playerId: U(1), dice: [3] }); // 35 + 3 lands on the ORR toll (1,000)
+    const res = await h.room.applyAndBroadcast({ type: 'ROLL', playerId: U(1), dice: [3] }); // lands on Municipal Charges (40,000)
     expect(res.error).toBeUndefined();
     expect(h.state.phase).toBe('debt');
-    expect(h.state.debt).toMatchObject({ player: U(1) });
+    expect(h.state.debt).toMatchObject({ player: U(1), amount: 40_000, reason: 'tax' });
     const plan = h.room.plan();
     expect(plan.timeout).toBe(true);
     expect(plan.at).toBe(r.lastApplyAt + r.animMs + TURN_MS);
@@ -770,16 +788,23 @@ describe('rules v2: trades and debts', () => {
     expect(r.afk[U(1)]).toBe(true);
   });
 
-  it('every contract action type passes the allow-list (engine decides legality)', async () => {
+  it('every contract action type passes the allow-list (engine decides legality); retired ones do not', async () => {
     const h = await startedGame();
     for (const a of [
-      { type: 'MORTGAGE', tile: 1 }, { type: 'UNMORTGAGE', tile: 1 }, { type: 'SELL_BUILDING', tile: 1 },
-      { type: 'PAY_DEBT' }, { type: 'USE_JAIL_CARD' }, { type: 'TRADE_ACCEPT' }, { type: 'TRADE_REJECT' }, { type: 'TRADE_CANCEL' },
+      { type: 'PAY_TRAFFIC' }, { type: 'USE_CHAI' }, { type: 'SKIP_BUY' }, { type: 'RIDE' }, { type: 'END_TURN' },
+      { type: 'UPGRADE', tile: 1 }, { type: 'MORTGAGE', tile: 1 }, { type: 'UNMORTGAGE', tile: 1 }, { type: 'SELL_BUILDING', tile: 1 },
+      { type: 'PAY_DEBT' }, { type: 'BID', amount: 0 }, { type: 'TRADE_ACCEPT' }, { type: 'TRADE_REJECT' }, { type: 'TRADE_CANCEL' },
       { type: 'TRADE_OFFER', to: 'x', give: { cash: 1, tiles: [] }, get: { cash: 0, tiles: [2] } },
     ]) {
+      const before = h.host.of('error').length;
       await h.say(h.host, { t: 'action', action: a });
       // never "Invalid action" (that is the allow-list's message); the engine may refuse for its own reasons
-      expect(h.host.last('error')?.message).not.toBe('Invalid action.');
+      if (h.host.of('error').length > before) expect(h.host.last('error').message, a.type).not.toBe('Invalid action.');
+    }
+    // Snatch, Shield, Traps and jail are gone from the Hustle rules
+    for (const type of ['SNATCH', 'SNATCH_CLOSE', 'PLACE_TRAP', 'PAY_BAIL', 'USE_JAIL_CARD']) {
+      await h.say(h.host, { t: 'action', action: { type, tile: 1 } });
+      expect(h.host.last('error').message, type).toBe('Invalid action.');
     }
   });
 });
@@ -851,10 +876,10 @@ describe('debt phase: the debtor acts even when it is not their turn', () => {
     const st = h.room.room.state;
     st.cfg.debug = true; // test-only: lets the harness force the dice
     st.turn = st.players.findIndex((p) => p.id === U(1));
-    st.players[st.turn].cash = 300;
-    st.players[st.turn].pos = 35;
+    st.players[st.turn].cash = 10_000;
+    st.players[st.turn].pos = MUNICIPAL_TILE - 3;
     for (const t of [1, 3, 6]) st.owners[t] = U(1);
-    const res = await h.room.applyAndBroadcast({ type: 'ROLL', playerId: U(1), dice: [3] }); // 35 + 3 lands on the ORR toll (1,000)
+    const res = await h.room.applyAndBroadcast({ type: 'ROLL', playerId: U(1), dice: [3] }); // lands on Municipal Charges (40,000)
     expect(res.error).toBeUndefined();
     expect(h.state.phase).toBe('debt');
     expect(h.state.debt.player).toBe(U(1));

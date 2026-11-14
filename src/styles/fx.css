@@ -1,0 +1,185 @@
+/* ==========================================================================
+   Board effects (src/components/game/fx): money flights, build pop, purchase
+   stamp, chai steam, card shimmer, phone camera. "String-light gold": money is
+   physical and gold is reserved for it. Every effect is a one-shot transform /
+   opacity animation with an end state, and collapses to nothing under reduced
+   motion (`prefers-reduced-motion` or `:root[data-motion='reduced']`).
+   ========================================================================== */
+
+/* ---- money flights (FxLayer.jsx animates the nodes with WAAPI) ---------------- */
+
+.fx-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+.fx-coin {
+  --coin: clamp(14px, 3.4vmin, 22px);
+  position: absolute;
+  width: var(--coin);
+  height: var(--coin);
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #fff8d2 0 10%, #ffd75e 32%, #f0a91a 72%, #b8740a 100%);
+  box-shadow: inset 0 0 0 calc(var(--coin) * 0.1) #ffe58a, 0 1px 2px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+.fx-coin::after {
+  content: '';
+  position: absolute;
+  inset: 26%;
+  border-radius: 50%;
+  border: max(1px, calc(var(--coin) * 0.07)) solid rgba(160, 98, 8, 0.55);
+}
+.fx-spark {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: #fff1b0;
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+.fx-land {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid var(--gold, #ffc857);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+/* ---- build pop: squash and stretch from the ground up ----------------------- */
+
+.fx-build { display: flex; align-items: flex-end; justify-content: center; position: relative; transform-origin: 50% 100%; }
+.fx-build.is-pop { animation: fx-pop 560ms var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)) both; }
+.fx-build__dust {
+  position: absolute;
+  left: 5%;
+  right: 5%;
+  bottom: 0;
+  height: 30%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(255, 214, 120, 0.85) 0%, rgba(255, 214, 120, 0) 70%);
+  opacity: 0;
+  pointer-events: none;
+  animation: fx-dust 560ms ease-out both;
+}
+@keyframes fx-pop {
+  0% { transform: scale(0.6, 0.35); opacity: 0.4; }
+  35% { transform: scale(1.18, 0.82); opacity: 1; }
+  60% { transform: scale(0.9, 1.16); }
+  80% { transform: scale(1.04, 0.97); }
+  100% { transform: scale(1, 1); opacity: 1; }
+}
+@keyframes fx-dust {
+  0% { opacity: 0; transform: scale(0.4); }
+  35% { opacity: 1; transform: scale(1.1); }
+  100% { opacity: 0; transform: scale(1.6); }
+}
+
+/* ---- purchase stamp: the owner band sweeps in, the chip lands with a thud --- */
+
+.fx-stamp { animation: fx-sweep-x 420ms var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1)) both; }
+.fx-own--bottom.fx-stamp,
+.fx-own--top.fx-stamp { transform-origin: 0 50%; }
+.fx-own--left.fx-stamp,
+.fx-own--right.fx-stamp { transform-origin: 50% 100%; animation-name: fx-sweep-y; }
+.fx-stamp-chip { animation: fx-thud 460ms var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)) 160ms both; }
+@keyframes fx-sweep-x {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes fx-sweep-y {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+@keyframes fx-thud {
+  0% { transform: scale(2.2); opacity: 0; }
+  55% { transform: scale(0.88); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* ---- chai steam: three wisps rise once ------------------------------------------ */
+
+.fx-steam {
+  position: absolute;
+  left: 30%;
+  right: 30%;
+  top: 8%;
+  height: 50%;
+  z-index: 3;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.fx-steam i {
+  display: block;
+  width: 26%;
+  height: 46%;
+  margin-top: auto;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0) 70%);
+  opacity: 0;
+  animation: fx-steam 1100ms ease-out both;
+}
+.fx-steam i:nth-child(2) { animation-delay: 140ms; }
+.fx-steam i:nth-child(3) { animation-delay: 280ms; }
+@keyframes fx-steam {
+  0% { opacity: 0; transform: translateY(0) scale(0.5); }
+  30% { opacity: 0.9; }
+  100% { opacity: 0; transform: translateY(-120%) scale(1.3, 1.6); }
+}
+
+/* ---- card shimmer: a sweep of light across the card while it is drawn ---------- */
+
+.fx-shimmer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.7) 50%, transparent 70%);
+  transform: translateX(-120%);
+  pointer-events: none;
+  animation: fx-shimmer 900ms ease-in-out 2 both;
+}
+@keyframes fx-shimmer {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(120%); }
+}
+
+/* ---- camera: on phone-sized boards, lean towards the landing tile and back ------ */
+
+.fx-cam {
+  position: absolute;
+  inset: 0;
+  transform-origin: var(--cam-x, 50%) var(--cam-y, 50%);
+  transition: transform var(--dur-4, 600ms) var(--ease-std, cubic-bezier(0.4, 0, 0.2, 1));
+}
+@container (max-width: 560px) {
+  .fx-cam.is-focus { transform: scale(1.07); }
+}
+
+/* ---- reduced motion: no effects at all ----------------------------------------- */
+
+:root[data-motion='reduced'] .fx-layer,
+:root[data-motion='reduced'] .fx-steam,
+:root[data-motion='reduced'] .fx-shimmer,
+:root[data-motion='reduced'] .fx-build__dust { display: none; }
+:root[data-motion='reduced'] .fx-build,
+:root[data-motion='reduced'] .fx-stamp,
+:root[data-motion='reduced'] .fx-stamp-chip { animation: none; }
+:root[data-motion='reduced'] .fx-cam { transform: none !important; transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .fx-layer,
+  .fx-steam,
+  .fx-shimmer,
+  .fx-build__dust { display: none; }
+  .fx-build,
+  .fx-stamp,
+  .fx-stamp-chip { animation: none; }
+  .fx-cam { transform: none !important; transition: none; }
+}

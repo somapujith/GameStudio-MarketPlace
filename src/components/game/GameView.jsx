@@ -1,14 +1,15 @@
-// The whole game screen. Depends ONLY on the `session` interface (docs/CONTRACT.md section 6).
-// Laid out like the classic table game:
+// The whole game screen. Depends ONLY on the `session` interface (docs/CONTRACT.md section 6) plus the Hustle additions
+// (session.clock, roomPlayers, card, handoff, flights; docs/HUSTLE_PLAN.md 3.9).
 //   >= 900px: [ square board (control panel in its centre) | scoreboard column (money bar, chat) ]
-//   mobile:   slim top bar, board at full width, scoreboard as a compact list underneath, chat
+//   600-899:  board on top, scoreboard + chat underneath
+//   < 600px:  board at full width, a horizontally scrollable player strip, a fixed bottom action dock, chat below
+// Overlays over the board: turn hand-off banner, card reveal; fixed overlays: speech bubbles, emote pops, coin flights.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { TILES } from '@shared/board.js';
-import { formatINR } from '@shared/format.js';
 import { sfx } from '@/lib/sfx.js';
 import Board from './Board.jsx';
-import ControlPanel from './ControlPanel.jsx';
-import MoneyBar, { snatchWindow } from './MoneyBar.jsx';
+import ControlPanel, { panelBadges } from './ControlPanel.jsx';
+import { useActionSpec } from './ActionBar.jsx';
+import MoneyBar from './MoneyBar.jsx';
 import PlayerSheet, { StatsSheet } from './PlayerSheet.jsx';
 import PropertySheet from './PropertySheet.jsx';
 import AuctionSheet from './AuctionSheet.jsx';
@@ -22,32 +23,36 @@ import DebtSheet from './DebtSheet.jsx';
 import SetCelebration from './SetCelebration.jsx';
 import ConfirmDialog from './ui/ConfirmDialog.jsx';
 import Icon from './ui/Icon.jsx';
-import Pill from './ui/Pill.jsx';
-import { nameOf, roundInfo, useIsWide, useReducedMotion } from './ui/helpers.js';
+import { useIsWide, useMedia, useReducedMotion } from './ui/helpers.js';
+import RoundBadge from './turn/RoundBadge.jsx';
+import TurnBanner from './turn/TurnBanner.jsx';
+import CardReveal, { useCardAnnouncer } from './turn/CardReveal.jsx';
+import SpeechBubble, { EmoteFloats } from './turn/SpeechBubble.jsx';
+import ActionDock from './turn/ActionDock.jsx';
+import ManageSheet from './turn/ManageSheet.jsx';
+import { useTurnAlerts } from './turn/clock.js';
+import { modeLabel } from './turn/room.js';
 import '../../styles/game.css';
+import '../../styles/turn.css';
+import FxLayer from './fx/FxLayer.jsx';
+
+
+/** Phones get the bottom action dock. */
+export const usePhone = () => useMedia('(max-width: 599px)');
 
 function TopBar({ session, onBack, onMenu }) {
-  const goal = session.display?.goal ?? session.view?.cfg?.goal ?? 0;
-  const r = roundInfo(session);
+  const cfg = session.display?.cfg || session.view?.cfg;
   return (
     <header className="hg-top">
       <button type="button" className="hg-roundbtn" onClick={onBack} aria-label="Leave game">
         <Icon name="back" size={22} strokeWidth={2.4} />
       </button>
       <div className="hg-top-mid">
-        <span className="hg-table-title">HYDERABAD TYCOON</span>
+        <span className="hg-table-title"><i className="hg-table-mark" aria-hidden="true" />HYDERABAD TYCOON</span>
         <p className="hg-goal">
-          <span>Win at <b>{formatINR(goal)}</b> net worth</span>
+          <span className="hg-mode">{modeLabel(cfg)}</span>
           <span className="hg-goal-sep" aria-hidden="true">&middot;</span>
-          <span className="hg-round-txt">
-            Round {r.round}
-            {r.max != null ? `/${r.max}` : ' · ∞'}
-          </span>
-          {r.final ? (
-            <Pill tone="bad" pulse>Final round</Pill>
-          ) : r.soon ? (
-            <Pill tone="warn">{r.left} {r.left === 1 ? 'round' : 'rounds'} left</Pill>
-          ) : null}
+          <RoundBadge session={session} />
         </p>
       </div>
       <button type="button" className="hg-roundbtn" onClick={onMenu} aria-label="Menu" aria-haspopup="dialog">
@@ -57,8 +62,34 @@ function TopBar({ session, onBack, onMenu }) {
   );
 }
 
+/**
+ * The table's one polite live region: always mounted, starts empty; `say(text)` clears it and sets the new line a
+ * beat later so a repeated line is read again. Used for card reveals and the one "10 seconds left" warning.
+ */
+export function useLiveRegion() {
+  const [text, setText] = useState('');
+  const timer = useRef(0);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const say = useCallback((line) => {
+    clearTimeout(timer.current);
+    setText('');
+    if (!line) return;
+    timer.current = setTimeout(() => setText(String(line)), 60);
+  }, []);
+  return [text, say];
+}
+
+/** The trade deadline for TradeSheet: only when the clock is waiting on the trade's answer. */
+export function tradeDeadline(session) {
+  const t = session?.view?.trade;
+  const c = session?.clock;
+  if (!t || !c?.deadline || !Array.isArray(c.waitingFor)) return undefined;
+  return c.waitingFor.map(String).includes(String(t.to)) ? c.deadline : undefined;
+}
+
 export default function GameView({ session, onExit }) {
   const wide = useIsWide();
+  const phone = usePhone();
   const reduced = useReducedMotion();
   const [tileId, setTileId] = useState(null);
   const [playerId, setPlayerId] = useState(null);
@@ -66,9 +97,17 @@ export default function GameView({ session, onExit }) {
   const [rules, setRules] = useState(false);
   const [stats, setStats] = useState(false);
   const [trade, setTrade] = useState(false);
+  const [manage, setManage] = useState(null); // null | 'manage' | 'trade' (phones)
   const [logOpen, setLogOpen] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const unlocked = useRef(false);
+  const ready = !!(session?.view && session?.display);
+
+  // one action spec + the one Space / Enter shortcut for the whole screen (panel and dock share it)
+  const actions = useActionSpec(ready ? session : { options: {}, view: { players: [] }, me: '', dispatch: () => {} }, { keys: ready });
+  const [liveText, say] = useLiveRegion();
+  useTurnAlerts(session, say);
+  useCardAnnouncer(session, say);
 
   const openTile = useCallback((id) => setTileId(id), []);
   const closeTile = useCallback(() => setTileId(null), []);
@@ -90,7 +129,7 @@ export default function GameView({ session, onExit }) {
     };
   }, []);
 
-  if (!session?.view || !session?.display) {
+  if (!ready) {
     return (
       <div className="hg-game hg-game--loading" role="status">
         <p>Loading game&hellip;</p>
@@ -98,20 +137,16 @@ export default function GameView({ session, onExit }) {
     );
   }
 
-  /* Screen readers: say it when a snatch window opens (from the live state, not the delayed display) */
-  const snatching = snatchWindow(session);
-  const snatchNote = snatching
-    ? `${nameOf(session, snatching.buyer)} bought ${TILES[snatching.tile]?.name || 'a property'}, snatch window open`
-    : '';
+  const badges = panelBadges(actions.spec, session);
 
   return (
     <div
-      className="hg-game"
+      className={`hg-game${phone ? ' hg-game--phone' : ''}`}
       data-wide={wide ? '' : undefined}
       data-rm={reduced ? '' : undefined}
     >
       <h1 className="hg-sr">Hyderabad Tycoon</h1>
-      <p className="hg-sr" role="status" aria-live="polite" aria-atomic="true">{snatchNote}</p>
+      <p className="hg-sr" aria-live="polite" aria-atomic="true" data-testid="table-live">{liveText}</p>
       <TopBar session={session} onBack={() => setConfirm(true)} onMenu={() => setMenu(true)} />
 
       <main className="hg-table" aria-label="Game table">
@@ -121,23 +156,59 @@ export default function GameView({ session, onExit }) {
               session={session}
               onTileClick={openTile}
               highlightTile={tileId}
-              center={<ControlPanel session={session} onOpenTile={openTile} onOpenTrade={openTrade} />}
+              center={(
+                <ControlPanel
+                  session={session}
+                  onOpenTile={openTile}
+                  onOpenTrade={openTrade}
+                  actions={actions}
+                  docked={phone}
+                />
+              )}
             />
             <SetCelebration session={session} />
+            <TurnBanner session={session} />
+            <CardReveal session={session} />
           </div>
         </div>
         <aside className="hg-side" aria-label="Scoreboard">
-          <MoneyBar session={session} onSelect={setPlayerId} onOpenStats={openStats} compact={!wide} />
+          <MoneyBar session={session} onSelect={setPlayerId} onOpenStats={openStats} compact={phone} />
           <div className="hg-chatcard"><EmoteBar session={session} /></div>
         </aside>
       </main>
 
+      {phone ? (
+        <ActionDock
+          session={session}
+          spec={actions.spec}
+          fire={actions.fire}
+          badges={badges}
+          onManage={() => setManage('manage')}
+          onTrade={() => setManage('trade')}
+        />
+      ) : null}
+
+      <SpeechBubble session={session} />
+      <EmoteFloats session={session} />
+      <FxLayer flights={session.flights || []} />
+
       <PropertySheet session={session} tileId={tileId} onClose={closeTile} />
       <PlayerSheet session={session} playerId={playerId} onClose={() => setPlayerId(null)} onOpenTile={openTile} />
       <StatsSheet session={session} open={stats} onClose={() => setStats(false)} onOpenTile={openTile} />
-      <TradeSheet session={session} open={trade} onClose={() => setTrade(false)} />
+      <TradeSheet session={session} open={trade} onClose={() => setTrade(false)} deadline={tradeDeadline(session)} />
       <AuctionSheet session={session} />
       <DebtSheet session={session} />
+      {phone ? (
+        <ManageSheet
+          session={session}
+          open={!!manage}
+          tab={manage || 'manage'}
+          onTab={setManage}
+          onClose={() => setManage(null)}
+          onOpenTile={openTile}
+          onOpenTrade={() => { setManage(null); openTrade(); }}
+        />
+      ) : null}
       <MenuSheet
         session={session}
         open={menu}

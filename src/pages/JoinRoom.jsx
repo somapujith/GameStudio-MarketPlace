@@ -7,10 +7,12 @@ import { paths } from '@/platform/paths.js';
 import CodeInput from '@/components/online/CodeInput.jsx';
 import GameIcon from '@/components/online/GameIcon.jsx';
 import { Loading } from '@/components/online/StatusPanel.jsx';
-import { isRoomCode, normalizeRoomCode, playerCountOf, roomProblem } from '@/components/online/codes.js';
+import { isRoomCode, normalizeRoomCode, playerCountOf, roomProblem, roomProblemKind } from '@/components/online/codes.js';
 import { gameName, gameOf } from '@/components/online/games.js';
 import { roomGameId } from '@/components/online/gameRoute.js';
+import HubIcon from '@/platform/game/HubIcon.jsx';
 import '@/styles/online.css';
+import '@/styles/x-lobby.css';
 
 const JOIN_DELAY = 700; // ms: long enough to read who and what you are joining
 
@@ -34,6 +36,49 @@ function RoomPreview({ info }) {
   );
 }
 
+/** What a blocked room looks like: one clear state per reason, with the way forward. */
+const BLOCKED = {
+  full: {
+    icon: 'users',
+    title: 'This table is full',
+    body: (max) => (max ? `All ${max} seats are taken. Ask the host for a bigger table, or start your own.` : 'Every seat is taken. Ask the host for a bigger table, or start your own.'),
+  },
+  playing: { icon: 'clock', title: 'This game has already started', body: () => 'New players cannot join a match in progress. If you were playing, you can rejoin.' },
+  finished: { icon: 'trophy', title: 'This game is over', body: () => 'The match in this room has finished. Ask the host for the code of their next table.' },
+  missing: { icon: 'search', title: 'Room not found', body: () => 'No room with that code. It may be mistyped, or the room has expired.' },
+};
+
+function BlockedState({ kind, info, onRejoin, onClear }) {
+  const b = BLOCKED[kind] || BLOCKED.missing;
+  const gameId = info ? roomGameId(info) : null;
+  const target = gameId && gameOf(gameId) ? gameId : BRAND.defaultGameId;
+  return (
+    <div className={`xl-blocked xl-blocked--${kind}`} role="alert">
+      <span className="xl-blocked__icon" aria-hidden="true">
+        <HubIcon name={b.icon} size={26} />
+      </span>
+      <div className="xl-blocked__text">
+        <b>{b.title}</b>
+        <span>{b.body(info && info.maxPlayers)}</span>
+      </div>
+      <div className="xl-blocked__actions">
+        {(kind === 'playing' || kind === 'full') && (
+          // The lookup does not say who is in the room: players already seated can always get back in.
+          <button type="button" className="ho-btn ho-btn--primary" onClick={onRejoin}>
+            I was in this game: rejoin
+          </button>
+        )}
+        <Link to={paths.game(target)} className="ho-btn ho-btn--ghost">
+          Start your own table
+        </Link>
+        <button type="button" className="ho-btn ho-btn--ghost" onClick={onClear}>
+          Try another code
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /**
  * /join and /join/:code. Needs a session (guest or Google): signed-out visitors go to /login and come back.
  * The code is checked against GET /api/rooms/:code (game name, host, players/max are shown), then we open the lobby.
@@ -44,7 +89,8 @@ export default function JoinRoom() {
   const navigate = useNavigate();
   const fromLink = !!paramCode;
   const [code, setCode] = useState(normalizeRoomCode(paramCode || ''));
-  const [check, setCheck] = useState({ state: 'idle', message: '', info: null }); // idle | checking | error | offline | joining
+  // idle | checking | joining (auto-opens the lobby) | held (joining was cancelled) | blocked (`kind`) | error | offline
+  const [check, setCheck] = useState({ state: 'idle', message: '', info: null, kind: null });
   const seq = useRef(0);
   const joinTimer = useRef(null);
   const myId = user ? user.id : null;
@@ -55,13 +101,13 @@ export default function JoinRoom() {
     async (c) => {
       const mine = ++seq.current;
       clearTimeout(joinTimer.current);
-      setCheck({ state: 'checking', message: '', info: null });
+      setCheck({ state: 'checking', message: '', info: null, kind: null });
       try {
         const info = await getRoom(c);
         if (mine !== seq.current) return;
-        const problem = roomProblem(info, myId);
-        if (problem) {
-          setCheck({ state: 'error', message: problem, info });
+        const kind = roomProblemKind(info, myId);
+        if (kind) {
+          setCheck({ state: 'blocked', kind, message: roomProblem(info, myId), info });
           return;
         }
         setCheck({ state: 'joining', message: '', info });
@@ -70,7 +116,7 @@ export default function JoinRoom() {
         }, JOIN_DELAY);
       } catch (e) {
         if (mine !== seq.current) return;
-        if (e && e.status === 404) setCheck({ state: 'error', message: 'No room with that code. Check it and try again.', info: null });
+        if (e && e.status === 404) setCheck({ state: 'blocked', kind: 'missing', message: 'No room with that code. Check it and try again.', info: null });
         else if (e && e.status === 400) setCheck({ state: 'error', message: errorMessage(e, 'That code is not valid.'), info: null });
         else setCheck({ state: 'offline', message: errorMessage(e, 'Could not reach the server'), info: null });
       }
@@ -78,13 +124,24 @@ export default function JoinRoom() {
     [myId, navigate, fromLink],
   );
 
+  // stop the auto-join (wrong room, changed my mind): the room stays found, one tap joins it
+  const cancelJoin = () => {
+    seq.current += 1;
+    clearTimeout(joinTimer.current);
+    setCheck((c) => ({ ...c, state: 'held' }));
+  };
+  const joinNow = () => {
+    clearTimeout(joinTimer.current);
+    navigate(paths.lobby(code), { replace: fromLink });
+  };
+
   // validate as soon as six valid characters are in
   useEffect(() => {
     if (loading || !user) return;
     if (!isRoomCode(code)) {
       seq.current += 1;
       clearTimeout(joinTimer.current);
-      setCheck({ state: 'idle', message: '', info: null });
+      setCheck({ state: 'idle', message: '', info: null, kind: null });
       return;
     }
     verify(code);
@@ -103,7 +160,7 @@ export default function JoinRoom() {
   }
 
   const state = check.state;
-  const uiState = state === 'checking' || state === 'joining' ? 'checking' : state === 'error' ? 'error' : 'idle';
+  const uiState = state === 'checking' || state === 'joining' ? 'checking' : state === 'error' || state === 'blocked' ? 'error' : 'idle';
   const info = check.info;
   const hostName = info && info.hostName;
   const joiningGame = info ? gameName(roomGameId(info)) : '';
@@ -132,7 +189,7 @@ export default function JoinRoom() {
           describedBy="ho-join-status"
         />
 
-        {info && info.exists !== false && (state === 'joining' || state === 'error') && <RoomPreview info={info} />}
+        {info && info.exists !== false && (state === 'joining' || state === 'held' || state === 'blocked') && <RoomPreview info={info} />}
 
         <div id="ho-join-status" className="ho-join__status" role="status" aria-live="polite">
           {state === 'idle' && code.length > 0 && <span className="ho-muted">{6 - code.length} more to go</span>}
@@ -142,10 +199,17 @@ export default function JoinRoom() {
             </span>
           )}
           {state === 'joining' && (
-            <span className="ho-good">
-              <span className="ho-spinner" aria-hidden="true" /> {hostName ? `Joining ${hostName}'s ${joiningGame} room...` : `Joining the ${joiningGame} room...`}
+            <span className="ho-good xl-joining" style={{ '--xl-join-ms': `${JOIN_DELAY}ms` }}>
+              <span className="ho-spinner" aria-hidden="true" />
+              <span className="xl-joining__text">{hostName ? `Joining ${hostName}'s ${joiningGame} room...` : `Joining the ${joiningGame} room...`}</span>
+              <button type="button" className="ho-btn ho-btn--ghost ho-btn--sm xl-joining__cancel" onClick={cancelJoin}>
+                Cancel
+              </button>
+              <i className="xl-joining__bar" aria-hidden="true" />
             </span>
           )}
+          {state === 'held' && <span className="ho-muted">Room found. Join when you are ready.</span>}
+          {state === 'blocked' && <span className="ho-sr">{check.message}</span>}
           {state === 'error' && <span className="ho-bad">{check.message}</span>}
           {state === 'offline' && (
             <span className="ho-bad">
@@ -157,14 +221,21 @@ export default function JoinRoom() {
           )}
         </div>
 
+        {state === 'blocked' && <BlockedState kind={check.kind} info={info} onRejoin={() => navigate(paths.lobby(code))} onClear={() => setCode('')} />}
+
+        {state === 'held' && (
+          <div className="ho-status__actions">
+            <button type="button" className="ho-btn ho-btn--primary" onClick={joinNow}>
+              <HubIcon name="arrowR" size={18} /> Join room
+            </button>
+            <button type="button" className="ho-btn ho-btn--ghost" onClick={() => setCode('')}>
+              Clear code
+            </button>
+          </div>
+        )}
+
         {(state === 'error' || state === 'offline') && (
           <div className="ho-status__actions">
-            {state === 'error' && info && info.exists !== false && (
-              // The lookup does not say who is in the room: players already seated can always get back in.
-              <button type="button" className="ho-btn ho-btn--primary" onClick={() => navigate(paths.lobby(code))}>
-                I was in this game: rejoin
-              </button>
-            )}
             <button type="button" className="ho-btn ho-btn--ghost" onClick={() => setCode('')}>
               Clear code
             </button>

@@ -1,22 +1,17 @@
-// Bot-only simulation of Hyderabad Tycoon: checks engine invariants and prints balance stats.
+// Bot-only simulation of Hyderabad Tycoon (Hyderabad Hustle rules): checks engine invariants and prints balance stats.
 //
-//   node scripts/simulate.js [--games 150] [--players 2,3,4] [--seed 1] [--varied] [--humans 0]
-//                            [--rounds 30,50,unlimited] [--unlimited] [--set goal=60000,startCash=12000]
-//                            [--bot reserve=1000,greed=1] [--quiet] [--fuzz]
+//   node scripts/simulate.js [--games 200] [--players 2,4,6] [--modes standard,quick,classic] [--seed 1]
+//                            [--set startCash=1200000,passStart=150000] [--bot reserve=150000,greed=1] [--quiet]
 //
-// --rounds     round limits to run (default 30,50,unlimited). `unlimited` = maxRounds null.
-// --unlimited  shorthand for --rounds unlimited (simulator-only safety cap: 400 rounds, counted as "stalled").
-// --varied     random bot personalities (like the story-mode rivals) instead of the defaults.
-// --humans N   the first N seats are "human proxies": isBot=false, but their moves come from chooseBotAction,
-//              so bots can offer them trades (a proxy accepts half of the offers it gets).
-// --set        override engine settings (to experiment with the economy without editing the engine).
-// --bot        override default bot params for every seat.
-// --fuzz       stress mode: seats pick RANDOM legal actions straight from getOptions() (trades, mortgages, resigns,
-//              odd bids...), asserting every offered action is accepted by applyAction and the invariants hold.
+// --set   engine overrides (startCash, passStart, maxRounds, trafficFine) to experiment without editing the engine.
+// --bot   default bot params for every seat.
+//
+// Reported per (players, mode): game length in rounds and turns, how many districts are owned after round 3 and 5,
+// upgrades, rides, auctions, how the games end, and the final net-worth spread.
 
 import {
-  createGame, applyAction, nextBotMove, chooseBotAction, botSnatchAction, getOptions, netWorth, liquidationValue, mulberry32,
-  BOARD_SIZE, JAIL_TILE, GO_TO_JAIL_TILE, MAX_LEVEL, GROUP_TILES, GROUPS, TILES, isBuyable, DEFAULT_SETTINGS, TOKEN_CAP, TRAPS_EACH, CITY_EVENTS, EVENT_EVERY,
+  createGame, applyAction, nextBotMove, netWorth, liquidationValue, standings, mulberry32,
+  BOARD_SIZE, MAX_LEVEL, TILES, isBuyable, CITY_EVENTS, EVENT_EVERY, MODES, ROUND_CAP,
 } from '../shared/index.js';
 
 // ---------- CLI ----------
@@ -37,336 +32,169 @@ const parseKV = (str) => {
   return out;
 };
 
-const GAMES = Number(arg('games', 150));
-const PLAYER_COUNTS = String(arg('players', '2,3,4')).split(',').map(Number);
+const GAMES = Number(arg('games', 200));
+const PLAYER_COUNTS = String(arg('players', '2,4,6')).split(',').map(Number);
+const MODE_LIST = String(arg('modes', 'standard,quick,classic')).split(',').map((m) => m.trim());
 const BASE_SEED = Number(arg('seed', 1));
-const VARIED = arg('varied', false) === true;
-const HUMANS = Number(arg('humans', 0));
 const SETTINGS = parseKV(arg('set', ''));
-const BOT_OVERRIDE = parseKV(arg('bot', ''));
+const BOT = parseKV(arg('bot', ''));
 const QUIET = arg('quiet', false) === true;
-const FUZZ = arg('fuzz', false) === true;
-const ROUND_LIMITS = (arg('unlimited', false) === true ? 'unlimited' : String(arg('rounds', '30,50,unlimited')))
-  .split(',')
-  .map((x) => (x.trim() === 'unlimited' || x.trim() === 'null' ? null : Number(x)));
-const SAFETY_ROUNDS = 400; // simulator-only cap for unlimited games
-const MAX_ACTIONS = 80000;
+const MAX_ACTIONS = 60000;
+const DISTRICTS = TILES.filter(isBuyable).length;
 
 // ---------- invariants ----------
 function checkInvariants(s) {
   const fail = (msg) => { throw new Error(`invariant: ${msg}`); };
-  if (!['roll', 'buy', 'snatch', 'auction', 'manage', 'debt', 'over'].includes(s.phase)) fail(`bad phase ${s.phase}`);
-  if (!Number.isFinite(s.round) || s.round < 1) fail(`bad round ${s.round}`);
+  if (!['roll', 'buy', 'auction', 'manage', 'debt', 'over'].includes(s.phase)) fail(`bad phase ${s.phase}`);
+  if (!Number.isInteger(s.round) || s.round < 1) fail(`bad round ${s.round}`);
   if (!Number.isInteger(s.rng)) fail('rng not an integer');
   const ids = new Set(s.players.map((p) => p.id));
-  let heldJailCards = 0;
+  const pieces = new Set(s.players.map((p) => p.piece));
+  if (pieces.size !== s.players.length) fail('two players share a piece');
   for (const p of s.players) {
-    if (!Number.isFinite(p.cash) || !Number.isInteger(p.cash)) fail(`${p.id} cash not an integer: ${p.cash}`);
-    if (p.cash < 0) fail(`${p.id} negative cash ${p.cash}`);
+    if (!Number.isInteger(p.cash) || p.cash < 0) fail(`${p.id} bad cash ${p.cash}`);
     if (!Number.isInteger(p.pos) || p.pos < 0 || p.pos >= BOARD_SIZE) fail(`${p.id} bad pos ${p.pos}`);
-    if (p.jailTurns < 0) fail(`${p.id} bad jail turns`);
-    if (!Number.isInteger(p.snatches) || p.snatches < 0 || p.snatches > Math.max(TOKEN_CAP, s.cfg.snatches)) fail(`${p.id} snatch tokens out of range: ${p.snatches}`);
-    if (s.cfg.snatches === 0 && p.snatches !== 0) fail(`${p.id} holds tokens with snatches off`);
-    if (!Number.isInteger(p.laps) || p.laps < 0) fail(`${p.id} bad laps ${p.laps}`);
-    if (!Number.isInteger(p.traps) || p.traps < 0 || p.traps > TRAPS_EACH) fail(`${p.id} bad trap count ${p.traps}`);
-    const placed = s.traps.filter((t) => t.owner === p.id);
-    if (placed.length + p.traps > TRAPS_EACH) fail(`${p.id} has more traps than it was given`);
-    if (p.bankrupt && placed.length) fail(`${p.id} bankrupt but its trap is still on the board`);
-    if (new Set(placed.map((t) => t.tile)).size !== placed.length) fail(`${p.id} has two traps on one tile`);
-    if (p.jailTurns > 0 && p.pos !== JAIL_TILE) fail(`${p.id} jailed away from the jail tile`);
-    if (!Number.isInteger(p.jailCards) || p.jailCards < 0) fail(`${p.id} bad jailCards`);
-    if (!Number.isInteger(p.rollsSinceSix) || p.rollsSinceSix < 0) fail(`${p.id} bad rollsSinceSix`);
-    if (!Number.isInteger(p.rentStreak) || p.rentStreak < 0) fail(`${p.id} bad rentStreak`);
-    heldJailCards += p.jailCards;
-    if (p.bankrupt && (p.cash !== 0 || s.owners.includes(p.id) || p.jailCards)) fail(`${p.id} bankrupt but still holds assets`);
+    if (!Number.isInteger(p.chai) || p.chai < 0 || p.chai > s.cfg.chaiCap) fail(`${p.id} bad chai ${p.chai}`);
+    if (p.stuck && p.bankrupt) fail(`${p.id} stuck while bankrupt`);
+    if (p.bankrupt && (p.cash !== 0 || s.owners.includes(p.id))) fail(`${p.id} bankrupt but still holds assets`);
     for (const [k, v] of Object.entries(p.stats)) if (!Number.isFinite(v) || v < 0) fail(`${p.id} stat ${k}=${v}`);
-    if (Number.isNaN(netWorth(s, p.id))) fail(`${p.id} worth NaN`);
-  }
-  if (heldJailCards > 1) fail('more than one jail card in circulation');
-  for (const t of s.traps) {
-    if (!ids.has(t.owner) || !Number.isInteger(t.tile) || t.tile < 0 || t.tile >= BOARD_SIZE || t.tile === GO_TO_JAIL_TILE) fail(`bad trap ${JSON.stringify(t)}`);
+    if (!Number.isFinite(netWorth(s, p.id))) fail(`${p.id} worth not finite`);
   }
   if (s.event !== null) {
-    const def = CITY_EVENTS.find((d) => d.id === s.event.id);
-    if (!def) fail(`unknown city event ${s.event.id}`);
-    if (s.event.round !== s.round || s.round % EVENT_EVERY !== 0) fail(`city event ${s.event.id} active in round ${s.round} (drawn for ${s.event.round})`);
-    if (Boolean(def.group) !== Boolean(s.event.group) || (s.event.group && !GROUPS[s.event.group])) fail('city event group shape');
-    if (!s.event.title || !s.event.text || !s.event.kind) fail('city event missing fields');
+    if (!CITY_EVENTS.some((d) => d.id === s.event.id)) fail(`unknown city event ${s.event.id}`);
+    if (s.event.round !== s.round || s.round % EVENT_EVERY !== 0) fail(`city event ${s.event.id} in round ${s.round}`);
   }
-  if (!Array.isArray(s.mortgaged) || s.mortgaged.length !== BOARD_SIZE) fail('mortgaged array missing');
   for (let i = 0; i < BOARD_SIZE; i++) {
     const o = s.owners[i];
     const lv = s.levels[i];
     if (o !== null) {
       if (!ids.has(o)) fail(`tile ${i} owned by unknown ${o}`);
-      if (!isBuyable(TILES[i])) fail(`tile ${i} owned but not buyable`);
+      if (!isBuyable(TILES[i])) fail(`tile ${i} owned but not a district`);
       if (s.players.find((p) => p.id === o).bankrupt) fail(`tile ${i} owned by bankrupt ${o}`);
     }
     if (!Number.isInteger(lv) || lv < 0 || lv > MAX_LEVEL) fail(`tile ${i} bad level ${lv}`);
-    if (lv > 0) {
-      if (TILES[i].type !== 'property') fail(`tile ${i} has level but is not a property`);
-      if (o === null) fail(`tile ${i} has level but no owner`);
-      if (!GROUP_TILES[TILES[i].group].every((t) => s.owners[t] === o)) fail(`tile ${i} built without the full set`);
-      if (GROUP_TILES[TILES[i].group].some((t) => s.mortgaged[t])) fail(`tile ${i} built inside a mortgaged colour`);
-      const levels = GROUP_TILES[TILES[i].group].map((t) => s.levels[t]);
-      if (Math.max(...levels) - Math.min(...levels) > 1) fail(`tile ${i} breaks the even-build rule`);
-    }
-    if (s.mortgaged[i] && (o === null || lv > 0)) fail(`tile ${i} mortgaged while unowned or built`);
+    if (lv > 0 && o === null) fail(`tile ${i} has a level but no owner`);
+    if (s.mortgaged[i] && (o === null || lv > 0)) fail(`tile ${i} mortgaged while unowned or upgraded`);
   }
   if (s.phase === 'buy' && s.pending?.type !== 'buy') fail('buy phase without pending buy');
-  if (s.phase === 'snatch' && s.pending?.type !== 'snatch') fail('snatch phase without pending snatch');
   if (s.phase === 'auction' && s.pending?.type !== 'auction') fail('auction phase without pending auction');
-  if (s.phase !== 'buy' && s.phase !== 'auction' && s.phase !== 'snatch' && s.pending) fail(`pending left over in phase ${s.phase}`);
+  if (s.phase !== 'buy' && s.phase !== 'auction' && s.pending) fail(`pending left over in phase ${s.phase}`);
+  if (s.ride && (s.phase === 'over' || s.ride.player !== s.players[s.turn].id)) fail('ride offered to someone else');
   if (s.phase === 'debt') {
     const d = s.debt;
     if (!d) fail('debt phase without a debt');
     const debtor = s.players.find((p) => p.id === d.player);
     if (!debtor || debtor.bankrupt) fail('debtor missing or bankrupt');
-    if (debtor.cash >= d.amount && false) fail('unreachable');
-    if (debtor.cash + liquidationValue(s, d.player) < d.amount) fail('debt that liquidation cannot cover should be a bankruptcy');
+    if (debtor.cash + liquidationValue(s, d.player) < d.amount) fail('uncoverable debt should be a bankruptcy');
   } else if (s.debt) fail('debt left over outside the debt phase');
-  if (s.trade) {
-    const a = s.players.find((p) => p.id === s.trade.from);
-    const b = s.players.find((p) => p.id === s.trade.to);
-    if (!a || !b || a.bankrupt || b.bankrupt) fail('trade with a bankrupt player');
-    if (s.phase === 'over') fail('trade left open after the game ended');
-  }
   if (s.phase !== 'over') {
     if (s.players[s.turn].bankrupt && s.phase !== 'auction' && s.phase !== 'debt') fail('turn points at a bankrupt player');
     if (s.players.filter((p) => !p.bankrupt).length < 2) fail('game should be over');
-  } else if (!s.winReason) fail('over without winReason');
+  } else {
+    if (!s.winReason) fail('over without winReason');
+    const top = standings(s)[0];
+    if (s.winner && top.id !== s.winner) fail(`winner ${s.winner} is not rank 1 (${top.id})`);
+  }
 }
 
 // ---------- one game ----------
-function makePlayers(n, seed) {
-  const r = mulberry32(seed * 7919 + 13);
-  return Array.from({ length: n }, (_, i) => ({
-    id: `p${i}`,
-    name: `Bot ${i + 1}`,
-    avatar: i,
-    isBot: i >= HUMANS,
-    bot: VARIED
-      ? { reserve: Math.round((500 + r() * 1500) / 100) * 100, greed: Math.round((0.7 + r() * 0.6) * 100) / 100 }
-      : { ...(Object.keys(BOT_OVERRIDE).length ? BOT_OVERRIDE : {}) },
-  }));
-}
-
-/** Who must act now, whether a bot or a human proxy. */
-function actorOf(s) {
-  if (s.phase === 'debt') return s.debt.player;
-  if (s.trade) return s.trade.to;
-  if (s.phase === 'auction') {
-    const p = s.players.find((q) => !q.bankrupt && !(q.id in s.pending.bids));
-    return p ? p.id : null;
-  }
-  return s.players[s.turn].id;
-}
-
-/** A random action that getOptions() says is legal (plus some random trade offers, which the engine may refuse). */
-function fuzzAction(s, rnd) {
-  const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
-  const active = s.players.filter((p) => !p.bankrupt);
-  if (rnd() < 0.004 && active.length > 2) return { type: 'RESIGN', playerId: pick(active).id, offered: true };
-  const who = actorOf(s);
-  const o = getOptions(s, who);
-  const c = [];
-  const add = (w, a) => c.push({ w, a: { ...a, playerId: who, offered: true } });
-  if (s.trade && s.trade.to === who) {
-    add(1, { type: 'TRADE_ACCEPT' });
-    add(1, { type: 'TRADE_REJECT' });
-  } else if (s.trade && s.trade.from === who) {
-    add(1, { type: 'TRADE_CANCEL' });
-  } else if (s.phase === 'debt') {
-    if (o.payDebt) add(8, { type: 'PAY_DEBT' });
-    for (const m of o.mortgage) add(2, { type: 'MORTGAGE', tile: m.tile });
-    for (const m of o.sellBuilding) add(2, { type: 'SELL_BUILDING', tile: m.tile });
-    if (!c.length || rnd() < 0.01) add(1, { type: 'RESIGN' });
-  } else if (s.phase === 'auction') {
-    if (o.bid) {
-      add(2, { type: 'BID', amount: 0 });
-      add(3, { type: 'BID', amount: Math.min(o.bid.max, o.bid.min + 10 * Math.floor(rnd() * 40)) });
-      add(1, { type: 'BID', amount: o.bid.max });
-    }
-  } else {
-    if (o.trap && rnd() < 0.5) c.push({ w: 4, a: { type: 'PLACE_TRAP', playerId: who, tile: Math.floor(rnd() * BOARD_SIZE) } }); // not 'offered': the Go to Jail square is refused
-    if (o.roll) add(10, { type: 'ROLL' });
-    if (o.endTurn) add(6, { type: 'END_TURN' });
-    if (o.buy) add(5, { type: 'BUY' });
-    if (o.shield) add(2, { type: 'BUY', shield: true });
-    if (o.skipBuy) add(2, { type: 'SKIP_BUY' });
-    if (o.bail) add(2, { type: 'PAY_BAIL' });
-    if (o.useJailCard) add(3, { type: 'USE_JAIL_CARD' });
-    for (const u of o.upgrade) add(2, { type: 'UPGRADE', tile: u.tile });
-    for (const m of o.mortgage) add(1, { type: 'MORTGAGE', tile: m.tile });
-    for (const m of o.unmortgage) add(1, { type: 'UNMORTGAGE', tile: m.tile });
-    for (const m of o.sellBuilding) add(1, { type: 'SELL_BUILDING', tile: m.tile });
-    if (o.trade.canOffer && rnd() < 0.3) {
-      const me = s.players.find((p) => p.id === who);
-      const others = active.filter((p) => p.id !== who);
-      const to = pick(others);
-      const tilesOf = (pl) => s.owners.map((ow, i) => (ow === pl.id ? i : -1)).filter((i) => i >= 0);
-      const some = (arr) => arr.filter(() => rnd() < 0.4).slice(0, 2);
-      c.push({ w: 3, a: { type: 'TRADE_OFFER', playerId: who, to: to.id, give: { cash: Math.floor(rnd() * Math.min(me.cash, 1500)), tiles: some(tilesOf(me)) }, get: { cash: Math.floor(rnd() * Math.min(to.cash, 1500)), tiles: some(tilesOf(to)) } } });
-    }
-  }
-  if (!c.length) return null;
-  let t = rnd() * c.reduce((x, e) => x + e.w, 0);
-  for (const e of c) { t -= e.w; if (t <= 0) return e.a; }
-  return c[c.length - 1].a;
-}
-
-function playGame(n, seed, maxRounds) {
-  const players = makePlayers(n, seed);
-  let state = createGame({ players, seed, settings: { ...(FUZZ ? { goal: 400000, startCash: 8000 } : {}), ...SETTINGS, maxRounds } });
-  const rnd = mulberry32(seed ^ 0x5eed);
+function playGame(n, mode, seed) {
+  const players = Array.from({ length: n }, (_, i) => ({ id: `p${i}`, name: `Bot ${i + 1}`, isBot: true, bot: { ...BOT } }));
+  let s = createGame({ players, settings: { mode, ...SETTINGS }, seed });
+  const rnd = mulberry32(seed * 31 + 7);
+  const c = { upgrades: 0, rides: 0, auctions: 0, bazaar: 0, rents: 0, rentTotal: 0, bankrupt: 0, debts: 0, mortgages: 0, stuck: 0, chaiSaved: 0, cards: 0 };
+  const owned = {};
   let actions = 0;
-  const counts = { rent: 0, auction: 0, jail: 0, card: 0, bankrupt: 0, upgrade: 0, trade: 0, tradeOffer: 0, mortgage: 0, hotel: 0, debt: 0, sets: 0, jailCard: 0, assists: 0, declineAuctions: 0, snatched: 0, snatchBids: 0, shields: 0, tokens: 0, cityEvents: 0, traps: 0, trapsSprung: 0 };
-  let stalled = false;
-  while (state.phase !== 'over') {
-    if (maxRounds === null && state.round > SAFETY_ROUNDS) { stalled = true; break; }
-    let action = null;
-    if (state.phase === 'snatch') {
-      // Everybody who could snatch decides (bots by the trivial policy, fuzz seats at random), then the room's timer closes the window.
-      for (const id of [...state.pending.eligible]) {
-        if (state.phase !== 'snatch' || state.pending.claims.includes(id)) continue;
-        const press = FUZZ ? (rnd() < 0.5 && getOptions(state, id).snatch ? { type: 'SNATCH', playerId: id } : null) : botSnatchAction(state, id);
-        if (!press) continue;
-        const r = applyAction(state, press);
-        if (r.error) throw new Error(`engine rejected ${JSON.stringify(press)}: ${r.error}`);
-        state = r.state;
-        actions += 1;
-        checkInvariants(state);
-      }
-      if (state.phase !== 'snatch') continue; // the last press closed it
-      action = { type: 'SNATCH_CLOSE' };
-    } else if (FUZZ) {
-      action = fuzzAction(state, rnd);
-      if (!action) throw new Error(`fuzz: nobody can act in phase ${state.phase}`);
-    } else action = nextBotMove(state, rnd);
-    if (!action) {
-      const who = actorOf(state);
-      const actor = state.players.find((p) => p.id === who);
-      if (!actor || actor.isBot) throw new Error(`bot stuck in phase ${state.phase} (actor ${who})`);
-      // a human proxy plays like a bot, except that it accepts half of the trade offers it gets
-      action = state.trade && state.trade.to === who
-        ? { type: rnd() < 0.5 ? 'TRADE_ACCEPT' : 'TRADE_REJECT', playerId: who }
-        : chooseBotAction(state, who, rnd);
-      if (!action) throw new Error(`human proxy has no action in phase ${state.phase} (actor ${who})`);
-    }
-    const offered = action.offered;
-    if (offered) delete action.offered;
-    const res = applyAction(state, action);
-    if (res.error) {
-      if (FUZZ && !offered) continue; // a random trade offer the engine rightly refused
-      throw new Error(`engine rejected ${JSON.stringify(action)}: ${res.error}`);
-    }
+  while (s.phase !== 'over') {
+    if (++actions > MAX_ACTIONS) throw new Error('too many actions');
+    const a = nextBotMove(s, rnd);
+    if (!a) throw new Error(`no bot move in phase ${s.phase}`);
+    const res = applyAction(s, a);
+    if (res.error) throw new Error(`${a.type}: ${res.error}`);
+    const before = s.round;
+    s = res.state;
     for (const e of res.events) {
-      if (e.type === 'cash' && e.reason === 'rent' && e.delta > 0) counts.rent += 1;
-      else if (e.type === 'auction_end' && e.winner) counts.auction += 1;
-      else if (e.type === 'auction_start' && state.phase === 'buy') counts.declineAuctions += 1;
-      else if (e.type === 'jail' && e.jailed) counts.jail += 1;
-      else if (e.type === 'jail' && e.reason === 'card_used') counts.jailCard += 1;
-      else if (e.type === 'card') counts.card += 1;
-      else if (e.type === 'bankrupt') counts.bankrupt += 1;
-      else if (e.type === 'level' && e.reason === 'upgrade') { counts.upgrade += 1; if (e.level === MAX_LEVEL) counts.hotel += 1; }
-      else if (e.type === 'trade_done') counts.trade += 1;
-      else if (e.type === 'trade_offer') counts.tradeOffer += 1;
-      else if (e.type === 'mortgage') counts.mortgage += 1;
-      else if (e.type === 'debt') counts.debt += 1;
-      else if (e.type === 'set_complete') counts.sets += 1;
-      else if (e.type === 'dice' && e.assist) counts.assists += 1;
-      else if (e.type === 'snatch_end' && e.outcome === 'snatched') counts.snatched += 1;
-      else if (e.type === 'snatch_end' && e.outcome === 'bidding') counts.snatchBids += 1;
-      else if (e.type === 'shield') counts.shields += 1;
-      else if (e.type === 'token_earned') counts.tokens += 1;
-      else if (e.type === 'city_event') counts.cityEvents += 1;
-      else if (e.type === 'trap_placed') counts.traps += 1;
-      else if (e.type === 'trap_sprung') counts.trapsSprung += 1;
+      if (e.type === 'level' && e.reason === 'upgrade') c.upgrades++;
+      else if (e.type === 'ride') c.rides++;
+      else if (e.type === 'auction_end' && e.winner) { c.auctions++; if (e.reason === 'bazaar') c.bazaar++; }
+      else if (e.type === 'cash' && e.reason === 'rent' && e.delta < 0) { c.rents++; c.rentTotal -= e.delta; }
+      else if (e.type === 'bankrupt') c.bankrupt++;
+      else if (e.type === 'debt') c.debts++;
+      else if (e.type === 'mortgage') c.mortgages++;
+      else if (e.type === 'traffic' && e.stuck) c.stuck++;
+      else if (e.type === 'chai' && e.saved) c.chaiSaved += e.saved;
+      else if (e.type === 'card') c.cards++;
     }
-    state = res.state;
-    checkInvariants(state);
-    if (++actions > MAX_ACTIONS) throw new Error('game did not terminate');
+    if (s.round !== before) for (const r of [4, 6]) if (s.round === r && !(r in owned)) owned[r] = s.owners.filter(Boolean).length;
+    checkInvariants(s);
   }
-  const seat = state.winner ? state.players.findIndex((p) => p.id === state.winner) : -1;
-  const worths = state.players.map((p) => netWorth(state, p.id)).sort((a, b) => b - a);
+  const worths = s.players.filter((p) => !p.bankrupt).map((p) => netWorth(s, p.id));
+  const rounds = Math.min(s.round, s.cfg.maxRounds ?? ROUND_CAP);
   return {
-    seat, reason: stalled ? 'stalled' : state.winReason, rounds: state.round, turns: state.turnCount, counts, actions,
-    // how decisive a round-limit finish is: lead of the winner over the runner-up, as a share of the winner's worth
-    lead: worths[0] > 0 ? (worths[0] - worths[1]) / worths[0] : 0,
+    rounds, turns: s.turnCount, reason: s.winReason, c,
+    owned3: owned[4] ?? s.owners.filter(Boolean).length, owned5: owned[6] ?? s.owners.filter(Boolean).length,
+    spread: worths.length > 1 ? Math.max(...worths) - Math.min(...worths) : 0,
+    top: Math.max(...worths),
+    levels: s.levels.reduce((a, b) => a + b, 0),
+    seatWin: s.players.findIndex((p) => p.id === s.winner),
   };
 }
 
-// ---------- stats ----------
-const pct = (arr, q) => {
-  if (!arr.length) return 0;
-  const a = [...arr].sort((x, y) => x - y);
-  return a[Math.min(a.length - 1, Math.floor(q * a.length))];
-};
-const avg = (arr) => (arr.length ? arr.reduce((x, y) => x + y, 0) / arr.length : 0);
-const f1 = (x) => (Math.round(x * 10) / 10).toFixed(1);
-const f2 = (x) => (Math.round(x * 100) / 100).toFixed(2);
-
-const summary = [];
-let failures = 0;
+// ---------- runner ----------
+const avg = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+const pct = (x) => `${(100 * x).toFixed(1)}%`;
+const L = (x) => `₹${(x / 100000).toFixed(2)}L`;
 const t0 = Date.now();
-for (const maxRounds of ROUND_LIMITS) {
+let failures = 0;
+const summary = [];
+for (const mode of MODE_LIST) {
   for (const n of PLAYER_COUNTS) {
-    const results = [];
+    const rows = [];
     for (let g = 0; g < GAMES; g++) {
-      const seed = BASE_SEED * 100003 + n * 1009 + g * 31 + 7;
+      const seed = BASE_SEED * 100003 + n * 1009 + g * 7 + mode.length;
       try {
-        results.push(playGame(n, seed, maxRounds));
+        rows.push(playGame(n, mode, seed));
       } catch (err) {
-        failures += 1;
-        if (failures <= 5) console.error(`FAIL players=${n} rounds=${maxRounds} seed=${seed}: ${err.message}`);
+        failures++;
+        if (failures <= 5) console.error(`FAIL mode=${mode} players=${n} seed=${seed}: ${err.message}`);
       }
     }
-    const ok = results.length;
-    if (!ok) continue;
-    const reasons = {};
-    for (const r of results) reasons[r.reason] = (reasons[r.reason] || 0) + 1;
-    const seatWins = Array(n).fill(0);
-    for (const r of results) if (r.seat >= 0) seatWins[r.seat] += 1;
-    const rounds = results.map((r) => r.rounds);
-    const byRounds = results.filter((r) => r.reason === 'rounds');
-    const row = {
-      limit: maxRounds === null ? 'unlimited' : maxRounds, n, games: ok,
-      netWorthPct: ((reasons.net_worth || 0) / ok) * 100,
-      lastPct: ((reasons.last_standing || 0) / ok) * 100,
-      roundsPct: ((reasons.rounds || 0) / ok) * 100,
-      stalledPct: ((reasons.stalled || 0) / ok) * 100,
-      median: pct(rounds, 0.5), p90: pct(rounds, 0.9), min: Math.min(...rounds), max: Math.max(...rounds),
-      avgTurns: avg(results.map((r) => r.turns)),
-      avgActions: avg(results.map((r) => r.actions)),
-      seatWins: seatWins.map((w) => (w / ok) * 100),
-      leadByRounds: byRounds.length ? avg(byRounds.map((r) => r.lead)) * 100 : null,
+    if (!rows.length) continue;
+    const r = {
+      mode, n, games: rows.length,
+      rounds: avg(rows.map((x) => x.rounds)),
+      maxRounds: Math.max(...rows.map((x) => x.rounds)),
+      turns: avg(rows.map((x) => x.turns)),
+      owned3: avg(rows.map((x) => x.owned3)) / DISTRICTS,
+      owned5: avg(rows.map((x) => x.owned5)) / DISTRICTS,
+      bankruptEnd: rows.filter((x) => x.reason === 'last_standing').length / rows.length,
+      bankrupts: avg(rows.map((x) => x.c.bankrupt)),
+      spread: avg(rows.map((x) => x.spread)),
+      top: avg(rows.map((x) => x.top)),
+      upgrades: avg(rows.map((x) => x.c.upgrades)),
+      endLevels: avg(rows.map((x) => x.levels)),
+      rides: avg(rows.map((x) => x.c.rides)),
+      auctions: avg(rows.map((x) => x.c.auctions)),
+      bazaar: avg(rows.map((x) => x.c.bazaar)),
+      rentAvg: avg(rows.map((x) => (x.c.rents ? x.c.rentTotal / x.c.rents : 0))),
+      rents: avg(rows.map((x) => x.c.rents)),
+      debts: avg(rows.map((x) => x.c.debts)),
+      mortgages: avg(rows.map((x) => x.c.mortgages)),
+      stuck: avg(rows.map((x) => x.c.stuck)),
+      seat1: rows.filter((x) => x.seatWin === 0).length / rows.length,
     };
-    const per = (k) => avg(results.map((r) => r.counts[k]));
-    row.counts = Object.fromEntries(Object.keys(results[0].counts).map((k) => [k, per(k)]));
-    row.tradePct = (results.filter((r) => r.counts.trade > 0).length / ok) * 100;
-    row.mortgagePct = (results.filter((r) => r.counts.mortgage > 0).length / ok) * 100;
-    row.hotelPct = (results.filter((r) => r.counts.hotel > 0).length / ok) * 100;
-    summary.push(row);
+    summary.push(r);
     if (!QUIET) {
-      console.log(`\n=== ${n} players, limit ${row.limit}, ${ok}/${GAMES} games ok${HUMANS ? `, ${HUMANS} human proxy` : ''} ===`);
-      console.log(`win reason   : net_worth ${f1(row.netWorthPct)}%  last_standing ${f1(row.lastPct)}%  rounds ${f1(row.roundsPct)}%${row.stalledPct ? `  STALLED(>${SAFETY_ROUNDS}) ${f1(row.stalledPct)}%` : ''}`);
-      console.log(`rounds       : median ${row.median}  p90 ${row.p90}  min ${row.min}  max ${row.max}${row.leadByRounds !== null ? `   (round-limit wins lead runner-up by ${f1(row.leadByRounds)}% of worth)` : ''}`);
-      console.log(`turns/game   : ${f1(row.avgTurns)} (avg)   actions/game ${f1(row.avgActions)}`);
-      console.log(`wins by seat : ${row.seatWins.map((w, i) => `S${i + 1} ${f1(w)}%`).join('  ')}`);
-      const c = row.counts;
-      console.log(`per game avg : rents ${f1(c.rent)}  upgrades ${f1(c.upgrade)}  hotels ${f2(c.hotel)}  sets ${f1(c.sets)}  auctions won ${f1(c.auction)} (declined-tile ${f1(c.declineAuctions)})  bankruptcies ${f2(c.bankrupt)}  snatched ${f2(c.snatched)} (bidding ${f2(c.snatchBids)})  shields ${f2(c.shields)}  tokens earned ${f2(c.tokens)}  city events ${f2(c.cityEvents)}  traps ${f2(c.traps)} (sprung ${f2(c.trapsSprung)})`);
-      console.log(`               mortgages ${f1(c.mortgage)}  debts ${f1(c.debt)}  trades ${f2(c.trade)}/${f2(c.tradeOffer)} offers  jail ${f1(c.jail)} (cards used ${f2(c.jailCard)})  lucky-dice assists ${f1(c.assists)}`);
-      console.log(`games with   : a trade ${f1(row.tradePct)}%  a mortgage ${f1(row.mortgagePct)}%  a hotel ${f1(row.hotelPct)}%`);
+      console.log(`\n=== ${MODES[mode]?.label || mode}, ${n} players: ${r.games}/${GAMES} games ok ===`);
+      console.log(`length        : ${r.rounds.toFixed(1)} rounds avg (max ${r.maxRounds}), ${r.turns.toFixed(1)} turns`);
+      console.log(`districts     : ${pct(r.owned3)} owned after round 3, ${pct(r.owned5)} after round 5`);
+      console.log(`ending        : ${pct(r.bankruptEnd)} by bankruptcy (last standing), ${r.bankrupts.toFixed(2)} bankruptcies/game, ${r.debts.toFixed(1)} debts, ${r.mortgages.toFixed(1)} mortgages`);
+      console.log(`net worth     : winner ${L(r.top)} avg, spread (richest - poorest active) ${L(r.spread)} avg`);
+      console.log(`per game      : ${r.upgrades.toFixed(1)} upgrades (${r.endLevels.toFixed(1)} levels standing at the end), ${r.rides.toFixed(1)} rides, ${r.auctions.toFixed(1)} auctions won (${r.bazaar.toFixed(1)} bazaar), ${r.stuck.toFixed(1)} traffic jams`);
+      console.log(`rent          : ${r.rents.toFixed(1)} payments/game, ${L(r.rentAvg)} avg payment;  seat 1 wins ${pct(r.seat1)}`);
     }
   }
 }
-
-const u = { ...DEFAULT_SETTINGS, ...SETTINGS };
-console.log(`\nsettings: startCash ${u.startCash}, goal ${u.goal}, passStart ${u.passStart}, bail ${u.bailFine}, dice ${u.dice}${VARIED ? ' (varied bots)' : ''}`);
-console.log(`${failures === 0 ? 'ALL INVARIANTS HELD' : `${failures} GAME(S) FAILED`} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-if (QUIET) {
-  for (const r of summary) {
-    console.log(`n=${r.n} lim=${r.limit} nw=${f1(r.netWorthPct)}% last=${f1(r.lastPct)}% rounds=${f1(r.roundsPct)}%${r.stalledPct ? ` stalled=${f1(r.stalledPct)}%` : ''} med=${r.median} p90=${r.p90} s1=${f1(r.seatWins[0])}% hotel=${f1(r.hotelPct)}% mort=${f1(r.mortgagePct)}% trade=${f1(r.tradePct)}% bankr=${f2(r.counts.bankrupt)}`);
-  }
-}
-process.exit(failures === 0 ? 0 : 1);
+console.log(`\n${failures === 0 ? 'ALL INVARIANTS HELD' : `${failures} GAME(S) FAILED`} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+if (QUIET) for (const r of summary) console.log(`${r.mode} n=${r.n} rounds=${r.rounds.toFixed(1)} turns=${r.turns.toFixed(0)} owned5=${pct(r.owned5)} bankr=${pct(r.bankruptEnd)} spread=${L(r.spread)} upg=${r.upgrades.toFixed(1)}`);
+if (failures) process.exitCode = 1;

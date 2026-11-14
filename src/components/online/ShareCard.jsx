@@ -15,6 +15,31 @@ function WhatsAppIcon() {
   );
 }
 
+function CopyIcon({ done }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+      {done ? <path d="M5 12.5l4.5 4.5L19 7.5" /> : (<><rect x="9" y="9" width="11" height="11" rx="2.5" /><path d="M5 15V6.5A1.5 1.5 0 0 1 6.5 5H15" /></>)}
+    </svg>
+  );
+}
+
+function QrIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round">
+      <rect x="3.5" y="3.5" width="7" height="7" rx="1.4" /><rect x="13.5" y="3.5" width="7" height="7" rx="1.4" /><rect x="3.5" y="13.5" width="7" height="7" rx="1.4" />
+      <path d="M14 14h2.5v2.5H14zM18 18h2.5M18 14h2.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ShareIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 15V4M8 8l4-4 4 4M5 13v5.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V13" />
+    </svg>
+  );
+}
+
 /** Room code in big letters + copy, share link (`origin + paths.join(code)`), WhatsApp, native share and a QR code. */
 export default function ShareCard({ code, gameName, onNotify }) {
   const [codeCopied, copyCode] = useCopied();
@@ -34,17 +59,20 @@ export default function ShareCard({ code, gameName, onNotify }) {
       <div className="ho-share__top">
         <div className="ho-share__codeblock">
           <span className="ho-eyebrow">Room code</span>
-          <div className="ho-bigcode" aria-label={`Room code ${String(code).split('').join(' ')}`}>
-            {spacedCode(code)}
+          <div className="ho-share__coderow">
+            <div className="ho-bigcode" aria-label={`Room code ${String(code).split('').join(' ')}`}>
+              {spacedCode(code)}
+            </div>
           </div>
           <button
             type="button"
-            className="ho-btn ho-btn--ghost ho-btn--sm"
+            className={`ho-btn ho-btn--ghost ho-btn--sm ho-copybtn${codeCopied ? ' is-done' : ''}`}
             onClick={async () => {
               if (!(await copyCode(code))) notify('Could not copy. Select the code and copy it manually.', 'bad');
             }}
           >
-            {codeCopied ? 'Copied!' : 'Copy code'}
+            <CopyIcon done={codeCopied} />
+            <span aria-live="polite">{codeCopied ? 'Copied!' : 'Copy code'}</span>
           </button>
         </div>
 
@@ -60,12 +88,13 @@ export default function ShareCard({ code, gameName, onNotify }) {
         <input className="ho-input ho-linkrow__input" readOnly value={link} aria-label="Invite link" onFocus={(e) => e.target.select()} />
         <button
           type="button"
-          className="ho-btn ho-btn--ghost"
+          className={`ho-btn ho-btn--ghost ho-copybtn${linkCopied ? ' is-done' : ''}`}
           onClick={async () => {
             if (!(await copyLink(link))) notify('Could not copy the link.', 'bad');
           }}
         >
-          {linkCopied ? 'Copied!' : 'Copy link'}
+          <CopyIcon done={linkCopied} />
+          <span aria-live="polite">{linkCopied ? 'Copied!' : 'Copy link'}</span>
         </button>
       </div>
 
@@ -75,11 +104,11 @@ export default function ShareCard({ code, gameName, onNotify }) {
         </a>
         {canShare() && (
           <button type="button" className="ho-btn ho-btn--primary" onClick={share}>
-            Share
+            <ShareIcon /> Share
           </button>
         )}
         <button type="button" className="ho-btn ho-btn--ghost ho-qr__toggle" onClick={() => setQrOpen((v) => !v)} aria-expanded={qrOpen}>
-          {qrOpen ? 'Hide QR' : 'Show QR'}
+          <QrIcon /> {qrOpen ? 'Hide QR' : 'Show QR'}
         </button>
       </div>
     </section>

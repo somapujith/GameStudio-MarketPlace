@@ -3,6 +3,7 @@
 //
 //   sfx.unlock()        resume the AudioContext (called automatically on the first user gesture)
 //   sfx.play(name)      click dice step coin pay buy upgrade hotel mortgage trade lucky jail card win lose cheer error
+//                       turn warn ride chai invite levelup friend
 //   sfx.setEnabled(b)   sfx.setVolume(v 0..1)   (also follows storage settings automatically)
 //
 // Silent (and never throws) when AudioContext is unavailable, e.g. SSR or old browsers.
@@ -257,6 +258,64 @@ const SOUNDS = {
       noise(c, o, { t: t + rand(0.2, 1.5), d: 0.03, v: rand(0.08, 0.16), f: rand(1400, 2400), q: 1.4 });
     }
     tone(c, o, { f: 480, f2: 880, t: t + 0.1, a: 0.1, d: 0.6, v: 0.04 });
+  },
+
+  // Two bright bells, a little lift: it is your turn.
+  turn(c, o, t) {
+    tone(c, o, { f: NOTE.G5, type: 'triangle', t, d: 0.16, v: 0.2 });
+    tone(c, o, { f: NOTE.C6, type: 'triangle', t: t + 0.11, d: 0.34, v: 0.22 });
+    tone(c, o, { f: NOTE.G6, t: t + 0.11, d: 0.28, v: 0.05 });
+    noise(c, o, { t: t + 0.1, d: 0.2, v: 0.025, type: 'highpass', f: 6500, a: 0.03 });
+  },
+
+  // Soft wooden double tick: the decision timer is running out (never harsh, it repeats once).
+  warn(c, o, t) {
+    [0, 0.22].forEach((dt) => {
+      tone(c, o, { f: 880, f2: 700, type: 'sine', t: t + dt, d: 0.09, v: 0.16 });
+      noise(c, o, { t: t + dt, d: 0.025, v: 0.06, f: 2600, q: 2 });
+    });
+  },
+
+  // Auto horn "pom-pom" and an engine whoosh: taking the Auto / Metro / MMTS.
+  ride(c, o, t) {
+    [0, 0.17].forEach((dt) => {
+      tone(c, o, { f: 415, type: 'square', t: t + dt, d: 0.1, v: 0.05 });
+      tone(c, o, { f: 415, type: 'triangle', t: t + dt, d: 0.12, v: 0.18 });
+      tone(c, o, { f: 523, type: 'triangle', t: t + dt, d: 0.12, v: 0.1 });
+    });
+    noise(c, o, { t: t + 0.3, a: 0.12, d: 0.45, v: 0.12, f: 400, f2: 1800, q: 0.7 });
+  },
+
+  // Glass clink and a sip: a chai token is gained or spent.
+  chai(c, o, t) {
+    [1, 2.4, 4.1].forEach((r, i) => {
+      tone(c, o, { f: 1320 * r, t, d: 0.35 - i * 0.08, v: 0.12 / (i + 1) });
+    });
+    noise(c, o, { t: t + 0.18, a: 0.06, d: 0.22, v: 0.06, type: 'lowpass', f: 900, f2: 300 });
+    tone(c, o, { f: 520, f2: 760, type: 'sine', t: t + 0.24, d: 0.16, v: 0.08 });
+  },
+
+  // Friendly doorbell: someone invited you to a table.
+  invite(c, o, t) {
+    tone(c, o, { f: NOTE.E6, t, d: 0.4, v: 0.18 });
+    tone(c, o, { f: NOTE.C6, t: t + 0.24, d: 0.6, v: 0.2 });
+    tone(c, o, { f: NOTE.C5, type: 'triangle', t: t + 0.24, d: 0.5, v: 0.07 });
+  },
+
+  // Quick rising run with a sparkle: level up.
+  levelup(c, o, t) {
+    [NOTE.C5, NOTE.E5, NOTE.G5, NOTE.C6, NOTE.E6].forEach((f, i) => {
+      tone(c, o, { f, type: 'triangle', t: t + i * 0.06, d: 0.16, v: 0.17 });
+    });
+    tone(c, o, { f: NOTE.G6, t: t + 0.32, d: 0.5, v: 0.1 });
+    noise(c, o, { t: t + 0.3, a: 0.05, d: 0.35, v: 0.04, type: 'highpass', f: 6000 });
+  },
+
+  // Two warm notes: a friend came online or accepted you.
+  friend(c, o, t) {
+    tone(c, o, { f: NOTE.E5, type: 'triangle', t, d: 0.18, v: 0.18 });
+    tone(c, o, { f: NOTE.G5, type: 'triangle', t: t + 0.12, d: 0.3, v: 0.18 });
+    tone(c, o, { f: NOTE.G6, t: t + 0.12, d: 0.2, v: 0.04 });
   },
 
   // Double buzz.

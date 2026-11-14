@@ -1,6 +1,7 @@
 // Art wrappers for the hub screens: a game's 16:9 cover, its square icon, category + badge icons.
 // Everything degrades to a themed placeholder, so a missing art piece never breaks a card.
 import { BadgeIcon as KitBadgeIcon, CategoryIcon as KitCategoryIcon } from '@/platform/game/hubArt.jsx';
+import HubIcon from '@/platform/game/HubIcon.jsx';
 import { initials, themeVars } from './gameTheme.js';
 
 /** 16:9 cover (`.hub-cover`: the art crops like `object-fit: cover`). Decorative. Needs --g-* vars from an ancestor. */
@@ -34,7 +35,7 @@ export function CatIcon({ cat, size = 20 }) {
   if (!cat) return null;
   return (
     <span className="hh2-cat-ico" style={{ '--sz': `${size}px` }} aria-hidden="true">
-      <KitCategoryIcon id={cat.icon || cat.id} size={size} />
+      {cat.id === 'soon' ? <HubIcon name="spark" size={size} /> : <KitCategoryIcon id={cat.icon || cat.id} size={size} />}
     </span>
   );
 }

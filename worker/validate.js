@@ -57,22 +57,23 @@ export function sanitizeChat(input) {
 /** Emote key if it is on the allow-list (default: the Tycoon soundboard keys), else ''. */
 export const sanitizeEmote = (v, allowed = EMOTES) => (typeof v === 'string' && allowed.includes(v) ? v : '');
 
-// Actions that carry no parameters besides the (server-forced) player id.
+// Actions that carry no parameters besides the (server-forced) player id (docs/HUSTLE_PLAN.md 3.7).
 const SIMPLE_ACTIONS = new Set([
   'ROLL',
-  'PAY_BAIL',
+  'PAY_TRAFFIC',
+  'USE_CHAI',
+  'BUY',
   'SKIP_BUY',
+  'RIDE',
   'END_TURN',
   'RESIGN',
   'PAY_DEBT',
-  'USE_JAIL_CARD',
   'TRADE_ACCEPT',
   'TRADE_REJECT',
   'TRADE_CANCEL',
-  'SNATCH', // SNATCH_CLOSE is deliberately absent: only the room's timer may close the window
 ]);
 // Actions that carry a single tile id.
-const TILE_ACTIONS = new Set(['UPGRADE', 'MORTGAGE', 'UNMORTGAGE', 'SELL_BUILDING', 'PLACE_TRAP']);
+const TILE_ACTIONS = new Set(['UPGRADE', 'MORTGAGE', 'UNMORTGAGE', 'SELL_BUILDING']);
 const MAX_MONEY = 100_000_000;
 
 const isTile = (t) => Number.isInteger(t) && t >= 0 && t < BOARD_SIZE;
@@ -89,7 +90,7 @@ function sanitizeTradeSide(side) {
 }
 
 /**
- * Action types a client may send (docs/CONTRACT.md sections 3 and 3c), and how to build the
+ * Action types a client may send (docs/GAME_RULES.md 8.5), and how to build the
  * clean engine action: `playerId` is forced, unknown fields are dropped, numbers are checked.
  * Whether the action is *legal right now* is the engine's job (applyAction validates).
  * Keep this list in sync with the contract when the engine gains actions.
@@ -99,7 +100,6 @@ export function sanitizeAction(input, playerId) {
   const type = input.type;
   if (typeof type !== 'string') return null;
   if (SIMPLE_ACTIONS.has(type)) return { type, playerId };
-  if (type === 'BUY') return input.shield === true ? { type, shield: true, playerId } : { type, playerId }; // Buy + Shield
   if (TILE_ACTIONS.has(type)) return isTile(input.tile) ? { type, tile: input.tile, playerId } : null;
   switch (type) {
     case 'BID': {

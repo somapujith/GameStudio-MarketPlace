@@ -1,18 +1,19 @@
 import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import * as shared from '@shared/index.js';
-import { GROUP_TILES, TILES, tilePosition } from '@shared/board.js';
+import { GRID, GROUPS, TILES, tilePosition } from '@shared/board.js';
 import Tile, { eventMark } from './Tile.jsx';
 import Pawn from './Pawn.jsx';
+import CameraFocus from './fx/CameraFocus.jsx';
 import { oddsSupported, useOddsPref } from './oddsPref.js';
 import '@/styles/board.css';
+import '@/styles/fx.css';
 
 const NONE = [];
 const NO_DISPLAY = {};
 
 // ---- landing odds overlay ---------------------------------------------------
-// `landingOdds` is written by the dice agent and `previewRent` by the engine; both are looked up
-// by name so a build without them still works (the overlay simply stays hidden). The on/off
-// preference lives in oddsPref.js: the control panel renders the button, this file paints the chips.
+// `landingOdds` / `previewRent` are looked up by name so a build without them still works (the overlay simply
+// stays hidden). The on/off preference lives in oddsPref.js: the control panel renders the button.
 const ODDS_FN = 'landingOdds';
 const RENT_FN = 'previewRent';
 const MIN_CHIP = 0.005; // below 0.5% a tile gets no chip
@@ -48,13 +49,23 @@ function computeOdds(view, me) {
   }
 }
 
-/** What fills the middle until a control panel is passed in. */
+/** groupId -> tile ids (from GROUPS[id].tiles when the engine provides it). */
+const GROUP_IDS = Object.fromEntries(
+  Object.keys(GROUPS).map((g) => [g, Array.isArray(GROUPS[g].tiles) ? GROUPS[g].tiles : TILES.filter((t) => t.group === g).map((t) => t.id)]),
+);
+
+/** What fills the middle until a control panel is passed in: a night skyline with the Charminar. */
 const CenterBrand = memo(function CenterBrand() {
   return (
     <div className="hb-center__brand" aria-hidden="true">
+      <svg className="hb-center__sky" viewBox="0 0 200 90" preserveAspectRatio="xMidYMax meet" focusable="false">
+        <path d="M0 90V70h14V58h10v12h8V50h12v20h6V62h9v28zM146 90V60h10v-8h12v14h8V48h10v42z" />
+        <path d="M84 90V54h4V30l-2-4h6l-2 4v24h20V30l-2-4h6l-2 4v24h4v36h-8V70a8 8 0 0 0-16 0v20z" />
+        <path d="M96 54v-8a4 4 0 0 1 8 0v8z" />
+      </svg>
       <div className="hb-center__banner">
         <span>Hyderabad</span>
-        <b>Tycoon</b>
+        <b>Hustle</b>
       </div>
     </div>
   );
@@ -86,17 +97,18 @@ const OddsLayer = memo(function OddsLayer({ odds }) {
 });
 
 /**
- * The whole square board: 40 tiles on an 11x11 ring (corner tracks 1.4x an edge track), the 9x9 middle
- * for the control panel and the pawn layer. All sizes are container-query units of this component's
- * own width, so the parent only decides how wide it is. `--hb-u` (one edge tile) is set on the grid and
- * inherited by everything inside, including `center`.
+ * The square city circuit: the engine's tiles on a GRID x GRID ring (Hustle: 36 on 10x10, corners 1.5x an edge
+ * track), the (GRID-2)^2 middle for the control panel, and the pawn layer. All sizes are container-query units of
+ * this component's own width, so the parent only decides how wide it is (`--hb-u` = one edge tile).
  *
- * <Board session onTileClick={(tileId) => …} highlightTile={tileId|null} center={ReactNode} />
+ * <Board session onTileClick={(tileId) => …} highlightTile={tileId|null}>{centre}</Board>
+ * (`center={node}` still works.) The centre carries `data-fx-bank` (money flights to / from the bank end there),
+ * every tile `data-fx-tile`, every pawn `data-fx-pawn`.
  *
- * `center` fills `div.hb-center` (position: relative, exactly the 9x9 region the ring encloses); it is
- * the caller's to lay out. Landing odds: toggle with `useOddsPref()` from ./oddsPref.js.
+ * Reads from `session`: display (players with pos/piece/stuck/chai/motion, owners, levels, mortgaged, turn, stepMs,
+ * landing), view.event (live city event), card + stageTile (card shimmer), busy (camera focus).
  */
-export function Board({ session, onTileClick, highlightTile = null, center = null }) {
+export function Board({ session, onTileClick, highlightTile = null, center = null, children }) {
   const d = session?.display || session?.view || NO_DISPLAY;
   const players = d.players || NONE;
   const owners = d.owners || NONE;
@@ -112,27 +124,26 @@ export function Board({ session, onTileClick, highlightTile = null, center = nul
 
   const turnPlayer = players[d.turn];
   const activeTile = turnPlayer && !turnPlayer.bankrupt ? turnPlayer.pos : -1;
-
   const byId = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
 
-  // ---- snatch window: the contested tile pulses and shows its buyer. Read from the LATEST authoritative
-  // state (`session.view`), never from the animation `display`, which can lag behind the real-time window.
-  const view = session?.view;
-  const snatch = view?.phase === 'snatch' && view.pending?.type === 'snatch' ? view.pending : null;
-  const snatchBuyer = snatch ? (view.players || NONE).find((p) => p.id === snatch.buyer) || byId.get(snatch.buyer) : null;
+  // city event: public state, read from the latest view (the presenter's display can lag a little)
+  const cityEvent = session?.view?.event || null;
 
-  // ---- city event: public state, read from the latest view like the snatch ring
-  const cityEvent = view?.event || null;
+  // stuck players per tile, chai tokens in play (Chai Adda steams when the count rises)
+  const stuckAt = new Map();
+  let chaiTotal = 0;
+  for (const p of players) {
+    if (p.bankrupt) continue;
+    if (p.stuck) stuckAt.set(p.pos, (stuckAt.get(p.pos) || 0) + 1);
+    chaiTotal += Number(p.chai) || 0;
+  }
 
-  // ---- traps: view.traps is already redacted to the viewer's own; never read from the delayed display
-  const myTraps = useMemo(() => {
-    const mine = new Set();
-    for (const t of view?.traps || NONE) if (t && t.owner === session?.me) mine.add(t.tile);
-    return mine;
-  }, [view?.traps, session?.me]);
+  // the tile a card is being drawn from (while the presenter shows the card)
+  const drawingTile = session?.card ? session?.stageTile : null;
 
   // ---- odds: computed only while the toggle is on and it is my moment to roll
   const [oddsOn] = useOddsPref();
+  const view = session?.view;
   const me = session?.me;
   const canRoll = !!session?.options?.roll;
   const myPos = view?.players?.find?.((p) => p.id === me)?.pos;
@@ -144,16 +155,15 @@ export function Board({ session, onTileClick, highlightTile = null, center = nul
     [oddsActive, view?.turn, view?.turnCount, myPos, view?.phase, me],
   );
 
+  const salary = Number(d.cfg?.passStart) > 0 ? Number(d.cfg.passStart) : undefined;
+
   const tiles = TILES.map((tile) => {
-    const contested = snatch?.tile === tile.id;
-    // the buyer already owns the tile in the live state; the delayed display may not show it yet
-    const ownerId = contested && snatchBuyer ? snatchBuyer.id : owners[tile.id];
-    const owner = contested && snatchBuyer ? snatchBuyer : ownerId != null ? byId.get(ownerId) : null;
-    // whole colour held by this owner = glow ring (there is no "two of three" state any more)
+    const ownerId = owners[tile.id];
+    const owner = ownerId != null ? byId.get(ownerId) : null;
     let setState = 'none';
     if (owner && tile.group) {
-      const ids = GROUP_TILES[tile.group];
-      if (ids.every((t) => owners[t] === ownerId)) setState = 'full';
+      const ids = GROUP_IDS[tile.group] || NONE;
+      if (ids.length && ids.every((t) => owners[t] === ownerId)) setState = 'full';
     }
     return (
       <Tile
@@ -161,14 +171,18 @@ export function Board({ session, onTileClick, highlightTile = null, center = nul
         tile={tile}
         ownerColor={owner ? owner.color : null}
         ownerName={owner ? owner.name : ''}
+        ownerId={owner ? owner.id : null}
+        ownerPiece={owner ? owner.piece || null : null}
         level={owner ? levels[tile.id] || 0 : 0}
         setState={setState}
         mortgaged={!!(owner && mortgaged[tile.id])}
-        snatch={contested}
         event={eventMark(cityEvent, tile)}
-        trap={myTraps.has(tile.id)}
         highlight={highlightTile === tile.id}
         active={activeTile === tile.id}
+        stuck={tile.type === 'traffic' ? stuckAt.get(tile.id) || 0 : 0}
+        chai={tile.type === 'chai' ? chaiTotal : 0}
+        drawing={drawingTile === tile.id && tile.type === 'card'}
+        salary={tile.type === 'start' ? salary : undefined}
         onSelect={onSelect}
       />
     );
@@ -183,35 +197,47 @@ export function Board({ session, onTileClick, highlightTile = null, center = nul
     crowd.set(p.pos, list);
   });
 
+  const stepMs = Math.max(60, Math.round(session?.display?.stepMs ?? 260));
+  const landing = Number.isInteger(d.landing) ? d.landing : null;
+  const focus = !!session?.busy && landing !== null;
+  const middle = children ?? center ?? <CenterBrand />;
+
   return (
-    <div className={`hb-board${odds ? ' has-odds' : ''}`}>
-      <div className="hb-frame">
-        <div className="hb-grid">
-          {tiles}
-          <div className="hb-center">{center ?? <CenterBrand />}</div>
-          {odds && <OddsLayer odds={odds} />}
-          <div className="hb-pawns" style={{ '--hb-step': `${Math.max(60, Math.round(session?.display?.stepMs ?? 260))}ms` }}>
-            {players.map((p, i) => {
-              const mates = crowd.get(p.pos) || NONE;
-              return (
-                <Pawn
-                  key={p.id}
-                  name={p.name}
-                  color={p.color}
-                  pos={p.pos}
-                  slot={Math.max(0, mates.indexOf(p.id))}
-                  count={mates.length || 1}
-                  isTurn={i === d.turn && d.phase !== 'over'}
-                  jailed={(p.jailTurns || 0) > 0}
-                  bankrupt={!!p.bankrupt}
-                  tileName={TILES[p.pos]?.name}
-                />
-              );
-            })}
+    <div className={`hb-board${odds ? ' has-odds' : ''}`} style={{ '--hb-n': GRID - 2 }}>
+      <CameraFocus tile={landing} active={focus}>
+        <div className="hb-frame">
+          <span className="hb-frame__lights" aria-hidden="true" />
+          <div className="hb-grid">
+            {tiles}
+            <div className="hb-center" data-fx-bank="">
+              {middle}
+            </div>
+            {odds && <OddsLayer odds={odds} />}
+            <div className="hb-pawns" style={{ '--hb-step': `${stepMs}ms` }}>
+              {players.map((p, i) => {
+                const mates = crowd.get(p.pos) || NONE;
+                return (
+                  <Pawn
+                    key={p.id}
+                    id={p.id}
+                    name={p.name}
+                    color={p.color}
+                    piece={p.piece}
+                    pos={p.pos}
+                    slot={Math.max(0, mates.indexOf(p.id))}
+                    count={mates.length || 1}
+                    isTurn={i === d.turn && d.phase !== 'over'}
+                    stuck={!!p.stuck}
+                    motion={p.motion || null}
+                    bankrupt={!!p.bankrupt}
+                    tileName={TILES[p.pos]?.name}
+                  />
+                );
+              })}
+            </div>
           </div>
         </div>
-        <span className="hb-frame__sheen" aria-hidden="true" />
-      </div>
+      </CameraFocus>
     </div>
   );
 }

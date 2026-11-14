@@ -1,6 +1,15 @@
 // Small flat icons (64x64 box) for every tile.art key. Same palette + soft-highlight style as the rest of the art kit.
+//
+// `tile` is a tile object or an icon id string. Ids:
+//   classic   property metro plane bulb water tax kismet (deck chance|chest) jail parking gotojail
+//   hustle    start luck drama auto metro mmts traffic chai municipal auction  (HustleIcons.jsx)
+//   groups    bazaar oldcity everyday twin lake luxury cyber newcity           (collection icons, tinted by group colour)
+// For tile objects the icon comes from `tile.art` when it is a known id; otherwise from `tile.type`
+// (card -> deck luck|drama, transport -> auto|metro|mmts by art/name, traffic, chai, municipal, auction, start) and
+// property tiles of a Hustle group get their collection icon. Unknown -> the classic tinted property house.
 import { memo } from 'react';
-import { GROUPS } from '@shared/board.js';
+import * as Board from '@shared/board.js';
+import { HUSTLE_ICONS, COLLECTION_ICONS, COLLECTION_ACCENT } from './HustleIcons.jsx';
 import { PAL, darken } from './palette.js';
 import { Box, Pad, Gable, Face, archPath } from './iso.jsx';
 import { Beacon, ChaiCup } from './marks.jsx';
@@ -204,23 +213,59 @@ function Jail() {
   );
 }
 
-function TileIconBase({ tile, size = 32, className, title }) {
-  const art = typeof tile === 'string' ? tile : tile?.art || 'property';
-  const gcol = (tile && typeof tile === 'object' && tile.group && GROUPS[tile.group]?.color) || PAL.saffron;
-  let node;
-  switch (art) {
-    case 'metro': node = <Metro />; break;
-    case 'plane': node = <Plane />; break;
-    case 'bulb': node = <Bulb />; break;
-    case 'water': node = <Water />; break;
-    case 'tax': node = <Tax />; break;
-    case 'kismet': node = tile?.deck === 'chest' ? <Khazana /> : <Farman />; break;
-    case 'jail': node = <Jail />; break;
-    case 'parking': node = <ChaiCup />; break;
-    case 'gotojail': node = <Beacon />; break;
-    default: node = <Property color={gcol} />;
+const CLASSIC = new Set(['metro', 'plane', 'bulb', 'water', 'tax', 'jail', 'parking', 'gotojail']);
+const TYPE_ICON = { start: 'start', traffic: 'traffic', chai: 'chai', municipal: 'municipal', auction: 'auction' };
+
+/** Resolve a tile (object or id) to an icon id. Exported for tests and for callers that want to know. */
+export function tileIconId(tile) {
+  if (typeof tile === 'string') return tile;
+  if (!tile || typeof tile !== 'object') return 'property';
+  const art = tile.art;
+  const deck = tile.deck;
+  if (deck === 'luck' || deck === 'drama') return deck;
+  if (art === 'kismet' || tile.type === 'kismet') return deck === 'chest' ? 'khazana' : 'farman';
+  if (art && art !== 'property' && (HUSTLE_ICONS[art] || COLLECTION_ICONS[art] || CLASSIC.has(art))) return art;
+  if (tile.type === 'card') return deck === 'drama' ? 'drama' : 'luck';
+  if (tile.type === 'transport') {
+    const n = String(tile.name || '') + ' ' + String(tile.short || '');
+    if (/auto/i.test(n)) return 'auto';
+    if (/mmts|train|rail|express/i.test(n)) return 'mmts';
+    return 'metro';
   }
-  const label = title === undefined ? undefined : title || (typeof tile === 'object' && tile?.name) || art;
+  if (TYPE_ICON[tile.type]) return TYPE_ICON[tile.type];
+  if (tile.group && COLLECTION_ICONS[tile.group]) return tile.group;
+  return 'property';
+}
+
+function TileIconBase({ tile, size = 32, className, title, color }) {
+  const id = tileIconId(tile);
+  const groups = Board.GROUPS || {};
+  const gid = (tile && typeof tile === 'object' && tile.group) || (COLLECTION_ICONS[id] ? id : null);
+  const gcol = color || (gid && (groups[gid]?.color || COLLECTION_ACCENT[gid])) || PAL.saffron;
+  let node;
+  if (HUSTLE_ICONS[id]) {
+    const H = HUSTLE_ICONS[id];
+    node = <H />;
+  } else if (COLLECTION_ICONS[id]) {
+    const C = COLLECTION_ICONS[id];
+    node = <C c={gcol} />;
+  } else {
+    switch (id) {
+      case 'plane': node = <Plane />; break;
+      case 'bulb': node = <Bulb />; break;
+      case 'water': node = <Water />; break;
+      case 'tax': node = <Tax />; break;
+      case 'kismet':
+      case 'farman': node = <Farman />; break;
+      case 'khazana': node = <Khazana />; break;
+      case 'jail': node = <Jail />; break;
+      case 'parking': node = <ChaiCup />; break;
+      case 'gotojail': node = <Beacon />; break;
+      case 'metro-front': node = <Metro />; break;
+      default: node = <Property color={gcol} />;
+    }
+  }
+  const label = title === undefined ? undefined : title || (typeof tile === 'object' && tile?.name) || id;
   return (
     <svg
       className={className}
@@ -235,6 +280,7 @@ function TileIconBase({ tile, size = 32, className, title }) {
       focusable="false"
       style={{ flex: 'none' }}
     >
+      {label ? <title>{label}</title> : null}
       {node}
     </svg>
   );

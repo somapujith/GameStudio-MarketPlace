@@ -35,8 +35,8 @@ Stack: React 19 + Vite 8 (plain JS/JSX, **no TypeScript**), Cloudflare Worker (H
 | **online** | `src/lib/api.js`, `src/lib/auth.jsx`, `src/lib/socket.js`, `src/lib/session/useOnlineGame.js`, `src/components/online/**`, `src/pages/{Login,Friends,Lobby,JoinRoom,OnlineGame}.jsx`, `src/styles/online.css` |
 
 ## 2. Board **[corrected]** (`shared/board.js` is the source of truth; spec in `hyderabad-monopoly.md`)
-40 tiles on an 11x11 ring, laid out like classic Monopoly. START (tile 0, Rajiv Gandhi Airport) is the bottom-right corner and play runs **clockwise**: left along the bottom row to the Jail corner (10),
-up the left column to the Irani Chai & Biryani Break corner (20), right along the top row to the Go-to-Jail corner (30), then down the right column back to START.
+40 tiles on an 11x11 ring, laid out like classic Monopoly. START (tile 0, Rajiv Gandhi Airport) is the bottom-left corner and play runs **clockwise**: up the left column to the Jail corner (10, top-left),
+right along the top row to the Irani Chai & Biryani Break corner (20, top-right), down the right column to the Go-to-Jail corner (30, bottom-right), then left along the bottom row back to START. The cheapest plots come right after START.
 Exports: `BOARD_SIZE=40`, `GRID=11`, `START_TILE=0`, `JAIL_TILE=10`, `PARKING_TILE=20`, `GO_TO_JAIL_TILE=30`, `MAX_LEVEL=5`, `HOTEL_LEVEL`, `LEVEL_NAMES`, `TRANSPORT_RENT`, `UTILITY_MULT`, `SELL_RATIO`, `START_CASH`, `PASS_START`, `BAIL_FINE`, `TOKEN_CAP`, `LAPS_PER_TOKEN`, `TRAPS_EACH`,
 `GROUPS`, `TILES`, `TILE_TYPES`, `GROUP_TILES`, `isBuyable`, `rentFor`, `upgradeCost`, `setMultiplier`, `mortgageValue`, `unmortgageCost`, `taxDue`, `tilePosition(i) -> {col,row}` (11x11 grid, row 0 = top), `tileSide(i)`.
 Tile: `{ id, type: start|property|transport|utility|kismet|tax|jail|parking|gotojail, corner?, name, short, price?, group?, rent?, houseCost?, mortgage?, deck?, taxFlat?, taxPercent?, art, emoji, lore }` (no translated names).

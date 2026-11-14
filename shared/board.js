@@ -1,220 +1,218 @@
-// The Hyderabad board: 40 tiles on an 11x11 ring, laid out like classic Monopoly (see hyderabad-monopoly.md).
-// START is the bottom-right corner and play runs CLOCKWISE: left along the bottom row to the Jail corner,
-// up the left column to the Irani Chai corner, right along the top row to the Go-to-Jail corner,
-// then down the right column back to START.
-// Prices are the original Monopoly values x10, in rupees.
+// The Hyderabad Hustle board: 36 tiles on a 10x10 ring (docs/HUSTLE_PLAN.md 3.1, design: Hyderabad_Hustle_Game_Concept.md).
+// START is the bottom-LEFT corner and play runs CLOCKWISE: up the left column to Traffic Jam (top-left), right along
+// the top row to Chai Adda (top-right), down the right column to Municipal Charges (bottom-right), then left along the
+// bottom row back to START. The cheapest districts come right after START, the New City sits just before it.
+// Players buy FICTIONAL commercial ventures in each precinct, never the landmarks themselves (heritage rule).
 // Pure data + tiny helpers. Shared by the browser and the Cloudflare Worker.
 
-export const BOARD_SIZE = 40;
-export const GRID = 11; // tiles per side, corners included
+export { PIECES, PIECE_IDS, pieceById } from './pieces.js';
+
+export const BOARD_SIZE = 36;
+export const GRID = 10; // cells per side, corners included
 export const START_TILE = 0;
-export const JAIL_TILE = 10; // Chanchalguda Jail (just visiting)
-export const PARKING_TILE = 20; // Irani Chai & Biryani Break (free parking: nothing happens)
-export const GO_TO_JAIL_TILE = 30; // caught at a signal without a helmet
+export const TRAFFIC_TILE = 9; // Traffic Jam: you are stuck where you stand
+export const CHAI_TILE = 18; // Chai Adda: pick up a chai token
+export const MUNICIPAL_TILE = 27; // Municipal Charges
+export const AUCTION_TILE = 32; // Bazaar Auction
+export const TRANSPORT_TILES = Object.freeze([5, 14, 23]); // Auto Stand, Metro Interchange, MMTS Express
+export const CORNER_TILES = Object.freeze([START_TILE, TRAFFIC_TILE, CHAI_TILE, MUNICIPAL_TILE]);
+/** @deprecated The Hustle has no jail. Kept as an alias of TRAFFIC_TILE (the "stuck" corner) for older UI code. */
+export const JAIL_TILE = TRAFFIC_TILE;
 
-// Building ladder (Monopoly: 4 houses, then a hotel). Level 5 = the Hotel capstone.
-export const MAX_LEVEL = 5;
-export const HOTEL_LEVEL = 5;
-export const LEVEL_NAMES = ['Empty plot', 'Kirana shop', 'Apartments', 'Mall', 'Tower', 'Hotel'];
+// Levels: a bought district is level 0 (its first business). Two upgrades take it to level 2.
+export const MAX_LEVEL = 2;
+/** @deprecated There is no hotel any more: the top business level. */
+export const HOTEL_LEVEL = MAX_LEVEL;
+/** Generic level names; every group has its own themed ones (GROUPS[g].levelNames, see levelName). */
+export const LEVEL_NAMES = Object.freeze(['Business', 'Expanded', 'Flagship']);
 
-// Owning EVERY property of a colour group doubles the base rent of its unbuilt tiles and unlocks building.
-export const SET_BONUS = { full: 2 };
+export const PRICE_UNIT = 1000; // rents are rounded to whole thousands
+export const RENT_RATIO = 0.1; // base rent = 10% of the price
+export const LEVEL_RENT_MULT = Object.freeze([1, 1.9, 3.5]); // rent ladder by level, applied to the base rent
+export const UPGRADE_RATIO = 0.5; // one upgrade costs 50% of the price
+export const SELL_RATIO = 0.5; // selling an upgrade back refunds 50% of what it cost
+export const MORTGAGE_RATIO = 0.5; // the bank lends 50% of the price
+export const UNMORTGAGE_INTEREST = 0.1; // lifting a mortgage costs +10%
+
+// Owning all three districts of a collection pays 1.5x rent on its level-0 tiles (upgraded tiles never stack it).
+export const SET_BONUS = Object.freeze({ full: 1.5 });
 export function setMultiplier(owned, size) {
   return size > 0 && owned >= size ? SET_BONUS.full : 1;
 }
 
-// Mortgage: the bank lends `tile.mortgage`; no building and no rent while mortgaged. Lifting it costs +10%.
-export const UNMORTGAGE_INTEREST = 0.1;
-export const mortgageValue = (tile) => tile.mortgage || 0;
-export const unmortgageCost = (tile) => Math.round(mortgageValue(tile) * (1 + UNMORTGAGE_INTEREST));
-export const TRANSPORT_RENT = [0, 250, 500, 1000, 2000]; // stations: rent by number of stations owned
-export const UTILITY_MULT = [0, 40, 100]; // utilities: rent = this x the dice total, by number owned
-export const SELL_RATIO = 0.5; // value recovered when the bank liquidates assets
+export const START_CASH = 1500000; // ₹15 lakh (standard and classic modes)
+export const QUICK_START_CASH = 2000000; // ₹20 lakh (quick mode)
+export const PASS_START = 200000; // ₹2 lakh for passing or landing on START
+export const TRAFFIC_FINE = 25000; // pay to get out of a traffic jam
+export const CHAI_CAP = 1; // most chai tokens a player can hold
+export const CHAI_MIN_RENT = 20000; // a chai token halves the first rent payment at least this big
+export const MUNICIPAL_BASE = 40000; // Municipal Charges: flat part
+export const MUNICIPAL_PER_LEVEL = 10000; // ... plus this per upgrade level you own
+export const BAZAAR_MIN_RATIO = 0.5; // Bazaar Auction: minimum bid = 50% of the price
+export const DECLINE_MIN_RATIO = 0.1; // a skipped (or unaffordable) district: minimum bid = 10% of the price
 
-export const START_CASH = 15000; // default starting cash per player
-export const PASS_START = 2000; // salary for passing or landing on START
-export const BAIL_FINE = 500; // Chanchalguda Jail bail
-export const TOKEN_CAP = 3; // most Snatch tokens a player can hold (docs/GAME_RULES.md section 10)
-export const LAPS_PER_TOKEN = 3; // every 3rd pass of START earns a token
-export const TRAPS_EACH = 1; // traps every player starts with (docs/GAME_RULES.md section 13)
-
+/**
+ * The eight collections (3 districts each).
+ *   levelNames  business names for level 0, 1, 2
+ *   theme       art family for the businesses: bazaar | food | transit | venue | tech
+ */
 export const GROUPS = {
-  brown: { id: 'brown', name: 'Brown', color: '#955436', ink: '#ffffff' },
-  lightblue: { id: 'lightblue', name: 'Light Blue', color: '#aae0fa', ink: '#14303d' },
-  pink: { id: 'pink', name: 'Pink', color: '#d93a96', ink: '#ffffff' },
-  orange: { id: 'orange', name: 'Lakeside', color: '#f7941d', ink: '#2a1500' },
-  red: { id: 'red', name: 'Heritage', color: '#ed1b24', ink: '#ffffff' },
-  yellow: { id: 'yellow', name: 'IT Corridor', color: '#fef200', ink: '#2a2600' },
-  green: { id: 'green', name: 'Elite', color: '#1fb25a', ink: '#ffffff' },
-  darkblue: { id: 'darkblue', name: 'Dark Blue', color: '#0072bb', ink: '#ffffff' },
+  bazaar: { id: 'bazaar', name: 'Bazaar Beginnings', color: '#c98b4a', ink: '#2a1600', tiles: [1, 3, 4], levelNames: ['Stall', 'Shop', 'Trading Hub'], theme: 'bazaar' },
+  oldcity: { id: 'oldcity', name: 'Old City Icons', color: '#e2725b', ink: '#ffffff', tiles: [6, 7, 8], levelNames: ['Irani Cafe', 'Biryani House', 'Food Franchise'], theme: 'food' },
+  everyday: { id: 'everyday', name: 'Everyday Hyderabad', color: '#f2b134', ink: '#2a1a00', tiles: [10, 11, 13], levelNames: ['Tiffin Centre', 'Restaurant', 'Food Court'], theme: 'food' },
+  twin: { id: 'twin', name: 'Twin Cities', color: '#3fb68b', ink: '#04261a', tiles: [15, 16, 17], levelNames: ['Kiosk', 'Showroom', 'Transit Mall'], theme: 'transit' },
+  lake: { id: 'lake', name: 'Lake & Leisure', color: '#3aa7e0', ink: '#03243a', tiles: [19, 20, 22], levelNames: ['Snack Kiosk', 'Boathouse Cafe', 'Lakeside Resort'], theme: 'venue' },
+  luxury: { id: 'luxury', name: 'Lights, Camera, Luxury', color: '#b06ad9', ink: '#ffffff', tiles: [24, 25, 26], levelNames: ['Studio', 'Entertainment Venue', 'Premium Complex'], theme: 'venue' },
+  cyber: { id: 'cyber', name: 'Cyberabad', color: '#4f7cff', ink: '#ffffff', tiles: [28, 29, 31], levelNames: ['Startup Office', 'Business Centre', 'Tech Campus'], theme: 'tech' },
+  newcity: { id: 'newcity', name: 'The New City', color: '#1fb5a6', ink: '#02241f', tiles: [33, 34, 35], levelNames: ['Co-working Floor', 'Corporate Tower', 'Skyline Campus'], theme: 'tech' },
 };
 
 // Tile fields
-//   type     start | property | transport (station) | utility | kismet (card square) | tax | jail | parking | gotojail
-//   corner   true on the four corners
-//   property: group, price, rent [base, 1 house, 2, 3, 4, hotel], houseCost, mortgage
-//   transport / utility: price, mortgage (rent comes from TRANSPORT_RENT / UTILITY_MULT)
-//   kismet: deck 'chance' (Nawab ka Farman) | 'chest' (Hyderabadi Khazana)
-//   tax: taxFlat (pay this) and optional taxPercent (pay the LOWER of the flat amount and that % of total worth)
-// art keys: property | metro | bulb | water | tax | kismet | jail | plane | parking | gotojail
+//   type    start | property | transport | card | traffic | chai | municipal | auction
+//   name    full name; short: fits a tile; lore: one line for the deed / tooltip
+//   corner  true on the four corners
+//   property: group, price          transport: fare          card: deck 'luck' (Nawabi Luck) | 'drama' (City Drama)
+//   art     art key: start | property | auto | metro | mmts | luck | drama | traffic | chai | municipal | auction
+const P = (id, name, short, group, price, lore) => ({ id, type: 'property', name, short, group, price, art: 'property', emoji: '🏬', lore });
+const LUCK = (id) => ({ id, type: 'card', deck: 'luck', name: 'Nawabi Luck', short: 'Nawabi Luck', art: 'luck', emoji: '🪙',
+  lore: 'Draw a Nawabi Luck card: fortune smiles on the bold.' });
+const DRAMA = (id) => ({ id, type: 'card', deck: 'drama', name: 'City Drama', short: 'City Drama', art: 'drama', emoji: '🎭',
+  lore: 'Draw a City Drama card. Hyderabad always has a plot twist.' });
+
 export const TILES = [
-  { id: 0, type: 'start', corner: true, name: 'Rajiv Gandhi Airport', short: 'START', art: 'plane', emoji: '✈️',
-    lore: 'Where every Hyderabad dream begins. Pass START and collect your salary.' },
+  { id: 0, type: 'start', corner: true, name: 'START — Namma Hyderabad', short: 'START', art: 'start', emoji: '🏁',
+    lore: 'Every hustle starts here. Pass or land on START to collect ₹2,00,000.' },
 
-  // ---- bottom row (right -> left)
-  { id: 1, type: 'property', name: 'Dilsukhnagar', short: 'Dilsukhnagar', group: 'brown', price: 600,
-    rent: [20, 100, 300, 900, 1600, 2500], houseCost: 500, mortgage: 300, art: 'property', emoji: '🏠',
-    lore: 'Shopping lanes that never sleep and the famous bus-stand rush.' },
-  { id: 2, type: 'kismet', deck: 'chest', name: 'Hyderabadi Khazana', short: 'Khazana', art: 'kismet', emoji: '🎴',
-    lore: 'Draw a Khazana card. Treasure, or a bill?' },
-  { id: 3, type: 'property', name: 'Malakpet', short: 'Malakpet', group: 'brown', price: 600,
-    rent: [40, 200, 600, 1800, 3200, 4500], houseCost: 500, mortgage: 300, art: 'property', emoji: '🏠',
-    lore: 'Busy markets, the old race course and a wholesale crowd from dawn.' },
-  { id: 4, type: 'tax', name: 'GHMC Property Tax', short: 'Property Tax', taxFlat: 2000, taxPercent: 10, art: 'tax', emoji: '🧾',
-    lore: 'The only thing as certain as Hyderabad traffic. Pay 2,000, or 10% of your worth if that is less.' },
-  { id: 5, type: 'transport', name: 'Secunderabad Junction', short: 'Secunderabad', price: 2000, mortgage: 1000, art: 'metro', emoji: '🚉',
-    lore: 'The grand old junction where half the country changes trains.' },
-  { id: 6, type: 'property', name: 'Koti', short: 'Koti', group: 'lightblue', price: 1000,
-    rent: [60, 300, 900, 2700, 4000, 5500], houseCost: 500, mortgage: 500, art: 'property', emoji: '🏠',
-    lore: 'Sultan Bazaar, book stalls and a never-ending pedestrian crush.' },
-  { id: 7, type: 'kismet', deck: 'chance', name: 'Nawab ka Farman', short: 'Farman', art: 'kismet', emoji: '🎴',
-    lore: 'The Nawab has issued a decree. Draw a Farman card.' },
-  { id: 8, type: 'property', name: 'Abids', short: 'Abids', group: 'lightblue', price: 1000,
-    rent: [60, 300, 900, 2700, 4000, 5500], houseCost: 500, mortgage: 500, art: 'property', emoji: '🏠',
-    lore: 'The old shopping street where bargains and bookshops share a footpath.' },
-  { id: 9, type: 'property', name: 'Mehdipatnam', short: 'Mehdipatnam', group: 'lightblue', price: 1200,
-    rent: [80, 400, 1000, 3000, 4500, 6000], houseCost: 500, mortgage: 600, art: 'property', emoji: '🏠',
-    lore: 'A bus hub, a flyover and a haleem stall on every corner.' },
-  { id: 10, type: 'jail', corner: true, name: 'Chanchalguda Jail', short: 'Jail', art: 'jail', emoji: '🚔',
-    lore: 'Just visiting, or serving time? Roll a six or pay bail to get out.' },
+  // ---- left column (bottom -> top): Bazaar Beginnings, Old City Icons
+  P(1, 'Sultan Bazaar', 'Sultan Bazaar', 'bazaar', 60000, 'A fictional saree-and-stationery stall row in the busy old market lanes.'),
+  LUCK(2),
+  P(3, 'Monda Market', 'Monda Market', 'bazaar', 70000, 'A vegetable-and-spice wholesale stall that opens before the first train.'),
+  P(4, 'Begum Bazaar', 'Begum Bazaar', 'bazaar', 80000, 'A wholesale kirana counter where bargaining is a competitive sport.'),
+  { id: 5, type: 'transport', name: 'Auto Stand', short: 'Auto Stand', fare: 25000, art: 'auto', emoji: '🛺',
+    lore: 'Auto anna will take you to the Metro Interchange. Meter? What meter?' },
+  P(6, 'Laad Bazaar', 'Laad Bazaar', 'oldcity', 100000, 'A fictional bangle boutique glittering in the lane of lac and glass.'),
+  P(7, 'Charminar Precinct', 'Charminar', 'oldcity', 110000, 'A tea-and-snacks venture in the precinct; the monument itself belongs to everyone.'),
+  P(8, 'Chowmahalla Precinct', 'Chowmahalla', 'oldcity', 120000, 'A heritage-walk cafe near the palace courtyards. Respect the old city, sell good chai.'),
+  { id: 9, type: 'traffic', corner: true, name: 'Traffic Jam', short: 'Traffic Jam', art: 'traffic', emoji: '🚦',
+    lore: 'Horns, heat and zero movement. Stuck here: pay ₹25,000, spend a chai, or wait a turn.' },
 
-  // ---- left column (bottom -> top)
-  { id: 11, type: 'property', name: 'Ameerpet', short: 'Ameerpet', group: 'pink', price: 1400,
-    rent: [100, 500, 1500, 4500, 6250, 7500], houseCost: 1000, mortgage: 700, art: 'property', emoji: '🏠',
-    lore: 'The coaching-centre capital. Software dreams are sold here by the hour.' },
-  { id: 12, type: 'utility', name: 'TGSPDCL (Electricity)', short: 'Electricity', price: 1500, mortgage: 750, art: 'bulb', emoji: '💡',
-    lore: 'Power cut or not, the bill always arrives. Rent depends on your dice.' },
-  { id: 13, type: 'property', name: 'Kukatpally', short: 'Kukatpally', group: 'pink', price: 1400,
-    rent: [100, 500, 1500, 4500, 6250, 7500], houseCost: 1000, mortgage: 700, art: 'property', emoji: '🏠',
-    lore: 'KPHB, the malls and endless auto-rickshaws. Everyone passes through.' },
-  { id: 14, type: 'property', name: 'Begumpet', short: 'Begumpet', group: 'pink', price: 1600,
-    rent: [120, 600, 1800, 5000, 7000, 9000], houseCost: 1000, mortgage: 800, art: 'property', emoji: '🏠',
-    lore: 'Old airport, new money. Heritage meets high-rise.' },
-  { id: 15, type: 'transport', name: 'Kacheguda Station', short: 'Kacheguda', price: 2000, mortgage: 1000, art: 'metro', emoji: '🚉',
-    lore: 'A handsome Gothic station that has seen a century of journeys.' },
-  { id: 16, type: 'property', name: 'Tank Bund', short: 'Tank Bund', group: 'orange', price: 1800,
-    rent: [140, 700, 2000, 5500, 7500, 9500], houseCost: 1000, mortgage: 900, art: 'property', emoji: '🏠',
-    lore: 'The lakeside promenade and the giant Buddha in the water.' },
-  { id: 17, type: 'kismet', deck: 'chest', name: 'Hyderabadi Khazana', short: 'Khazana', art: 'kismet', emoji: '🎴',
-    lore: 'Draw a Khazana card. Treasure, or a bill?' },
-  { id: 18, type: 'property', name: 'Necklace Road', short: 'Necklace Rd', group: 'orange', price: 1800,
-    rent: [140, 700, 2000, 5500, 7500, 9500], houseCost: 1000, mortgage: 900, art: 'property', emoji: '🏠',
-    lore: 'A curve of lights around Hussain Sagar, best at sunset.' },
-  { id: 19, type: 'property', name: 'Lumbini Park', short: 'Lumbini Park', group: 'orange', price: 2000,
-    rent: [160, 800, 2200, 6000, 8000, 10000], houseCost: 1000, mortgage: 1000, art: 'property', emoji: '🏠',
-    lore: 'Lake breeze, boat rides and a laser show after dark.' },
-  { id: 20, type: 'parking', corner: true, name: 'Irani Chai & Biryani Break', short: 'Chai Break', art: 'parking', emoji: '☕',
-    lore: 'Sit back with an Irani chai and a plate of biryani. Nothing happens, and that is the point.' },
+  // ---- top row (left -> right): Everyday Hyderabad, Twin Cities
+  P(10, 'Malakpet', 'Malakpet', 'everyday', 140000, 'A neighbourhood tiffin centre famous for its morning idli rush.'),
+  P(11, 'Mehdipatnam', 'Mehdipatnam', 'everyday', 150000, 'A bus-hub eatery where everyone grabs a quick plate between connections.'),
+  DRAMA(12),
+  P(13, 'Tolichowki', 'Tolichowki', 'everyday', 160000, 'A late-night food stall that turns into a crowd every weekend.'),
+  { id: 14, type: 'transport', name: 'Metro Interchange', short: 'Metro', fare: 35000, art: 'metro', emoji: '🚇',
+    lore: 'Change trains for the MMTS Express. Smooth, air-conditioned, slightly crowded.' },
+  P(15, 'Sainikpuri', 'Sainikpuri', 'twin', 180000, 'A quiet-suburb kiosk that sells everything from stamps to samosas.'),
+  P(16, 'Patny Centre', 'Patny Centre', 'twin', 190000, 'A gadget showroom in the twin-city shopping crossroads.'),
+  P(17, 'Paradise Circle', 'Paradise', 'twin', 200000, 'A fictional transit-mall counter where the biryani queue never ends.'),
+  { id: 18, type: 'chai', corner: true, name: 'Chai Adda', short: 'Chai Adda', art: 'chai', emoji: '☕',
+    lore: 'One Irani chai, one Osmania biscuit. Take a chai token: it halves your next big rent.' },
 
-  // ---- top row (left -> right)
-  { id: 21, type: 'property', name: 'Charminar', short: 'Charminar', group: 'red', price: 2200,
-    rent: [180, 900, 2500, 7000, 8750, 10500], houseCost: 1500, mortgage: 1100, art: 'property', emoji: '🏠',
-    lore: 'Four minarets, bangle lanes and the heart of the old city.' },
-  { id: 22, type: 'kismet', deck: 'chance', name: 'Nawab ka Farman', short: 'Farman', art: 'kismet', emoji: '🎴',
-    lore: 'The Nawab has issued a decree. Draw a Farman card.' },
-  { id: 23, type: 'property', name: 'Chowmahalla Palace', short: 'Chowmahalla', group: 'red', price: 2200,
-    rent: [180, 900, 2500, 7000, 8750, 10500], houseCost: 1500, mortgage: 1100, art: 'property', emoji: '🏠',
-    lore: 'The Nizams\' grand durbar, with courtyards and a vintage car collection.' },
-  { id: 24, type: 'property', name: 'Golconda Fort', short: 'Golconda', group: 'red', price: 2400,
-    rent: [200, 1000, 3000, 7500, 9250, 11000], houseCost: 1500, mortgage: 1200, art: 'property', emoji: '🏠',
-    lore: 'Clap at the gate and hear it echo all the way to the top.' },
-  { id: 25, type: 'transport', name: 'Hyderabad Deccan (Nampally) Station', short: 'Nampally', price: 2000, mortgage: 1000, art: 'metro', emoji: '🚉',
-    lore: 'The Deccan\'s classic terminus, a short walk from Public Gardens.' },
-  { id: 26, type: 'property', name: 'Madhapur', short: 'Madhapur', group: 'yellow', price: 2600,
-    rent: [220, 1100, 3300, 8000, 9750, 11500], houseCost: 1500, mortgage: 1300, art: 'property', emoji: '🏠',
-    lore: 'The heart of HITEC City: cyber towers, cafe culture and hustle.' },
-  { id: 27, type: 'property', name: 'Gachibowli', short: 'Gachibowli', group: 'yellow', price: 2600,
-    rent: [220, 1100, 3300, 8000, 9750, 11500], houseCost: 1500, mortgage: 1300, art: 'property', emoji: '🏠',
-    lore: 'Stadium, skyscrapers and the business school: the new Hyderabad.' },
-  { id: 28, type: 'utility', name: 'HMWSSB (Water Board)', short: 'Water Board', price: 1500, mortgage: 750, art: 'water', emoji: '💧',
-    lore: 'Krishna and Godavari water, delivered by pipe or by tanker. Rent depends on your dice.' },
-  { id: 29, type: 'property', name: 'Kondapur', short: 'Kondapur', group: 'yellow', price: 2800,
-    rent: [240, 1200, 3600, 8500, 10250, 12000], houseCost: 1500, mortgage: 1400, art: 'property', emoji: '🏠',
-    lore: 'IT parks, PG hostels and Sunday biryani queues.' },
-  { id: 30, type: 'gotojail', corner: true, name: 'Go to Jail', short: 'Go to Jail', art: 'gotojail', emoji: '🚨',
-    lore: 'Caught at a signal without a helmet. Straight to Chanchalguda Jail, no salary.' },
+  // ---- right column (top -> bottom): Lake & Leisure, Lights Camera Luxury
+  P(19, 'Lumbini Park Precinct', 'Lumbini Park', 'lake', 220000, 'A lakeside snack kiosk with a front-row view of the evening lights.'),
+  P(20, 'Tank Bund', 'Tank Bund', 'lake', 230000, 'A boathouse cafe along the promenade, busiest at sunset.'),
+  LUCK(21),
+  P(22, 'Necklace Road', 'Necklace Rd', 'lake', 240000, 'A breezy lakefront venture where joggers become customers.'),
+  { id: 23, type: 'transport', name: 'MMTS Express', short: 'MMTS', fare: 45000, art: 'mmts', emoji: '🚆',
+    lore: 'The local train loops you round past START to the Auto Stand. Salary on the way!' },
+  P(24, 'Film Nagar', 'Film Nagar', 'luxury', 260000, 'A small dubbing studio where tomorrow\'s blockbusters get their punch dialogues.'),
+  P(25, 'Banjara Hills', 'Banjara Hills', 'luxury', 270000, 'A boutique venue for launches, parties and very serious selfies.'),
+  P(26, 'Jubilee Hills', 'Jubilee Hills', 'luxury', 280000, 'A premium lounge where deals are signed over filter coffee.'),
+  { id: 27, type: 'municipal', corner: true, name: 'Municipal Charges', short: 'Municipal', art: 'municipal', emoji: '🏛️',
+    lore: 'The city sends its bill: ₹40,000 plus ₹10,000 for every upgrade you own.' },
 
-  // ---- right column (top -> bottom)
-  { id: 31, type: 'property', name: 'Jubilee Hills', short: 'Jubilee Hills', group: 'green', price: 3000,
-    rent: [260, 1300, 3900, 9000, 11000, 12750], houseCost: 2000, mortgage: 1500, art: 'property', emoji: '🏠',
-    lore: 'The film stars\' neighbourhood. Tollywood lives here.' },
-  { id: 32, type: 'property', name: 'Banjara Hills', short: 'Banjara Hills', group: 'green', price: 3000,
-    rent: [260, 1300, 3900, 9000, 11000, 12750], houseCost: 2000, mortgage: 1500, art: 'property', emoji: '🏠',
-    lore: 'Hyderabad\'s most prestigious address: Road No. 12, boutiques and billionaires.' },
-  { id: 33, type: 'kismet', deck: 'chest', name: 'Hyderabadi Khazana', short: 'Khazana', art: 'kismet', emoji: '🎴',
-    lore: 'Draw a Khazana card. Treasure, or a bill?' },
-  { id: 34, type: 'property', name: 'Film Nagar', short: 'Film Nagar', group: 'green', price: 3200,
-    rent: [280, 1500, 4500, 10000, 12000, 14000], houseCost: 2000, mortgage: 1600, art: 'property', emoji: '🏠',
-    lore: 'Studios, star homes and chai stalls where scripts are born.' },
-  { id: 35, type: 'transport', name: 'Lingampally Station', short: 'Lingampally', price: 2000, mortgage: 1000, art: 'metro', emoji: '🚉',
-    lore: 'The western gateway where commuters meet the IT corridor.' },
-  { id: 36, type: 'kismet', deck: 'chance', name: 'Nawab ka Farman', short: 'Farman', art: 'kismet', emoji: '🎴',
-    lore: 'The Nawab has issued a decree. Draw a Farman card.' },
-  { id: 37, type: 'property', name: 'HITEC City', short: 'HITEC City', group: 'darkblue', price: 3500,
-    rent: [350, 1750, 5000, 11000, 13000, 15000], houseCost: 2000, mortgage: 1750, art: 'property', emoji: '🏠',
-    lore: 'Cyber Towers and the glass skyline that put Hyderabad on the tech map.' },
-  { id: 38, type: 'tax', name: 'ORR Toll / Traffic Challan', short: 'ORR Challan', taxFlat: 1000, art: 'tax', emoji: '🚧',
-    lore: 'Toll gate, speed camera, challan. Pay 1,000.' },
-  { id: 39, type: 'property', name: 'Financial District', short: 'Fin. District', group: 'darkblue', price: 4000,
-    rent: [500, 2000, 6000, 14000, 17000, 20000], houseCost: 2000, mortgage: 2000, art: 'property', emoji: '🏠',
-    lore: 'Glass towers and the global offices of Nanakramguda. The priciest tile in town.' },
+  // ---- bottom row (right -> left): Cyberabad, Bazaar Auction, The New City
+  P(28, 'Kondapur', 'Kondapur', 'cyber', 300000, 'A startup office above a busy PG mess. Stand-ups happen over breakfast.'),
+  P(29, 'Madhapur', 'Madhapur', 'cyber', 320000, 'A business centre where every cafe table is somebody\'s meeting room.'),
+  DRAMA(30),
+  P(31, 'HITEC City', 'HITEC City', 'cyber', 340000, 'A glass-walled tech campus. Own it and you will never stop talking about it.'),
+  { id: 32, type: 'auction', name: 'Bazaar Auction', short: 'Auction', art: 'auction', emoji: '🔨',
+    lore: 'A random unowned district goes under the hammer. Minimum bid: half its price.' },
+  P(33, 'Gachibowli', 'Gachibowli', 'newcity', 360000, 'A co-working floor next to the stadium, packed with pitch decks.'),
+  P(34, 'Kokapet', 'Kokapet', 'newcity', 380000, 'A corporate tower rising out of the newest skyline in town.'),
+  P(35, 'Financial District', 'Fin. District', 'newcity', 400000, 'A skyline campus of glass and global offices. The priciest address on the board.'),
 ];
 
-export const TILE_TYPES = ['start', 'property', 'transport', 'utility', 'kismet', 'tax', 'jail', 'parking', 'gotojail'];
+export const TILE_TYPES = ['start', 'property', 'transport', 'card', 'traffic', 'chai', 'municipal', 'auction'];
 
 /** groupId -> array of tile ids */
-export const GROUP_TILES = Object.fromEntries(
-  Object.keys(GROUPS).map((g) => [g, TILES.filter((t) => t.group === g).map((t) => t.id)]),
-);
+export const GROUP_TILES = Object.fromEntries(Object.keys(GROUPS).map((g) => [g, TILES.filter((t) => t.group === g).map((t) => t.id)]));
 
-export const isBuyable = (t) => t.type === 'property' || t.type === 'transport' || t.type === 'utility';
+/** Only districts can be bought, owned, mortgaged and traded. */
+export const isBuyable = (t) => !!t && t.type === 'property';
 
-/** Rent of a property tile at a building level (0 = empty plot, 5 = Hotel), before the full-set bonus. */
-export function rentFor(tile, level = 0) {
-  const table = tile.rent || [];
-  return table[Math.max(0, Math.min(table.length - 1, level))] || 0;
-}
+const round1000 = (x) => Math.round(x / PRICE_UNIT) * PRICE_UNIT;
 
-/** Cost of building ONE more level on a property tile. */
-export function upgradeCost(tile) {
-  return tile.houseCost || 0;
+/** [level 0, level 1, level 2] rent of a district (HITEC City: 34,000 / 65,000 / 1,19,000). Empty for other tiles. */
+export function rentTable(tile) {
+  if (!tile || tile.type !== 'property') return [];
+  const base = Math.round(tile.price * RENT_RATIO);
+  return LEVEL_RENT_MULT.map((m, i) => (i === 0 ? base : round1000(base * m)));
 }
 
 /**
- * Tax due on a tax tile: the flat amount, or the LOWER of the flat amount and `taxPercent`% of
- * `worth` when the tile has a percentage option.
+ * Rent of a district at `level`. `fullSet` = its owner holds the whole collection (1.5x, level 0 only).
+ * City events, card boosts and mortgages are applied by the engine on top (see engine.previewRent).
  */
-export function taxDue(tile, worth = 0) {
-  const flat = tile.taxFlat || 0;
-  if (!tile.taxPercent) return flat;
-  return Math.min(flat, Math.round(((Number(worth) || 0) * tile.taxPercent) / 100 / 10) * 10);
+export function rentFor(tile, level = 0, fullSet = false) {
+  const table = rentTable(tile);
+  if (!table.length) return 0;
+  const lv = Math.max(0, Math.min(MAX_LEVEL, level | 0));
+  const rent = table[lv];
+  return lv === 0 && fullSet ? Math.round(rent * SET_BONUS.full) : rent;
+}
+
+/** Cost of ONE upgrade on a district: 50% of its price (₹30,000 - ₹2,00,000). */
+export function upgradeCost(tile) {
+  return tile && tile.type === 'property' ? Math.round(tile.price * UPGRADE_RATIO) : 0;
+}
+
+/** What selling one upgrade back to the bank refunds. */
+export const sellRefund = (tile) => Math.round(upgradeCost(tile) * SELL_RATIO);
+
+export const mortgageValue = (tile) => (tile && tile.type === 'property' ? Math.round(tile.price * MORTGAGE_RATIO) : 0);
+export const unmortgageCost = (tile) => Math.round(mortgageValue(tile) * (1 + UNMORTGAGE_INTEREST));
+
+/** The themed business name of a district at `level` ("Startup Office"), or the generic name for other tiles. */
+export function levelName(tile, level = 0) {
+  const lv = Math.max(0, Math.min(MAX_LEVEL, level | 0));
+  const g = tile && GROUPS[tile.group];
+  return (g && g.levelNames[lv]) || LEVEL_NAMES[lv];
+}
+
+/** The next transport stop clockwise after `tileId` (5 -> 14 -> 23 -> 5). */
+export function nextTransport(tileId) {
+  const t = ((Number(tileId) || 0) % BOARD_SIZE + BOARD_SIZE) % BOARD_SIZE;
+  return TRANSPORT_TILES.find((x) => x > t) ?? TRANSPORT_TILES[0];
+}
+
+/** Municipal Charges for someone holding `levels` upgrade levels in total. */
+export const municipalFor = (levels) => MUNICIPAL_BASE + MUNICIPAL_PER_LEVEL * Math.max(0, levels | 0);
+
+/** Minimum bid of an auction for `tileId`: `reason` 'bazaar' = 50% of the price, otherwise 10%. */
+export function auctionMinBid(tileId, reason) {
+  const tile = TILES[tileId];
+  const ratio = reason === 'bazaar' ? BAZAAR_MIN_RATIO : DECLINE_MIN_RATIO;
+  return Math.max(PRICE_UNIT, round1000((tile ? tile.price : 0) * ratio));
 }
 
 /**
- * Cell on the 11x11 board grid (col,row both 0..10, row 0 = top) for a tile index.
- * Tile ids ascend CLOCKWISE from START at the bottom-RIGHT corner.
+ * Cell on the 10x10 board grid (col,row both 0..9, row 0 = top) for a tile index.
+ * Tile ids ascend CLOCKWISE from START at the bottom-LEFT corner.
  */
 export function tilePosition(i) {
-  if (i <= 10) return { col: 10 - i, row: 10 }; // bottom row, right -> left
-  if (i <= 20) return { col: 0, row: 20 - i }; // left column, bottom -> top
-  if (i <= 30) return { col: i - 20, row: 0 }; // top row, left -> right
-  return { col: 10, row: i - 30 }; // right column, top -> bottom
+  const last = GRID - 1; // 9
+  if (i <= 9) return { col: 0, row: last - i }; // left column, bottom -> top
+  if (i <= 18) return { col: i - 9, row: 0 }; // top row, left -> right
+  if (i <= 27) return { col: last, row: i - 18 }; // right column, top -> bottom
+  return { col: last - (i - 27), row: last }; // bottom row, right -> left
 }
 
-/** Which side of the board a tile sits on: 'bottom' | 'left' | 'top' | 'right' (corners belong to the row they end). */
+/** Which side of the board a tile sits on: 'left' | 'top' | 'right' | 'bottom' (a corner belongs to the side it ends). */
 export function tileSide(i) {
-  if (i <= 10) return 'bottom';
-  if (i <= 20) return 'left';
-  if (i <= 30) return 'top';
-  return 'right';
+  if (i <= 9) return 'left';
+  if (i <= 18) return 'top';
+  if (i <= 27) return 'right';
+  return 'bottom';
 }

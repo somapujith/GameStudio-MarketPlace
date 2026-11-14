@@ -1,4 +1,5 @@
 import { Avatar } from '@/components/art/index.js';
+import { AvatarFrame, PieceArt, TitleChip } from '@/platform/game/art.jsx';
 import '@/styles/online.css';
 
 export function CrownIcon({ size = 16 }) {
@@ -9,17 +10,38 @@ export function CrownIcon({ size = 16 }) {
   );
 }
 
-/** A taken seat in the lobby. `player` = { id, name, avatar, connected }. `canRemove` shows the host's remove button. */
-export default function Seat({ player, isHost, isMe, canRemove, onRemove, color }) {
+/**
+ * A taken seat in the lobby. `player` = { id, name, avatar, connected, piece?, cosmetics? { frame?, title? } }.
+ * `piece` = the player's piece `{ id, name }` from the game's manifest (null = none picked / the game has none).
+ * `canRemove` shows the host's remove button.
+ */
+export default function Seat({ player, piece = null, isHost, isMe, canRemove, onRemove, color }) {
   const { name, avatar, connected } = player;
-  const label = connected === false ? 'Disconnected' : 'Connected';
+  const cos = (player.cosmetics && typeof player.cosmetics === 'object' && player.cosmetics) || {};
+  const away = connected === false;
+  const label = away ? 'Disconnected' : 'Connected';
   return (
-    <li className={`ho-seat${isMe ? ' is-me' : ''}`} style={color ? { '--ho-seat': color } : undefined}>
+    <li className={`ho-seat xl-seat${isMe ? ' is-me' : ''}${away ? ' is-away' : ''}`} style={color ? { '--ho-seat': color } : undefined}>
       <span className="ho-seat__avatar">
-        <Avatar preset={Number.isInteger(avatar) ? avatar : 0} size={46} />
-        <span className={`ho-dot ho-seat__dot ${connected === false ? 'is-off' : 'is-on'}`} role="img" aria-label={label} />
+        <AvatarFrame frame={cos.frame} size={50}>
+          <Avatar preset={Number.isInteger(avatar) ? avatar : 0} size={46} />
+        </AvatarFrame>
+        <span className={`ho-dot ho-seat__dot ${away ? 'is-off' : 'is-on'}`} role="img" aria-label={label} />
+        {piece && (
+          <span className="xl-seat__piece" title={piece.name}>
+            <PieceArt piece={piece.id} color={color} size={24} />
+            <span className="ho-sr">{`Piece: ${piece.name}`}</span>
+          </span>
+        )}
       </span>
-      <span className="ho-seat__name">{name || 'Player'}</span>
+      <span className="ho-seat__name" title={name || 'Player'}>
+        {name || 'Player'}
+      </span>
+      {cos.title && (
+        <span className="xl-seat__title">
+          <TitleChip title={cos.title} />
+        </span>
+      )}
       <span className="ho-seat__tags">
         {isHost && (
           <span className="ho-tag ho-tag--host" title="Host">
@@ -27,7 +49,7 @@ export default function Seat({ player, isHost, isMe, canRemove, onRemove, color 
           </span>
         )}
         {isMe && <span className="ho-tag ho-tag--me">You</span>}
-        {connected === false && <span className="ho-seat__away">Reconnecting...</span>}
+        {away && <span className="ho-seat__away">Reconnecting...</span>}
       </span>
       {canRemove && (
         <button type="button" className="ho-iconbtn ho-seat__remove" onClick={onRemove} aria-label={`Remove ${name} from the room`}>
@@ -45,7 +67,9 @@ export function EmptySeat() {
   return (
     <li className="ho-seat ho-seat--empty" aria-label="Open seat">
       <span className="ho-seat__avatar ho-seat__avatar--empty" aria-hidden="true">
-        +
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
       </span>
       <span className="ho-seat__name ho-muted">Waiting for player...</span>
     </li>

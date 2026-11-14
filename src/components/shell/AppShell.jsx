@@ -2,18 +2,21 @@ import { Suspense, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { BRAND } from '@/platform/brand.js';
 import { HubBackdrop } from '@/platform/game/hubArt.jsx';
-import PageLoading from '@/platform/game/PageLoading.jsx';
+import { NoticeSlot } from '@/components/online/InviteBanner.jsx';
 import ErrorBoundary from './ErrorBoundary.jsx';
+import InstallPrompt from './InstallPrompt.jsx';
+import RouteSkeleton from './RouteSkeleton.jsx';
 import TabBar, { TopNav } from './TabBar.jsx';
 import TopBar from './nav/TopBar.jsx';
 import { useGlobalClickSfx } from './hooks.js';
+import '@/styles/x-shell.css';
 
 /** Static titles for hub tabs; game pages (/games/...) set their own with useDocTitle. */
 const TITLES = [
   ['/friends', 'Friends'],
   ['/leaderboard', 'Rank'],
   ['/profile', 'Profile'],
-  ['/lobby', 'Lobby'],
+  ['/shop', 'Shop'],
   ['/join', 'Join a table'],
   ['/login', 'Sign in'],
   ['/f', 'Add a friend'],
@@ -30,7 +33,8 @@ function useBaseTitle(pathname) {
 
 /**
  * Hub chrome (a layout route): soft backdrop, top bar (logo, "Have a code?", coins, profile chip), bottom
- * tab bar on phones, left rail from 900 px. Game screens (/play/**) are rendered outside it.
+ * tab bar on phones, left rail from 900 px, the PWA install card. Game screens (/play/**) and the lobby
+ * (/lobby/:code, full screen with its own header) are rendered outside it.
  */
 export default function AppShell() {
   const { pathname } = useLocation();
@@ -53,8 +57,9 @@ export default function AppShell() {
         <TopNav />
         <main id="main" className="hub-main" tabIndex={-1}>
           <div className="hub-container">
+            <NoticeSlot />
             <ErrorBoundary key={pathname}>
-              <Suspense fallback={<PageLoading />}>
+              <Suspense fallback={<RouteSkeleton pathname={pathname} />}>
                 <Outlet />
               </Suspense>
             </ErrorBoundary>
@@ -63,6 +68,7 @@ export default function AppShell() {
       </div>
 
       <TabBar />
+      <InstallPrompt />
     </div>
   );
 }

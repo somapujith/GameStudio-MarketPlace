@@ -1,34 +1,38 @@
 import { memo } from 'react';
-import { GROUPS, LEVEL_NAMES, MAX_LEVEL, PASS_START, tilePosition, tileSide } from '@shared/board.js';
-import { formatINR } from '@shared/format.js';
-import { TileIcon } from '@/components/art/index.js';
+import * as B from '@shared/board.js';
+import { compactINR, formatINR } from '@shared/format.js';
+import { BuildingArt, TileIcon } from '@/components/art/index.js';
+import { cornerOf, sideOf } from './fx/geometry.js';
+import { BuildPop, CardShimmer, ChaiSteam, OwnerChip, OwnerStamp } from './fx/TileFx.jsx';
+import { PieceToken } from './Pawn.jsx';
 import '@/styles/board.css';
 
-const SHY = '\u00ad';
+const { GROUPS, MAX_LEVEL } = B;
+const SHY = '­';
+// looked up by name: the Hustle engine ships rentTable(tile) -> [L0, L1, L2]; older builds only rentFor
+const RENT_TABLE = 'rentTable';
+const DEFAULT_SALARY = 200000;
 
-// Hand-picked syllable breaks for the long Hyderabad names so they wrap on a 30px tile (a soft hyphen
+// Hand-picked syllable breaks for the long Hyderabad names so they wrap on a narrow tile (a soft hyphen
 // only breaks the word when it does not fit, so wide boards still show the whole name).
 const BREAKS = {
-  Dilsukhnagar: 'Dilsukh' + SHY + 'nagar',
-  Mehdipatnam: 'Mehdi' + SHY + 'patnam',
-  Kukatpally: 'Kukat' + SHY + 'pally',
-  Gachibowli: 'Gachi' + SHY + 'bowli',
   Chowmahalla: 'Chow' + SHY + 'mahalla',
-  Secunderabad: 'Secun' + SHY + 'derabad',
-  Lingampally: 'Lingam' + SHY + 'pally',
-  Kacheguda: 'Kache' + SHY + 'guda',
   Charminar: 'Char' + SHY + 'minar',
-  Electricity: 'Electri' + SHY + 'city',
-  Golconda: 'Gol' + SHY + 'conda',
-  Madhapur: 'Madha' + SHY + 'pur',
-  Kondapur: 'Konda' + SHY + 'pur',
+  Mehdipatnam: 'Mehdi' + SHY + 'patnam',
+  Tolichowki: 'Toli' + SHY + 'chowki',
+  Sainikpuri: 'Sainik' + SHY + 'puri',
   Malakpet: 'Malak' + SHY + 'pet',
-  Nampally: 'Nam' + SHY + 'pally',
-  Begumpet: 'Begum' + SHY + 'pet',
-  Ameerpet: 'Ameer' + SHY + 'pet',
+  Gachibowli: 'Gachi' + SHY + 'bowli',
+  Kondapur: 'Konda' + SHY + 'pur',
+  Madhapur: 'Madha' + SHY + 'pur',
+  Necklace: 'Neck' + SHY + 'lace',
+  Financial: 'Finan' + SHY + 'cial',
   District: 'Dis' + SHY + 'trict',
+  Precinct: 'Pre' + SHY + 'cinct',
+  Interchange: 'Inter' + SHY + 'change',
+  Municipal: 'Muni' + SHY + 'cipal',
   Lumbini: 'Lum' + SHY + 'bini',
-  Challan: 'Chal' + SHY + 'lan',
+  Paradise: 'Para' + SHY + 'dise',
 };
 const VOWELS = 'aeiouAEIOU';
 
@@ -47,155 +51,194 @@ function hyphenate(word) {
 
 /** Insert soft hyphens into words that are too long for one line of a tile. */
 export function softName(text) {
-  return text
+  return String(text || '')
     .split(' ')
     .map((w) => (BREAKS[w] || w.length >= 9 ? hyphenate(w) : w))
     .join(' ');
 }
 
-// Outer corners of the board follow the frame's rounding: START bottom-right, Jail bottom-left,
-// Chai Break top-left, Go to Jail top-right (see tilePosition).
-const CORNER_CLASS = { 0: 'hb-tile--br', 10: 'hb-tile--bl', 20: 'hb-tile--tl', 30: 'hb-tile--tr' };
+// ---- transport modes --------------------------------------------------------
 
-// Second line on the corner tiles (hidden on small boards).
-const CORNER_SUB = {
-  start: `Collect ${formatINR(PASS_START)}`,
-  jail: 'Just visiting',
-  parking: 'Take a break',
-  gotojail: 'Straight to jail',
-};
+/** 'auto' | 'metro' | 'mmts' for a transport stop. */
+export function transportKind(tile) {
+  const k = tile?.mode || tile?.ride || tile?.art;
+  if (k === 'auto' || k === 'metro' || k === 'mmts') return k;
+  const n = String(tile?.name || '').toLowerCase();
+  if (n.includes('auto')) return 'auto';
+  if (n.includes('metro')) return 'metro';
+  return 'mmts';
+}
+
+// TileIcon resolves the art key itself (start, auto, metro, mmts, luck, drama, traffic, chai, municipal, auction).
+const Icon = ({ tile, size }) => <TileIcon tile={tile} size={size} />;
 
 // ---- city event marks -------------------------------------------------------
 // One frozen descriptor per effect, shared by every tile it touches, so a memoised Tile only re-renders
 // when its own mark appears or disappears.
 const MARKS = {
-  monsoon: Object.freeze({ tone: 'rain', text: 'x0.5', note: 'rent halved this round' }),
-  ipl: Object.freeze({ tone: 'star', text: 'x2', note: 'rent doubled this round' }),
-  metro_strike: Object.freeze({ tone: 'closed', text: 'closed', note: 'closed, pays no rent this round' }),
-  tax_holiday: Object.freeze({ tone: 'free', text: 'free', note: 'tax free this round' }),
+  rush: Object.freeze({ tone: 'rush', text: 'x1.5', note: 'rush hour, rent x1.5 this round' }),
+  boom: Object.freeze({ tone: 'boom', text: 'x2', note: 'biryani boom, upgraded businesses pay double this round' }),
+  gift: Object.freeze({ tone: 'gift', text: '+20K', note: 'wedding season, upgraded venues pay their owner 20,000' }),
+  rain: Object.freeze({ tone: 'rain', text: 'x0.5', note: 'monsoon, rent halved this round' }),
 };
+
+function inGroups(event, tile, fallback) {
+  if (!tile.group) return false;
+  if (event.group) return tile.group === event.group;
+  if (Array.isArray(event.groups) && event.groups.length) return event.groups.includes(tile.group);
+  return !!fallback && fallback.includes(tile.group);
+}
 
 /**
  * What the active city event (`view.event`) does to this tile, as a stable descriptor, or null.
- * monsoon / ipl hit every tile of `event.group`, metro_strike the stations, tax_holiday the tax squares;
- * bonalu and no event mark nothing.
+ * rush_hour / monsoon hit one collection (`event.group`), biryani_boom the food collections, wedding_season the
+ * lake and luxury venues (`event.groups` when sent). festival touches no tile.
  */
 export function eventMark(event, tile) {
-  if (!event || !tile) return null;
+  if (!event || !tile || tile.type !== 'property') return null;
   switch (event.id) {
+    case 'rush_hour':
+      return inGroups(event, tile) ? MARKS.rush : null;
     case 'monsoon':
-      return event.group && tile.group === event.group ? MARKS.monsoon : null;
-    case 'ipl':
-      return event.group && tile.group === event.group ? MARKS.ipl : null;
-    case 'metro_strike':
-      return tile.type === 'transport' ? MARKS.metro_strike : null;
-    case 'tax_holiday':
-      return tile.type === 'tax' ? MARKS.tax_holiday : null;
+      return inGroups(event, tile) ? MARKS.rain : null;
+    case 'biryani_boom':
+      return inGroups(event, tile, ['oldcity', 'everyday']) ? MARKS.boom : null;
+    case 'wedding_season':
+      return inGroups(event, tile, ['lake', 'luxury']) ? MARKS.gift : null;
     default:
       return null;
   }
 }
 
-const EventIcon = ({ tone }) =>
-  tone === 'rain' ? (
-    <svg viewBox="0 0 24 24" focusable="false">
-      <path d="M12 2.5C9 7.4 6.5 10.4 6.5 14a5.5 5.5 0 0 0 11 0c0-3.6-2.5-6.6-5.5-11.5z" />
-    </svg>
-  ) : tone === 'star' ? (
-    <svg viewBox="0 0 24 24" focusable="false">
-      <path d="m12 2.6 2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.2 1.2-6.5L2.5 9.5l6.6-.9z" />
-    </svg>
-  ) : null;
+/** Rent the owner collects at a level (before set / event multipliers). */
+export function tileRent(tile, level = 0) {
+  try {
+    const table = typeof B[RENT_TABLE] === 'function' ? B[RENT_TABLE](tile) : null;
+    if (Array.isArray(table) && table.length) return table[Math.max(0, Math.min(table.length - 1, level))] || 0;
+    return B.rentFor(tile, level) || 0;
+  } catch {
+    return 0;
+  }
+}
 
-/** Levels 1..MAX_LEVEL-1 are little houses; MAX_LEVEL is a single red hotel, as on a real board. */
+// ---- small glyphs -------------------------------------------------------------
+
+const ArrowUp = () => (
+  <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+    <path d="M12 2.5 3.5 12H9v9.5h6V12h5.5z" />
+  </svg>
+);
+
+const EventIcon = ({ tone }) => {
+  if (tone === 'rain') return <svg viewBox="0 0 24 24" focusable="false"><path d="M12 2.5C9 7.4 6.5 10.4 6.5 14a5.5 5.5 0 0 0 11 0c0-3.6-2.5-6.6-5.5-11.5z" /></svg>;
+  if (tone === 'gift') return <svg viewBox="0 0 24 24" focusable="false"><path d="M12 21s-7.5-4.6-7.5-10A4.3 4.3 0 0 1 12 8.3 4.3 4.3 0 0 1 19.5 11c0 5.4-7.5 10-7.5 10z" /></svg>;
+  return <svg viewBox="0 0 24 24" focusable="false"><path d="m12 2.6 2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.2 1.2-6.5L2.5 9.5l6.6-.9z" /></svg>;
+};
+
+/** Level pips: one diamond per upgrade, MAX_LEVEL of them, filled up to the current level. */
 function Pips({ level }) {
-  if (level >= MAX_LEVEL) return <span className="hb-pips is-hotel" aria-hidden="true"><i /></span>;
+  const max = Math.max(1, MAX_LEVEL | 0);
   return (
     <span className="hb-pips" aria-hidden="true">
-      {Array.from({ length: Math.min(level, MAX_LEVEL - 1) }, (_, i) => (
-        <i key={i} />
+      {Array.from({ length: max }, (_, i) => (
+        <i key={i} className={i < level ? 'is-on' : undefined} />
       ))}
     </span>
   );
 }
 
+/** A transit line along the band: dashes and three stops in the mode's colour. */
+const Route = () => (
+  <span className="hb-route" aria-hidden="true">
+    <i />
+    <i />
+    <i />
+  </span>
+);
+
+const CORNER_SUB = {
+  traffic: 'Stuck here',
+  chai: 'Free chai',
+  municipal: 'Pay up',
+};
+
 /**
- * One board tile. Pure/primitive props so React.memo can skip untouched tiles.
- *  ownerColor: hex or null. level: 0..MAX_LEVEL. active: the mover is standing here.
- *  setState: 'none' | 'full' (the owner holds the whole colour: glow ring).
- *  mortgaged: greyed out with stripes and an M badge, no set glow.
- *  snatch: this tile is contested in the open snatch window (pulsing ring + lightning badge).
- *  trap: the viewer has a (secret) trap here: small amber warning badge.
- *  event: null or the frozen descriptor from eventMark() (ring + badge in the event's colour).
+ * One board tile. Pure / primitive props so React.memo can skip untouched tiles.
+ *  ownerColor / ownerName / ownerId / ownerPiece: the owner (null colour = unowned).
+ *  level: 0..MAX_LEVEL (level 0 = the first business). setState 'full': the owner holds the whole collection.
+ *  mortgaged: greyed out with stripes and an M badge. event: descriptor from eventMark() or null.
+ *  active: the mover stands here (festival-lantern glow). highlight: a sheet is open for it.
+ *  stuck: players stuck on this traffic tile. chai: chai tokens in play (Chai Adda puffs steam when it rises).
+ *  drawing: a card is being drawn from this tile (shimmer). salary: START's pay.
  */
 function TileImpl({
   tile,
   ownerColor = null,
   ownerName = '',
+  ownerId = null,
+  ownerPiece = null,
   level = 0,
   setState = 'none',
   mortgaged = false,
-  snatch = false,
   event = null,
-  trap = false,
   highlight = false,
   active = false,
+  stuck = 0,
+  chai = 0,
+  drawing = false,
+  salary = DEFAULT_SALARY,
   onSelect,
 }) {
-  const side = tileSide(tile.id);
+  const corner = cornerOf(tile.id);
+  const side = sideOf(tile.id);
   const group = tile.group ? GROUPS[tile.group] : null;
   const owned = !!ownerColor;
-  const buyable = tile.price != null;
   const isProperty = tile.type === 'property';
-  const hotel = isProperty && owned && level >= MAX_LEVEL;
-  const built = isProperty && owned && level > 0;
-  const full = !mortgaged && setState === 'full';
+  const lvl = Math.max(0, Math.min(MAX_LEVEL, level | 0));
+  const full = owned && !mortgaged && setState === 'full';
+  const kind = tile.type === 'transport' ? transportKind(tile) : null;
 
-  const { col, row } = tilePosition(tile.id);
+  const { col, row } = B.tilePosition(tile.id);
   const style = { gridColumn: col + 1, gridRow: row + 1 };
-  if (group) {
-    style['--g'] = group.color;
-    style['--gi'] = group.ink;
-  }
+  if (group) style['--g'] = group.color;
   if (owned) style['--o'] = ownerColor;
 
   const cls = ['hb-tile', `hb-tile--${tile.type}`, `hb-side--${side}`];
-  if (tile.corner) cls.push('hb-tile--corner', CORNER_CLASS[tile.id] || '');
-  if (tile.type === 'kismet') cls.push(`hb-tile--${tile.deck}`);
+  if (corner) cls.push('hb-tile--corner', `hb-tile--${corner}`);
+  if (tile.type === 'card') cls.push(`hb-deck--${tile.deck === 'drama' ? 'drama' : 'luck'}`);
+  if (kind) cls.push(`hb-mode--${kind}`);
+  if (tile.group) cls.push(`hb-g--${tile.group}`);
   if (owned) cls.push('is-owned');
   if (full) cls.push('is-set');
   if (mortgaged) cls.push('is-mortgaged');
-  if (hotel) cls.push('is-hotel');
-  if (snatch) cls.push('is-snatch');
-  if (trap) cls.push('has-trap');
+  if (isProperty && owned && lvl >= MAX_LEVEL) cls.push('is-max');
   if (event) cls.push('is-event', `is-ev--${event.tone}`);
-  if (built) cls.push('is-built');
   if (highlight) cls.push('is-hl');
   if (active) cls.push('is-active');
+  if (stuck > 0) cls.push('has-stuck');
+  if (drawing) cls.push('is-drawing');
 
-  const amount =
-    tile.type === 'tax' ? (
-      <>
-        {formatINR(tile.taxFlat)}
-        {tile.taxPercent ? <span className="hb-tile__or"> or {tile.taxPercent}%</span> : null}
-      </>
-    ) : null;
+  const levelName = group && Array.isArray(group.levelNames) ? group.levelNames[lvl] : null;
+  const rent = isProperty && owned ? tileRent(tile, lvl) : 0;
 
+  // ---- accessible name
   const label = [tile.name];
-  if (buyable) label.push(formatINR(tile.price), owned ? `owned by ${ownerName || 'a player'}` : 'for sale');
-  if (tile.type === 'tax') label.push(`pay ${formatINR(tile.taxFlat)}${tile.taxPercent ? ` or ${tile.taxPercent}% of your worth, whichever is less` : ''}`);
-  if (tile.type === 'start') label.push(`collect ${formatINR(PASS_START)}`);
-  if (mortgaged) label.push('mortgaged');
-  if (isProperty && level > 0) label.push(LEVEL_NAMES[level] || `level ${level}`);
-  if (full) label.push('full colour set');
-  if (snatch) label.push('snatch window open');
+  if (group) label.push(group.name);
+  if (isProperty) {
+    if (owned) label.push(`owned by ${ownerName || 'a player'}`, levelName || `level ${lvl}`, mortgaged ? 'mortgaged, no rent' : `rent ${formatINR(rent)}`);
+    else if (tile.price != null) label.push(`for sale, ${formatINR(tile.price)}`);
+  }
+  if (tile.type === 'transport' && tile.fare != null) label.push(`ride to the next stop for ${formatINR(tile.fare)}`);
+  if (tile.type === 'card') label.push(tile.deck === 'drama' ? 'draw a City Drama card' : 'draw a Nawabi Luck card');
+  if (tile.type === 'start') label.push(`collect ${formatINR(salary)}`);
+  if (tile.type === 'traffic') label.push(stuck > 0 ? `${stuck} stuck in traffic` : 'traffic jam, you get stuck');
+  if (tile.type === 'chai') label.push('collect a chai token');
+  if (tile.type === 'municipal') label.push('pay municipal charges');
+  if (tile.type === 'auction') label.push('a city property goes to auction');
+  if (full) label.push('full collection');
   if (event) label.push(event.note);
-  if (trap) label.push('your trap');
 
-  // the short name is on the tile; the full one is in the tooltip, the accessible name and the sheet
-  const name = softName(tile.short);
-
-  // "M" badge: sits in the colour band of a property, in the corner of any other tile
+  const name = softName(tile.short || tile.name);
   const mBadge = (
     <span className="hb-tile__m" aria-hidden="true">
       M
@@ -203,77 +246,116 @@ function TileImpl({
   );
 
   let inner;
-  if (tile.corner) {
+  if (corner) {
+    const sub = tile.type === 'start' ? `Collect ${compactINR(salary)}` : CORNER_SUB[tile.type] || '';
     inner = (
       <>
         <span className="hb-tile__icon hb-tile__icon--corner">
-          <TileIcon tile={tile} size={64} />
+          <Icon tile={tile} size={64} />
+          {tile.type === 'start' && (
+            <span className="hb-tile__go" aria-hidden="true">
+              <ArrowUp />
+            </span>
+          )}
         </span>
-        <span className="hb-pill">{tile.short}</span>
-        <span className="hb-tile__sub">{CORNER_SUB[tile.type]}</span>
+        <span className="hb-pill">{tile.short || tile.name}</span>
+        {sub && <span className="hb-tile__sub">{sub}</span>}
+        {tile.type === 'traffic' && stuck > 0 && (
+          <span className="hb-tile__stuck" aria-hidden="true">
+            <i className="hb-tile__brake" />
+            <b>{stuck}</b>
+          </span>
+        )}
+        {tile.type === 'chai' && <ChaiSteam count={chai} />}
       </>
     );
   } else if (isProperty) {
     inner = (
       <>
-        <span className="hb-tile__band">{mortgaged ? mBadge : built && <Pips level={level} />}</span>
-        <span className="hb-tile__body">
-          <span className="hb-tile__name">{name}</span>
-          <span className="hb-tile__price">{formatINR(tile.price)}</span>
+        <span className="hb-tile__band">
+          {owned && (
+            <OwnerChip owner={ownerId || ownerColor}>
+              <PieceToken piece={ownerPiece} color={ownerColor} size={20} base={false} />
+            </OwnerChip>
+          )}
+          {mortgaged ? mBadge : owned ? <Pips level={lvl} /> : null}
+        </span>
+        <span className={`hb-tile__body${owned ? ' hb-tile__body--built' : ''}`}>
+          {owned && (
+            <BuildPop level={lvl} className="hb-tile__bldg">
+              <BuildingArt theme={group?.theme} group={tile.group} level={lvl} size={64} />
+            </BuildPop>
+          )}
+          <span className="hb-tile__txt">
+            <span className="hb-tile__name">{name}</span>
+            <span className="hb-tile__price">
+              <span className="hb-amt--full">{formatINR(owned ? rent : tile.price)}</span>
+              <span className="hb-amt--short">{compactINR(owned ? rent : tile.price)}</span>
+            </span>
+          </span>
         </span>
       </>
     );
-  } else if (tile.type === 'kismet') {
-    // a card back: tinted face, pattern frame, the deck's symbol and its name
+  } else if (tile.type === 'card') {
     inner = (
       <span className="hb-tile__card">
         <span className="hb-tile__icon">
-          <TileIcon tile={tile} size={48} />
+          <Icon tile={tile} size={48} />
         </span>
         <span className="hb-tile__name">{name}</span>
+        <CardShimmer active={drawing} />
       </span>
     );
   } else {
-    // station / utility / tax: the icon, then the name and the price (or tax amount) beside or under it
+    // transport (route band + icon + fare), and any other edge special
     inner = (
-      <span className="hb-tile__body hb-tile__body--icon">
-        <span className="hb-tile__icon">
-          <TileIcon tile={tile} size={48} />
+      <>
+        {tile.type === 'transport' && (
+          <span className="hb-tile__band hb-tile__band--route">
+            <Route />
+          </span>
+        )}
+        <span className="hb-tile__body hb-tile__body--icon">
+          <span className="hb-tile__icon">
+            <Icon tile={tile} size={48} />
+          </span>
+          <span className="hb-tile__txt">
+            <span className="hb-tile__name">{name}</span>
+            {tile.fare != null && (
+              <span className="hb-tile__price">
+                <span className="hb-amt--full">{formatINR(tile.fare)}</span>
+                <span className="hb-amt--short">{compactINR(tile.fare)}</span>
+              </span>
+            )}
+          </span>
         </span>
-        <span className="hb-tile__txt">
-          <span className="hb-tile__name">{name}</span>
-          <span className="hb-tile__price">{buyable ? formatINR(tile.price) : amount}</span>
-        </span>
-      </span>
+      </>
     );
   }
 
   return (
-    <button type="button" className={cls.join(' ')} style={style} aria-label={label.join(', ')} title={[tile.name, event && event.note, trap && 'your trap'].filter(Boolean).join(' - ')} data-tile={tile.id} onClick={() => onSelect?.(tile.id)}>
+    <button
+      type="button"
+      className={cls.join(' ')}
+      style={style}
+      aria-label={label.join(', ')}
+      title={[tile.name, event && event.note].filter(Boolean).join(' - ')}
+      data-tile={tile.id}
+      data-fx-tile={tile.id}
+      onClick={() => onSelect?.(tile.id)}
+    >
       {inner}
-      {event?.tone === 'closed' && <i className="hb-tile__evx" aria-hidden="true" />}
-      {trap && (
-        <span className="hb-tile__trap" aria-hidden="true">
-          <svg viewBox="0 0 24 24" focusable="false">
-            <path d="M12 3.2 22 20.5H2zM11 9.5h2v6h-2zM11 16.6h2v2h-2z" />
-          </svg>
-        </span>
-      )}
       {event && (
-        <span className="hb-tile__ev" aria-hidden="true">
-          <EventIcon tone={event.tone} />
-          <b className="hb-tile__ev-t">{event.text}</b>
-        </span>
+        <>
+          <i className="hb-tile__glow" aria-hidden="true" />
+          <span className="hb-tile__ev" aria-hidden="true">
+            <EventIcon tone={event.tone} />
+            <b className="hb-tile__ev-t">{event.text}</b>
+          </span>
+        </>
       )}
-      {owned && <i className="hb-tile__own" aria-hidden="true" />}
+      <OwnerStamp color={ownerColor} owner={ownerId || ownerColor} side={side} />
       {mortgaged && !isProperty && mBadge}
-      {snatch && (
-        <span className="hb-tile__snatch" aria-hidden="true">
-          <svg viewBox="0 0 24 24" focusable="false">
-            <path d="M13.5 2 5 13.5h5.6L9.6 22 19 9.8h-5.7z" />
-          </svg>
-        </span>
-      )}
     </button>
   );
 }

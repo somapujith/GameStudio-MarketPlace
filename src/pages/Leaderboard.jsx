@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { paths } from '@/platform/paths.js';
 import HubIcon from '@/platform/game/HubIcon.jsx';
 import { featured, gameById, liveList } from '@/platform/home/catalog.js';
-import { fmtStat, resolveGameStats, statDefs } from '@/platform/home/gameStats.js';
+import { fmtStat, resolveGameStats, statDefsWithRating } from '@/platform/home/gameStats.js';
 import { useApi, useApiGate } from '@/platform/home/useApi.js';
 import PageHead from '@/platform/home/PageHead.jsx';
 import LeaderTabs from '@/platform/home/LeaderTabs.jsx';
@@ -12,11 +12,13 @@ import RankRow from '@/platform/home/RankRow.jsx';
 import { useAccount, useProgress } from '@/components/shell/hooks.js';
 import { fmtNum } from '@/components/shell/ui.jsx';
 import '@/styles/hubhome.css';
+import '@/styles/x-profile.css';
 
 const OVERALL_COLS = [
   { key: 'wins', label: 'Wins' },
   { key: 'games', label: 'Games' },
 ];
+const isRow = (r) => !!r && typeof r === 'object' && typeof r.name === 'string';
 const PANEL_ID = 'hh2-lb-panel';
 
 function Skeleton() {
@@ -78,7 +80,7 @@ function YourRecord({ game, user, liveGames }) {
   } else {
     const stats = resolveGameStats({ user, gameId: game.id });
     title = `Your ${game.name} record`;
-    tiles = stats ? statDefs(game, 4).map((d) => ({ label: d.label, value: fmtStat(stats[d.key] ?? (d.key === 'bestScore' ? stats.bestScore : null), d) })) : null;
+    tiles = stats ? statDefsWithRating(game, 4).map((d) => ({ label: d.label, value: fmtStat(stats[d.key] ?? null, d) })) : null;
     if (!tiles) {
       note = (
         <p className="hub-muted">
@@ -120,18 +122,18 @@ export default function Leaderboard() {
   const wanted = params.get('game') || 'overall';
   const gameId = wanted !== 'overall' && live.some((g) => g.id === wanted) ? wanted : 'overall';
   const game = gameId === 'overall' ? null : gameById(gameId);
-  const cols = game ? statDefs(game, 3) : OVERALL_COLS;
+  const cols = game ? statDefsWithRating(game, 3) : OVERALL_COLS;
 
   const remote = useApi(`/api/leaderboard?game=${encodeURIComponent(gameId)}`, { enabled: ready });
   const state = booting ? 'loading' : !ready ? 'offline' : remote.status === 'idle' ? 'loading' : remote.status;
-  const rows = useMemo(() => (Array.isArray(remote.data?.rows) ? remote.data.rows.filter((r) => r && typeof r.name === 'string') : []), [remote.data]);
+  const rows = useMemo(() => (Array.isArray(remote.data?.rows) ? remote.data.rows.filter(isRow) : []), [remote.data]);
 
   const pick = useCallback((id) => setParams(id === 'overall' ? {} : { game: id }, { replace: true }), [setParams]);
-  const isMe = useCallback(
-    (r) => account && !!user?.name && r.name === user.name && (r.avatar === undefined || Number(r.avatar) === Number(user.avatar)),
-    [account, user],
-  );
-  const mine = rows.find(isMe);
+  // The server marks the caller's own row (`isMe`) and sends it as `me` even when it is outside the top N.
+  const inTop = rows.find((r) => r.isMe === true) || null;
+  const meRow = isRow(remote.data?.me) ? { ...remote.data.me, isMe: true } : null;
+  const mine = inTop || meRow;
+  const pinned = !inTop && meRow ? meRow : null;
   const lead = game || featured();
 
   let body;
@@ -192,22 +194,33 @@ export default function Leaderboard() {
             </Link>
           </div>
         )}
-        <Podium rows={rows} cols={cols} isMe={isMe} />
+        <Podium rows={rows} cols={cols} />
         {rows.length > 3 && (
-          <ol className="hh2-lb__list" start={4} aria-label="Ranks 4 and below">
-            {rows.slice(3).map((r) => (
-              <RankRow key={`${r.rank}-${r.name}`} row={r} cols={cols} me={isMe(r)} />
+          <ol className="hh2-lb__list xp-list" start={4} aria-label="Ranks 4 and below">
+            {rows.slice(3).map((r, i) => (
+              <RankRow key={`${r.rank}-${r.name}`} row={r} cols={cols} style={{ '--i': Math.min(i, 12) }} />
             ))}
           </ol>
         )}
+        {pinned && (
+          <div className="xp-pin" role="group" aria-label={`Your rank: ${pinned.rank ?? 'unranked'}`}>
+            <span className="xp-pin__gap" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+            <RankRow as="div" row={pinned} cols={cols} me className="xp-pin__row" />
+          </div>
+        )}
         {account && (
           <p className="hh2-lb__standing" aria-live="polite">
-            {mine ? (
+            {mine && mine.rank ? (
               <>
-                You are <b>#{mine.rank}</b> {game ? `in ${game.name}` : 'overall'}.
+                You are <b>#{mine.rank}</b> {game ? `in ${game.name}` : 'overall'}
+                {pinned ? '. Keep winning to break into the top.' : '.'}
               </>
             ) : (
-              <>You are not in the top {rows.length} yet. Win online matches to climb the board.</>
+              <>You are not ranked{game ? ` in ${game.name}` : ''} yet. Finish an online match to get on the board.</>
             )}
           </p>
         )}
@@ -216,7 +229,7 @@ export default function Leaderboard() {
   }
 
   return (
-    <div className="hub-page hh2 hh2-lbpage">
+    <div className="hub-page hh2 hh2-lbpage xp-page">
       <PageHead title="Leaderboard" sub="See who is winning across every game." icon={<HubIcon name="podium" size={26} />} />
       <LeaderTabs games={live} value={gameId} onChange={pick} panelId={PANEL_ID} />
       <div className="hh2-lbgrid">

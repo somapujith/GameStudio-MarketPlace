@@ -33,11 +33,14 @@ export function LogList({ log, className = '', variant = 'rows' }) {
     if (el && stick.current) el.scrollTop = el.scrollHeight;
   }, [lastId, log.length]);
 
+  // the panel's inline copy is always on screen next to Dice / ActionBar / EventBanner / CardReveal, which speak for
+  // themselves: it stays readable but silent (aria-live off); only the full log sheet is live
   return (
     <ol
       ref={ref}
       className={mono ? `cp-log ${className}`.trim() : `hg-log-list ${className}`}
       role="log"
+      aria-live={mono ? 'off' : undefined}
       aria-label="Game log"
       tabIndex={mono ? 0 : undefined}
       onScroll={(e) => {

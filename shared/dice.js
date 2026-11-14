@@ -5,13 +5,13 @@
 // module never imports engine.js.
 //
 // Player fields read (the engine maintains them):
-//   cash, pos, jailTurns, bankrupt   existing fields
+//   cash, pos, stuck, bankrupt       existing fields (`stuck` = waiting in a traffic jam: a ROLL does not move)
 //   sixes            sixes thrown so far in the CURRENT turn (0 after a non-six, reset each turn)
 //   rollsSinceSix    consecutive non-six rolls (reset to 0 by a six, +1 by a non-six)
 //   rentStreak       consecutive turns in which the player paid rent >= DICE_RULES.mercy.minRent
 // State fields read: cfg.dice, owners[BOARD_SIZE], levels[BOARD_SIZE], mortgaged[BOARD_SIZE] (optional), players[], rng (written by rollDice only).
 
-import { BOARD_SIZE, START_TILE, TILES, isBuyable, mortgageValue, upgradeCost } from './board.js';
+import { BOARD_SIZE, START_TILE, TILES, isBuyable, mortgageValue, upgradeCost, SELL_RATIO } from './board.js';
 import { nextFloat } from './rng.js';
 
 export const DICE_MODES = ['lucky', 'fair'];
@@ -33,7 +33,7 @@ export const DICE_RULES = {
   //     and x`penalty` on landings whose rent is >= `rentShare` of the player's cash.
   comeback: { below: 0.8, strongBelow: 0.5, boost: 1.15, strongBoost: 1.25, rentShare: 0.25, penalty: 0.85 },
   // (2) mercy: after `streak` rent-paying turns (rent >= minRent), landings on an opponent tile asking >= minRent get x`mult`.
-  mercy: { streak: 2, minRent: 1000, mult: 0.7 },
+  mercy: { streak: 2, minRent: 20000, mult: 0.7 },
   // (3) pity six: after `rolls` non-six rolls in a row, a six gets x`mult`.
   pity: { rolls: 6, mult: 1.5 },
   // (4) anti-streak: after `sixes` sixes in the same turn, a six gets x`mult` (the clamp floors it at `clamp[0]`).
@@ -54,7 +54,7 @@ const clamp = (x, lo, hi) => (x < lo ? lo : x > hi ? hi : x);
 const playerOf = (state, id) => (state.players || []).find((p) => p.id === id);
 const isMortgaged = (state, tile) => !!(state.mortgaged && state.mortgaged[tile]);
 
-/** Net worth: cash + owned tiles (price + levels x upgradeCost; a mortgaged tile counts price - mortgageValue). */
+/** Net worth as the engine counts it: cash + districts (price, or price - mortgage) + 50% of the upgrades paid. */
 function worthOf(state, playerId) {
   const p = playerOf(state, playerId);
   if (!p) return 0;
@@ -62,7 +62,8 @@ function worthOf(state, playerId) {
   for (let i = 0; i < BOARD_SIZE; i++) {
     if (state.owners[i] !== playerId) continue;
     const t = TILES[i];
-    w += (isMortgaged(state, i) ? t.price - mortgageValue(t) : t.price) + ((state.levels && state.levels[i]) || 0) * upgradeCost(t);
+    const levels = (state.levels && state.levels[i]) || 0;
+    w += (isMortgaged(state, i) ? t.price - mortgageValue(t) : t.price) + Math.round(levels * upgradeCost(t) * SELL_RATIO);
   }
   return w;
 }
@@ -87,7 +88,7 @@ function rentAt(state, ctx, tile, sum) {
   return Number.isFinite(r) && r > 0 ? r : 0;
 }
 
-/** Classify the destination of a face: 'good' (unowned buyable / START / own tile), 'opp' (opponent tile, mortgage-free) or 'other'. */
+/** Classify the destination of a face: 'good' (unowned district / START / own district), 'opp' (opponent district, mortgage-free) or 'other'. */
 function classify(state, playerId, dest) {
   if (dest === START_TILE) return 'good';
   const tile = TILES[dest];
@@ -106,19 +107,19 @@ function classify(state, playerId, dest) {
 
 /**
  * Per-rule multiplier arrays (6 each, 1 = unchanged) or null when the rule's condition does not hold.
- * Jailed players only get pity (a jailed player moves only on a six, so landing-based rules are moot).
+ * A player stuck in traffic only gets pity (their ROLL does not move them, so landing-based rules are moot).
  */
 function ruleMultipliers(state, playerId, ctx) {
   const rules = { comeback: null, mercy: null, pity: null, antibust: null };
   const p = playerOf(state, playerId);
   if (!p) return rules;
-  const jailed = (p.jailTurns || 0) > 0;
+  const stuck = !!p.stuck;
 
   // (3) pity six: after 6 non-six rolls in a row a six x1.5.
   if ((p.rollsSinceSix || 0) >= DICE_RULES.pity.rolls) {
     rules.pity = FACES.map((values) => (isSix(values) ? DICE_RULES.pity.mult : 1));
   }
-  if (jailed) return rules;
+  if (stuck) return rules;
 
   // (4) anti-streak: after two sixes in the same turn a six x0.5 (floored to 0.6 by the clamp).
   if ((p.sixes || 0) >= DICE_RULES.antibust.sixes) {
@@ -247,20 +248,18 @@ export function diceOdds(state, playerId, ctx) {
 
 /**
  * `number[BOARD_SIZE]`: probability that the player's next roll ENDS on each tile (same weights as `rollDice`).
- * Jailed player: moves only on a six, so P(stay) = 1 - P(six) stays on their tile (JAIL_TILE) and a six lands 6 ahead.
- * A roll that lands on the Go-to-Jail square is reported on that square (the engine then jails the player).
+ * A player stuck in traffic does not move when they roll (they wait), so their own tile gets probability 1.
  */
 export function landingOdds(state, playerId, ctx) {
   const out = new Array(BOARD_SIZE).fill(0);
   const p = playerOf(state, playerId);
   if (!p) return out;
-  const { weights } = diceWeights(state, playerId, ctx);
   const pos = p.pos || 0;
-  const jailed = (p.jailTurns || 0) > 0;
-  for (let i = 0; i < FACES.length; i++) {
-    const sum = FACES[i][0];
-    const dest = jailed && !isSix(FACES[i]) ? pos : (pos + sum) % BOARD_SIZE;
-    out[dest] += weights[i];
+  if (p.stuck) {
+    out[pos] = 1;
+    return out;
   }
+  const { weights } = diceWeights(state, playerId, ctx);
+  for (let i = 0; i < FACES.length; i++) out[(pos + FACES[i][0]) % BOARD_SIZE] += weights[i];
   return out;
 }

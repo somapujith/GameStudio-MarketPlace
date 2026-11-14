@@ -12,12 +12,13 @@ const friends = new Hono();
 friends.use('*', requireMember); // guests cannot use friends
 
 // GET /api/friends -> { friends, incoming, outgoing }
+//   rows: { id, name, avatar, friendCode, online, level, equipped:{ frame?, dice?, title? } }
 friends.get('/', async (c) => {
   const me = c.get('user');
   const rows = await query(
     c.env,
     `SELECT f.status, (f.user_id = $1) AS outgoing,
-            u.id, u.name, u.avatar, u.friend_code, u.xp
+            u.id, u.name, u.avatar, u.friend_code, u.xp, u.equipped
        FROM friendships f
        JOIN users u ON u.id = CASE WHEN f.user_id = $1 THEN f.friend_id ELSE f.user_id END
       WHERE f.user_id = $1 OR f.friend_id = $1

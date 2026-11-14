@@ -4,6 +4,9 @@ import { paths } from '@/platform/paths.js';
 import { BRAND } from '@/platform/brand.js';
 import HubIcon from '@/platform/game/HubIcon.jsx';
 import { useReducedMotion } from '@/components/shell/hooks.js';
+import { getGamesLive } from '@/lib/api.js';
+import { useLoad } from '@/components/shell/home/useLoad.js';
+import { openTablesById } from '@/components/shell/home/homeModel.js';
 import { categoryLabel, featured, liveList } from './catalog.js';
 import { GameCover } from './GameArt.jsx';
 import { playersLabel, themeVars } from './gameTheme.js';
@@ -11,7 +14,9 @@ import { playersLabel, themeVars } from './gameTheme.js';
 const INTERVAL_MS = 7000;
 const SWIPE_PX = 50;
 
-function Slide({ game, active, index, total }) {
+const fetchLive = (opts) => getGamesLive(opts);
+
+function Slide({ game, active, index, total, tables = 0 }) {
   const live = game.status === 'live';
   const players = playersLabel(game.players);
   const feats = Array.isArray(game.features) ? game.features.slice(0, 3) : [];
@@ -30,6 +35,12 @@ function Slide({ game, active, index, total }) {
         <p className="hub-eyebrow hh2-hero__eyebrow">
           <span className="hh2-eyebrow__dot" aria-hidden="true" />
           Featured{game.category ? ` · ${categoryLabel(game.category)}` : ''}
+          {live && tables > 0 && (
+            <span className="xh-livechip">
+              <i className="xh-live-dot" aria-hidden="true" />
+              {tables} table{tables === 1 ? '' : 's'} open
+            </span>
+          )}
         </p>
         <h2 className="hh2-hero__title">{game.name}</h2>
         {game.tagline && <p className="hh2-hero__tag">{game.tagline}</p>}
@@ -68,9 +79,14 @@ function Slide({ game, active, index, total }) {
   );
 }
 
-/** Featured-game hero. Rotates through the live games (pauses on hover / focus / touch, with a pause button). */
+/**
+ * Featured-game hero. Rotates only when several games are live (pauses on hover / focus / touch, with a pause
+ * button). A live "N tables open" chip comes from GET /api/games (polled; hidden when 0 or offline).
+ */
 export default function Hero() {
   const reduced = useReducedMotion();
+  const liveCounts = useLoad('games-live', fetchLive, { pollMs: 30_000 });
+  const tables = liveCounts.status === 'ok' ? openTablesById(liveCounts.data?.games) : {};
   const slides = useMemo(() => {
     const out = [];
     const f = featured();
@@ -138,7 +154,7 @@ export default function Hero() {
     >
       <div className="hh2-hero__stage" aria-live={running ? 'off' : 'polite'}>
         {slides.map((g, i) => (
-          <Slide key={g.id} game={g} index={i} total={total} active={i === index} />
+          <Slide key={g.id} game={g} index={i} total={total} active={i === index} tables={tables[g.id] || 0} />
         ))}
       </div>
 

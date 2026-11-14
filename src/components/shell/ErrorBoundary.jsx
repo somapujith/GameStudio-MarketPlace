@@ -3,7 +3,7 @@ import { Icon } from './icons.jsx';
 
 const CHUNK_RE = /dynamically imported module|Loading chunk|Importing a module script failed|error loading dynamically/i;
 
-/** Catches render errors under it and shows a friendly retry screen. */
+/** Catches render errors under it and shows a friendly retry screen (`silent`: render nothing instead). */
 export default class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
@@ -31,6 +31,7 @@ export default class ErrorBoundary extends Component {
   render() {
     const { error } = this.state;
     if (!error) return this.props.children;
+    if (this.props.silent) return null; // optional chrome (overlays): fail closed, never take the page down
     const stale = CHUNK_RE.test(String(error?.message || ''));
     return (
       <div className={`hh-error ${this.props.fullscreen ? 'hh-error--full' : ''}`} role="alert">

@@ -55,12 +55,14 @@ describe('parseRoomInit (POST /api/rooms and the room /init)', () => {
   });
 
   it('settings go through the adapter; seats may ride along in settings or in the body', () => {
-    expect(parseRoomInit({ settings: { goal: 40000, maxRounds: null } })).toMatchObject({ ok: true, settings: { ...ROOM_DEFAULTS, goal: 40000, maxRounds: null } });
+    expect(parseRoomInit({ settings: { mode: 'classic', dice: 'fair' } })).toMatchObject({ ok: true, settings: { ...ROOM_DEFAULTS, mode: 'classic', dice: 'fair' } });
+    // the retired keys (end-cash goal, round limit, snatch) are dropped, never stored
+    expect(parseRoomInit({ settings: { goal: 40000, maxRounds: null, snatches: 2 } }).settings).toEqual(ROOM_DEFAULTS);
     expect(parseRoomInit({ settings: { maxPlayers: 5 } })).toMatchObject({ ok: true, maxPlayers: 5 });
     expect(parseRoomInit({ maxPlayers: 3, settings: { maxPlayers: 5 } })).toMatchObject({ maxPlayers: 3 });
     expect(parseRoomInit({ maxPlayers: 3 })).toMatchObject({ maxPlayers: 3 });
     expect(parseRoomInit({ maxPlayers: 9 })).toEqual({ ok: false, error: 'Players must be between 2 and 6.' });
-    expect(parseRoomInit({ settings: { goal: 5 } })).toMatchObject({ ok: false, error: expect.stringMatching(/Winning target/) });
+    expect(parseRoomInit({ settings: { mode: 'marathon' } })).toMatchObject({ ok: false, error: expect.stringMatching(/Mode must be one of/) });
     expect(parseRoomInit({ settings: 'goal' })).toEqual({ ok: false, error: 'Settings must be an object.' });
     expect(parseRoomInit({ settings: [1] })).toEqual({ ok: false, error: 'Settings must be an object.' });
   });
@@ -84,8 +86,9 @@ describe('parseSettingsPatch (host settings message)', () => {
   const current = { ...ROOM_DEFAULTS };
 
   it('merges a partial patch over the current settings', () => {
-    expect(parseSettingsPatch(tycoon, current, { goal: 100000 })).toEqual({ ok: true, settings: { ...ROOM_DEFAULTS, goal: 100000 } });
-    expect(parseSettingsPatch(tycoon, current, { maxRounds: null }).settings.maxRounds).toBeNull();
+    expect(parseSettingsPatch(tycoon, current, { mode: 'quick' })).toEqual({ ok: true, settings: { ...ROOM_DEFAULTS, mode: 'quick' } });
+    const quick = { ...ROOM_DEFAULTS, mode: 'quick' };
+    expect(parseSettingsPatch(tycoon, quick, { dice: 'fair' }).settings).toEqual({ ...quick, dice: 'fair' }); // earlier choices are kept
     expect(parseSettingsPatch(tycoon, current, undefined)).toEqual({ ok: true, settings: ROOM_DEFAULTS });
   });
 
@@ -95,11 +98,12 @@ describe('parseSettingsPatch (host settings message)', () => {
   });
 
   it('rejects bad values and non-objects; unknown keys are ignored', () => {
-    for (const bad of [{ goal: 5 }, { maxRounds: 120 }, { dice: 'loaded' }, { auctionOnDecline: 'yes' }]) {
+    for (const bad of [{ mode: 'marathon' }, { mode: 3 }, { dice: 'loaded' }, { auctionOnDecline: 'yes' }]) {
       expect(parseSettingsPatch(tycoon, current, bad).ok, JSON.stringify(bad)).toBe(false);
     }
     for (const bad of ['x', 5, [1], true]) expect(parseSettingsPatch(tycoon, current, bad)).toEqual({ ok: false, error: 'Settings must be an object.' });
     expect(parseSettingsPatch(tycoon, current, { debug: true })).toEqual({ ok: true, settings: ROOM_DEFAULTS });
+    expect(parseSettingsPatch(tycoon, current, { goal: 5, maxRounds: 120 })).toEqual({ ok: true, settings: ROOM_DEFAULTS }); // retired keys
   });
 });
 

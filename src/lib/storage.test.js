@@ -20,11 +20,11 @@ beforeEach(async () => {
 
 describe('settings', () => {
   it('has sound and motion defaults and merges patches', () => {
-    expect(S.loadSettings()).toEqual({ sfx: true, volume: 0.8, reducedMotion: false });
-    S.saveSettings({ volume: 5, reducedMotion: true });
-    expect(S.loadSettings()).toEqual({ sfx: true, volume: 1, reducedMotion: true });
+    expect(S.loadSettings()).toEqual({ sfx: true, volume: 0.8, reducedMotion: false, theme: 'system', playbackSpeed: 1, haptics: true });
+    S.saveSettings({ volume: 5, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true });
+    expect(S.loadSettings()).toEqual({ sfx: true, volume: 1, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true });
     S.saveSettings({ sfx: false, voice: true, subtitles: 'te', actors: { ntr: false } }); // unknown keys are dropped
-    expect(S.loadSettings()).toEqual({ sfx: false, volume: 1, reducedMotion: true });
+    expect(S.loadSettings()).toEqual({ sfx: false, volume: 1, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true });
   });
 
   it('loads settings saved by older builds (with voice, subtitle and actor keys) and ignores those keys', async () => {
@@ -32,7 +32,7 @@ describe('settings', () => {
     const m = stubLocalStorage();
     m.set('hyd.settings.v1', JSON.stringify({ sfx: false, voice: true, tts: false, volume: 0.3, subtitles: 'tn', reducedMotion: true, actors: { ntr: false } }));
     const O = await import('./storage.js');
-    expect(O.loadSettings()).toEqual({ sfx: false, volume: 0.3, reducedMotion: true });
+    expect(O.loadSettings()).toEqual({ sfx: false, volume: 0.3, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true });
   });
 
   it('notifies subscribers and keeps a stable snapshot between changes', () => {
@@ -66,9 +66,11 @@ describe('settings', () => {
 describe('levels and profile', () => {
   it('levelInfo walks the curve', () => {
     expect(S.levelInfo(0)).toEqual({ level: 1, into: 0, need: 100, pct: 0 });
-    expect(S.levelInfo(100)).toMatchObject({ level: 2, into: 0, need: 200 });
-    expect(S.levelInfo(250)).toMatchObject({ level: 2, into: 150, pct: 75 });
-    expect(S.levelInfo(300).level).toBe(3);
+    expect(S.levelInfo(100)).toMatchObject({ level: 2, into: 0, need: 150 });
+    expect(S.levelInfo(175)).toMatchObject({ level: 2, into: 75, pct: 50 });
+    expect(S.levelInfo(250)).toMatchObject({ level: 3, into: 0, need: 200 });
+    expect(S.levelInfo(449).level).toBe(3);
+    expect(S.levelInfo(450).level).toBe(4);
     expect(S.levelInfo(-5).level).toBe(1);
   });
 

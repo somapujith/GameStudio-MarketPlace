@@ -9,9 +9,29 @@ import { fmtNum, radioKeyNav } from '@/components/shell/ui.jsx';
 import { useToast } from '@/components/shell/Toast.jsx';
 import { useAccount, useProgress } from '@/components/shell/hooks.js';
 import { pctOf, useProfile } from '@/components/shell/stores.js';
-import Ava from './Ava.jsx';
+import { cleanEquipped } from '@shared/cosmetics.js';
+import Ava, { Title } from './Ava.jsx';
+import { useCountUp } from './useApi.js';
 
 const MAX_NAME = 20;
+const RING = 2 * Math.PI * 47; // circumference of the r=47 level ring (viewBox 100)
+
+/** Avatar inside a ring that fills with the XP progress of the current level, with the level on a tab below. */
+function LevelRing({ pct, level, children }) {
+  const p = Math.max(0, Math.min(100, Number(pct) || 0));
+  return (
+    <span className="xp-ring" style={{ '--off': `${RING * (1 - p / 100)}` }}>
+      <svg className="xp-ring__svg" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+        <circle cx="50" cy="50" r="47" className="xp-ring__track" />
+        <circle cx="50" cy="50" r="47" className="xp-ring__fill" strokeDasharray={RING} />
+      </svg>
+      <span className="xp-ring__ava">{children}</span>
+      <span className="xp-ring__lv" aria-hidden="true">
+        Lv {level}
+      </span>
+    </span>
+  );
+}
 
 /** Avatar, name, level / XP bar and coins, with an inline editor for the name and avatar. */
 export default function ProfileHeader() {
@@ -28,6 +48,9 @@ export default function ProfileHeader() {
 
   const { info: li, coins } = useProgress();
   const pct = pctOf(li);
+  const shownCoins = useCountUp(coins);
+  const equipped = cleanEquipped(signedIn ? user?.equipped : null);
+  const streak = Number(signedIn ? user?.daily?.streak : profile.dailyStreak) || 0;
 
   // The local profile is the source of truth offline; signed-in players also get it saved on the server.
   const sync = async (patch) => {
@@ -59,14 +82,19 @@ export default function ProfileHeader() {
 
   return (
     <section className="hub-panel hh2-pro" aria-labelledby="hh2-pro-h">
-      <div className="hh2-pro__top">
-        <Ava preset={avatar} size={88} ring="var(--hh2-brand)" dot={account ? 'on' : undefined} />
+      <div className="hh2-pro__top xp-pro__top">
+        <LevelRing pct={pct} level={li.level}>
+          <Ava preset={avatar} size={80} ring="var(--hub-surface-3)" frame={equipped.frame} dot={account ? 'on' : undefined} />
+        </LevelRing>
         <div className="hh2-pro__id">
           <h2 id="hh2-pro-h" className="hh2-pro__name" title={name}>
             {name}
           </h2>
+          {equipped.title && <Title title={equipped.title} size="md" className="xp-pro__title" />}
+          <p className="xp-pro__xp">
+            <b>{fmtNum(li.into)}</b> / {fmtNum(li.need)} XP to level {li.level + 1}
+          </p>
           <div className="hh2-pro__pills">
-            <span className="hub-pill hub-pill--accent">Level {li.level}</span>
             <span className={`hub-pill${status.tone === 'good' ? ' hub-pill--good' : ''}`}>{status.text}</span>
           </div>
         </div>
@@ -77,31 +105,36 @@ export default function ProfileHeader() {
           aria-expanded={open}
           aria-controls={`${inputId}-edit`}
         >
-          <HubIcon name={open ? 'check' : 'pencil'} size={16} /> {open ? 'Done' : 'Edit'}
+          <HubIcon name={open ? 'check' : 'pencil'} size={16} /> <span className="xp-pro__editlbl">{open ? 'Done' : 'Edit profile'}</span>
         </button>
       </div>
+      <div
+        className="sr-only"
+        role="progressbar"
+        aria-label={`Level ${li.level}: experience to the next level`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(pct)}
+      />
 
-      <div className="hh2-pro__stats">
-        <div className="hh2-xp">
-          <div className="hh2-xp__top">
-            <span>
-              <HubIcon name="bolt" size={14} /> Level {li.level}
-            </span>
-            <span>
-              {fmtNum(li.into)} / {fmtNum(li.need)} XP
-            </span>
-          </div>
-          <div className="hh2-xp__track" role="progressbar" aria-label="Experience to next level" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
-            <i style={{ width: `${pct}%` }} />
-          </div>
-        </div>
-        <div className="hh2-pro__coins" aria-label={`${fmtNum(coins)} coins`}>
+      <div className="xp-pro__stats">
+        <div className="hh2-pro__coins xp-pro__coins" aria-label={`${fmtNum(coins)} coins`}>
           <CoinIcon size={26} />
-          <span>
-            <b>{fmtNum(coins)}</b>
+          <span aria-hidden="true">
+            <b>{fmtNum(shownCoins)}</b>
             <small>Coins</small>
           </span>
         </div>
+        <div className="xp-pro__streak" aria-label={`Daily streak: ${streak} ${streak === 1 ? 'day' : 'days'}`}>
+          <HubIcon name="flame" size={22} />
+          <span aria-hidden="true">
+            <b>{fmtNum(streak)}</b>
+            <small>Day streak</small>
+          </span>
+        </div>
+        <Link to={paths.shop()} className="hub-btn hub-btn--primary xp-pro__shop">
+          <HubIcon name="gift" size={18} /> Shop
+        </Link>
       </div>
 
       <div id={`${inputId}-edit`} className={`hh2-collapse ${open ? 'is-open' : ''}`}>

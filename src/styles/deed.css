@@ -68,3 +68,66 @@
 .hg-deed--mortgaged p { margin: 0; font-weight: 700; }
 .hg-deed--mortgaged em { max-width: 30ch; font-size: 13px; line-height: 1.4; color: var(--paper-dim); }
 .hg-deed-dot { color: var(--paper-dim); line-height: 1; }
+
+/* polish: the live rent row carries a clear "now" tag instead of a tiny arrow */
+.hg-deed-table tr.is-current th::after {
+  content: 'NOW'; margin-left: 8px; padding: 1px 6px; border-radius: 99px; vertical-align: 2px;
+  background: var(--paper-ink); color: var(--paper); font-size: 9.5px; font-weight: 800; letter-spacing: 0.08em;
+}
+.hg-deed { background: linear-gradient(180deg, #fffdf6, var(--paper)); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.42), inset 0 0 0 1px #fff; }
+.hg-deed-table th, .hg-deed-table td { padding-block: 6px; }
+
+/* ============================================================ Hustle deed: 3 themed businesses, hero facts, events */
+.hg-deed-identity {
+  margin: 0 0 6px; padding-left: 10px; border-left: 3px solid var(--band, var(--gold));
+  font-size: 13.5px; font-weight: 700; line-height: 1.35; color: var(--text);
+}
+.hg-propsheet .hg-lore { margin-bottom: 12px; }
+.hg-heritage { display: block; margin-top: 4px; font-size: 11.5px; font-style: normal; letter-spacing: 0.01em; color: var(--text-faint); }
+
+/* the three numbers a player needs at a glance */
+.hg-deed-hero { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0 0 12px; }
+.hg-deed-hero > div { min-width: 0; padding: 9px 10px; border-radius: 14px; background: rgba(255, 255, 255, 0.06); }
+.hg-deed-hero span { display: block; font-size: 10.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); }
+.hg-deed-hero b {
+  display: flex; align-items: center; gap: 6px; min-height: 26px; margin-top: 2px; overflow: hidden;
+  font-family: var(--font-display); font-size: clamp(15px, 4.4vw, 19px); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.hg-deed-hero b.is-gold { color: var(--gold); }
+.hg-deed-hero b.is-dim { color: var(--text-faint); }
+.hg-deed-hero .hg-owner { font-family: var(--font-body); font-size: 14px; }
+.hg-owner-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.hg-deed-hero .hg-token { padding: 2px; }
+
+/* the ladder: one row per business, level number badge + themed name */
+.hg-deed-ladder th { display: flex; align-items: center; gap: 8px; }
+.hg-deed-ladder tr:first-child th { font-size: 15px; letter-spacing: 0; }
+.hg-deed-ladder tr:first-child td { font-size: 17px; }
+.hg-deed-lvl {
+  flex: none; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 7px;
+  background: var(--band, var(--paper-ink)); color: #fff; font-size: 12px; font-weight: 900;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+}
+.hg-deed-ladder td small.is-on { color: #1d7a4b; font-weight: 800; }
+.hg-deed-ladder td small.is-event { color: #8a3ffc; font-weight: 800; }
+.hg-deed-ladder tr.is-current .hg-deed-lvl { transform: scale(1.12); box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--band, var(--paper-ink)); }
+.hg-deed-foot .hg-deed-line span:first-child { min-width: 9.5em; color: var(--paper-dim); }
+
+.hg-deed-event {
+  display: flex; align-items: center; gap: 6px; margin: 0; padding: 7px 14px; font-size: 12.5px; line-height: 1.3;
+  background: linear-gradient(90deg, rgba(138, 63, 252, 0.16), rgba(138, 63, 252, 0.05)); color: #4b1fa3; border-bottom: 1px dotted rgba(21, 19, 15, 0.28);
+}
+.hg-deed-event.is-down { background: linear-gradient(90deg, rgba(59, 130, 246, 0.16), rgba(59, 130, 246, 0.05)); color: #1e4f9c; }
+
+.hg-deed-level { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 13px; color: var(--text-dim); }
+.hg-deed--mortgaged { gap: 8px; }
+
+@media (max-width: 380px) {
+  .hg-deed-hero { grid-template-columns: 1fr 1fr; }
+  .hg-deed-hero > div:last-child { grid-column: 1 / -1; }
+  .hg-deed-table th, .hg-deed-table td { padding-inline: 10px; }
+}
+
+/* deed enters with a small lift once the sheet is open */
+.hg-sheet-root .hg-propsheet .hg-deed { transform: translate3d(0, 10px, 0); opacity: 0; transition: transform var(--dur-3) var(--ease-out) 60ms, opacity var(--dur-2) var(--ease-out) 60ms; }
+.hg-sheet-root.is-open .hg-propsheet .hg-deed { transform: none; opacity: 1; }

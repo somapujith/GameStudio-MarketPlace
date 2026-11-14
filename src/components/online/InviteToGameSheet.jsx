@@ -3,13 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { createRoom, errorMessage, sendInvite } from '@/lib/api.js';
 import { paths } from '@/platform/paths.js';
 import { inviteGames, warmOnlineGame } from './games.js';
+import { inviteFeedback } from './friendsModel.js';
 import GameIcon from './GameIcon.jsx';
 import Sheet from './Sheet.jsx';
 import '@/styles/online.css';
+import '@/styles/x-social.css';
 
 /**
  * "Invite to game": pick one of the live games, we open a private room for it, invite the friend
- * (POST /api/invites) and land in the lobby. `friend` = { id, name }.
+ * (POST /api/invites) and land in the lobby. `friend` = { id, name, online? }. Works for offline friends too: the
+ * server keeps the invite and the lobby toast says so honestly ("Invite saved — they'll see it when they're back").
  */
 export default function InviteToGameSheet({ friend, onClose }) {
   const navigate = useNavigate();
@@ -38,9 +41,10 @@ export default function InviteToGameSheet({ friend, onClose }) {
       setBusy(null);
       return;
     }
-    let toast = { text: `Invite sent to ${friend.name}`, tone: 'good' };
+    let toast;
     try {
-      await sendInvite(room.code, friend.id);
+      const fb = inviteFeedback(await sendInvite(room.code, friend.id), friend.name);
+      toast = { text: fb.text, tone: fb.tone };
     } catch (e) {
       toast = { text: `Room ready, but ${friend.name} could not be invited: ${errorMessage(e, 'try again from the lobby')}`, tone: 'bad' };
     }
@@ -48,13 +52,22 @@ export default function InviteToGameSheet({ friend, onClose }) {
   };
 
   return (
-    <Sheet open title={`Invite ${friend.name}`} subtitle="Pick a game. We open a private room and send the invite." onClose={busy ? undefined : onClose}>
+    <Sheet
+      open
+      title={`Invite ${friend.name}`}
+      subtitle={
+        friend.online === false
+          ? `Pick a game. We open a private room and save the invite: ${friend.name} sees it when they are back.`
+          : 'Pick a game. We open a private room and send the invite.'
+      }
+      onClose={busy ? undefined : onClose}
+    >
       {games.length === 0 ? (
         <p className="ho-empty">No games are open for friends yet. Check back soon.</p>
       ) : (
         <ul className="ho-list ho-gamelist" aria-label="Games">
-          {games.map((g) => (
-            <li key={g.id}>
+          {games.map((g, i) => (
+            <li key={g.id} className="xs-enter" style={{ '--xs-i': i }}>
               <button
                 type="button"
                 className="ho-gamepick"

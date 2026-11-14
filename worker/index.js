@@ -16,6 +16,8 @@ import inviteRoutes from './routes/invites.js';
 import leaderboardRoutes from './routes/leaderboard.js';
 import gameRoutes from './routes/games.js';
 import healthRoutes from './routes/health.js';
+import shopRoutes from './routes/shop.js';
+import pushRoutes from './routes/push.js';
 
 export { GameRoom } from './GameRoom.js';
 export { UserHub } from './UserHub.js';
@@ -57,6 +59,8 @@ api.route('/games', gameRoutes);
 api.route('/rooms', roomRoutes);
 api.route('/invites', inviteRoutes);
 api.route('/leaderboard', leaderboardRoutes);
+api.route('/shop', shopRoutes);
+api.route('/push', pushRoutes);
 api.notFound((c) => c.json({ error: 'Not found.' }, 404));
 
 app.route('/api', api);

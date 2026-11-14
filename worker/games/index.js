@@ -9,7 +9,8 @@
 //
 //   required:  id, name, minPlayers, maxPlayers, defaultSettings,
 //              validateSettings(raw) -> { ok:true, settings } | { ok:false, error }   (strict, untrusted input)
-//              createGame({ players:[{id,name,avatar}], settings, seed }) -> state
+//              createGame({ players:[{id,name,avatar,piece?}], settings, seed }) -> state
+//                                  (`piece` is only passed when the adapter has `pieces`; keep it if it is free)
 //              applyAction(state, action) -> { state, events, error? }                (pure; invalid -> same state + error)
 //              turnPlayerId(state) -> playerId | null          (who the idle timer waits for)
 //              deadlines(state) -> [{ key, afterMs, playerId, action }]   (game timers besides the turn timer;
@@ -30,6 +31,10 @@
 //              resignAction(state, playerId)  what leaving a running game does (default: nothing)
 //              track(meta, events, state)   fold events into an opaque per-match `meta` kept in the room record
 //              emotes                       whitelist for `{t:'chat', emote}` (default: none)
+//              pieces                       string[] of piece ids a player can pick in the lobby (`{t:'piece', piece}`).
+//                                           The room auto-assigns the first free one on join, refuses unknown or taken
+//                                           ones, shows it as room.players[i].piece and passes it to createGame as
+//                                           players[i].piece. Without it, pieces are off (`piece` is null, `{t:'piece'}` errors).
 //
 //   `result().legacy` is only for Hyderabad Tycoon: when present, the old users.games / wins /
 //   best_worth / rent_earned columns and the matches goal / max_rounds / dice_mode columns are

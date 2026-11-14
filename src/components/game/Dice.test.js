@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { Dice, dieValue } from './Dice.jsx';
+import { Dice, dieValue, diceSkinStyle } from './Dice.jsx';
 
 const render = (dice, rolling = false) => renderToString(createElement(Dice, {
   session: { display: { dice }, rolling, options: { roll: true } },
@@ -42,5 +42,27 @@ describe('dieValue', () => {
     expect(dieValue({ view: { dice: [2] } })).toBe(2);
     expect(dieValue({ display: { dice: [0] } })).toBe(4);
     expect(dieValue({})).toBe(4);
+  });
+});
+
+describe('dice skins', () => {
+  const skinned = (skin) => renderToString(createElement(Dice, { session: { display: { dice: [3] } }, skin }));
+
+  it('paints the die in the cosmetic colours (face, pip, edge)', () => {
+    const html = skinned('dice-cyber');
+    expect(html).toContain('has-skin');
+    expect(html).toContain('--die-face:#141a3a');
+    expect(html).toContain('--die-pip:#5ef2ff');
+    expect(html).toContain('--die-edge:#7b6dff');
+    expect(html).toContain('data-skin="dice-cyber"');
+  });
+
+  it('keeps the default die for no skin, unknown ids and non-dice cosmetics', () => {
+    for (const skin of [null, undefined, 'nope', 'frame-pearl']) {
+      const html = skinned(skin);
+      expect(html).not.toContain('has-skin');
+      expect(html).not.toContain('--die-face');
+    }
+    expect(diceSkinStyle('dice-ivory')).toEqual({ '--die-face': '#fbf7ef', '--die-pip': '#1b1340', '--die-edge': '#d9cdb5' });
   });
 });

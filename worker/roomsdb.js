@@ -212,3 +212,22 @@ export async function listMyRooms(env, userId) {
   const rows = await query(env, q.text, q.params);
   return rows.map(rowToMyRoom);
 }
+
+// ---------------------------------------------------------------- member cosmetics
+
+export const EQUIPPED_SQL = 'SELECT equipped FROM users WHERE id = $1::uuid';
+
+/** A user's equipped cosmetics (raw `users.equipped`; callers clean it). Throws on failure. */
+export async function loadEquipped(env, userId) {
+  if (!hasDb(env) || !isUuid(userId)) return {};
+  const rows = await query(env, EQUIPPED_SQL, [userId]);
+  const raw = rows[0] && rows[0].equipped;
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  }
+  return raw && typeof raw === 'object' ? raw : {};
+}

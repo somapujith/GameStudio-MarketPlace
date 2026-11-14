@@ -3,12 +3,20 @@
 // (worker/games/<id>.js, see worker/games/index.js); this class only knows about seats, timers,
 // sockets and persistence.
 //
-// Lobby: players join over WS, ready up, the host edits settings and visibility, kicks, starts
-// (>= adapter.minPlayers). Every seat is a real player: there are no bots.
+// Lobby: players join over WS, pick a piece (when the adapter has `pieces`), the host edits settings
+// and visibility, kicks, starts (>= adapter.minPlayers). Every seat is a real player: there are no bots.
 // Game: the server owns the game state; clients only send intents (`{t:'action'}`), the server forces `playerId`, applies them through the adapter
 // and broadcasts the result. Idle players (45 s) and disconnected players (15 s grace) are
 // played on their behalf by DO alarms. The whole room record lives in DO storage, so eviction/hibernation is safe.
 // A listing row in the `rooms` table is kept in step on a best-effort basis (never breaks a room).
+//
+// Wire additions (docs/HUSTLE_PLAN.md 3.9):
+//   {t:'state', state, events, seq, clock}  clock = { deadline: epochMs|null, waitingFor: playerId[] }
+//       deadline = when the server will next act on its own (the 45 s decision timer counted after the
+//       animation, the faster pace for idle / disconnected players, or an adapter timer); null when nothing is due.
+//   {t:'room', room}  room.players[i] = { id, name, avatar, ready, connected, piece, cosmetics }
+//       connected stays true through the 15 s reconnect grace (a reload does not flap the seat).
+//   client -> {t:'piece', piece}  lobby only; piece must be in adapter.pieces and not taken.
 import { DurableObject } from 'cloudflare:workers';
 import { getAdapter, DEFAULT_GAME_ID } from './games/index.js';
 import { buildMatchRecord, persistMatch } from './match.js';
@@ -19,8 +27,9 @@ import {
   defaultSanitizeAction,
   DEFAULT_VISIBILITY,
 } from './roomrules.js';
-import { roomRow, rowSignature, upsertRoomRow, deleteRoomRow, hasDb, LISTING_HEARTBEAT_MS } from './roomsdb.js';
+import { roomRow, rowSignature, upsertRoomRow, deleteRoomRow, hasDb, loadEquipped, LISTING_HEARTBEAT_MS } from './roomsdb.js';
 import { sanitizeName, parseAvatar, sanitizeChat, sanitizeEmote, isUuid } from './validate.js';
+import { cleanEquipped } from '../shared/cosmetics.js';
 
 // Version of the stored room record. 3 = the 40-square Hyderabad board; a record below it still holds
 // a 28-tile game, which the game adapter's `upgradeRecord` calls off instead of resuming.
@@ -37,6 +46,7 @@ const MAX_MESSAGE_CHARS = 4096;
 const MAX_SOCKETS_PER_USER = 3;
 const PERSIST_BACKOFF_MS = [2_000, 10_000, 30_000, 120_000, 600_000];
 const PERSIST_MAX_ATTEMPTS = 8;
+const COSMETICS_REFRESH_MS = 30_000; // a member's equipped cosmetics are re-read at most this often
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
@@ -59,6 +69,14 @@ function shuffled(list) {
 /** WebSocket close codes must be 1000 or 3000-4999 for close(); coerce anything else. */
 const safeCode = (code) => (code === 1000 || (code >= 3000 && code <= 4999) ? code : 1000);
 
+/** The adapter's optional `pieces` hook as a list of ids (strings; `{id}` objects are tolerated). */
+export function pieceIds(adapter) {
+  const list = adapter && adapter.pieces;
+  if (!Array.isArray(list)) return [];
+  const ids = list.map((x) => (typeof x === 'string' ? x : x && typeof x.id === 'string' ? x.id : null));
+  return ids.filter((id, i) => id && ids.indexOf(id) === i);
+}
+
 export class GameRoom extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
@@ -71,6 +89,8 @@ export class GameRoom extends DurableObject {
     this.listingChain = Promise.resolve(); // listing writes run strictly in order
     this.listedSig = null; // signature of the last row written to `rooms`
     this.listedAt = 0;
+    this.cosmeticsAt = new Map(); // userId -> when their equipped cosmetics were last read
+    this.cosmeticsJob = Promise.resolve(); // the latest background cosmetics read (tests await it)
     // Answer heartbeats without waking a hibernating object.
     try {
       ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('{"t":"ping"}', '{"t":"pong"}'));
@@ -147,21 +167,55 @@ export class GameRoom extends DurableObject {
   /** What the state looks like to one viewer (the adapter hides secrets; same object = nothing hidden). */
   viewOf(userId) {
     const a = this.adapter;
-    return this.withWindowClock(a && typeof a.redact === 'function' ? a.redact(this.room.state, userId) : this.room.state);
+    return a && typeof a.redact === 'function' ? a.redact(this.room.state, userId) : this.room.state;
+  }
+
+  /** Seated players the game is waiting for (adapter.pendingPlayerIds, default the turn player). */
+  waitingIds() {
+    const r = this.room;
+    const a = this.adapter;
+    if (!r || !a || r.status !== 'playing' || !r.state || a.isOver(r.state)) return [];
+    const raw = typeof a.pendingPlayerIds === 'function' ? a.pendingPlayerIds(r.state) || [] : [a.turnPlayerId(r.state)];
+    const out = [];
+    for (const id of raw) if (id != null && !out.includes(id) && r.players.some((p) => p.id === id)) out.push(id);
+    return out;
   }
 
   /**
-   * An open Snatch window tells each client how much of it is left (`pending.remainingMs`, of `pending.ms`), so a page
-   * that reloads or reconnects mid-window resumes the countdown instead of restarting it. Display only: the server
-   * timer (adapter.deadlines) decides when the window really closes.
+   * The decision clock sent with every state: `deadline` = when the room will next play a move on its
+   * own (see plan(): the 45 s timer counted after the animation, the shorter pace for idle or
+   * disconnected players, or an adapter timer), `waitingFor` = who the game waits for.
    */
-  withWindowClock(view) {
+  clockView() {
+    const plan = this.plan();
+    return { deadline: plan ? plan.at : null, waitingFor: this.waitingIds() };
+  }
+
+  /** One `state` message (the clock is the same for every viewer). */
+  stateMessage(state, events, clock = this.clockView()) {
+    return { t: 'state', state, events, seq: this.room.seq, clock };
+  }
+
+  /** Pieces nobody (except `exceptId`) holds, in the adapter's order. */
+  freePieces(exceptId) {
+    const taken = new Set(this.room.players.filter((p) => p.id !== exceptId && p.piece).map((p) => p.piece));
+    return pieceIds(this.adapter).filter((id) => !taken.has(id));
+  }
+
+  /**
+   * `connected` as the room shows it: an open socket, or a socket that closed less than GRACE_MS ago
+   * (a reload or a network blip does not flap the seat). Finished rooms and departed seats: live sockets only.
+   */
+  presenceOf(p, sockets, now) {
     const r = this.room;
-    const p = view && view.pending;
-    if (!view || view.phase !== 'snatch' || !p || p.type !== 'snatch' || !Number.isFinite(p.ms)) return view;
-    const d = (typeof this.adapter.deadlines === 'function' ? this.adapter.deadlines(r.state) : [])[0];
-    const startedAt = d ? r.deadlines?.[d.key] ?? r.lastApplyAt + r.animMs : Date.now();
-    return { ...view, pending: { ...p, remainingMs: Math.max(0, Math.min(p.ms, startedAt + p.ms - Date.now())) } };
+    if (sockets.has(p.id)) return true;
+    if (p.left || r.status === 'finished') return false;
+    const since = r.disc[p.id];
+    return since != null && now - since < GRACE_MS;
+  }
+
+  presenceSignature(view) {
+    return JSON.stringify(view.players.map((p) => [p.id, p.connected]));
   }
 
   /** Settings as the lobby shows them (adapters may complete them with the engine's own defaults). */
@@ -174,6 +228,7 @@ export class GameRoom extends DurableObject {
   roomView() {
     const r = this.room;
     const connected = this.connectedIds();
+    const now = Date.now();
     return {
       code: r.code,
       status: r.status,
@@ -187,7 +242,9 @@ export class GameRoom extends DurableObject {
         name: p.name,
         avatar: p.avatar,
         ready: !!p.ready,
-        connected: connected.has(p.id),
+        connected: this.presenceOf(p, connected, now),
+        piece: typeof p.piece === 'string' ? p.piece : null,
+        cosmetics: cleanEquipped(p.cosmetics),
       })),
     };
   }
@@ -198,21 +255,65 @@ export class GameRoom extends DurableObject {
    */
   broadcastState(events) {
     const r = this.room;
+    const clock = this.clockView();
     let shared = null;
     for (const ws of this.liveSockets()) {
       const uid = ws.deserializeAttachment()?.userId;
       const view = this.viewOf(uid);
       if (view === r.state) {
-        shared ||= JSON.stringify({ t: 'state', state: r.state, events, seq: r.seq });
+        shared ||= JSON.stringify(this.stateMessage(r.state, events, clock));
         this.send(ws, shared);
       } else {
-        this.send(ws, { t: 'state', state: view, events, seq: r.seq });
+        this.send(ws, this.stateMessage(view, events, clock));
       }
     }
   }
 
   broadcastRoom() {
-    this.broadcast({ t: 'room', room: this.roomView() });
+    const room = this.roomView();
+    this.room.presenceSig = this.presenceSignature(room); // kept in the record: survives hibernation
+    this.broadcast({ t: 'room', room });
+  }
+
+  /** Re-broadcast `room` when somebody's `connected` flag changed without an event (their grace ran out). */
+  async broadcastPresenceIfChanged() {
+    const r = this.room;
+    if (!r || !r.players.length) return;
+    if (this.presenceSignature(this.roomView()) === r.presenceSig) return;
+    this.broadcastRoom();
+    await this.save();
+  }
+
+  /**
+   * Read a member's equipped cosmetics (`users.equipped`) in the background. Best effort: on failure
+   * the member keeps what they had (`{}` for a new member). Broadcasts `room` when they changed.
+   */
+  refreshCosmetics(userId) {
+    if (!hasDb(this.env)) return;
+    const now = Date.now();
+    if (now - (this.cosmeticsAt.get(userId) || 0) < COSMETICS_REFRESH_MS) return;
+    this.cosmeticsAt.set(userId, now);
+    const job = (async () => {
+      let equipped;
+      try {
+        equipped = cleanEquipped(await loadEquipped(this.env, userId));
+      } catch (err) {
+        this.cosmeticsAt.delete(userId); // try again on the next connect
+        console.error('cosmetics load failed:', err && err.code ? `${err.code} ${err.message}` : err && err.message);
+        return;
+      }
+      const m = this.room && this.room.players.find((p) => p.id === userId);
+      if (!m || JSON.stringify(cleanEquipped(m.cosmetics)) === JSON.stringify(equipped)) return;
+      m.cosmetics = equipped;
+      await this.save();
+      this.broadcastRoom();
+    })().catch(() => {});
+    this.cosmeticsJob = job;
+    try {
+      this.ctx.waitUntil(job);
+    } catch {
+      /* no execution context (tests) */
+    }
   }
 
   hostName() {
@@ -402,7 +503,7 @@ export class GameRoom extends DurableObject {
     if (!member) {
       if (r.status !== 'lobby') return this.rejectSocket(4003, 'This game has already started.');
       if (r.players.length >= r.maxPlayers) return this.rejectSocket(4003, 'This room is full.');
-      member = { id: userId, name, avatar, ready: false, guest };
+      member = { id: userId, name, avatar, ready: false, guest, piece: this.freePieces(userId)[0] ?? null, cosmetics: {} };
       r.players.push(member);
       if (!r.hostId) r.hostId = userId;
     } else {
@@ -411,6 +512,7 @@ export class GameRoom extends DurableObject {
       member.avatar = avatar;
       member.guest = guest;
       member.left = false;
+      if (r.status === 'lobby' && !member.piece) member.piece = this.freePieces(userId)[0] ?? null;
     }
     delete r.disc[userId];
     delete r.afk[userId];
@@ -437,8 +539,9 @@ export class GameRoom extends DurableObject {
 
     await this.save();
     this.broadcastRoom();
-    if (r.state) this.send(server, { t: 'state', state: this.viewOf(userId), events: [], seq: r.seq });
+    if (r.state) this.send(server, this.stateMessage(this.viewOf(userId), []));
     await this.scheduleAlarm();
+    this.refreshCosmetics(userId);
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -479,6 +582,8 @@ export class GameRoom extends DurableObject {
     switch (msg.t) {
       case 'ready':
         return this.onReady(ws, me, msg);
+      case 'piece':
+        return this.onPiece(ws, me, msg);
       case 'settings':
         return this.onSettings(ws, isHost, msg);
       case 'visibility':
@@ -527,6 +632,20 @@ export class GameRoom extends DurableObject {
     me.ready = msg.ready;
     this.touch();
     return this.save().then(() => this.broadcastRoom());
+  }
+
+  async onPiece(ws, me, msg) {
+    const r = this.room;
+    if (r.status !== 'lobby') return this.sendError(ws, 'Pieces can only be chosen in the lobby.');
+    const ids = pieceIds(this.adapter);
+    if (!ids.length) return this.sendError(ws, 'This game has no pieces to choose from.');
+    if (typeof msg.piece !== 'string' || !ids.includes(msg.piece)) return this.sendError(ws, 'Unknown piece.');
+    if (me.piece === msg.piece) return this.send(ws, { t: 'room', room: this.roomView() });
+    if (r.players.some((p) => p.id !== me.id && p.piece === msg.piece)) return this.sendError(ws, 'That piece is taken.');
+    me.piece = msg.piece;
+    this.touch();
+    await this.save();
+    this.broadcastRoom();
   }
 
   async onSettings(ws, isHost, msg) {
@@ -636,6 +755,7 @@ export class GameRoom extends DurableObject {
           id: p.id,
           name: p.name,
           avatar: p.avatar,
+          ...(typeof p.piece === 'string' && p.piece ? { piece: p.piece } : {}),
         })),
         settings: { ...r.settings },
         seed: crypto.getRandomValues(new Uint32Array(1))[0],
@@ -699,22 +819,9 @@ export class GameRoom extends DurableObject {
     const res = a.applyAction(r.state, action);
     if (res.error) return res;
     r.state = res.state;
-    if (action.type === 'SNATCH' && r.state.phase === 'snatch') {
-      // A sealed press (docs/GAME_RULES.md 9.4): nobody else may learn that it happened, or when. No seq bump, no
-      // broadcast; only the presser gets a snapshot so their own button locks. The window's timer is unchanged.
-      this.touch();
-      for (const ws of this.liveSockets()) {
-        if (ws.deserializeAttachment()?.userId === action.playerId) {
-          this.send(ws, { t: 'state', state: this.viewOf(action.playerId), events: [], seq: r.seq });
-        }
-      }
-      await this.save();
-      await this.scheduleAlarm();
-      return res;
-    }
     r.seq += 1;
     r.lastApplyAt = Date.now();
-    r.animMs = typeof a.animationMs === 'function' ? a.animationMs(res.events) : 0;
+    r.animMs = typeof a.animationMs === 'function' ? a.animationMs(res.events, res.state) : 0;
     if (typeof a.track === 'function') r.meta = a.track(r.meta || {}, res.events, r.state) || r.meta || {};
     this.syncDeadlines();
     this.touch();
@@ -837,6 +944,13 @@ export class GameRoom extends DurableObject {
     if (!r) return;
     const now = Date.now();
     const times = [r.lastActivity + ROOM_TTL_MS];
+    // A seat's `connected` flag turns false when its reconnect grace runs out: wake up to tell everyone.
+    if (r.status !== 'finished') {
+      for (const p of r.players) {
+        const end = r.disc[p.id] != null ? r.disc[p.id] + GRACE_MS : null;
+        if (end != null && end > now) times.push(end);
+      }
+    }
     if (r.status === 'finished' && !r.persisted && !r.abandoned && r.persistAt != null) times.push(r.persistAt);
     if (r.status === 'playing') {
       const plan = this.plan();
@@ -945,6 +1059,7 @@ export class GameRoom extends DurableObject {
     }
 
     if (dirty) await this.save();
+    if (this.room) await this.broadcastPresenceIfChanged();
     await this.scheduleAlarm();
   }
 

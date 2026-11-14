@@ -1,6 +1,18 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { cosmeticById } from '@shared/cosmetics.js';
 import { useReducedMotion } from './ui/helpers.js';
 import '@/styles/dice.css';
+
+/**
+ * CSS variables for a dice skin (a `dice` cosmetic id from @shared/cosmetics.js): colors = [face, pip, edge].
+ * Unknown ids, other kinds and no skin -> null (the default ivory die).
+ */
+export function diceSkinStyle(skin) {
+  const item = skin ? cosmeticById(skin) : null;
+  if (!item || item.kind !== 'dice' || !Array.isArray(item.colors) || item.colors.length < 3) return null;
+  const [face, pip, edge] = item.colors;
+  return { '--die-face': face, '--die-pip': pip, '--die-edge': edge };
+}
 
 // pip cells on a 3x3 grid as [row, col]
 const PIPS = {
@@ -121,8 +133,11 @@ const shownDie = (session) => Math.round(Number((session?.display?.dice || sessi
 /** The number to feed rent previews (utilities pay a multiple of the die): the last roll, else a typical 4. */
 export const dieValue = (session) => shownDie(session) || 4;
 
-/** The one presentational die. Rolling is done by the primary button of the control panel. */
-export function Dice({ session }) {
+/**
+ * The one presentational die. Rolling is done by the primary button of the control panel.
+ * `skin` = an optional dice cosmetic id (the roller's equipped skin); the settle timing comes from the presenter.
+ */
+export function Dice({ session, skin = null }) {
   const reduced = useReducedMotion();
   const rolling = !!session?.rolling;
   const value = shownDie(session);
@@ -142,8 +157,17 @@ export function Dice({ session }) {
     announce = `Die shows ${value}. Move ${value} ${value === 1 ? 'space' : 'spaces'}.`;
   }
 
+  const skinStyle = diceSkinStyle(skin);
+
   return (
-    <div className={`cp-dice${rolling ? ' is-rolling' : ''}${reduced ? ' is-reduced' : ''}`} role="group" aria-label="Die" aria-busy={rolling}>
+    <div
+      className={`cp-dice${rolling ? ' is-rolling' : ''}${reduced ? ' is-reduced' : ''}${skinStyle ? ' has-skin' : ''}`}
+      style={skinStyle || undefined}
+      data-skin={skinStyle ? skin : undefined}
+      role="group"
+      aria-label="Die"
+      aria-busy={rolling}
+    >
       <span className="cp-dice__row" aria-hidden="true">
         <Die3D value={value} rolling={rolling} reduced={reduced} settleMs={settleMs} />
       </span>

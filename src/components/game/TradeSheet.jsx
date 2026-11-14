@@ -1,31 +1,40 @@
 // Trading. One default export that renders three states from the session:
 //   composer  (opened from the control panel's Trade tab)      -> { type:'TRADE_OFFER', to, give, get }
 //   waiting   (my offer is outstanding: view.trade.from === me) -> { type:'TRADE_CANCEL' }
-//   incoming  (an offer awaits MY answer: view.trade.to === me) -> TRADE_ACCEPT / TRADE_REJECT (+30 s ring online)
+//   incoming  (an offer awaits MY answer: view.trade.to === me) -> TRADE_ACCEPT / TRADE_REJECT (+ countdown ring)
 // `give` is what the proposer hands over, `get` what the proposer receives (engine convention).
+//
+// Props: { session, open, onClose, deadline? }
+//   deadline  optional epoch ms (server clock, `clock.deadline` of the room) when the answer auto-plays. Drives the
+//             countdown ring; without it the ring counts a local 30 s from when the offer appeared.
+import '@/styles/sheets.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Avatar } from '@/components/art/index.js';
-import { GROUPS, GROUP_TILES, TILES, isBuyable, mortgageValue } from '@shared/board.js';
+import { TILES } from '@shared/board.js';
 import { compactINR, formatINR } from '@shared/format.js';
 import Sheet from './ui/Sheet.jsx';
 import Button from './ui/Button.jsx';
 import Icon from './ui/Icon.jsx';
 import Pill from './ui/Pill.jsx';
+import PlayerToken from './ui/PlayerToken.jsx';
 import TileChip from './ui/TileChip.jsx';
-import { SET_GROUPS, setOfTile, useHeld } from './ui/helpers.js';
-import '@/styles/controlpanel.css';
+import {
+  COLLECTIONS, SET_BONUS_MULT, collectionOf, completedGroups as completedGroupsBase, isBuyableTile, mortgageOf, upgradeCostOf,
+  useHeld, useReducedMotion,
+} from './ui/helpers.js';
 
 const OFFER_SECONDS = 30;
+const X = '×';
 
 /* ------------------------------------------------------------------ pure helpers (exported for tests) */
 
-/** Board value of one side: cash + tile prices (a mortgaged tile counts price minus its mortgage). */
+/** Net-worth value of one side: cash + district prices (mortgaged: price minus its loan) + half the upgrades paid. */
 export function sideValue(state, side) {
   let v = Number(side?.cash) || 0;
   for (const t of side?.tiles || []) {
     const tile = TILES[t];
     if (!tile) continue;
-    v += state.mortgaged?.[t] ? tile.price - mortgageValue(tile) : tile.price;
+    v += state.mortgaged?.[t] ? (tile.price || 0) - mortgageOf(tile) : tile.price || 0;
+    v += Math.round((state.levels?.[t] || 0) * upgradeCostOf(tile) * 0.5);
   }
   return v;
 }
@@ -40,30 +49,29 @@ export function fairness(giving, getting) {
   return { key: 'greedy', label: 'Greedy', tone: 'warn', hint: 'You ask for much more than you give.' };
 }
 
-/** Groups that `playerId` would own completely after receiving `receive` tiles and handing over `hand` tiles. */
-export function completedGroups(owners, playerId, receive, hand = []) {
-  const out = [];
-  const groups = new Set(receive.map((t) => TILES[t]?.group).filter(Boolean));
-  for (const g of groups) {
-    const full = GROUP_TILES[g].every((t) => (receive.includes(t) ? true : hand.includes(t) ? false : owners[t] === playerId));
-    if (full) out.push(g);
-  }
-  return out;
-}
+/** Collections that `playerId` would own completely after receiving `receive` tiles and handing over `hand` tiles. */
+export const completedGroups = completedGroupsBase;
 
-const hasBuildings = (state, tileId) => {
-  const tile = TILES[tileId];
-  return tile?.type === 'property' && GROUP_TILES[tile.group].some((t) => (state.levels?.[t] || 0) > 0);
-};
-const tradeable = (state, tileId) => isBuyable(TILES[tileId]) && !hasBuildings(state, tileId);
+/** Seconds left until `deadline` (epoch ms), never negative. */
+export const secondsLeft = (deadline, now = Date.now()) => Math.max(0, Math.ceil((deadline - now) / 1000));
+
+/** Every owned district can be traded (upgrades travel with it); an engine may still lock some via options.trade.locked. */
+const isLocked = (state, o, tileId) => Array.isArray(o?.trade?.locked) && o.trade.locked.includes(tileId);
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const nameOf = (p) => (p ? p.name : 'Someone');
-
-/** Tile ids in colour-set order (brown ... dark blue, stations, utilities), then board order. */
-const setRank = (id) => SET_GROUPS.findIndex((g) => g === setOfTile(TILES[id]));
-const bySet = (a, b) => setRank(a) - setRank(b) || a - b;
-/** Board price next to a chip, so a trade can be weighed at a glance. */
 const priceTag = (id) => <small className="hg-trade-price">{compactINR(TILES[id].price)}</small>;
+
+/** Tiles grouped by collection, in board order: [{ coll, ids }]. */
+function byCollection(ids) {
+  const rows = [];
+  for (const c of COLLECTIONS) {
+    const mine = c.tiles.filter((t) => ids.includes(t));
+    if (mine.length) rows.push({ coll: c, ids: mine });
+  }
+  const loose = ids.filter((t) => !collectionOf(TILES[t]));
+  if (loose.length) rows.push({ coll: { id: 'other', name: 'Other', color: '#94a3b8', tiles: loose }, ids: loose });
+  return rows;
+}
 
 /* ------------------------------------------------------------------ small views */
 
@@ -71,24 +79,30 @@ function Who({ player, you }) {
   if (!player) return null;
   return (
     <span className="hg-trade-who" style={{ '--pc': player.color }}>
-      <span className="hg-owner-av"><Avatar preset={player.avatar} size={24} /></span>
+      <PlayerToken player={player} size={24} />
       <b>{you ? 'You' : player.name}</b>
     </span>
   );
 }
 
+/** Read-only side of an offer, chips grouped by collection. */
 function SideView({ title, side, state, tone }) {
   const tiles = side?.tiles || [];
   return (
     <div className={`hg-trade-side is-${tone}`}>
       <h4>{title}</h4>
-      {side?.cash > 0 ? <p className="hg-trade-cash">{formatINR(side.cash)} cash</p> : null}
+      {side?.cash > 0 ? <p className="hg-trade-cash"><Icon name="coin" size={14} /> {formatINR(side.cash)}</p> : null}
       {tiles.length ? (
-        <div className="hg-chips">
-          {[...tiles].sort(bySet).map((t) => (
-            <TileChip key={t} tileId={t} mortgaged={!!state.mortgaged?.[t]} level={state.levels?.[t] || 0} extra={priceTag(t)} />
-          ))}
-        </div>
+        byCollection(tiles).map(({ coll, ids }) => (
+          <div key={coll.id} className="hg-trade-coll" style={{ '--sc': coll.color }}>
+            <span className="hg-trade-collname"><i />{coll.name}</span>
+            <div className="hg-chips">
+              {ids.map((t) => (
+                <TileChip key={t} tileId={t} mortgaged={!!state.mortgaged?.[t]} level={state.levels?.[t] || 0} extra={priceTag(t)} />
+              ))}
+            </div>
+          </div>
+        ))
       ) : (
         side?.cash > 0 ? null : <p className="hg-empty">Nothing</p>
       )}
@@ -103,67 +117,107 @@ function CashStepper({ label, value, max, onChange }) {
     <div className="hg-cashstep">
       <span className="hg-cashstep-label">{label}</span>
       <div className="hg-cashstep-row">
-        <Button variant="dark" size="sm" aria-label={`${label}: minus 1000`} disabled={value <= 0} onClick={() => set(value - 1000)}>{'−'}1k</Button>
-        <Button variant="dark" size="sm" aria-label={`${label}: minus 100`} disabled={value <= 0} onClick={() => set(value - 100)}>{'−'}100</Button>
+        <Button variant="dark" size="sm" aria-label={`${label}: minus 50,000`} disabled={value <= 0} onClick={() => set(value - 50000)}>{'−'}50k</Button>
+        <Button variant="dark" size="sm" aria-label={`${label}: minus 10,000`} disabled={value <= 0} onClick={() => set(value - 10000)}>{'−'}10k</Button>
         <output className="hg-cashstep-val" aria-live="polite">{formatINR(value)}</output>
-        <Button variant="dark" size="sm" aria-label={`${label}: plus 100`} disabled={value >= max} onClick={() => set(value + 100)}>+100</Button>
-        <Button variant="dark" size="sm" aria-label={`${label}: plus 1000`} disabled={value >= max} onClick={() => set(value + 1000)}>+1k</Button>
+        <Button variant="dark" size="sm" aria-label={`${label}: plus 10,000`} disabled={value >= max} onClick={() => set(value + 10000)}>+10k</Button>
+        <Button variant="dark" size="sm" aria-label={`${label}: plus 50,000`} disabled={value >= max} onClick={() => set(value + 50000)}>+50k</Button>
       </div>
     </div>
   );
 }
 
-function TilePicker({ owner, ownerIsMe, state, selected, onToggle }) {
-  const ids = TILES.filter((t) => state.owners[t.id] === owner.id && isBuyable(t)).map((t) => t.id).sort(bySet);
+/** One owner's districts, grouped by collection, each chip a toggle. */
+function TilePicker({ owner, ownerIsMe, state, options, selected, onToggle }) {
+  const ids = TILES.filter((t) => state.owners?.[t.id] === owner.id && isBuyableTile(t)).map((t) => t.id);
+  const anyLocked = ids.some((id) => isLocked(state, options, id));
   return (
     <div className="hg-picker">
-      <div className="hg-picker-head"><Who player={owner} you={ownerIsMe} /><small>{ownerIsMe ? 'tiles you own' : 'tiles they own'}</small></div>
+      <div className="hg-picker-head"><Who player={owner} you={ownerIsMe} /><small>{ownerIsMe ? 'your districts' : 'their districts'}</small></div>
       {ids.length === 0 ? (
-        <p className="hg-empty">{ownerIsMe ? 'You own no tiles yet.' : `${nameOf(owner)} owns no tiles yet.`}</p>
+        <p className="hg-empty">{ownerIsMe ? 'You own no districts yet.' : `${nameOf(owner)} owns no districts yet.`}</p>
       ) : (
-        <div className="hg-chips">
-          {ids.map((id) => {
-            const blocked = hasBuildings(state, id);
-            return (
-              <TileChip
-                key={id}
-                tileId={id}
-                level={state.levels?.[id] || 0}
-                mortgaged={!!state.mortgaged?.[id]}
-                selected={selected.includes(id)}
-                disabled={blocked}
-                onClick={() => onToggle(id)}
-                extra={blocked ? <Icon name="lock" size={12} /> : priceTag(id)}
-              />
-            );
-          })}
-        </div>
+        byCollection(ids).map(({ coll, ids: row }) => {
+          const total = coll.tiles.length;
+          const have = coll.tiles.filter((t) => state.owners?.[t] === owner.id).length;
+          return (
+            <div key={coll.id} className="hg-trade-coll" style={{ '--sc': coll.color }}>
+              <span className="hg-trade-collname"><i />{coll.name}<small>{have}/{total}</small></span>
+              <div className="hg-chips">
+                {row.map((id) => {
+                  const blocked = isLocked(state, options, id);
+                  return (
+                    <TileChip
+                      key={id}
+                      tileId={id}
+                      level={state.levels?.[id] || 0}
+                      mortgaged={!!state.mortgaged?.[id]}
+                      selected={selected.includes(id)}
+                      disabled={blocked}
+                      onClick={() => onToggle(id)}
+                      extra={blocked ? <Icon name="lock" size={12} /> : priceTag(id)}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })
       )}
-      {ids.some((id) => hasBuildings(state, id)) ? (
-        <p className="hg-hint"><Icon name="lock" size={12} /> Locked tiles have buildings in their colour. Sell them first.</p>
-      ) : null}
+      {anyLocked ? <p className="hg-hint"><Icon name="lock" size={12} /> Locked districts cannot be traded right now.</p> : null}
     </div>
   );
 }
 
-function Countdown({ seconds = OFFER_SECONDS, resetKey }) {
-  const [left, setLeft] = useState(seconds);
+/** Countdown ring. With `deadline` it follows the server clock; otherwise it counts `seconds` from `resetKey`. */
+export function Countdown({ deadline = null, seconds = OFFER_SECONDS, resetKey }) {
+  const reduced = useReducedMotion();
+  const [now, setNow] = useState(() => Date.now());
+  const start = useRef({ key: null, at: 0, total: seconds });
+  const key = deadline ? `d${deadline}` : `l${resetKey}`;
+  if (start.current.key !== key) {
+    const t = Date.now();
+    start.current = { key, at: t, total: deadline ? Math.max(1, Math.round((deadline - t) / 1000)) : seconds };
+  }
   useEffect(() => {
-    const t0 = performance.now();
-    setLeft(seconds);
-    const id = setInterval(() => setLeft(Math.max(0, seconds - Math.floor((performance.now() - t0) / 1000))), 250);
+    const id = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(id);
-  }, [seconds, resetKey]);
+  }, [key]);
+  const end = deadline || start.current.at + seconds * 1000;
+  const left = secondsLeft(end, now);
+  const total = Math.max(1, start.current.total);
   const R = 18;
   const C = 2 * Math.PI * R;
+  const frac = Math.min(1, left / total);
   return (
     <span className={`hg-ring${left <= 8 ? ' is-low' : ''}`} role="timer" aria-label={`${left} seconds left to answer`}>
       <svg viewBox="0 0 44 44" width="44" height="44" aria-hidden="true">
         <circle cx="22" cy="22" r={R} className="hg-ring-bg" />
-        <circle cx="22" cy="22" r={R} className="hg-ring-fg" strokeDasharray={C} style={{ '--ring-c': C, animationDuration: `${seconds}s` }} />
+        <circle
+          cx="22" cy="22" r={R} className="hg-ring-fg hg-ring-fg--live"
+          strokeDasharray={C}
+          style={{ strokeDashoffset: C * (1 - frac), animation: 'none', transition: reduced ? 'none' : 'stroke-dashoffset 250ms linear' }}
+        />
       </svg>
       <b>{left}</b>
     </span>
+  );
+}
+
+function SetHints({ mine, theirs, theirName }) {
+  return (
+    <>
+      {mine.map((g) => (
+        <p key={`m${g}`} className="hg-trade-set is-mine">
+          <Icon name="spark" size={14} /> <span>Completes <b>{collectionOf(g)?.name || g}</b>! First businesses there pay {X}{SET_BONUS_MULT}.</span>
+        </p>
+      ))}
+      {theirs.map((g) => (
+        <p key={`t${g}`} className="hg-trade-set is-theirs">
+          <Icon name="warn" size={14} /> <span>Completes <b>{collectionOf(g)?.name || g}</b> for {theirName}.</span>
+        </p>
+      ))}
+    </>
   );
 }
 
@@ -201,7 +255,8 @@ function ComposerSheet({ session, open, onClose }) {
     wasOpen.current = open;
   }, [open, waiting, others]);
 
-  const partner = view.players.find((p) => p.id === (trade ? trade.to : to)) || null;
+  const toId = to != null && others.some((p) => p.id === to) ? to : others[0]?.id ?? null; // first paint: default partner
+  const partner = view.players.find((p) => p.id === (trade ? trade.to : toId)) || null;
   const waitPartner = tradeShown ? view.players.find((p) => p.id === tradeShown.to) || null : null;
 
   const pick = (id) => { setTo(id); setGetCash(0); setGetTiles([]); };
@@ -246,7 +301,7 @@ function ComposerSheet({ session, open, onClose }) {
           <p className="hg-trade-waiting">
             Waiting for {waitPartner.name}<span className="hg-dots" aria-hidden="true"><i /><i /><i /></span>
           </p>
-          <div className="hg-trade-sides">
+          <div className="hg-trade-cols">
             <SideView title="You give" side={tradeShown.give} state={view} tone="give" />
             <SideView title="You get" side={tradeShown.get} state={view} tone="get" />
           </div>
@@ -261,31 +316,33 @@ function ComposerSheet({ session, open, onClose }) {
                 key={p.id}
                 type="button"
                 role="radio"
-                aria-checked={to === p.id}
-                className={`hg-partner${to === p.id ? ' is-on' : ''}`}
+                aria-checked={toId === p.id}
+                className={`hg-partner${toId === p.id ? ' is-on' : ''}`}
                 style={{ '--pc': p.color }}
                 onClick={() => pick(p.id)}
               >
-                <span className="hg-pc-ring"><Avatar preset={p.avatar} size={36} /></span>
+                <PlayerToken player={p} size={36} />
                 <b>{p.name}</b>
-                <small>{formatINR(p.cash)}</small>
+                <small>{compactINR(p.cash)}</small>
               </button>
             ))}
           </div>
 
           {partner ? (
             <>
-              <section className="hg-trade-panel is-give" aria-label="You give">
-                <h3 className="hg-h3">You give</h3>
-                <TilePicker owner={myP} ownerIsMe state={view} selected={giveTiles} onToggle={toggle(giveTiles, setGiveTiles)} />
-                <CashStepper label="Cash you give" value={giveCash} max={myP?.cash || 0} onChange={setGiveCash} />
-              </section>
+              <div className="hg-trade-cols">
+                <section className="hg-trade-panel is-give" aria-label="You give">
+                  <h3 className="hg-h3">You give</h3>
+                  <TilePicker owner={myP} ownerIsMe state={view} options={o} selected={giveTiles} onToggle={toggle(giveTiles, setGiveTiles)} />
+                  <CashStepper label="Cash you give" value={giveCash} max={myP?.cash || 0} onChange={setGiveCash} />
+                </section>
 
-              <section className="hg-trade-panel is-get" aria-label="You get">
-                <h3 className="hg-h3">You get</h3>
-                <TilePicker owner={partner} state={view} selected={getTiles} onToggle={toggle(getTiles, setGetTiles)} />
-                <CashStepper label={`Cash from ${partner.name}`} value={getCash} max={partner.cash || 0} onChange={setGetCash} />
-              </section>
+                <section className="hg-trade-panel is-get" aria-label="You get">
+                  <h3 className="hg-h3">You get</h3>
+                  <TilePicker owner={partner} state={view} options={o} selected={getTiles} onToggle={toggle(getTiles, setGetTiles)} />
+                  <CashStepper label={`Cash from ${partner.name}`} value={getCash} max={partner.cash || 0} onChange={setGetCash} />
+                </section>
+              </div>
 
               <section className={`hg-fair is-${fair.key}`} aria-label="Fairness" role="status">
                 <div className="hg-fair-nums">
@@ -293,9 +350,8 @@ function ComposerSheet({ session, open, onClose }) {
                   <Pill tone={fair.tone}>{fair.label}</Pill>
                   <span>You get <b>{formatINR(getting)}</b></span>
                 </div>
-                {fair.hint ? <p className="hg-hint">{fair.hint} Values use board prices.</p> : null}
-                {myDone.map((g) => <p key={`m${g}`} className="hg-hint is-ok"><Icon name="check" size={14} /> Completes the {GROUPS[g].name} set for you (double rent, unlocks building)</p>)}
-                {theirDone.map((g) => <p key={`t${g}`} className="hg-hint is-warn"><Icon name="info" size={14} /> Completes the {GROUPS[g].name} set for {partner.name}, they may refuse or value it highly</p>)}
+                {fair.hint ? <p className="hg-hint">{fair.hint} Values count like net worth.</p> : null}
+                <SetHints mine={myDone} theirs={theirDone} theirName={partner.name} />
               </section>
             </>
           ) : (
@@ -310,7 +366,7 @@ function ComposerSheet({ session, open, onClose }) {
 
 /* ------------------------------------------------------------------ incoming offer */
 
-function IncomingSheet({ session }) {
+function IncomingSheet({ session, deadline }) {
   const view = session.view;
   const me = session.me;
   const o = session.options || {};
@@ -334,7 +390,7 @@ function IncomingSheet({ session }) {
   const label = fair.key === 'fair' ? 'Looks fair' : fair.key === 'generous' ? 'In their favour' : fair.key === 'greedy' ? 'In your favour' : fair.label;
   const myDone = heldOffer ? completedGroups(view.owners, me, iGet?.tiles || [], iGive?.tiles || []) : [];
   const theirDone = heldOffer && from ? completedGroups(view.owners, from.id, iGive?.tiles || [], iGet?.tiles || []) : [];
-  const online = session.mode === 'online';
+  const timed = !!deadline || session.mode === 'online';
 
   return (
     <Sheet
@@ -346,12 +402,12 @@ function IncomingSheet({ session }) {
       desktop="modal"
       header={heldOffer && from ? (
         <div className="hg-trade-band" data-drag="">
-          <span className="hg-pc-ring" style={{ '--pc': from.color }}><Avatar preset={from.avatar} size={48} /></span>
+          <PlayerToken player={from} size={48} />
           <div>
             <p className="hg-kicker">Trade offer</p>
             <h2>{from.name} wants to trade</h2>
           </div>
-          {online ? <Countdown resetKey={sig} /> : null}
+          {timed ? <Countdown deadline={deadline} resetKey={sig} /> : null}
         </div>
       ) : null}
       footer={(
@@ -363,9 +419,8 @@ function IncomingSheet({ session }) {
     >
       {heldOffer ? (
         <>
-          <div className="hg-trade-sides">
+          <div className="hg-trade-cols">
             <SideView title="You get" side={iGet} state={view} tone="get" />
-            <span className="hg-trade-swap" aria-hidden="true"><Icon name="swap" size={22} /></span>
             <SideView title="You give" side={iGive} state={view} tone="give" />
           </div>
           <section className={`hg-fair is-${fair.key}`} role="status" aria-label="Fairness">
@@ -374,9 +429,8 @@ function IncomingSheet({ session }) {
               <Pill tone={fair.tone}>{label}</Pill>
               <span>You give <b>{formatINR(giving)}</b></span>
             </div>
-            {myDone.map((g) => <p key={`m${g}`} className="hg-hint is-ok"><Icon name="check" size={14} /> Completes the {GROUPS[g].name} set for you (double rent, unlocks building)</p>)}
-            {theirDone.map((g) => <p key={`t${g}`} className="hg-hint is-warn"><Icon name="info" size={14} /> Completes the {GROUPS[g].name} set for {nameOf(from)}</p>)}
-            {online ? <p className="hg-hint">If you do not answer in {OFFER_SECONDS} seconds the offer is rejected.</p> : null}
+            <SetHints mine={myDone} theirs={theirDone} theirName={nameOf(from)} />
+            {timed ? <p className="hg-hint">No answer before the ring runs out and the offer is rejected.</p> : null}
           </section>
         </>
       ) : null}
@@ -384,11 +438,11 @@ function IncomingSheet({ session }) {
   );
 }
 
-export default function TradeSheet({ session, open, onClose }) {
+export default function TradeSheet({ session, open, onClose, deadline = null }) {
   return (
     <>
       <ComposerSheet session={session} open={open} onClose={onClose} />
-      <IncomingSheet session={session} />
+      <IncomingSheet session={session} deadline={Number.isFinite(deadline) && deadline > 0 ? deadline : null} />
     </>
   );
 }
