@@ -1,25 +1,37 @@
-/* The board on a portrait phone (inside `.ph` only, so the regular board of tablets, landscape and desktop is untouched):
-   a light frame round the ring, flat colour tiles with a lighter price band, light corner / stop / card tiles with a
-   capital label, disc pawns with a white rim, and a calm light panel in the middle (PhoneCentre). Tile faces are drawn by
-   phone/PhoneTileFace.jsx; sizes come from board.css's --hb-u (one edge tile = 1u wide, 1.5u deep; side tiles 1.5u x 1u). */
+/* The board on a portrait phone (inside `.ph` only, so the regular board of tablets, landscape and desktop is untouched).
+   "Hyderabad night market": a deep indigo frame with a gold hairline and a string of lantern bulbs, glossy colour tiles with a
+   lighter price band and a fine texture, warm paper tiles for the corners / stops / cards, glossy disc pawns with a contact shadow,
+   and a calm dusk panel in the middle (PhoneCentre). Tile faces are drawn by phone/PhoneTileFace.jsx; sizes come from board.css's
+   --hb-u (one edge tile = 1u wide, 1.5u deep; side tiles 1.5u x 1u).
+   Motion = transform / opacity only, one language: anticipation -> action -> settle on the --ease-spring curve; every loop is a
+   single small element (the bulbs, the lit tile, the pawn marker) and everything stops under reduced motion (bottom of the file). */
 
 .ph {
-  --board-mat-light: #d3dfe4;
-  --board-frame-light: #f3efe6;
-  --pt-paper: #f6f3ec;
+  --pt-paper: #f8f3e6;
+  --pt-paper-2: #eadfc6;
   --pt-ink: #243447;
-  --pt-pill: #5f7081;
+  --pt-pill: #3a3e86;
+  --pt-night: #14173f;
+  --pt-night-2: #1d2160;
+  --pt-gold: #ffc857;
+  --pt-cream: #f6efdc;
 }
 
 /* ---- frame, ring, gaps ------------------------------------------------------ */
 .ph .hb-board { overflow-clip-margin: 2cqw; }
 .ph .hb-frame {
-  --hb-pad: 1.5cqw;
+  --hb-pad: 1.7cqw;
   border-radius: 3cqw;
-  background: var(--board-frame-light);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4), 0 1.4cqw 3.4cqw rgba(0, 0, 0, 0.5);
+  background:
+    radial-gradient(120% 70% at 50% 0%, #30357f 0%, transparent 62%),
+    linear-gradient(160deg, #1f2358 0%, var(--pt-night) 55%, #0c0e2e 100%);
+  box-shadow:
+    0 0 0 1px rgba(255, 200, 87, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 1.4cqw 3.4cqw rgba(0, 0, 0, 0.55);
 }
-.ph .hb-frame__lights { display: none; }
+/* the string of bulbs: base look from board.css, a touch finer; the bright copy breathes (opacity only, one element) */
+.ph .hb-frame__lights { --bulb: max(0.42cqw, 1.5px); opacity: 0.8; border-radius: 2.6cqw; }
 .ph .hb-grid { --hb-gap: 0.5cqw; --hb-r: max(0.8cqw, 3px); }
 .ph .hb-tile__own { display: none; }
 
@@ -33,49 +45,136 @@
 .ph .hb-tile--phone.hb-tile--tl { border-top-left-radius: calc(var(--hb-r) * 3); }
 .ph .hb-tile--phone.hb-tile--tr { border-top-right-radius: calc(var(--hb-r) * 3); }
 .ph .hb-tile--phone.hb-tile--br { border-bottom-right-radius: calc(var(--hb-r) * 3); }
-.ph .hb-tile--phone.is-set { box-shadow: inset 0 0 0 max(0.55cqw, 2px) var(--o); }
-.ph .hb-tile--phone.is-max { box-shadow: inset 0 0 0 max(0.55cqw, 2px) var(--o), inset 0 0 0 max(0.95cqw, 3px) rgba(255, 211, 77, 0.9); }
+/* a finished collection: a double ring in the owner's colour and gold, and a sheen across the face (static: no loop on 9 tiles) */
+.ph .hb-tile--phone.is-set .pt::after, .ph .hb-tile--phone.is-max .pt::after {
+  content: ''; position: absolute; inset: 0; z-index: 2; pointer-events: none; border-radius: inherit;
+  background: linear-gradient(115deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0) 38%, rgba(255, 224, 138, 0.22) 100%);
+  box-shadow: inset 0 0 0 max(0.5cqw, 2px) var(--o);
+}
+.ph .hb-tile--phone.is-max .pt::after { box-shadow: inset 0 0 0 max(0.6cqw, 2.4px) #ffd34d; }
+.ph .hb-tile--phone:is(.is-set, .is-max) .pt__name { padding-bottom: 2px; }
+/* a sheet is open for it: a bright white ring inside a gold one */
 .ph .hb-tile--phone.is-hl { outline: max(0.6cqw, 2px) solid #fff; outline-offset: max(-0.6cqw, -2px); box-shadow: inset 0 0 0 max(1.1cqw, 3px) var(--hb-gold); z-index: 6; }
+/* the tile the mover stands on: a soft lantern ring and glow breathing (one pseudo-element, opacity only), and room for the callout */
+.ph .hb-tile--phone.is-active { overflow: visible; z-index: 4; }
+.ph .hb-tile--phone.is-active::after {
+  inset: 0; border-radius: inherit; z-index: 3;
+  background: radial-gradient(ellipse at 50% 60%, rgba(255, 226, 150, 0.42) 0%, rgba(255, 190, 90, 0.12) 60%, transparent 85%);
+  box-shadow: inset 0 0 0 max(0.55cqw, 2px) rgba(255, 233, 170, 0.95);
+}
 @media (hover: hover) { .ph .hb-tile--phone:hover { transform: none; } }
-.pt { position: absolute; inset: 0; display: flex; flex-direction: column; min-width: 0; min-height: 0; text-align: center; pointer-events: none; }
+.pt { position: absolute; inset: 0; display: flex; flex-direction: column; min-width: 0; min-height: 0; text-align: center; pointer-events: none; border-radius: inherit; overflow: hidden; }
 .hb-side--left .pt, .hb-side--right .pt { --tw: calc(var(--hb-u) * 1.5 - 3px); }
 .hb-side--top .pt, .hb-side--bottom .pt { --tw: calc(var(--hb-u) - 3px); }
 .hb-tile--corner .pt { --tw: calc(var(--hb-u) * 1.5 - 5px); }
 
-/* ---- districts: flat colour + lighter price band + capitals ----------------- */
-.pt--prop { background: var(--pt-body); color: var(--pt-ink); }
-.pt__band { flex: 0 0 36%; min-height: 0; display: grid; place-items: center; background: var(--pt-band); }
+/* ---- districts: glossy colour + lighter price band + capitals --------------- */
+.pt--prop {
+  color: var(--pt-ink);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0) 38%, rgba(0, 0, 0, 0.2) 100%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.07) 0 1px, transparent 1px 4px),
+    var(--pt-body);
+}
+.pt__band {
+  flex: 0 0 36%; min-height: 0; display: grid; place-items: center;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--pt-band) 82%, #fff), var(--pt-band));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), inset 0 -1px 0 rgba(0, 0, 0, 0.16);
+}
 .pt__price, .pt__tag {
   max-width: 100%; font-size: clamp(7px, calc(var(--hb-u) * 0.27), 10.5px); font-weight: 800; line-height: 1; letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
+/* the rent of an owned district, on a little flag in the owner's colour with a white rim */
 .pt__tag {
-  padding: 0.14em 0.34em 0.1em; border-radius: 2px; background: var(--tag); color: var(--tag-ink);
-  box-shadow: 0 0 0 max(0.25cqw, 1px) rgba(255, 255, 255, 0.92), 0 1px 2px rgba(0, 0, 0, 0.3);
+  padding: 0.14em 0.34em 0.1em; border-radius: 2px; color: var(--tag-ink);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--tag) 86%, #fff), var(--tag));
+  box-shadow: 0 0 0 max(0.25cqw, 1px) rgba(255, 255, 255, 0.95), 0 1px 2px rgba(0, 0, 0, 0.35);
   animation: pt-tag var(--dur-3) var(--ease-spring) both;
 }
 .pt__name {
   flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 1px 1px;
   font-size: clamp(5.8px, min(10px, calc(var(--tw) / (var(--chars, 6) * 0.72))), 10px); font-weight: 800; line-height: 1.04; letter-spacing: -0.02em;
+  -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision;
 }
+.pt[data-ink='dark'] .pt__name { text-shadow: 0 1px 0 rgba(255, 255, 255, 0.28); }
+.pt[data-ink='light'] .pt__name { text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35); }
 .pt__name > span { display: block; max-width: 100%; white-space: nowrap; }
-.pt__pips { position: absolute; left: 0; right: 0; bottom: max(0.5cqw, 2px); display: flex; justify-content: center; gap: max(0.5cqw, 2px); }
+/* owned: a foot ribbon in the owner's colour under the name (white hairline above it) */
+.pt--prop[data-owned]::before {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: max(0.8cqw, 3px); z-index: 1;
+  background: var(--tag); box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.7);
+}
+/* the side columns are short, so their ribbon runs down the OUTER edge instead and the two-line names keep their room */
+.hb-side--left .pt--prop[data-owned]::before { right: auto; top: 0; width: max(0.8cqw, 3px); height: auto; box-shadow: 1px 0 0 rgba(255, 255, 255, 0.7); }
+.hb-side--right .pt--prop[data-owned]::before { left: auto; top: 0; width: max(0.8cqw, 3px); height: auto; box-shadow: -1px 0 0 rgba(255, 255, 255, 0.7); }
+
+/* upgrade pips: one tiny building per level, each a step taller than the one before; the lit ones are gold and pop when they light */
+.pt__pips {
+  position: absolute; left: 0; right: 0; bottom: max(1.2cqw, 4.5px); z-index: 2; display: flex; align-items: flex-end; justify-content: center; gap: max(0.45cqw, 1.5px);
+}
 .hb-side--left .pt__pips, .hb-side--right .pt__pips { top: 0; bottom: auto; left: auto; right: max(0.6cqw, 2px); height: 36%; align-items: center; justify-content: flex-end; }
 .pt__pips i {
-  display: block; width: max(1.2cqw, 4px); height: max(1.2cqw, 4px); border-radius: 1px; background: color-mix(in srgb, var(--pt-ink) 28%, transparent);
-  box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--pt-ink) 45%, transparent);
+  --k: 0; display: block; width: calc(max(1.35cqw, 4.5px) * (1 + var(--k) * 0.28)); height: calc(max(1.35cqw, 4.5px) * (1 + var(--k) * 0.28));
+  clip-path: polygon(50% 0, 100% 42%, 100% 100%, 0 100%, 0 42%); transform-origin: 50% 100%;
+  background: color-mix(in srgb, var(--pt-ink) 30%, transparent);
 }
-.pt__pips i.is-on { background: var(--pt-ink); box-shadow: none; }
+.pt__pips i:nth-child(2) { --k: 1; }
+.pt__pips i:nth-child(3) { --k: 2; }
+.pt__pips i:nth-child(4) { --k: 3; }
+.pt__pips i.is-on { background: linear-gradient(180deg, #fff3b8, #ffb100); }
+.pt__pips i.is-new { animation: pt-pip var(--dur-4) var(--ease-spring) both; }
 .pt__m {
   position: absolute; right: 1px; bottom: 1px; z-index: 2; width: max(2.6cqw, 9px); height: max(2.6cqw, 9px); display: grid; place-items: center; border-radius: 50%;
   background: #2b2f38; color: #fff; font-size: max(1.8cqw, 6px); font-weight: 800; line-height: 1; box-shadow: 0 0 0 1px #fff;
 }
-/* mortgaged: grey with the diagonal hatch of board.css (::before) */
+/* mortgaged: grey, a bold diagonal hatch over the face and the M badge */
 .ph .hb-tile--phone.is-mortgaged .pt--prop { --pt-body: #8d949b; --pt-band: #a3a9af; --pt-ink: #1d2128; }
 .ph .hb-tile--phone.is-mortgaged .pt__name { opacity: 0.85; }
+.ph .hb-tile--phone.is-mortgaged::before {
+  background: repeating-linear-gradient(135deg, transparent 0 2px, rgba(20, 24, 40, 0.3) 2px 4px);
+}
 
-/* ---- light tiles: stops, cards, corners ------------------------------------- */
-.pt--light { background: var(--pt-paper); color: var(--pt-ink); align-items: center; padding: 1px 1px 0; }
+/* ---- the callout: the tile in play names itself for a moment ----------------- */
+/* Mounted while the mover stands on the tile. The delay is longer than a walking step, so only the tile the mover STOPS on shows it;
+   it pops in from the tile, holds, then fades (opacity / transform only). It points into the board centre and never leaves the board. */
+.pt__call {
+  position: absolute; z-index: 9; pointer-events: none; display: grid; justify-items: center; gap: 1px; white-space: nowrap;
+  padding: 3px 9px 4px; border-radius: 9px; color: var(--pt-cream); text-align: center;
+  background: linear-gradient(180deg, #2c3190, #1a1d55); box-shadow: 0 0 0 1.5px var(--pt-gold), 0 4px 10px rgba(0, 0, 0, 0.5);
+  opacity: 0; animation: pt-call 3000ms var(--ease-out) 420ms both;
+  --cx: -50%; --cy: 0px; transform-origin: 50% 100%;
+}
+.pt__call b { font-size: 10.5px; font-weight: 800; line-height: 1.1; letter-spacing: 0.02em; }
+.pt__call i { font-style: normal; font-size: 10.5px; font-weight: 800; line-height: 1.1; color: var(--pt-gold); font-variant-numeric: tabular-nums; }
+.pt__call i.is-owned { color: #fff; display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+.pt__call u { flex: none; width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 0 1.5px #fff; }
+.pt__call::after { content: ''; position: absolute; width: 8px; height: 8px; background: #1a1d55; transform: rotate(45deg); box-shadow: 1.5px 1.5px 0 var(--pt-gold); }
+/* bottom row / right-bottom corner: above the tile; top row: below it; left column: to its right; right column: to its left */
+.hb-side--bottom .pt__call { left: 50%; bottom: calc(100% + 7px); --cx: -50%; transform-origin: 50% 100%; }
+.hb-side--bottom .pt__call::after { left: calc(50% - 4px); bottom: -4px; }
+.hb-side--top .pt__call { left: 50%; top: calc(100% + 7px); --cx: -50%; transform-origin: 50% 0; }
+.hb-side--top .pt__call::after { left: calc(50% - 4px); top: -4px; transform: rotate(225deg); }
+.hb-side--left .pt__call { left: calc(100% + 7px); top: 50%; --cx: 0px; --cy: -50%; transform-origin: 0 50%; }
+.hb-side--left .pt__call::after { left: -4px; top: calc(50% - 4px); transform: rotate(135deg); }
+.hb-side--right .pt__call { right: calc(100% + 7px); top: 50%; --cx: 0px; --cy: -50%; transform-origin: 100% 50%; }
+.hb-side--right .pt__call::after { right: -4px; top: calc(50% - 4px); transform: rotate(-45deg); }
+/* the four corners keep the callout on the board: left corners hang it to the right, right corners to the left */
+.hb-tile--bl .pt__call, .hb-tile--tl .pt__call { left: 0; right: auto; --cx: 0px; }
+.hb-tile--br .pt__call, .hb-tile--tr .pt__call { right: 0; left: auto; --cx: 0px; }
+.hb-tile--bl .pt__call, .hb-tile--br .pt__call { top: auto; bottom: calc(100% + 7px); --cy: 0px; transform-origin: 50% 100%; }
+.hb-tile--tl .pt__call, .hb-tile--tr .pt__call { bottom: auto; top: calc(100% + 7px); --cy: 0px; transform-origin: 50% 0; }
+.hb-tile--bl .pt__call::after, .hb-tile--tl .pt__call::after { left: 16px; right: auto; }
+.hb-tile--br .pt__call::after, .hb-tile--tr .pt__call::after { right: 16px; left: auto; }
+.hb-tile--bl .pt__call::after, .hb-tile--br .pt__call::after { top: auto; bottom: -4px; transform: rotate(45deg); }
+.hb-tile--tl .pt__call::after, .hb-tile--tr .pt__call::after { bottom: auto; top: -4px; transform: rotate(225deg); }
+
+/* ---- light tiles: stops, cards, corners (warm paper) ------------------------ */
+.pt--light {
+  align-items: center; padding: 1px 1px 0; color: var(--pt-ink);
+  background: linear-gradient(180deg, var(--pt-paper), var(--pt-paper-2));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85), inset 0 -2px 0 rgba(120, 90, 40, 0.14);
+}
 .pt__cap {
   max-width: 100%; margin-top: max(0.5cqw, 2px); font-size: clamp(5.8px, min(8.6px, calc(var(--tw) / (var(--chars, 5) * 0.7))), 8.6px); font-weight: 800;
   letter-spacing: 0.01em; line-height: 1.1; white-space: nowrap; color: var(--cap, #4a5568);
@@ -88,70 +187,97 @@
 .pt__icon { position: relative; flex: 1 1 0; min-height: 0; width: 100%; display: grid; place-items: center; }
 .pt__icon > svg { display: block; width: auto !important; height: 100% !important; max-width: 100%; aspect-ratio: 1; }
 .pt--stop .pt__icon { padding: 1px 2px 2px; }
-.pt--card { background: linear-gradient(180deg, var(--pt-paper), #ece5d6); }
+.pt--card { background: linear-gradient(180deg, #fbf5e6, #ecdfc2); }
 .pt--card .pt__icon { padding: 3px 3px 0; }
 .pt--card .pt__cap { margin: 0 0 max(0.6cqw, 2px); }
 .pt--corner .pt__icon { padding: max(0.9cqw, 3px) 3px 1px; }
 .pt__arrow { fill: #17995b; stroke: #0b5a35; stroke-width: 1.2; stroke-linejoin: round; width: auto; height: 100%; max-width: 100%; }
 .pt__pill {
-  flex: none; max-width: calc(100% - 4px); margin-bottom: max(0.7cqw, 3px); padding: 0.18em 0.45em 0.14em; border-radius: 999px; background: var(--pt-pill); color: #fff;
+  flex: none; max-width: calc(100% - 4px); margin-bottom: max(0.7cqw, 3px); padding: 0.18em 0.45em 0.14em; border-radius: 999px; color: #fff;
+  background: linear-gradient(180deg, #4b4fa8, var(--pt-pill));
   font-size: clamp(5px, min(8.4px, calc(var(--tw) / (var(--chars, 5) * 0.68 + 0.9))), 8.4px); font-weight: 800; line-height: 1.15; letter-spacing: -0.01em; white-space: nowrap;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
 }
-.hb-tile--start .pt--corner { background: linear-gradient(180deg, #f4f1e8, #e1efe3); }
-.hb-tile--traffic .pt--corner { background: linear-gradient(180deg, #f4f1e8, #efe2df); }
-.hb-tile--chai .pt--corner { background: linear-gradient(180deg, #f4f1e8, #efe4d2); }
-.hb-tile--municipal .pt--corner { background: linear-gradient(180deg, #f4f1e8, #dfe6ef); }
-.hb-tile--auction .pt--corner { background: linear-gradient(180deg, #f4f1e8, #efe0dc); }
+.hb-tile--start .pt--corner { background: linear-gradient(180deg, #f7f3e6, #d6ecd9); }
+.hb-tile--traffic .pt--corner { background: linear-gradient(180deg, #f7f3e6, #f0d9d4); }
+.hb-tile--chai .pt--corner { background: linear-gradient(180deg, #f7f3e6, #f0ddc2); }
+.hb-tile--municipal .pt--corner { background: linear-gradient(180deg, #f7f3e6, #d6e0ef); }
+.hb-tile--auction .pt--corner { background: linear-gradient(180deg, #f7f3e6, #f0d6cf); }
 .ph .hb-tile--phone .hb-tile__stuck { top: 2px; right: 2px; }
 
-/* ---- pawns: round discs with a white rim, a touch bigger -------------------- */
+/* ---- pawns: glossy discs with a white rim and a contact shadow -------------- */
 .ph .hb-pawn { --d: calc(var(--pd, 0.5) * var(--hb-u) * 1.3); }
 .ph .hb-pawn__body { transform: translate(-50%, -52%); }
 .ph .hb-pawn__disc {
   position: absolute; inset: 0; display: grid; place-items: center; border-radius: 50%;
-  background: radial-gradient(circle at 34% 26%, color-mix(in srgb, var(--c) 52%, #fff) 0, var(--c) 56%, color-mix(in srgb, var(--c) 72%, #000) 100%);
-  box-shadow: 0 0 0 max(0.5cqw, 1.5px) #fff, 0 max(0.5cqw, 2px) max(1cqw, 3px) rgba(0, 0, 0, 0.5);
+  background:
+    radial-gradient(ellipse 46% 30% at 36% 20%, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0) 100%),
+    radial-gradient(circle at 34% 26%, color-mix(in srgb, var(--c) 52%, #fff) 0, var(--c) 56%, color-mix(in srgb, var(--c) 68%, #000) 100%);
+  box-shadow: 0 0 0 max(0.5cqw, 1.5px) #fff, inset 0 calc(var(--d) * -0.09) 0 rgba(0, 0, 0, 0.2);
 }
 .ph .hb-pawn__glyph { display: block; width: 74%; height: 74%; }
 .ph .hb-pawn__glyph svg { display: block; width: 100% !important; height: 100% !important; overflow: visible; }
-.ph .hb-pawn__shadow { display: none; }
-.ph .hb-pawn.is-turn .hb-pawn__disc { box-shadow: 0 0 0 max(0.5cqw, 1.5px) #fff, 0 0 0 max(0.95cqw, 3px) var(--c), 0 max(0.5cqw, 2px) max(1.2cqw, 4px) rgba(0, 0, 0, 0.5); }
+/* the contact shadow stays on the tile while the disc hops, and tightens when it lands (board.css animates it) */
+.ph .hb-pawn__shadow { display: block; left: -4%; right: -4%; bottom: -26%; height: 38%; background: radial-gradient(ellipse at center, rgba(4, 3, 22, 0.78) 0%, rgba(4, 3, 22, 0.34) 55%, transparent 76%); }
+.ph .hb-pawn.is-turn .hb-pawn__disc { box-shadow: 0 0 0 max(0.5cqw, 1.5px) #fff, 0 0 0 max(0.95cqw, 3px) var(--c), inset 0 calc(var(--d) * -0.09) 0 rgba(0, 0, 0, 0.2); }
+/* anticipation (squash), action (stretch up, carry), settle (squash on landing, spring back): replaces the plain lift on a phone */
+.ph .hb-pawn.is-walk .hb-pawn__hop.is-step { animation: ph-hop var(--step) cubic-bezier(0.3, 0.6, 0.4, 1) both; }
+.ph .hb-pawn__marker { filter: none; }
 
-/* ---- the middle: a calm light panel ----------------------------------------- */
+/* ---- the middle: a calm dusk panel lit by a lantern -------------------------- */
 .ph .hb-center {
   margin: 1.1cqw; border-radius: 2.2cqw; overflow: hidden;
-  background: var(--board-mat-light); box-shadow: inset 0 0 0 1px rgba(36, 52, 71, 0.1);
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.55) 0 0.5px, transparent 1.1px) 0 0 / 26px 31px,
+    radial-gradient(circle, rgba(255, 255, 255, 0.35) 0 0.5px, transparent 1.1px) 13px 15px / 37px 29px,
+    radial-gradient(80% 55% at 50% 44%, rgba(255, 176, 84, 0.26) 0%, transparent 72%),
+    radial-gradient(120% 70% at 50% 0%, rgba(123, 109, 255, 0.3) 0%, transparent 60%),
+    linear-gradient(180deg, #1c2060 0%, #12153f 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 211, 107, 0.2), inset 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 .pc {
-  position: absolute; inset: 0; container-type: size; display: flex; flex-direction: column; align-items: center; padding: 2.5cqh 4cqw 0;
-  color: #1f2c3a; --cp-die: clamp(36px, 19cqmin, 60px); --cp-ink: #1f2c3a;
+  position: absolute; inset: 0; container-type: size; display: flex; flex-direction: column; align-items: center; padding: 2cqh 4cqw 0;
+  color: var(--pt-cream); --cp-die: clamp(36px, 19cqmin, 60px); --cp-ink: var(--pt-cream);
 }
-.pc-cap { position: relative; flex: none; width: 100%; height: 17cqh; display: grid; place-items: center; }
-.pc-cap__l {
-  grid-area: 1 / 1; margin: 0; max-width: 100%; text-align: center; font-size: clamp(14px, 6.4cqw, 19px); font-weight: 700; line-height: 1.16; letter-spacing: -0.005em;
-  color: #243447; text-wrap: balance; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+/* the caption: a big headline over a small detail line, cross-fading when the words change */
+.pc-cap { position: relative; flex: none; width: 100%; height: 19cqh; display: grid; place-items: center; }
+.pc-cap__l { grid-area: 1 / 1; margin: 0; max-width: 100%; display: grid; justify-items: center; gap: 1px; text-align: center; }
+.pc-cap__h {
+  margin: 0; max-width: 100%; font-family: var(--font-display); font-size: clamp(17px, 7.4cqw, 23px); font-weight: 800; line-height: 1.1; letter-spacing: -0.01em;
+  color: var(--pt-cream); text-wrap: balance; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+  text-shadow: 0 2px 6px rgba(4, 3, 22, 0.55);
 }
-.pc-cap__l.is-in { animation: pc-in var(--dur-3) var(--ease-out) 90ms both; }
+.pc-cap__l[data-detail] .pc-cap__h { -webkit-line-clamp: 1; }
+.pc-cap__d {
+  margin: 0; max-width: 100%; font-size: clamp(13px, 5cqw, 15px); font-weight: 600; line-height: 1.2; color: #c9cdf0; text-wrap: balance;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden;
+}
+.pc-cap__l.is-in { animation: pc-in var(--dur-3) var(--ease-spring) 90ms both; }
 .pc-cap__l.is-out { animation: pc-out 120ms var(--ease-in) both; }
-.pc-cap__l.is-bad { color: #a3211b; }
-.pc-cap__l.is-good { color: #0f6b44; }
-.pc-cap__l.is-cheer { color: #7d4f00; }
-.pc-cap__l.is-warn { color: #8a4b00; }
+.pc-cap__l.is-bad .pc-cap__h { color: #ff9aa8; }
+.pc-cap__l.is-good .pc-cap__h { color: #6ff0b4; }
+.pc-cap__l.is-cheer .pc-cap__h { color: #ffd870; }
+.pc-cap__l.is-warn .pc-cap__h { color: #ffbe73; }
+.pc-cap__l.is-mine .pc-cap__h { color: #ffe08a; }
 .pc-chipslot { flex: none; width: 100%; height: 14cqh; display: grid; place-items: center; }
+/* the tile chip: a swatch of the tile (colour, name) with the price or rent on a gold ribbon; it drops in, overshoots, settles */
 .pc-chip {
   display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 0; border: 0; background: none; cursor: pointer; pointer-events: auto;
-  animation: pc-in var(--dur-3) var(--ease-spring) both;
+  animation: pc-chip-in var(--dur-4) var(--ease-spring) both;
 }
-.pc-chip__who { display: grid; place-items: center; width: 30px; height: 30px; flex: none; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35)); }
+.pc-chip::before { content: ''; position: absolute; inset: -8px -4px; } /* a roomier tap area than the chip itself */
+.pc-chip { position: relative; }
+.pc-chip__who { display: grid; place-items: center; width: 30px; height: 30px; flex: none; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45)); }
 .pc-chip__tile {
-  min-width: 78px; max-width: 150px; display: grid; overflow: hidden; border-radius: 5px; background: var(--tc); color: var(--tink);
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85), 0 2px 5px rgba(36, 52, 71, 0.25);
+  min-width: 78px; max-width: 150px; display: grid; overflow: hidden; border-radius: 6px; background: var(--tc); color: var(--tink);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9), 0 3px 8px rgba(4, 3, 22, 0.5);
 }
 .pc-chip__tile em {
   padding: 2px 8px 1px; font-style: normal; font-size: 13px; font-weight: 800; line-height: 1.2; font-variant-numeric: tabular-nums;
-  background: var(--oc, rgba(255, 255, 255, 0.34)); color: #fff; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+  background: var(--oc, linear-gradient(180deg, #ffe08a, #ffb100)); color: var(--oc, #3b2300);
+  text-shadow: none;
 }
-.pc-chip.is-owned .pc-chip__tile em { color: #fff; }
+.pc-chip.is-owned .pc-chip__tile em { color: #fff; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4); }
 .pc-chip__tile b { padding: 2px 8px 3px; font-size: 13px; font-weight: 800; line-height: 1.2; text-transform: uppercase; letter-spacing: 0.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pc-hero { flex: 1 1 0; min-height: 0; width: 100%; position: relative; display: grid; place-items: center; padding-bottom: 5cqh; }
 .pc-hero .city-story { width: 100%; height: 100%; }
@@ -160,7 +286,7 @@
 .pc-hero .city-story__location { width: 100%; height: 100%; }
 .pc-hero .city-story__mascot { max-height: 52cqmin; }
 .pc-die { position: absolute; left: 50%; bottom: 0.5cqh; translate: -50% 0; z-index: 2; pointer-events: none; }
-.pc-die .cp-dice { color: #1f2c3a; }
+.pc-die .cp-dice { color: var(--pt-cream); }
 
 /* small boards (320px phones, a squeezed 375x667): the names cannot be read, so the tile keeps its price big and the icons */
 @container (max-width: 299px) {
@@ -168,13 +294,39 @@
   .pt--prop .pt__band { flex: 1 1 0; }
   .pt__price, .pt__tag { font-size: clamp(7px, calc(var(--hb-u) * 0.3), 9px); }
   .pt--stop .pt__cap, .pt--card .pt__cap, .hb-tile--corner:not(.hb-tile--start) .pt__pill { display: none; }
-  .pt__pips { bottom: 1px; }
+  .pt__pips { bottom: 3px; }
 }
 
 @keyframes pt-tag { from { opacity: 0; transform: translateY(-40%) scale(0.7); } to { opacity: 1; transform: none; } }
-@keyframes pc-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
-@keyframes pc-out { from { opacity: 1; } to { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) {
-  .pt__tag, .pc-cap__l, .pc-chip { animation: none !important; }
+@keyframes pt-pip { 0% { transform: scale(0.2); } 55% { transform: scale(1.5); } 100% { transform: scale(1); } }
+/* the callout: wait (opacity 0 through the delay), pop in with a little overshoot, hold, fade out */
+@keyframes pt-call {
+  0%   { opacity: 0; transform: translate(var(--cx), var(--cy)) scale(0.6); }
+  9%   { opacity: 1; transform: translate(var(--cx), var(--cy)) scale(1.06); }
+  14%  { opacity: 1; transform: translate(var(--cx), var(--cy)) scale(1); }
+  84%  { opacity: 1; transform: translate(var(--cx), var(--cy)) scale(1); }
+  100% { opacity: 0; transform: translate(var(--cx), var(--cy)) scale(0.96); }
 }
-:root[data-motion='reduced'] :is(.pt__tag, .pc-cap__l, .pc-chip), .hg-game[data-rm] :is(.pt__tag, .pc-cap__l, .pc-chip) { animation: none !important; }
+@keyframes ph-hop {
+  0%   { transform: translateY(0) scale(1, 1); }
+  9%   { transform: translateY(0) scale(1.14, 0.84); }
+  24%  { transform: translateY(-72%) scale(0.92, 1.16); }
+  50%  { transform: translateY(-86%) scale(1, 1.06); }
+  76%  { transform: translateY(-72%) scale(0.96, 1.1); }
+  90%  { transform: translateY(0) scale(1.18, 0.8); }
+  100% { transform: translateY(0) scale(1, 1); }
+}
+@keyframes pc-in { from { opacity: 0; transform: translateY(6px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes pc-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes pc-chip-in {
+  0%   { opacity: 0; transform: translateY(-10px) scale(0.78); }
+  55%  { opacity: 1; transform: translateY(2px) scale(1.06); }
+  100% { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ph :is(.pt__tag, .pt__pips i, .pc-cap__l, .pc-chip, .hb-pawn__hop, .hb-pawn__shadow) { animation: none !important; }
+  .ph .pt__call { display: none; }
+}
+:root[data-motion='reduced'] .ph :is(.pt__tag, .pt__pips i, .pc-cap__l, .pc-chip, .hb-pawn__hop, .hb-pawn__shadow),
+.hg-game[data-rm] .ph :is(.pt__tag, .pt__pips i, .pc-cap__l, .pc-chip, .hb-pawn__hop, .hb-pawn__shadow) { animation: none !important; }
+:root[data-motion='reduced'] .ph .pt__call, .hg-game[data-rm] .ph .pt__call { display: none; }

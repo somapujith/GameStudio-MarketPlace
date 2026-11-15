@@ -36,6 +36,7 @@ export default function PhoneActions({ session, spec, fire, badges = {}, onManag
   const pills = (spec.secondaries || []).filter((s) => !hidePills.includes(s.key)).map((s) => pillFor(s, session));
   const out = spec.kind === 'out';
   const waiting = prim.disabled;
+  const rolling = waiting && prim.kind === 'busy' && !!session.rolling; // my dice are in the air: "Rolling…" instead of three dots
   const tradeHint = session.options?.trade?.canOffer === false && !session.view?.trade ? 'You can propose a trade on your own turn' : undefined;
 
   return (
@@ -64,8 +65,18 @@ export default function PhoneActions({ session, spec, fire, badges = {}, onManag
         {out ? <span className="pa-tool pa-tool--gap" aria-hidden="true" /> : <Tool icon="home" label="Manage" badge={badges.manage} onClick={onManage} />}
 
         {waiting ? (
-          <div className={`pa-primary is-wait is-${prim.key}`} role="status" aria-label={prim.aria} data-kind={prim.kind}>
-            {prim.kind === 'busy' ? (
+          <div
+            className={`pa-primary is-wait is-${prim.key}${rolling ? ' is-rolling' : ''}`}
+            role="status"
+            aria-label={rolling ? 'Rolling the dice' : prim.aria}
+            data-kind={prim.kind}
+          >
+            {rolling ? (
+              <>
+                <span className="pa-die" aria-hidden="true"><i /><i /><i /></span>
+                <span className="pa-primary__txt">Rolling…</span>
+              </>
+            ) : prim.kind === 'busy' ? (
               <span className="pa-dots" aria-hidden="true"><i /><i /><i /></span>
             ) : (
               <>

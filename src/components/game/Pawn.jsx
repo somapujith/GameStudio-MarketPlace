@@ -33,8 +33,11 @@ export function PieceToken({ piece, color = '#ffd23f', size = 24, base = true, c
 
 /**
  * One player's piece on the board. `pos` is the tile id: the presenter steps it one tile at a time and the
- * pawn glides there with `transform: translate()` (never left/top) while its inner hop replays the
- * lift-carry-set-down for every step, over `--hb-step` (the presenter's `display.stepMs`, set on the layer).
+ * pawn glides there with `transform: translate()` (never left/top) while its inner hop replays
+ * anticipation -> jump -> landing for every step (crouch, an arc leaning into the move, a squash and a puff of dust
+ * where it touches down, a fading ghost left on the tile it left), over `--hb-step` (the presenter's `display.stepMs`,
+ * set on the layer). The piece stands on a glossy puck in the player's colour above a contact shadow; whose turn it
+ * is gets a halo on the board.
  *
  *  motion: null (walk) | 'ride' (fast hop with a little vehicle trail) | 'teleport' (one arc over the board)
  *  stuck:  stuck in traffic: a small cone with a brake light
@@ -58,7 +61,9 @@ function PawnImpl({
   // Re-key the hop and shadow whenever the pawn moves, so the motion replays per step.
   const [seen, setSeen] = useState(pos);
   const [steps, setSteps] = useState(0);
+  const [from, setFrom] = useState(pos);
   if (seen !== pos) {
+    setFrom(seen);
     setSeen(pos);
     setSteps(steps + 1);
   }
@@ -73,6 +78,13 @@ function PawnImpl({
     '--c': color,
     zIndex: isTurn ? 30 : 10 + slot,
   };
+  // where it came from, as a fraction of the ring: the ghost stays put there while the pawn moves on
+  const was = steps ? pawnPlacement(from, slot, count) : null;
+  const gx = was ? (was.x - x) / 100 : 0;
+  const gy = was ? (was.y - y) / 100 : 0;
+  style['--gx'] = gx;
+  style['--gy'] = gy;
+  style['--lean'] = Math.abs(gx) > Math.abs(gy) ? Math.sign(-gx) : 0; // leans into a sideways move
   const kind = motion === 'ride' || motion === 'teleport' ? motion : 'walk';
   const cls = ['hb-pawn', `is-${kind}`];
   if (isTurn) cls.push('is-turn');
@@ -92,17 +104,27 @@ function PawnImpl({
       <span className="hb-pawn__body">
         {/* The shadow stays on the board while the pawn is lifted, then tightens as it is set down. */}
         <span className={`hb-pawn__shadow${moving}`} key={`s${steps}`} />
+        {isTurn && !disc ? <span className="hb-pawn__halo" /> : null}
         {kind === 'ride' && steps ? <span className="hb-pawn__trail" key={`t${steps}`} /> : null}
+        {kind !== 'ride' && steps && !disc ? (
+          <span className="hb-pawn__ghost" key={`g${steps}`} aria-hidden="true">
+            <PieceToken piece={piece} color={color} size={48} base={false} className="hb-pawn__piece" />
+          </span>
+        ) : null}
         <span className={`hb-pawn__hop${moving}`} key={steps}>
           {disc ? (
             <span className="hb-pawn__disc">
               <PieceToken piece={piece} color="#ffffff" size={48} base={false} className="hb-pawn__glyph" />
             </span>
           ) : (
-            <PieceToken piece={piece} color={color} size={48} className="hb-pawn__piece" />
+            <>
+              <span className="hb-pawn__puck" />
+              <PieceToken piece={piece} color={color} size={48} base={false} className="hb-pawn__piece" />
+            </>
           )}
           {isTurn && <span className="hb-pawn__marker" />}
         </span>
+        {steps && !disc ? <span className="hb-pawn__dust" key={`d${steps}`} aria-hidden="true" /> : null}
         {stuck && (
           <span className="hb-pawn__stuck" aria-hidden="true">
             <svg viewBox="0 0 24 24" focusable="false">

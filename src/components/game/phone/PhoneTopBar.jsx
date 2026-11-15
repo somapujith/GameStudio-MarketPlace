@@ -3,9 +3,25 @@
 // The "..." button carries a small dot while something waits for you (an upgrade, a trade offer, a debt).
 import { useEffect, useState } from 'react';
 import Icon from '../ui/Icon.jsx';
-import { attentionOf, eventChipOf, objectiveFor } from './phoneModel.js';
+import { useWorths } from '../ui/helpers.js';
+import { targetOf } from '../turn/target.js';
+import { attentionOf, eventChipOf, objectiveFor, targetProgress } from './phoneModel.js';
 
 const EVENT_TIP_MS = 7000;
+
+/** The micro-bar under the objective line: how far my net worth is towards the target (a faint tick = the best rival), gold when it is close. */
+function GoalBar({ session }) {
+  const { worths, state } = useWorths(session);
+  const target = targetOf(session.display?.cfg || session.view?.cfg);
+  const g = target ? targetProgress({ worths, me: session.me, target, players: state.players }) : null;
+  if (!g) return null;
+  return (
+    <span className={`ph-goal${g.hot ? ' is-hot' : ''}`} role="img" aria-label={g.sr} data-pct={g.pct}>
+      <i className="ph-goal__rival" style={{ transform: `scaleX(${g.rival.toFixed(3)})` }} />
+      <i className="ph-goal__mine" style={{ transform: `scaleX(${g.mine.toFixed(3)})` }} />
+    </span>
+  );
+}
 
 export function Objective({ session }) {
   const o = objectiveFor(session);
@@ -40,6 +56,7 @@ export default function PhoneTopBar({ session, spec, onBack, onMenu }) {
       </button>
       <div className="ph-top__mid">
         <Objective session={session} />
+        <GoalBar session={session} />
         {ev ? (
           <button
             type="button"

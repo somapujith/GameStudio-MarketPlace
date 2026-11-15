@@ -12,6 +12,8 @@ const noop = () => {};
 export const DEFAULT_SETTINGS = {
   sfx: true,
   volume: 0.8,
+  sfxVolume: 1,
+  ambient: false,
   reducedMotion: false,
   theme: 'system',
   playbackSpeed: 1,

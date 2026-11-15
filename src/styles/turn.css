@@ -48,50 +48,7 @@
 }
 .tb-round__txt.is-final { color: #ffd7dd; border-color: rgba(255, 93, 115, 0.5); background: rgba(255, 93, 115, 0.14); }
 
-/* ============================================================ turn hand-off */
-.tb-banner {
-  /* centred over the log pane, clear of the "You / cash" row at the top of the panel */
-  position: absolute; left: 50%; top: 52%; z-index: 8; translate: -50% -50%;
-  display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none;
-  animation: tb-life var(--tb-life, 900ms) var(--ease-out) backwards;
-}
-.tb-banner__main {
-  padding: 10px 26px; border-radius: 999px; white-space: nowrap;
-  font-family: var(--font-display); font-size: clamp(22px, 5.4vmin, 40px); font-weight: 900; letter-spacing: -0.01em;
-  color: #3b2300; background: linear-gradient(180deg, #ffe08a, #ffc857 45%, #ff8a3d);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.85), 0 10px 30px rgba(255, 160, 40, 0.45), 0 2px 0 #b97800;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
-}
-.tb-banner:not(.is-mine) .tb-banner__main {
-  color: #fff; background: color-mix(in srgb, var(--pc) 70%, #10171e);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.7), 0 10px 30px rgba(0, 0, 0, 0.45);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
-}
-.tb-banner__final {
-  padding: 4px 14px; border-radius: 999px; font-size: clamp(13px, 2.6vmin, 18px); font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase;
-  color: #fff; background: #e5384f; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8), 0 6px 18px rgba(229, 56, 79, 0.5);
-}
-@keyframes tb-life {
-  0% { opacity: 0; transform: scale(0.72) translateY(10px); }
-  14% { opacity: 1; transform: scale(1.05); }
-  22% { transform: scale(1); }
-  84% { opacity: 1; transform: none; }
-  100% { opacity: 0; transform: translateY(-10px) scale(0.98); }
-}
-
-.tb-chip {
-  position: absolute; left: 50%; top: calc(10% + 4px); z-index: 7; translate: -50% 0; pointer-events: none;
-  display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px 4px 8px; border-radius: 999px; white-space: nowrap;
-  font-size: 13px; font-weight: 800; color: var(--text); background: rgba(16, 23, 30, 0.86); border: 1px solid var(--line-strong);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); animation: tb-chip var(--tb-life, 900ms) var(--ease-out) backwards;
-}
-.tb-chip__dot { width: 10px; height: 10px; border-radius: 50%; background: var(--pc); box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.6); }
-@keyframes tb-chip {
-  0% { opacity: 0; transform: translateY(-8px); }
-  15% { opacity: 1; transform: none; }
-  85% { opacity: 1; transform: none; }
-  100% { opacity: 0; transform: translateY(-6px); }
-}
+/* ============================================================ turn hand-off: now moments/MomentBanner (moments.css) */
 
 /* ============================================================ card reveal */
 .cr-root { position: absolute; inset: 0; z-index: 9; display: grid; place-items: center; pointer-events: none; }
@@ -159,46 +116,7 @@
 .hg-game[data-rm] .cr-back { display: none; }
 @media (prefers-reduced-motion: reduce) { .cr-back { display: none; } }
 
-/* ============================================================ speech bubble + emote pops (fixed overlays) */
-.sb-bubble {
-  position: fixed; z-index: 40; translate: -50% 0; max-width: calc(var(--half, 130px) * 2); pointer-events: none;
-  padding: 7px 12px; border-radius: 14px; font-size: 13px; font-weight: 750; line-height: 1.3; text-align: center; overflow-wrap: anywhere;
-  color: #14302d; background: #fffcf3; border: 2px solid color-mix(in srgb, var(--pc) 75%, #14302d);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35); transform-origin: 50% 100%;
-  animation: sb-in var(--dur-2) var(--ease-spring) both;
-}
-.sb-bubble::after {
-  content: ""; position: absolute; left: calc(50% + var(--tail, 0px)); bottom: -8px; width: 12px; height: 12px; translate: -50% 0;
-  background: #fffcf3; border-right: 2px solid color-mix(in srgb, var(--pc) 75%, #14302d); border-bottom: 2px solid color-mix(in srgb, var(--pc) 75%, #14302d);
-  transform: rotate(45deg); border-bottom-right-radius: 3px;
-}
-.sb-bubble.is-below { transform-origin: 50% 0; }
-.sb-bubble.is-below::after { bottom: auto; top: -8px; transform: rotate(225deg); }
-.sb-bubble.is-good { background: #effbf3; }
-.sb-bubble.is-good::after { background: #effbf3; }
-.sb-bubble.is-bad { background: #fff1f2; }
-.sb-bubble.is-bad::after { background: #fff1f2; }
-.sb-bubble.is-cheer { background: #fff6d6; }
-.sb-bubble.is-cheer::after { background: #fff6d6; }
-@keyframes sb-in { from { opacity: 0; transform: scale(0.7) translateY(6px); } to { opacity: 1; transform: none; } }
-
-.sb-emote {
-  position: fixed; z-index: 41; translate: -50% 0; pointer-events: none;
-  display: flex; flex-direction: column; align-items: center; gap: 0;
-  animation: sb-emote 2000ms var(--ease-out) backwards;
-}
-.sb-emote__emoji { font-size: 34px; line-height: 1; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.45)); }
-.sb-emote__label {
-  margin-top: 2px; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 850; white-space: nowrap;
-  color: #3b2300; background: #ffc857; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-}
-@keyframes sb-emote {
-  0% { opacity: 0; transform: scale(0.4) translateY(10px); }
-  14% { opacity: 1; transform: scale(1.18); }
-  24% { transform: scale(1); }
-  78% { opacity: 1; transform: translateY(-14px); }
-  100% { opacity: 0; transform: translateY(-26px); }
-}
+/* speech bubble + emote pops: moved to fx.css (src/components/game/turn/SpeechBubble.jsx) */
 
 /* ============================================================ phone action dock */
 .ad {

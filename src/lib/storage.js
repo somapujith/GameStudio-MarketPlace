@@ -120,7 +120,12 @@ export const BOARD_CAMERAS = Object.freeze(['auto', 'manual', 'off']);
 
 export const DEFAULT_APP_SETTINGS = Object.freeze({
   sfx: true,
+  /** Master volume 0..1 (everything). */
   volume: 0.8,
+  /** Sound-effects fader 0..1, on top of the master volume. */
+  sfxVolume: 1,
+  /** Optional quiet night-market bed under the game (off by default; needs `sfx`). */
+  ambient: false,
   reducedMotion: false,
   /** Hub colour theme ('system' follows the OS). Game screens keep their own theme. */
   theme: 'system',
@@ -130,6 +135,8 @@ export const DEFAULT_APP_SETTINGS = Object.freeze({
   haptics: true,
   /** Zoom of the board on phone-sized screens (see BOARD_CAMERAS). Wide boards never zoom. */
   boardCamera: 'auto',
+  /** Shake the phone to roll the die on your turn (needs motion access on iOS). Off until the player turns it on. */
+  shakeToRoll: false,
 });
 
 /** Unknown keys (e.g. the voice/subtitle settings of older builds) are ignored, never an error. */
@@ -138,11 +145,14 @@ function normalizeSettings(p) {
   return {
     sfx: src.sfx === undefined ? DEFAULT_APP_SETTINGS.sfx : !!src.sfx,
     volume: clamp(num(src.volume, DEFAULT_APP_SETTINGS.volume), 0, 1),
+    sfxVolume: clamp(num(src.sfxVolume, DEFAULT_APP_SETTINGS.sfxVolume), 0, 1),
+    ambient: src.ambient === undefined ? DEFAULT_APP_SETTINGS.ambient : !!src.ambient,
     reducedMotion: !!src.reducedMotion,
     theme: THEMES.includes(src.theme) ? src.theme : DEFAULT_APP_SETTINGS.theme,
     playbackSpeed: PLAYBACK_SPEEDS.includes(Number(src.playbackSpeed)) ? Number(src.playbackSpeed) : DEFAULT_APP_SETTINGS.playbackSpeed,
     haptics: src.haptics === undefined ? DEFAULT_APP_SETTINGS.haptics : !!src.haptics,
     boardCamera: BOARD_CAMERAS.includes(src.boardCamera) ? src.boardCamera : DEFAULT_APP_SETTINGS.boardCamera,
+    shakeToRoll: src.shakeToRoll === true,
   };
 }
 

@@ -9,6 +9,7 @@ import { useAccount } from '@/components/shell/hooks.js';
 import { DEFAULT_PROFILE, useProfile, useSettings } from '@/components/shell/stores.js';
 import { playSfx } from '@/components/shell/sound.js';
 import { buzz } from '@/lib/haptics.js';
+import { requestMotionPermission, shakeSupported } from '@/lib/shake.js';
 import { PLAYBACK_SPEEDS, THEMES } from '@/lib/storage.js';
 import { paths } from '@/platform/paths.js';
 import * as PUSH from '@/lib/push.js';
@@ -175,7 +176,7 @@ export default function SettingsSection() {
           />
           <div className="hh2-range">
             <label htmlFor="hh2-volume" className="hh2-range__label">
-              <span>Volume</span>
+              <span>Master volume</span>
               <b>{volume}%</b>
             </label>
             <input
@@ -192,6 +193,35 @@ export default function SettingsSection() {
               data-nosfx
             />
           </div>
+          <div className="hh2-range">
+            <label htmlFor="hh2-sfxvolume" className="hh2-range__label">
+              <span>Effects</span>
+              <b>{Math.round((settings.sfxVolume ?? 1) * 100)}%</b>
+            </label>
+            <input
+              id="hh2-sfxvolume"
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              value={Math.round((settings.sfxVolume ?? 1) * 100)}
+              style={{ '--v': `${Math.round((settings.sfxVolume ?? 1) * 100)}%` }}
+              onChange={(e) => update({ sfxVolume: Number(e.target.value) / 100 })}
+              onPointerUp={() => playSfx('coin')}
+              onKeyUp={(e) => (e.key.startsWith('Arrow') || e.key === 'Home' || e.key === 'End') && playSfx('coin')}
+              data-nosfx
+            />
+          </div>
+          <Toggle
+            icon={<Icon name="sparkle" size={20} />}
+            label="Night-market ambience"
+            hint="A very quiet festival bed under the game board. Off by default."
+            checked={!!settings.ambient}
+            onChange={(v) => {
+              update({ ambient: v });
+              playSfx('toggle', { on: v });
+            }}
+          />
         </section>
 
         <section className="hub-panel" aria-labelledby="hh2-motion-h">
@@ -213,6 +243,21 @@ export default function SettingsSection() {
             onChange={(v) => {
               update({ haptics: v });
               if (v) setTimeout(() => buzz('tap'), 40);
+            }}
+          />
+          <Toggle
+            icon={<Icon name="dice" size={20} />}
+            label="Shake to roll"
+            hint={shakeSupported() ? 'Shake your phone to roll the die on your turn. Off by default; iPhones ask for motion access.' : 'Needs a phone or tablet with motion sensors.'}
+            checked={settings.shakeToRoll === true}
+            disabled={!shakeSupported()}
+            onChange={async (v) => {
+              if (!v) return update({ shakeToRoll: false });
+              // iOS only grants motion access from a tap, so ask right here
+              const r = await requestMotionPermission();
+              if (r === 'granted') return update({ shakeToRoll: true });
+              toast(r === 'denied' ? 'Motion access was blocked. Allow it in the browser settings to shake to roll.' : 'This device has no motion sensors.', { tone: 'bad' });
+              return undefined;
             }}
           />
           <div className="xp-set">

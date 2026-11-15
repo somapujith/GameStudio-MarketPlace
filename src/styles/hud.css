@@ -1,0 +1,117 @@
+/* Desktop / tablet HUD: the top bar (round track, win-target micro bar, leader chip, net-worth race, connection chip).
+   Night-market palette: indigo / teal glass, warm gold highlights. Motion: transform / opacity only, tokens --dur-* / --ease-*;
+   everything stills under reduced motion. Selectors are scoped with `.hg-game` so they win over game.css / turn.css regardless of load order.
+   Pods live in pods.css, the centre of the board in controlpanel.css. */
+
+/* ---------------------------------------------------------------- top bar layout */
+.hg-game .hg-top {
+  grid-template-columns: minmax(auto, 1fr) minmax(0, auto) minmax(auto, 1fr);
+  background: linear-gradient(180deg, rgba(255, 202, 122, 0.05), transparent 70%);
+}
+.hg-game .hg-top > .hg-roundbtn:first-child { justify-self: start; }
+.hg-top-end { justify-self: end; display: flex; align-items: center; gap: 8px; }
+.hg-game .hg-top-mid { flex-direction: column; align-items: center; gap: 5px; min-width: 0; }
+.hg-top-row { display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 0; }
+.hg-game .hg-roundbtn { background: linear-gradient(180deg, #243543, #1b2731); border-color: rgba(255, 202, 122, 0.22); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07); }
+@media (hover: hover) { .hg-game .hg-roundbtn:hover { border-color: rgba(255, 202, 122, 0.5); } }
+.hg-game .hg-table-title { color: var(--gold); text-shadow: 0 0 14px rgba(255, 202, 122, 0.35); }
+.hg-game .hg-table-title .hg-table-mark { color: var(--gold); }
+@media (min-width: 900px) {
+  .hg-top-row { flex-direction: row; justify-content: center; gap: 14px; }
+}
+/* tablets in portrait: title row, chips row and the race fit a slightly taller bar (the board is width-limited there) */
+@media (min-width: 600px) and (max-width: 899px) and (min-height: 521px) {
+  .hg-game[class] { --hg-top: calc(72px + var(--safe-top)); }
+}
+@media (min-width: 900px) {
+  .hg-game .hg-goal { flex-wrap: nowrap; }
+}
+
+/* ---------------------------------------------------------------- round track + win-target micro bar */
+.hg-game .hg-top .tb-round__txt { padding-bottom: 1px; background: rgba(255, 255, 255, 0.06); }
+.hg-game .hg-top .tb-round__txt::before {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255, 255, 255, 0.12);
+}
+.hg-game .hg-top .tb-round__txt::after { height: 3px; border-radius: 0 2px 2px 0; box-shadow: 0 0 8px rgba(255, 177, 0, 0.55); }
+.hg-game .hg-top .tb-target { position: relative; overflow: hidden; padding-bottom: 1px; }
+.tb-target__bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255, 255, 255, 0.12); }
+.tb-target__bar::after {
+  content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, #ffc857, #ff8a3d); box-shadow: 0 0 8px rgba(255, 177, 0, 0.55);
+  transform: scaleX(var(--tp, 0)); transform-origin: left center; transition: transform var(--dur-4) var(--ease-out);
+}
+.tb-target.is-hot .tb-target__bar::after { animation: hud-glow 1.4s var(--ease-std) infinite; }
+@keyframes hud-glow { 50% { opacity: 0.6; } }
+
+/* ---------------------------------------------------------------- leader chip */
+.tb-leader {
+  display: inline-flex; align-items: center; gap: 5px; min-width: 0; padding: 0 9px 0 6px; border-radius: 999px; white-space: nowrap;
+  line-height: 20px; font-weight: 750; font-variant-numeric: tabular-nums; color: var(--text);
+  background: linear-gradient(180deg, rgba(255, 200, 87, 0.16), rgba(255, 200, 87, 0.07)); border: 1px solid rgba(255, 202, 122, 0.4);
+  animation: hud-pop var(--dur-3) var(--ease-spring) backwards;
+}
+.tb-leader__crown { color: var(--gold); filter: drop-shadow(0 0 5px rgba(255, 177, 0, 0.6)); }
+.tb-leader__txt { display: inline-flex; align-items: baseline; gap: 5px; min-width: 0; }
+.tb-leader__txt b { max-width: 9em; overflow: hidden; text-overflow: ellipsis; font-weight: 800; }
+.tb-leader__txt small { color: var(--gold); font-size: 11.5px; font-weight: 800; }
+@keyframes hud-pop { from { opacity: 0; transform: translateY(4px) scale(0.9); } }
+
+/* ---------------------------------------------------------------- connection chip */
+.tb-conn {
+  display: inline-flex; align-items: center; min-height: 30px; padding: 0 9px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line);
+}
+.tb-conn.is-offline, .tb-conn.is-reconnecting { border-color: rgba(255, 177, 0, 0.5); background: rgba(255, 177, 0, 0.1); }
+
+/* ---------------------------------------------------------------- the net-worth race */
+.nr { display: flex; align-items: center; gap: 8px; width: min(100%, 540px); height: 17px; padding: 0 2px 0 8px; }
+.nr__track { position: relative; flex: 1 1 auto; min-width: 0; height: 17px; container-type: inline-size; }
+.nr__line {
+  position: absolute; left: 0; right: 0; top: 50%; height: 5px; margin-top: -2.5px; border-radius: 99px;
+  background:
+    linear-gradient(90deg, transparent 80%, rgba(255, 200, 87, 0.32) 80%),
+    rgba(255, 255, 255, 0.11);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+.nr.is-open .nr__line { background: rgba(255, 255, 255, 0.11); }
+.nr__lead {
+  position: absolute; left: 0; top: 50%; width: 100%; height: 5px; margin-top: -2.5px; border-radius: 99px;
+  background: linear-gradient(90deg, transparent, var(--pc)); opacity: 0.8;
+  transform: scaleX(var(--f, 0)); transform-origin: left center; transition: transform var(--dur-4) var(--ease-out);
+}
+.nr__dot {
+  --ly: 0px;
+  position: absolute; left: 0; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%;
+  background: radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.8) 0, rgba(255, 255, 255, 0) 46%), var(--pc);
+  box-shadow: 0 0 0 1.5px #0f1a22, 0 1px 4px rgba(0, 0, 0, 0.55);
+  transform: translate(calc(var(--f, 0) * 100cqw), var(--ly));
+  transition: transform var(--dur-4) var(--ease-spring);
+}
+.nr__dot[data-lane='1'] { --ly: -3px; }
+.nr__dot[data-lane='2'] { --ly: 3px; }
+.nr__dot.is-me { box-shadow: 0 0 0 1.5px #0f1a22, 0 0 0 3px var(--gold), 0 1px 5px rgba(0, 0, 0, 0.55); }
+.nr__dot.is-lead { width: 15px; height: 15px; margin: -7.5px 0 0 -7.5px; }
+.nr__crown { position: absolute; left: 50%; top: -9px; translate: -50% 0; color: var(--gold); filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.7)); }
+.nr__goal { flex: none; display: inline-flex; align-items: center; gap: 3px; color: var(--text-dim); font-size: 11.5px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.nr__goal .hg-icon { color: var(--gold); }
+.nr.is-hot .nr__goal { color: var(--gold); }
+.nr.is-hot .nr__goal .hg-icon { animation: hud-glow 1.4s var(--ease-std) infinite; }
+
+/* phones on their side: the bar stays slim (no race, no leader chip) */
+.hg-game--land .nr, .hg-game--land .tb-leader { display: none; }
+.hg-game--land .tb-conn { display: none; }
+/* gamemobile.css lets the land top bar dissolve and pins its two round buttons; the menu button now sits inside .hg-top-end */
+.hg-game--land .hg-top-end { display: contents; }
+.hg-game--land .hg-top-end > .hg-roundbtn { position: absolute; z-index: 5; right: calc(env(safe-area-inset-right, 0px) + 8px); top: var(--hg-vt); }
+@media (max-height: 520px) { .hg-game .nr { display: none; } }
+/* narrow tablets: the leader chip keeps just the crown + name */
+@media (max-width: 700px) { .hg-game .tb-leader__txt small { display: none; } }
+
+/* ---------------------------------------------------------------- reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .tb-leader, .tb-target.is-hot .tb-target__bar::after, .nr.is-hot .nr__goal .hg-icon { animation: none; }
+  .nr__dot, .nr__lead, .tb-target__bar::after { transition: none; }
+}
+:root[data-motion='reduced'] .tb-leader, :root[data-motion='reduced'] .tb-target.is-hot .tb-target__bar::after, :root[data-motion='reduced'] .nr.is-hot .nr__goal .hg-icon,
+.hg-game[data-rm] .tb-leader, .hg-game[data-rm] .tb-target.is-hot .tb-target__bar::after, .hg-game[data-rm] .nr.is-hot .nr__goal .hg-icon { animation: none; }
+:root[data-motion='reduced'] .nr__dot, :root[data-motion='reduced'] .nr__lead, :root[data-motion='reduced'] .tb-target__bar::after,
+.hg-game[data-rm] .nr__dot, .hg-game[data-rm] .nr__lead, .hg-game[data-rm] .tb-target__bar::after { transition: none; }

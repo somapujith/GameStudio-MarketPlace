@@ -21,7 +21,8 @@ export function playCardClip(cardId) {
     const s = loadSettings();
     if (s.sfx === false) return false;
     const audio = new Audio(src);
-    const volume = Number(s.volume);
+    const effects = Number.isFinite(Number(s.sfxVolume)) ? Number(s.sfxVolume) : 1; // master x effects fader
+    const volume = Number(s.volume) * effects;
     audio.volume = Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : 0.8;
     const started = audio.play();
     if (started && typeof started.catch === 'function') started.catch(() => {});

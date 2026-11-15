@@ -62,31 +62,69 @@
   padding: var(--hb-pad);
   border-radius: 2.6cqw;
   background:
+    /* four corner lanterns */
+    radial-gradient(circle 1.5cqw at 1.2cqw 1.2cqw, #fff6d0 0 18%, rgba(255, 200, 87, 0.95) 34%, rgba(255, 170, 50, 0) 100%),
+    radial-gradient(circle 1.5cqw at calc(100% - 1.2cqw) 1.2cqw, #fff6d0 0 18%, rgba(255, 200, 87, 0.95) 34%, rgba(255, 170, 50, 0) 100%),
+    radial-gradient(circle 1.5cqw at 1.2cqw calc(100% - 1.2cqw), #fff6d0 0 18%, rgba(255, 200, 87, 0.95) 34%, rgba(255, 170, 50, 0) 100%),
+    radial-gradient(circle 1.5cqw at calc(100% - 1.2cqw) calc(100% - 1.2cqw), #fff6d0 0 18%, rgba(255, 200, 87, 0.95) 34%, rgba(255, 170, 50, 0) 100%),
     radial-gradient(120% 90% at 50% 0%, #2a2d68 0%, transparent 60%),
     linear-gradient(160deg, #1d2050 0%, var(--hb-night) 55%, #0e1030 100%);
   box-shadow:
-    0 0 0 1px rgba(255, 211, 107, 0.22),
+    0 0 0 1px rgba(255, 211, 107, 0.3),
+    inset 0 0 0 0.25cqw rgba(255, 211, 107, 0.1),
+    inset 0 0 2.6cqw rgba(0, 0, 0, 0.5),
     0 1.2cqw 3.2cqw rgba(0, 0, 0, 0.55);
 }
 
-/* a string of gold bulbs round the frame; a brighter copy breathes over them (opacity only) */
+/* A lantern string round the frame: 56 bulbs a side on a thin gold wire. The element holds the warm resting bulbs;
+   ::before and ::after are two brighter sets (every other bulb each) that swap in turn (opacity only), so the string
+   gently twinkles. Four brighter lanterns hang at the corners (see .hb-frame). The corner squares are cut out. */
 .hb-frame__lights {
   --bulb: max(0.5cqw, 2px);
+  --bs: calc(var(--bulb) * 3);
+  --lp: calc((100cqw - var(--hb-pad) + var(--bs)) / 56); /* bulb pitch */
+  --cut: 2.6cqw;
+  --rest: #fff0b8 0 24%, rgba(255, 190, 70, 0.85) 38%, rgba(255, 170, 50, 0) 100%;
+  --lit: #fffbe8 0 22%, rgba(255, 224, 140, 0.9) 40%, rgba(255, 200, 80, 0) 100%;
   position: absolute;
-  inset: calc(var(--hb-pad) * 0.5 - var(--bulb) / 2);
-  border: var(--bulb) dotted var(--hb-lantern);
-  border-radius: 2.2cqw;
-  opacity: 0.75;
+  inset: calc(var(--hb-pad) * 0.5 - var(--bs) / 2);
   pointer-events: none;
+  background:
+    linear-gradient(rgba(255, 207, 107, 0.3), rgba(255, 207, 107, 0.3)) 0 calc(var(--bs) / 2) / 100% 1px no-repeat,
+    linear-gradient(rgba(255, 207, 107, 0.3), rgba(255, 207, 107, 0.3)) 0 calc(100% - var(--bs) / 2) / 100% 1px no-repeat,
+    linear-gradient(rgba(255, 207, 107, 0.3), rgba(255, 207, 107, 0.3)) calc(var(--bs) / 2) 0 / 1px 100% no-repeat,
+    linear-gradient(rgba(255, 207, 107, 0.3), rgba(255, 207, 107, 0.3)) calc(100% - var(--bs) / 2) 0 / 1px 100% no-repeat,
+    radial-gradient(circle calc(var(--bulb) * 1.3) at 50% 50%, var(--rest)) 0 0 / var(--lp) var(--bs) repeat-x,
+    radial-gradient(circle calc(var(--bulb) * 1.3) at 50% 50%, var(--rest)) 0 100% / var(--lp) var(--bs) repeat-x,
+    radial-gradient(circle calc(var(--bulb) * 1.3) at 50% 50%, var(--rest)) 0 0 / var(--bs) var(--lp) repeat-y,
+    radial-gradient(circle calc(var(--bulb) * 1.3) at 50% 50%, var(--rest)) 100% 0 / var(--bs) var(--lp) repeat-y;
+  opacity: 0.85;
+  clip-path: polygon(0 var(--cut), var(--cut) var(--cut), var(--cut) 0, calc(100% - var(--cut)) 0, calc(100% - var(--cut)) var(--cut), 100% var(--cut), 100% calc(100% - var(--cut)), calc(100% - var(--cut)) calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, var(--cut) 100%, var(--cut) calc(100% - var(--cut)), 0 calc(100% - var(--cut)));
 }
+.hb-frame__lights::before,
 .hb-frame__lights::after {
   content: '';
   position: absolute;
-  inset: calc(var(--bulb) * -1);
-  border: var(--bulb) dotted #fff3c4;
-  border-radius: inherit;
+  inset: 0;
   opacity: 0;
-  animation: hb-twinkle 2.6s ease-in-out infinite alternate;
+  animation: hb-twinkle 2.4s ease-in-out infinite alternate;
+}
+.hb-frame__lights::before {
+  --at: 25%;
+  background:
+    radial-gradient(circle calc(var(--bulb) * 2) at var(--at) 50%, var(--lit)) 0 0 / calc(var(--lp) * 2) var(--bs) repeat-x,
+    radial-gradient(circle calc(var(--bulb) * 2) at var(--at) 50%, var(--lit)) 0 100% / calc(var(--lp) * 2) var(--bs) repeat-x,
+    radial-gradient(circle calc(var(--bulb) * 2) at 50% var(--at), var(--lit)) 0 0 / var(--bs) calc(var(--lp) * 2) repeat-y,
+    radial-gradient(circle calc(var(--bulb) * 2) at 50% var(--at), var(--lit)) 100% 0 / var(--bs) calc(var(--lp) * 2) repeat-y;
+}
+.hb-frame__lights::after {
+  --at: 75%;
+  background:
+    radial-gradient(circle calc(var(--bulb) * 2) at var(--at) 50%, var(--lit)) 0 0 / calc(var(--lp) * 2) var(--bs) repeat-x,
+    radial-gradient(circle calc(var(--bulb) * 2) at var(--at) 50%, var(--lit)) 0 100% / calc(var(--lp) * 2) var(--bs) repeat-x,
+    radial-gradient(circle calc(var(--bulb) * 2) at 50% var(--at), var(--lit)) 0 0 / var(--bs) calc(var(--lp) * 2) repeat-y,
+    radial-gradient(circle calc(var(--bulb) * 2) at 50% var(--at), var(--lit)) 100% 0 / var(--bs) calc(var(--lp) * 2) repeat-y;
+  animation-delay: -2.4s;
 }
 
 /* corner tracks 1.5x an edge track; `.hb-odds` shares the template */
@@ -999,7 +1037,7 @@
   align-items: center;
   justify-content: center;
   border-radius: var(--hb-r);
-  background: rgba(14, 16, 48, 0.45);
+  background: rgba(14, 16, 48, 0.55);
   animation: hb-odds-in 0.25s ease both;
 }
 .hb-odds__cell.has-chip { background: hsl(var(--h) 85% 38% / 0.22); }
@@ -1008,7 +1046,7 @@
   border-radius: 999px;
   background: hsl(var(--h) 88% 44% / 0.92);
   color: #fff;
-  font-size: max(calc(var(--hb-u) * 0.2), 6px);
+  font-size: max(calc(var(--hb-u) * 0.17), 6px);
   font-weight: 800;
   line-height: 1.1;
   white-space: nowrap;
@@ -1016,7 +1054,7 @@
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85);
 }
 .hb-odds__cell.is-top { box-shadow: inset 0 0 0 max(calc(var(--hb-u) * 0.08), 2px) var(--hb-gold); }
-.hb-odds__cell.is-top .hb-odds__chip { font-size: max(calc(var(--hb-u) * 0.23), 7px); box-shadow: 0 0 0 max(calc(var(--hb-u) * 0.04), 1px) var(--hb-gold); }
+.hb-odds__cell.is-top .hb-odds__chip { font-size: max(calc(var(--hb-u) * 0.2), 7px); box-shadow: 0 0 0 max(calc(var(--hb-u) * 0.04), 1px) var(--hb-gold); }
 .hb-odds__cell.is-top .hb-odds__chip::before { content: '\2605'; margin-right: 0.2em; color: #ffe27a; }
 @keyframes hb-odds-in {
   from { opacity: 0; }
@@ -1027,7 +1065,10 @@
 
 :root[data-motion='reduced'] .hb-board *,
 :root[data-motion='reduced'] .hb-board *::before,
-:root[data-motion='reduced'] .hb-board *::after {
+:root[data-motion='reduced'] .hb-board *::after,
+.hg-game[data-rm] .hb-board *,
+.hg-game[data-rm] .hb-board *::before,
+.hg-game[data-rm] .hb-board *::after {
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;
   transition-duration: 0.01ms !important;

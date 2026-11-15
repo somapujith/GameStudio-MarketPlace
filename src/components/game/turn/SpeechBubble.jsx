@@ -1,15 +1,22 @@
 // Speech bubbles next to a player's avatar (the scoreboard row / phone strip element with `data-fx-player`):
-//   <SpeechBubble session />  the presenter's `session.bubble` (what just happened), for ~2.6 s at playback speed 1
-//   <EmoteFloats session />   quick reactions from chat (`{ emote }` messages) pop up over the sender's avatar
+//   <SpeechBubble session />  the presenter's `session.bubble` (what just happened), for ~4 s at playback speed 1: it pops out
+//                             of its tail (anchored on the avatar), settles with a spring and fades out
+//   <EmoteFloats session />   quick reactions from chat (`{ emote }` messages): the emoji is thrown up over the sender's
+//                             avatar with a spring pop, a wobble and a sideways sway, and a small burst of its own flies out
 // Both are fixed overlays, never take pointer events, and fall back to the top of the screen when no avatar is found.
+// Reduced motion: no pop, no burst; the bubble / emoji just fade.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useSettings } from '@/lib/storage.js';
-import { activePlayer, getPlayer } from '../ui/helpers.js';
+import { activePlayer, getPlayer, motionMs, motionToken, useMedia, useReducedMotion } from '../ui/helpers.js';
+import { burstPath, swayPath } from '../fx/burst.js';
 import { emoteInfo } from './emotes.js';
 import '@/styles/turn.css';
+import '@/styles/fx.css';
 
 const BUBBLE_MS = 4200;
+const LEAVE_MS = 240;
 const EMOTE_MS = 2600;
+const MAX_EMOTES = 4;
 
 function findAnchor(id) {
   if (typeof document === 'undefined' || id == null) return null;
@@ -80,6 +87,7 @@ export function bubbleSpeaker(session) {
 
 export default function SpeechBubble({ session }) {
   const [settings] = useSettings();
+  const reduced = useReducedMotion();
   const speed = Number(settings?.playbackSpeed) > 0 ? Number(settings.playbackSpeed) : 1;
   const b = session?.bubble;
   const [shown, setShown] = useState(null);
@@ -91,44 +99,100 @@ export default function SpeechBubble({ session }) {
     if (!b || b.id === lastId.current) return;
     lastId.current = b.id;
     if (b.type === 'card' || !b.text) return; // the card reveal shows cards
-    setShown({ id: b.id, text: b.text, tone: b.tone || 'info', player: bubbleSpeaker(session) });
+    setShown({ id: b.id, text: b.text, tone: b.tone || 'info', icon: b.icon || null, player: bubbleSpeaker(session), leaving: false });
     clearTimeout(timer.current);
-    timer.current = setTimeout(() => setShown(null), BUBBLE_MS / Math.max(0.75, speed));
+    const life = BUBBLE_MS / Math.max(0.75, speed);
+    timer.current = setTimeout(() => {
+      if (reduced) {
+        setShown(null);
+        return;
+      }
+      setShown((s) => (s ? { ...s, leaving: true } : s));
+      timer.current = setTimeout(() => setShown(null), LEAVE_MS);
+    }, life);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [b?.id]);
 
-  const pos = useAnchor(shown?.player, !!shown);
-  if (!shown || !pos) return null;
+  // portrait phones already get the toast, the centre caption and the floating amount for the same news: no fourth copy
+  const phone = useMedia('(max-width: 599px)');
+  const pos = useAnchor(shown?.player, !!shown && !phone);
+  if (!shown || !pos || phone) return null;
   const p = getPlayer(session, shown.player);
   return (
     <div
       key={shown.id}
-      className={`sb-bubble is-${shown.tone}${pos.below ? ' is-below' : ''}`}
+      className={`sb-bubble is-${shown.tone}${pos.below ? ' is-below' : ''}${shown.leaving ? ' is-leaving' : ''}`}
       style={{ ...styleFor(pos), '--pc': p?.color || 'var(--gold)' }}
       aria-hidden="true"
     >
-      {shown.text}
+      {shown.icon ? <span className="sb-bubble__ico">{shown.icon}</span> : null}
+      <span className="sb-bubble__text">{shown.text}</span>
     </div>
   );
 }
 
-function EmoteFloat({ item, onDone }) {
+function EmoteFloat({ item, onDone, reduced }) {
   const pos = useAnchor(item.from, true);
+  const burst = useRef(null);
+  const big = useRef(null);
   useEffect(() => {
     const t = setTimeout(onDone, EMOTE_MS);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // the throw: a spring pop with a wobble and a sway (the CSS animation does the rise), plus the burst of small emoji
+  const ready = !!pos;
+  useEffect(() => {
+    if (!ready || reduced) return undefined;
+    const anims = [];
+    const ease = motionToken('--ease-out', 'cubic-bezier(0.22, 1, 0.36, 1)');
+    const d3 = motionMs('--dur-3', 360);
+    const host = burst.current;
+    if (host && typeof host.animate === 'function') {
+      const kids = host.children;
+      for (let i = 0; i < kids.length; i += 1) {
+        const pts = burstPath(i, kids.length, { radius: 40 + (i % 2) * 14, gravity: 34 });
+        anims.push(
+          kids[i].animate(
+            pts.map((p) => ({ transform: `translate(${p.x.toFixed(1)}px, ${p.y.toFixed(1)}px) scale(${p.s.toFixed(2)})`, opacity: p.o })),
+            { duration: d3 * 2.6, delay: 60 + i * 28, easing: ease, fill: 'both' },
+          ),
+        );
+      }
+    }
+    const el = big.current;
+    if (el && typeof el.animate === 'function') {
+      const sway = swayPath(6, 8);
+      anims.push(
+        el.animate(
+          sway.map((x, k) => ({ transform: `translateX(${x.toFixed(1)}px) rotate(${(x * 1.6).toFixed(1)}deg)`, offset: k / (sway.length - 1) })),
+          { duration: EMOTE_MS - 300, easing: 'ease-in-out', fill: 'both' },
+        ),
+      );
+    }
+    return () => anims.forEach((a) => { try { a.cancel(); } catch { /* ignore */ } });
+  }, [ready, reduced]);
+
   if (!pos) return null;
   return (
     <div className={`sb-emote${pos.below ? ' is-below' : ''}`} style={styleFor(pos)} aria-hidden="true">
-      <span className="sb-emote__emoji">{item.emoji}</span>
+      <span className="sb-emote__stage" ref={big}>
+        <span className="sb-emote__ring" />
+        <span className="sb-emote__emoji">{item.emoji}</span>
+        {reduced ? null : (
+          <span className="sb-emote__burst" ref={burst}>
+            {[0, 1, 2, 3, 4].map((k) => <i key={k}>{item.emoji}</i>)}
+          </span>
+        )}
+      </span>
       <span className="sb-emote__label">{item.label}</span>
     </div>
   );
 }
 
 export function EmoteFloats({ session }) {
+  const reduced = useReducedMotion();
   const chat = session?.chat || [];
   const last = chat[chat.length - 1];
   const seen = useRef(last?.id ?? null);
@@ -141,11 +205,11 @@ export function EmoteFloats({ session }) {
     seen.current = last.id;
     const fresh = chat.slice(from + 1).filter((m) => m.emote && emoteInfo(m.emote));
     if (!fresh.length) return;
-    setItems((cur) => [...cur, ...fresh.map((m) => ({ id: m.id, from: m.from, ...emoteInfo(m.emote) }))].slice(-6));
+    setItems((cur) => [...cur, ...fresh.map((m) => ({ id: m.id, from: m.from, ...emoteInfo(m.emote) }))].slice(-MAX_EMOTES));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [last?.id]);
 
   return items.map((item) => (
-    <EmoteFloat key={item.id} item={item} onDone={() => setItems((cur) => cur.filter((x) => x.id !== item.id))} />
+    <EmoteFloat key={item.id} item={item} reduced={reduced} onDone={() => setItems((cur) => cur.filter((x) => x.id !== item.id))} />
   ));
 }

@@ -79,6 +79,7 @@ export default function PhoneTable({
             {showCard && data ? (
               <BuyCard
                 data={data}
+                session={session}
                 onBuy={doors.buy ? fire(doors.buy) : undefined}
                 onPass={doors.skip ? fire(doors.skip) : undefined}
                 onDismiss={() => setHidden(key)}

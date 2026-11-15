@@ -526,7 +526,7 @@ describe('Snatch events', () => {
     const ms = await timed(core, [{ type: 'snatch_open', tile: 6, buyer: 'other', price: 70000, eligible: ['me'], ms: 5000 }], state);
     expect(ms).toBeGreaterThanOrEqual((ANIM_MS.snatchOpen ?? 300) * 0.9);
     expect(ms).toBeLessThan(1000); // never the 5 seconds of the window itself
-    expect(played).toContain('lucky');
+    expect(played).toEqual([]); // the player who may press hears the pop-up's own alarm + tick-tock, not the presenter
     expect(core.getSnapshot().stageTile).toBe(6);
     expect(core.getSnapshot().log.at(-1).text).toBe('Snatch window open');
     core.dispose();
@@ -549,7 +549,7 @@ describe('Snatch events', () => {
     const mid = core.getSnapshot().display;
     expect(mid.owners[6]).toBe('me');
     expect(mid.snatchMark).toEqual({ tile: 6, winner: 'me' });
-    expect(played).toContain('cheer');
+    expect(played).toContain('snatchWin');
     expect(core.getSnapshot().bubble).toMatchObject({ type: 'snatch_end' });
     await vi.advanceTimersByTimeAsync((ANIM_MS.snatchEnd ?? 1800) + 10);
     expect(core.getSnapshot().display.players[0].snatches).toBe(1); // the token is still there until snatch_token plays
@@ -560,10 +560,10 @@ describe('Snatch events', () => {
     core.dispose();
   });
 
-  it('snatch_end plays the right sound: error for the buyer who lost the district, a click for a bystander', async () => {
+  it('snatch_end plays the right sound: a sting for the winner, a sad one for the buyer who lost the district, a click for a bystander', async () => {
     const lost = setup({ describe: () => ({ text: 'x', tone: 'bad' }), state: withTokens() });
     await timed(lost.core, [{ type: 'snatch_end', tile: 6, buyer: 'me', outcome: 'snatched', winner: 'other' }], withTokens());
-    expect(lost.played).toContain('error');
+    expect(lost.played).toContain('snatchLost');
     lost.core.dispose();
     const by = setup({ describe: () => ({ text: 'x', tone: 'info' }), me: 'third', state: withTokens() });
     await timed(by.core, [{ type: 'snatch_end', tile: 6, buyer: 'other', outcome: 'snatched', winner: 'me' }], withTokens());

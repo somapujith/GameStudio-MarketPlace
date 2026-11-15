@@ -15,7 +15,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { compactINR, formatINR } from '@shared/format.js';
 import Money from './ui/Money.jsx';
+import Icon from './ui/Icon.jsx';
 import { activePlayer, useWorths } from './ui/helpers.js';
+import { empireOf, empireWords, rankLabel, ranksOf } from './ui/hudModel.js';
 import { useLayoutMode } from './ui/viewport.js';
 import { ChaiToken, PlayerAvatar, TrafficTag, rowLabel } from './MoneyBar.jsx';
 import { TitleChip, cosmeticsOf, roomPlayer } from './turn/room.js';
@@ -26,6 +28,7 @@ import { pillText, signalOf, signalWords } from './ui/signalModel.js';
 import { useNetStats } from '@/lib/netStats.js';
 import { podTarget, targetOf } from './turn/target.js';
 import '../../styles/pods.css';
+import '../../styles/podsPremium.css';
 
 /** Slot names by player count, clockwise from the bottom-left corner (bl = you). */
 export const POD_LAYOUTS = Object.freeze({
@@ -111,7 +114,25 @@ export function GoalBar({ goal, isMe }) {
   );
 }
 
-function Pod({ session, player, slot, cell, worth, isMe, isTurn, isLeader, target, avatar, compact, local, snatchOn, onSelect }) {
+/**
+ * The empire strip: one little capsule per collection, a segment per district. Segments light up in the collection's colour
+ * as the player buys them; a complete collection turns gold. Decorative: the pod's button label says it in words.
+ */
+export function EmpireStrip({ rows }) {
+  return (
+    <span className="hg-pod__empire" aria-hidden="true">
+      {rows.map((r) => (
+        <i key={r.id} className={`hg-emp${r.owned ? ' has' : ''}${r.full ? ' is-full' : ''}`} style={{ '--gc': r.color }} title={`${r.name}: ${r.owned} of ${r.total}`}>
+          {Array.from({ length: r.total }, (_, k) => (
+            <b key={k} className={k < r.owned ? (k >= r.owned - r.mortgaged ? 'on loan' : 'on') : undefined} />
+          ))}
+        </i>
+      ))}
+    </span>
+  );
+}
+
+function Pod({ session, player, slot, cell, worth, rank, ranked, empire, isMe, isTurn, isLeader, target, avatar, compact, local, snatchOn, onSelect }) {
   // Connection strength: the room's `net` for everybody else, your own live measurement for you (never for a player who is out).
   const sig = player.bankrupt ? { kind: 'none' } : signalOf(roomPlayer(session, player.id), { isMe, local });
   const offline = sig.kind === 'offline' && !player.bankrupt;
@@ -119,7 +140,8 @@ function Pod({ session, player, slot, cell, worth, isMe, isTurn, isLeader, targe
   const title = cosmeticsOf(session, player.id).title;
   const goal = podTarget({ worth, target, isMe, isLeader, bankrupt: player.bankrupt });
   const cls = ['hg-pod', isMe && 'is-me', isTurn && 'is-turn', isLeader && !player.bankrupt && 'is-leader', player.bankrupt && 'is-out', offline && 'is-offline', pillText(sig) && 'has-pill', goal && 'has-goal', goal?.hot && 'is-hot'].filter(Boolean).join(' ');
-  const label = [rowLabel({ player, worth, isMe, isTurn, isLeader, offline: false }), signalWords(sig), goal?.sr, snatchOn && !player.bankrupt && snatchCount(player) !== null ? `${snatchCount(player)} Snatch ${snatchCount(player) === 1 ? 'button' : 'buttons'}` : '']
+  const showRank = ranked && !compact && !player.bankrupt && rank > 0;
+  const label = [rowLabel({ player, worth, isMe, isTurn, isLeader, offline: false }), showRank && !isLeader ? `${rankLabel(rank)} by net worth` : '', !compact && !player.bankrupt && empire ? empireWords(empire) : '', signalWords(sig), goal?.sr, snatchOn && !player.bankrupt && snatchCount(player) !== null ? `${snatchCount(player)} Snatch ${snatchCount(player) === 1 ? 'button' : 'buttons'}` : '']
     .filter(Boolean).join(', ');
   const badges = compact && !player.bankrupt && (player.stuck || player.chai > 0);
   return (
@@ -129,6 +151,7 @@ function Pod({ session, player, slot, cell, worth, isMe, isTurn, isLeader, targe
       data-cell={cell}
       style={{ '--pc': player.color, '--fit': fitFor(player.cash), '--fitc': fitCompact(player.cash) }}
       data-turn={isTurn ? '' : undefined}
+      data-rank={showRank ? rank : undefined}
     >
       <button type="button" className="hg-pod__btn" onClick={() => onSelect?.(player.id)} aria-label={label}>
         <span className="hg-pod__ava">
@@ -163,9 +186,16 @@ function Pod({ session, player, slot, cell, worth, isMe, isTurn, isLeader, targe
         </span>
         <span className="hg-pod__cash">
           {isMe && !player.bankrupt ? <small className="hg-pod__lbl">Your cash</small> : null}
-          {player.bankrupt ? <span className="hg-pod__amt is-out">Out</span> : <Money value={player.cash} flash className="hg-pod__amt" />}
+          {player.bankrupt ? <span className="hg-pod__amt is-out">Out</span> : <Money value={player.cash} flash ms={700} className="hg-pod__amt" />}
         </span>
+        {!compact && !player.bankrupt && empire ? <EmpireStrip rows={empire} /> : null}
         {goal ? <GoalBar goal={goal} isMe={isMe} /> : null}
+        {showRank ? (
+          <span className={`hg-pod__rank${rank === 1 ? ' is-first' : ''}`} aria-hidden="true">
+            {rank === 1 ? <Icon name="crown" size={11} /> : null}
+            {rankLabel(rank)}
+          </span>
+        ) : null}
       </button>
     </li>
   );
@@ -184,6 +214,8 @@ export default function PlayerPods({ session, onSelect, mode = 'all', layout: la
   const local = useNetStats(); // your own measured connection (live), for your own pod
   const layout = layoutProp || own;
   const compact = layout !== 'wide';
+  const ranks = ranksOf(state.players, worths);
+  const ranked = Object.keys(ranks).length > 1;
   const all = podSlots(state.players, session.me);
   const shown = compact ? podsFor(all, session.me, mode) : all;
   const others = podsFor(all, session.me, 'others');
@@ -202,6 +234,9 @@ export default function PlayerPods({ session, onSelect, mode = 'all', layout: la
             slot={slot}
             cell={cell}
             worth={worths[player.id] ?? player.cash}
+            rank={ranks[player.id] || 0}
+            ranked={ranked}
+            empire={compact ? null : empireOf(state.owners, state.mortgaged, player.id)}
             isMe={isMe}
             isTurn={!!active && active.id === player.id && !player.bankrupt}
             isLeader={leaderId === player.id}

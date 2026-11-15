@@ -30,6 +30,7 @@ import Icon from './ui/Icon.jsx';
 import { useIsWide, useMedia, useReducedMotion } from './ui/helpers.js';
 import { useGameChrome, useKeyboardInset, useLayoutMode } from './ui/viewport.js';
 import RoundBadge, { TargetBadge } from './turn/RoundBadge.jsx';
+import NetRace, { ConnChip, LeaderChip } from './ui/NetRace.jsx';
 import { TargetToasts, useTargetWatch, withNotes } from './turn/TargetWatch.jsx';
 import { RESIGN_CONFIRM, RESIGN_KEEP, RESIGN_TEXT, RESIGN_TITLE, canResign, leaveDialog, useResign } from './turn/resign.js';
 import { targetOf } from './turn/target.js';
@@ -47,6 +48,8 @@ import '../../styles/game.css';
 import '../../styles/turn.css';
 import '../../styles/gamemobile.css';
 import FxLayer from './fx/FxLayer.jsx';
+import ActivityFeed from './feed/ActivityFeed.jsx';
+import FeedToasts from './feed/FeedToasts.jsx';
 
 
 /** Portrait phones get the wallet bar + bottom action dock. */
@@ -83,17 +86,24 @@ function TopBar({ session, onBack, onMenu }) {
         <Icon name="back" size={22} strokeWidth={2.4} />
       </button>
       <div className="hg-top-mid">
-        <span className="hg-table-title"><i className="hg-table-mark" aria-hidden="true" />HYDERABAD TYCOON</span>
-        <p className="hg-goal">
-          <span className="hg-mode">{modeLabel(cfg)}</span>
-          <span className="hg-goal-sep" aria-hidden="true">&middot;</span>
-          <RoundBadge session={session} />
-          <TargetBadge session={session} />
-        </p>
+        <div className="hg-top-row">
+          <span className="hg-table-title"><i className="hg-table-mark" aria-hidden="true" />HYDERABAD TYCOON</span>
+          <p className="hg-goal">
+            <span className="hg-mode">{modeLabel(cfg)}</span>
+            <span className="hg-goal-sep" aria-hidden="true">&middot;</span>
+            <RoundBadge session={session} />
+            <TargetBadge session={session} bar />
+            <LeaderChip session={session} />
+          </p>
+        </div>
+        <NetRace session={session} />
       </div>
-      <button type="button" className="hg-roundbtn" onClick={onMenu} aria-label="Menu" aria-haspopup="dialog">
-        <Icon name="more" size={22} />
-      </button>
+      <div className="hg-top-end">
+        <ConnChip session={session} />
+        <button type="button" className="hg-roundbtn" onClick={onMenu} aria-label="Menu" aria-haspopup="dialog">
+          <Icon name="more" size={22} />
+        </button>
+      </div>
     </header>
   );
 }
@@ -166,6 +176,12 @@ export default function GameView({ session: rawSession, onExit }) {
   const openTile = useCallback((id) => setTileId(id), []);
   const closeTile = useCallback(() => setTileId(null), []);
   const openTrade = useCallback(() => setTrade(true), []);
+
+  /* the optional night-market ambient bed plays only while the game screen is open (Settings > Ambient) */
+  useEffect(() => {
+    try { sfx.setScene?.(true); } catch { /* optional */ }
+    return () => { try { sfx.setScene?.(false); } catch { /* optional */ } };
+  }, []);
 
   /* WebAudio needs a user gesture */
   useEffect(() => {
@@ -254,7 +270,8 @@ export default function GameView({ session: rawSession, onExit }) {
             <SnatchPopup session={session} placement="board" />
           </div>
         </div>
-        {compact ? null : <div className="hg-chatcard"><EmoteBar session={session} /></div>}
+        {compact || usesMiddleEdges(playerCount) ? null : <div className="hg-feedcard"><ActivityFeed session={session} max={14} /></div>}
+        {compact ? null : <div className="hg-chatcard">{usesMiddleEdges(playerCount) ? <ActivityFeed session={session} max={3} compact /> : null}<EmoteBar session={session} /></div>}
       </main>}
 
       {compact && !phoneSimple ? (
@@ -276,7 +293,8 @@ export default function GameView({ session: rawSession, onExit }) {
 
       <SpeechBubble session={session} />
       <EmoteFloats session={session} />
-      <FxLayer flights={session.flights || []} />
+      <FxLayer flights={session.flights || []} session={session} />
+      <FeedToasts session={session} />
 
       <PropertySheet session={session} tileId={tileId} onClose={closeTile} />
       <PlayerSheet

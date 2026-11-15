@@ -3,7 +3,9 @@ import * as B from '@shared/board.js';
 import { compactINR, formatINR } from '@shared/format.js';
 import { BuildingArt, TileIcon } from '@/components/art/index.js';
 import { cornerOf, sideOf } from './fx/geometry.js';
-import { BuildPop, CardShimmer, ChaiSteam, OwnerChip, OwnerStamp } from './fx/TileFx.jsx';
+import { CardShimmer, ChaiSteam, OwnerChip, OwnerStamp } from './fx/TileFx.jsx';
+import { useBump } from './fx/useBump.js';
+import BuildSite from './board/BuildSite.jsx';
 import { PieceToken } from './Pawn.jsx';
 import { labelLines } from './tileLabel.js';
 import PhoneBoardContext from './phone/PhoneBoardContext.js';
@@ -220,6 +222,8 @@ function TileImpl({
   const full = owned && !mortgaged && setState === 'full';
   const kind = tile.type === 'transport' ? transportKind(tile) : null;
   const phone = useContext(PhoneBoardContext); // the simple portrait-phone table prints its own tile faces
+  const claim = useBump(ownerId || ownerColor, (a, b) => !!b && a !== b); // a (new) owner: the business is built afresh
+  const setNew = useBump(full, (a, b) => !a && !!b); // the collection just became complete
 
   const { col, row } = B.tilePosition(tile.id);
   const style = { gridColumn: col + 1, gridRow: row + 1 };
@@ -233,6 +237,7 @@ function TileImpl({
   if (tile.group) cls.push(`hb-g--${tile.group}`);
   if (owned) cls.push('is-owned');
   if (full) cls.push('is-set');
+  if (full && setNew) cls.push('is-set-new');
   if (mortgaged) cls.push('is-mortgaged');
   if (isProperty && owned && lvl >= MAX_LEVEL) cls.push('is-max');
   if (event) cls.push('is-event', `is-ev--${event.tone}`);
@@ -313,14 +318,14 @@ function TileImpl({
         </span>
         <span className={`hb-tile__body${owned ? ' hb-tile__body--built' : ''}`}>
           {owned && (
-            <BuildPop level={lvl} className="hb-tile__bldg">
+            <BuildSite level={lvl} claim={claim} className="hb-tile__bldg">
               <BuildingArt theme={group?.theme} group={tile.group} level={lvl} size={64} />
-            </BuildPop>
+            </BuildSite>
           )}
           <span className="hb-tile__txt">
             <span className="hb-tile__name">{name}</span>
             <PhoneName tile={tile} />
-            <span className="hb-tile__price">
+            <span className={`hb-tile__price${owned ? ' is-rent' : ''}`}>
               <span className="hb-amt--full">{formatINR(owned ? rent : tile.price)}</span>
               <span className="hb-amt--short">{compactINR(owned ? rent : tile.price)}</span>
             </span>
@@ -380,6 +385,7 @@ function TileImpl({
         stuck={stuck}
         chai={chai}
         drawing={drawing}
+        active={active}
       />
     );
   }
@@ -390,7 +396,6 @@ function TileImpl({
       className={cls.join(' ')}
       style={style}
       aria-label={label.join(', ')}
-      title={[tile.name, event && event.note].filter(Boolean).join(' - ')}
       data-tile={tile.id}
       data-fx-tile={tile.id}
       onClick={() => onSelect?.(tile.id)}
@@ -406,6 +411,7 @@ function TileImpl({
         </>
       )}
       <OwnerStamp color={ownerColor} owner={ownerId || ownerColor} side={side} />
+      {full && setNew && !phone ? <i className="hb-tile__shine" key={setNew} aria-hidden="true" /> : null}
       {mortgaged && !isProperty && mBadge}
       {snatch ? (
         <>

@@ -1,0 +1,250 @@
+/* The key moments: ribbon (turn hand-off, six, set complete, "X is out"), card reveal layers, city news flash, set toasts.
+   "Hyderabad night-market festival": gold lantern glow on deep indigo / teal. One motion language: anticipation ->
+   action -> settle with --ease-spring, tokens --dur-1..4. transform / opacity only; <= ~6 animated elements per moment;
+   `will-change` lives only on elements that exist for the length of their animation. Reduced motion (media query,
+   :root[data-motion='reduced'], [data-rm]) turns every animation off: the moment simply appears and is removed on time. */
+
+.mo-confetti { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+
+/* ============================================================ ribbon */
+.mo-rib {
+  --mo-bg: linear-gradient(180deg, #ffe9a8, #ffca7a 48%, #ff9e3d);
+  --mo-ink: #3b2300;
+  --mo-kick: color-mix(in srgb, var(--mo-ink) 78%, transparent);
+  --mo-trim: rgba(255, 255, 255, 0.9);
+  position: absolute; left: 0; right: 0; top: var(--mo-top, 40%); z-index: 8; display: flex; justify-content: center; pointer-events: none; container-type: inline-size;
+  filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 22px rgba(255, 190, 90, 0.25));
+}
+.mo-rib--player, .mo-rib--set { --mo-bg: linear-gradient(180deg, color-mix(in srgb, var(--mo-c, #ffca7a) 72%, #fff), var(--mo-c, #ffca7a) 55%, color-mix(in srgb, var(--mo-c, #ffca7a) 78%, #000)); --mo-ink: #fff; }
+.mo-rib--final { --mo-bg: linear-gradient(180deg, #e8485c, #c21f39 55%, #8f1224); --mo-ink: #fff; --mo-kick: #ffe0e5; --mo-trim: #ffd27a; filter: drop-shadow(0 12px 20px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 26px rgba(229, 56, 79, 0.55)); }
+.mo-rib--six { --mo-bg: linear-gradient(180deg, #b6f7d2, #3ddc97 52%, #16a07a); --mo-ink: #04281b; filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 24px rgba(61, 220, 151, 0.5)); }
+.mo-rib--out { --mo-bg: linear-gradient(180deg, #46505d, #2a323c 60%, #1b2128); --mo-ink: #fff; --mo-kick: #ffc9d0; --mo-trim: rgba(255, 93, 115, 0.8); filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.55)); }
+
+.mo-rib__band {
+  position: relative; display: flex; align-items: center; justify-content: center; gap: 12px; box-sizing: border-box;
+  min-width: min(84%, 380px); max-width: min(96%, 640px); padding: 11px 38px 13px;
+  color: var(--mo-ink); background: var(--mo-bg); overflow: hidden; text-align: left;
+  clip-path: polygon(0 0, 100% 0, calc(100% - 16px) 50%, 100% 100%, 0 100%, 16px 50%);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.55), inset 0 -3px 0 rgba(0, 0, 0, 0.22);
+  will-change: transform, opacity;
+  animation: mo-rib-in 480ms var(--ease-spring) both, mo-rib-out 380ms var(--ease-in) calc(var(--mo-life, 1800ms) - 380ms) forwards;
+}
+/* a jagged pennant trim along the lower edge, like bunting on a festival street */
+.mo-rib__band::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 6px; pointer-events: none; opacity: 0.6;
+  background: linear-gradient(135deg, var(--mo-trim) 25%, transparent 25%) -6px 0 / 12px 12px, linear-gradient(225deg, var(--mo-trim) 25%, transparent 25%) -6px 0 / 12px 12px;
+}
+.mo-rib__shine {
+  position: absolute; inset: 0 auto 0 0; width: 40%; pointer-events: none; opacity: 0;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.6), transparent);
+  animation: mo-shine 760ms var(--ease-out) 300ms both;
+}
+.mo-rib__lead {
+  position: relative; flex: none; display: grid; place-items: center; width: 54px; height: 54px; border-radius: 50%; overflow: hidden;
+  background: rgba(255, 255, 255, 0.92); box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.85), 0 4px 10px rgba(0, 0, 0, 0.3);
+  animation: mo-pop 460ms var(--ease-spring) 160ms both;
+}
+.mo-rib__lead .hg-token { display: grid; place-items: center; }
+.mo-rib__lead .hg-token > * { border-radius: 50%; }
+.mo-rib__lead--icon { font-size: 28px; line-height: 1; }
+.mo-rib__text { position: relative; display: grid; gap: 1px; min-width: 0; animation: mo-text-in 420ms var(--ease-out) 140ms both; }
+.mo-rib__kicker { font-size: 11px; font-weight: 900; letter-spacing: 0.14em; text-transform: uppercase; color: var(--mo-kick); }
+.mo-rib__title {
+  font-family: var(--font-display); font-size: clamp(22px, 5.6vmin, 38px); font-weight: 900; line-height: 1.04; letter-spacing: -0.01em;
+  overflow-wrap: break-word; text-shadow: 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+.mo-rib--player .mo-rib__title, .mo-rib--set .mo-rib__title, .mo-rib--final .mo-rib__title, .mo-rib--out .mo-rib__title { text-shadow: 0 2px 3px rgba(0, 0, 0, 0.45); }
+.mo-rib--set[style*='#fff'] .mo-rib__title { text-shadow: none; }
+.mo-rib--final .mo-rib__title { animation: mo-beat 520ms var(--ease-std) 480ms 2; }
+.mo-rib__sub { font-size: 13px; font-weight: 700; line-height: 1.25; color: var(--mo-kick); }
+.mo-rib__badge {
+  position: relative; flex: none; align-self: center; padding: 6px 12px; border-radius: 999px; font-size: 14px; font-weight: 900; white-space: nowrap;
+  color: #3b2300; background: linear-gradient(180deg, #fff4cf, #ffd166); box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9), 0 3px 8px rgba(0, 0, 0, 0.3);
+  animation: mo-pop 420ms var(--ease-spring) 420ms both;
+}
+.mo-rib--out .mo-rib__badge {
+  padding: 4px 12px; border-radius: 6px; color: #ff5d73; background: transparent; letter-spacing: 0.14em; font-size: 15px;
+  box-shadow: inset 0 0 0 2px #ff5d73, inset 0 0 0 5px rgba(255, 93, 115, 0.0), 0 0 0 1px rgba(255, 93, 115, 0.3);
+  transform: rotate(-6deg); animation: mo-stamp 380ms var(--ease-spring) 380ms both;
+}
+.mo-rib.is-compact .mo-rib__band { min-width: 0; padding: 5px 26px 8px; gap: 9px; }
+.mo-rib.is-compact .mo-rib__lead { width: 34px; height: 34px; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85), 0 2px 6px rgba(0, 0, 0, 0.3); }
+.mo-rib.is-compact .mo-rib__title { font-size: clamp(15px, 3.2vmin, 20px); }
+.mo-rib.is-compact .mo-rib__kicker { display: none; }
+.mo-rib.is-compact .mo-rib__band::after { height: 4px; }
+
+@keyframes mo-rib-in { from { opacity: 0; transform: translateX(-108%) skewX(-10deg); } 70% { opacity: 1; } to { opacity: 1; transform: none; } }
+@keyframes mo-rib-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(108%) skewX(10deg); } }
+@keyframes mo-shine { 0% { opacity: 0; transform: translateX(-100%); } 25% { opacity: 1; } 100% { opacity: 0; transform: translateX(330%); } }
+@keyframes mo-pop { from { opacity: 0; transform: scale(0.4) rotate(-12deg); } to { opacity: 1; transform: none; } }
+@keyframes mo-text-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes mo-beat { 0%, 100% { transform: none; } 50% { transform: scale(1.05); } }
+@keyframes mo-stamp { 0% { opacity: 0; transform: rotate(-6deg) scale(2.6); } 60% { opacity: 1; transform: rotate(-6deg) scale(0.9); } 100% { opacity: 1; transform: rotate(-6deg) scale(1); } }
+
+/* the confetti / glints layer behind a ribbon (sits over the board, under the ribbon) */
+.mo-stage { position: absolute; inset: 0; z-index: 7; pointer-events: none; overflow: hidden; border-radius: 10px; }
+
+/* ============================================================ card reveal layers (structure + base faces: turn.css, art: eventCardArt.css) */
+.cr-root { position: fixed; inset: 0; z-index: 45; }
+.cr-root .cr-hit { animation: mo-card-in 480ms var(--ease-spring) both; will-change: transform, opacity; touch-action: manipulation; }
+.cr-root.is-leaving .cr-hit { animation: mo-card-out 400ms var(--ease-in) both; }
+.cr-root .cr-card__inner { animation: mo-flip 820ms var(--ease-out) 220ms both; }
+.cr-root .cr-card { perspective: 1100px; }
+.mo-card-shake { display: block; width: 100%; }
+.mo-card-tilt {
+  position: relative; display: block; width: 100%; transform-style: preserve-3d;
+  transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)); transition: transform var(--dur-2) var(--ease-out);
+}
+.mo-card-tilt.is-live { transition: transform 90ms linear; }
+.mo-card-glare {
+  position: absolute; inset: 0; border-radius: 18px; pointer-events: none; opacity: var(--gl, 0); transition: opacity var(--dur-2) var(--ease-out);
+  background: radial-gradient(circle at var(--gx, 50%) var(--gy, 30%), rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0) 52%);
+}
+.cr-root[data-kind='bad'] .mo-card-shake { animation: mo-shake 460ms var(--ease-std) 980ms both; }
+.mo-card-vig {
+  position: absolute; inset: 0; pointer-events: none; opacity: 0;
+  background: radial-gradient(ellipse at center, rgba(229, 56, 79, 0) 52%, rgba(229, 56, 79, 0.42) 100%);
+  animation: mo-vig 1300ms var(--ease-out) 860ms both;
+}
+.mo-card-glow {
+  position: absolute; left: 50%; top: 50%; width: min(120vmin, 760px); aspect-ratio: 1; margin: calc(min(120vmin, 760px) / -2) 0 0 calc(min(120vmin, 760px) / -2);
+  pointer-events: none; border-radius: 50%; opacity: 0;
+  background: radial-gradient(circle, rgba(255, 214, 120, 0.42), rgba(255, 214, 120, 0) 62%);
+  animation: mo-glow 1400ms var(--ease-out) 780ms both;
+}
+.mo-eff-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; margin-top: auto; padding-top: 4px; }
+.mo-eff-row .cr-front__tone { margin-top: 0; }
+.mo-eff {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 6px 14px; border-radius: 999px; line-height: 1.2;
+  font-size: 15px; font-weight: 900; letter-spacing: 0.01em; text-align: center; color: #fff; background: #12805c;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9), 0 4px 10px rgba(0, 0, 0, 0.28);
+  animation: mo-chip-in 520ms var(--ease-spring) 1050ms both;
+}
+.mo-eff[data-tone='down'] { background: #c21f39; }
+.mo-eff[data-tone='move'] { background: #5b4bd6; }
+.mo-eff[data-tone='snatch'] { color: #3b2300; background: linear-gradient(180deg, #ffe08a, #ffb100); }
+.mo-eff svg { width: 16px; height: 16px; flex: none; }
+.mo-eff-icon { font-style: normal; font-size: 13px; }
+
+@keyframes mo-card-in { from { opacity: 0; transform: translateY(64px) scale(0.5) rotate(-7deg); } 60% { opacity: 1; } to { opacity: 1; transform: none; } }
+@keyframes mo-card-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translate(var(--cr-dx, 0px), var(--cr-dy, -22px)) scale(var(--cr-s, 0.92)) rotate(var(--cr-r, 0deg)); }
+}
+@keyframes mo-flip {
+  0% { transform: rotateY(180deg) scale(1); animation-timing-function: cubic-bezier(0.3, 0, 0.5, 1); }
+  42% { transform: rotateY(78deg) scale(1.09); animation-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1); }
+  74% { transform: rotateY(-9deg) scale(1.05); animation-timing-function: ease-in-out; }
+  100% { transform: rotateY(0deg) scale(1); }
+}
+@keyframes mo-shake { 0%, 100% { transform: none; } 16% { transform: translateX(-9px) rotate(-1.2deg); } 34% { transform: translateX(8px) rotate(1deg); } 52% { transform: translateX(-5px); } 70% { transform: translateX(3px); } }
+@keyframes mo-vig { 0% { opacity: 0; } 30% { opacity: 1; } 100% { opacity: 0.35; } }
+@keyframes mo-glow { 0% { opacity: 0; transform: scale(0.6); } 40% { opacity: 1; } 100% { opacity: 0.55; transform: scale(1); } }
+@keyframes mo-chip-in { 0% { opacity: 0; transform: scale(0.5); } 60% { opacity: 1; transform: scale(1.12); } 100% { opacity: 1; transform: none; } }
+.cr-tap { animation: mo-text-in 400ms var(--ease-out) 1300ms both; }
+
+/* ============================================================ city news flash (EventBanner, in the board-centre panel) */
+.mo-news {
+  --ev-c: var(--gold); --ev-bg: #0d1a22;
+  position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; overflow: hidden; padding: 6px 10px 6px 8px;
+  border-radius: 12px; color: var(--text); border: 1px solid color-mix(in srgb, var(--ev-c) 55%, transparent);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--ev-c) 26%, var(--ev-bg)), var(--ev-bg) 62%);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35), inset 3px 0 0 var(--ev-c), 0 0 18px -4px color-mix(in srgb, var(--ev-c) 60%, transparent);
+  animation: mo-news-in 520ms var(--ease-spring) both;
+}
+.mo-news[data-tone='down'] { --ev-c: #ff7a8a; }
+.mo-news[data-tone='gift'] { --ev-c: #ffca7a; }
+.mo-news__flag {
+  flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px 3px 6px; border-radius: 6px; font-size: 10px; font-weight: 900; letter-spacing: 0.12em; text-transform: uppercase;
+  color: #fff; background: #c21f39; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+.mo-news__flag i { width: 7px; height: 7px; border-radius: 50%; background: #fff; animation: mo-live 1100ms var(--ease-std) 4; }
+.mo-news__emoji { flex: none; font-size: 24px; line-height: 1; animation: mo-wobble 760ms var(--ease-spring) 420ms both; }
+.mo-news__body { display: grid; gap: 1px; min-width: min(11em, 100%); flex: 1 1 11em; }
+.mo-news__title { font-family: var(--font-display); font-size: 14px; font-weight: 900; line-height: 1.15; color: #fff; overflow-wrap: break-word; word-break: normal; hyphens: manual; text-wrap: balance; }
+.mo-news__text { font-size: 12px; font-weight: 600; line-height: 1.3; color: var(--text-dim); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.mo-news__chips { flex: 0 1 auto; display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; margin-left: auto; max-width: 100%; }
+.mo-news__chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 4px 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; white-space: nowrap;
+  color: #fff; background: rgba(255, 255, 255, 0.1); border: 1px solid color-mix(in srgb, var(--gc, #fff) 70%, transparent);
+  animation: mo-pop 420ms var(--ease-spring) calc(380ms + var(--i, 0) * 90ms) both;
+}
+.mo-news__chip > i { width: 10px; height: 10px; border-radius: 3px; background: var(--gc, #fff); box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7); }
+.mo-news__chip.is-amount { padding-right: 10px; border-color: var(--gold); color: var(--gold); }
+.mo-news__mult {
+  padding: 1px 7px; border-radius: 999px; font-size: 12px; font-weight: 900; color: #04281b; background: #3ddc97;
+  animation: mo-beat 620ms var(--ease-std) 900ms 3;
+}
+.mo-news__mult[data-dir='down'] { color: #fff; background: #c21f39; }
+.mo-news::after {
+  content: ""; position: absolute; inset: 0 auto 0 0; width: 34%; pointer-events: none; opacity: 0;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.28), transparent); animation: mo-shine 900ms var(--ease-out) 360ms both;
+}
+@container (max-width: 420px) {
+  .mo-news__text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+}
+@keyframes mo-news-in { from { opacity: 0; transform: translateX(-26px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes mo-live { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+@keyframes mo-wobble { 0% { transform: scale(0.4) rotate(-20deg); opacity: 0; } 60% { transform: scale(1.15) rotate(8deg); opacity: 1; } 100% { transform: none; opacity: 1; } }
+
+/* ============================================================ set complete: toast for other players */
+.mo-toasts { position: absolute; z-index: 9; left: 50%; top: 11%; translate: -50% 0; width: max-content; max-width: calc(100% - 16px); margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; pointer-events: none; }
+.mo-toast {
+  display: flex; align-items: center; gap: 9px; padding: 6px 14px 6px 6px; border-radius: 999px; font-size: 13px; line-height: 18px; font-weight: 750; color: var(--text);
+  background: rgba(13, 26, 34, 0.96); border: 1px solid color-mix(in srgb, var(--sc, #fff) 60%, transparent);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45), 0 0 18px -3px color-mix(in srgb, var(--sc, #fff) 55%, transparent);
+  animation: mo-toast 4000ms var(--ease-out) both;
+}
+.mo-toast__sw { flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--sc); box-shadow: 0 0 0 2px #fff; display: grid; place-items: center; color: #1b1340; }
+.mo-toast__sw svg { width: 16px; height: 16px; }
+.mo-toast b { font-weight: 900; color: #fff; }
+.mo-toast em { font-style: normal; font-weight: 900; color: var(--gold); }
+@keyframes mo-toast {
+  0% { opacity: 0; transform: translateY(-14px) scale(0.92); }
+  9% { opacity: 1; transform: translateY(2px) scale(1.02); }
+  14% { transform: none; }
+  88% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(-8px); }
+}
+
+/* ============================================================ reduced motion: everything simply appears (and is removed on time) */
+@media (prefers-reduced-motion: reduce) {
+  .mo-rib *, .mo-rib, .mo-news, .mo-news *, .mo-toast, .cr-root *, .mo-eff { animation: none !important; transition: none !important; }
+  .mo-rib__shine, .mo-news::after, .mo-card-vig, .mo-card-glow { display: none; }
+}
+:root[data-motion='reduced'] .mo-rib *, :root[data-motion='reduced'] .mo-rib, :root[data-motion='reduced'] .mo-news, :root[data-motion='reduced'] .mo-news *, :root[data-motion='reduced'] .mo-toast,
+.mo-rib[data-rm], .mo-rib[data-rm] *, .hg-game[data-rm] .mo-news, .hg-game[data-rm] .mo-news *, .hg-game[data-rm] .mo-toast, .cr-root[data-rm] *, .cr-root[data-rm] .mo-eff { animation: none !important; transition: none !important; }
+:root[data-motion='reduced'] .mo-rib__shine, .mo-rib[data-rm] .mo-rib__shine, .hg-game[data-rm] .mo-news::after, :root[data-motion='reduced'] .mo-news::after,
+.cr-root[data-rm] .mo-card-vig, .cr-root[data-rm] .mo-card-glow { display: none; }
+
+/* the card back: a bigger deck emblem than the postcard default (eventCardArt.css) */
+.cr-root.cr-illustrated .cr-back__art { width: min(72%, 210px); filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.35)); }
+.mo-rib--set .mo-rib__lead { color: var(--mo-c); background: #fff; }
+.mo-rib--set .mo-rib__title, .mo-rib--out .mo-rib__title { font-size: clamp(20px, 4.4vmin, 32px); }
+.mo-rib--set .mo-rib__sub { font-size: 12.5px; }
+
+/* phones: a narrower band, so titles keep to one line and badges stay small */
+@media (max-width: 520px) {
+  .mo-rib__band { min-width: 94%; max-width: 98%; padding: 9px 26px 12px; gap: 9px; }
+  .mo-rib__lead { width: 44px; height: 44px; }
+  .mo-rib__kicker { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 10px; }
+  .mo-rib__title { font-size: clamp(18px, 5.4vw, 24px); }
+  .mo-rib--set .mo-rib__title, .mo-rib--out .mo-rib__title { font-size: clamp(17px, 5vw, 21px); }
+  .mo-rib--set .mo-rib__sub { display: none; }
+  .mo-rib__badge { padding: 4px 9px; font-size: 12px; }
+  .mo-rib--out .mo-rib__badge { padding: 3px 8px; font-size: 11.5px; letter-spacing: 0.08em; }
+  .mo-rib.is-compact .mo-rib__band { min-width: 0; padding: 5px 22px 8px; }
+}
+
+/* a small board (the 320px phone): the ribbon follows ITS container, not the viewport */
+@container (max-width: 340px) {
+  .mo-rib__band { flex-wrap: wrap; justify-content: center; min-width: 96%; padding: 6px 20px 11px; gap: 3px 8px; text-align: center; }
+  .mo-rib--set .mo-rib__lead, .mo-rib--out .mo-rib__lead { display: none; }
+  .mo-rib__lead { width: 36px; height: 36px; }
+  .mo-rib__text { min-width: 0; max-width: 100%; justify-items: center; }
+  .mo-rib__kicker, .mo-rib__sub { display: none; }
+  .mo-rib__title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; font-size: 17px; }
+  .mo-rib--set .mo-rib__title, .mo-rib--out .mo-rib__title { font-size: 16px; }
+  .mo-rib--final .mo-rib__title { font-size: 20px; }
+  .mo-rib--final .mo-rib__sub { display: block; font-size: 11px; }
+}

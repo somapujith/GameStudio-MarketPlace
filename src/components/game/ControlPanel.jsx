@@ -24,9 +24,11 @@ import Icon from './ui/Icon.jsx';
 import SceneStage from './SceneStage.jsx';
 import { sceneOf } from './sceneModel.js';
 import { activePlayer, previewRentSafe, tileAccent, useStateLike } from './ui/helpers.js';
+import { hintLine } from './ui/hudModel.js';
 import { TimerBar } from './turn/TurnTimer.jsx';
 import { cosmeticsOf } from './turn/room.js';
 import '@/styles/controlpanel.css';
+import '@/styles/cpPremium.css';
 
 export const TABS = [
   { id: 'buy', label: 'Play', icon: 'dice' },
@@ -194,6 +196,7 @@ function BuyPane({ session, landed, buying, onOpenTile }) {
       <div className="city-story-log"><LogList log={session.log || []} variant="center" /></div>
       {landed ? (
         <button
+          key={landed.tile.id}
           type="button"
           className={`cp-landed is-${landed.tone}${buying ? ' is-buying' : ''}`}
           style={{ '--tc': landed.color }}
@@ -259,6 +262,13 @@ function Status({ session, spec, player }) {
       <span className="cp-status__txt">{s.text}</span>
     </p>
   );
+}
+
+/** The small "what to do" line under the caption, in plain words. Remounts (and so fades in) whenever its words change. */
+function Todo({ session, spec, player }) {
+  const text = hintLine(session, spec, player && player.id !== session?.me ? player.name : '');
+  if (!text) return null;
+  return <p key={text} className="cp-todo">{text}</p>;
 }
 
 /** The faint glow of the turn player's colour in the middle of the mat; a new colour cross-fades in over the old one. */
@@ -331,6 +341,7 @@ export default function ControlPanel({ session, onOpenTile, onOpenTrade, actions
             </div>
             <div className="cp-hero__txt">
               <Status session={session} spec={spec} player={player} />
+              {docked ? null : <Todo session={session} spec={spec} player={player} />}
               {docked ? null : <TimerBar session={session} className="cp-timer" />}
             </div>
           </div>

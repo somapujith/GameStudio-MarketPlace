@@ -20,11 +20,11 @@ beforeEach(async () => {
 
 describe('settings', () => {
   it('has sound and motion defaults and merges patches', () => {
-    expect(S.loadSettings()).toEqual({ sfx: true, volume: 0.8, reducedMotion: false, theme: 'system', playbackSpeed: 1, haptics: true, boardCamera: 'auto' });
+    expect(S.loadSettings()).toEqual({ sfx: true, volume: 0.8, sfxVolume: 1, ambient: false, reducedMotion: false, theme: 'system', playbackSpeed: 1, haptics: true, boardCamera: 'auto', shakeToRoll: false });
     S.saveSettings({ volume: 5, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true });
-    expect(S.loadSettings()).toEqual({ sfx: true, volume: 1, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true, boardCamera: 'auto' });
+    expect(S.loadSettings()).toEqual({ sfx: true, volume: 1, sfxVolume: 1, ambient: false, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true, boardCamera: 'auto', shakeToRoll: false });
     S.saveSettings({ sfx: false, voice: true, subtitles: 'te', actors: { ntr: false } }); // unknown keys are dropped
-    expect(S.loadSettings()).toEqual({ sfx: false, volume: 1, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true, boardCamera: 'auto' });
+    expect(S.loadSettings()).toEqual({ sfx: false, volume: 1, sfxVolume: 1, ambient: false, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true, boardCamera: 'auto', shakeToRoll: false });
   });
 
   it('keeps the board camera mode (auto | manual | off) and falls back to auto for anything else', () => {
@@ -38,12 +38,19 @@ describe('settings', () => {
     expect(S.saveSettings({ boardCamera: 7 }).boardCamera).toBe('auto');
   });
 
+  it('keeps shake-to-roll off unless it is exactly true', () => {
+    expect(S.loadSettings().shakeToRoll).toBe(false);
+    expect(S.saveSettings({ shakeToRoll: true }).shakeToRoll).toBe(true);
+    expect(S.saveSettings({ sfx: false }).shakeToRoll).toBe(true); // other patches leave it alone
+    expect(S.saveSettings({ shakeToRoll: 'yes' }).shakeToRoll).toBe(false);
+  });
+
   it('loads settings saved by older builds (with voice, subtitle and actor keys) and ignores those keys', async () => {
     vi.resetModules();
     const m = stubLocalStorage();
     m.set('hyd.settings.v1', JSON.stringify({ sfx: false, voice: true, tts: false, volume: 0.3, subtitles: 'tn', reducedMotion: true, actors: { ntr: false } }));
     const O = await import('./storage.js');
-    expect(O.loadSettings()).toEqual({ sfx: false, volume: 0.3, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true, boardCamera: 'auto' });
+    expect(O.loadSettings()).toEqual({ sfx: false, volume: 0.3, sfxVolume: 1, ambient: false, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true, boardCamera: 'auto', shakeToRoll: false });
   });
 
   it('notifies subscribers and keeps a stable snapshot between changes', () => {

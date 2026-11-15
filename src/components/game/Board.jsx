@@ -5,7 +5,9 @@ import Tile, { eventMark } from './Tile.jsx';
 import Pawn from './Pawn.jsx';
 import CameraFocus from './fx/CameraFocus.jsx';
 import { oddsSupported, useOddsPref } from './oddsPref.js';
+import { TileTipLayer } from './board/TileTip.jsx';
 import '@/styles/board.css';
+import '@/styles/boardart.css';
 import '@/styles/fx.css';
 
 const NONE = [];
@@ -242,6 +244,7 @@ export function Board({ session, onTileClick, highlightTile = null, center = nul
                 );
               })}
             </div>
+            <TileTipLayer players={players} owners={owners} levels={levels} mortgaged={mortgaged} rentPct={rentPct} salary={salary} event={cityEvent} />
           </div>
         </div>
       </CameraFocus>

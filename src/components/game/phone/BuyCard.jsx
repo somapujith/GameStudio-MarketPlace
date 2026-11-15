@@ -12,10 +12,23 @@ import { formatINR, compactINR } from '@shared/format.js';
 import { BuildingArt } from '@/components/art/index.js';
 import { mixHex } from '../PropertySheet.jsx';
 import { sfx } from '@/lib/sfx.js';
+import { useClock } from '../turn/clock.js';
 
 const FOCUSABLE = 'button:not([disabled]),[href],input:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
-export default function BuyCard({ data, onBuy, onPass, onDismiss }) {
+/** "24s" in the corner of the card and a slim bar draining along its foot, only while MY clock runs (red at the warning). */
+function Countdown({ session }) {
+  const info = useClock(session);
+  if (!info || !info.mine) return null;
+  return (
+    <>
+      <span className={`bcard-count${info.warn ? ' is-warn' : ''}`} role="timer" aria-label="Time left to decide">{info.secs}s</span>
+      <span className={`bcard-bar${info.warn ? ' is-warn' : ''}`} aria-hidden="true"><i style={{ transform: `scaleX(${info.frac})` }} /></span>
+    </>
+  );
+}
+
+export default function BuyCard({ data, session = null, onBuy, onPass, onDismiss }) {
   const ref = useRef(null);
   const titleId = useId();
 
@@ -65,6 +78,7 @@ export default function BuyCard({ data, onBuy, onPass, onDismiss }) {
         <header className="bcard-head">
           <small>{data.collection}</small>
           <h2 id={titleId}>{data.name}</h2>
+          {session ? <Countdown session={session} /> : null}
         </header>
 
         <dl className="bcard-stats">
@@ -75,7 +89,7 @@ export default function BuyCard({ data, onBuy, onPass, onDismiss }) {
 
         <ul className="bcard-levels" aria-label="Rent by business">
           {data.levels.map((l) => (
-            <li key={l.level} aria-label={`${l.name}: rent ${formatINR(l.rent)}`}>
+            <li key={l.level} aria-label={`${l.name}: rent ${formatINR(l.rent)}`} style={{ '--i': l.level }}>
               <span className="bcard-levels__art" aria-hidden="true">
                 <BuildingArt theme={data.theme} group={data.group} level={l.level} color={data.color} size={56} slab={slab} />
               </span>
@@ -87,6 +101,10 @@ export default function BuyCard({ data, onBuy, onPass, onDismiss }) {
 
         <p className="bcard-cost">Each upgrade costs <b>{formatINR(data.upgradeCost)}</b></p>
         <p className="bcard-note">{data.passNote}</p>
+
+        {data.canBuy && data.cash != null ? (
+          <p className="bcard-afford">You can afford it · <b>{formatINR(data.left)}</b> left after buying</p>
+        ) : null}
 
         <div className="bcard-actions">
           <button type="button" className="bcard-btn bcard-pass" onClick={click(onPass)}>PASS</button>

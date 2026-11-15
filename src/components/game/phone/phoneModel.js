@@ -392,6 +392,8 @@ export function buyCardData(tile, { cash = 0, price = null, auction = true, canB
     auction,
     canBuy: afford,
     short: afford ? 0 : Math.max(0, cost - cash),
+    cash,
+    left: Math.max(0, cash - cost),
     passNote: auction ? 'Pass and it goes to a sealed auction' : 'Pass and the district stays with the city',
     reason: afford ? '' : `Need ${formatINR(Math.max(0, cost - cash))} more`,
   };
@@ -464,4 +466,84 @@ export function buyActions(spec) {
   }
   if (spec?.kind === 'skip') return { buy: null, skip: spec.primary?.action || null };
   return { buy: null, skip: null };
+}
+
+/* ------------------------------------------------------------------ night-market polish */
+
+/**
+ * A caption as a big headline plus a small detail line: "Your turn — roll!" -> { head: 'Your turn', detail: 'Roll!' }.
+ * Splits at " — ", after a "!" ("Six! Roll again"), before " to " in a rent line, and after "landed on"; anything else is all headline.
+ * `text` keeps the full sentence (the screen reader reads that, not the two halves).
+ */
+export function splitCaption(text) {
+  const full = String(text || '').trim();
+  const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+  const cut = (head, detail) => ({ head: head.trim(), detail: cap(detail.trim()), text: full });
+  let at = full.indexOf(' — ');
+  if (at > 0) return cut(full.slice(0, at), full.slice(at + 3));
+  at = full.indexOf('! ');
+  if (at > 0) return cut(full.slice(0, at + 1), full.slice(at + 2));
+  at = full.search(/ paid .* rent to /);
+  if (at >= 0) { const to = full.lastIndexOf(' to '); return cut(full.slice(0, to), `to ${full.slice(to + 4)}`); }
+  at = full.indexOf(' landed on ');
+  if (at > 0) return cut(`${full.slice(0, at)} landed on`, full.slice(at + 11));
+  if (/^Paid .* rent to /.test(full)) { const to = full.lastIndexOf(' to '); return cut(full.slice(0, to), `to ${full.slice(to + 4)}`); }
+  return { head: full, detail: '', text: full };
+}
+
+/** True when `ink` (a hex colour) is a light one: the tile text then gets a dark shadow instead of a light one. */
+export function isLightInk(ink) {
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(ink || '').trim());
+  if (!m) return false;
+  const h = m[1].length === 3 ? m[1].replace(/./g, '$&$&') : m[1];
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.55;
+}
+
+/**
+ * The little pips on an owned district: one per level up to `max`, lit up to `level`. `prev` (the level the pips showed before)
+ * marks the ones that just lit (`fresh`) so only they play the pop. -> [{ on, fresh }]
+ */
+export function pipStates(level, max, prev = null) {
+  const m = Math.max(1, max | 0);
+  const lvl = Math.max(0, Math.min(m, level | 0));
+  const before = prev == null ? lvl : Math.max(0, Math.min(m, prev | 0));
+  return Array.from({ length: m }, (_, i) => ({ on: i < lvl, fresh: i < lvl && i >= before }));
+}
+
+/**
+ * What the tile in play says about itself when the mover stops on it: { name, amount, kind }.
+ * kind 'price' (a district for sale), 'rent' (an owned one: the rent at its level), 'mortgaged' (no rent), 'fare' (a stop) or ''.
+ */
+export function calloutFor(tile, { owned = false, rent = 0, mortgaged = false } = {}) {
+  if (!tile) return null;
+  const name = String(tile.short || tile.name || '').toUpperCase();
+  if (tile.type === 'property') {
+    if (owned && mortgaged) return { name, amount: 'Mortgaged', kind: 'mortgaged' };
+    return owned ? { name, amount: compactINR(rent), kind: 'rent' } : { name, amount: compactINR(tile.price || 0), kind: 'price' };
+  }
+  if (tile.type === 'transport' && tile.fare != null) return { name, amount: compactINR(tile.fare), kind: 'fare' };
+  return { name, amount: '', kind: '' };
+}
+
+/**
+ * The way to the net worth target for the top bar's micro-bar: { mine, rival, hot, pct, sr } with mine / rival as 0..1 fractions
+ * (rival = the best OTHER player), or null when the table has no target or I am not playing. `worths` maps player id -> net worth.
+ */
+export function targetProgress({ worths, me, target, players = [] }) {
+  const t = Number(target);
+  if (!(t > 0) || !worths || me == null || !Number.isFinite(worths[me])) return null;
+  const frac = (w) => (Number.isFinite(w) && w > 0 ? Math.min(1, w / t) : 0);
+  const mine = frac(worths[me]);
+  let rival = 0;
+  let rivalName = '';
+  for (const p of players) {
+    if (p.id === me || p.bankrupt) continue;
+    const f = frac(worths[p.id]);
+    if (f > rival) { rival = f; rivalName = p.name; }
+  }
+  const pct = Math.floor(mine * 100 + 1e-9);
+  const hot = Math.max(mine, rival) >= 0.8;
+  const ahead = rival > mine ? `; ${rivalName} is ahead at ${Math.floor(rival * 100 + 1e-9)}%` : '';
+  return { mine, rival, hot, pct, sr: `You are at ${pct}% of the target${ahead}` };
 }

@@ -8,7 +8,7 @@ import SceneStage from '../SceneStage.jsx';
 import { useSettings } from '@/lib/storage.js';
 import { activePlayer } from '../ui/helpers.js';
 import { cosmeticsOf } from '../turn/room.js';
-import { captionFor, chipFor } from './phoneModel.js';
+import { captionFor, chipFor, splitCaption } from './phoneModel.js';
 
 /** How long an event caption ("You bought") stays before the status line comes back. */
 export const CAPTION_MS = 3200;
@@ -30,7 +30,19 @@ export function useCaption(session, spec) {
   return captionFor(session, spec, { fresh });
 }
 
-/** The caption line, cross-fading when its words change (the old line fades out while the new one fades in). */
+/** One caption line: a big headline over a small detail line. Screen readers get the whole sentence once (the two halves are hidden). */
+function Line({ caption, className, ...rest }) {
+  const { head, detail, text } = splitCaption(caption.text);
+  return (
+    <p className={className} data-detail={detail ? '' : undefined} {...rest}>
+      <span className="cp-sr">{text}</span>
+      <span className="pc-cap__h" aria-hidden="true">{head}</span>
+      {detail ? <span className="pc-cap__d" aria-hidden="true">{detail}</span> : null}
+    </p>
+  );
+}
+
+/** The caption, cross-fading when its words change (the old line fades out while the new one fades in). */
 function Caption({ caption }) {
   const [prev, setPrev] = useState(null);
   const last = useRef(caption);
@@ -43,8 +55,8 @@ function Caption({ caption }) {
   }, [caption]);
   return (
     <div className="pc-cap" role="status" aria-live="polite" aria-atomic="true">
-      {prev ? <p key={`o${prev.key}`} className={`pc-cap__l is-out is-${prev.tone}`} aria-hidden="true">{prev.text}</p> : null}
-      <p key={caption.key} className={`pc-cap__l is-in is-${caption.tone}`}>{caption.text}</p>
+      {prev ? <Line key={`o${prev.key}`} caption={prev} className={`pc-cap__l is-out is-${prev.tone}`} aria-hidden="true" /> : null}
+      <Line key={caption.key} caption={caption} className={`pc-cap__l is-in is-${caption.tone}`} />
     </div>
   );
 }

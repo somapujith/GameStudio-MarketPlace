@@ -1,19 +1,29 @@
 // The turn hand-off. Reads `session.handoff` ({ player, round, isFinal }, set by the presenter while a `turn` event
-// plays) or, without it, the displayed turn. Every hand-off is shown once:
-//   - my turn:      a short gold "Your turn" banner + sound `turn` + buzz('turn')
-//   - other turns:  a subtle name chip ("Ravi's turn")
-//   - the first hand-off of the final round adds a "Final round!" moment
+// plays) or, without it, the displayed turn. Every hand-off is shown once, as a festival ribbon (moments/MomentBanner):
+//   - my turn:      a sweeping gold "Your turn" ribbon with my avatar + sound `turn` + buzz('turn')
+//   - other turns:  a slim ribbon in their colour with their avatar ("Ravi's turn")
+//   - the first hand-off of the final round: a red "FINAL ROUND" fanfare ribbon with a burst of gold glints
+//   - a six: a green "Six! Roll again!" ribbon (mine) / "Six! Ravi rolls again" (others), once per six
 // It lives exactly as long as the presenter's hand-off (ANIM_MS.turn, ANIM_MS.finalRound for the final round, at the
 // playback speed) and goes as soon as `session.handoff` is cleared, so it never lingers into the next roll.
-// Purely visual (aria-hidden); the panel announces turns for screen readers.
+// Purely visual (aria-hidden); the panel announces turns for screen readers. Never takes a pointer event.
 import { useEffect, useRef, useState } from 'react';
 import { ANIM_MS } from '@shared/timing.js';
 import { sfx } from '@/lib/sfx.js';
 import { buzz } from '@/lib/haptics.js';
 import { useSettings } from '@/lib/storage.js';
 import { activePlayer } from '../ui/helpers.js';
+import PlayerToken from '../ui/PlayerToken.jsx';
+import MomentBanner from '../moments/MomentBanner.jsx';
+import Confetti from '../moments/Confetti.jsx';
+import { sixCopy, sixStep } from '../moments/momentsModel.js';
+import { GOLD_PALETTE } from '../moments/particles.js';
 import { roundBadgeInfo } from './RoundBadge.jsx';
 import '@/styles/turn.css';
+
+const SIX_MS = 1700;
+const SIX_SETTLE_MS = 180; // a six is announced once the roll has settled, never in the same frame the state arrives
+const GLINT_ORIGIN = [0.5, 0.45];
 
 /** The hand-off to show: the presenter's, else derived from the display. Pure; exported for tests. */
 export function currentHandoff(session) {
@@ -114,29 +124,75 @@ export default function TurnBanner({ session }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shown?.key, shown?.ms]);
 
+  // a six hands the same player another roll: announce it once the roll has settled (never on resume)
+  const extra = !!session?.view?.extraRoll;
+  const busy = !!session?.busy;
+  const armed = useRef(false);
+  const sixSeq = useRef(0);
+  const [six, setSix] = useState(null);
+  useEffect(() => {
+    const step = sixStep({ armed: armed.current, extraRoll: extra, busy });
+    armed.current = step.armed;
+    if (!step.show) return undefined;
+    const t = setTimeout(() => {
+      const who = activePlayer(session);
+      setSix({ key: ++sixSeq.current, mine: !!who && String(who.id) === me, name: who?.name, player: who });
+    }, SIX_SETTLE_MS);
+    return () => {
+      clearTimeout(t);
+      armed.current = true; // a cancelled announcement is still owed
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [extra, busy]);
+  useEffect(() => {
+    if (!six) return undefined;
+    const t = setTimeout(() => setSix((s) => (s && s.key === six.key ? null : s)), Math.round(SIX_MS / Math.max(0.75, speed)));
+    return () => clearTimeout(t);
+  }, [six?.key]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!shown && six) {
+    const c = sixCopy(six.mine, six.name);
+    return (
+      <MomentBanner
+        key={`six${six.key}`}
+        tone="six"
+        kicker={c.kicker}
+        title={`Six! ${c.title}`}
+        lead={six.player ? <PlayerToken player={six.player} size={46} ring={false} /> : <span className="mo-rib__lead--icon">🎲</span>}
+        life={SIX_MS}
+        top="38%"
+      />
+    );
+  }
   if (!shown) return null;
   const p = session.display?.players?.find((x) => String(x.id) === shown.player) || session.view?.players?.find((x) => String(x.id) === shown.player);
   const name = p?.name || 'Next player';
-  const color = p?.color || 'var(--gold)';
-  if (shown.mine || shown.final) {
+  const color = p?.color || '#ffca7a';
+  const lead = p ? <PlayerToken player={p} size={shown.mine || shown.final ? 46 : 30} ring={false} /> : null;
+  const life = shown.ms + 120;
+  const roundNo = Number(session.display?.round ?? session.view?.round) || null;
+  const maxRounds = Number(session.display?.cfg?.maxRounds ?? session.view?.cfg?.maxRounds) || 0;
+  const roundText = roundNo ? (maxRounds > 0 ? `Round ${roundNo} of ${maxRounds}` : `Round ${roundNo}`) : '';
+  if (shown.final) {
     return (
-      <div
-        key={shown.key}
-        className={`tb-banner${shown.mine ? ' is-mine' : ''}${shown.final ? ' is-final' : ''}`}
-        style={{ '--tb-life': `${shown.ms + 120}ms` }}
-        aria-hidden="true"
-      >
-        {shown.final ? <span className="tb-banner__final">Final round!</span> : null}
-        <span className="tb-banner__main" style={{ '--pc': color }}>
-          {shown.mine ? 'Your turn' : `${name}'s turn`}
-        </span>
-      </div>
+      <>
+        <MomentBanner
+          key={shown.key}
+          tone="final"
+          kicker={roundText || 'Last round'}
+          title="FINAL ROUND"
+          sub={shown.mine ? 'Your turn. Make it count!' : `${name}'s turn. Richest player wins`}
+          lead={lead}
+          life={life}
+        />
+        <div className="mo-stage" aria-hidden="true">
+          <Confetti key={`${shown.key}g`} kind="sparkle" count={26} origin={GLINT_ORIGIN} colors={GOLD_PALETTE} delay={260} />
+        </div>
+      </>
     );
   }
-  return (
-    <div key={shown.key} className="tb-chip" style={{ '--pc': color, '--tb-life': `${shown.ms + 120}ms` }} aria-hidden="true">
-      <i className="tb-chip__dot" />
-      <span>{name}&rsquo;s turn</span>
-    </div>
-  );
+  if (shown.mine) {
+    return <MomentBanner key={shown.key} tone="gold" kicker={roundText} title="Your turn" lead={lead} life={life} />;
+  }
+  return <MomentBanner key={shown.key} tone="player" color={color} title={`${name}\u2019s turn`} lead={lead} life={life} compact top="9%" />;
 }

@@ -1,9 +1,12 @@
 export { default as FxLayer } from './FxLayer.jsx';
+export { default as AttentionPulse } from './AttentionPulse.jsx';
+export { pulseTile, onPulse } from './pulse.js';
 export { default as CameraFocus, BoardCamera } from './CameraFocus.jsx';
 export { default as CameraHud } from './CameraHud.jsx';
 export * from './cameraMath.js';
 export { CAMERA, CAMERA_MODES, cameraDirective, cameraModeOf, createDirector, situationOf } from './cameraPolicy.js';
 export { BuildPop, OwnerStamp, OwnerChip, ChaiSteam, CardShimmer } from './TileFx.jsx';
 export { useBump } from './useBump.js';
-export { coinCount, arcPoints } from './coins.js';
+export { coinCount, coinTier, arcPoints } from './coins.js';
+export { reasonLabel, signedAmount, flightPlan, tileEffectsFor } from './fxModel.js';
 export * from './geometry.js';

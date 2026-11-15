@@ -117,5 +117,12 @@ export function useTurnAlerts(session, onWarn) {
     const state = session?.view ?? session?.display ?? null;
     try { cb.current?.(warnTextFor(state?.cfg ?? null, state)); } catch { /* optional */ }
   }, [warn, deadline]);
+  // the last 10 seconds of MY decision: a soft tick-tock that climbs as time runs out, a light buzz in the last 3
+  const secs = info?.mine && info.leftMs > 0 && !snatching ? info.secs : 0;
+  useEffect(() => {
+    if (!secs || secs > 10) return;
+    try { sfx.play('tick', { tock: secs % 2 === 0, urgency: 1 - secs / 10 }); } catch { /* optional */ }
+    if (secs <= 3) buzz('tick');
+  }, [secs, deadline]);
   return info;
 }

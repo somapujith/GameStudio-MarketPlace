@@ -4,6 +4,7 @@ import Pill from '../ui/Pill.jsx';
 import Icon from '../ui/Icon.jsx';
 import { roundInfo, useWorths } from '../ui/helpers.js';
 import { anyoneHot, targetBadge } from './target.js';
+import { leaderFraction } from '../ui/hudModel.js';
 import '@/styles/turn.css';
 
 /** Pure: what the badge says. -> { text, sr, pct|null, final, left|null } */
@@ -39,8 +40,9 @@ export default function RoundBadge({ session, showPills = true }) {
 /**
  * "First to ₹50L": the net worth target, next to the round badge. Goes gold once somebody is at 80% of it.
  * Renders nothing when the table has no target (old rooms). The words shrink to the icon + amount on narrow bars (CSS).
+ * `bar` adds a micro progress bar along the bottom edge: how far the leader is (desktop / tablet top bar).
  */
-export function TargetBadge({ session }) {
+export function TargetBadge({ session, bar = false }) {
   const { worths, state } = useWorths(session);
   const b = targetBadge(session?.display?.cfg || session?.view?.cfg);
   if (!b) return null;
@@ -52,6 +54,7 @@ export function TargetBadge({ session }) {
         <span className="tb-target__long">{b.text}</span>
         <span className="tb-target__short">{b.short}</span>
       </span>
+      {bar ? <i className="tb-target__bar" style={{ '--tp': leaderFraction(state.players, worths, b.target).toFixed(3) }} aria-hidden="true" /> : null}
     </span>
   );
 }

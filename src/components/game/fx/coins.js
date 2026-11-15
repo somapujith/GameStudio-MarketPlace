@@ -10,6 +10,22 @@ export function coinCount(amount) {
 }
 
 /**
+ * How a payment looks: `count` coins, a `tier` 0..3 (0 small change, 1 a normal payment, 2 big, 3 huge: the lead coin
+ * is larger and the trail longer) and `scale` for the lead coin.
+ */
+export function coinTier(amount) {
+  const a = Math.abs(Number(amount) || 0);
+  const count = coinCount(a);
+  const tier = a <= 0 ? 0 : a < 20000 ? 0 : a < 100000 ? 1 : a < 300000 ? 2 : 3;
+  return { count, tier, scale: [1, 1.1, 1.25, 1.45][tier] };
+}
+
+/** Full turns of flip spin for coin `i` of `n`: the lead coin spins most, each follower a touch less. */
+export function spinTurns(i, n) {
+  return 2 + (n > 1 ? (1 - i / (n - 1)) * 1.2 : 0.6);
+}
+
+/**
  * Points of a quadratic arc from `a` to `b` (viewport px), bowing upwards by `lift` (fraction of the distance,
  * at least 40px), as `[{x, y}]` with `steps + 1` entries. `bias` (-1..1) leans the apex sideways so the coins
  * of one flight fan into slightly different arcs.

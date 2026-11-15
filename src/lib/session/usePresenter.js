@@ -26,6 +26,8 @@ import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { ANIM_MS, LONG_TRIP, cardMs, eventMs } from '@shared/timing.js';
 import { BOARD_SIZE, MAX_LEVEL, TILES } from '@shared/board.js';
 import * as SFX from '../sfx.js';
+import { buzz } from '../haptics.js';
+import { DICE_BOUNCES } from '../soundscape/recipes.js';
 import { CARD_CLIPS, playCardClip } from '../cardClips.js';
 import { describeEvent } from '../messages.js';
 import { loadSettings } from '../storage.js';
@@ -182,7 +184,7 @@ export const clampSpeed = (v) => {
 };
 
 export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, deps } = {}) {
-  const D = { sfx: SFX.sfx, sfxNames: SFX.SFX_NAMES, playCardClip, describeEvent, loadSettings, ...(deps || {}) };
+  const D = { sfx: SFX.sfx, sfxNames: SFX.SFX_NAMES, buzz, playCardClip, describeEvent, loadSettings, ...(deps || {}) };
 
   let me = meId;
   let S = makeSnapshot(initialState);
@@ -279,12 +281,22 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
   }
 
   // ---- sound ----
-  const fx = (name, fallback) => {
+  // `opts` shape the sound (cash amount, dice faces, pawn step, deck...): see lib/soundscape/recipes.js
+  const fx = (name, fallback, opts) => {
     if (disposed || backedUp()) return;
     let n = name;
     if (fallback && Array.isArray(D.sfxNames) && !D.sfxNames.includes(name)) n = fallback;
     try {
-      D.sfx.play(n);
+      D.sfx.play(n, opts);
+    } catch {
+      /* ignore */
+    }
+  };
+  /** A short vibration for the local player's own moments (callers check it is them); never while catching up. */
+  const hp = (kind) => {
+    if (disposed || backedUp()) return;
+    try {
+      D.buzz(kind);
     } catch {
       /* ignore */
     }
@@ -294,7 +306,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
   function pushFlight(from, to, amount, reason) {
     if (disposed || backedUp() || !(amount > 0) || from === to) return;
     const ms = Math.round(Math.max(240, (ANIM_MS.rentOut + ANIM_MS.rentIn) * factor()));
-    const flight = { id: `fl${nextId()}`, from, to, amount, reason: reason || null, ms };
+    const flight = { id: `fl${nextId()}`, from, to, amount, reason: reason || null, ms, tile: Number.isInteger(S.stageTile) ? S.stageTile : null }; // `tile`: the square being played (rent toll sweep)
     commit({ flights: [...S.flights, flight] });
     const myEpoch = epoch;
     const t = setTimeout(() => {
@@ -350,7 +362,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
     if (!d) return null;
     const patch = {};
     if (log) {
-      const entry = { id: nextId(), text: d.text, tone: d.tone, icon: d.icon, player: playerOf(ev), tile: d.tile !== undefined ? d.tile : ev.tile };
+      const entry = { id: nextId(), text: d.text, tone: d.tone, icon: d.icon, player: playerOf(ev), tile: d.tile !== undefined ? d.tile : ev.tile, at: Date.now(), ev }; // `ev` + `at`: the activity feed and the tile effects classify by them
       const added = [entry];
       if (d.extra && d.extra.text) {
         added.push({ id: nextId(), text: d.extra.text, tone: d.extra.tone || 'info', icon: d.extra.icon, player: entry.player, tile: entry.tile });
@@ -382,9 +394,23 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
 
     switch (ev.type) {
       case 'dice': {
+        // `diceMs` = how long this tumble lasts (the Dice paces its throw and bounces by it); set before `rolling` flips
+        const tumbleMs = Math.round(dl('dice') * factor());
+        patchDisplay((d) => ({ ...d, diceMs: tumbleMs, ...(d.landing === null ? null : { landing: null }) }));
         commit({ rolling: true });
-        patchDisplay((d) => (d.landing === null ? d : { ...d, landing: null }));
-        fx('dice');
+        // the rattle and the table knocks follow the die's bounces (DICE_BOUNCES = diceMotion.BOUNCE_AT) over the same `tumbleMs`
+        fx('dice', undefined, { ms: tumbleMs, vol: byMe ? 1 : 0.8 });
+        if (byMe) {
+          hp('roll');
+          const myEpoch = epoch;
+          for (const b of DICE_BOUNCES) {
+            const id = setTimeout(() => {
+              flightTimers.delete(id);
+              if (epoch === myEpoch) hp('bounce');
+            }, Math.round(b * tumbleMs));
+            flightTimers.add(id);
+          }
+        }
         if (!(await wait(dl('dice')))) return false;
         const values = ev.values || [1];
         const assist = ev.assist || null;
@@ -393,6 +419,8 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
         patchDisplay((d) => ({ ...d, dice: [...values], diceSettleMs, assist, assistPlayer: assist ? ev.player : null }));
         commit({ rolling: false });
         announce(ev);
+        fx('diceLand', undefined, { values, vol: byMe ? 1 : 0.8 }); // the knock on the table, pitched by the faces
+        if (byMe) hp(values.some((x) => x === 6) ? 'six' : 'land');
         if (assist && byMe) fx('lucky');
         return wait(dl('afterDice'));
       }
@@ -421,13 +449,15 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
         // Long trips (a card can send you across the board) hop faster; a ride skims along faster still.
         const walkScale = Math.max(0.3, Math.min(1, LONG_TRIP / path.length));
         const stepScale = motion === 'ride' ? Math.max(0.3, walkScale * 0.55) : walkScale;
+        let hop = 0;
         for (const tile of path) {
           patchDisplay((d) => ({
             ...d,
             stepMs: Math.round(dl('step') * stepScale * factor()),
             players: d.players.map((p) => (p.id === ev.player ? { ...p, pos: tile, motion } : p)),
           }));
-          fx('step');
+          fx('step', undefined, { i: hop, n: path.length, vol: byMe ? 1 : 0.7 }); // the pitch climbs along the move
+          hop += 1;
           if (!(await wait(dl('step') * stepScale))) return false;
         }
         const p = playerById(ev.player);
@@ -441,6 +471,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
         commit({ stageTile: ev.tile });
         patchDisplay((d) => ({ ...d, landing: Number.isInteger(ev.tile) ? ev.tile : null }));
         announce(ev);
+        fx('land', undefined, { vol: byMe ? 1 : 0.6 }); // the pawn settles: a soft thud
         return wait(dl('land'));
       }
 
@@ -467,7 +498,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
           case 'rent':
           case 'card':
           case 'trade':
-            sound = delta >= 0 ? 'coin' : 'pay';
+            sound = delta >= 0 ? 'coin' : ev.reason === 'rent' ? 'rent' : 'pay';
             break;
           case 'tax':
           case 'fare':
@@ -478,7 +509,11 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
           default:
             break; // buy / upgrade / auction: own, level and auction_end make the sound
         }
-        if (sound) fx(sound);
+        if (sound) {
+          // the sum shapes the sound (one tick for a small amount, a cascade for a big one); other players' money is quieter
+          fx(sound, undefined, { amount: Math.abs(delta), vol: byMe ? 1 : 0.7 });
+          if (byMe) hp(delta >= 0 ? 'earn' : 'pay');
+        }
 
         if (ev.reason === 'rent') return wait(delta < 0 ? dl('rentOut') : dl('rentIn'));
         return wait(d ? dl('cash') : dl('quiet'));
@@ -494,7 +529,8 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
           levels: ev.owner === null || ev.owner === undefined ? setAt(d.levels, ev.tile, 0) : d.levels,
         }));
         if (ev.reason === 'buy' || ev.reason === 'auction') {
-          fx('buy');
+          fx('buy', undefined, { vol: ev.owner === me ? 1 : 0.75 });
+          if (ev.owner === me) hp('buy');
           return wait(dl('own'));
         }
         if (ev.reason === 'snatch') {
@@ -513,7 +549,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
         if (ev.reason === 'upgrade') {
           commit({ stageTile: ev.tile });
           const top = ev.level >= MAX_LEVEL;
-          fx(top ? 'hotel' : 'upgrade');
+          fx(top ? 'hotel' : 'upgrade', undefined, { level: ev.level });
           return wait(top ? dl('level') * 1.5 : dl('level'));
         }
         if (ev.reason === 'sell') {
@@ -600,7 +636,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
       case 'chai': {
         patchPlayer(ev.player, () => ({ chai: Math.max(0, Number(ev.chai) || 0) }));
         announce(ev);
-        fx(ev.change > 0 ? 'chai' : 'coin', ev.change > 0 ? 'lucky' : undefined);
+        fx('chai', undefined, { use: !(ev.change > 0) }); // poured when gained, a sip when spent
         return wait(dl('chai'));
       }
 
@@ -608,7 +644,8 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
         commit({
           card: { player: ev.player, deck: ev.deck === 'drama' ? 'drama' : 'luck', title: ev.title, text: ev.text, kind: ev.kind, cardId: ev.cardId, ...(ev.capped ? { capped: true } : null) },
         });
-        fx('card');
+        fx('card', undefined, { deck: ev.deck === 'drama' ? 'drama' : 'luck' }); // flip + the deck's own sting
+        if (byMe) hp('card');
         announce(ev);
         // A recorded clip for this card: the players who get paid hear it, the one who drew it does not.
         if (CARD_CLIPS[ev.cardId] && !byMe && !disposed && !backedUp()) {
@@ -628,7 +665,8 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
         // so this pause never delays or shortens it.
         commit({ stageTile: ev.tile });
         announce(ev);
-        fx(Array.isArray(ev.eligible) && ev.eligible.includes(me) ? 'lucky' : 'click');
+        // a player who may press hears the alarm + tick-tock from the pop-up itself (it runs in real time); the rest a soft tick
+        if (!(Array.isArray(ev.eligible) && ev.eligible.includes(me))) fx('click');
         return wait(dlOr('snatchOpen', 300));
       }
 
@@ -638,12 +676,14 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
           // the district changes hands on screen at once and flashes (the board reads `display.snatchMark`)
           patchDisplay((d) => ({ ...d, owners: setAt(d.owners, ev.tile, ev.winner), snatchMark: { tile: ev.tile, winner: ev.winner } }));
           announce(ev);
-          fx(ev.winner === me ? 'cheer' : ev.buyer === me ? 'error' : 'click');
+          fx(ev.winner === me ? 'snatchWin' : ev.buyer === me ? 'snatchLost' : 'click');
+          if (ev.winner === me) hp('snatchWin');
+          else if (ev.buyer === me) hp('snatchLost');
           return wait(dlOr('snatchEnd', 1800));
         }
         if (ev.outcome === 'bidding') {
           announce(ev);
-          fx('click');
+          fx('auction');
           return wait(dlOr('snatchEnd', 1800));
         }
         return wait(dl('quiet')); // nobody snatched: silence (describeEvent has no line for it)
@@ -667,28 +707,30 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
           event: copyEvent({ id: ev.id, title: ev.title, text: ev.text, kind: ev.kind, group: ev.group, groups: ev.groups, mult: ev.mult, amount: ev.amount, round: ev.round }),
         }));
         announce(ev);
-        fx((ev.mult != null && ev.mult < 1) || (ev.amount != null && ev.amount < 0) ? 'error' : 'card');
+        fx('announce', undefined, { bad: (ev.mult != null && ev.mult < 1) || (ev.amount != null && ev.amount < 0) });
         return wait(eventMs(ev));
       }
 
       case 'auction_start': {
         if (Number.isInteger(ev.tile)) commit({ stageTile: ev.tile });
         announce(ev);
-        fx('click');
+        fx('auction');
         return wait(dl('auctionStart'));
       }
 
       case 'auction_end': {
         announce(ev);
         const hasWinner = ev.winner !== null && ev.winner !== undefined;
-        fx(hasWinner ? 'buy' : 'click');
+        fx(hasWinner ? 'sold' : 'click'); // the hammer and "sold"; the `own` event that follows rings the till
+        if (hasWinner && ev.winner === me) hp('sold');
         return wait(dl('auctionEnd'));
       }
 
       case 'bankrupt': {
         patchPlayer(ev.player, () => ({ bankrupt: true, cash: 0, stuck: false, motion: null }));
         announce(ev);
-        fx(byMe ? 'lose' : 'error');
+        fx('bankrupt', undefined, { mine: byMe }); // the falling glide
+        if (byMe) hp('bankrupt');
         return wait(dl('bankrupt'));
       }
 
@@ -707,6 +749,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
           event: x.event && ev.round !== undefined && x.event.round !== ev.round ? null : x.event,
         }));
         commit({ handoff: { player: ev.player, round, isFinal } });
+        if (ev.player !== me) fx('turnOther'); // my own turn has its chime in the TurnBanner
         let ok;
         if (!d) {
           ok = await wait(dl('turn'));

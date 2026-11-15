@@ -106,7 +106,7 @@ export default function PhoneChatBar({ session }) {
         </div>
       ) : null}
 
-      <form className="pcb-bar" onSubmit={submit}>
+      <form className="pcb-bar" onSubmit={submit} data-typing={text.trim() ? '' : undefined}>
         <button type="button" className="pcb-btn" onClick={() => toggle('history')} aria-label="Chat messages" aria-expanded={panel === 'history'}>
           <Icon name="chat" size={24} />
           {unread > 0 ? <i className="pcb-dot" aria-hidden="true" /> : null}

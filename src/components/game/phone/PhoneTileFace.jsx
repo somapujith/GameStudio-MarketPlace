@@ -5,12 +5,13 @@
 //   card       light tile: the deck's card art with LUCK / DRAMA
 //   corner     light tile: the icon on top, a grey pill label under it (START, TRAFFIC, CHAI ADDA, MUNICIPAL, AUCTION)
 // Sizes come from board.css's --hb-u (one edge tile) in phoneboard.css; the long capitals shrink with --chars.
+import { useRef } from 'react';
 import { compactINR } from '@shared/format.js';
 import { MAX_LEVEL } from '@shared/board.js';
 import { TileIcon } from '@/components/art/index.js';
 import { ChaiSteam, CardShimmer } from '../fx/TileFx.jsx';
 import { bestInk } from '../PropertySheet.jsx';
-import { faceKind, faceLabel, faceName, faceTones } from './phoneModel.js';
+import { calloutFor, faceKind, faceLabel, faceName, faceTones, isLightInk, pipStates } from './phoneModel.js';
 
 const ArrowUp = () => (
   <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true" className="pt__arrow">
@@ -18,17 +19,49 @@ const ArrowUp = () => (
   </svg>
 );
 
-/** Upgrade pips along the foot of an owned district: one little building per level, lit up to the current level. */
+/**
+ * Upgrade pips along the foot of an owned district: one little building per level, each a step taller, lit up to the current
+ * level. A pip that lights because the level just went up pops (is-new); the first render never pops.
+ */
 function Pips({ level }) {
   const max = Math.max(1, MAX_LEVEL | 0);
+  const before = useRef(level);
+  const states = pipStates(level, max, before.current);
+  before.current = level;
   return (
     <span className="pt__pips" aria-hidden="true">
-      {Array.from({ length: max }, (_, i) => <i key={i} className={i < level ? 'is-on' : undefined} />)}
+      {states.map((p, i) => <i key={i} className={p.fresh ? 'is-on is-new' : p.on ? 'is-on' : undefined} />)}
     </span>
   );
 }
 
-export default function PhoneTileFace({
+/** The tile in play names itself for a moment (CSS timing: it waits out a walking step, pops, holds, fades). */
+function Callout({ tile, owned, rent, mortgaged, ownerColor }) {
+  const c = calloutFor(tile, { owned, rent, mortgaged });
+  if (!c) return null;
+  return (
+    <span className="pt__call" aria-hidden="true">
+      <b>{c.name}</b>
+      {c.amount ? (
+        <i className={c.kind === 'rent' || c.kind === 'mortgaged' ? 'is-owned' : undefined}>
+          {owned && ownerColor ? <u style={{ background: ownerColor }} /> : null}
+          {c.kind === 'rent' ? `Rent ${c.amount}` : c.amount}
+        </i>
+      ) : null}
+    </span>
+  );
+}
+
+export default function PhoneTileFace({ active = false, ...props }) {
+  return (
+    <>
+      <Face {...props} />
+      {active ? <Callout tile={props.tile} owned={props.owned} rent={props.rent} mortgaged={props.mortgaged} ownerColor={props.ownerColor} /> : null}
+    </>
+  );
+}
+
+function Face({
   tile, group, owned = false, ownerColor = null, level = 0, rent = 0, mortgaged = false, stuck = 0, chai = 0, drawing = false,
 }) {
   const kind = faceKind(tile);
@@ -42,7 +75,7 @@ export default function PhoneTileFace({
       style['--tag-ink'] = bestInk(ownerColor);
     }
     return (
-      <span className="pt pt--prop" style={style} data-owned={owned ? '' : undefined}>
+      <span className="pt pt--prop" style={style} data-owned={owned && ownerColor && !mortgaged ? '' : undefined} data-ink={isLightInk(tones.ink) ? 'light' : 'dark'}>
         <span className="pt__band">
           {owned && ownerColor && !mortgaged ? (
             <b className="pt__tag">{compactINR(rent)}</b>

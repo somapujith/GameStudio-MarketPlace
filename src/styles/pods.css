@@ -29,7 +29,7 @@
   min-height: 44px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  grid-template-areas: 'ava who' 'cash cash';
+  grid-template-areas: 'ava who' 'cash cash' 'empire empire';
   align-items: center;
   gap: 6px 10px;
   padding: 10px 12px 10px 14px;
@@ -137,7 +137,7 @@
 .hg-pod.is-out .hg-pod__name b { text-decoration: line-through; }
 
 /* ---------- net worth target: a slim progress bar + percentage under the cash ---------- */
-.hg-pod.has-goal .hg-pod__btn { grid-template-areas: 'ava who' 'cash cash' 'goal goal'; }
+.hg-pod.has-goal .hg-pod__btn { grid-template-areas: 'ava who' 'cash cash' 'empire empire' 'goal goal'; }
 .hg-pod__goal { grid-area: goal; display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 2px; }
 .hg-pod__goalbar { position: relative; flex: 1 1 auto; min-width: 0; height: 5px; border-radius: 999px; overflow: hidden; background: rgba(255, 255, 255, 0.13); }
 .hg-pod__goalbar i {
@@ -163,9 +163,9 @@
 
 /* ---------- rows above / below the board (phones and tablets): compact pods ---------- */
 @media (max-width: 959px) {
-  .hg-pod.has-goal .hg-pod__btn { grid-template-areas: 'ava who' 'ava cash' 'goal goal'; }
+  .hg-pod.has-goal .hg-pod__btn { grid-template-areas: 'ava who' 'ava cash' 'empire empire' 'goal goal'; }
   .hg-pod__btn {
-    grid-template-areas: 'ava who' 'ava cash';
+    grid-template-areas: 'ava who' 'ava cash' 'empire empire';
     gap: 0 8px;
     padding: 7px 10px 7px 14px;
     border-radius: 16px;
@@ -180,8 +180,8 @@
   .hg-pod__title { display: none; }
   .hg-pod__amt { font-size: calc(18px * var(--fit, 1)); font-size: calc(clamp(15px, 11cqi, 20px) * var(--fit, 1)); }
   /* you (tablets): avatar + name on the left, the big figure on the right: a wallet bar, not a tall card */
-  .hg-pod.is-me .hg-pod__btn { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: 'ava who cash'; gap: 0 12px; padding-block: 8px; }
-  .hg-pod.is-me.has-goal .hg-pod__btn { grid-template-areas: 'ava who cash' 'goal goal goal'; row-gap: 4px; }
+  .hg-pod.is-me .hg-pod__btn { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: 'ava who cash' 'empire empire empire'; gap: 0 12px; padding-block: 8px; }
+  .hg-pod.is-me.has-goal .hg-pod__btn { grid-template-areas: 'ava who cash' 'empire empire empire' 'goal goal goal'; row-gap: 4px; }
   .hg-pod.is-me .hg-pod__cash { align-items: flex-end; text-align: right; }
   .hg-pod.is-me .hg-pod__amt { font-size: calc(26px * var(--fit, 1)); font-size: calc(clamp(24px, 6cqi, 34px) * var(--fit, 1)); }
   .hg-pod.is-me .hg-pod__name { font-size: 14px; }

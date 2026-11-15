@@ -503,8 +503,8 @@ describe('GameOverModal', () => {
     expect(out).toContain('Most rides');
     expect(out).toContain('You · 4 rides');
     expect(out).toContain('Chai saves');
-    expect(out).toContain('Play again');
-    expect(out).toContain('Home');
+    expect(out).toContain('Rematch');
+    expect(out).toContain('Back to lobby');
   });
 
   it('celebrates the winner', () => {

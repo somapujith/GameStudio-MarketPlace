@@ -1,0 +1,574 @@
+/* ==========================================================================
+   Hyderabad Hustle board, "night-market festival" polish for desktop and tablet boards.
+   Loaded after board.css (Board.jsx). Tile FACE changes are scoped to boards wider than the phone board
+   (`@container (min-width: 521px)`), so the narrow-board faces in board.css / phoneboard.css are untouched.
+   The tooltip card, the building site effects and the pawn extras work at any size.
+
+   Motion language: anticipation -> action -> settle, spring easing from tokens.css. Transform / opacity only,
+   one-shot where it can be; looping effects are single opacity / transform loops on their own layer.
+   Reduced motion: collapsed at the bottom (`prefers-reduced-motion`, `:root[data-motion='reduced']`,
+   `.hg-game[data-rm]`).
+   ========================================================================== */
+
+/* ---- tile faces (boards wider than a phone) ---------------------------------- */
+
+.hb-board {
+  /* fine paper grain, painted once per tile (static) */
+  --hb-grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96'><filter id='n' x='0' y='0' width='100%25' height='100%25'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' seed='7' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .36  0 0 0 0 .25  0 0 0 0 .13  .5 0 0 0 -.13'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+}
+
+@container (min-width: 521px) {
+  /* sandstone cards: grain, a soft top-left sheen, a warm shade at the foot, an embossed edge */
+  .hb-tile--property,
+  .hb-tile--transport,
+  .hb-tile--auction,
+  .hb-tile--start,
+  .hb-tile--chai,
+  .hb-tile--municipal {
+    background:
+      var(--hb-grain) 0 0 / 96px 96px,
+      linear-gradient(158deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 48%),
+      linear-gradient(0deg, rgba(122, 84, 38, 0.13) 0%, rgba(122, 84, 38, 0) 42%),
+      var(--paper);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.7),
+      inset 0 0 0 1px rgba(70, 44, 18, 0.18),
+      inset 0 calc(var(--hb-u) * -0.05) 0 rgba(70, 44, 18, 0.15);
+  }
+  .hb-tile--card { background-image: var(--hb-grain), linear-gradient(158deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0) 50%); background-size: 96px 96px, auto; }
+
+  /* collection band: a glossy jewel-coloured strip with the jali lattice and a bevel */
+  .hb-tile__band:not(.hb-tile__band--route) {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0) 46%, rgba(20, 10, 40, 0.2) 100%),
+      repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.17) 0 1px, transparent 1px calc(var(--hb-u) * 0.12)),
+      repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.17) 0 1px, transparent 1px calc(var(--hb-u) * 0.12)),
+      var(--g, #8a7a66);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22), inset 0 -2px 3px rgba(20, 10, 40, 0.18);
+  }
+  .hb-tile.is-mortgaged .hb-tile__band { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15); }
+  .hb-tile__band--route { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25), inset 0 -2px 3px rgba(20, 10, 40, 0.2); }
+
+  /* type: letterpress names, tabular prices */
+  .hb-tile__name {
+    font-weight: 800;
+    letter-spacing: -0.012em;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
+  }
+  .hb-tile__price { font-weight: 800; letter-spacing: -0.01em; }
+  /* an owned tile prints its RENT: a pill in the owner's tint, struck through while mortgaged */
+  .hb-tile__price.is-rent {
+    padding: calc(var(--hb-u) * 0.015) calc(var(--hb-u) * 0.07);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--o) 24%, #fffaf0);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--o) 65%, transparent);
+  }
+  .hb-tile.is-owned .hb-tile__price.is-rent { color: var(--hb-ink); }
+  .hb-tile.is-mortgaged .hb-tile__price.is-rent { background: rgba(255, 255, 255, 0.45); box-shadow: inset 0 0 0 1px rgba(60, 50, 40, 0.3); color: #5c564d; text-decoration: line-through; text-decoration-thickness: 1px; }
+
+  /* ownership: festival bunting along the OUTER edge in the owner's colour (a string + a row of pennants) */
+  .hb-tile__own {
+    --bw: calc(var(--hb-u) * 0.25);
+    --bh: calc(var(--hb-u) * 0.11);
+    --bs: calc(var(--hb-u) * 0.04);
+    background-color: transparent;
+    filter: none;
+  }
+  .hb-side--bottom > .hb-tile__own {
+    height: calc(var(--bh) + var(--bs));
+    background:
+      linear-gradient(var(--o), var(--o)) 0 100% / 100% var(--bs) no-repeat,
+      conic-gradient(from 135deg at 50% 0, var(--o) 90deg, transparent 0) 0 0 / var(--bw) var(--bh) repeat-x;
+  }
+  .hb-side--top > .hb-tile__own {
+    height: calc(var(--bh) + var(--bs));
+    background:
+      linear-gradient(var(--o), var(--o)) 0 0 / 100% var(--bs) no-repeat,
+      conic-gradient(from -45deg at 50% 100%, var(--o) 90deg, transparent 0) 0 100% / var(--bw) var(--bh) repeat-x;
+  }
+  .hb-side--left > .hb-tile__own {
+    width: calc(var(--bh) + var(--bs));
+    background:
+      linear-gradient(var(--o), var(--o)) 0 0 / var(--bs) 100% no-repeat,
+      conic-gradient(from 225deg at 100% 50%, var(--o) 90deg, transparent 0) 100% 0 / var(--bh) var(--bw) repeat-y;
+  }
+  .hb-side--right > .hb-tile__own {
+    width: calc(var(--bh) + var(--bs));
+    background:
+      linear-gradient(var(--o), var(--o)) 100% 0 / var(--bs) 100% no-repeat,
+      conic-gradient(from 45deg at 0 50%, var(--o) 90deg, transparent 0) 0 0 / var(--bh) var(--bw) repeat-y;
+  }
+  /* the owner's piece chip: a little glossy medallion */
+  .hb-tile__chip {
+    background: radial-gradient(circle at 34% 26%, #fff 0%, #fff6e2 55%, #f0dfbd 100%);
+    box-shadow: 0 0 0 max(calc(var(--hb-u) * 0.03), 1px) var(--o), 0 calc(var(--hb-u) * 0.03) calc(var(--hb-u) * 0.05) rgba(0, 0, 0, 0.35);
+  }
+
+  /* a complete collection: owner ring + a gold edge, a medallion with a gold rim */
+  .hb-tile.is-set:not(.is-max) {
+    box-shadow:
+      inset 0 0 0 max(calc(var(--hb-u) * 0.06), 2px) var(--o),
+      inset 0 0 0 max(calc(var(--hb-u) * 0.09), 3px) rgba(255, 214, 120, 0.9),
+      inset 0 calc(var(--hb-u) * -0.04) 0 rgba(70, 44, 18, 0.12);
+  }
+  .hb-tile.is-set .hb-tile__chip {
+    box-shadow: 0 0 0 max(calc(var(--hb-u) * 0.03), 1px) var(--o), 0 0 0 max(calc(var(--hb-u) * 0.06), 2px) #ffd36b, 0 calc(var(--hb-u) * 0.03) calc(var(--hb-u) * 0.06) rgba(0, 0, 0, 0.4);
+  }
+  /* the moment a set completes: one gold sweep across the tile */
+  .hb-tile__shine {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    background: linear-gradient(105deg, transparent 32%, rgba(255, 244, 190, 0.85) 50%, transparent 68%);
+    opacity: 0;
+    animation: hb-shine 1100ms var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1)) 120ms both;
+  }
+
+  /* top level: a gold star on the business */
+  .hb-tile.is-max .hb-tile__bldg::after {
+    content: '\2605';
+    position: absolute;
+    right: 0;
+    top: 0;
+    z-index: 2;
+    color: #ffd36b;
+    font-size: max(calc(var(--hb-u) * 0.22), 7px);
+    line-height: 1;
+    text-shadow: 0 1px 1px rgba(40, 20, 0, 0.55), 0 0 4px rgba(255, 211, 107, 0.7);
+    pointer-events: none;
+  }
+
+  /* mortgaged: a heavier hatch and a duller face (still static) */
+  .hb-tile.is-mortgaged::before {
+    background:
+      repeating-linear-gradient(135deg, transparent 0 calc(var(--hb-u) * 0.1), rgba(42, 29, 18, 0.2) calc(var(--hb-u) * 0.1) calc(var(--hb-u) * 0.15)),
+      linear-gradient(rgba(70, 64, 56, 0.1), rgba(70, 64, 56, 0.1));
+  }
+  .hb-tile.is-mortgaged .hb-tile__body { opacity: 0.82; }
+
+  /* corners: big, lit illustrations on their own stage */
+  .hb-tile--corner { padding: calc(var(--hb-u) * 0.08) calc(var(--hb-u) * 0.06); }
+  .hb-tile--corner .hb-tile__icon--corner { transform: scale(1.1); transform-origin: 50% 55%; }
+  .hb-tile--start {
+    background:
+      radial-gradient(circle at 50% 40%, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0) 58%),
+      repeating-conic-gradient(from 0deg at 50% 40%, rgba(23, 153, 91, 0.12) 0 7deg, transparent 7deg 14deg),
+      var(--hb-grain) 0 0 / 96px 96px,
+      linear-gradient(180deg, #e6f8e8, #b9e3c2);
+  }
+  .hb-tile--chai {
+    background:
+      radial-gradient(circle at 50% 40%, rgba(255, 244, 222, 0.9) 0%, rgba(255, 244, 222, 0) 58%),
+      repeating-conic-gradient(from 0deg at 50% 40%, rgba(181, 81, 43, 0.1) 0 7deg, transparent 7deg 14deg),
+      var(--hb-grain) 0 0 / 96px 96px,
+      linear-gradient(180deg, #fbe7cb, #efc99c);
+  }
+  .hb-tile--municipal {
+    background:
+      radial-gradient(circle at 50% 40%, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0) 58%),
+      repeating-conic-gradient(from 0deg at 50% 40%, rgba(52, 84, 138, 0.1) 0 7deg, transparent 7deg 14deg),
+      var(--hb-grain) 0 0 / 96px 96px,
+      linear-gradient(180deg, #e8eef8, #c3d1e8);
+  }
+  /* Traffic Jam: hazard tape top and bottom over the night-road face */
+  .hb-tile--traffic {
+    background:
+      repeating-linear-gradient(135deg, #f5b50a 0 calc(var(--hb-u) * 0.1), #2a2410 calc(var(--hb-u) * 0.1) calc(var(--hb-u) * 0.2)) 0 0 / 100% calc(var(--hb-u) * 0.07) no-repeat,
+      repeating-linear-gradient(135deg, #f5b50a 0 calc(var(--hb-u) * 0.1), #2a2410 calc(var(--hb-u) * 0.1) calc(var(--hb-u) * 0.2)) 0 100% / 100% calc(var(--hb-u) * 0.07) no-repeat,
+      radial-gradient(circle at 50% 40%, rgba(255, 160, 30, 0.28) 0%, rgba(255, 160, 30, 0) 60%),
+      repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.16) 0 calc(var(--hb-u) * 0.1), transparent calc(var(--hb-u) * 0.1) calc(var(--hb-u) * 0.2)) 0 76% / 100% 9% no-repeat,
+      var(--paper);
+  }
+  .hb-tile--start .hb-pill,
+  .hb-tile--chai .hb-pill,
+  .hb-tile--municipal .hb-pill,
+  .hb-tile--traffic .hb-pill { box-shadow: 0 calc(var(--hb-u) * 0.03) 0 rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+
+  /* card squares: an embossed deck back */
+  .hb-tile__card { box-shadow: inset 0 0 0 max(calc(var(--hb-u) * 0.03), 1px) rgba(255, 247, 230, 0.85), inset 0 calc(var(--hb-u) * 0.05) calc(var(--hb-u) * 0.06) rgba(255, 255, 255, 0.25), 0 calc(var(--hb-u) * 0.03) calc(var(--hb-u) * 0.08) rgba(40, 20, 0, 0.3); }
+
+  /* the tile in play: a soft gold ring that breathes, no hard edge */
+  .hb-tile.is-active::after {
+    background: radial-gradient(ellipse at 50% 55%, rgba(255, 224, 140, 0.55) 0%, rgba(255, 170, 60, 0.16) 58%, transparent 82%);
+    box-shadow: inset 0 0 0 max(calc(var(--hb-u) * 0.05), 2px) var(--hb-lantern), inset 0 0 calc(var(--hb-u) * 0.16) rgba(255, 190, 70, 0.55);
+  }
+}
+
+/* ---- the business on a plot: construct / demolish ------------------------------- */
+
+.hb-site { position: relative; }
+.hb-site__art {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  transform-origin: 50% 100%;
+}
+.hb-site__art.is-rise { animation: hb-rise 1000ms var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1)) both; }
+.hb-site__art.is-drop { animation: hb-drop 700ms var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1)) both; }
+
+.hb-site__fx { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.hb-tile__bldg .hb-site__scaffold {
+  position: absolute;
+  left: -6% !important;
+  bottom: 0;
+  width: 112% !important;
+  height: 100% !important;
+  max-width: none !important;
+  aspect-ratio: auto !important;
+  fill: none;
+  stroke: #c47a1d;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  transform-origin: 50% 100%;
+  animation: hb-scaffold 1000ms var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+.hb-site__scaffold path { vector-effect: non-scaling-stroke; }
+.hb-site__scaffold .is-brace { stroke: #e9a64a; stroke-width: 1; opacity: 0.9; }
+.hb-site__scaffold .is-top { stroke: #c47a1d; }
+
+.hb-site__puff {
+  --px: 0;
+  position: absolute;
+  bottom: 0;
+  left: 33%;
+  width: 34%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 240, 205, 0.95) 0%, rgba(255, 214, 150, 0) 70%);
+  opacity: 0;
+  animation: hb-puff 780ms ease-out 420ms both;
+}
+.hb-site__puff--a { --px: -90%; left: 6%; }
+.hb-site__puff--b { --px: 90%; left: 60%; animation-delay: 480ms; }
+.hb-site__puff--c { --px: 0%; width: 40%; left: 30%; animation-delay: 540ms; }
+.hb-site__fx.is-down .hb-site__puff {
+  width: 46%;
+  background: radial-gradient(circle, rgba(222, 208, 188, 0.95) 0%, rgba(190, 170, 140, 0) 70%);
+  animation-delay: 160ms;
+}
+.hb-site__fx.is-down .hb-site__puff--b { animation-delay: 210ms; }
+.hb-site__fx.is-down .hb-site__puff--c { animation-delay: 260ms; }
+
+.hb-site__chip {
+  --cx: 0;
+  --cy: -90%;
+  position: absolute;
+  bottom: 8%;
+  left: 48%;
+  width: 11%;
+  aspect-ratio: 1;
+  background: #b9855a;
+  border-radius: 2px;
+  opacity: 0;
+  animation: hb-chip 700ms var(--ease-out, cubic-bezier(0.22, 1, 0.36, 1)) 180ms both;
+}
+.hb-site__chip--a { --cx: -260%; --cy: -230%; }
+.hb-site__chip--b { --cx: 240%; --cy: -280%; background: #e0b07a; animation-delay: 220ms; }
+.hb-site__chip--c { --cx: 30%; --cy: -330%; background: #8a6040; animation-delay: 200ms; }
+
+.hb-site__tag {
+  position: absolute;
+  left: 50%;
+  top: 2%;
+  z-index: 3;
+  padding: calc(var(--hb-u) * 0.02) calc(var(--hb-u) * 0.08);
+  border-radius: 999px;
+  font-size: max(calc(var(--hb-u) * 0.14), 7px);
+  font-weight: 800;
+  line-height: 1.15;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85), 0 2px 4px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  animation: hb-tag 1700ms var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)) 520ms both;
+}
+.hb-site__tag.is-up { background: linear-gradient(#ffe28a, #ffb938); color: #3a2200; }
+.hb-site__tag.is-down { background: #3b3a52; color: #fff; animation-delay: 200ms; }
+
+@keyframes hb-rise {
+  0%, 16% { transform: scale(0.7, 0.04); opacity: 0; }
+  40% { transform: scale(0.92, 0.6); opacity: 1; }
+  62% { transform: scale(1.08, 1.12); }
+  82% { transform: scale(0.97, 0.96); }
+  100% { transform: scale(1, 1); opacity: 1; }
+}
+@keyframes hb-drop {
+  0% { transform: translateY(-45%) scale(0.9, 1.15); opacity: 0; }
+  30% { transform: translateY(0) scale(1.2, 0.76); opacity: 1; }
+  52% { transform: scale(0.95, 1.1); }
+  76% { transform: scale(1.03, 0.97); }
+  100% { transform: scale(1, 1); opacity: 1; }
+}
+@keyframes hb-scaffold {
+  0% { transform: scale(1, 0); opacity: 1; }
+  18% { transform: scale(1, 1); opacity: 1; }
+  60% { transform: scale(1, 1); opacity: 1; }
+  90% { transform: scale(1.04, 1.04); opacity: 0; }
+  100% { transform: scale(1.04, 1.04); opacity: 0; }
+}
+@keyframes hb-puff {
+  0% { transform: translate(0, 0) scale(0.3); opacity: 0; }
+  30% { opacity: 0.95; }
+  100% { transform: translate(var(--px), -35%) scale(1.5); opacity: 0; }
+}
+@keyframes hb-chip {
+  0% { transform: translate(0, 0) rotate(0deg); opacity: 1; }
+  55% { transform: translate(var(--cx), var(--cy)) rotate(160deg); opacity: 1; }
+  100% { transform: translate(calc(var(--cx) * 1.3), 40%) rotate(320deg); opacity: 0; }
+}
+@keyframes hb-tag {
+  0% { transform: translate(-50%, 40%) scale(0.8); opacity: 0; }
+  14% { transform: translate(-50%, 0) scale(1.06); opacity: 1; }
+  22% { transform: translate(-50%, 0) scale(1); }
+  80% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -40%) scale(1); opacity: 0; }
+}
+@keyframes hb-shine {
+  0% { transform: translateX(-110%); opacity: 1; }
+  100% { transform: translateX(110%); opacity: 0; }
+}
+
+/* ---- the tile card: hover / keyboard focus ------------------------------------------ */
+
+.hb-tipwrap {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+}
+.hb-tip {
+  --tw: max(calc(var(--hb-u) * 3.7), 186px);
+  --th: max(calc(var(--hb-u) * 3.6), 200px);
+  --gap: calc(var(--hb-u) * 0.82);
+  position: absolute;
+  width: var(--tw);
+  max-width: 96%;
+}
+.hb-tip--above,
+.hb-tip--below {
+  /* stay inside the middle: never over the side columns, so a corner's card opens beside it */
+  left: clamp(calc(var(--tw) / 2 + var(--hb-u) * 1.55), calc(var(--tx) * 100%), calc(100% - var(--tw) / 2 - var(--hb-u) * 1.55));
+  top: calc(var(--ty) * 100%);
+}
+.hb-tip--above { transform: translate(-50%, calc(-100% - var(--gap))); --org: 50% 100%; }
+.hb-tip--below { transform: translate(-50%, var(--gap)); --org: 50% 0; }
+.hb-tip--left,
+.hb-tip--right { top: clamp(calc(var(--th) / 2), calc(var(--ty) * 100%), calc(100% - var(--th) / 2)); }
+.hb-tip--right { left: calc(var(--tx) * 100% + var(--gap)); transform: translate(0, -50%); --org: 0 50%; }
+.hb-tip--left { left: calc(var(--tx) * 100% - var(--gap)); transform: translate(-100%, -50%); --org: 100% 50%; }
+
+.hb-tip__card {
+  --ink: #fff7e0;
+  --dim: #c3c9e6;
+  position: relative;
+  display: grid;
+  gap: 7px;
+  padding: 10px 12px 11px;
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--tc) 22%, transparent) 0, transparent 46px),
+    linear-gradient(180deg, #1d2157, #12143a);
+  color: var(--ink);
+  font-size: clamp(11.5px, calc(var(--hb-u) * 0.2), 13.5px);
+  line-height: 1.25;
+  text-align: left;
+  box-shadow: 0 0 0 1px rgba(255, 211, 107, 0.45), 0 12px 26px rgba(0, 0, 0, 0.55);
+  transform-origin: var(--org, 50% 50%);
+  animation: hb-tip-in var(--dur-2, 220ms) var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)) both;
+}
+.hb-tip__card::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 0;
+  height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: var(--tc);
+}
+.hb-tip__head { display: grid; gap: 2px; }
+.hb-tip__title { font-size: 1.14em; font-weight: 800; letter-spacing: -0.01em; }
+.hb-tip__kicker { font-size: 0.86em; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--dim); }
+.hb-tip__status {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px 2px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+  font-size: 0.9em;
+  font-weight: 700;
+}
+.hb-tip__status:not(:has(.hb-tip__piece)) { padding-left: 9px; }
+.hb-tip__piece { display: inline-block; width: 16px; height: 16px; }
+.hb-tip[data-tone='sale'] .hb-tip__status { background: rgba(63, 182, 139, 0.22); box-shadow: inset 0 0 0 1px rgba(63, 182, 139, 0.55); }
+.hb-tip[data-tone='gold'] .hb-tip__status { background: rgba(255, 200, 87, 0.22); box-shadow: inset 0 0 0 1px rgba(255, 200, 87, 0.7); color: #ffe7a6; }
+.hb-tip[data-tone='warn'] .hb-tip__status { background: rgba(255, 138, 61, 0.2); box-shadow: inset 0 0 0 1px rgba(255, 138, 61, 0.6); color: #ffd0ad; }
+.hb-tip__rows { display: grid; gap: 3px; margin: 0; }
+.hb-tip__rows > div { display: flex; justify-content: space-between; gap: 10px; }
+.hb-tip__rows dt { color: var(--dim); }
+.hb-tip__rows dd { margin: 0; font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; }
+.hb-tip__ladder { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin: 0; padding: 0; list-style: none; }
+.hb-tip__ladder li {
+  display: grid;
+  gap: 1px;
+  padding: 4px 5px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.07);
+  text-align: center;
+  font-size: 0.82em;
+  color: var(--dim);
+}
+.hb-tip__ladder li b { color: var(--ink); font-size: 1.05em; font-variant-numeric: tabular-nums; }
+.hb-tip__ladder li.is-now { background: linear-gradient(#ffe28a, #ffb938); color: #4a2b00; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5); }
+.hb-tip__ladder li.is-now b { color: #2b1700; }
+.hb-tip__foot { margin: 0; font-size: 0.86em; font-style: italic; color: var(--dim); }
+
+@keyframes hb-tip-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* ---- pawns: glossy pieces on a puck, anticipation -> jump -> landing --------------------- */
+
+.hb-pawn { will-change: auto; } /* the transition promotes it while it moves */
+.hb-pawn__puck {
+  position: absolute;
+  left: 2%;
+  right: 2%;
+  bottom: -2%;
+  height: 34%;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse 60% 45% at 36% 28%, rgba(255, 255, 255, 0.75) 0%, rgba(255, 255, 255, 0) 100%),
+    radial-gradient(ellipse at 50% 40%, color-mix(in srgb, var(--c) 55%, #fff) 0%, var(--c) 55%, color-mix(in srgb, var(--c) 70%, #17123a) 100%);
+  box-shadow:
+    0 0 0 max(1px, calc(var(--d) * 0.035)) rgba(255, 255, 255, 0.95),
+    0 calc(var(--d) * 0.075) 0 max(1px, calc(var(--d) * 0.035)) color-mix(in srgb, var(--c) 52%, #17123a);
+}
+.hb-pawn__piece:not(.hb-pawn__glyph) { bottom: 8%; }
+.hb-pawn__shadow {
+  left: 0;
+  right: 0;
+  bottom: -14%;
+  height: 34%;
+  background: radial-gradient(ellipse at center, rgba(5, 4, 24, 0.7) 0%, rgba(5, 4, 24, 0.32) 52%, transparent 74%);
+}
+
+/* whose turn: a ground halo in the player's colour (one transform + opacity loop) */
+.hb-pawn__halo {
+  position: absolute;
+  left: -20%;
+  right: -20%;
+  bottom: -18%;
+  height: 52%;
+  border-radius: 50%;
+  border: max(1.5px, calc(var(--d) * 0.05)) solid color-mix(in srgb, var(--c) 70%, #fff);
+  background: radial-gradient(ellipse at center, color-mix(in srgb, var(--c) 50%, transparent) 0%, transparent 70%);
+  animation: hb-halo 1.5s ease-in-out infinite alternate;
+}
+
+/* the footprint: a faded copy stays on the tile it left while the pawn moves on */
+.hb-pawn__ghost {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  animation: hb-ghost var(--step) cubic-bezier(0.45, 0.05, 0.4, 1) both;
+}
+.hb-pawn__ghost .hb-pawn__piece { position: absolute; }
+
+/* the landing puff: a thin ring spreads from where it touches down */
+.hb-pawn__dust {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  bottom: -6%;
+  height: 30%;
+  border-radius: 50%;
+  border: max(1px, calc(var(--d) * 0.03)) solid rgba(255, 244, 205, 0.85);
+  opacity: 0;
+  pointer-events: none;
+  animation: hb-pawn-dust var(--step) ease-out both;
+}
+.hb-pawn.is-ride .hb-pawn__dust { display: none; }
+
+@keyframes hb-halo {
+  from { transform: scale(0.9); opacity: 0.6; }
+  to { transform: scale(1.08); opacity: 1; }
+}
+@keyframes hb-ghost {
+  0%, 22% { transform: translate(0, 0); opacity: 0.5; animation-timing-function: cubic-bezier(0.45, 0.05, 0.4, 1); }
+  78% { transform: translate(calc(var(--gx) * var(--ring)), calc(var(--gy) * var(--ring))); opacity: 0.3; animation-timing-function: ease-out; }
+  100% { transform: translate(calc(var(--gx) * var(--ring)), calc(var(--gy) * var(--ring))); opacity: 0; }
+}
+@keyframes hb-pawn-dust {
+  0%, 84% { transform: scale(0.5); opacity: 0; }
+  90% { transform: scale(0.85); opacity: 0.85; }
+  100% { transform: scale(1.7); opacity: 0; }
+}
+
+/* ---- reduced motion ------------------------------------------------------------------------ */
+
+:root[data-motion='reduced'] .hb-site__fx,
+:root[data-motion='reduced'] .hb-tile__shine,
+:root[data-motion='reduced'] .hb-pawn__ghost,
+:root[data-motion='reduced'] .hb-pawn__dust,
+.hg-game[data-rm] .hb-site__fx,
+.hg-game[data-rm] .hb-tile__shine,
+.hg-game[data-rm] .hb-pawn__ghost,
+.hg-game[data-rm] .hb-pawn__dust { display: none; }
+:root[data-motion='reduced'] .hb-site__art,
+:root[data-motion='reduced'] .hb-tip__card,
+:root[data-motion='reduced'] .hb-pawn__halo,
+.hg-game[data-rm] .hb-site__art,
+.hg-game[data-rm] .hb-tip__card,
+.hg-game[data-rm] .hb-pawn__halo,
+.hg-game[data-rm] .hb-frame__lights::before,
+.hg-game[data-rm] .hb-frame__lights::after,
+.hg-game[data-rm] .hb-tile.is-active::after { animation: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .hb-site__fx,
+  .hb-tile__shine,
+  .hb-pawn__ghost,
+  .hb-pawn__dust { display: none; }
+  .hb-site__art,
+  .hb-tip__card,
+  .hb-pawn__halo { animation: none !important; }
+}
+
+/* ---- built plots: the business is the star (boards wider than a phone) ----------------------- */
+
+@container (min-width: 521px) {
+  .hb-tile__body--built {
+    justify-content: flex-end;
+    gap: calc(var(--hb-u) * 0.015);
+    overflow: visible;
+  }
+  .hb-tile__body--built .hb-tile__bldg {
+    flex: 1 0 calc(var(--hb-u) * 0.5);
+    max-width: calc(var(--hb-u) * 0.9);
+    max-height: none;
+    z-index: 1;
+  }
+  .hb-tile__body--built .hb-tile__name { font-size: max(calc(var(--hb-u) * 0.15), 6px); }
+  .hb-tile__body--built .hb-tile__txt { gap: calc(var(--hb-u) * 0.015); }
+  /* the event badge hugs the outer edge instead of eating the plot's room */
+  .hb-side--bottom.is-event .hb-tile__body--built { padding-bottom: calc(var(--hb-u) * 0.3); }
+  .hb-side--top.is-event .hb-tile__body--built { padding-top: calc(var(--hb-u) * 0.3); }
+  .hb-side--left.is-event .hb-tile__body--built,
+  .hb-side--right.is-event .hb-tile__body--built { padding-top: calc(var(--hb-u) * 0.05); }
+  .hb-tile__ev { font-size: max(calc(var(--hb-u) * 0.13), 6px); padding: calc(var(--hb-u) * 0.02) calc(var(--hb-u) * 0.06); }
+}
+
+@container (min-width: 521px) {
+  /* mortgaged: keep the ink readable over the hatch */
+  .hb-tile.is-mortgaged .hb-tile__name,
+  .hb-tile.is-mortgaged .hb-tile__price { color: #3f3a33; text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6); }
+  .hb-tile.is-mortgaged .hb-tile__price.is-rent { color: #3f3a33; }
+}

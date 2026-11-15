@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
 import { TileIcon } from '@/components/art/index.js';
 import { TILES } from '@shared/board.js';
 import Sheet from './ui/Sheet.jsx';
+import ActivityFeed from './feed/ActivityFeed.jsx';
 import { motionMs, motionToken, useReducedMotion } from './ui/helpers.js';
 import '@/styles/controlpanel.css';
 
@@ -134,7 +135,7 @@ export function LogList({ variant = 'rows', ...props }) {
 export function LogSheet({ session, open, onClose }) {
   return (
     <Sheet open={open} onClose={onClose} title="Game log" className="hg-logsheet">
-      <LogList log={session.log || []} className="is-sheet" />
+      <ActivityFeed session={session} variant="sheet" onPick={onClose} />
     </Sheet>
   );
 }

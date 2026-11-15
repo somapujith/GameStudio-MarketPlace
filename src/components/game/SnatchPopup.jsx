@@ -21,7 +21,7 @@ import { buzz } from '@/lib/haptics.js';
 import { hasOpenSheet } from './ui/Sheet.jsx';
 import { useReducedMotion } from './ui/helpers.js';
 import { BoltIcon } from './ui/SnatchChip.jsx';
-import { SNATCH_EXIT_MS, snatchAnnouncement, snatchBannerText, snatchInfo, snatchLive, snatchWhoLabel, useSnatchClock } from './snatch.js';
+import { SNATCH_EXIT_MS, SNATCH_MS_DEFAULT, snatchAnnouncement, snatchBannerText, snatchInfo, snatchLive, snatchWhoLabel, useSnatchClock } from './snatch.js';
 import '@/styles/snatch.css';
 
 /** 'in' while the pop-up is wanted, 'leaving' for `exitMs` after, then 'out' (unmounted). */
@@ -83,10 +83,23 @@ export default function SnatchPopup({ session, placement = 'board' }) {
   const press = useCallback(() => {
     if (!canPress) return;
     setMine(info.key);
-    try { sfx.play('coin'); } catch { /* sound is optional */ }
-    buzz('earn');
+    try { sfx.play('snatchPress'); } catch { /* sound is optional */ }
+    buzz('snatchPress');
     session.dispatch?.({ type: 'SNATCH' });
   }, [canPress, info, session]);
+
+  // For a player who may press: the alarm, then a tick-tock that speeds up until the window closes. It stops the moment
+  // they press, or the window is over (the cleanup runs when `canPress` turns false).
+  const alarmKey = canPress ? info.key : null;
+  const alarmFrom = useRef({ ms: SNATCH_MS_DEFAULT, elapsed: 0 });
+  alarmFrom.current = { ms: info?.ms || SNATCH_MS_DEFAULT, elapsed: clock ? Math.max(0, clock.totalMs - clock.remainingMs) : 0 };
+  useEffect(() => {
+    if (!alarmKey) return undefined;
+    buzz('snatchOpen');
+    let stop = null;
+    try { stop = sfx.snatchWindow(alarmFrom.current); } catch { /* sound is optional */ }
+    return () => { try { stop?.(); } catch { /* ignore */ } };
+  }, [alarmKey]);
 
   // Space / Enter / S press it too (not while typing or while a sheet is open)
   const pressRef = useRef(press);
