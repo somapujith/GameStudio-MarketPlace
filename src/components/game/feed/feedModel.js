@@ -12,6 +12,7 @@
 import { GROUP_TILES, TILES } from '@shared/board.js';
 import { formatINR } from '@shared/format.js';
 import { describeEvent } from '@/lib/messages.js';
+import { DEFAULT_MAP, activeMapId } from '@shared/maps.js';
 import { MINUS, reasonLabel } from '../fx/fxModel.js';
 
 /** What a row is about (drives its icon colour and the small caps label). */
@@ -70,6 +71,7 @@ export function kindOf(ev) {
         default: return 'cash';
       }
     case 'own': return 'buy';
+    case 'skip': return 'info';
     case 'level': return ev.reason === 'sell' ? 'sell' : 'build';
     case 'card': return 'card';
     case 'city_event': return 'event';
@@ -80,7 +82,7 @@ export function kindOf(ev) {
     case 'snatch_open': case 'snatch_end': case 'token_earned': return 'snatch';
     case 'set_complete': return 'set';
     case 'mortgage': case 'unmortgage': return 'mortgage';
-    case 'trade_offer': case 'trade_done': case 'trade_rejected': return 'trade';
+    case 'trade_offer': case 'trade_countered': case 'trade_done': case 'trade_rejected': return 'trade';
     case 'debt': return 'debt';
     case 'bankrupt': return 'bankrupt';
     case 'turn': return 'round';
@@ -139,7 +141,7 @@ function classify(ev, d, main) {
   const tiles = tilesOf(ev, tile);
   return {
     kind,
-    label: (ev && ev.type === 'cash' && reasonLabel(ev.reason)) || KIND_LABEL[kind] || '',
+    label: (ev && ev.type === 'cash' && reasonLabel(ev.reason)) || (kind === 'chai' && activeMapId() !== DEFAULT_MAP ? 'TOKEN' : KIND_LABEL[kind]) || '',
     icon: d.icon || KIND_ICON[kind] || KIND_ICON.info,
     tile: tiles.length ? tiles[0] : null,
     tiles,
@@ -187,7 +189,12 @@ export function mergeRollText(rollText, landText) {
  * "Sana rolled 5 and landed on Madhapur". Rows keep the id of their first entry (so a row that grows keeps its place).
  */
 export function buildFeed(log, { max = 12 } = {}) {
-  const list = Array.isArray(log) ? log : [];
+  const all = Array.isArray(log) ? log : [];
+  // Only the tail can show: a row holds at most two entries (roll + move), so `2 * max + 2` entries always yield `max`
+  // whole rows (only the oldest one could lose its merge partner). The presenter keeps 200 entries and re-renders the feed
+  // on every event: classifying all of them each time was wasted main-thread work.
+  const keep = 2 * Math.max(1, max) + 2;
+  const list = all.length > keep ? all.slice(all.length - keep) : all;
   const rows = [];
   for (let i = 0; i < list.length; i += 1) {
     const cur = feedEntry(list[i]);

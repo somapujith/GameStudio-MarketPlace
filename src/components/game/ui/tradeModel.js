@@ -3,6 +3,7 @@
 // Values are the printed net-worth values (a district at its price, minus its loan when mortgaged, plus half of the
 // upgrades paid). They are information for the players, never a rule: an unbalanced offer can always be sent.
 import { TILES } from '@shared/board.js';
+import { tradeBlock } from '@shared/engine.js';
 import { compactINR } from '@shared/format.js';
 import { COLLECTIONS, completedGroups, groupTiles, isBuyableTile, mortgageOf, rentLadder, upgradeCostOf } from './helpers.js';
 
@@ -145,18 +146,66 @@ export function deedFacts(state, id) {
 /* ------------------------------------------------------------------ validation (same reasons as the engine) */
 
 export const NO_PARTNER = 'No other active players to trade with.';
+export const SAME_DEAL = 'Change something first, or accept the offer as it is';
+
+/** Two sides of a deal are the same cash and the same districts (order does not matter). */
+export function sameSide(a, b) {
+  const x = [...(a?.tiles || [])].sort((p, q) => p - q);
+  const y = [...(b?.tiles || [])].sort((p, q) => p - q);
+  return num(a?.cash) === num(b?.cash) && x.length === y.length && x.every((t, i) => t === y[i]);
+}
+
+/**
+ * Can I propose a trade right now, and if not, exactly why? { can, reason }. The authoritative `view` decides (the engine's
+ * own tradeBlock), so an animation that is still playing never blocks it; only an unanswered request or a dead connection
+ * does, for a moment, with its own wording.
+ */
+export function tradeStatus(session) {
+  const view = session?.view;
+  const me = session?.me;
+  if (!view || !me) return { can: false, reason: 'The table is loading' };
+  const block = tradeBlock(view, me);
+  if (block) return { can: false, reason: block };
+  if (session.connection && session.connection !== 'open') return { can: false, reason: 'Reconnecting. Try again in a moment' };
+  if (session.options && session.options.trade && session.options.trade.canOffer === false) return { can: false, reason: 'One moment, the table is updating' };
+  return { can: true, reason: '' };
+}
+
+/**
+ * What a counter-offer changed against the offer it replaces, from the point of view of `meId` (the proposer who now answers).
+ * `get` is what I receive (their side), `give` what I hand over (mine); each: { added[], removed[], cashFrom, cashTo }.
+ * Null when `trade` is not a counter-offer to me.
+ */
+export function counterDiff(trade, meId) {
+  if (!trade || !trade.replaces || trade.to !== meId) return null;
+  const cmp = (before, after) => {
+    const b = before?.tiles || [];
+    const a = after?.tiles || [];
+    return {
+      added: a.filter((t) => !b.includes(t)),
+      removed: b.filter((t) => !a.includes(t)),
+      cashFrom: num(before?.cash),
+      cashTo: num(after?.cash),
+    };
+  };
+  return { get: cmp(trade.replaces.get, trade.give), give: cmp(trade.replaces.give, trade.get) };
+}
+
+/** True when the diff of one side changes anything. */
+export const sideChanged = (d) => !!d && (d.added.length > 0 || d.removed.length > 0 || d.cashFrom !== d.cashTo);
 export const NOT_YOUR_TURN = 'You can only offer a trade on your own turn, before rolling or after.';
 
 /**
  * Why this offer cannot be sent, or null. Mirrors shared/engine.js tradeProblem (empty offer, cash on either side), plus
  * the turn rule from `options.trade.canOffer`. The deal's fairness never blocks it.
  */
-export function offerProblem({ me, partner, give, get, canOffer = true }) {
+export function offerProblem({ me, partner, give, get, canOffer = true, reason = '', original = null }) {
   if (!partner) return NO_PARTNER;
-  if (canOffer === false) return NOT_YOUR_TURN;
+  if (canOffer === false) return reason || NOT_YOUR_TURN;
   const g = { cash: num(give?.cash), tiles: give?.tiles || [] };
   const r = { cash: num(get?.cash), tiles: get?.tiles || [] };
   if (g.cash + r.cash + g.tiles.length + r.tiles.length === 0) return 'The offer is empty';
+  if (original && sameSide(give, original.give) && sameSide(get, original.get)) return SAME_DEAL;
   if (g.cash > num(me?.cash)) return 'You do not have that much cash';
   if (r.cash > num(partner.cash)) return `${partner.name} does not have that much cash`;
   return null;

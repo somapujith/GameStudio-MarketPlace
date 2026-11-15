@@ -1,17 +1,24 @@
-// Bot-only simulation of Hyderabad Tycoon (Hyderabad Hustle rules): checks engine invariants and prints balance stats.
+// Bot-only simulation of Kingpin (Hyderabad Hustle rules): checks engine invariants and prints balance stats.
 //
 //   node scripts/simulate.js [--games 200] [--players 2,4,6] [--modes standard,quick,classic] [--seed 1]
 //                            [--set startCash=1200000,passStart=150000] [--bot reserve=150000,greed=1] [--quiet]
 //                            [--targets off,2500000,3000000,5000000] [--extremes [name,name,...]]
 //
 // --set      host-rule overrides to experiment without editing the engine: ANY key of shared/ruleSettings.js (startCash,
-//            passStart, targetWorth, rentPercent, trafficFine, turnSeconds, tradeSeconds, maxRounds, dice, auctionOnDecline,
+//            passStart, targetWorth, rentPercent, trafficFine, turnSeconds, tradeSeconds, auctionSeconds, maxRounds, dice,
 //            requireFullSet, eventEvery, chaiCap, snatches, snatchMs, snatchCardCap), e.g.
 //            --set rentPercent=200,requireFullSet=false,dice=fair. `null` switches targetWorth / maxRounds off, true / false are
 //            booleans. Out-of-range values are clamped like the engine does (SETTING_LIMITS).
 // --extremes the host-rule extremes battery: every preset (see EXTREMES below, or pick by name) is played --games times per
 //            (mode, players) on top of --set, printing one line per run. The invariants (including "every rule really
 //            changed the game": salary, fines, rent level, events, round limit, upgrades) are checked on every action.
+// --map      the board skin to play: hyderabad (default), andhra, a comma list or `all` (shared/maps.js; same board and rules, other
+//            names / decks / city-event wording). The decks, city events and names are checked against the map on every action.
+// --afk      chance (0-1, default 0.1) that, at any step of a sealed auction, the room's timer runs out (AUCTION_CLOSE: the
+//            bidders who have not bid pass). The auction invariants are checked on every action: every auction ends, the
+//            winner pays exactly their own (highest) bid, order / tie / saved are consistent, nobody is left with negative cash.
+// --resign   chance (0-1, default 0 = off) per action that the debtor (or any active player) resigns: exercises the bankruptcy
+//            rule (the bank takes all cash and districts, the creditor is paid only the debt, up to the estate).
 // --bot      default bot params for every seat.
 // --targets  sweep: run every (mode, players) once per win target in the list ("off" = no target) and print one line
 //            per run: the share of games ending by target / rounds / last standing and the average length.
@@ -20,7 +27,7 @@
 // upgrades, rides, auctions, how the games end (win target, round limit, bankruptcy), and the final net-worth spread.
 
 import {
-  createGame, applyAction, nextBotMove, botSnatchAction, netWorth, liquidationValue, standings, mulberry32,
+  MAP_IDS, mapOf, createGame, applyAction, nextBotMove, botSnatchAction, netWorth, liquidationValue, estateValue, owedPayments, standings, mulberry32,
   BOARD_SIZE, MAX_LEVEL, TILES, GROUP_TILES, isBuyable, CITY_EVENTS, MODES, ROUND_CAP, SETTING_LIMITS, RULE_KEYS, previewRent, isTargetAmount,
 } from '../shared/index.js';
 
@@ -50,8 +57,15 @@ const BASE_SETTINGS = parseKV(arg('set', ''));
 let SETTINGS = BASE_SETTINGS; // BASE_SETTINGS plus the preset being played (--extremes)
 const BOT = parseKV(arg('bot', ''));
 const QUIET = arg('quiet', false) === true;
+const BASE_AFK = Math.min(1, Math.max(0, Number(arg('afk', 0.1)) || 0));
+const RESIGN = Math.min(1, Math.max(0, Number(arg('resign', 0)) || 0)); // chance per step that someone resigns (default 0: off)
+let AFK = BASE_AFK; // the chance per auction step that the window runs out (a preset may raise it)
 const TARGET_SWEEP = arg('targets', null) === null ? null
   : String(arg('targets')).split(',').map((t) => (t.trim() === 'off' || t.trim() === 'null' ? null : Number(t)));
+const MAP_ARG = String(arg('map', 'hyderabad'));
+const RUN_MAPS = MAP_ARG === 'all' ? [...MAP_IDS] : MAP_ARG.split(',').map((m) => m.trim()).filter(Boolean);
+for (const m of RUN_MAPS) if (!MAP_IDS.includes(m)) { console.error(`no such map ${m}; choose from ${MAP_IDS.join(', ')}, all`); process.exit(2); }
+let MAP = RUN_MAPS[0]; // the map being played
 const MAX_ACTIONS = 60000;
 const DISTRICTS = TILES.filter(isBuyable).length;
 
@@ -96,7 +110,22 @@ function checkInvariants(s) {
     if (s.mortgaged[i] && (o === null || lv > 0)) fail(`tile ${i} mortgaged while unowned or upgraded`);
   }
   if (s.phase === 'buy' && s.pending?.type !== 'buy') fail('buy phase without pending buy');
-  if (s.phase === 'auction' && s.pending?.type !== 'auction') fail('auction phase without pending auction');
+  if (s.phase === 'auction') {
+    const w = s.pending;
+    if (w?.type !== 'auction') fail('auction phase without pending auction');
+    const active = s.players.filter((p) => !p.bankrupt).map((p) => p.id);
+    const expectMs = w.snatch ? Math.min(s.cfg.auctionSeconds * 1000, 15000) : s.cfg.auctionSeconds * 1000;
+    if (w.ms !== expectMs) fail(`auction window ${w.ms} ms, cfg.auctionSeconds ${s.cfg.auctionSeconds} says ${expectMs}`);
+    if (!Number.isInteger(w.id) || w.id < 1) fail(`bad auction id ${w.id}`);
+    if (new Set(w.bidIn).size !== w.bidIn.length || w.bidIn.some((id) => !w.eligible.includes(id) || !(id in w.bids))) fail('bad auction bidIn');
+    if (w.eligible.some((id) => id in w.bids && !w.bidIn.includes(id))) fail('an eligible player has a bid but is not in bidIn');
+    if (w.snatch && w.eligible.some((id) => !w.claimants.includes(id))) fail('a non-claimant is eligible for the Snatch bidding');
+    if (active.every((id) => id in w.bids)) fail('auction still open though everyone has bid');
+    for (const [id, amount] of Object.entries(w.bids)) {
+      const p = s.players.find((x) => x.id === id);
+      if (!Number.isInteger(amount) || amount < 0 || (amount > 0 && (amount < w.minBid || amount > p.cash))) fail(`${id} sealed bid ${amount} (min ${w.minBid}, cash ${p.cash})`);
+    }
+  }
   if (s.phase === 'snatch') {
     const w = s.pending;
     if (w?.type !== 'snatch') fail('snatch phase without pending snatch');
@@ -146,6 +175,8 @@ function checkConfig(s, wanted) {
     if (s.cfg[k] !== want) fail(`cfg.${k} is ${s.cfg[k]}, asked for ${want}`);
   }
   for (const p of s.players) if (p.cash !== s.cfg.startCash) fail(`${p.id} starts with ${p.cash}, cfg.startCash is ${s.cfg.startCash}`);
+  if (mapOf(s).id !== MAP) fail(`the game plays on ${mapOf(s).id}, asked for ${MAP}`);
+  if ((MAP === 'hyderabad') !== !('map' in s.cfg)) fail(`cfg.map is ${s.cfg.map} on the ${MAP} map (only a non-default map is stored)`);
 }
 
 /** What one action's events must respect, checked against the state BEFORE it (the rules really are read from cfg). */
@@ -156,6 +187,12 @@ function checkRules(prev, action, res) {
     if (e.type === 'cash' && e.reason === 'salary' && e.delta !== cfg.passStart) fail(`salary ${e.delta}, passStart is ${cfg.passStart}`);
     if (e.type === 'cash' && e.reason === 'traffic' && e.delta !== -cfg.trafficFine) fail(`traffic fine ${-e.delta}, trafficFine is ${cfg.trafficFine}`);
     if (e.type === 'city_event' && !(cfg.eventEvery > 0)) fail('a city event although events are off');
+    if (e.type === 'city_event' && !mapOf(cfg).events.list.some((d) => d.id === e.id && d.kind === e.kind)) fail(`city event ${e.id} is not an event of the ${mapOf(cfg).id} map`);
+    if (e.type === 'card') {
+      const deck = mapOf(cfg).decks[e.deck];
+      const card = deck && deck.cards.find((c) => c.id === e.cardId);
+      if (!card || card.title !== e.title) fail(`card ${e.cardId} (${e.title}) is not in the ${mapOf(cfg).id} ${e.deck} deck`);
+    }
     if (e.type === 'level' && e.reason === 'upgrade' && cfg.requireFullSet) {
       const owner = prev.owners[e.tile];
       if (!GROUP_TILES[TILES[e.tile].group].every((t) => prev.owners[t] === owner)) fail(`tile ${e.tile} upgraded without the full collection`);
@@ -175,6 +212,89 @@ function checkRules(prev, action, res) {
   }
 }
 
+/** The auction that ends in this action (if any): first price, highest bid, a fair order, the event tells the truth. */
+function checkAuctionEnd(prev, action, res) {
+  const fail = (msg) => { throw new Error(`auction: ${msg}`); };
+  const end = res.events.find((e) => e.type === 'auction_end');
+  if (!end) return null;
+  let pend = prev.pending && prev.pending.type === 'auction' ? prev.pending : null;
+  if (!pend) {
+    // Opened and closed in the same action: nobody was able to bid (everyone is passed at once), so it can only end unsold.
+    const start = res.events.find((e) => e.type === 'auction_start');
+    if (!start || res.events.indexOf(start) > res.events.indexOf(end)) fail('auction_end without an open auction (it can only end in a BID / AUCTION_CLOSE / RESIGN)');
+    if (start.eligible.length || end.winner !== null) fail('an auction with bidders ended in the action that opened it');
+    pend = { tile: start.tile, reason: start.reason, minBid: start.minBid, eligible: start.eligible, bids: {} };
+  }
+  if (end.tile !== pend.tile || end.reason !== pend.reason) fail('auction_end names another district or reason');
+  const ranked = Object.entries(end.bids).filter(([id, a]) => pend.eligible.includes(id) && a >= pend.minBid);
+  const top = Math.max(0, ...ranked.map(([, a]) => a));
+  const tied = ranked.filter(([, a]) => a === top).map(([id]) => id);
+  if (end.winner === null) {
+    if (end.amount !== 0 || ranked.length) fail(`no winner although ${ranked.length} valid bids`);
+    if (res.state.owners[end.tile] !== prev.owners[end.tile]) fail('an unsold district changed hands');
+  } else {
+    if (end.amount !== end.bids[end.winner] || end.amount !== top || end.amount < pend.minBid) fail(`winner ${end.winner} pays ${end.amount}, top bid ${top}, own bid ${end.bids[end.winner]}`);
+    if (!tied.includes(end.winner)) fail('the winner is not among the top bidders');
+    if (res.state.owners[end.tile] !== end.winner) fail('the winner does not own the district');
+    const before = prev.players.find((p) => p.id === end.winner).cash;
+    const after = res.state.players.find((p) => p.id === end.winner).cash;
+    if (before - after !== end.amount) fail(`winner paid ${before - after}, not their bid ${end.amount}`);
+    const price = TILES[end.tile].price;
+    if (price > end.amount ? end.saved !== price - end.amount : 'saved' in end) fail(`saved ${end.saved} (price ${price}, paid ${end.amount})`);
+    if (end.order[0] !== end.winner) fail('the winner is not first in order');
+  }
+  if ((end.winner !== null && end.tie !== tied.length > 1) || (end.winner === null && end.tie)) fail(`tie flag ${end.tie}, ${tied.length} players share the top bid`);
+  if (new Set(end.order).size !== end.order.length || end.order.length !== pend.eligible.length || end.order.some((id) => !pend.eligible.includes(id))) fail('order is not the eligible players exactly once');
+  for (let i = 1; i < end.order.length; i++) if (end.bids[end.order[i - 1]] < end.bids[end.order[i]] && end.bids[end.order[i]] >= pend.minBid) fail('order is not highest bid first');
+  if (end.order.slice(ranked.length).some((id) => end.bids[id] >= pend.minBid)) fail('a bidder is ranked below a passer');
+  if (action.type === 'AUCTION_CLOSE') {
+    const open = prev.players.filter((p) => !p.bankrupt && !(p.id in pend.bids)).map((p) => p.id);
+    if (JSON.stringify(end.timedOut || []) !== JSON.stringify(open)) fail(`timedOut ${JSON.stringify(end.timedOut)}, the non-bidders were ${JSON.stringify(open)}`);
+  } else if (end.timedOut) fail('timedOut without a timer');
+  // money: only the winner's bid leaves the table (to the bank); nothing else moves in a BID / AUCTION_CLOSE
+  if (action.type === 'BID' || action.type === 'AUCTION_CLOSE') {
+    const was = prev.players.reduce((n, p) => n + p.cash, 0);
+    const now = res.state.players.reduce((n, p) => n + p.cash, 0);
+    if (was - now !== end.amount) fail(`the table lost ${was - now} in the auction, the winning bid is ${end.amount}`);
+  }
+  return end;
+}
+
+/**
+ * Bankruptcy (docs/GAME_RULES.md 7.2): the BANK takes all the cash and districts; the creditor is paid only what is owed, by the
+ * bank, never more than the estate (cash + liquidationValue) was worth. Money is NOT conserved here on purpose: the bank
+ * absorbs the bankrupt player's cash and pays the creditor, so the table's total may rise by at most the sum paid.
+ */
+function checkBankruptcy(prev, action, res) {
+  const fail = (msg) => { throw new Error(`bankruptcy: ${msg}`); };
+  const out = res.events.filter((e) => e.type === 'bankrupt');
+  let paidTotal = 0;
+  for (const b of out) {
+    const x = res.state.players.find((p) => p.id === b.player);
+    if (x.cash !== 0 || res.state.owners.includes(b.player)) fail(`${b.player} is out but still holds assets`);
+    const paid = (b.paid || []).reduce((n, r) => n + r.amount, 0);
+    const cash = res.events.filter((e) => e.type === 'cash' && e.reason === 'bankrupt' && e.other === b.player);
+    if (JSON.stringify(cash.map((e) => [e.player, e.delta])) !== JSON.stringify((b.paid || []).map((r) => [r.to, r.amount]))) fail('the cash events and the bankrupt event disagree');
+    for (const r of b.paid || []) {
+      if (r.to === b.player || !(r.amount > 0)) fail(`bad payout ${JSON.stringify(r)}`);
+      if (res.state.players.find((p) => p.id === r.to).bankrupt) fail(`${r.to} was paid but is out`);
+    }
+    if (action.type === 'RESIGN' && action.playerId === b.player) {
+      if (paid > estateValue(prev, b.player)) fail(`${b.player} resigned: paid ${paid}, the estate was worth ${estateValue(prev, b.player)}`);
+      const owed = owedPayments(prev, b.player).filter((o) => o.to).reduce((n, o) => n + o.amount, 0);
+      if (paid > owed) fail(`${b.player} resigned: paid ${paid}, only ${owed} was owed`);
+      if (!res.state.players.find((p) => p.id === b.player).resigned) fail('resigned flag missing');
+    }
+    paidTotal += paid;
+  }
+  if (action.type === 'ROLL' && out.length === 1 && paidTotal > 0 && res.events.filter((e) => e.type === 'land').length === 1) {
+    const land = res.events.find((e) => e.type === 'land');
+    const bill = isBuyable(TILES[land.tile]) && prev.owners[land.tile] ? previewRent(prev, land.tile) : null;
+    if (bill !== null && paidTotal > bill) fail(`a rent of ${bill} paid out ${paidTotal}`);
+  }
+  return paidTotal;
+}
+
 // The extremes the host can pick: every one must still give games that end and keep every invariant.
 const EXTREMES = [
   { name: 'stock', set: {} },
@@ -186,6 +306,9 @@ const EXTREMES = [
   { name: 'rent-200', set: { rentPercent: 200 } },
   { name: 'turn-15s', set: { turnSeconds: 15, tradeSeconds: 15 } }, // the sim has no clocks: this only checks the setting flows into cfg
   { name: 'turn-180s', set: { turnSeconds: 180, tradeSeconds: 120 } },
+  { name: 'auction-10s', set: { auctionSeconds: 10 }, afk: 0.4 }, // the timer cuts a lot of auctions short
+  { name: 'auction-90s', set: { auctionSeconds: 90 }, afk: 0 },
+  { name: 'auction-afk', set: {}, afk: 0.9 }, // nearly every auction ends by the timer
   { name: 'events-off', set: { eventEvery: 0 } },
   { name: 'events-every-2', set: { eventEvery: 2 } },
   { name: 'no-full-set', set: { requireFullSet: false } },
@@ -198,7 +321,7 @@ const EXTREMES = [
   { name: 'target-custom', set: { targetWorth: 12500000 } },
   { name: 'target-low', set: { targetWorth: 1000000, startCash: 500000 } },
   { name: 'fair-dice', set: { dice: 'fair' } },
-  { name: 'no-auction', set: { auctionOnDecline: false } },
+  { name: 'legacy-auction-key', set: { auctionOnDecline: true } }, // the retired rule: ignored, passing still never starts an auction
   { name: 'snatch-off', set: { snatches: 0 } },
   { name: 'everything-hard', set: { rentPercent: 200, passStart: 0, trafficFine: 100000, startCash: 500000, requireFullSet: true, eventEvery: 2, chaiCap: 1 } },
   { name: 'everything-soft', set: { rentPercent: 50, passStart: 1000000, trafficFine: 0, startCash: 100000000, requireFullSet: false, eventEvery: 0, chaiCap: 3, targetWorth: null, maxRounds: 15 } },
@@ -211,13 +334,14 @@ if (EXTREMES_ARG !== null && !PRESETS.length) { console.error(`no such preset; c
 // ---------- one game ----------
 function playGame(n, mode, seed, extra = {}) {
   const players = Array.from({ length: n }, (_, i) => ({ id: `p${i}`, name: `Bot ${i + 1}`, isBot: true, bot: { ...BOT } }));
-  const wanted = { mode, ...SETTINGS, ...extra };
+  const wanted = { mode, ...SETTINGS, ...extra, map: MAP };
   let s = createGame({ players, settings: wanted, seed });
   checkConfig(s, wanted);
   const rnd = mulberry32(seed * 31 + 7);
-  const c = { upgrades: 0, rides: 0, auctions: 0, bazaar: 0, rents: 0, rentTotal: 0, bankrupt: 0, debts: 0, mortgages: 0, stuck: 0, chaiSaved: 0, cards: 0, windows: 0, snatched: 0, snatchBids: 0, snatchCards: 0, snatchPaid: 0 };
+  const c = { bankPaid: 0, upgrades: 0, rides: 0, auctions: 0, bazaar: 0, rents: 0, rentTotal: 0, bankrupt: 0, debts: 0, mortgages: 0, stuck: 0, chaiSaved: 0, cards: 0, windows: 0, snatched: 0, snatchBids: 0, snatchCards: 0, snatchPaid: 0, auctionsStarted: 0, auctionsEnded: 0, auctionsTimedOut: 0, auctionTies: 0, auctionsUnsold: 0, auctionSteps: 0 };
   const owned = {};
   let actions = 0;
+  let auctionSteps = 0; // actions since the open auction started (every auction ends within one bid per player)
   while (s.phase !== 'over') {
     if (++actions > MAX_ACTIONS) throw new Error('too many actions');
     let a;
@@ -225,13 +349,41 @@ function playGame(n, mode, seed, extra = {}) {
       // Everybody who may press decides by the trivial bot policy, then the room's timer closes the window
       // (auto-play and the normal bot chooser never snatch).
       a = s.pending.eligible.filter((id) => !s.pending.claims.includes(id)).map((id) => botSnatchAction(s, id)).find(Boolean) || { type: 'SNATCH_CLOSE' };
+    } else if (s.phase === 'auction' && AFK > 0 && rnd() < AFK) {
+      a = { type: 'AUCTION_CLOSE' }; // the room's timer: whoever has not bid passes
     } else a = nextBotMove(s, rnd);
     if (!a) throw new Error(`no bot move in phase ${s.phase}`);
+    // --resign: the debtor presses "Bankrupt" in the debt sheet (or somebody leaves at random): the same rule as a real bankruptcy
+    if (RESIGN > 0 && s.phase !== 'snatch' && rnd() < (s.phase === 'debt' ? Math.max(RESIGN, 0.5) : RESIGN)) {
+      const live = s.players.filter((p) => !p.bankrupt);
+      if (live.length > 2) a = { type: 'RESIGN', playerId: s.phase === 'debt' ? s.debt.player : live[Math.floor(rnd() * live.length)].id };
+    }
     const res = applyAction(s, a);
     if (res.error) throw new Error(`${a.type}: ${res.error}`);
+    c.bankPaid += checkBankruptcy(s, a, res);
     checkRules(s, a, res);
+    const auctionEnd = checkAuctionEnd(s, a, res);
+    for (const e of res.events) {
+      // Passing never starts an auction (it would let a buyer dodge Snatch): only the Bazaar Auction corner and Snatch bidding do
+      if (e.type === 'auction_start' && e.reason !== 'bazaar' && e.reason !== 'snatch') throw new Error(`auction: reason '${e.reason}' (a pass or an unaffordable district never opens one)`);
+      if (e.type === 'auction_start' && e.reason === 'bazaar' && TILES[res.state.players[res.state.turn]?.pos]?.type !== 'auction') throw new Error('auction: a Bazaar Auction opened off the Bazaar tile');
+      if (a.type === 'SKIP_BUY' && e.type === 'auction_start') throw new Error('auction: SKIP_BUY opened an auction');
+    }
+    if (a.type === 'SKIP_BUY' && (!['manage', 'over'].includes(res.state.phase) || res.state.pending || res.state.turn !== s.turn)) throw new Error(`pass: expected manage on the same turn, got ${res.state.phase}`);
     const before = s.round;
     s = res.state;
+    if (auctionEnd) {
+      c.auctionsEnded++;
+      if (auctionEnd.timedOut) c.auctionsTimedOut++;
+      if (auctionEnd.tie) c.auctionTies++;
+      if (auctionEnd.winner === null) c.auctionsUnsold++;
+      c.auctionSteps = Math.max(c.auctionSteps, auctionSteps);
+    }
+    if (res.events.some((e) => e.type === 'auction_start')) { c.auctionsStarted++; auctionSteps = 0; }
+    if (s.phase === 'auction' && !res.events.some((e) => e.type === 'auction_start')) {
+      auctionSteps++;
+      if (auctionSteps > n + 1) throw new Error(`auction: still open after ${auctionSteps} steps with ${n} players`);
+    }
     for (const e of res.events) {
       if (e.type === 'level' && e.reason === 'upgrade') c.upgrades++;
       else if (e.type === 'ride') c.rides++;
@@ -251,6 +403,7 @@ function playGame(n, mode, seed, extra = {}) {
     if (s.round !== before) for (const r of [4, 6]) if (s.round === r && !(r in owned)) owned[r] = s.owners.filter(Boolean).length;
     checkInvariants(s);
   }
+  if (c.auctionsStarted !== c.auctionsEnded) throw new Error(`auction: ${c.auctionsStarted} started, ${c.auctionsEnded} ended`);
   const worths = s.players.filter((p) => !p.bankrupt).map((p) => netWorth(s, p.id));
   const rounds = Math.min(s.round, s.cfg.maxRounds ?? ROUND_CAP);
   return {
@@ -273,6 +426,10 @@ const summary = [];
 const targetName = (t) => (t === null ? 'off' : `${t / 100000}L`);
 for (const preset of PRESETS) {
 SETTINGS = { ...BASE_SETTINGS, ...preset.set };
+AFK = preset.afk ?? BASE_AFK;
+for (const mapId of RUN_MAPS) {
+MAP = mapId;
+if (RUN_MAPS.length > 1 && !QUIET) console.log(`\n######## map: ${mapOf(MAP).name} (${MAP}) ########`);
 for (const mode of MODE_LIST) {
   for (const n of PLAYER_COUNTS) {
    for (const sweepTarget of TARGET_SWEEP ?? [undefined]) {
@@ -289,7 +446,7 @@ for (const mode of MODE_LIST) {
     }
     if (!rows.length) continue;
     const r = {
-      mode, n, games: rows.length, sweepTarget, targetCfg: rows[0].targetCfg,
+      map: MAP, mode, n, games: rows.length, sweepTarget, targetCfg: rows[0].targetCfg,
       rounds: avg(rows.map((x) => x.rounds)),
       maxRounds: Math.max(...rows.map((x) => x.rounds)),
       turns: avg(rows.map((x) => x.turns)),
@@ -299,6 +456,7 @@ for (const mode of MODE_LIST) {
       targetEnd: rows.filter((x) => x.reason === 'target').length / rows.length,
       roundsEnd: rows.filter((x) => x.reason === 'rounds').length / rows.length,
       bankrupts: avg(rows.map((x) => x.c.bankrupt)),
+      bankPaid: avg(rows.map((x) => x.c.bankPaid)),
       spread: avg(rows.map((x) => x.spread)),
       top: avg(rows.map((x) => x.top)),
       upgrades: avg(rows.map((x) => x.c.upgrades)),
@@ -317,26 +475,33 @@ for (const mode of MODE_LIST) {
       snatchBids: avg(rows.map((x) => x.c.snatchBids)),
       snatchCards: avg(rows.map((x) => x.c.snatchCards)),
       snatchPaid: avg(rows.map((x) => x.c.snatchPaid)),
+      auctionsEnded: avg(rows.map((x) => x.c.auctionsEnded)),
+      auctionsTimedOut: avg(rows.map((x) => x.c.auctionsTimedOut)),
+      auctionTies: avg(rows.map((x) => x.c.auctionTies)),
+      auctionsUnsold: avg(rows.map((x) => x.c.auctionsUnsold)),
+      auctionSteps: Math.max(...rows.map((x) => x.c.auctionSteps)),
     };
     summary.push(r);
     if (TARGET_SWEEP) {
       console.log(`${mode.padEnd(8)} n=${n} target=${targetName(sweepTarget).padEnd(5)} games=${String(r.games).padStart(4)}  by target ${pct(r.targetEnd).padStart(6)}  by rounds ${pct(r.roundsEnd).padStart(6)}  last standing ${pct(r.bankruptEnd).padStart(6)}  avg ${r.rounds.toFixed(1).padStart(5)} rounds (max ${r.maxRounds})`);
     } else if (EXTREMES_ARG !== null) {
-      console.log(`${preset.name.padEnd(22)} ${mode.padEnd(8)} n=${n} ${String(r.games).padStart(4)}/${GAMES} ok  by target ${pct(r.targetEnd).padStart(6)}  by rounds ${pct(r.roundsEnd).padStart(6)}  last standing ${pct(r.bankruptEnd).padStart(6)}  avg ${r.rounds.toFixed(1).padStart(5)} rounds (max ${r.maxRounds})  ${r.rents.toFixed(1)} rents @ ${L(r.rentAvg)}, ${r.upgrades.toFixed(1)} upgrades, ${r.stuck.toFixed(1)} jams`);
+      console.log(`${preset.name.padEnd(22)} ${mode.padEnd(8)} n=${n} ${String(r.games).padStart(4)}/${GAMES} ok  by target ${pct(r.targetEnd).padStart(6)}  by rounds ${pct(r.roundsEnd).padStart(6)}  last standing ${pct(r.bankruptEnd).padStart(6)}  avg ${r.rounds.toFixed(1).padStart(5)} rounds (max ${r.maxRounds})  ${r.rents.toFixed(1)} rents @ ${L(r.rentAvg)}, ${r.upgrades.toFixed(1)} upgrades, ${r.stuck.toFixed(1)} jams, ${r.auctionsEnded.toFixed(1)} auctions (${r.auctionsTimedOut.toFixed(1)} by timer, ${r.auctionTies.toFixed(2)} ties)`);
     } else if (!QUIET) {
       console.log(`\n=== ${MODES[mode]?.label || mode}, ${n} players: ${r.games}/${GAMES} games ok ===`);
       console.log(`length        : ${r.rounds.toFixed(1)} rounds avg (max ${r.maxRounds}), ${r.turns.toFixed(1)} turns`);
       console.log(`districts     : ${pct(r.owned3)} owned after round 3, ${pct(r.owned5)} after round 5`);
-      console.log(`ending        : ${pct(r.targetEnd)} by win target (${r.sweepTarget === undefined ? targetName(r.targetCfg) : targetName(r.sweepTarget)}), ${pct(r.roundsEnd)} by round limit, ${pct(r.bankruptEnd)} by bankruptcy (last standing); ${r.bankrupts.toFixed(2)} bankruptcies/game, ${r.debts.toFixed(1)} debts, ${r.mortgages.toFixed(1)} mortgages`);
+      console.log(`ending        : ${pct(r.targetEnd)} by win target (${r.sweepTarget === undefined ? targetName(r.targetCfg) : targetName(r.sweepTarget)}), ${pct(r.roundsEnd)} by round limit, ${pct(r.bankruptEnd)} by bankruptcy (last standing); ${r.bankrupts.toFixed(2)} bankruptcies/game (the bank took everything, creditors were paid ${L(r.bankPaid)} per game), ${r.debts.toFixed(1)} debts, ${r.mortgages.toFixed(1)} mortgages`);
       console.log(`net worth     : winner ${L(r.top)} avg, spread (richest - poorest active) ${L(r.spread)} avg`);
       console.log(`per game      : ${r.upgrades.toFixed(1)} upgrades (${r.endLevels.toFixed(1)} levels standing at the end), ${r.rides.toFixed(1)} rides, ${r.auctions.toFixed(1)} auctions won (${r.bazaar.toFixed(1)} bazaar), ${r.stuck.toFixed(1)} traffic jams`);
       console.log(`rent          : ${r.rents.toFixed(1)} payments/game, ${L(r.rentAvg)} avg payment;  seat 1 wins ${pct(r.seat1)}`);
+      console.log(`auctions      : ${r.auctionsEnded.toFixed(1)} ended/game, ${r.auctionsTimedOut.toFixed(1)} by the timer, ${r.auctionsUnsold.toFixed(1)} unsold, ${r.auctionTies.toFixed(2)} ties; longest ${r.auctionSteps} actions`);
       console.log(`snatch        : ${r.windows.toFixed(1)} windows/game, ${r.snatched.toFixed(2)} snatched + ${r.snatchBids.toFixed(2)} bidding; ${r.snatchCards.toFixed(2)} buttons from cards, ${r.snatchPaid.toFixed(2)} cards paid out at the cap`);
     }
    }
   }
 }
 }
-console.log(`\n${failures === 0 ? 'ALL INVARIANTS HELD' : `${failures} GAME(S) FAILED`} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-if (QUIET && !TARGET_SWEEP) for (const r of summary) console.log(`${r.mode} n=${r.n} rounds=${r.rounds.toFixed(1)} turns=${r.turns.toFixed(0)} owned5=${pct(r.owned5)} target=${pct(r.targetEnd)} bankr=${pct(r.bankruptEnd)} spread=${L(r.spread)} upg=${r.upgrades.toFixed(1)}`);
+}
+console.log(`\n${failures === 0 ? `ALL INVARIANTS HELD (${RUN_MAPS.join(', ')})` : `${failures} GAME(S) FAILED`} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+if (QUIET && !TARGET_SWEEP) for (const r of summary) console.log(`${r.map} ${r.mode} n=${r.n} rounds=${r.rounds.toFixed(1)} turns=${r.turns.toFixed(0)} owned5=${pct(r.owned5)} target=${pct(r.targetEnd)} bankr=${pct(r.bankruptEnd)} spread=${L(r.spread)} upg=${r.upgrades.toFixed(1)}`);
 if (failures) process.exitCode = 1;

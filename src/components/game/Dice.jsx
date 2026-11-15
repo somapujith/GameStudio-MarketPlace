@@ -5,6 +5,7 @@ import { sfx } from '@/lib/sfx.js';
 import { motionPermission, requestMotionPermission, startShakeListener } from '@/lib/shake.js';
 import { useSettings } from '@/lib/storage.js';
 import { buildActionSpec } from './ActionBar.jsx';
+import { guardAction } from './rollGuard.js';
 import { useReducedMotion } from './ui/helpers.js';
 import {
   PRIME_LIFT,
@@ -398,6 +399,7 @@ export function Dice({ session, skin = null }) {
     if (!a) return;
     const now = performance.now();
     if (now - last.current < 600) return;
+    if (!guardAction(a)) return; // a tap / shake in the first moments after Roll appeared, or right behind another roll, is not a roll
     last.current = now;
     try { sfx.play('click'); } catch { /* sound is optional */ }
     prime(0);

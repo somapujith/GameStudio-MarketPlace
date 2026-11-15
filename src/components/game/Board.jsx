@@ -6,6 +6,9 @@ import Pawn from './Pawn.jsx';
 import CameraFocus from './fx/CameraFocus.jsx';
 import { oddsSupported, useOddsPref } from './oddsPref.js';
 import { TileTipLayer } from './board/TileTip.jsx';
+import { eventFlagFor } from './board/eventFlag.js';
+import { ANDHRA, useArtMap } from '@/components/art/andhra/artMap.js';
+import AndhraCentre from '@/components/art/andhra/center.jsx';
 import '@/styles/board.css';
 import '@/styles/boardart.css';
 import '@/styles/fx.css';
@@ -58,6 +61,7 @@ const GROUP_IDS = Object.fromEntries(
 
 /** What fills the middle until a control panel is passed in: a night skyline with the Charminar. */
 const CenterBrand = memo(function CenterBrand() {
+  const andhra = useArtMap() === ANDHRA;
   return (
     <div className="hb-center__brand" aria-hidden="true">
       <svg className="hb-center__sky" viewBox="0 0 200 90" preserveAspectRatio="xMidYMax meet" focusable="false">
@@ -66,8 +70,8 @@ const CenterBrand = memo(function CenterBrand() {
         <path d="M96 54v-8a4 4 0 0 1 8 0v8z" />
       </svg>
       <div className="hb-center__banner">
-        <span>Hyderabad</span>
-        <b>Hustle</b>
+        <span>{andhra ? 'Andhra' : 'Charminar'}</span>
+        <b>{andhra ? 'Aatalu' : 'Chaos'}</b>
       </div>
     </div>
   );
@@ -112,6 +116,7 @@ const OddsLayer = memo(function OddsLayer({ odds }) {
  * (fx/CameraFocus.jsx), which reads the session itself.
  */
 export function Board({ session, onTileClick, highlightTile = null, center = null, children }) {
+  const artMap = useArtMap(); // the Andhra map paints its own centrepiece behind the middle (styles/map-andhra.css dresses the rest)
   const d = session?.display || session?.view || NO_DISPLAY;
   const players = d.players || NONE;
   const owners = d.owners || NONE;
@@ -186,6 +191,7 @@ export function Board({ session, onTileClick, highlightTile = null, center = nul
         setState={setState}
         mortgaged={!!(owner && mortgaged[tile.id])}
         event={eventMark(cityEvent, tile)}
+        flag={eventFlagFor(cityEvent, tile)}
         highlight={highlightTile === tile.id}
         active={activeTile === tile.id}
         stuck={tile.type === 'traffic' ? stuckAt.get(tile.id) || 0 : 0}
@@ -212,13 +218,14 @@ export function Board({ session, onTileClick, highlightTile = null, center = nul
   const middle = children ?? center ?? <CenterBrand />;
 
   return (
-    <div className={`hb-board${odds ? ' has-odds' : ''}`} style={{ '--hb-n': GRID - 2 }}>
+    <div className={`hb-board${odds ? ' has-odds' : ''}`} data-map={artMap} style={{ '--hb-n': GRID - 2 }}>
       <CameraFocus session={session}>
         <div className="hb-frame">
           <span className="hb-frame__lights" aria-hidden="true" />
           <div className="hb-grid">
             {tiles}
             <div className="hb-center" data-fx-bank="">
+              {artMap === ANDHRA ? <AndhraCentre /> : null}
               {middle}
             </div>
             {odds && <OddsLayer odds={odds} />}
@@ -236,6 +243,8 @@ export function Board({ session, onTileClick, highlightTile = null, center = nul
                     slot={Math.max(0, mates.indexOf(p.id))}
                     count={mates.length || 1}
                     isTurn={i === d.turn && d.phase !== 'over'}
+                    isMe={p.id === session?.me}
+                    avatar={p.avatar}
                     stuck={!!p.stuck}
                     motion={p.motion || null}
                     bankrupt={!!p.bankrupt}

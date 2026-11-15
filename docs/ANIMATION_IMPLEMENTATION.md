@@ -1,4 +1,4 @@
-# Hyderabad Tycoon artwork and motion
+# Kingpin artwork and motion
 
 Class: frontend. Build a lively miniature Hyderabad using layered SVG scenes, illustrated event cards, expressive tokens, and a contextual auto mascot. Preserve existing rules, routes, server timing, user layout edits, keyboard controls, and reduced-motion settings.
 

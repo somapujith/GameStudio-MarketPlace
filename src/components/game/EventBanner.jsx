@@ -11,6 +11,7 @@
 // keeps to a single line: title + the affected-collection chips.
 import { GROUPS } from '@shared/board.js';
 import { formatINR } from '@shared/format.js';
+import { eventEmoji } from './board/eventFlag.js';
 import './moments/moments.css';
 
 export const EVENT_EMOJI = {
@@ -42,7 +43,7 @@ export function eventInfo(event) {
   return {
     key: `${event.id}:${event.round ?? ''}`,
     id: event.id,
-    emoji: EVENT_EMOJI[event.id] || '🎉',
+    emoji: eventEmoji(event.id),
     title: event.title || event.id,
     text: event.text || '',
     chips,

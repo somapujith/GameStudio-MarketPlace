@@ -54,6 +54,7 @@ export default function TopBar() {
         <button
           type="button"
           className="hub-search"
+          data-tour="nav-search"
           onClick={() => setSearchOpen(true)}
           aria-haspopup="dialog"
           aria-keyshortcuts="Control+K Meta+K /"
@@ -66,7 +67,8 @@ export default function TopBar() {
           </kbd>
         </button>
         <div className="hub-topbar__end">
-          <button type="button" className="hub-codebtn" onClick={() => setCodeOpen(true)} aria-haspopup="dialog" aria-label="Have a code? Join a table with a room code">
+          <span id="tour-help-slot" className="hub-topbar__tour" />
+          <button type="button" className="hub-codebtn" data-tour="nav-code" onClick={() => setCodeOpen(true)} aria-haspopup="dialog" aria-label="Have a code? Join a table with a room code">
             <HubIcon name="hash" size={18} />
             <span className="hub-codebtn__long">Have a code?</span>
             <span className="hub-codebtn__short">Code</span>

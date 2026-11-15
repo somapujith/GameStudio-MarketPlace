@@ -384,7 +384,7 @@ describe('small components', () => {
     const html = renderToString(h(StaticRouter, { location: '/friends' }, h(InviteToGameSheet, { friend: { id: 'f1', name: 'Mira' }, onClose() {} })));
     expect(html).toContain('role="dialog"');
     expect(html).toContain('Invite Mira');
-    expect(html).toContain('Hyderabad Tycoon');
+    expect(html).toContain('Kingpin');
   });
   it('InviteBanner (outside a router) renders nothing when empty and a portal-less SSR is safe', () => {
     expect(renderToString(h(InviteBanner, { items: [], onDismiss() {} }))).toBe('');

@@ -12,6 +12,10 @@
 // Priority inside nextBotMove: a debt to settle, then a trade offer waiting for a bot, then a sealed auction, then
 // the turn player.
 //
+// Auctions: a simulator bot (`isBot`) bids with `auctionBid` (price value, set-completion / rival-blocking premiums, a cash
+// safety margin, seeded variation); the auto-play of an idle HUMAN seat passes (BID 0), and the room only plays it when
+// the auction window ends (worker/games/hyderabad-tycoon.js idleAction is null in an auction; AUCTION_CLOSE does it).
+//
 // Snatch: auto-play and the bots' normal chooser NEVER press Snatch (a Snatch window needs a human decision; the room
 // server closes it with its own timer). Only the simulator, to exercise the rule, asks `botSnatchAction`.
 
@@ -53,15 +57,55 @@ function wantsToBuy(state, player, tileId) {
   return left >= eff;
 }
 
+/** Would a rival end up holding the whole collection by winning `tileId`? (they own every other district of it) */
+function blocksRival(state, playerId, tileId) {
+  const tile = TILES[tileId];
+  if (!tile || tile.type !== 'property') return false;
+  const mates = GROUP_TILES[tile.group].filter((t) => t !== tileId);
+  if (!mates.length) return false;
+  const rival = state.owners[mates[0]];
+  return !!rival && rival !== playerId && mates.every((t) => state.owners[t] === rival);
+}
+
+/** What the bot values a district at, as a multiple of its price (before greed and the seeded variation). */
+export const AUCTION_VALUE = Object.freeze({ base: 0.85, extends: 1.1, blocks: 1.2, completes: 1.6 });
+/** Seeded variation of a bot's valuation: x(1 - VARIATION) .. x(1 + VARIATION), so bots do not all bid the same number. */
+export const AUCTION_VARIATION = 0.15;
+
+/**
+ * The sealed bid of a bot (or 0 = pass) for the open auction. Value: the district price, with a big premium when it
+ * completes the bot's own collection, a smaller one when it blocks a rival from completing theirs, a little one when it
+ * extends a collection; times the bot's `greed` and a seeded +-15% variation. Never more than cash minus a safety margin
+ * (half the bot's reserve), so a bid can not push it into debt; below the minimum bid (or unaffordable) it passes.
+ * Pure: the only randomness is `rnd`. Never throws.
+ */
+export function auctionBid(state, player, rnd = Math.random) {
+  try {
+    const pend = state && state.pending;
+    if (!pend || pend.type !== 'auction' || !player) return 0;
+    const tile = TILES[pend.tile];
+    if (!tile) return 0;
+    const { reserve, greed } = botParams(player);
+    const cap = player.cash - reserve / 2;
+    if (!(cap >= pend.minBid)) return 0; // cannot afford the minimum and keep the margin
+    const factor = completesSet(state, player.id, pend.tile)
+      ? AUCTION_VALUE.completes
+      : blocksRival(state, player.id, pend.tile)
+        ? AUCTION_VALUE.blocks
+        : extendsSet(state, player.id, pend.tile)
+          ? AUCTION_VALUE.extends
+          : AUCTION_VALUE.base;
+    const r = typeof rnd === 'function' ? rnd() : 0.5;
+    const wiggle = 1 - AUCTION_VARIATION + 2 * AUCTION_VARIATION * (Number.isFinite(r) ? Math.min(1, Math.max(0, r)) : 0.5);
+    const bid = thousand(Math.min(tile.price * factor * greed * wiggle, cap));
+    return bid >= pend.minBid && bid <= player.cash ? bid : 0;
+  } catch {
+    return 0;
+  }
+}
+
 function bidFor(state, player, rnd) {
-  const { tile: tileId, minBid } = state.pending;
-  const { reserve, greed } = botParams(player);
-  const price = TILES[tileId].price;
-  const factor = completesSet(state, player.id, tileId) ? 1.4 : extendsSet(state, player.id, tileId) ? 1.1 : 0.9;
-  let bid = price * factor * greed * (0.7 + 0.4 * rnd());
-  bid = Math.min(bid, player.cash - reserve / 2);
-  bid = thousand(bid);
-  return bid >= minBid ? bid : 0;
+  return auctionBid(state, player, rnd);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -198,7 +242,8 @@ export function chooseBotAction(state, playerId, rnd = Math.random) {
   if (state.phase === 'auction') {
     const pend = state.pending;
     if (!pend || playerId in pend.bids) return null;
-    return { type: 'BID', playerId, amount: bidFor(state, player, rnd) };
+    // Auto-play of a human seat (an idle or disconnected player) just passes; simulator bots really bid.
+    return { type: 'BID', playerId, amount: player.isBot ? bidFor(state, player, rnd) : 0 };
   }
 
   if (state.players[state.turn].id !== playerId) return null;

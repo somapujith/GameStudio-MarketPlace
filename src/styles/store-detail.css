@@ -142,10 +142,8 @@
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: #fff;
-  background: rgba(10, 15, 31, 0.72);
+  background: rgba(10, 15, 31, 0.84);
   border: 1px solid rgba(255, 255, 255, 0.28);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
 }
 
 /* ---------- title block ---------- */
@@ -304,8 +302,6 @@
   background: var(--hub-glass-2);
   border: 1px solid var(--g-line, var(--hub-line-2));
   box-shadow: 0 18px 40px -16px var(--g-glow-strong, rgba(0, 0, 0, 0.5)), var(--hub-shadow);
-  backdrop-filter: blur(18px) saturate(1.2);
-  -webkit-backdrop-filter: blur(18px) saturate(1.2);
   opacity: 0;
   visibility: hidden;
   transform: translateY(24px);
@@ -330,8 +326,6 @@
   background: var(--hub-glass-2);
   border: 1px solid var(--hub-line-2);
   box-shadow: var(--hub-shadow-s);
-  backdrop-filter: blur(14px) saturate(1.2);
-  -webkit-backdrop-filter: blur(14px) saturate(1.2);
 }
 .gd-subnav ul {
   display: flex;

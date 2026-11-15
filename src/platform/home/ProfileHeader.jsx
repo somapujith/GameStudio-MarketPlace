@@ -132,7 +132,7 @@ export default function ProfileHeader() {
   const status = account ? { text: 'Signed in with Google', tone: 'good', icon: 'check' } : guest ? { text: 'Guest', tone: 'warn', icon: 'user' } : { text: 'Not signed in', tone: '', icon: 'lock' };
 
   return (
-    <section className="hub-panel hh2-pro" aria-labelledby="hh2-pro-h">
+    <section className="hub-panel hh2-pro" aria-labelledby="hh2-pro-h" data-tour="profile-header">
       <div className="hh2-pro__top xp-pro__top">
         <LevelRing pct={pct} level={li.level}>
           <Ava preset={avatar} size={80} ring="var(--hub-surface-3)" frame={equipped.frame} dot={account ? 'on' : undefined} />

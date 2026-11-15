@@ -18,7 +18,7 @@ const edit = (s, fn) => {
   return c;
 };
 const game = (n = 3, settings = {}, seed = 7) => createGame({
-  players: mkPlayers(n), seed, settings: { debug: true, auctionOnDecline: false, ...settings },
+  players: mkPlayers(n), seed, settings: { debug: true, ...settings },
 });
 const ok = (res) => {
   expect(res.error).toBeUndefined();
@@ -138,19 +138,26 @@ describe('snatch: when a window opens', () => {
   });
 
   it('does NOT open for auction wins (skipped district, Bazaar Auction), trades, or mortgages', () => {
-    const landed = onTile(3, { auctionOnDecline: true });
-    let a = act(landed, 'p0', { type: 'SKIP_BUY' }).state;
+    // a Bazaar Auction win: p0 rolls onto the corner (32) with Sultan Bazaar the only free district
+    const corner = edit(game(3), (c) => {
+      c.players[0].pos = 31;
+      for (let i = 0; i < c.owners.length; i++) if (TILES[i].type === 'property' && i !== TILE) c.owners[i] = '_city';
+    });
+    let a = act(corner, 'p0', { type: 'ROLL', dice: [1] }).state;
     expect(a.phase).toBe('auction');
+    expect(a.pending.reason).toBe('bazaar');
     a = bid(a, 'p0', 0).state;
-    a = bid(a, 'p1', MIN_BID + 1000).state;
+    a = bid(a, 'p1', PRICE / 2 + 1000).state;
     const done = bid(a, 'p2', 0);
     expect(done.state.phase).toBe('manage');
     expect(done.state.owners[TILE]).toBe('p1');
     expect(ofType(done.events, 'snatch_open')).toHaveLength(0);
-    // a skipped district without auctions
+    // a skipped district: no auction, no window, the district stays free
     const skipped = act(onTile(), 'p0', { type: 'SKIP_BUY' });
     expect(skipped.state.phase).toBe('manage');
+    expect(skipped.state.owners[TILE]).toBeNull();
     expect(ofType(skipped.events, 'snatch_open')).toHaveLength(0);
+    expect(ofType(skipped.events, 'auction_start')).toHaveLength(0);
     // a trade
     const t = edit(game(3), (c) => { c.owners[8] = 'p1'; });
     const offered = act(t, 'p0', { type: 'TRADE_OFFER', to: 'p1', give: { cash: 90000, tiles: [] }, get: { cash: 0, tiles: [8] } });
@@ -362,11 +369,12 @@ describe('snatch: two or more pressers go to sealed bidding among themselves', (
     const r = act(windowWith(['p1']), 'p2', { type: 'SNATCH' });
     expect(r.state.phase).toBe('auction');
     expect(r.state.pending).toEqual({
-      type: 'auction', tile: TILE, minBid: MIN_BID, bids: { p0: 0 }, reason: 'snatch', snatch: true, buyer: 'p0', claimants: ['p1', 'p2'], returnPhase: 'manage',
+      type: 'auction', id: 1, tile: TILE, minBid: MIN_BID, bids: { p0: 0 }, bidIn: [], eligible: ['p1', 'p2'], ms: 15000,
+      reason: 'snatch', snatch: true, buyer: 'p0', claimants: ['p1', 'p2'], returnPhase: 'manage',
     });
     expect(r.events).toEqual([
       { type: 'snatch_end', tile: TILE, buyer: 'p0', outcome: 'bidding', claimants: ['p1', 'p2'] },
-      { type: 'auction_start', tile: TILE, minBid: MIN_BID, reason: 'snatch', eligible: ['p1', 'p2'] },
+      { type: 'auction_start', tile: TILE, minBid: MIN_BID, reason: 'snatch', eligible: ['p1', 'p2'], ms: 15000 },
     ]);
     expect(r.state.owners[TILE]).toBe('p0'); // still the buyer's until the bidding ends
     expect(r.state.players.map((p) => p.snatches)).toEqual([1, 1, 1]); // buttons are spent only by the winner
@@ -396,7 +404,10 @@ describe('snatch: two or more pressers go to sealed bidding among themselves', (
     expect(s.phase).toBe('auction'); // sealed: waits for p2
     const r = bid(s, 'p2', 40000);
     expect(r.events).toEqual([
-      { type: 'auction_end', tile: TILE, winner: 'p2', amount: 40000, bids: { p0: 0, p1: 15000, p2: 40000 }, reason: 'snatch', buyer: 'p0' },
+      {
+        type: 'auction_end', tile: TILE, winner: 'p2', amount: 40000, bids: { p0: 0, p1: 15000, p2: 40000 }, order: ['p2', 'p1'], tie: false,
+        reason: 'snatch', buyer: 'p0', saved: PRICE - 40000,
+      },
       { type: 'cash', player: 'p2', delta: -40000, reason: 'auction' },
       { type: 'own', tile: TILE, owner: 'p2', reason: 'auction' },
       { type: 'snatch_token', player: 'p2', snatches: 0 },
@@ -410,11 +421,12 @@ describe('snatch: two or more pressers go to sealed bidding among themselves', (
     expect(r.state.turn).toBe(0);
   });
 
-  it('a tie goes to the claimant who sits first after the buyer; the winner of a set-completing bid gets set_complete', () => {
+  it('a tie is drawn between the tied claimants (seeded); the winner of a set-completing bid gets set_complete', () => {
     let s = windowWith(['p1', 'p2'], 3, {}, (c) => { c.owners[3] = 'p2'; c.owners[4] = 'p2'; });
     s = bid(s, 'p1', 20000).state;
     const r = bid(s, 'p2', 20000);
-    expect(r.state.owners[TILE]).toBe('p1'); // earliest seat from the turn player
+    expect(['p1', 'p2']).toContain(r.state.owners[TILE]);
+    expect(ofType(r.events, 'auction_end')[0]).toMatchObject({ tie: true, amount: 20000 });
     const sets = windowWith(['p1', 'p2'], 3, {}, (c) => { c.owners[3] = 'p2'; c.owners[4] = 'p2'; });
     const done = bid(bid(sets, 'p1', 0).state, 'p2', 30000);
     expect(done.state.owners[TILE]).toBe('p2');

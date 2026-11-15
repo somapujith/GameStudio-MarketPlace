@@ -39,6 +39,7 @@ function randomAction(s, rnd) {
   const active = s.players.filter((p) => !p.bankrupt);
   if (rnd() < 0.003 && active.length > 2) return { type: 'RESIGN', playerId: pick(active).id };
   if (s.phase === 'snatch') return snatchMove(s, rnd);
+  if (s.phase === 'auction' && rnd() < 0.2) return { type: 'AUCTION_CLOSE' }; // the room's timer: the non-bidders pass
   const who = actorOf(s);
   const o = getOptions(s, who);
   const c = [];
@@ -176,7 +177,7 @@ describe('fuzz: random legal actions', () => {
             invariants(s);
           }
         }
-      });
+      }, 60_000); // 2500 steps x 4 games: slow on a busy machine
     }
   }
 

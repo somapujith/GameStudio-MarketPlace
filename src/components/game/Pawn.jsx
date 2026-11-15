@@ -2,6 +2,8 @@ import { memo, useContext, useRef, useState } from 'react';
 import * as Art from '@/components/art/index.js';
 import { isCorner, pawnPlacement, sideOf } from './fx/geometry.js';
 import PhoneBoardContext from './phone/PhoneBoardContext.js';
+import { PawnBeacon, PawnTag } from './board/PawnBeacon.jsx';
+import { pawnZ } from './board/beaconModel.js';
 import '@/styles/board.css';
 
 export { pawnPlacement } from './fx/geometry.js';
@@ -36,8 +38,10 @@ export function PieceToken({ piece, color = '#ffd23f', size = 24, base = true, c
  * pawn glides there with `transform: translate()` (never left/top) while its inner hop replays
  * anticipation -> jump -> landing for every step (crouch, an arc leaning into the move, a squash and a puff of dust
  * where it touches down, a fading ghost left on the tile it left), over `--hb-step` (the presenter's `display.stepMs`,
- * set on the layer). The piece stands on a glossy puck in the player's colour above a contact shadow; whose turn it
- * is gets a halo on the board.
+ * set on the layer). The piece stands on a glossy puck in the player's colour above a contact shadow. The pawn whose
+ * turn it is (`isTurn`) is unmistakable: drawn bigger and on top, in a beacon (glow, white ring, two expanding rings)
+ * with a name tag over it (`isMe`: the tag says YOU and the ring is gold-white), for the whole turn, moving or not
+ * (board/PawnBeacon.jsx; the parts are children of the pawn, so they follow it and scale with the camera).
  *
  *  motion: null (walk) | 'ride' (fast hop with a little vehicle trail) | 'teleport' (one arc over the board)
  *  stuck:  stuck in traffic: a small cone with a brake light
@@ -52,6 +56,8 @@ function PawnImpl({
   slot = 0,
   count = 1,
   isTurn = false,
+  isMe = false,
+  avatar = null,
   stuck = false,
   motion = null,
   bankrupt = false,
@@ -76,7 +82,7 @@ function PawnImpl({
     '--y': y / 100,
     '--pd': d,
     '--c': color,
-    zIndex: isTurn ? 30 : 10 + slot,
+    zIndex: pawnZ({ isTurn, slot }),
   };
   // where it came from, as a fraction of the ring: the ghost stays put there while the pawn moves on
   const was = steps ? pawnPlacement(from, slot, count) : null;
@@ -88,6 +94,7 @@ function PawnImpl({
   const kind = motion === 'ride' || motion === 'teleport' ? motion : 'walk';
   const cls = ['hb-pawn', `is-${kind}`];
   if (isTurn) cls.push('is-turn');
+  if (isTurn && isMe) cls.push('is-me');
   if (stuck) cls.push('is-stuck');
   if (bankrupt) cls.push('is-out');
   const moving = steps ? ' is-step' : '';
@@ -104,7 +111,7 @@ function PawnImpl({
       <span className="hb-pawn__body">
         {/* The shadow stays on the board while the pawn is lifted, then tightens as it is set down. */}
         <span className={`hb-pawn__shadow${moving}`} key={`s${steps}`} />
-        {isTurn && !disc ? <span className="hb-pawn__halo" /> : null}
+        {isTurn ? <PawnBeacon /> : null}
         {kind === 'ride' && steps ? <span className="hb-pawn__trail" key={`t${steps}`} /> : null}
         {kind !== 'ride' && steps && !disc ? (
           <span className="hb-pawn__ghost" key={`g${steps}`} aria-hidden="true">
@@ -122,7 +129,7 @@ function PawnImpl({
               <PieceToken piece={piece} color={color} size={48} base={false} className="hb-pawn__piece" />
             </>
           )}
-          {isTurn && <span className="hb-pawn__marker" />}
+          {isTurn ? <PawnTag name={name} color={color} pos={pos} isMe={isMe} disc={disc} avatar={avatar} /> : null}
         </span>
         {steps && !disc ? <span className="hb-pawn__dust" key={`d${steps}`} aria-hidden="true" /> : null}
         {stuck && (

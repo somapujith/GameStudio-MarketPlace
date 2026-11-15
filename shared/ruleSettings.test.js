@@ -9,8 +9,8 @@ import { MODES, MODE_IDS, ROUND_CAP } from './modes.js';
 describe('RULE_FIELDS', () => {
   it('lists every key once, each in a known group, with a default that is itself legal in every mode', () => {
     expect(RULE_KEYS).toEqual([
-      'startCash', 'passStart', 'targetWorth', 'rentPercent', 'trafficFine', 'turnSeconds', 'tradeSeconds', 'maxRounds',
-      'dice', 'auctionOnDecline', 'requireFullSet', 'eventEvery', 'chaiCap', 'snatches', 'snatchMs', 'snatchCardCap',
+      'startCash', 'passStart', 'targetWorth', 'rentPercent', 'trafficFine', 'turnSeconds', 'tradeSeconds', 'auctionSeconds', 'maxRounds',
+      'dice', 'requireFullSet', 'eventEvery', 'chaiCap', 'snatches', 'snatchMs', 'snatchCardCap',
     ]);
     expect(new Set(RULE_KEYS).size).toBe(RULE_KEYS.length);
     const groups = RULE_GROUPS.map((g) => g.id);
@@ -34,7 +34,7 @@ describe('RULE_FIELDS', () => {
   it('the stock rules are the ones the game always had', () => {
     expect(ruleDefaults('standard')).toMatchObject({
       startCash: 1500000, passStart: 200000, targetWorth: 5000000, rentPercent: 100, trafficFine: 25000, turnSeconds: 60,
-      tradeSeconds: 45, maxRounds: 20, dice: 'lucky', auctionOnDecline: true, requireFullSet: true, eventEvery: 3, chaiCap: 1,
+      tradeSeconds: 45, auctionSeconds: 20, maxRounds: 20, dice: 'lucky', requireFullSet: true, eventEvery: 3, chaiCap: 1,
       snatches: 1, snatchMs: 5000, snatchCardCap: 2,
     });
   });
@@ -124,6 +124,19 @@ describe('customRuleKeys / customRuleCount', () => {
   });
 });
 
+describe('the retired auctionOnDecline rule', () => {
+  it('is no field and no key: unknown to the contract, dropped by sanitizeRules, never a custom rule', () => {
+    expect(RULE_KEYS).not.toContain('auctionOnDecline');
+    expect(ruleField('auctionOnDecline')).toBeNull();
+    expect(cleanRule('auctionOnDecline', true)).toBeUndefined();
+    for (const v of [true, false, 'yes', null]) {
+      expect(sanitizeRules({ auctionOnDecline: v })).toEqual(ruleDefaults('standard'));
+      expect(customRuleCount({ auctionOnDecline: v })).toBe(0);
+    }
+    expect(customRuleKeys({ mode: 'standard', auctionOnDecline: false, rentPercent: 150 })).toEqual(['rentPercent']);
+  });
+});
+
 describe('ruleWarnings', () => {
   it('a stock table has none', () => {
     for (const m of MODE_IDS) expect(ruleWarnings(ruleDefaults(m), m)).toEqual([]);
@@ -157,5 +170,22 @@ describe('the round cap', () => {
     expect(ROUND_CAP).toBe(60);
     expect(ruleField('maxRounds').options.some((o) => o.value === null)).toBe(true);
     expect(Math.max(...ruleField('maxRounds').options.map((o) => o.value ?? 0))).toBeLessThanOrEqual(ROUND_CAP);
+  });
+});
+
+describe('auctionSeconds', () => {
+  it('lives in the timers group right after the trade timer, 10-90 s step 5, default 20', () => {
+    const f = ruleField('auctionSeconds');
+    expect(f).toMatchObject({ group: 'timers', type: 'number', unit: 'seconds', min: 10, max: 90, step: 5 });
+    expect(RULE_KEYS.indexOf('auctionSeconds')).toBe(RULE_KEYS.indexOf('tradeSeconds') + 1);
+    expect(isRuleValue(f, 20)).toBe(true);
+    expect(isRuleValue(f, 25)).toBe(true);
+    expect(isRuleValue(f, 22)).toBe(false);
+    expect(isRuleValue(f, 5)).toBe(false);
+    expect(isRuleValue(f, 95)).toBe(false);
+    expect(cleanRule('auctionSeconds', 22)).toBe(20);
+    expect(sanitizeRules({ auctionSeconds: 60 }).auctionSeconds).toBe(60);
+    expect(customRuleKeys({ auctionSeconds: 45 })).toEqual(['auctionSeconds']);
+    expect(customRuleCount({ auctionSeconds: 20 })).toBe(0);
   });
 });

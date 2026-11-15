@@ -28,8 +28,12 @@ export const LEVEL_NAMES = Object.freeze(['Business', 'Expanded', 'Flagship']);
 
 export const PRICE_UNIT = 1000; // rents are rounded to whole thousands
 export const RENT_RATIO = 0.1; // base rent = 10% of the price
-export const LEVEL_RENT_MULT = Object.freeze([1, 1.9, 3.5]); // rent ladder by level, applied to the base rent
-export const UPGRADE_RATIO = 0.5; // one upgrade costs 50% of the price
+export const LEVEL_RENT_MULT = Object.freeze([1, 2.7, 4.4]); // rent ladder by level, applied to the base rent
+export const UPGRADE_RATIO = 0.4; // one upgrade costs 40% of the price
+// Why these numbers (every district scales with its price, so one set covers all 24): upgrades need the whole collection, whose
+// level-0 tiles already pay the 1.5x set bonus, so the real gain of an upgrade is measured against THAT rent. Level 1 (rent 0.27 x
+// price) adds 0.12 x price for a 0.4 x price upgrade = pays back in about 3.3 opponent landings; level 2 (0.44 x price) adds 0.17 x
+// price = about 2.4 landings. A fully upgraded district asks 4.4x a bare one (2.9x a bare full-set tile) for 1.8 x price in all.
 export const SELL_RATIO = 0.5; // selling an upgrade back refunds 50% of what it cost
 export const MORTGAGE_RATIO = 0.5; // the bank lends 50% of the price
 export const UNMORTGAGE_INTEREST = 0.1; // lifting a mortgage costs +10%
@@ -49,7 +53,7 @@ export const CHAI_MIN_RENT = 20000; // a chai token halves the first rent paymen
 export const MUNICIPAL_BASE = 40000; // Municipal Charges: flat part
 export const MUNICIPAL_PER_LEVEL = 10000; // ... plus this per upgrade level you own
 export const BAZAAR_MIN_RATIO = 0.5; // Bazaar Auction: minimum bid = 50% of the price
-export const DECLINE_MIN_RATIO = 0.1; // a skipped (or unaffordable) district: minimum bid = 10% of the price
+export const DECLINE_MIN_RATIO = 0.1; // Snatch bidding: minimum bid = 10% of the price (the name is historical: a pass no longer opens an auction)
 
 /**
  * The eight collections (3 districts each).
@@ -144,7 +148,7 @@ export const isBuyable = (t) => !!t && t.type === 'property';
 
 const round1000 = (x) => Math.round(x / PRICE_UNIT) * PRICE_UNIT;
 
-/** [level 0, level 1, level 2] rent of a district (HITEC City: 34,000 / 65,000 / 1,19,000). Empty for other tiles. */
+/** [level 0, level 1, level 2] rent of a district (HITEC City: 34,000 / 92,000 / 1,50,000). Empty for other tiles. */
 export function rentTable(tile) {
   if (!tile || tile.type !== 'property') return [];
   const base = Math.round(tile.price * RENT_RATIO);
@@ -163,7 +167,7 @@ export function rentFor(tile, level = 0, fullSet = false) {
   return lv === 0 && fullSet ? Math.round(rent * SET_BONUS.full) : rent;
 }
 
-/** Cost of ONE upgrade on a district: 50% of its price (₹30,000 - ₹2,00,000). */
+/** Cost of ONE upgrade on a district: 40% of its price (₹24,000 - ₹1,60,000; always whole thousands, prices are multiples of 10,000). */
 export function upgradeCost(tile) {
   return tile && tile.type === 'property' ? Math.round(tile.price * UPGRADE_RATIO) : 0;
 }
@@ -190,7 +194,7 @@ export function nextTransport(tileId) {
 /** Municipal Charges for someone holding `levels` upgrade levels in total. */
 export const municipalFor = (levels) => MUNICIPAL_BASE + MUNICIPAL_PER_LEVEL * Math.max(0, levels | 0);
 
-/** Minimum bid of an auction for `tileId`: `reason` 'bazaar' = 50% of the price, otherwise 10%. */
+/** Minimum bid of an auction for `tileId`: `reason` 'bazaar' = 50% of the price, otherwise (Snatch bidding) 10%. */
 export function auctionMinBid(tileId, reason) {
   const tile = TILES[tileId];
   const ratio = reason === 'bazaar' ? BAZAAR_MIN_RATIO : DECLINE_MIN_RATIO;

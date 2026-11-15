@@ -3,6 +3,7 @@
 // StatsSheet ("View stats") shows every player at once, richest first.
 import '@/styles/sheets.css';
 import { formatINR, compactINR } from '@shared/format.js';
+import { wordsOf } from '@/lib/mapWords.js';
 import Sheet from './ui/Sheet.jsx';
 import Pill from './ui/Pill.jsx';
 import Icon from './ui/Icon.jsx';
@@ -40,7 +41,7 @@ export function PlayerTags({ session, p }) {
       {p.bankrupt ? <Pill tone="bad">Bankrupt</Pill> : null}
       {!p.bankrupt && activePlayer(session)?.id === p.id && !over ? <Pill tone="blue">Turn</Pill> : null}
       {!p.bankrupt && p.stuck ? <Pill tone="warn" icon={<span aria-hidden="true">🚦</span>}>Stuck in traffic</Pill> : null}
-      {!p.bankrupt && p.chai > 0 ? <Pill tone="gold" icon={<span aria-hidden="true">☕</span>}>Chai token{p.chai > 1 ? ` ×${p.chai}` : ''}</Pill> : null}
+      {!p.bankrupt && p.chai > 0 ? <Pill tone="gold" icon={<span aria-hidden="true">☕</span>}>{wordsOf().ChaiToken}{p.chai > 1 ? ` ×${p.chai}` : ''}</Pill> : null}
     </div>
   );
 }
@@ -81,7 +82,7 @@ function StatGrid({ stats, laps }) {
     ['Bought', String(s.propertiesBought || 0)],
     ['Upgrades', String(s.upgrades || 0)],
     ['Rides', String(s.rides || 0)],
-    ['Chai saved', formatINR(s.chaiSaved || 0)],
+    [wordsOf().isDefault ? 'Chai saved' : 'Tokens saved', formatINR(s.chaiSaved || 0)],
   ];
   if (Number.isFinite(laps)) items.push(['Laps', String(laps)]);
   return (

@@ -1,0 +1,336 @@
+/* City event flags on the board (components/game/board/EventFlag.jsx).
+   A district of the collection the event concerns raises a small flagpole on its outer edge: the pennant slides up the pole with a
+   spring, a puff of confetti, then it flutters gently. A whole-city event strings festive bunting along the top of the four corner
+   tiles. When the event ends the flag slides down and fades.
+   Everything sits INSIDE the tile (the tile clips), so the board camera zoom carries it along. Sizes are fractions of --hb-u (one edge tile).
+   Motion = transform / opacity only. The flutter is one slow loop on one element per flag (<= 6 district flags or 4 corners at a time),
+   switched off on phones and narrow boards, where the flag only plays its one-time raise and then stands still.
+   Reduced motion: no slide, no burst, no flutter, the flag just fades in / out (bottom of the file). */
+
+.hb-flag {
+  --u: var(--hb-u, 40px);
+  --ph: calc(var(--u) * 0.3);    /* pole height */
+  --ch: calc(var(--u) * 0.18);   /* pennant height */
+  --pw: max(calc(var(--u) * 0.035), 1.5px); /* pole width */
+  --drop: calc(var(--ph) - var(--ch));       /* how far the pennant starts below its raised position */
+  --c1: #14803f;
+  --c2: #0c5f2e;
+  --ink: #fff;
+  position: absolute;
+  z-index: 5;
+  width: calc(var(--u) * 0.74);
+  height: var(--ph);
+  pointer-events: none;
+  contain: layout style;
+}
+.hb-flag--boom { --c1: #14803f; --c2: #0c5f2e; --ink: #fff; }
+.hb-flag--slump { --c1: #b3342f; --c2: #7c4543; --ink: #fff; }
+.hb-flag--festival { --c1: #ffb020; --c2: #f08a0c; --ink: #2b1600; }
+
+/* ---- where the pole stands: the outer edge of the tile, where the old event badge sat ------------------------- */
+.hb-side--bottom:not(.hb-tile--corner) > .hb-flag--pennant { left: calc(var(--u) * 0.07); bottom: calc(var(--u) * 0.04); }
+.hb-side--top:not(.hb-tile--corner) > .hb-flag--pennant { left: calc(var(--u) * 0.07); top: calc(var(--u) * 0.04); }
+.hb-side--left:not(.hb-tile--corner) > .hb-flag--pennant { left: calc(var(--u) * 0.07); top: calc(var(--u) * 0.04); }
+.hb-side--right:not(.hb-tile--corner) > .hb-flag--pennant { right: calc(var(--u) * 0.07); top: calc(var(--u) * 0.04); }
+.hb-tile--corner > .hb-flag--pennant { --ph: calc(var(--u) * 0.46); --ch: calc(var(--u) * 0.26); left: calc(var(--u) * 0.1); top: calc(var(--u) * 0.1); width: calc(var(--u) * 0.9); }
+
+/* ---- the pole ------------------------------------------------------------------------------------------------- */
+.hb-flag__pole {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: var(--pw);
+  height: 100%;
+  border-radius: 1px;
+  background: linear-gradient(90deg, #fff6d2, #c9a24a);
+  box-shadow: 0 0 0 0.5px rgba(70, 44, 18, 0.6);
+  transform-origin: 50% 100%;
+}
+.hb-flag__pole::before { /* the finial */
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: calc(var(--pw) * -1.1);
+  width: calc(var(--pw) * 2);
+  height: calc(var(--pw) * 2);
+  margin-left: calc(var(--pw) * -1);
+  border-radius: 50%;
+  background: #ffd34d;
+  box-shadow: 0 0 0 0.5px rgba(70, 44, 18, 0.6);
+}
+
+/* ---- the pennant ---------------------------------------------------------------------------------------------- */
+.hb-flag__cloth {
+  position: absolute;
+  left: var(--pw);
+  top: calc(var(--u) * 0.02);
+  height: var(--ch);
+  max-width: calc(100% - var(--pw));
+}
+.hb-flag__wave {
+  display: flex;
+  align-items: center;
+  gap: 0.14em;
+  height: 100%;
+  padding: 0 calc(var(--u) * 0.15) 0 calc(var(--u) * 0.05);
+  background: linear-gradient(180deg, var(--c1), var(--c2));
+  clip-path: polygon(0 0, 100% 0, calc(100% - var(--u) * 0.09) 50%, 100% 100%, 0 100%);
+  color: var(--ink);
+  font-size: max(calc(var(--u) * 0.135), 6.5px);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  transform-origin: 0 50%;
+}
+.hb-flag--boom .hb-flag__x,
+.hb-flag--slump .hb-flag__x { text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35); }
+.hb-flag__em { font-size: 0.95em; line-height: 1; }
+/* a slump hangs: the pennant droops from the top of the pole instead of flying */
+.hb-flag--slump .hb-flag__wave { transform: rotate(9deg); }
+
+/* the right-hand column mirrors the flag: pole on the right edge, pennant flying inward */
+.hb-side--right:not(.hb-tile--corner) > .hb-flag--pennant .hb-flag__pole { left: auto; right: 0; }
+.hb-side--right:not(.hb-tile--corner) > .hb-flag--pennant .hb-flag__cloth { left: auto; right: var(--pw); }
+.hb-side--right:not(.hb-tile--corner) > .hb-flag--pennant .hb-flag__wave {
+  flex-direction: row-reverse;
+  padding: 0 calc(var(--u) * 0.05) 0 calc(var(--u) * 0.15);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, calc(var(--u) * 0.09) 50%);
+  transform-origin: 100% 50%;
+}
+.hb-side--right:not(.hb-tile--corner) > .hb-flag--pennant.hb-flag--slump .hb-flag__wave { transform: rotate(-9deg); }
+
+/* ---- bunting (whole-city events, the four corner tiles) --------------------------------------------------------- */
+.hb-flag--bunting { left: 0; top: 0; right: 0; width: auto; height: calc(var(--u) * 0.62); }
+.hb-flag__string {
+  position: absolute;
+  left: 5%;
+  right: 5%;
+  top: calc(var(--u) * 0.05);
+  height: calc(var(--u) * 0.24);
+  display: flex;
+  justify-content: space-between;
+  transform-origin: 50% 0;
+}
+.hb-flag__string::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: max(calc(var(--u) * 0.02), 1px);
+  background: rgba(70, 44, 18, 0.65);
+}
+.hb-flag__string > i {
+  display: block;
+  width: calc(var(--u) * 0.2);
+  height: calc(var(--u) * 0.23);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  background: #ff9f1c;
+  transform-origin: 50% 0;
+}
+.hb-flag__string > i:nth-child(5n + 1) { background: #ff9f1c; }
+.hb-flag__string > i:nth-child(5n + 2) { background: #ff4d6d; }
+.hb-flag__string > i:nth-child(5n + 3) { background: #ffd23f; }
+.hb-flag__string > i:nth-child(5n + 4) { background: #2fbf7a; }
+.hb-flag__string > i:nth-child(5n + 5) { background: #3aa9e8; }
+.hb-flag__tag {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--u) * 0.3);
+  translate: -50% 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.18em;
+  padding: calc(var(--u) * 0.035) calc(var(--u) * 0.09);
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--c1), var(--c2));
+  color: var(--ink);
+  font-size: max(calc(var(--u) * 0.15), 6.5px);
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: 0 0 0 max(calc(var(--u) * 0.02), 1px) #fff, 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+/* ---- confetti: a few specks fly out of the pennant once, when it arrives --------------------------------------------- */
+.hb-flag__burst {
+  position: absolute;
+  left: calc(var(--pw) + var(--u) * 0.2);
+  top: calc(var(--u) * 0.02 + var(--ch) / 2);
+  width: 0;
+  height: 0;
+}
+.hb-flag--bunting .hb-flag__burst { left: 50%; top: calc(var(--u) * 0.4); }
+.hb-flag__burst > i {
+  position: absolute;
+  left: calc(var(--u) * -0.025);
+  top: calc(var(--u) * -0.025);
+  width: max(calc(var(--u) * 0.05), 2.5px);
+  height: max(calc(var(--u) * 0.05), 2.5px);
+  border-radius: 1px;
+  background: #ffd23f;
+  opacity: 0;
+  animation: hb-flag-confetti 820ms cubic-bezier(0.2, 0.7, 0.3, 1) calc(760ms + var(--i) * 18ms) both;
+}
+.hb-flag__burst > i:nth-child(3n + 2) { background: #ff4d6d; border-radius: 50%; }
+.hb-flag__burst > i:nth-child(3n + 3) { background: #3aa9e8; }
+.hb-flag--bunting .hb-flag__burst > i { animation-delay: calc(560ms + var(--i) * 18ms); }
+
+/* ---- motion: raise once (spring), then a slow flutter ------------------------------------------------------------------ */
+.hb-flag.is-raise .hb-flag__pole { animation: hb-flag-pole 240ms ease-out both; }
+.hb-flag.is-raise .hb-flag__cloth { animation: hb-flag-raise 860ms ease-out 150ms both; }
+.hb-flag.is-raise .hb-flag__string > i { animation: hb-flag-bunt 560ms ease-out calc(120ms + var(--i) * 80ms) both; }
+.hb-flag.is-raise .hb-flag__tag { animation: hb-flag-tag 520ms ease-out 480ms both; }
+.hb-flag.is-lower .hb-flag__pole { animation: hb-flag-fade 460ms ease-in 220ms both; }
+.hb-flag.is-lower .hb-flag__cloth { animation: hb-flag-lower 620ms ease-in both; }
+.hb-flag.is-lower .hb-flag__string,
+.hb-flag.is-lower .hb-flag__tag { animation: hb-flag-fade 520ms ease-in both; }
+
+/* the flutter: one slow skew loop on the pennant (or a sway of the whole string); starts once the raise is over */
+.hb-flag--pennant .hb-flag__wave { animation: hb-flag-flutter 2.7s ease-in-out infinite alternate; }
+.hb-flag--pennant.is-raise .hb-flag__wave { animation-delay: 1.15s; animation-fill-mode: backwards; }
+.hb-flag--slump .hb-flag__wave { animation-name: hb-flag-sag; animation-duration: 3.6s; }
+.hb-side--right:not(.hb-tile--corner) > .hb-flag--slump .hb-flag__wave { animation-name: hb-flag-sag-r; }
+.hb-flag--bunting .hb-flag__string { animation: hb-flag-sway 3.2s ease-in-out infinite alternate; }
+.hb-flag--bunting.is-raise .hb-flag__string { animation-delay: 1.1s; animation-fill-mode: backwards; }
+.hb-flag.is-lower .hb-flag__string { animation: hb-flag-fade 520ms ease-in both; }
+.hb-flag.is-lower .hb-flag__wave { animation: none; }
+
+/* ---- phone tiles (~33px wide): no pole, no emoji, just the pennant with the multiplier, along the top of the tile ------------------
+   The band's price steps aside (board.css-free: the band is padded under / beside the pennant), so nothing printed is covered. */
+.hb-tile--phone.hb-tile--property {
+  --fh: max(calc(var(--hb-u) * 0.3), 9px);
+}
+.hb-tile--phone:is(.hb-side--top, .hb-side--bottom, .hb-side--left, .hb-side--right):not(.hb-tile--corner) > .hb-flag--pennant {
+  --ph: var(--fh);
+  --ch: var(--fh);
+  --pw: 0px;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: auto;
+  width: auto;
+}
+.hb-tile--phone:is(.hb-side--top, .hb-side--bottom):not(.hb-tile--corner) > .hb-flag--pennant .hb-flag__cloth { top: 0; left: 0; right: 0; max-width: none; }
+.hb-tile--phone:is(.hb-side--left, .hb-side--right):not(.hb-tile--corner) > .hb-flag--pennant .hb-flag__cloth { top: 0; max-width: none; }
+.hb-tile--phone:is(.hb-side--left):not(.hb-tile--corner) > .hb-flag--pennant { right: auto; }
+.hb-tile--phone:is(.hb-side--right):not(.hb-tile--corner) > .hb-flag--pennant { left: auto; }
+.hb-tile--phone:is(.hb-side--left, .hb-side--right):not(.hb-tile--corner) > .hb-flag--pennant { width: calc(var(--hb-u) * 0.62); }
+.hb-tile--phone > .hb-flag--pennant .hb-flag__pole,
+.hb-tile--phone > .hb-flag--pennant .hb-flag__em { display: none; }
+.hb-tile--phone > .hb-flag--pennant .hb-flag__wave {
+  width: 100%;
+  justify-content: center;
+  padding: 0 calc(var(--hb-u) * 0.07) 0 0;
+  font-size: max(calc(var(--hb-u) * 0.22), 6.8px);
+  clip-path: polygon(0 0, 100% 0, calc(100% - var(--hb-u) * 0.07) 50%, 100% 100%, 0 100%);
+}
+.hb-tile--phone:is(.hb-side--right):not(.hb-tile--corner) > .hb-flag--pennant .hb-flag__wave {
+  padding: 0 0 0 calc(var(--hb-u) * 0.07);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, calc(var(--hb-u) * 0.07) 50%);
+}
+.hb-tile--phone > .hb-flag--pennant .hb-flag__burst { left: 50%; }
+.hb-tile--phone > .hb-flag--pennant { --drop: calc(var(--fh) * 0.9); }
+.hb-tile--phone > .hb-flag--pennant.hb-flag--slump .hb-flag__wave { transform: none; }
+/* the band under the pennant: price / rent tag moves out of its way (top & bottom rows: below it; side columns: beside it) */
+.hb-tile--phone.has-flag--pennant:is(.hb-side--top, .hb-side--bottom).hb-tile--property .pt__band { padding-top: calc(var(--fh) - 1px); }
+.hb-tile--phone.has-flag--pennant.hb-side--left.hb-tile--property .pt__band { padding-left: calc(var(--hb-u) * 0.5); }
+.hb-tile--phone.has-flag--pennant.hb-side--right.hb-tile--property .pt__band { padding-right: calc(var(--hb-u) * 0.5); }
+/* phone corners: the bunting is thinner and the tag smaller */
+.hb-tile--phone > .hb-flag--bunting { height: calc(var(--hb-u) * 0.5); }
+.hb-tile--phone > .hb-flag--bunting .hb-flag__tag { top: calc(var(--hb-u) * 0.34); font-size: 7px; padding: 1px 4px; }
+.hb-tile--phone > .hb-flag--bunting .hb-flag__string > i { width: calc(var(--hb-u) * 0.26); height: calc(var(--hb-u) * 0.28); }
+
+/* very small phone boards (~19px tiles): the pennant prints just the number, the colour already says up or down */
+@container (max-width: 299px) {
+  .hb-tile--phone > .hb-flag--pennant .hb-flag__t { display: none; }
+  .hb-tile--phone > .hb-flag--pennant .hb-flag__wave { font-size: 6.4px; padding-right: 2px; }
+  .hb-tile--phone.has-flag--pennant.hb-side--left.hb-tile--property .pt__band { padding-left: calc(var(--hb-u) * 0.4); }
+  .hb-tile--phone.has-flag--pennant.hb-side--right.hb-tile--property .pt__band { padding-right: calc(var(--hb-u) * 0.4); }
+}
+
+/* phones and narrow boards: no loops, the flag only plays its raise and then stands still */
+@container (max-width: 520px) {
+  .hb-flag--pennant .hb-flag__wave,
+  .hb-flag--bunting .hb-flag__string { animation: none; }
+}
+.hb-tile--phone .hb-flag--pennant .hb-flag__wave,
+.hb-tile--phone .hb-flag--bunting .hb-flag__string { animation: none; }
+
+@keyframes hb-flag-pole {
+  from { opacity: 0; transform: scaleY(0.15); }
+  to { opacity: 1; transform: scaleY(1); }
+}
+@keyframes hb-flag-raise {
+  0% { opacity: 0; transform: translateY(var(--drop)); }
+  14% { opacity: 1; }
+  62% { transform: translateY(calc(var(--u) * -0.05)); }
+  82% { transform: translateY(calc(var(--u) * 0.015)); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes hb-flag-lower {
+  0% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(var(--drop)); }
+}
+@keyframes hb-flag-fade {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes hb-flag-bunt {
+  0% { opacity: 0; transform: scaleY(0); }
+  60% { opacity: 1; transform: scaleY(1.2); }
+  100% { opacity: 1; transform: scaleY(1); }
+}
+@keyframes hb-flag-tag {
+  0% { opacity: 0; transform: scale(0.3); }
+  65% { opacity: 1; transform: scale(1.14); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes hb-flag-flutter {
+  from { transform: skewY(-3.5deg) scaleX(1); }
+  to { transform: skewY(3deg) scaleX(0.95); }
+}
+@keyframes hb-flag-sag {
+  from { transform: rotate(7deg); }
+  to { transform: rotate(11deg); }
+}
+@keyframes hb-flag-sag-r {
+  from { transform: rotate(-7deg); }
+  to { transform: rotate(-11deg); }
+}
+@keyframes hb-flag-sway {
+  from { transform: rotate(-0.7deg); }
+  to { transform: rotate(0.7deg); }
+}
+@keyframes hb-flag-confetti {
+  0% { opacity: 0; transform: rotate(var(--a)) translateY(0) scale(1); }
+  12% { opacity: 1; }
+  100% { opacity: 0; transform: rotate(var(--a)) translateY(calc(var(--u) * -0.36)) scale(0.4); }
+}
+@keyframes hb-flag-appear {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ---- reduced motion: appear / disappear with a plain fade, nothing slides, flutters or bursts ------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .hb-board .hb-flag.hb-flag .hb-flag__burst { display: none; }
+  .hb-board .hb-flag.hb-flag .hb-flag__wave,
+  .hb-board .hb-flag.hb-flag .hb-flag__string,
+  .hb-board .hb-flag.hb-flag .hb-flag__string > i,
+  .hb-board .hb-flag.hb-flag .hb-flag__pole,
+  .hb-board .hb-flag.hb-flag .hb-flag__tag { animation: none !important; }
+  .hb-board .hb-flag.hb-flag.is-raise { animation: hb-flag-appear 220ms ease-out both !important; }
+  .hb-board .hb-flag.hb-flag.is-lower { animation: hb-flag-fade 220ms ease-in both !important; }
+  .hb-board .hb-flag.hb-flag .hb-flag__cloth { animation: none !important; }
+}
+:root[data-motion='reduced'] .hb-board .hb-flag.hb-flag .hb-flag__burst,
+.hg-game[data-rm] .hb-board .hb-flag.hb-flag .hb-flag__burst { display: none; }
+:root[data-motion='reduced'] .hb-board .hb-flag.hb-flag :is(.hb-flag__wave, .hb-flag__string, .hb-flag__string > i, .hb-flag__pole, .hb-flag__tag, .hb-flag__cloth),
+.hg-game[data-rm] .hb-board .hb-flag.hb-flag :is(.hb-flag__wave, .hb-flag__string, .hb-flag__string > i, .hb-flag__pole, .hb-flag__tag, .hb-flag__cloth) { animation: none !important; }
+:root[data-motion='reduced'] .hb-board .hb-flag.hb-flag.is-raise,
+.hg-game[data-rm] .hb-board .hb-flag.hb-flag.is-raise { animation: hb-flag-appear 220ms ease-out both !important; }
+:root[data-motion='reduced'] .hb-board .hb-flag.hb-flag.is-lower,
+.hg-game[data-rm] .hb-board .hb-flag.hb-flag.is-lower { animation: hb-flag-fade 220ms ease-in both !important; }

@@ -5,6 +5,7 @@ import '@/styles/sheets.css';
 import { useEffect, useRef, useState } from 'react';
 import { TILES } from '@shared/board.js';
 import { formatINR } from '@shared/format.js';
+import { wordsOf } from '@/lib/mapWords.js';
 import Sheet from './ui/Sheet.jsx';
 import Button from './ui/Button.jsx';
 import Icon from './ui/Icon.jsx';
@@ -13,6 +14,7 @@ import ConfirmDialog from './ui/ConfirmDialog.jsx';
 import PlayerToken from './ui/PlayerToken.jsx';
 import { LevelPips } from './ui/TileChip.jsx';
 import { levelNameOf, mortgageOf, tileAccent, upgradeCostOf, useHeld, useStateLike } from './ui/helpers.js';
+import { bankruptcyText } from './ui/bankruptcy.js';
 
 export const DEBT_REASONS = {
   rent: 'Rent', tax: 'Municipal charges', card: 'Card payment', fare: 'Fare', traffic: 'Traffic fine', event: 'City event',
@@ -75,9 +77,10 @@ export default function DebtSheet({ session }) {
   const sells = lists.current.sell;
   const raisable = mortgages.reduce((n, m) => n + (m.value ?? 0), 0) + sells.reduce((n, s) => n + (s.refund ?? 0), 0);
   const pct = heldAmount > 0 ? Math.min(100, Math.round((cash / heldAmount) * 100)) : 100;
-  const who = creditor ? creditor.name : 'the bank';
   const plan = debtPlan(shortfall, sells, mortgages);
   const suggested = new Set(plan.picks.map((p) => `${p.kind}:${p.tile}`));
+  // the exact rule for THIS debt: the bank takes everything, the creditor is paid only what is owed (up to the assets' worth)
+  const bankruptRule = inDebt ? bankruptcyText(view, me) : '';
 
   const row = (tileId, kind, label, value, onClick) => {
     const tile = TILES[tileId];
@@ -117,7 +120,7 @@ export default function DebtSheet({ session }) {
           <div className="hg-debt-band" data-drag="">
             <span className="hg-debt-ico"><Icon name="warn" size={30} /></span>
             <div>
-              <p className="hg-kicker">{DEBT_REASONS[heldReason] || DEBT_REASONS.other} due</p>
+              <p className="hg-kicker">{(heldReason === 'tax' && !wordsOf().isDefault ? wordsOf().municipalCorner : DEBT_REASONS[heldReason]) || DEBT_REASONS.other} due</p>
               <h2>You owe {formatINR(heldAmount)}</h2>
               <p className="hg-debt-to">
                 to {creditor ? (
@@ -130,12 +133,15 @@ export default function DebtSheet({ session }) {
           </div>
         )}
         footer={(
-          <div className="hg-debt-actions">
-            <Button variant="rose" size="sm" onClick={() => setConfirm(true)} disabled={busy}>Declare bankruptcy</Button>
-            <Button variant="gold" size="lg" disabled={!canPay} onClick={() => session.dispatch({ type: 'PAY_DEBT' })}>
-              Pay {formatINR(heldAmount)}
-            </Button>
-          </div>
+          <>
+            {bankruptRule ? <p className="hg-hint is-warn hg-debt-rule"><Icon name="warn" size={14} /> <span>{bankruptRule}</span></p> : null}
+            <div className="hg-debt-actions">
+              <Button variant="rose" size="sm" onClick={() => setConfirm(true)} disabled={busy}>Declare bankruptcy</Button>
+              <Button variant="gold" size="lg" disabled={!canPay} onClick={() => session.dispatch({ type: 'PAY_DEBT' })}>
+                Pay {formatINR(heldAmount)}
+              </Button>
+            </div>
+          </>
         )}
       >
         <div className="hg-debt-meter" role="group" aria-label="Cash against debt">
@@ -197,7 +203,7 @@ export default function DebtSheet({ session }) {
       <ConfirmDialog
         open={confirm && open}
         title="Declare bankruptcy?"
-        text={`You leave the game and your districts go to ${who}. This cannot be undone.`}
+        text={`${inDebt ? bankruptcyText(view, me, { sure: true }) : 'You are leaving the game: the bank takes ALL your cash and districts.'} Your districts go back to the bank, free for anyone to buy. This cannot be undone.`}
         confirmLabel="Declare bankruptcy"
         cancelLabel="Keep hustling"
         danger

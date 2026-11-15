@@ -105,7 +105,7 @@ export default function TabBar({ badges }) {
   const listRef = useRef(null);
   const ind = useIndicator(listRef, activeIndex, '.hub-tab__icon');
   return (
-    <nav className="hub-tabbar xs-ind-host" aria-label="Primary">
+    <nav className="hub-tabbar xs-ind-host" aria-label="Primary" data-tour="nav-tabbar">
       <ul ref={listRef} className="xs-ind-list">
         {NAV_ITEMS.map((t) => {
           const on = active(t);
@@ -133,7 +133,7 @@ export function TopNav({ badges }) {
   const listRef = useRef(null);
   const ind = useIndicator(listRef, activeIndex, '.hub-rail__link');
   return (
-    <nav className="hub-rail xs-ind-host" aria-label="Main">
+    <nav className="hub-rail xs-ind-host" aria-label="Main" data-tour="nav-rail">
       <ul ref={listRef} className="xs-ind-list">
         {NAV_ITEMS.map((t) => {
           const on = active(t);

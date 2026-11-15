@@ -12,6 +12,7 @@ import { buzz } from '@/lib/haptics.js';
 import { requestMotionPermission, shakeSupported } from '@/lib/shake.js';
 import { PLAYBACK_SPEEDS, THEMES } from '@/lib/storage.js';
 import { paths } from '@/platform/paths.js';
+import ReplayTours from '@/components/tour/ReplayTours.jsx';
 import * as PUSH from '@/lib/push.js';
 
 const THEME_OPTS = THEMES.map((t) => ({ value: t, label: t === 'system' ? 'System' : t === 'dark' ? 'Dark' : 'Light' }));
@@ -160,7 +161,7 @@ export default function SettingsSection() {
       </div>
 
       <div className="hh2-setgrid">
-        <section className="hub-panel" aria-labelledby="hh2-snd-h">
+        <section className="hub-panel" aria-labelledby="hh2-snd-h" data-tour="settings-sound">
           <h3 id="hh2-snd-h" className="hub-section__title">
             <HubIcon name="bolt" size={18} /> Sound
           </h3>
@@ -213,6 +214,35 @@ export default function SettingsSection() {
             />
           </div>
           <Toggle
+            icon={<Icon name="volume" size={20} />}
+            label="Voice lines"
+            hint="Hear the voice lines players buy and play at the table. Turn off to keep them silent."
+            checked={settings.voiceLines !== false}
+            onChange={(v) => {
+              update({ voiceLines: v });
+              playSfx('toggle', { on: v });
+            }}
+          />
+          {settings.voiceLines !== false && (
+            <div className="hh2-range">
+              <label htmlFor="hh2-voicevolume" className="hh2-range__label">
+                <span>Voice volume</span>
+                <b>{Math.round((settings.voiceVolume ?? 1) * 100)}%</b>
+              </label>
+              <input
+                id="hh2-voicevolume"
+                type="range"
+                min="0"
+                max="100"
+                step="5"
+                value={Math.round((settings.voiceVolume ?? 1) * 100)}
+                style={{ '--v': `${Math.round((settings.voiceVolume ?? 1) * 100)}%` }}
+                onChange={(e) => update({ voiceVolume: Number(e.target.value) / 100 })}
+                data-nosfx
+              />
+            </div>
+          )}
+          <Toggle
             icon={<Icon name="sparkle" size={20} />}
             label="Night-market ambience"
             hint="A very quiet festival bed under the game board. Off by default."
@@ -224,7 +254,7 @@ export default function SettingsSection() {
           />
         </section>
 
-        <section className="hub-panel" aria-labelledby="hh2-motion-h">
+        <section className="hub-panel" aria-labelledby="hh2-motion-h" data-tour="settings-motion">
           <h3 id="hh2-motion-h" className="hub-section__title">
             <HubIcon name="spark" size={18} /> Motion &amp; feel
           </h3>
@@ -290,7 +320,7 @@ export default function SettingsSection() {
           </div>
         </section>
 
-        <section className="hub-panel" aria-labelledby="xp-look-h">
+        <section className="hub-panel" aria-labelledby="xp-look-h" data-tour="settings-look">
           <h3 id="xp-look-h" className="hub-section__title">
             <HubIcon name="star" size={18} /> Appearance
           </h3>
@@ -303,12 +333,14 @@ export default function SettingsSection() {
           </div>
         </section>
 
-        <section className="hub-panel" aria-labelledby="xp-push-h">
+        <section className="hub-panel" aria-labelledby="xp-push-h" data-tour="settings-notify">
           <h3 id="xp-push-h" className="hub-section__title">
             <HubIcon name="bell" size={18} /> Notifications
           </h3>
           <PushToggle />
         </section>
+
+        <ReplayTours />
       </div>
 
       {!signedIn && (

@@ -1,4 +1,4 @@
-// The sounds of Hyderabad Tycoon: every one is synthesised (no audio files) from a handful of oscillators and
+// The sounds of Kingpin: every one is synthesised (no audio files) from a handful of oscillators and
 // filtered noise. Each recipe is  (synth, t, opts) -> void  and carries mixer metadata:
 //
 //   priority  0 ticks / taps   1 ordinary events   2 notable moments   3 must-hear (turn, snatch, win, bankrupt)

@@ -65,10 +65,10 @@ describe('PropertySheet: the HITEC City deed', () => {
     expect(out).toContain(HERITAGE_NOTE);
     expect(out).toContain('₹3,40,000');
     expect(out).toMatch(/Startup Office ₹34,000/);
-    expect(out).toMatch(/Business Centre ₹65,000/);
-    expect(out).toMatch(/Tech Campus ₹1,19,000/);
+    expect(out).toMatch(/Business Centre ₹92,000/);
+    expect(out).toMatch(/Tech Campus ₹1,50,000/);
     expect(out).toContain('×1.5 with the full set');
-    expect(out).toContain('Upgrade ₹1,70,000 each step');
+    expect(out).toContain('Upgrade ₹1,36,000 each step');
     expect(out).toContain('Mortgage value ₹1,70,000');
     expect(out).toContain('Unowned');
     expect(out).toContain('District for sale');
@@ -116,13 +116,13 @@ describe('PropertySheet: the HITEC City deed', () => {
     const dispatch = vi.fn();
     const s = sessionFor({
       dispatch,
-      options: { upgrade: [{ tile: HITEC, cost: 170000 }], sellBuilding: [{ tile: HITEC, refund: 85000 }] },
+      options: { upgrade: [{ tile: HITEC, cost: 136000 }], sellBuilding: [{ tile: HITEC, refund: 68000 }] },
     });
     s.view.owners[HITEC] = 'me';
     s.view.levels[HITEC] = 1;
     const out = text(html(s, HITEC));
-    expect(out).toContain('Upgrade to Tech Campus · ₹1,70,000');
-    expect(out).toContain('Sell Business Centre +₹85,000');
+    expect(out).toContain('Upgrade to Tech Campus · ₹1,36,000');
+    expect(out).toContain('Sell Business Centre +₹68,000');
     findButton(captured.footer, 'Upgrade to Tech Campus')();
     expect(dispatch).toHaveBeenCalledWith({ type: 'UPGRADE', tile: HITEC });
     findButton(captured.footer, 'Sell Business Centre')();
@@ -139,10 +139,10 @@ describe('PropertySheet: the HITEC City deed', () => {
     expect(text(html(s, HITEC))).toContain('Own all 3 districts of Cyberabad first (you have 2)');
     // with the whole collection the engine offers the upgrade and the reason disappears
     s.view.owners[29] = 'me';
-    s.options = { upgrade: [{ tile: HITEC, cost: 170000 }] };
+    s.options = { upgrade: [{ tile: HITEC, cost: 136000 }] };
     out = text(html(s, HITEC));
     expect(out).not.toContain('Own all 3 districts');
-    expect(out).toContain('Upgrade to Business Centre · ₹1,70,000');
+    expect(out).toContain('Upgrade to Business Centre · ₹1,36,000');
   });
 
   it('shows the top business and the mortgage action on level 0', () => {

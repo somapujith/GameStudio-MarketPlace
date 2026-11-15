@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import GameTour from '@/components/tour/GameTour.jsx';
 import CodeSheet from '@/components/shell/nav/CodeSheet.jsx';
 import { getCategory, getGame } from '@/games/registry.js';
 import { useAuth } from '@/lib/auth.jsx';
 import { BRAND } from '@/platform/brand.js';
 import { paths } from '@/platform/paths.js';
 import { LivePanel, MobileBar, SoonPanel } from '@/platform/game/ActionPanel.jsx';
+import MapsSection from '@/platform/game/MapsSection.jsx';
+import { DEFAULT_MAP } from '@/components/online/mapModel.js';
 import { AboutSection, DetailsTable, GallerySection, HowToPlay, LeaderboardSection, OpenTables, RelatedGames, openTableList, useOpenRooms } from '@/platform/game/DetailSections.jsx';
 import { GameHead, HeroArt, categoryHref } from '@/platform/game/GameHero.jsx';
 import HubIcon from '@/platform/game/HubIcon.jsx';
@@ -66,7 +69,7 @@ function SubNav({ items }) {
 
   if (items.length < 2) return null;
   return (
-    <nav className="gd-subnav" aria-label="On this page">
+    <nav className="gd-subnav" aria-label="On this page" data-tour="game-subnav">
       <ul>
         {items.map((it) => (
           <li key={it.id}>
@@ -121,11 +124,14 @@ function LiveDetail({ game }) {
   const rooms = useOpenRooms(game.id);
   const tables = rooms.status === 'ok' ? openTableList(rooms.rooms, game.id).length : undefined;
   const jump = useJumpLinks();
-  const create = () => host({ maxPlayers: seats });
+  const [mapId, setMapId] = useState(DEFAULT_MAP); // the map the table will start on (games with maps only)
+  const hostOn = useCallback((o) => host({ ...o, map: mapId }), [host, mapId]);
+  const create = () => hostOn({ maxPlayers: seats });
   const nav = sectionList(game, { live: true });
 
   return (
     <div className="hub-page gd" style={themeVars(game.theme)} onClick={jump}>
+      <GameTour game={game} />
       <Crumbs game={game} />
       <div className="gd-grid">
         <HeroArt game={game} />
@@ -137,19 +143,22 @@ function LiveDetail({ game }) {
               options={options}
               seats={seats}
               setSeats={setSeats}
-              host={host}
+              host={hostOn}
               busy={busy}
               user={user}
               authLoading={authLoading}
               reachable={reachable}
               onJoinCode={() => setCodeOpen(true)}
               panelRef={panelRef}
+              mapId={mapId}
+              setMapId={setMapId}
             />
           </div>
         </aside>
         <div className="gd-main">
           <SubNav items={nav} />
           <AboutSection game={game} index={0} />
+          <MapsSection game={game} index={1} />
           <HowToPlay game={game} index={1} />
           <GallerySection game={game} index={2} />
           <OpenTables game={game} state={rooms} onCreate={create} busy={busy} index={3} />
@@ -158,7 +167,7 @@ function LiveDetail({ game }) {
         </div>
       </div>
       <RelatedGames game={game} />
-      <MobileBar game={game} seats={seats} host={host} busy={busy} user={user} authLoading={authLoading} panelRef={panelRef} />
+      <MobileBar game={game} seats={seats} host={hostOn} busy={busy} user={user} authLoading={authLoading} panelRef={panelRef} />
       <CodeSheet open={codeOpen} onClose={() => setCodeOpen(false)} />
     </div>
   );

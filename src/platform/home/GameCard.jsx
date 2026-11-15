@@ -4,6 +4,7 @@ import HubIcon from '@/platform/game/HubIcon.jsx';
 import { useNotify } from '@/platform/game/notify.js';
 import { GameCover } from './GameArt.jsx';
 import { playersLabel, themeVars } from './gameTheme.js';
+import '@/styles/mappicker.css';
 
 /**
  * Image-led game card (built on platform-core's `.hub-gamecard`): 16:9 cover, title, tagline, player count,
@@ -37,6 +38,7 @@ export default function GameCard({ game }) {
           </Link>
         </h4>
         {game.tagline && <p className="hub-gamecard__tag">{game.tagline}</p>}
+        {game.mapsLine && <p className="hh2-gcard__maps">{game.mapsLine}</p>}
         <div className="hub-gamecard__meta">
           {players && (
             <span className="hh2-gcard__players">

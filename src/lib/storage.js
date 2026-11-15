@@ -117,6 +117,8 @@ export const THEMES = Object.freeze(['system', 'dark', 'light']);
 export const PLAYBACK_SPEEDS = Object.freeze([0.75, 1, 1.5, 2]);
 /** Phone board camera: 'auto' (moves by itself + pinch) | 'manual' (pinch only) | 'off' (no camera, no gestures). */
 export const BOARD_CAMERAS = Object.freeze(['auto', 'manual', 'off']);
+/** Table effects: 'auto' (a frame-time check turns the decorative loops off on slow-rendering browsers) | 'lite' (always off) | 'full' (always on). */
+export const GRAPHICS_MODES = Object.freeze(['auto', 'lite', 'full']);
 
 export const DEFAULT_APP_SETTINGS = Object.freeze({
   sfx: true,
@@ -137,6 +139,12 @@ export const DEFAULT_APP_SETTINGS = Object.freeze({
   boardCamera: 'auto',
   /** Shake the phone to roll the die on your turn (needs motion access on iOS). Off until the player turns it on. */
   shakeToRoll: false,
+  /** Decorative table effects (see GRAPHICS_MODES and lib/perfMode.js). */
+  graphics: 'auto',
+  /** Hear the voice lines other players (and you) play at the table. */
+  voiceLines: true,
+  /** Voice-line volume 0..1, on top of the master volume. */
+  voiceVolume: 1,
 });
 
 /** Unknown keys (e.g. the voice/subtitle settings of older builds) are ignored, never an error. */
@@ -153,6 +161,9 @@ function normalizeSettings(p) {
     haptics: src.haptics === undefined ? DEFAULT_APP_SETTINGS.haptics : !!src.haptics,
     boardCamera: BOARD_CAMERAS.includes(src.boardCamera) ? src.boardCamera : DEFAULT_APP_SETTINGS.boardCamera,
     shakeToRoll: src.shakeToRoll === true,
+    graphics: GRAPHICS_MODES.includes(src.graphics) ? src.graphics : DEFAULT_APP_SETTINGS.graphics,
+    voiceLines: src.voiceLines === undefined ? DEFAULT_APP_SETTINGS.voiceLines : !!src.voiceLines,
+    voiceVolume: clamp(num(src.voiceVolume, DEFAULT_APP_SETTINGS.voiceVolume), 0, 1),
   };
 }
 

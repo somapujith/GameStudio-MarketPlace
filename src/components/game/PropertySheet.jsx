@@ -14,6 +14,7 @@ import { TileIcon } from '@/components/art/index.js';
 import LocationScene from '@/components/art/LocationScene.jsx';
 import { TILES } from '@shared/board.js';
 import { formatINR } from '@shared/format.js';
+import { wordsOf } from '@/lib/mapWords.js';
 import Sheet from './ui/Sheet.jsx';
 import Button from './ui/Button.jsx';
 import Icon from './ui/Icon.jsx';
@@ -125,6 +126,7 @@ export function countSteps(from, to, n = 12) {
 /** What a non-district square does: a headline rule plus an optional second sentence. */
 export function squareRule(tile, { cfg = {}, state = null, me = null } = {}) {
   const passStart = cfg.passStart ?? PASS_START_AMOUNT;
+  const w = wordsOf(); // the active map (the one applyMap gave the tile names): chai token / festival token, auction tile ...
   switch (tile.type) {
     case 'start':
       return { rule: `Collect ${formatINR(passStart)} every time you pass or land on START.`, note: 'Once per move. Moving backwards never pays.' };
@@ -132,7 +134,7 @@ export function squareRule(tile, { cfg = {}, state = null, me = null } = {}) {
       const to = nextStop(tile);
       return {
         rule: `Pay ${formatINR(fareOf(tile))} to ride ahead to ${to ? to.name : 'the next stop'}.`,
-        note: 'Optional, offered when you land here. Passing START on the way still pays your salary. "Meter kharab hai, saab!"',
+        note: `Optional, offered when you land here. Passing START on the way still pays your salary.${w.isDefault ? ' "Meter kharab hai, saab!"' : ''}`,
       };
     }
     case 'card': {
@@ -143,12 +145,12 @@ export function squareRule(tile, { cfg = {}, state = null, me = null } = {}) {
       const fine = cfg.trafficFine ?? TRAFFIC_FINE;
       return {
         rule: 'Stuck in traffic! Your turn ends here.',
-        note: `Next turn: pay ${formatINR(fine)}, spend a chai token, or wait it out (no move that turn).`,
+        note: `Next turn: pay ${formatINR(fine)}, spend a ${w.chaiToken}, or wait it out (no move that turn).`,
       };
     }
     case 'chai':
       return {
-        rule: `Grab a chai token (you can hold ${cfg.chaiCap ?? CHAI_CAP}).`,
+        rule: `Grab a ${w.chaiToken} (you can hold ${cfg.chaiCap ?? CHAI_CAP}).`,
         note: `It halves your next rent of ${formatINR(CHAI_MIN_RENT)} or more by itself, or gets you out of traffic.`,
       };
     case 'municipal': {
@@ -162,7 +164,7 @@ export function squareRule(tile, { cfg = {}, state = null, me = null } = {}) {
     }
     case 'auction':
       return {
-        rule: 'Bazaar Auction: a random unowned district goes under the hammer.',
+        rule: `${w.auctionTile}: a random unowned district goes under the hammer.`,
         note: 'Everyone, you included, places one sealed bid. The minimum is half its price. Nothing left unowned? Nothing happens.',
       };
     default:

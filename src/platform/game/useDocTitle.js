@@ -4,7 +4,7 @@ import { useEffect } from 'react';
  * Sets `document.title` while the calling screen is mounted (index.html only has one static title).
  *
  *   useDocTitle('Page · GameHub');
- *   useDocTitle('Hyderabad Tycoon · GameHub', { description: '...', path: '/games/hyderabad-tycoon', type: 'website' });
+ *   useDocTitle('Kingpin · GameHub', { description: '...', path: '/games/hyderabad-tycoon', type: 'website' });
  *
  * With a second argument the page also gets a meta description, Open Graph / Twitter tags, a canonical link
  * (built from `path` and the current origin) and, when `jsonLd` is given, an application/ld+json block. Every tag

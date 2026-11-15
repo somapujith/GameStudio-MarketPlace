@@ -13,6 +13,8 @@ import { HUSTLE_ICONS, COLLECTION_ICONS, COLLECTION_ACCENT } from './HustleIcons
 import { PAL, darken } from './palette.js';
 import { Box, Pad, Gable, Face, archPath } from './iso.jsx';
 import { Beacon, ChaiCup } from './marks.jsx';
+import { useArtMap, ANDHRA } from './andhra/artMap.js';
+import { AndhraIconGlyph, andhraIconKey } from './andhra/icons.jsx';
 
 const INK = '#1b1340';
 const Shadow = ({ rx = 20, y = 58 }) => <ellipse cx="32" cy={y} rx={rx} ry="3" fill={INK} opacity=".16" />;
@@ -238,12 +240,15 @@ export function tileIconId(tile) {
 }
 
 function TileIconBase({ tile, size = 32, className, title, color }) {
+  const andhra = useArtMap() === ANDHRA;
   const id = tileIconId(tile);
   const groups = Board.GROUPS || {};
   const gid = (tile && typeof tile === 'object' && tile.group) || (COLLECTION_ICONS[id] ? id : null);
   const gcol = color || (gid && (groups[gid]?.color || COLLECTION_ACCENT[gid])) || PAL.saffron;
   let node;
-  if (HUSTLE_ICONS[id]) {
+  if (andhra && andhraIconKey(tile) != null) {
+    node = <AndhraIconGlyph tile={tile} accent={gcol} />;
+  } else if (HUSTLE_ICONS[id]) {
     const H = HUSTLE_ICONS[id];
     node = <H />;
   } else if (COLLECTION_ICONS[id]) {

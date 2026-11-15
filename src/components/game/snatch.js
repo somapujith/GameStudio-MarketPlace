@@ -17,7 +17,7 @@
 // The clock never reads a device date: it counts `pending.ms` down on the monotonic performance clock from the moment the
 // state that opened the window reached this device (so a phone whose own clock is minutes off still shows five seconds).
 // A reload in the middle of a window can pass `pending.remainingMs` to resume where the server is.
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { TILES } from '@shared/board.js';
 import { formatINR } from '@shared/format.js';
 import { ANIM_MS } from '@shared/timing.js';
@@ -136,8 +136,13 @@ export function snatchChipsOn(session) {
 const now = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
 
 /**
- * The countdown of `info`'s window: { totalMs, remainingMs, fraction, seconds, done }, or null without a window.
- * Starts when the window first appears on this device; re-renders per frame (per 250 ms under reduced motion).
+ * The countdown of `info`'s window: { totalMs, remainingMs, fraction, seconds, done, bind }, or null without a window.
+ * Starts when the window first appears on this device.
+ *
+ * It re-renders its component only when the displayed SECOND changes (6 times per 5 s window), never per frame: the old
+ * per-frame setState re-rendered the whole action bar / pop-up 60 times a second, which froze slow browsers during every
+ * Snatch. The smooth drain (the ring / bar `--f` custom property) is written straight to the DOM instead: put
+ * `ref={clock.bind}` on every element that reads `--f` (at most 20 writes a second, 4 under reduced motion).
  */
 export function useSnatchClock(info) {
   const reduced = useReducedMotion();
@@ -146,16 +151,40 @@ export function useSnatchClock(info) {
   const [boot] = useState(() => now()); // ONE reading for the first render: its countdown is exactly the full window, whatever the load
   const [t0, setT0] = useState({ key, at: boot - snatchUsedMs(info) });
   if (t0.key !== key) setT0({ key, at: now() - snatchUsedMs(info) });
-  const [tick, setTick] = useState(boot);
+  const [tick, setTick] = useState(boot); // the time of the last whole-second change: what a render shows (the drain between is written to the DOM)
+  const els = useRef(new Set());
+  const bind = useCallback((el) => {
+    if (!el) return undefined;
+    els.current.add(el);
+    return () => { els.current.delete(el); };
+  }, []);
+  const latest = useRef({ info, at: boot });
+  const at = t0.key === key ? t0.at : now();
+  latest.current = { info, at };
 
   useEffect(() => {
     if (!key) return undefined;
     let raf = 0;
     let timer = 0;
     let stopped = false;
+    let lastSecond = null;
+    let lastWrite = 0;
     const step = () => {
       if (stopped) return;
-      setTick(now());
+      const { info: cur, at: start } = latest.current;
+      const t = now();
+      if (cur) {
+        const c = snatchClockFrom(cur, Math.max(t, start) - start);
+        if (c.seconds !== lastSecond) {
+          lastSecond = c.seconds;
+          setTick(t); // a render only when the number on screen changes
+        }
+        if (t - lastWrite >= (reduced ? 250 : FRACTION_FRAME_MS) || c.done) {
+          lastWrite = t;
+          const f = c.fraction.toFixed(4);
+          els.current.forEach((el) => el.style.setProperty('--f', f));
+        }
+      }
       if (reduced) timer = setTimeout(step, 250);
       else raf = requestAnimationFrame(step);
     };
@@ -168,9 +197,11 @@ export function useSnatchClock(info) {
   }, [key, reduced]);
 
   if (!info) return null;
-  const at = t0.key === key ? t0.at : now();
-  return snatchClockFrom(info, Math.max(tick, at) - at);
+  return { ...snatchClockFrom(info, Math.max(tick, at) - at), bind };
 }
+
+/** Smallest gap between two direct writes of the drain fraction (20 a second: smooth enough for a 5 s ring, a third of the paints). */
+const FRACTION_FRAME_MS = 50;
 
 /** How much of the window the server says is already gone when this device first sees it (a reload mid-window), else 0. Pure. */
 export const snatchUsedMs = (info) => (info && info.remainingMs != null ? Math.min(info.ms, Math.max(0, info.ms - info.remainingMs)) : 0);

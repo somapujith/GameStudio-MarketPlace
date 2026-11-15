@@ -106,7 +106,8 @@ describe('pawns', () => {
     const stuck = pawn({ stuck: true });
     expect(stuck).toContain('hb-pawn__stuck');
     expect(stuck).toContain('stuck in traffic');
-    expect(pawn({ isTurn: true })).toContain('hb-pawn__marker');
+    expect(pawn({ isTurn: true })).toContain('current turn');
+    expect(pawn({ isTurn: true })).toContain('hb-pawn__tag');
     expect(pawn()).not.toContain('hb-pawn__stuck');
   });
 
@@ -135,14 +136,14 @@ describe('tiles', () => {
     expect(out).toContain('owned by Asha');
     expect(out).toContain('Business Centre');
     expect(out).toContain('hb-tile__bldg');
-    expect(out).toContain(`rent ₹65,000`);
+    expect(out).toContain(`rent ₹92,000`);
     expect(out.match(/<i class="is-on"><\/i>/g)).toHaveLength(1); // one of two level pips lit
     expect(out.match(/<i><\/i>|<i class="is-on"><\/i>/g)).toHaveLength(2);
     expect(html(31, { ownerColor: '#ff4d6d', level: 2 })).toContain('is-max');
   });
 
-  it('rents follow rentTable: HITEC City 34,000 / 65,000 / 1,19,000', () => {
-    expect([0, 1, 2].map((l) => tileRent(TILES[31], l))).toEqual([34000, 65000, 119000]);
+  it('rents follow rentTable: HITEC City 34,000 / 92,000 / 1,50,000', () => {
+    expect([0, 1, 2].map((l) => tileRent(TILES[31], l))).toEqual([34000, 92000, 150000]);
   });
 
   it('rings a full collection, never while mortgaged', () => {

@@ -33,7 +33,7 @@
 
   position: relative;
   width: 100%;
-  max-width: 980px;
+  max-width: 1500px; /* big screens: the board keeps growing (it was 980px, which left the pods far from it) */
   margin-inline: auto;
   aspect-ratio: 1 / 1;
   container-type: inline-size;
@@ -107,7 +107,9 @@
   position: absolute;
   inset: 0;
   opacity: 0;
-  animation: hb-twinkle 2.4s ease-in-out infinite alternate;
+  /* the twinkle itself (hb-twinkle, 2.4s alternate) is switched on in perf.css only once the table has proved it renders
+     fast: two board-sized layers fading all the time cost ~40 ms a frame on a CPU-drawn browser (Brave without hardware
+     acceleration) and nothing on a GPU. Until then, and on slow renderers, the lantern string simply glows. */
 }
 .hb-frame__lights::before {
   --at: 25%;
@@ -764,6 +766,13 @@
 .hb-side--right.is-event .hb-tile__body { padding-top: calc(var(--hb-u) * 0.28); }
 .hb-tile__ev b { font-weight: 800; }
 .hb-tile__ev svg { width: 1.1em; height: 1.1em; fill: currentColor; }
+/* the city event's flag (board/EventFlag.jsx, eventflag.css) says the same on the outer edge, so the round badge steps aside;
+   the outer strip stays reserved for the pole, a little deeper on the short side tiles */
+.hb-tile.has-flag > .hb-tile__ev { display: none; }
+.hb-side--bottom.has-flag:not(.hb-tile--corner) .hb-tile__body { padding-bottom: calc(var(--hb-u) * 0.44); }
+.hb-side--top.has-flag:not(.hb-tile--corner) .hb-tile__body { padding-top: calc(var(--hb-u) * 0.44); }
+.hb-side--left.has-flag:not(.hb-tile--corner) .hb-tile__body,
+.hb-side--right.has-flag:not(.hb-tile--corner) .hb-tile__body { padding-top: calc(var(--hb-u) * 0.38); }
 
 /* ---- sizes -------------------------------------------------------------------- */
 
@@ -914,18 +923,7 @@
   animation: hb-trail var(--step) ease-out both;
 }
 
-/* whose turn: a bobbing marker in the player's colour */
-.hb-pawn__marker {
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + var(--hb-u) * 0.06);
-  width: calc(var(--hb-u) * 0.26);
-  height: calc(var(--hb-u) * 0.2);
-  margin-left: calc(var(--hb-u) * -0.13);
-  background: var(--c);
-  clip-path: polygon(0 0, 100% 0, 50% 100%);
-  animation: hb-bob 0.7s ease-in-out infinite alternate;
-}
+/* whose turn: the beacon, the bigger piece and the name tag (pawnbeacon.css) */
 
 /* stuck in traffic: a cone with a brake light beside the piece */
 .hb-pawn__stuck {
@@ -1000,10 +998,6 @@
   0% { opacity: 1; transform: translate(-50%, -60%) scale(1); }
   30% { opacity: 1; transform: translate(-50%, -60%) scale(1.1); }
   100% { opacity: 0; transform: translate(-50%, -60%) scale(0.2); }
-}
-@keyframes hb-bob {
-  from { transform: translateY(0); }
-  to { transform: translateY(-0.8cqw); }
 }
 @keyframes hb-lantern {
   from { opacity: 0.45; }

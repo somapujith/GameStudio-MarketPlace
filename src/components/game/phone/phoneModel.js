@@ -11,6 +11,7 @@
 //   faceTones(color)           flat body / lighter band / ink for a district tile face (AA with its ink)
 import { compactINR, formatINR } from '@shared/format.js';
 import { TILES } from '@shared/board.js';
+import { DEFAULT_MAP, activeMapId, termsOf } from '@shared/maps.js';
 import { bandTones, contrastRatio, mixHex } from '../PropertySheet.jsx';
 import { statusLine } from '../ControlPanel.jsx';
 import { bubbleSpeaker } from '../turn/SpeechBubble.jsx';
@@ -237,7 +238,7 @@ export function captionFromBubble(session) {
       if (p?.stuck) return make(who.isMe ? 'Stuck in traffic' : `${who.name} is stuck in traffic`, 'bad', null);
       return make(who.isMe ? 'Back on the road' : `${who.name} is back on the road`, 'good', null);
     }
-    case 'chai': return make(fits(b.text) || `${who.name} had a chai`, 'good', null);
+    case 'chai': return make(fits(b.text) || `${who.name} had a ${activeMapId() === DEFAULT_MAP ? 'chai' : termsOf(activeMapId()).chaiToken}`, 'good', null);
     case 'ride': return make(`${who.name} took a ride`, 'good');
     case 'dice': {
       const n = (d.dice || [])[0];
@@ -252,6 +253,7 @@ export function captionFromBubble(session) {
     case 'turn':
     case 'win':
     case 'trade_offer':
+    case 'trade_countered':
     case 'trade_done':
     case 'trade_rejected':
       return null;
@@ -365,9 +367,9 @@ export function pillFor(sec, session) {
 
 /**
  * Everything the buy popup prints for `tile` (a district up for sale to me).
- * state = { cash, auction: boolean (passing sends it to a sealed auction), canBuy, price }.
+ * state = { cash, canBuy, price }. Passing never starts an auction: the district just stays free.
  */
-export function buyCardData(tile, { cash = 0, price = null, auction = true, canBuy = null, cfg = null } = {}) {
+export function buyCardData(tile, { cash = 0, price = null, canBuy = null, cfg = null } = {}) {
   if (!tile) return null;
   const coll = collectionOf(tile);
   const { color } = tileAccent(tile);
@@ -389,12 +391,11 @@ export function buyCardData(tile, { cash = 0, price = null, auction = true, canB
     unmortgage: unmortgageOf(tile),
     levels: ladder.map((rent, level) => ({ level, rent, name: levelNameOf(tile, level) })),
     upgradeCost: upgradeCostOf(tile),
-    auction,
     canBuy: afford,
     short: afford ? 0 : Math.max(0, cost - cash),
     cash,
     left: Math.max(0, cash - cost),
-    passNote: auction ? 'Pass and it goes to a sealed auction' : 'Pass and the district stays with the city',
+    passNote: 'Pass: no auction, the district stays free',
     reason: afford ? '' : `Need ${formatINR(Math.max(0, cost - cash))} more`,
   };
 }
@@ -451,9 +452,24 @@ const FACE_WORDS = {
   start: 'START', traffic: 'TRAFFIC', chai: 'CHAI ADDA', municipal: 'MUNICIPAL', auction: 'AUCTION',
 };
 
-/** The capitals printed on a non-district tile: the pill under a corner icon, the small label on a stop or a card. */
-export function faceLabel(tile) {
+/** The longest label (characters) that still fits a phone tile; a longer skin name falls back to its longest word. */
+const MAX_FACE_LABEL = 10;
+
+/**
+ * The capitals printed on a non-district tile: the pill under a corner icon, the small label on a stop or a card.
+ * The default map keeps its own words (AUTO / METRO / MMTS, LUCK / DRAMA, CHAI ADDA ...); any other map prints the tile's
+ * own short name ("VIZAG PORT", "SANKRANTI"), shortened to its longest word when it would not fit.
+ */
+export function faceLabel(tile, mapId = activeMapId()) {
   if (!tile) return '';
+  if (mapId !== DEFAULT_MAP && tile.type !== 'start') {
+    const name = String(tile.short || tile.name || '').trim();
+    if (name) {
+      const words = name.split(/\s+/);
+      const text = name.length <= MAX_FACE_LABEL || words.length < 2 ? name : words.reduce((a, w) => (w.length > a.length ? w : a), '');
+      return text.toUpperCase();
+    }
+  }
   if (tile.type === 'card') return tile.deck === 'drama' ? 'DRAMA' : 'LUCK';
   if (tile.type === 'transport') return stopKind(tile).toUpperCase();
   return FACE_WORDS[tile.type] || String(tile.short || tile.name || '').toUpperCase();

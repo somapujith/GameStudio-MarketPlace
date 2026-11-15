@@ -10,12 +10,14 @@ import { LUCK_CARDS } from '@shared/cards.js';
 import { cardMs } from '@shared/timing.js';
 import { CARD_ART, EventCardArt } from '@/components/art/EventCardArt.jsx';
 import { cardAnnouncement, cardOf } from './turn/CardReveal.jsx';
-import { buildActionSpec } from './ActionBar.jsx';
+import ActionBar, { buildActionSpec } from './ActionBar.jsx';
 import { statusLine } from './ControlPanel.jsx';
 import Board from './Board.jsx';
 import PlayerPods from './PlayerPods.jsx';
 import PhonePlayers from './phone/PhonePlayers.jsx';
 import SnatchPopup, { usePresence } from './SnatchPopup.jsx';
+import SnatchButton, { useSnatchControl } from './SnatchButton.jsx';
+import PhoneActions from './phone/PhoneActions.jsx';
 import SnatchChip, { BUMP_MS, snatchChipLabel } from './ui/SnatchChip.jsx';
 import {
   SNATCH_MS_DEFAULT, snatchAnnouncement, snatchBannerText, snatchChipsOn, snatchClockFrom, snatchCount, snatchEligibilityText,
@@ -89,9 +91,9 @@ describe('countdown numbers', () => {
 
   it('the first render shows the full window exactly, whatever the machine load (no clock reading between the two timestamps)', () => {
     for (let i = 0; i < 20; i++) {
-      const out = html(h(SnatchPopup, { session: windowSession(), placement: 'phone' }));
+      const out = html(h(SnatchPopup, { session: windowSession({ me: 'b1', eligible: ['c2'] }), placement: 'phone' }));
       expect(out).toContain('--f:1.0000');
-      expect(out).toContain('class="sn-secs">5<');
+      expect(out).toContain('>5<');
     }
   });
 
@@ -190,11 +192,17 @@ describe('the words', () => {
   });
 });
 
-describe('<SnatchPopup>', () => {
+describe('<SnatchButton> in the action slot, <SnatchPopup> for everybody else', () => {
   const render = (session, placement) => html(h(SnatchPopup, { session, placement }));
+  const Slot = ({ session, variant }) => {
+    const ctl = useSnatchControl(session);
+    return h(SnatchButton, { ctl, variant });
+  };
+  const button = (session, variant = 'phone') => html(h(Slot, { session, variant }));
+  const noop = () => () => {};
 
-  it('an eligible player gets a big SNATCH! button with the district, the price, the buttons held and the seconds', () => {
-    const out = render(windowSession());
+  it('an eligible player gets the SNATCH! button with the district, the price, the buttons held and the seconds', () => {
+    const out = button(windowSession());
     expect(out).toContain('role="alertdialog"');
     expect(out).toContain('aria-modal="false"');
     expect(out).toMatch(/aria-labelledby="[^"]+"/);
@@ -202,28 +210,34 @@ describe('<SnatchPopup>', () => {
     expect(out).toContain('data-mode="press"');
     expect(out).toContain('>SNATCH!<');
     expect(out).toContain('Madhapur · ₹3,20,000');
-    expect(out).toContain('x1'); // ⚡ x1
+    expect(out).toContain('x1'); // bolt x1
     expect(out).toContain('class="sn-secs">5<');
-    expect(out).toContain('class="sn-ring"');
+    expect(out).toContain('class="sn-ring sn-ring--phone"');
     expect(out).toContain('--f:1.0000'); // a full ring at the start
     expect(out).toContain('Ravi bought it.');
     expect(out).toContain('Snatch Madhapur for free, ₹3,20,000, 5 seconds left');
     expect(out).toMatch(/<button[^>]*class="sn-btn"/);
     expect(out).not.toMatch(/<button[^>]*disabled/);
     expect(out).toContain('You and Zoya can snatch it!'); // the hidden line for assistive tech
+    expect(button(windowSession(), 'panel')).toContain('class="sn-ring sn-ring--panel"');
+  });
+
+  it('there is ONE pressable control: the floating pop-up never shows a button, not even to the player who may press', () => {
+    expect(render(windowSession())).toBe('');
+    expect(render(windowSession(), 'phone')).toBe('');
+    expect(render(windowSession({ claims: ['me'] }))).toBe('');
   });
 
   it('is derived from the latest state: still there while the presenter is busy and options are blank', () => {
-    const out = render(windowSession({ options: {}, patch: {} }), 'phone');
-    expect(out).toContain('>SNATCH!<');
+    expect(button(windowSession({ options: {}, patch: {} }))).toContain('>SNATCH!<');
     const busy = windowSession();
     busy.busy = true;
-    expect(render(busy)).toContain('>SNATCH!<');
+    expect(button(busy)).toContain('>SNATCH!<');
   });
 
   it('once pressed (the server echoes options.snatched, or the claims carry me) the button is locked: "Locked in — waiting…"', () => {
     for (const s of [windowSession({ options: { snatched: true } }), windowSession({ claims: ['me'] })]) {
-      const out = render(s);
+      const out = button(s);
       expect(out).toContain('data-mode="locked"');
       expect(out).toContain('Locked in — waiting…');
       expect(out).not.toContain('>SNATCH!<');
@@ -231,6 +245,17 @@ describe('<SnatchPopup>', () => {
       expect(out).toContain('You pressed Snatch.');
       expect(out).toContain('Snatch locked in, waiting for the window to close');
     }
+  });
+
+  it('no slot button for the buyer, a player without a button, a bankrupt player or a spectator; none once the window is over', () => {
+    expect(button(windowSession({ me: 'b1', eligible: ['c2'] }))).toBe('');
+    expect(button(windowSession({ eligible: ['c2'], tokens: { me: 0 } }))).toBe('');
+    expect(button(windowSession({ me: 'ghost' }))).toBe('');
+    const broke = windowSession();
+    broke.view.players.find((p) => p.id === 'me').bankrupt = true;
+    expect(button(broke)).toBe('');
+    expect(button(windowSession({ patch: { phase: 'manage', pending: null } }))).toBe('');
+    expect(button({ me: 'me', view: null })).toBe('');
   });
 
   it('the buyer, a player without a button and a spectator get a passive banner with the countdown and no button', () => {
@@ -254,25 +279,58 @@ describe('<SnatchPopup>', () => {
   });
 
   it('it GOES OFF: nothing renders once the phase leaves snatch, or for a window that is not a snatch', () => {
-    expect(render(windowSession({ patch: { phase: 'manage', pending: null } }))).toBe('');
-    expect(render(windowSession({ patch: { phase: 'roll', pending: null } }))).toBe('');
-    expect(render(windowSession({ patch: { pending: { type: 'auction', tile: 29 } } }))).toBe('');
+    const idle = [
+      windowSession({ me: 'b1', eligible: ['c2'], patch: { phase: 'manage', pending: null } }),
+      windowSession({ me: 'b1', eligible: ['c2'], patch: { phase: 'roll', pending: null } }),
+      windowSession({ me: 'b1', eligible: ['c2'], patch: { pending: { type: 'auction', tile: 29 } } }),
+    ];
+    for (const s of idle) expect(render(s)).toBe('');
     expect(render({ me: 'me', view: null })).toBe('');
   });
 
   it('the placement is a data attribute the CSS reads: phone = above the action row, board = near the board bottom', () => {
-    expect(render(windowSession(), 'phone')).toContain('data-place="phone"');
-    expect(render(windowSession(), 'board')).toContain('data-place="board"');
-    expect(render(windowSession())).toContain('data-place="board"');
-    expect(render(windowSession(), 'phone')).toContain('data-state="in"');
+    const watching = windowSession({ me: 'b1', eligible: ['c2'] });
+    expect(render(watching, 'phone')).toContain('data-place="phone"');
+    expect(render(watching, 'board')).toContain('data-place="board"');
+    expect(render(watching)).toContain('data-place="board"');
+    expect(render(watching, 'phone')).toContain('data-state="in"');
   });
 
   it('a window without a length counts five seconds', () => {
-    expect(render(windowSession({ ms: undefined }))).toContain('class="sn-secs">5<');
+    expect(button(windowSession({ ms: undefined }))).toContain('class="sn-secs">5<');
+    expect(render(windowSession({ ms: undefined, me: 'b1', eligible: ['c2'] }))).toContain('>5<');
   });
 
   it('usePresence is a function of (open, exitMs): open means in', () => {
     expect(typeof usePresence).toBe('function');
+  });
+
+  it('the main action slot IS the SNATCH! button while I may press: phone primary (between Manage and Trade) and the panel / dock primary', () => {
+    const s = windowSession();
+    const spec = buildActionSpec(s);
+    const phone = html(h(PhoneActions, { session: s, spec, fire: noop, badges: {} }));
+    expect(phone).toContain('class="pa-main"');
+    expect(phone.indexOf('aria-label="Manage"')).toBeLessThan(phone.indexOf('>SNATCH!<'));
+    expect(phone.indexOf('>SNATCH!<')).toBeLessThan(phone.indexOf('aria-label="Trade"'));
+    expect(phone).not.toContain('pa-primary'); // not Roll / Buy / the waiting box: the slot is the Snatch button
+    const panel = html(h(ActionBar, { session: s, spec, fire: noop }));
+    expect(panel).toContain('class="sn-ring sn-ring--panel cp-primary"');
+    expect(panel).toContain('>SNATCH!<');
+    expect(panel).not.toContain('is-wait');
+  });
+
+  it('the slot is normal again outside a window and for the buyer (nothing Snatch left behind)', () => {
+    const idle = windowSession({ patch: { phase: 'roll', pending: null }, options: { roll: true } });
+    const phoneIdle = html(h(PhoneActions, { session: idle, spec: buildActionSpec(idle), fire: noop, badges: {} }));
+    expect(phoneIdle).toContain('pa-primary is-roll');
+    expect(phoneIdle).not.toContain('sn-ring');
+    const buyer = windowSession({ me: 'b1', eligible: ['c2'] });
+    const phoneBuyer = html(h(PhoneActions, { session: buyer, spec: buildActionSpec(buyer), fire: noop, badges: {} }));
+    expect(phoneBuyer).toContain('pa-primary is-wait'); // a calm status, no button
+    expect(phoneBuyer).not.toContain('sn-ring');
+    const panelBuyer = html(h(ActionBar, { session: buyer, spec: buildActionSpec(buyer), fire: noop }));
+    expect(panelBuyer).toContain('is-wait');
+    expect(panelBuyer).not.toContain('sn-ring');
   });
 });
 

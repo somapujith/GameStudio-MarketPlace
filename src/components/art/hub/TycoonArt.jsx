@@ -1,4 +1,4 @@
-// Hyderabad Tycoon cover (16:9) + app icon, drawn for the hub: an illustrated Hyderabad city circuit (36-tile ring) whose
+// Kingpin cover (16:9) + app icon, drawn for the hub: an illustrated Hyderabad city circuit (36-tile ring) whose
 // centre is a collage of Charminar, Cyberabad glass towers, the lake and a metro viaduct, under a warm night skyline,
 // with a biryani handi, coins and a die in front. The left third of the cover is deliberately calm so
 // card/hero text can sit on it. Repeated parts (minarets, chhatris, arch faces) are drawn once and <use>d to keep the SVG small.

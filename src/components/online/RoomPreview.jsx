@@ -4,6 +4,8 @@ import { playerCountOf } from './codes.js';
 import { gameName, gameOf } from './games.js';
 import { roomGameId } from './gameRoute.js';
 import { summarizeSettings } from './settings.js';
+import MapTag from './MapTag.jsx';
+import { mapFieldOf, mapIdOf } from './mapModel.js';
 import '@/styles/store-rooms.css';
 
 /** What the join page can honestly say about a room from GET /api/rooms/:code. Pure. */
@@ -19,6 +21,8 @@ export function previewFacts(info, game = gameOf(roomGameId(info))) {
     count,
     max,
     summary,
+    // the map the table plays on, for a game that has maps (null otherwise); a room made before maps existed is on the default map
+    map: game && mapFieldOf(game.settings) ? mapIdOf(info && info.settings) : null,
     seats: max ? `${Math.min(count, max)} of ${max} seats taken` : `${count} ${count === 1 ? 'player' : 'players'} here`,
   };
 }
@@ -56,6 +60,7 @@ export default function RoomPreview({ info, tone = 'open', children }) {
         <span className="st-eyebrow">{tone === 'open' ? 'Table found' : 'Table'}</span>
         <h3 className="sr-preview__game">{f.name}</h3>
         <p className="sr-preview__host">{f.host ? `Hosted by ${f.host}` : 'Open table'}</p>
+        {f.map && <MapTag value={f.map} className="sr-preview__map" />}
         <div className="sr-preview__seats">
           {dots.length > 0 && (
             <span className="sr-preview__dots" aria-hidden="true">

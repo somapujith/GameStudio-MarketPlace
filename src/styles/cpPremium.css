@@ -97,7 +97,7 @@
 @keyframes cp-primary-a { from { opacity: 0; transform: translateY(10px) scale(0.95); } }
 @keyframes cp-primary-b { from { opacity: 0; transform: translateY(10px) scale(0.95); } }
 @keyframes cp-primary-c { from { opacity: 0; transform: translateY(10px) scale(0.95); } }
-/* secondary choices (End turn, Pass / auction, Ride): quiet glass, same radius family */
+/* secondary choices (End turn, Pass, Ride): quiet glass, same radius family */
 .cp .cp-actions__sec .cp-btn { border-radius: 14px; }
 .cp .cp-actions__sec .cp-btn--paper { border-color: rgba(255, 255, 255, 0.24); background: rgba(255, 255, 255, 0.09); }
 .cp .cp-wide { border-radius: 14px; }

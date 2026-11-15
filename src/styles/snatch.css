@@ -42,49 +42,47 @@
 /* phone: a zero-height slot right above the action row; the panel floats up from it (the board never moves) */
 .sn-slot { position: relative; z-index: 25; flex: none; height: 0; pointer-events: none; }
 .sn-pop[data-place='phone'] { position: absolute; left: 10px; right: 10px; bottom: 8px; pointer-events: auto; }
-/* tablets, landscape phones, desktop: centred near the bottom of the board, just above its bottom row of districts (so the contested one stays visible) */
-.sn-pop[data-place='board'] { position: absolute; left: 0; right: 0; bottom: calc(15.5% + 6px); width: min(92%, 400px); margin-inline: auto; pointer-events: auto; }
+/* tablets, landscape phones, desktop: centred in the lower half of the board, ABOVE the action slot (the SNATCH! button / Roll / Buy at the foot of the board centre) and clear of the bottom row of districts */
+.sn-pop[data-place='board'] { position: absolute; left: 0; right: 0; bottom: 31%; width: min(92%, 400px); margin-inline: auto; pointer-events: auto; }
 
-/* the eligible player's panel: a dark card behind the line and the button, so whatever is under it never shows through */
-.sn-pop[data-mode='press'], .sn-pop[data-mode='locked'] {
-  padding: 6px 8px 8px; border-radius: 28px; background: #0a1016; box-shadow: 0 14px 34px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 202, 122, 0.3);
-}
-.sn-head {
-  margin: 0 auto; padding: 0 6px; max-width: 100%; text-align: center; font-size: 14px; line-height: 20px; font-weight: 600; color: #fff3c4;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.sn-head b { font-weight: 800; color: var(--sn-gold); }
-
-/* the ring: the button's frame, drained clockwise from 12 o'clock as the window runs out (--f is 1 -> 0) */
+/* THE button: it lives in the main action slot (where Roll / Buy sit), framed by a ring that drains clockwise from 12 o'clock
+   as the window runs out (--f is 1 -> 0). The ring is the button's own border, so the slot keeps exactly the size of Roll / Buy. */
 .sn-ring {
-  padding: 4px; border-radius: 24px; --ring: var(--sn-gold);
+  display: flex; min-width: 0; --ring: var(--sn-gold);
   background: conic-gradient(var(--ring) calc(var(--f, 1) * 360deg), var(--sn-track) 0);
 }
-.sn-pop[data-mode='locked'] .sn-ring { --ring: #7ee2b0; }
+.sn-ring[data-mode='locked'] { --ring: #7ee2b0; }
+/* phone table: the primary between Manage and Trade, the same size (56px, 52px on short phones) and radius as .pa-primary */
+.sn-ring--phone { flex: 1 1 0; min-height: 56px; padding: 3px; border-radius: 19px; box-shadow: 0 4px 0 #8f1f3a, 0 10px 22px rgba(255, 77, 109, 0.3); animation: ph-pop var(--dur-3) var(--ease-spring) both; }
+@media (max-height: 700px) { .sn-ring--phone { min-height: 52px; } }
+/* board centre / dock: ActionBar's primary slot (.cp-primary supplies the flex), as tall as the other big buttons there */
+.sn-ring--panel { flex: 1 1 0; min-height: max(56px, 11cqmin); padding: 3px; border-radius: 17px; animation: sn-in 320ms var(--ease-spring) both; }
+.cp-actions.is-dock .sn-ring--panel { min-height: 54px; }
 
 .sn-btn {
-  width: 100%; min-height: 64px; padding: 8px 14px 8px 12px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 10px;
-  border: 0; border-radius: 20px; cursor: pointer; text-align: left; font: inherit; color: #fff;
+  flex: 1 1 auto; min-width: 0; width: 100%; padding: 3px 10px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 8px;
+  border: 0; border-radius: 16px; cursor: pointer; text-align: left; font: inherit; color: #fff;
   background: linear-gradient(180deg, var(--sn-hot) 0%, var(--sn-hot-2) 100%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 -3px 0 rgba(0, 0, 0, 0.22);
   transition: transform var(--dur-1) var(--ease-out), filter var(--dur-2);
   touch-action: manipulation;
 }
 .sn-btn:active:not(:disabled) { transform: scale(0.97); }
-.sn-pop .sn-btn:focus-visible, .ph .sn-pop .sn-btn:focus-visible { outline: 3px solid #fff; outline-offset: 7px; }
+.sn-ring .sn-btn:focus-visible, .ph .sn-ring .sn-btn:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
 @media (hover: hover) { .sn-btn:hover:not(:disabled) { filter: brightness(1.08); } }
 .sn-btn:disabled { cursor: default; background: linear-gradient(180deg, #2f6a52, #245543); }
-.sn-pop[data-mode='press'] .sn-btn { animation: sn-pulse 0.9s ease-in-out infinite alternate; }
-.sn-btn__bolt { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; color: #3b2300; background: var(--sn-gold); box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25); }
-.sn-btn__bolt svg { width: 24px; height: 24px; }
-.sn-btn__txt { min-width: 0; display: grid; gap: 1px; }
-.sn-btn__title { font-family: var(--font-display); font-size: 24px; line-height: 1.05; font-weight: 900; letter-spacing: 0.03em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sn-pop[data-mode='locked'] .sn-btn__title { font-size: 19px; letter-spacing: 0; }
-.sn-btn__sub { font-size: 14px; line-height: 18px; font-weight: 700; color: #fff3c4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.sn-btn__side { display: grid; justify-items: center; gap: 3px; min-width: 44px; }
-.sn-secs { font-family: var(--font-display); font-size: 30px; line-height: 1; font-weight: 900; font-variant-numeric: tabular-nums; }
-.sn-tok { display: inline-flex; align-items: center; gap: 1px; padding: 0 6px 0 4px; height: 20px; border-radius: 999px; font-style: normal; font-size: 13px; font-weight: 800; line-height: 1; color: #3b2300; background: var(--sn-gold); }
-@keyframes sn-pulse { from { transform: scale(1); } to { transform: scale(1.018); } }
+.sn-ring[data-mode='press'] .sn-btn { animation: sn-pulse 0.9s ease-in-out infinite alternate; }
+.sn-btn__txt { min-width: 0; display: grid; gap: 0; }
+.sn-btn__title { font-family: var(--font-display); font-size: clamp(18px, 5.2vw, 22px); line-height: 1.05; font-weight: 900; letter-spacing: 0.03em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sn-ring[data-mode='locked'] .sn-btn__title { font-size: clamp(12px, 3.4vw, 16px); letter-spacing: -0.01em; }
+.sn-btn__sub { font-size: 13px; line-height: 16px; font-weight: 700; color: #fff3c4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sn-btn__side { display: grid; justify-items: center; gap: 2px; min-width: 38px; }
+.sn-secs { font-family: var(--font-display); font-size: 22px; line-height: 1; font-weight: 900; font-variant-numeric: tabular-nums; }
+.sn-tok { display: inline-flex; align-items: center; gap: 1px; padding: 0 5px 0 3px; height: 17px; border-radius: 999px; font-style: normal; font-size: 13px; font-weight: 800; line-height: 1; color: #3b2300; background: var(--sn-gold); }
+.sn-ring--panel .sn-btn__title { font-size: clamp(20px, 6.5cqmin, 28px); }
+.sn-ring--panel .sn-btn__sub { font-size: clamp(13px, 3.6cqmin, 16px); }
+.sn-ring--panel .sn-secs { font-size: clamp(24px, 7cqmin, 34px); }
+@keyframes sn-pulse { from { transform: scale(1); } to { transform: scale(1.015); } }
 
 /* everybody else: one calm line, the seconds and a thin bar that drains */
 .sn-watch {
@@ -100,14 +98,6 @@
 @keyframes sn-in { from { opacity: 0; transform: translateY(22px) scale(0.84); } to { opacity: 1; transform: none; } }
 @keyframes sn-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(8px) scale(0.92); } }
 
-@media (max-width: 340px) {
-  .sn-btn { grid-template-columns: minmax(0, 1fr) auto; }
-  .sn-btn__bolt { display: none; }
-  .sn-btn__title { font-size: 22px; }
-}
-@media (max-height: 620px) {
-  .sn-head { display: none; }
-}
 
 /* ============================================================ the contested / snatched district on the board */
 .hb-tile.is-snatch, .hb-tile.is-snatched { z-index: 7; }
@@ -134,11 +124,11 @@
 
 /* ============================================================ motion off */
 @media (prefers-reduced-motion: reduce) {
-  .sn-pop, .sn-pop[data-state='leaving'], .sn-btn, .sn-chip__plus, .hb-tile__sn-ring, .hb-tile__sn-badge { animation: none !important; transition: none !important; }
+  .sn-pop, .sn-pop[data-state='leaving'], .sn-ring, .sn-btn, .sn-chip__plus, .hb-tile__sn-ring, .hb-tile__sn-badge { animation: none !important; transition: none !important; }
   .sn-pop[data-state='leaving'] { opacity: 0; }
 }
-:root[data-motion='reduced'] .sn-pop, :root[data-motion='reduced'] .sn-btn, :root[data-motion='reduced'] .sn-chip__plus,
+:root[data-motion='reduced'] .sn-pop, :root[data-motion='reduced'] .sn-ring, :root[data-motion='reduced'] .sn-btn, :root[data-motion='reduced'] .sn-chip__plus,
 :root[data-motion='reduced'] .hb-tile__sn-ring, :root[data-motion='reduced'] .hb-tile__sn-badge,
-.hg-game[data-rm] .sn-pop, .hg-game[data-rm] .sn-btn, .hg-game[data-rm] .sn-chip__plus,
+.hg-game[data-rm] .sn-pop, .hg-game[data-rm] .sn-ring, .hg-game[data-rm] .sn-btn, .hg-game[data-rm] .sn-chip__plus,
 .hg-game[data-rm] .hb-tile__sn-ring, .hg-game[data-rm] .hb-tile__sn-badge { animation: none !important; transition: none !important; }
 .sn-pop[data-rm] { animation: none !important; }

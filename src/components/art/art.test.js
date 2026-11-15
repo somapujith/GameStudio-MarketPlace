@@ -121,7 +121,7 @@ describe('cosmetics', () => {
 describe('hub cover', () => {
   it('renders the Tycoon cover and icon', () => {
     expect(html(h(TycoonCover, {}))).toContain('<svg');
-    expect(html(h(TycoonCover, { title: 'Hyderabad Tycoon', animated: false }))).toContain('role="img"');
+    expect(html(h(TycoonCover, { title: 'Kingpin', animated: false }))).toContain('role="img"');
     expect(html(h(TycoonIcon, { size: 64, rounded: true }))).toContain('<svg');
   });
 });

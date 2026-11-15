@@ -20,9 +20,8 @@ vi.mock('@/components/art/index.js', () => ({
 }));
 
 const { default: RulesSheet } = await import('./RulesSheet.jsx');
-const { default: AuctionSheet, auctionInstance, auctionReason } = await import('./AuctionSheet.jsx');
 const { default: DebtSheet, debtPlan } = await import('./DebtSheet.jsx');
-const { default: TradeSheet, Countdown, completedGroups, secondsLeft, sideValue } = await import('./TradeSheet.jsx');
+const { default: TradeSheet, ComposerSheet, Countdown, completedGroups, secondsLeft, sideValue } = await import('./TradeSheet.jsx');
 const { default: PlayerSheet, StatsSheet } = await import('./PlayerSheet.jsx');
 const { default: MyProperties } = await import('./MyProperties.jsx');
 const { default: GameOverModal, matchMoments, outLine, reasonLine } = await import('./GameOverModal.jsx');
@@ -40,7 +39,7 @@ describe('RulesSheet', () => {
   it('covers the Hustle rules in short sections', () => {
     for (const s of [
       'Standard City Hustle', 'Quick Chai Break', 'Classic Long Game', '20 rounds', '12 rounds',
-      'one die', 'A six rolls again', '₹2,00,000', 'City Takeover', 'one sealed bid',
+      'one die', 'A six rolls again', '₹2,00,000', 'Buy it, or pass', 'no auction',
       'Three businesses per district', 'Startup Office', 'Business Centre', 'Tech Campus', 'Bazaar Beginnings', 'Stall → Shop → Trading Hub',
       'Full set bonus', 'first businesses', '×1.5',
       'Transport shortcut', 'Auto Stand (₹25,000)', 'Metro Interchange (₹35,000)', 'MMTS Express (₹45,000)', 'Meter kharab hai',
@@ -49,6 +48,13 @@ describe('RulesSheet', () => {
       'Hyderabad Rush Hour', 'Every 3 rounds', 'Biryani Business Boom', 'Wedding Season', 'Monsoon',
       'Net worth', 'half of what you spent on upgrades', 'unpaid debt', 'last player standing',
     ]) expect(out, s).toContain(s);
+  });
+
+  it('explains bankruptcy: the bank takes all cash and districts, only a debt to a player is paid, by the bank', () => {
+    expect(out).toContain('bank takes ALL your cash and districts');
+    expect(out).toContain('by the bank');
+    expect(out).toContain('never more than your assets were worth');
+    expect(out).toContain('A debt to the bank pays nobody');
   });
 
   it('says upgrading needs the whole collection', () => {
@@ -91,111 +97,7 @@ describe('RulesSheet', () => {
   });
 });
 
-/* ------------------------------------------------------------------ auction */
-describe('AuctionSheet', () => {
-  const auctionView = (reason, bids = {}) => {
-    const view = base();
-    view.phase = 'auction';
-    view.pending = { type: 'auction', tile: 31, minBid: 34000, bids, reason, returnPhase: 'manage' };
-    return view;
-  };
-  const render = (view, options = { bid: { min: 34000, max: 1500000 } }) => text(createElement(AuctionSheet, { session: sess(view, { options }) }));
-
-  it('labels a City Takeover and shows the district, collection and price', () => {
-    const out = render(auctionView('decline'));
-    expect(out).toContain('City Takeover');
-    expect(out).toContain('HITEC City');
-    expect(out).toContain('Cyberabad');
-    expect(out).toContain('₹3,40,000');
-    expect(out).toContain('You passed on it');
-    expect(out).toContain('Minimum bid');
-    expect(out).toContain('Startup Office');
-  });
-
-  it('labels the Bazaar Auction and the unaffordable takeover', () => {
-    expect(render(auctionView('bazaar'))).toContain('Bazaar Auction');
-    expect(render(auctionView('unaffordable'))).toContain('could not afford it');
-  });
-
-  it('offers Min / +10% / +25% quick bids', () => {
-    const out = render(auctionView('decline'));
-    expect(out).toContain('Min ₹34,000');
-    expect(out).toContain('+10% ₹68,000');
-    expect(out).toContain('+25% ₹1,19,000');
-    expect(out).toContain('Place bid · ₹34,000');
-  });
-
-  it('ticks who has bid without showing amounts', () => {
-    const out = render(auctionView('decline', { b1: null }));
-    expect(out).toMatch(/Ravi has bid/);
-    expect(out).toMatch(/Zoya thinking/);
-  });
-
-  it('waits with my sealed bid once I have bid', () => {
-    const out = render(auctionView('decline', { me: 50000, b1: null }), { bid: null });
-    expect(out).toContain('Sealed bid: ₹50,000');
-    expect(out).toContain('Waiting for others (2/3)');
-    expect(out).not.toContain('Place bid');
-  });
-
-  it('infers the reason when the engine does not say', () => {
-    const v = auctionView(undefined);
-    v.players[v.turn].pos = 32;
-    expect(auctionReason(v, v.pending)).toBe('bazaar');
-    v.players[v.turn].pos = 31;
-    expect(auctionReason(v, v.pending)).toBe('decline');
-    v.players[v.turn].cash = 1000;
-    expect(auctionReason(v, v.pending)).toBe('unaffordable');
-  });
-
-  describe('snatch bidding (pending.snatch: only the claimants bid)', () => {
-    const snatchView = (bids = { b1: 0 }) => {
-      const view = base();
-      view.phase = 'auction';
-      view.pending = { type: 'auction', tile: 31, minBid: 34000, bids, reason: 'snatch', snatch: true, buyer: 'c2', claimants: ['me', 'b1'], returnPhase: 'manage' };
-      return view;
-    };
-
-    it('a claimant gets the bid form, the Snatch label and who already paid', () => {
-      const out = render(snatchView({ c2: 0 }));
-      expect(auctionReason(snatchView(), snatchView().pending)).toBe('snatch');
-      expect(out).toContain('Snatch bidding');
-      expect(out).toContain('HITEC City');
-      expect(out).toContain('Zoya already paid and keeps it if nobody bids');
-      expect(out).toContain('spends a Snatch button');
-      expect(out).toContain('Place bid');
-      expect(out).toContain('Minimum bid');
-    });
-
-    it('only the claimants are listed, a claimant who bid waits for the other snatchers', () => {
-      const out = render(snatchView({ c2: 0, me: 60000 }), { bid: null });
-      expect(out).toContain('Sealed bid: ₹60,000');
-      expect(out).toContain('Waiting for others (1/2)'); // me + Ravi, not the buyer
-      expect(out).toContain('Ravi thinking');
-      expect(out).not.toMatch(/Zoya (thinking|has bid)/);
-    });
-
-    it('everybody else (the buyer included) just sees that snatchers are bidding', () => {
-      const view = snatchView({ me: 0 }); // the engine pre-fills a 0 bid for everyone who did not snatch
-      view.pending.buyer = 'me';
-      view.pending.claimants = ['b1', 'c2'];
-      const out = render(view, { bid: null });
-      expect(out).toContain('Snatchers are bidding for HITEC City');
-      expect(out).toContain('You already paid and keep it if nobody bids');
-      expect(out).not.toContain('Place bid');
-      expect(out).not.toContain('You passed');
-    });
-  });
-
-  it('auctionInstance differs per auction', () => {
-    const a = { tile: 15, reason: 'decline' };
-    const first = auctionInstance({ round: 5, turnCount: 17 }, a);
-    expect(auctionInstance({ round: 9, turnCount: 33 }, a)).not.toBe(first);
-    expect(auctionInstance({ round: 5, turnCount: 17 }, { tile: 15, reason: 'bazaar' })).not.toBe(first);
-    expect(auctionInstance({ round: 5, turnCount: 17 }, a)).toBe(first);
-    expect(auctionInstance({ round: 5, turnCount: 17 }, null)).toBeNull();
-  });
-});
+/* the bidding screen (AuctionSheet) is covered in auction/auction.model.test.js and auction/auction.render.test.js */
 
 /* ------------------------------------------------------------------ trade */
 describe('TradeSheet', () => {
@@ -203,7 +105,7 @@ describe('TradeSheet', () => {
     const v = base();
     v.levels[31] = 2;
     v.mortgaged[1] = true;
-    expect(sideValue(v, { cash: 10000, tiles: [31] })).toBe(10000 + 340000 + 170000);
+    expect(sideValue(v, { cash: 10000, tiles: [31] })).toBe(10000 + 340000 + 136000);
     expect(sideValue(v, { cash: 0, tiles: [1] })).toBe(30000);
   });
 
@@ -233,6 +135,55 @@ describe('TradeSheet', () => {
     expect(out).toContain('Accept');
     expect(out).toContain('Reject');
     expect(out).toMatch(/\b(19|20) seconds left|>(19|20)</.source ? out : out);
+  });
+
+  it('an incoming offer has three answers: Reject, Change offer and Accept', () => {
+    const v = base();
+    v.owners[1] = 'me'; v.owners[31] = 'b1';
+    v.trade = { id: 4, from: 'b1', to: 'me', give: { cash: 0, tiles: [31] }, get: { cash: 0, tiles: [1] } };
+    const html = renderToStaticMarkup(createElement(TradeSheet, { session: sess(v, { options: { tradeOffer: { id: 4 } } }), open: false, onClose() {} }));
+    const out = text(createElement(TradeSheet, { session: sess(v, { options: { tradeOffer: { id: 4 } } }), open: false, onClose() {} }));
+    expect(out).toMatch(/Reject\s+Change offer\s+Accept/);
+    expect(html).not.toMatch(/tx-change[^>]*disabled/);
+    // the chain is capped: after the last counter only accept / reject
+    v.trade.counters = 5;
+    expect(renderToStaticMarkup(createElement(TradeSheet, { session: sess(v, { options: { tradeOffer: { id: 4 } } }), open: false, onClose() {} }))).toMatch(/tx-change[^>]*disabled/);
+  });
+
+  it('a counter-offer shows what changed against the original: added, taken out, cash that was different', () => {
+    const v = base();
+    v.owners[1] = 'me'; v.owners[3] = 'me'; v.owners[31] = 'b1'; v.owners[28] = 'b1';
+    // I (proposer) gave [1] and asked [31]; Ravi counters: he gives [31, 28] and wants [3] plus cash instead
+    v.trade = {
+      id: 9, from: 'b1', to: 'me', give: { cash: 0, tiles: [31, 28] }, get: { cash: 20000, tiles: [3] }, counters: 1,
+      replaces: { id: 8, give: { cash: 0, tiles: [1] }, get: { cash: 0, tiles: [31] } },
+    };
+    const sessionIn = sess(v, { options: { tradeOffer: { id: 9 } } });
+    const out = text(createElement(TradeSheet, { session: sessionIn, open: false, onClose() {} }));
+    expect(out).toContain('Ravi changed the offer');
+    expect(out).toContain('Counter-offer');
+    expect(out).toContain('Original offer');
+    expect(out).toMatch(/Taken out: Sultan Bazaar/); // I no longer give district 1
+    expect(out).toContain('was ₹0'); // the cash I now give (₹20,000) was nothing in the original
+    const html = renderToStaticMarkup(createElement(TradeSheet, { session: sessionIn, open: false, onClose() {} }));
+    expect(html).toContain('is-added'); // district 28 is new on the "You get" side
+    expect(html).toContain('Added');
+  });
+
+  it('the counter composer starts as the received deal from my chair, to the proposer, with a way back', () => {
+    const v = base();
+    v.owners[1] = 'me'; v.owners[31] = 'b1';
+    v.trade = { id: 4, from: 'b1', to: 'me', give: { cash: 10000, tiles: [31] }, get: { cash: 0, tiles: [1] } };
+    const session = sess(v, { options: { tradeOffer: { id: 4 } } });
+    const html = renderToStaticMarkup(createElement(ComposerSheet, { session, open: false, onClose() {}, counter: v.trade, onCounterBack() {} }));
+    const out = text(createElement(ComposerSheet, { session, open: false, onClose() {}, counter: v.trade, onCounterBack() {} }));
+    expect(out).toContain('Counter-offer to Ravi');
+    expect(out).toContain('Original offer');
+    expect(out).toContain('Send counter-offer');
+    expect(out).toContain('Back to the offer');
+    expect(out).not.toContain('Trade with'); // the partner is fixed
+    expect(html).toContain('aria-pressed="true"'); // both districts of the original deal are pre-picked
+    expect(out).toContain('Change something first, or accept the offer as it is'); // unchanged deal cannot be sent
   });
 
   it('warns when the other side would complete a set, or I would break mine', () => {
@@ -314,8 +265,14 @@ describe('TradeSheet', () => {
     const v = base();
     const empty = text(createElement(TradeSheet, { session: sess(v, { options: { trade: { canOffer: true } } }), open: true, onClose() {} }));
     expect(empty).toContain('The offer is empty');
-    const offTurn = text(createElement(TradeSheet, { session: sess(v, { options: { trade: { canOffer: false } } }), open: true, onClose() {} }));
-    expect(offTurn).toContain('You can only offer a trade on your own turn, before rolling or after.');
+    const away = base();
+    away.turn = 1; // Ravi's turn
+    const offTurn = text(createElement(TradeSheet, { session: sess(away, { options: { trade: { canOffer: false } } }), open: true, onClose() {} }));
+    expect(offTurn).toContain('You can propose a trade on your own turn');
+    const debt = base();
+    debt.phase = 'debt';
+    expect(text(createElement(TradeSheet, { session: sess(debt, { options: { trade: { canOffer: false } } }), open: true, onClose() {} })))
+      .toContain('Settle the debt before trading');
     const alone = base();
     alone.players[1].bankrupt = true; alone.players[2].bankrupt = true;
     expect(text(createElement(TradeSheet, { session: sess(alone, { options: { trade: { canOffer: true } } }), open: true, onClose() {} })))
@@ -330,14 +287,14 @@ describe('TradeSheet', () => {
     expect(out).toContain('Full set');
     expect(out).toContain('Shop'); // Sultan Bazaar runs its second business
     expect(out).toContain('No rent'); // the mortgaged district collects nothing
-    expect(out).toContain('Rent ₹11k');
+    expect(out).toContain('Rent ₹16k');
   });
 });
 
 /* ------------------------------------------------------------------ debt */
 describe('DebtSheet', () => {
   it('plans the cheapest way to cover a shortfall: upgrades first, then mortgages', () => {
-    const plan = debtPlan(100000, [{ tile: 31, refund: 85000 }], [{ tile: 1, value: 30000 }, { tile: 28, value: 150000 }]);
+    const plan = debtPlan(90000, [{ tile: 31, refund: 68000 }], [{ tile: 1, value: 30000 }, { tile: 28, value: 150000 }]);
     expect(plan.picks.map((p) => `${p.kind}:${p.tile}`)).toEqual(['sell:31', 'mortgage:1']);
     expect(plan.enough).toBe(true);
     expect(debtPlan(10, [], []).enough).toBe(false);
@@ -350,19 +307,42 @@ describe('DebtSheet', () => {
     view.players[0].cash = 20000;
     view.owners[31] = 'me'; view.levels[31] = 1;
     view.owners[1] = 'me';
-    view.debt = { player: 'me', amount: 120000, creditor: 'b1', reason: 'rent' };
+    view.debt = { player: 'me', amount: 110000, creditor: 'b1', reason: 'rent' };
     const out = text(createElement(DebtSheet, {
-      session: sess(view, { options: { debt: true, mortgage: [{ tile: 1, value: 30000 }], sellBuilding: [{ tile: 31, refund: 85000 }] } }),
+      session: sess(view, { options: { debt: true, mortgage: [{ tile: 1, value: 30000 }], sellBuilding: [{ tile: 31, refund: 68000 }] } }),
     }));
     expect(out).toContain('Rent due');
-    expect(out).toContain('You owe ₹1,20,000');
+    expect(out).toContain('You owe ₹1,10,000');
     expect(out).toContain('Ravi');
     expect(out).toContain('Short by');
     expect(out).toContain('sell the Business Centre on HITEC City');
     expect(out).toContain('mortgage Sultan Bazaar');
-    expect(out).toContain('Sell +₹85,000');
+    expect(out).toContain('Sell +₹68,000');
     expect(out).toContain('Mortgage +₹30,000');
     expect(out).toContain('Suggested');
+  });
+
+  it('states the bankruptcy rule with the exact amount: the bank takes everything, the creditor is paid the debt', () => {
+    const view = base();
+    view.phase = 'debt';
+    view.players[0].cash = 20000;
+    view.owners[31] = 'me'; view.levels[31] = 1; // 68,000 sell-back + 1,70,000 mortgage
+    view.owners[1] = 'me'; // 30,000 mortgage
+    view.debt = { player: 'me', amount: 120000, creditor: 'b1', reason: 'rent', rest: [] };
+    const out = text(createElement(DebtSheet, { session: sess(view, { options: { debt: true, mortgage: [], sellBuilding: [] } }) }));
+    expect(out).toContain('Declare bankruptcy');
+    expect(out).toContain('If you go bankrupt, the bank takes ALL your cash and districts. Ravi is paid the ₹1,20,000 you owe (up to what your assets are worth).');
+    // assets smaller than the debt: the creditor gets what the assets are worth, and the sheet says so
+    view.debt.amount = 900000;
+    const small = text(createElement(DebtSheet, { session: sess(view, { options: { debt: true, mortgage: [], sellBuilding: [] } }) }));
+    expect(small).toContain('Ravi is paid ₹2,88,000 of the ₹9,00,000 you owe (up to what your assets are worth).'); // 20,000 cash + 68,000 + 1,70,000 + 30,000
+    expect(small).toContain('You are leaving the game: the bank takes ALL your cash and districts. Ravi is paid ₹2,88,000'); // the confirm dialog says it too
+    expect(small).toContain('Your districts go back to the bank');
+    // a debt to the bank pays nobody
+    view.debt = { player: 'me', amount: 120000, creditor: null, reason: 'tax', rest: [] };
+    const bank = text(createElement(DebtSheet, { session: sess(view, { options: { debt: true, mortgage: [], sellBuilding: [] } }) }));
+    expect(bank).toContain('the bank takes ALL your cash and districts. Nobody else is paid.');
+    expect(bank).not.toContain('go to');
   });
 });
 
@@ -381,8 +361,8 @@ describe('PlayerSheet', () => {
     const parts = worthParts(view, 'me');
     expect(parts.cash).toBe(900000);
     expect(parts.districts).toBe(340000 + 30000);
-    expect(parts.upgrades).toBe(85000);
-    expect(parts.total).toBe(900000 + 370000 + 85000);
+    expect(parts.upgrades).toBe(68000);
+    expect(parts.total).toBe(900000 + 370000 + 68000);
   });
 
   it('shows piece, chai, traffic, the breakdown and the Hustle stats', () => {
@@ -391,10 +371,10 @@ describe('PlayerSheet', () => {
     expect(html).toContain(`data-piece="${me.piece}"`);
     expect(out).toContain('Chai token');
     expect(out).toContain('Stuck in traffic');
-    expect(out).toContain('Net worth ₹13,55,000');
+    expect(out).toContain('Net worth ₹13,38,000');
     expect(out).toMatch(/Cash ₹9,00,000/);
     expect(out).toMatch(/Districts ₹3,70,000/);
-    expect(out).toMatch(/Upgrades ₹85,000/);
+    expect(out).toMatch(/Upgrades ₹68,000/);
     expect(out).toContain('Rides 3');
     expect(out).toContain('Chai saved ₹17,000');
     expect(out).toContain('Cyberabad');
@@ -428,7 +408,7 @@ describe('MyProperties', () => {
     v.owners[28] = 'me'; v.owners[29] = 'me'; v.owners[31] = 'me'; v.levels[31] = 1;
     v.owners[1] = 'b1';
     const out = text(createElement(MyProperties, {
-      session: sess(v, { options: { upgrade: [{ tile: 31, cost: 170000 }], mortgage: [{ tile: 28, value: 150000 }] } }), onOpenTile() {},
+      session: sess(v, { options: { upgrade: [{ tile: 31, cost: 136000 }], mortgage: [{ tile: 28, value: 150000 }] } }), onOpenTile() {},
     }));
     for (const c of ['Bazaar Beginnings', 'Old City Icons', 'Everyday Hyderabad', 'Twin Cities', 'Lake & Leisure', 'Lights, Camera, Luxury', 'Cyberabad', 'The New City']) {
       expect(out, c).toContain(c);
@@ -436,7 +416,7 @@ describe('MyProperties', () => {
     expect(out).toContain('Cyberabad 3/3 Full set ×1.5');
     expect(out).toContain('Bazaar Beginnings 0/3');
     expect(out).toContain('Business Centre');
-    expect(out).toContain('Upgrade ₹1,70,000');
+    expect(out).toContain('Upgrade ₹1,36,000');
     expect(out).toContain('Mortgage +₹1,50,000');
     expect(out).not.toContain('No properties yet.');
   });

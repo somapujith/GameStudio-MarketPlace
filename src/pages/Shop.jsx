@@ -14,14 +14,15 @@ import { useToast } from '@/components/shell/Toast.jsx';
 import { useAccount, useDaily, useProgress } from '@/components/shell/hooks.js';
 import { useProfile } from '@/components/shell/stores.js';
 import { celebrate } from '@/components/shell/celebrate.js';
+import { VoiceArt, useVoicePreview } from '@/components/voice/VoiceShop.jsx';
 import '@/styles/hubhome.css';
 import '@/styles/x-profile.css';
 import '@/styles/hubMoments.css';
 import '@/styles/store-account.css';
 
-const KIND_LABEL = { frame: 'Frames', dice: 'Dice', title: 'Titles' };
-const KIND_ONE = { frame: 'frame', dice: 'dice skin', title: 'title' };
-const KIND_ICON = { frame: 'user', dice: 'dice', title: 'star' };
+const KIND_LABEL = { frame: 'Frames', dice: 'Dice', title: 'Titles', voice: 'Voice lines' };
+const KIND_ONE = { frame: 'frame', dice: 'dice skin', title: 'title', voice: 'voice line' };
+const KIND_ICON = { frame: 'user', dice: 'dice', title: 'star', voice: 'bell' };
 const RARITY = { common: 'Common', rare: 'Rare', epic: 'Epic' };
 const PANEL_ID = 'xp-shop-panel';
 const VIEWS = [
@@ -83,13 +84,28 @@ function KindTabs({ value, onChange, counts }) {
   );
 }
 
-function ItemCard({ item, i, equipped, selected, coins, signedIn, offline, busy, buying, fresh, avatar, onSelect, onBuy, onEquip }) {
-  const isEquipped = equipped[item.kind] === item.id;
+export function ItemCard({ item, i, equipped, selected, coins, signedIn, offline, busy, buying, fresh, avatar, preview, onSelect, onBuy, onEquip }) {
+  const isVoice = item.kind === 'voice';
+  const isEquipped = !isVoice && equipped[item.kind] === item.id;
   const known = Number.isFinite(coins);
   const short = signedIn && !item.owned && known && coins < item.price ? item.price - coins : 0;
   const affordable = signedIn && !item.owned && !short;
   let action;
-  if (item.owned) {
+  if (item.owned && isVoice) {
+    // voice lines are owned-only (no equip): the action is the preview, which only owners get
+    const on = preview?.playingId === item.id;
+    action = (
+      <button
+        type="button"
+        className="hub-btn hub-btn--sm hub-btn--accent vl-play"
+        onClick={() => preview?.toggle(item)}
+        aria-pressed={on}
+        aria-label={`${on ? 'Stop' : 'Play'} ${item.name}`}
+      >
+        <HubIcon name={on ? 'close' : 'play'} size={16} /> {on ? 'Stop' : 'Play'}
+      </button>
+    );
+  } else if (item.owned) {
     action = (
       <button
         type="button"
@@ -126,20 +142,27 @@ function ItemCard({ item, i, equipped, selected, coins, signedIn, offline, busy,
       className={`xp-item xp-item--${item.rarity} ${stateCls} ${selected ? 'is-sel' : ''} ${fresh ? 'is-fresh' : ''}`.replace(/\s+/g, ' ').trim()}
       style={{ '--i': Math.min(i, 12) }}
     >
-      <button type="button" className="xp-item__art" onClick={() => onSelect(item.id)} aria-pressed={selected} aria-label={`Preview ${item.name}`}>
-        <span className="hub-moment-preview">
-          <Preview item={item} size={76} avatar={avatar} />
-        </span>
-        {short > 0 && (
-          <span className="sa-lock" aria-hidden="true">
-            <HubIcon name="lock" size={14} strokeWidth={2.4} />
+      {isVoice ? (
+        <div className="vl-art" style={{ '--rc': 'var(--hub-line-2)' }}>
+          <VoiceArt item={item} size={76} locked={!item.owned} playing={preview?.playingId === item.id} />
+        </div>
+      ) : (
+        <button type="button" className="xp-item__art" onClick={() => onSelect(item.id)} aria-pressed={selected} aria-label={`Preview ${item.name}`}>
+          <span className="hub-moment-preview">
+            <Preview item={item} size={76} avatar={avatar} />
           </span>
-        )}
-      </button>
+          {short > 0 && (
+            <span className="sa-lock" aria-hidden="true">
+              <HubIcon name="lock" size={14} strokeWidth={2.4} />
+            </span>
+          )}
+        </button>
+      )}
       <div className="xp-item__body">
         <b className="xp-item__name" title={item.name}>
           {item.name}
         </b>
+        {isVoice && item.caption ? <p className="vl-cap">{item.caption}</p> : null}
         <span className="xp-item__tags">
           <span className={`xp-rarity xp-rarity--${item.rarity}`}>{RARITY[item.rarity] || item.rarity}</span>
           {isEquipped ? (
@@ -148,6 +171,10 @@ function ItemCard({ item, i, equipped, selected, coins, signedIn, offline, busy,
             </span>
           ) : item.owned ? (
             <span className="xp-state">{item.price === 0 ? 'Free' : 'Owned'}</span>
+          ) : isVoice ? (
+            <span className={`xp-price ${affordable ? 'is-afford' : ''}`}>
+              <HubIcon name="lock" size={12} strokeWidth={2.6} /> Locked · <CoinIcon size={14} /> {fmtNum(item.price)}
+            </span>
           ) : (
             <span className={`xp-price ${affordable ? 'is-afford' : ''}`}>
               <CoinIcon size={14} /> {fmtNum(item.price)}
@@ -178,6 +205,7 @@ function ItemSkeletons({ n = 8 }) {
 /** `/shop`: spend coins on cosmetics (avatar frames, dice skins, titles). Visual only, never a gameplay edge. */
 export default function Shop() {
   const toast = useToast();
+  const preview = useVoicePreview();
   const [params, setParams] = useSearchParams();
   const { user, signedIn, guest, auth } = useAccount();
   const [profile] = useProfile();
@@ -238,7 +266,7 @@ export default function Shop() {
   const lead = useMemo(featured, []);
 
   const openBuy = (item) => {
-    setSel(item.id);
+    if (item.kind !== 'voice') setSel(item.id);
     const short = Number.isFinite(balance) && balance < item.price;
     setDialog({ item, phase: short ? 'poor' : 'confirm' });
   };
@@ -258,7 +286,7 @@ export default function Shop() {
       if (Number.isFinite(Number(r?.coins))) setCoins(Number(r.coins));
       invalidateApi('/api/shop');
       setFresh(item.id);
-      celebrate({ kind: 'purchase', title: `${item.name} is yours`, text: `New ${KIND_ONE[item.kind]} unlocked. Equip it to show it off at the table.`, icon: 'gift' });
+      celebrate({ kind: 'purchase', title: `${item.name} is yours`, text: item.kind === 'voice' ? 'Voice line unlocked. Open the soundboard at the table and tap it: everyone hears it.' : `New ${KIND_ONE[item.kind]} unlocked. Equip it to show it off at the table.`, icon: 'gift' });
       Promise.resolve(auth.refresh?.()).catch(() => {});
     } catch (e) {
       if (e?.status === 409) {
@@ -316,7 +344,7 @@ export default function Shop() {
       <header className="sa-shophead st-reveal">
         <p className="st-eyebrow sa-shophead__eyebrow">Cosmetics</p>
         <h1 className="sa-shophead__title">Shop</h1>
-        <p className="sa-shophead__sub">Frames, dice and titles to stand out at the table. Looks only, never an advantage.</p>
+        <p className="sa-shophead__sub">Frames, dice, titles and voice lines to stand out at the table. Looks and sounds only, never an advantage.</p>
         {signedIn && (
           <div className="sa-shophead__bal" aria-label={`Balance: ${fmtNum(balance ?? 0)} coins`}>
             <span className="xp-balance">
@@ -399,6 +427,13 @@ export default function Shop() {
             )}
           </div>
           <section id={PANEL_ID} role="tabpanel" aria-labelledby={`xp-tab-${kind}`} aria-busy={loading} className="xp-shop__panel">
+            {kind === 'voice' && (
+              <p className="hub-muted vl-shopnote" role="note">
+                {signedIn
+                  ? 'Buy a line once with your coins, then tap it on the soundboard at any table: everyone hears it. Only you can play what you own.'
+                  : 'Sign in to buy voice lines. Only the player who owns a line can play it at the table.'}
+              </p>
+            )}
             {loading ? (
               <ItemSkeletons />
             ) : shown.length ? (
@@ -417,6 +452,7 @@ export default function Shop() {
                     buying={buyingId === item.id}
                     fresh={fresh === item.id}
                     avatar={avatar}
+                    preview={item.kind === 'voice' ? preview : null}
                     onSelect={(id) => setSel((s) => (s === id ? null : id))}
                     onBuy={openBuy}
                     onEquip={doEquip}
@@ -476,7 +512,7 @@ export default function Shop() {
         {d && (
           <div className="xp-buy sa-buy">
             <span className="xp-buy__art">
-              <Preview item={d.item} size={88} avatar={avatar} />
+              {d.item.kind === 'voice' ? <VoiceArt item={d.item} size={88} /> : <Preview item={d.item} size={88} avatar={avatar} />}
             </span>
             {d.phase === 'poor' ? (
               <div className="sa-buy__body">
@@ -517,7 +553,7 @@ export default function Shop() {
             ) : (
               <div className="sa-buy__body">
                 <p>
-                  <span className={`xp-rarity xp-rarity--${d.item.rarity}`}>{RARITY[d.item.rarity]}</span> {KIND_ONE[d.item.kind]}. Cosmetic only.
+                  <span className={`xp-rarity xp-rarity--${d.item.rarity}`}>{RARITY[d.item.rarity]}</span> {d.item.kind === 'voice' ? 'voice line. Plays for everyone at the table when you tap it. Sound only.' : `${KIND_ONE[d.item.kind]}. Cosmetic only.`}
                 </p>
                 <dl className="sa-ledger">
                   <div>

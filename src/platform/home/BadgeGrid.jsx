@@ -67,7 +67,7 @@ export default function BadgeGrid({ games, user, level }) {
 
   const earned = all.filter((b) => b.earned).length;
   return (
-    <section id="badges" className="hub-section sa-anchor" aria-labelledby="hh2-badges-h">
+    <section id="badges" className="hub-section sa-anchor" aria-labelledby="hh2-badges-h" data-tour="profile-badges">
       <div className="hub-section__head">
         <h2 id="hh2-badges-h" className="hub-section__title">
           Badges

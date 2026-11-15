@@ -7,7 +7,7 @@ A game is three small pieces that share one **id** (url-safe, lowercase, never c
 3. **Server adapter** in `worker/games/<id>.js`: the only place the Worker learns the rules.
 
 Nothing else may know the game: the hub, lobby, `GameRoom`, leaderboard and database are generic.
-**Hyderabad Tycoon is the reference**: copy its shape (`src/games/hyderabad-tycoon/`, `worker/games/hyderabad-tycoon.js`). The full contract is `docs/MARKETPLACE.md` (sections 3, 4, 5). The wire protocol every game gets for free (room messages, `state` / `events` / `seq`, timers, reconnect, redaction hook) is `docs/GAME_RULES.md` section 8; its rules sections are Tycoon's own.
+**Kingpin is the reference**: copy its shape (`src/games/hyderabad-tycoon/`, `worker/games/hyderabad-tycoon.js`). The full contract is `docs/MARKETPLACE.md` (sections 3, 4, 5). The wire protocol every game gets for free (room messages, `state` / `events` / `seq`, timers, reconnect, redaction hook) is `docs/GAME_RULES.md` section 8; its rules sections are Tycoon's own.
 
 ## 1. Folder layout
 
@@ -69,7 +69,7 @@ options?, min?, max?, step?, default, format?: 'inr'|'number'|'text', help? }`. 
 beside the +/- buttons. Defaults and limits **must equal** the adapter's `validateSettings`: copy
 `src/games/hyderabad-tycoon/settings.test.js`, which fails when schema and server drift apart.
 
-**Rules editor** (optional, the host's full "Game rules" section; Hyderabad Tycoon builds it from `shared/ruleSettings.js`): list `settingsGroups: [{ id, label, note? }]`
+**Rules editor** (optional, the host's full "Game rules" section; Kingpin builds it from `shared/ruleSettings.js`): list `settingsGroups: [{ id, label, note? }]`
 in the manifest and give fields a `group`. Fields without a group (the mode) become preset cards; the others render in collapsible groups (an accordion on a
 phone, two columns on a wide card) with a reset per rule, "Reset all to defaults", a "Custom rules" badge and a read-only copy of the same list for everyone else. Extra field
 keys: `slider: true` (a stepper with a slider; `scale: 'curve'` bends a wide range), `nullable: true` (an explicit "Off" chip), `format: 'seconds' | 'ms'`, `dependsOn: { key, defaults }`

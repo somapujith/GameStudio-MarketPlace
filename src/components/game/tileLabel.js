@@ -75,6 +75,8 @@ function splitWord(word) {
 
 /** One or two printed lines for a tile on a phone board. Always at least one line (never empty for a real tile). */
 export function labelLines(tile) {
+  // a map skin may hand-split a long name (shared/maps/andhra.js `lines`): never more than two lines, copied
+  if (Array.isArray(tile?.lines) && tile.lines.length && tile.lines.length <= 2 && tile.lines.every((l) => typeof l === 'string' && l)) return [...tile.lines];
   const key = String(tile?.short || tile?.name || '').trim();
   if (!key) return [];
   if (LABELS[key]) return [...LABELS[key]];

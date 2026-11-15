@@ -243,9 +243,9 @@ describe('subscription validation', () => {
   });
 
   it('builds the invite notification', () => {
-    expect(push.inviteNotification({ fromName: 'Teja', gameName: 'Hyderabad Tycoon', code: 'ABCD23' })).toEqual({
+    expect(push.inviteNotification({ fromName: 'Teja', gameName: 'Kingpin', code: 'ABCD23' })).toEqual({
       title: 'Teja invited you to play',
-      body: 'Hyderabad Tycoon · room ABCD23. Tap to join.',
+      body: 'Kingpin · room ABCD23. Tap to join.',
       url: '/join/ABCD23',
       tag: 'invite-ABCD23',
     });

@@ -22,6 +22,8 @@ import { inviteMessage, isRoomCode, normalizeRoomCode } from '@/components/onlin
 import { shareOrCopy } from '@/components/online/clipboard.js';
 import { gameName, gameOf, warmOnlineGame } from '@/components/online/games.js';
 import { rememberRoomGame, roomGameId } from '@/components/online/gameRoute.js';
+import { mapFieldOf, skinPieces } from '@/components/online/mapModel.js';
+import { useApplyMap } from '@/components/online/useApplyMap.js';
 import { useRoster } from '@/components/online/roster.js';
 import ConfirmDialog from '@/components/online/ConfirmDialog.jsx';
 import ConnectionChip from '@/components/online/ConnectionChip.jsx';
@@ -33,6 +35,7 @@ import StatusPanel from '@/components/online/StatusPanel.jsx';
 import TableHeader from '@/components/online/TableHeader.jsx';
 import { useToasts } from '@/components/online/Toasts.jsx';
 import HubIcon from '@/platform/game/HubIcon.jsx';
+import LobbyTour from '@/components/tour/LobbyTour.jsx';
 import PiecePicker from '@/platform/game/PiecePicker.jsx';
 import AutoMascot from '@/components/art/AutoMascot.jsx';
 import '@/styles/online.css';
@@ -87,15 +90,16 @@ export default function Lobby() {
 }
 
 /** Back to the game page (left) and leave the table (right). The lobby sits outside the hub chrome, so it brings its own bar. */
-function TopBar({ game, gName, backTo, onLeave, isHost, alone }) {
+function TopBar({ game, gName, backTo, onLeave, isHost, alone, tour = null }) {
   return (
     <nav className="sr-topbar" aria-label="Lobby">
       <Link to={backTo} className="sr-topbar__back">
         <HubIcon name="chevL" size={20} />
         <span>{game ? gName : 'Games'}</span>
       </Link>
+      {tour}
       {onLeave && (
-        <button type="button" className="ho-btn ho-btn--ghost ho-btn--sm sr-topbar__leave" onClick={onLeave}>
+        <button type="button" className="ho-btn ho-btn--ghost ho-btn--sm sr-topbar__leave" onClick={onLeave} data-tour="lobby-leave">
           <HubIcon name="door" size={18} /> <span>{isHost && alone ? 'Close table' : 'Leave table'}</span>
         </button>
       )}
@@ -137,6 +141,9 @@ function LobbyInner({ code, user }) {
   const gName = gameName(gameId, game);
   const players = useMemo(() => (room && Array.isArray(room.players) ? room.players : []), [room]);
   const seats = useRoster(players);
+  // the host's map: the names of the board, the header and the previews follow it (and go back to the default when we leave)
+  const hasMaps = !!(game && mapFieldOf(game.settings));
+  useApplyMap(hasMaps && room ? room.settings : null);
 
   // a message handed over by whoever sent us here ("Invite sent to Ravi")
   useEffect(() => {
@@ -256,7 +263,7 @@ function LobbyInner({ code, user }) {
   const reason = startReason({ enough, open, starting, players: joined, minToStart });
   const myIndex = players.findIndex((p) => sameId(p.id, user.id));
   const myColor = seatColor(game, Math.max(0, myIndex));
-  const pieces = game && game.pieces;
+  const pieces = skinPieces(game && game.pieces, hasMaps && room ? room.settings : null); // the map's names: Pearl -> Mango
   const { mine: myPiece, choices } = pieceChoices(pieces, players, user.id, pending);
 
   const start = () => {
@@ -306,9 +313,9 @@ function LobbyInner({ code, user }) {
 
   return (
     <div className="hub-page st-scope ho-lobby sr-lobby" style={vars}>
-      <TopBar game={game} gName={gName} backTo={game ? paths.game(gameId) : paths.hub()} onLeave={askLeave} isHost={isHost} alone={alone} />
+      <TopBar game={game} gName={gName} backTo={game ? paths.game(gameId) : paths.hub()} onLeave={askLeave} isHost={isHost} alone={alone} tour={<LobbyTour isHost={isHost} ready={open && !!game} />} />
 
-      <TableHeader game={game} gName={gName} code={code} hostName={host && host.name} chip={chip} onNotify={push} />
+      <TableHeader game={game} gName={gName} code={code} hostName={host && host.name} chip={chip} onNotify={push} map={hasMaps ? room.settings || {} : null} />
 
       {!game && (
         <div className="sr-note sr-note--warn" role="status">
@@ -320,14 +327,43 @@ function LobbyInner({ code, user }) {
       )}
 
       {choices.length > 0 && (
-        <div className="sr-o-pieces">
+        <div className="sr-o-pieces" data-tour="lobby-pieces">
           <PiecePicker choices={choices} color={myColor} onPick={choosePiece} disabled={!open} pending={!!pending} me={{ name: user.name, avatar: (players[myIndex] || user).avatar }} />
         </div>
       )}
 
       <div className="sr-lobby__cols">
         <div className="sr-lobby__main">
-          <section className="sr-card sr-seatscard sr-o-seats" aria-label="Players">
+          {/* The host's Start button lives at the TOP of the lobby (it used to be under the long rules editor). */}
+          <section className={`sr-card sr-start sr-o-start${isHost && canStart ? ' is-ready' : ''}${full ? ' is-full' : ''}${starting ? ' is-starting' : ''}`} aria-label="Start" data-tour="lobby-start">
+            {gameId === 'hyderabad-tycoon' && (
+              <div className="sr-start__mascot" aria-hidden="true">
+                <AutoMascot key={canStart ? 'ready' : 'waiting'} mood={canStart ? 'roll' : 'waiting'} />
+              </div>
+            )}
+            {isHost ? (
+              <>
+                <button
+                  type="button"
+                  className={`ho-btn ho-btn--primary ho-btn--lg ho-btn--block sr-start__btn${full && canStart ? ' ho-btn--full' : ''}`}
+                  onClick={start}
+                  disabled={!canStart}
+                  aria-describedby="sr-start-note"
+                >
+                  {starting ? <span className="ho-spinner" aria-hidden="true" /> : <HubIcon name="play" size={18} />} {starting ? 'Starting...' : 'Start game'}
+                </button>
+                <p id="sr-start-note" className={`sr-start__note${reason ? ' is-reason' : ''}`} aria-live="polite">
+                  {reason || startHelp}
+                </p>
+              </>
+            ) : (
+              <p className="sr-start__wait" role="status" aria-live="polite">
+                <span className="ho-spinner" aria-hidden="true" /> {open ? waitingText({ need, hostName: host && host.name }) : 'Reconnecting to the room...'}
+              </p>
+            )}
+          </section>
+
+          <section className="sr-card sr-seatscard sr-o-seats" aria-label="Players" data-tour="lobby-seats">
             <header className="sr-card__head">
               <div>
                 <span className="st-eyebrow">Players</span>
@@ -365,49 +401,21 @@ function LobbyInner({ code, user }) {
             </ul>
           </section>
 
-          <div className="sr-o-settings">
+          <div className="sr-o-settings" data-tour="lobby-settings">
             <SettingsPanel game={game} settings={room.settings} isHost={isHost} disabled={!open || starting} errorId={errorId} error={error} onSend={(msg) => send(msg, { queue: false })} />
           </div>
-
-          <section className={`sr-card sr-start sr-o-start${isHost && canStart ? ' is-ready' : ''}${full ? ' is-full' : ''}${starting ? ' is-starting' : ''}`} aria-label="Start">
-            {gameId === 'hyderabad-tycoon' && (
-              <div className="sr-start__mascot" aria-hidden="true">
-                <AutoMascot key={canStart ? 'ready' : 'waiting'} mood={canStart ? 'roll' : 'waiting'} />
-              </div>
-            )}
-            {isHost ? (
-              <>
-                <button
-                  type="button"
-                  className={`ho-btn ho-btn--primary ho-btn--lg ho-btn--block sr-start__btn${full && canStart ? ' ho-btn--full' : ''}`}
-                  onClick={start}
-                  disabled={!canStart}
-                  aria-describedby="sr-start-note"
-                >
-                  {starting ? <span className="ho-spinner" aria-hidden="true" /> : <HubIcon name="play" size={18} />} {starting ? 'Starting...' : 'Start game'}
-                </button>
-                <p id="sr-start-note" className={`sr-start__note${reason ? ' is-reason' : ''}`} aria-live="polite">
-                  {reason || startHelp}
-                </p>
-              </>
-            ) : (
-              <p className="sr-start__wait" role="status" aria-live="polite">
-                <span className="ho-spinner" aria-hidden="true" /> {open ? waitingText({ need, hostName: host && host.name }) : 'Reconnecting to the room...'}
-              </p>
-            )}
-          </section>
         </div>
 
         <div className="sr-lobby__side">
-          <div className="sr-o-invite">
+          <div className="sr-o-invite" data-tour="lobby-invite">
             <ShareCard code={code} gameName={gName} onNotify={push} id="sr-invite" />
           </div>
           {user.isGuest ? (
-            <p className="sr-guest sr-o-guest">
+            <p className="sr-guest sr-o-guest" data-tour="lobby-friends">
               Share the code, link or QR above. <Link to={paths.login(paths.lobby(code))}>Sign in with Google</Link> to invite friends in one tap.
             </p>
           ) : (
-            <div className="sr-o-friends">
+            <div className="sr-o-friends" data-tour="lobby-friends">
               <InviteFriends code={code} gameName={gName} onNotify={push} />
             </div>
           )}

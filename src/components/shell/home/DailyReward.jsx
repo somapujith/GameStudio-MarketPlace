@@ -182,7 +182,7 @@ export default function DailyReward() {
   // ---- signed out / booting --------------------------------------------------------------
   if (loading || !user) {
     return (
-      <section className="hub-panel hh2-daily xh-daily is-out" aria-labelledby="hh2-daily-h" aria-busy={loading || undefined}>
+      <section data-tour="home-daily" className="hub-panel hh2-daily xh-daily is-out" aria-labelledby="hh2-daily-h" aria-busy={loading || undefined}>
         <div className="hh2-daily__glow" aria-hidden="true" />
         <Head sub={loading ? 'Checking your streak…' : 'Sign in or play as guest to collect daily coins.'} streak={null} />
         <Track days={previewDays()} label="Daily rewards, days 1 to 7" />
@@ -211,7 +211,7 @@ export default function DailyReward() {
         : `Day ${pos} of 7. Keep the streak alive.`;
 
   return (
-    <section className={`hub-panel hh2-daily xh-daily ${view.claimed ? 'is-claimed' : 'is-ready'}`} aria-labelledby="hh2-daily-h">
+    <section data-tour="home-daily" className={`hub-panel hh2-daily xh-daily ${view.claimed ? 'is-claimed' : 'is-ready'}`} aria-labelledby="hh2-daily-h">
       <div className="hh2-daily__glow" aria-hidden="true" />
       <Head sub={sub} streak={view.claimed ? view.streak : view.lost ? 0 : view.streak} ready={!view.claimed} />
       <Track days={view.days} />

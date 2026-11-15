@@ -51,6 +51,7 @@ export function canViewTransition(fromPath, to) {
   if (typeof document === 'undefined' || typeof document.startViewTransition !== 'function') return false;
   if (!engineAllowsViewTransition()) return false;
   if (document.visibilityState === 'hidden') return false;
+  if (document.documentElement?.dataset?.perf === 'low') return false; // slow renderer: a full-page snapshot cross-fade only adds a frozen frame
   if (isGameRoute(fromPath)) return false;
   const target = pathOf(to);
   if (target && isGameRoute(target)) return false;

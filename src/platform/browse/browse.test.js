@@ -36,7 +36,7 @@ const mk = (id, over = {}) => ({
 });
 
 // the shipped catalogue shape: one live game and a few teasers
-const TYCOON = mk('hyderabad-tycoon', { name: 'Hyderabad Tycoon', tagline: 'Own the city. Survive the madness.', description: 'Buy districts, collect rent.', players: { min: 2, max: 6 }, duration: '35-60 min', featured: true });
+const TYCOON = mk('hyderabad-tycoon', { name: 'Kingpin', tagline: 'Own the city. Survive the madness.', description: 'Buy districts, collect rent.', tags: ['Property trading', 'Hyderabad', 'Tycoon'], players: { min: 2, max: 6 }, duration: '35-60 min', featured: true });
 const LUDO = mk('ludo-lanes', { name: 'Ludo Lanes', status: 'coming_soon', tagline: 'Race four tokens home', players: { min: 2, max: 4 }, duration: '15-30 min' });
 const CARROM = mk('carrom-club', { name: 'Carrom Club', status: 'coming_soon', category: 'sports', players: { min: 2, max: 4 }, duration: '10-20 min', tags: ['Flick', 'Classic'] });
 const TAMBOLA = mk('tambola-night', { name: 'Tambola Night', status: 'coming_soon', category: 'card', players: { min: 2, max: 20 }, duration: '20-40 min' });
@@ -80,8 +80,9 @@ describe('searchGames', () => {
     expect(searchGames('café', [mk('c2', { name: 'Cafe Two' })], CATS)).toHaveLength(1);
   });
   it('tolerates a typo in terms of 4+ characters but not in short ones', () => {
-    expect(searchGames('tycon', SMALL, CATS)[0].game.id).toBe('hyderabad-tycoon'); // prefix typo
-    expect(searchGames('tyocon', SMALL, CATS)[0].game.id).toBe('hyderabad-tycoon'); // swapped letters
+    expect(searchGames('kingpn', SMALL, CATS)[0].game.id).toBe('hyderabad-tycoon'); // dropped letter
+    expect(searchGames('kignpin', SMALL, CATS)[0].game.id).toBe('hyderabad-tycoon'); // swapped letters
+    expect(searchGames('tycoon', SMALL, CATS)[0].game.id).toBe('hyderabad-tycoon'); // the old name still finds it (tag)
     expect(searchGames('hydrabad', SMALL, CATS)[0].game.id).toBe('hyderabad-tycoon');
     expect(searchGames('lud', SMALL, CATS)[0].game.id).toBe('ludo-lanes'); // plain prefix
     expect(searchGames('xyz', SMALL, CATS)).toHaveLength(0);
@@ -107,14 +108,14 @@ describe('searchGames', () => {
 
 describe('highlightParts', () => {
   it('marks the matched text', () => {
-    expect(highlightParts('Hyderabad Tycoon', 'tycoon')).toEqual([
-      { text: 'Hyderabad ', hit: false },
-      { text: 'Tycoon', hit: true },
+    expect(highlightParts('Kingpin', 'king')).toEqual([
+      { text: 'King', hit: true },
+      { text: 'pin', hit: false },
     ]);
   });
   it('matches through accents and highlights the word a typo matched', () => {
     expect(highlightParts('Café Rush', 'cafe')[0]).toEqual({ text: 'Café', hit: true });
-    expect(highlightParts('Hyderabad Tycoon', 'tyocon').find((p) => p.hit)?.text).toBe('Tycoon');
+    expect(highlightParts('Kingpin', 'kignpin').find((p) => p.hit)?.text).toBe('Kingpin');
   });
   it('returns plain text for an empty query or no match', () => {
     expect(highlightParts('Ludo', '')).toEqual([{ text: 'Ludo', hit: false }]);
@@ -206,7 +207,7 @@ describe('applyFilters and sort', () => {
   });
   it('sorts: featured, A-Z, shortest, most players', () => {
     expect(sortGames(SMALL, 'featured').map((g) => g.id)).toEqual(['hyderabad-tycoon', 'ludo-lanes', 'carrom-club', 'tambola-night']);
-    expect(sortGames(SMALL, 'az').map((g) => g.name)).toEqual(['Carrom Club', 'Hyderabad Tycoon', 'Ludo Lanes', 'Tambola Night']);
+    expect(sortGames(SMALL, 'az').map((g) => g.name)).toEqual(['Carrom Club', 'Kingpin', 'Ludo Lanes', 'Tambola Night']);
     expect(sortGames(SMALL, 'short').map((g) => g.id)).toEqual(['carrom-club', 'ludo-lanes', 'tambola-night', 'hyderabad-tycoon']);
     expect(sortGames(SMALL, 'players').map((g) => g.id)[0]).toBe('tambola-night');
   });

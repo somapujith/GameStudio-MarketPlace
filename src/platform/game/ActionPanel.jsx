@@ -8,7 +8,8 @@ import { featuredGame } from '@/games/registry.js';
 import { paths } from '@/platform/paths.js';
 import { GameIcon } from '@/platform/home/GameArt.jsx';
 import HubIcon from './HubIcon.jsx';
-import { playersLabel, shareData } from './detailModel.js';
+import MapPicker from '@/components/online/MapPicker.jsx';
+import { hasMaps, playersLabel, shareData } from './detailModel.js';
 import { useNotify } from './notify.js';
 
 const DEFAULT_HINT = 'You get a code to share. Friends join, then you start.';
@@ -35,7 +36,7 @@ export function ShareButton({ game, className = 'hub-btn hub-btn--ghost hub-btn-
     }
   };
   return (
-    <button type="button" className={className} onClick={onShare}>
+    <button type="button" className={className} onClick={onShare} data-tour="game-share">
       <HubIcon name="share" size={18} /> Share
     </button>
   );
@@ -70,15 +71,15 @@ export function createCopy({ user, authLoading, reachable, busy, game }) {
   return { label: 'Create table', signedOut, hint, offline: reachable === false };
 }
 
-export function LivePanel({ game, options, seats, setSeats, host, busy, user, authLoading, reachable, onJoinCode, panelRef }) {
+export function LivePanel({ game, options, seats, setSeats, host, busy, user, authLoading, reachable, onJoinCode, panelRef, mapId, setMapId }) {
   const copy = createCopy({ user, authLoading, reachable, busy, game });
   const friends = seats - 1;
   return (
-    <section className="gd-panel" ref={panelRef} aria-labelledby="gd-panel-h">
+    <section className="gd-panel" ref={panelRef} aria-labelledby="gd-panel-h" data-tour="game-panel">
       <h2 id="gd-panel-h" className="gd-panel__title">
         Start a table
       </h2>
-      <div className="gd-panel__row">
+      <div className="gd-panel__row" data-tour="game-seats">
         <div className="gd-panel__lab">
           <b>Players</b>
           <small aria-live="polite">
@@ -87,9 +88,15 @@ export function LivePanel({ game, options, seats, setSeats, host, busy, user, au
         </div>
         <Stepper options={options} value={seats} onChange={setSeats} disabled={busy || options.length < 2} label="Players at the table" />
       </div>
+      {hasMaps(game) && setMapId && (
+        <div className="gd-panel__row gd-panel__row--map" data-tour="game-map">
+          <MapPicker compact isHost value={mapId} onPick={(patch) => setMapId(patch.map)} disabled={busy} label="Map" />
+        </div>
+      )}
       <button
         type="button"
         className="hub-btn hub-btn--accent hub-btn--lg hub-btn--block gd-panel__create"
+        data-tour="game-create"
         onClick={() => host({ maxPlayers: seats })}
         disabled={busy || (authLoading && !user)}
         aria-busy={busy || undefined}
@@ -108,7 +115,7 @@ export function LivePanel({ game, options, seats, setSeats, host, busy, user, au
         </p>
       )}
       <div className="gd-panel__alt">
-        <button type="button" className="hub-btn hub-btn--soft hub-btn--block" onClick={onJoinCode}>
+        <button type="button" className="hub-btn hub-btn--soft hub-btn--block" onClick={onJoinCode} data-tour="game-join">
           <HubIcon name="hash" size={18} /> Join with a code
         </button>
         <ShareButton game={game} className="hub-btn hub-btn--ghost hub-btn--block" />

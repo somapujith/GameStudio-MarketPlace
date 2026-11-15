@@ -42,7 +42,7 @@ export function buildMatchRecord(room, adapter) {
         xp,
         coins,
         score, // user_game_stats.best_score
-        // Legacy users.* columns: only Hyderabad Tycoon keeps feeding them (previous app version).
+        // Legacy users.* columns: only Kingpin keeps feeding them (previous app version).
         lg: legacy ? 1 : 0,
         lw: legacy && won ? 1 : 0,
         lworth: legacy ? score : 0,
@@ -76,7 +76,7 @@ export function buildMatchRecord(room, adapter) {
 // match never double-counts anything:
 //   mp  match_players rows
 //   up  users: xp/coins always; the legacy games/wins/best_worth/rent_earned columns only when
-//       lg = 1 (Hyderabad Tycoon, so the previous app version keeps working)
+//       lg = 1 (Kingpin, so the previous app version keeps working)
 //   gs  user_game_stats: games, wins, best_score, rating (the row is created at 1000 + delta;
 //       |delta| <= 24 so `EXCLUDED.rating - 1000` is exactly the delta; floor 100)
 export const PERSIST_SQL = `

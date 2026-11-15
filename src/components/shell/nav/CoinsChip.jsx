@@ -67,6 +67,7 @@ export default function CoinsChip() {
       to={paths.shop()}
       className={`hub-coins xs-coins${dir > 0 ? ' is-up' : dir < 0 ? ' is-down' : ''}`}
       data-coins-chip=""
+      data-tour="nav-coins"
       title="Your coins: open the shop"
       aria-label={`${fmtNum(coins)} coins. Open the shop${canClaim ? '. Daily reward ready' : ''}`}
     >

@@ -25,7 +25,7 @@ function mkView(extra = {}) {
     phase: 'roll', turn: 0, round: 3, turnCount: 5, extraRoll: false,
     players: [P('me', 'Nithin'), P('rav', 'Ravi')],
     owners: Array(N).fill(null), levels: Array(N).fill(0), mortgaged: Array(N).fill(false),
-    cfg: { mode: 'standard', maxRounds: 20, startCash: 1500000, passStart: 200000, dice: 'lucky', auctionOnDecline: true, trafficFine: 25000, chaiCap: 1 },
+    cfg: { mode: 'standard', maxRounds: 20, startCash: 1500000, passStart: 200000, dice: 'lucky', trafficFine: 25000, chaiCap: 1 },
     pending: null, trade: null, debt: null, event: null, dice: [], ride: null,
     ...extra,
   };
@@ -82,34 +82,38 @@ describe('buildActionSpec: rolling and ending', () => {
 describe('buildActionSpec: buying', () => {
   const buyView = () => mkView({ phase: 'buy', pending: { type: 'buy', tile: PROP.id, price: PROP.price } });
 
-  it('offers Buy with the name and price, and "Put up for auction" on its own row', () => {
+  it('offers Buy with the name and price, and Pass (no auction: the district stays free)', () => {
     const spec = buildActionSpec(mkSession(buyView(), { options: { buy: true, skipBuy: true } }));
     expect(spec.kind).toBe('buy');
     expect(spec.primary.label).toBe(`Buy ${PROP.short ?? PROP.name}`);
     expect(spec.primary.action).toEqual({ type: 'BUY' });
     const skip = spec.secondaries.find((x) => x.key === 'skip');
-    expect(skip.label).toBe('Put up for auction');
-    expect(skip.wide).toBe(true);
+    expect(skip.label).toBe('Pass');
+    expect(skip.sub).toMatch(/no auction/i);
+    expect(skip.wide).toBeFalsy();
     expect(skip.action).toEqual({ type: 'SKIP_BUY' });
+    expect(spec.sr).toMatch(/no auction/i);
   });
 
-  it('says "Skip" when declining does not start an auction', () => {
+  it('never talks about an auction for a pass, whatever an old cfg still carries', () => {
     const v = buyView();
-    v.cfg.auctionOnDecline = false;
+    v.cfg.auctionOnDecline = true; // a game stored before the rule was retired
     const spec = buildActionSpec(mkSession(v, { options: { buy: true, skipBuy: true } }));
-    expect(spec.secondaries.find((x) => x.key === 'skip').label).toBe('Skip');
+    const skip = spec.secondaries.find((x) => x.key === 'skip');
+    expect(skip.label).toBe('Pass');
+    expect(JSON.stringify(spec)).not.toMatch(/put (it )?up for auction|sealed|bids/i);
   });
 
-  it('makes the auction the primary when the buyer cannot afford the district', () => {
+  it('makes Pass the primary when the buyer cannot afford the district', () => {
     const v = buyView();
     v.players[0].cash = 10;
     const spec = buildActionSpec(mkSession(v, { options: { skipBuy: true } }));
     expect(spec.kind).toBe('skip');
-    expect(spec.primary.label).toBe('Put up for auction');
+    expect(spec.primary.label).toBe('Pass');
     expect(spec.primary.sub).toMatch(/^Need ₹/);
   });
 
-  it('never fires Buy or the auction from Space / Enter', () => {
+  it('never fires Buy or Pass from Space / Enter', () => {
     const spec = buildActionSpec(mkSession(buyView(), { options: { buy: true, skipBuy: true } }));
     expect(shortcutAction(spec, { key: ' ' })).toBeNull();
     expect(shortcutAction(spec, { key: 'Enter' })).toBeNull();
@@ -426,7 +430,17 @@ describe('<ActionBar>', () => {
 describe('<TradePane> and badges', () => {
   it('explains why trading is unavailable off-turn', () => {
     const out = html(createElement(TradePane, { session: mkSession(mkView(), { me: 'rav' }) }));
-    expect(out).toContain('You can propose a trade on your own turn.');
+    expect(out).toContain('You can propose a trade on your own turn');
+  });
+
+  it('names the exact step that blocks my trade (never an animation) and enables the button otherwise', () => {
+    const mine = (patch, opts) => html(createElement(TradePane, { session: mkSession(mkView(patch), { options: opts }) }));
+    expect(mine({ phase: 'debt' })).toContain('Settle the debt before trading');
+    expect(mine({ phase: 'snatch' })).toContain('Snatch window');
+    expect(mine({ phase: 'manage' }, { trade: { canOffer: true } })).not.toMatch(/cp-trade__go"[^>]*disabled/);
+    // my own turn, nothing in the way, but the options are blank while a request of mine is in flight: say so
+    const waiting = mine({ phase: 'manage' }, { trade: { canOffer: false } });
+    expect(waiting).toContain('One moment');
   });
 
   it('badges Manage with upgrade count and Trade with an open offer', () => {

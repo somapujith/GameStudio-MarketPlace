@@ -1,11 +1,14 @@
 import { memo, useContext } from 'react';
 import * as B from '@shared/board.js';
 import { compactINR, formatINR } from '@shared/format.js';
+import { DEFAULT_MAP, activeMapId, termsOf } from '@shared/maps.js';
+import { wordsOf } from '@/lib/mapWords.js';
 import { BuildingArt, TileIcon } from '@/components/art/index.js';
 import { cornerOf, sideOf } from './fx/geometry.js';
 import { CardShimmer, ChaiSteam, OwnerChip, OwnerStamp } from './fx/TileFx.jsx';
 import { useBump } from './fx/useBump.js';
 import BuildSite from './board/BuildSite.jsx';
+import EventFlag from './board/EventFlag.jsx';
 import { PieceToken } from './Pawn.jsx';
 import { labelLines } from './tileLabel.js';
 import PhoneBoardContext from './phone/PhoneBoardContext.js';
@@ -87,6 +90,20 @@ const MARKS = {
   rain: Object.freeze({ tone: 'rain', text: 'x0.5', note: 'monsoon, rent halved this round' }),
 };
 
+// On another map the note names the event by the map's title ("sankranti boom, upgraded businesses pay double ..."); one frozen
+// descriptor per (mark, title), like the default ones.
+const SKINNED = new Map();
+function skinMark(mark, event) {
+  if (activeMapId() === DEFAULT_MAP || !event.title) return mark;
+  const key = `${mark.tone}|${event.title}`;
+  let hit = SKINNED.get(key);
+  if (!hit) {
+    hit = Object.freeze({ ...mark, note: `${String(event.title).toLowerCase()}${mark.note.slice(mark.note.indexOf(','))}` });
+    SKINNED.set(key, hit);
+  }
+  return hit;
+}
+
 function inGroups(event, tile, fallback) {
   if (!tile.group) return false;
   if (event.group) return tile.group === event.group;
@@ -103,13 +120,13 @@ export function eventMark(event, tile) {
   if (!event || !tile || tile.type !== 'property') return null;
   switch (event.id) {
     case 'rush_hour':
-      return inGroups(event, tile) ? MARKS.rush : null;
+      return inGroups(event, tile) ? skinMark(MARKS.rush, event) : null;
     case 'monsoon':
-      return inGroups(event, tile) ? MARKS.rain : null;
+      return inGroups(event, tile) ? skinMark(MARKS.rain, event) : null;
     case 'biryani_boom':
-      return inGroups(event, tile, ['oldcity', 'everyday']) ? MARKS.boom : null;
+      return inGroups(event, tile, ['oldcity', 'everyday']) ? skinMark(MARKS.boom, event) : null;
     case 'wedding_season':
-      return inGroups(event, tile, ['lake', 'luxury']) ? MARKS.gift : null;
+      return inGroups(event, tile, ['lake', 'luxury']) ? skinMark(MARKS.gift, event) : null;
     default:
       return null;
   }
@@ -182,12 +199,14 @@ const CORNER_SUB = {
   chai: 'Free chai',
   municipal: 'Pay up',
 };
+const cornerSub = (type) => (type === 'chai' && activeMapId() !== DEFAULT_MAP ? `Free ${termsOf(activeMapId()).chaiToken}` : CORNER_SUB[type] || '');
 
 /**
  * One board tile. Pure / primitive props so React.memo can skip untouched tiles.
  *  ownerColor / ownerName / ownerId / ownerPiece: the owner (null colour = unowned).
  *  level: 0..MAX_LEVEL (level 0 = the first business). setState 'full': the owner holds the whole collection.
  *  mortgaged: greyed out with stripes and an M badge. event: descriptor from eventMark() or null.
+ *  flag: descriptor from board/eventFlag.js eventFlagFor() or null: the city event's flag raised on this tile.
  *  active: the mover stands here (festival-lantern glow). highlight: a sheet is open for it.
  *  stuck: players stuck on this traffic tile. chai: chai tokens in play (Chai Adda puffs steam when it rises).
  *  drawing: a card is being drawn from this tile (shimmer). salary: START's pay.
@@ -203,6 +222,7 @@ function TileImpl({
   setState = 'none',
   mortgaged = false,
   event = null,
+  flag = null,
   highlight = false,
   active = false,
   stuck = 0,
@@ -241,6 +261,7 @@ function TileImpl({
   if (mortgaged) cls.push('is-mortgaged');
   if (isProperty && owned && lvl >= MAX_LEVEL) cls.push('is-max');
   if (event) cls.push('is-event', `is-ev--${event.tone}`);
+  if (flag) cls.push('has-flag', `has-flag--${flag.shape}`);
   if (highlight) cls.push('is-hl');
   if (active) cls.push('is-active');
   if (stuck > 0) cls.push('has-stuck');
@@ -253,6 +274,7 @@ function TileImpl({
   const rent = isProperty && owned ? Math.round((tileRent(tile, lvl) * rentPct) / 100) : 0; // at the table's rent level (cfg.rentPercent)
 
   // ---- accessible name
+  const words = wordsOf();
   const label = [tile.name];
   if (group) label.push(group.name);
   if (isProperty) {
@@ -260,14 +282,15 @@ function TileImpl({
     else if (tile.price != null) label.push(`for sale, ${formatINR(tile.price)}`);
   }
   if (tile.type === 'transport' && tile.fare != null) label.push(`ride to the next stop for ${formatINR(tile.fare)}`);
-  if (tile.type === 'card') label.push(tile.deck === 'drama' ? 'draw a City Drama card' : 'draw a Nawabi Luck card');
+  if (tile.type === 'card') label.push(`draw a ${tile.deck === 'drama' ? words.drama : words.luck} card`);
   if (tile.type === 'start') label.push(`collect ${formatINR(salary)}`);
   if (tile.type === 'traffic') label.push(stuck > 0 ? `${stuck} stuck in traffic` : 'traffic jam, you get stuck');
-  if (tile.type === 'chai') label.push('collect a chai token');
-  if (tile.type === 'municipal') label.push('pay municipal charges');
+  if (tile.type === 'chai') label.push(`collect a ${words.chaiToken}`);
+  if (tile.type === 'municipal') label.push(words.isDefault ? 'pay municipal charges' : `pay the ${words.municipalCorner.toLowerCase()}`);
   if (tile.type === 'auction') label.push('a city property goes to auction');
   if (full) label.push('full collection');
-  if (event) label.push(event.note);
+  if (flag) label.push(`city event: ${flag.note}`);
+  else if (event) label.push(event.note);
   if (snatch === 'open') label.push('snatch window open');
   if (snatch === 'won') label.push('just snatched');
 
@@ -280,7 +303,7 @@ function TileImpl({
 
   let inner;
   if (corner) {
-    const sub = tile.type === 'start' ? `Collect ${compactINR(salary)}` : CORNER_SUB[tile.type] || '';
+    const sub = tile.type === 'start' ? `Collect ${compactINR(salary)}` : cornerSub(tile.type);
     inner = (
       <>
         <span className="hb-tile__icon hb-tile__icon--corner">
@@ -410,6 +433,7 @@ function TileImpl({
           </span>
         </>
       )}
+      <EventFlag flag={flag} />
       <OwnerStamp color={ownerColor} owner={ownerId || ownerColor} side={side} />
       {full && setNew && !phone ? <i className="hb-tile__shine" key={setNew} aria-hidden="true" /> : null}
       {mortgaged && !isProperty && mBadge}

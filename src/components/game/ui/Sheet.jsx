@@ -25,6 +25,12 @@ export const shouldRestoreFocus = (input) => input !== 'mouse';
 /** True while any game sheet/dialog is open (keyboard shortcuts stand down). */
 export const hasOpenSheet = () => stack.length > 0;
 
+/** Lets another modal layer (the guided tour) stand in the sheet stack so the table's keyboard shortcuts stand down; returns the release. */
+export function holdShortcuts(el) {
+  stack.push(el);
+  return () => { const i = stack.indexOf(el); if (i >= 0) stack.splice(i, 1); };
+}
+
 /**
  * variant: 'sheet' (bottom sheet; on desktop it becomes `desktop`: 'drawer' | 'modal') | 'dialog' (centred everywhere)
  * Add `data-autofocus` to an element inside to receive initial focus (default: the dialog itself).

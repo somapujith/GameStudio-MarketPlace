@@ -97,10 +97,16 @@ describe('describeEvent', () => {
 
   it('auctions: bazaar, declined, unaffordable, results', () => {
     expect(text({ type: 'auction_start', tile: 22, minBid: 120000, reason: 'bazaar' })).toBe('Bazaar Auction! Necklace Road goes under the hammer (min ₹1,20,000)');
-    expect(text({ type: 'auction_start', tile: 4, minBid: 8000, reason: 'decline' })).toBe('Begum Bazaar was skipped, so it goes to a sealed auction (min ₹8,000)');
-    expect(text({ type: 'auction_start', tile: 1, minBid: 6000, reason: 'unaffordable' })).toMatch(/too pricey/);
+    // a pass never starts an auction any more; a state saved by an older version may still carry one: plain words, no excuse
+    expect(text({ type: 'auction_start', tile: 4, minBid: 8000, reason: 'decline' })).toBe('Begum Bazaar goes under the hammer (min ₹8,000)');
+    expect(text({ type: 'auction_start', tile: 1, minBid: 6000, reason: 'unaffordable' })).not.toMatch(/pricey|skipped/);
+    expect(text({ type: 'skip', player: 'b1', tile: 4 })).toBe('Chai Uncle passed on Begum Bazaar. It stays free');
+    expect(text({ type: 'skip', player: 'me', tile: 4 })).toBe('You passed on Begum Bazaar. It stays free');
     expect(text({ type: 'auction_end', tile: 4, winner: 'b1', amount: 60000, bids: {} })).toBe('Chai Uncle won Begum Bazaar at auction for ₹60,000');
-    expect(text({ type: 'auction_end', tile: 4, winner: null, amount: 0, bids: {} })).toBe('No bids. Begum Bazaar stays with the city');
+    expect(text({ type: 'auction_end', tile: 4, winner: null, amount: 0, bids: {} })).toBe('Nobody bid on Begum Bazaar');
+    expect(text({ type: 'auction_end', tile: 4, winner: 'b1', amount: 60000, bids: {}, saved: 30000 })).toBe('Chai Uncle won Begum Bazaar at auction for ₹60,000 (saved ₹30,000)');
+    expect(text({ type: 'auction_end', tile: 4, winner: 'me', amount: 60000, bids: {}, tie: true })).toBe('Tie on Begum Bazaar — You won the draw');
+    expect(text({ type: 'auction_end', tile: 4, winner: 'b1', amount: 60000, bids: {}, tie: true, tieRule: 'seat order' })).toBe('Tie on Begum Bazaar — Chai Uncle won on seat order');
   });
 
   it('sets, mortgages, debt, bankruptcy and trades', () => {
@@ -109,14 +115,27 @@ describe('describeEvent', () => {
     expect(text({ type: 'unmortgage', player: 'b1', tile: 35, cost: 220000 })).toBe('Chai Uncle paid ₹2,20,000 to lift the mortgage on Financial District');
     expect(text({ type: 'debt', player: 'me', amount: 140000, creditor: 'b1' })).toBe('You owe ₹1,40,000 to Chai Uncle. Raise cash or resign!');
     expect(text({ type: 'debt', player: 'b1', amount: 40000, creditor: null })).toBe('Chai Uncle is in debt: owes ₹40,000 to the city');
-    expect(text({ type: 'bankrupt', player: 'b1' })).toBe('Chai Uncle went bankrupt');
-    expect(text({ type: 'bankrupt', player: 'b1', reason: 'resign' })).toBe('Chai Uncle resigned');
+    expect(text({ type: 'bankrupt', player: 'b1' })).toBe('Chai Uncle went bankrupt: the bank took everything');
+    expect(text({ type: 'bankrupt', player: 'b1', reason: 'resign' })).toBe('Chai Uncle resigned: the bank took everything');
+    // a creditor the bank paid is named, with the exact amount; the cash event of that payout adds no second line
+    expect(text({ type: 'bankrupt', player: 'b1', paid: [{ to: 'me', amount: 40000 }] })).toBe('Chai Uncle went bankrupt: the bank took everything; You were paid ₹40,000');
+    expect(text({ type: 'bankrupt', player: 'me', reason: 'resign', paid: [{ to: 'b1', amount: 40000 }] })).toBe('You resigned: the bank took everything; Chai Uncle was paid ₹40,000. You can keep watching the rest of the game');
+    expect(describeEvent({ type: 'cash', player: 'me', delta: 40000, reason: 'bankrupt', other: 'b1' }, ctx)).toBeNull();
+    expect(describeEvent({ type: 'own', tile: 1, owner: null, reason: 'bankrupt' }, ctx)).toBeNull();
     expect(text({ type: 'bankrupt', player: 'me', reason: 'resign' })).toMatch(/^You resigned/);
     expect(describeEvent({ type: 'bankrupt', player: 'b1', reason: 'resign' }, ctx).tone).toBe('warn');
     expect(text({ type: 'trade_offer', from: 'b1', to: 'me', give: { cash: 50000, tiles: [1] }, get: { tiles: [31] } })).toBe(
       'Chai Uncle offered you a trade: Sultan Bazaar + ₹50,000 for HITEC City',
     );
     expect(text({ type: 'trade_rejected', from: 'me', to: 'b1', reason: 'rejected' })).toBe('Chai Uncle turned down your trade offer');
+  });
+
+  it('counter-offers: who countered whose offer, and the changed deal', () => {
+    expect(text({ type: 'trade_countered', from: 'me', to: 'b1', by: 'b1', id: 1, newId: 2 })).toBe('Chai Uncle countered your offer');
+    expect(text({ type: 'trade_countered', from: 'b1', to: 'me', by: 'me', id: 1, newId: 2 })).toBe("You countered Chai Uncle's offer");
+    expect(text({ type: 'trade_offer', counter: true, from: 'b1', to: 'me', give: { cash: 0, tiles: [31] }, get: { cash: 50000, tiles: [] } })).toBe(
+      'Chai Uncle changed the deal and offered you: HITEC City for ₹50,000',
+    );
   });
 
   it('rounds, the final round and the win', () => {

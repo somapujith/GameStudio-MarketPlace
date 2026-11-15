@@ -1,13 +1,27 @@
 // Resigning: who may, the words, and the one place that sends it.
-//   The engine allows RESIGN at any time for a player who is still in (doResign: districts return to the bank, upgrades are
-//   sold, the last one left wins). Two UI entry points open a confirm dialog (menu, your own player sheet); the debt sheet
+//   The engine allows RESIGN at any time for a player who is still in (doResign: the bank takes ALL the cash and districts,
+//   upgrades are sold, mortgages cleared; only a debt owed to a player is paid, by the bank, up to the assets' worth; the
+//   last one left wins). Two UI entry points open a confirm dialog (menu, your own player sheet); the debt sheet
 //   has its own "Declare bankruptcy". Nothing here ever resigns without that confirm.
 //   Leaving a running game with the back button resigns too (the room does it for the leaver); the difference is that
 //   Resign keeps you at the table, watching.
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { formatINR } from '@shared/format.js';
+import { bankruptcySummary } from '../ui/bankruptcy.js';
 
 export const RESIGN_TITLE = 'Resign from this game?';
-export const RESIGN_TEXT = "You lose, your districts return to the bank and you can't rejoin. You can stay and watch the rest of the game.";
+export const RESIGN_TEXT = "You lose: the bank takes ALL your cash and your districts go back to the bank, free for anyone to buy. You can't rejoin, but you can stay and watch the rest of the game.";
+
+/**
+ * The resign dialog's text. With no debt it is RESIGN_TEXT; when you owe a player something it also says exactly what the
+ * bank pays them (the debt, up to what your assets are worth), the same numbers the engine uses.
+ */
+export function resignText(session) {
+  const s = session?.view ? bankruptcySummary(session.view, session.me) : null;
+  if (!s || s.bank) return RESIGN_TEXT;
+  const to = s.payouts.length ? s.payouts.map((r) => `${r.name} is paid ${formatINR(r.amount)}`).join(', ') : 'nobody can be paid, you have nothing left';
+  return `${RESIGN_TEXT} You still owe: ${to} (up to what your assets are worth).`;
+}
 export const RESIGN_CONFIRM = 'Resign';
 export const RESIGN_KEEP = 'Keep playing';
 
@@ -36,7 +50,7 @@ export function leaveDialog(status) {
     case 'playing':
       return {
         title: 'Leave the game?',
-        text: "Leaving counts as resigning: you lose, your districts return to the bank and you can't rejoin. To keep watching the table instead, use Resign in the menu.",
+        text: "Leaving counts as resigning: you lose, the bank takes all your cash and your districts return to the bank, and you can't rejoin. To keep watching the table instead, use Resign in the menu.",
         confirm: 'Leave and resign',
         cancel: 'Keep playing',
       };

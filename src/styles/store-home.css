@@ -222,8 +222,6 @@
   color: var(--hub-text);
   background: rgba(var(--hub-tint), 0.1);
   border: 1px solid rgba(var(--hub-tint), 0.16);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
 }
 .sh-fact--feat {
   display: none;
@@ -256,10 +254,8 @@
   gap: 2px;
   padding: 0 4px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--hub-night) 58%, transparent);
+  background: color-mix(in srgb, var(--hub-night) 76%, transparent);
   border: 1px solid rgba(255, 255, 255, 0.14);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
 }
 .sh-dots {
   display: flex;
@@ -631,8 +627,6 @@ button.sh-pulse:active {
   color: var(--hub-on-media);
   background: color-mix(in srgb, var(--hub-night) 78%, transparent);
   border: 1px solid rgba(255, 255, 255, 0.16);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
 }
 .sh-badge--live {
   color: #6cf0b8;

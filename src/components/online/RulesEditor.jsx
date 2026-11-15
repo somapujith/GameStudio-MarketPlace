@@ -31,7 +31,7 @@ export function PresetPicker({ field, value, onPick, disabled, resets = [] }) {
   const id = useId();
   const options = Array.isArray(field.options) ? field.options : [];
   return (
-    <div className="ho-field xl-presets">
+    <div className="ho-field xl-presets" data-tour="lobby-mode">
       <div className="ho-field__label" id={`${id}-l`}>
         {field.label}
       </div>
@@ -58,7 +58,7 @@ export function PresetPicker({ field, value, onPick, disabled, resets = [] }) {
 export function RuleGroup({ group, count = 0, open, onToggle, note = '', children }) {
   const id = useId();
   return (
-    <section className={`xl-group${open ? ' is-open' : ''}`} aria-labelledby={`${id}-h`}>
+    <section className={`xl-group${open ? ' is-open' : ''}`} aria-labelledby={`${id}-h`} data-tour={`lobby-group-${group.id}`}>
       <h3 className="xl-group__h" id={`${id}-h`}>
         <button type="button" className="xl-group__btn" aria-expanded={open} aria-controls={`${id}-b`} onClick={onToggle}>
           <span className="xl-group__title">{group.label}</span>

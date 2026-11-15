@@ -4,6 +4,8 @@
 import { memo, useId } from 'react';
 import { lighten, darken, mix } from './palette.js';
 import '@/styles/characterMotion.css';
+import { useArtMap, ANDHRA } from './andhra/artMap.js';
+import { ANDHRA_DRAW } from './andhra/pieces.jsx';
 
 const OUT = '#1b1340';
 const OW = 1.3; // outline width in the 40-unit box
@@ -196,8 +198,8 @@ const DRAW = { pearl: Pearl, auto: Auto, handi: Handi, chai: Chai, bat: Bat, cam
  * The token as a bare <g> in a 40x40 box (for composing inside another SVG, e.g. the hub cover).
  * `base={false}` drops the round player-colour stand.
  */
-export function PieceGlyph({ piece = 'pearl', color = '#ff4d6d', base = true, uid = 'pc' }) {
-  const Draw = DRAW[piece] || Pearl;
+export function PieceGlyph({ piece = 'pearl', color = '#ff4d6d', base = true, uid = 'pc', map }) {
+  const Draw = (map === ANDHRA && ANDHRA_DRAW[piece]) || DRAW[piece] || Pearl; // the Andhra map re-skins the same six ids (andhra/pieces.jsx)
   return (
     <g>
       {base ? <Base c={color} /> : <ellipse cx="20.4" cy="33.6" rx="12" ry="2.8" fill={OUT} opacity=".22" />}
@@ -207,6 +209,7 @@ export function PieceGlyph({ piece = 'pearl', color = '#ff4d6d', base = true, ui
 }
 
 function PieceArtBase({ piece = 'pearl', color = '#ff4d6d', size = 32, title, className, base = true, style }) {
+  const map = useArtMap();
   const uid = 'pa' + useId().replace(/[^a-zA-Z0-9]/g, '');
   const label = title || undefined;
   return (
@@ -222,7 +225,7 @@ function PieceArtBase({ piece = 'pearl', color = '#ff4d6d', size = 32, title, cl
       style={{ flex: 'none', overflow: 'visible', ...style }}
     >
       {label ? <title>{label}</title> : null}
-      <PieceGlyph piece={DRAW[piece] ? piece : 'pearl'} color={color || '#ff4d6d'} base={base} uid={uid} />
+      <PieceGlyph piece={DRAW[piece] ? piece : 'pearl'} color={color || '#ff4d6d'} base={base} uid={uid} map={map} />
     </svg>
   );
 }

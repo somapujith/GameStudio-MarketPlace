@@ -5,11 +5,14 @@
 // The one big primary comes from the shared action spec (ActionBar.useActionSpec), so every rule behind Roll, Buy, End turn,
 // Pay the fine, Use chai, Ride, Wait it out stays exactly as it was. While somebody else plays it is a calm, disabled
 // "Waiting for Sana…". Manage (upgrades, mortgages) and Trade stay one tap away on either side of it.
+// During a Snatch window the primary slot is the SNATCH! button for a player who may press (SnatchButton.jsx).
 import { Avatar } from '@/components/art/index.js';
 import { sfx } from '@/lib/sfx.js';
 import Icon from '../ui/Icon.jsx';
 import { TimerBar } from '../turn/TurnTimer.jsx';
+import SnatchButton, { useSnatchControl } from '../SnatchButton.jsx';
 import { pillFor, primaryFor, soundOf } from './phoneModel.js';
+import { tradeStatus } from '../ui/tradeModel.js';
 
 const play = (action) => {
   try { sfx.play(soundOf(action)); } catch { /* sound is optional */ }
@@ -23,6 +26,7 @@ function Tool({ icon, label, badge, onClick, hint }) {
       onClick={onClick}
       aria-label={badge ? `${label}, ${badge.label}` : label}
       title={hint || label}
+      data-tour={label === 'Manage' ? 'manage' : label === 'Trade' ? 'trade' : undefined}
     >
       <Icon name={icon} size={22} />
       <span aria-hidden="true">{label}</span>
@@ -31,21 +35,30 @@ function Tool({ icon, label, badge, onClick, hint }) {
   );
 }
 
-export default function PhoneActions({ session, spec, fire, badges = {}, onManage, onTrade, hidePills = [] }) {
+export default function PhoneActions({ session, spec, fire, badges = {}, onManage, onTrade, hidePills = [], reopen = null }) {
   const prim = primaryFor(spec);
+  const sn = useSnatchControl(session); // while I may snatch, the big primary slot IS the SNATCH! button
   const pills = (spec.secondaries || []).filter((s) => !hidePills.includes(s.key)).map((s) => pillFor(s, session));
   const out = spec.kind === 'out';
+  const pillCount = pills.length + (reopen ? 1 : 0);
   const waiting = prim.disabled;
   const rolling = waiting && prim.kind === 'busy' && !!session.rolling; // my dice are in the air: "Rolling…" instead of three dots
-  const tradeHint = session.options?.trade?.canOffer === false && !session.view?.trade ? 'You can propose a trade on your own turn' : undefined;
+  const tradeState = tradeStatus(session);
+  const tradeHint = !tradeState.can && !session.view?.trade ? tradeState.reason : undefined;
 
   return (
-    <section className="pa" aria-label="Your actions" data-kind={spec.kind} data-pills={pills.length || undefined}>
+    <section className="pa" aria-label="Your actions" data-kind={spec.kind} data-pills={pillCount || undefined}>
       <p className="cp-sr" role="status" aria-live="polite">{spec.sr}</p>
       <TimerBar session={session} className="pa-timer" />
 
-      {pills.length ? (
+      {pillCount ? (
         <div className="pa-pills" role="group" aria-label="More actions">
+          {reopen ? (
+            <button type="button" className="pa-pill is-reopen" aria-label={`${reopen.label}. Show the choices again`} onClick={reopen.onClick}>
+              <Icon name={reopen.icon} size={16} />
+              <span>{reopen.label}</span>
+            </button>
+          ) : null}
           {pills.map((p) => (
             <button
               key={p.key}
@@ -64,7 +77,9 @@ export default function PhoneActions({ session, spec, fire, badges = {}, onManag
       <div className="pa-main">
         {out ? <span className="pa-tool pa-tool--gap" aria-hidden="true" /> : <Tool icon="home" label="Manage" badge={badges.manage} onClick={onManage} />}
 
-        {waiting ? (
+        {sn.show ? (
+          <SnatchButton ctl={sn} variant="phone" />
+        ) : waiting ? (
           <div
             className={`pa-primary is-wait is-${prim.key}${rolling ? ' is-rolling' : ''}`}
             role="status"

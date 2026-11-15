@@ -42,7 +42,7 @@
 //                                           ones, shows it as room.players[i].piece and passes it to createGame as
 //                                           players[i].piece. Without it, pieces are off (`piece` is null, `{t:'piece'}` errors).
 //
-//   `result().legacy` is only for Hyderabad Tycoon: when present, the old users.games / wins /
+//   `result().legacy` is only for Kingpin: when present, the old users.games / wins /
 //   best_worth / rent_earned columns and the matches goal / max_rounds / dice_mode columns are
 //   kept up to date for the previous version of the app.
 import hyderabadTycoon from './hyderabad-tycoon.js';

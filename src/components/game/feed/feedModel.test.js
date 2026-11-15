@@ -83,6 +83,18 @@ describe('buildFeed', () => {
     expect(buildFeed([], {})).toEqual([]);
     expect(buildFeed(null, {})).toEqual([]);
   });
+  it('only looks at the tail of a long log: same rows as the whole log, a fraction of the work', () => {
+    const log = [];
+    for (let i = 1; i <= 200; i += 1) {
+      log.push(entry(i * 2 - 1, `Sana rolled ${(i % 5) + 1}`, { type: 'dice', player: 'sana', values: [(i % 5) + 1] }));
+      log.push(entry(i * 2, 'Sana landed on Madhapur', { type: 'land', player: 'sana', tile: tileId }, { tile: tileId }));
+    }
+    const full = buildFeed(log, { max: 400 }); // the whole log (400 entries -> 200 joined rows)
+    expect(full).toHaveLength(200);
+    for (const max of [1, 3, 14, 60]) {
+      expect(buildFeed(log, { max })).toEqual(full.slice(0, max));
+    }
+  });
   it('joins "rolled 5" and "landed on X" into one row that keeps the roll id and time', () => {
     const log = [
       entry(1, 'Sana rolled 5', { type: 'dice', player: 'sana', values: [5] }),

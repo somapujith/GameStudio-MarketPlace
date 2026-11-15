@@ -1,9 +1,11 @@
 // How to play Hyderabad Hustle (docs/HUSTLE_PLAN.md section 3), in short friendly sections. Numbers come from the
 // board data and the live game settings when available.
 import '@/styles/sheets.css';
-import { TILES } from '@shared/board.js';
+import { TILES, UPGRADE_RATIO } from '@shared/board.js';
 import { formatINR } from '@shared/format.js';
 import * as shared from '@shared/index.js';
+import { activeMapId, cityEventsOf } from '@shared/maps.js';
+import { wordsOf } from '@/lib/mapWords.js';
 import Sheet from './ui/Sheet.jsx';
 import { artPart } from './ui/PlayerToken.jsx';
 import {
@@ -62,10 +64,11 @@ export default function RulesSheet({ open, onClose, session }) {
   const target = targetOf(rawCfg);
   const summary = settingsSummary(rawCfg, session?.display?.goal ?? rawCfg.goal);
   const fairDice = (cfg.dice ?? 'lucky') === 'fair';
-  const declineAuction = cfg.auctionOnDecline !== false;
   const passStart = cfg.passStart ?? PASS_START_AMOUNT;
   const fine = cfg.trafficFine ?? TRAFFIC_FINE;
   const chaiCap = cfg.chaiCap ?? CHAI_CAP;
+  const w = wordsOf(); // the table's map: chai token / festival token, Chai Adda / Sankranti Fair ...
+  const cityEvents = w.isDefault ? CITY_EVENTS : cityEventsOf(activeMapId());
   // Host rules that change the printed text (shared/ruleSettings.js): the defaults are the stock rules.
   const eventEvery = Number.isFinite(Number(rawCfg.eventEvery)) && rawCfg.eventEvery !== null ? Math.max(0, Math.round(Number(rawCfg.eventEvery))) : EVENT_EVERY;
   const fullSetNeeded = rawCfg.requireFullSet !== false;
@@ -81,7 +84,7 @@ export default function RulesSheet({ open, onClose, session }) {
   return (
     <Sheet open={open} onClose={onClose} title="How to play" className="hg-rules" desktop="modal">
       <p className="hg-summary is-strong">{summary}</p>
-      <p className="hg-rules-pitch">Buy districts across Hyderabad, build businesses, collect rent and survive the traffic, festivals and drama. Richest after the last round wins.</p>
+      <p className="hg-rules-pitch">Buy districts across {w.place}, build businesses, collect rent and survive the traffic, festivals and drama. Richest after the last round wins.</p>
 
       <Rule icon={'🏁'} title="Pick a mode" id="rules-modes">
         <ul className="hg-rules-modes">
@@ -105,13 +108,10 @@ export default function RulesSheet({ open, onClose, session }) {
         <p>Pass or land on START and collect <b>{formatINR(passStart)}</b>.</p>
       </Rule>
 
-      <Rule icon={'🏠'} title="Buy, or let the city auction it">
+      <Rule icon={'🏠'} title="Buy it, or pass">
         <p>
-          Land on a free district and buy it at its price.{' '}
-          {declineAuction
-            ? <>Skip it, or be unable to afford it, and a <b>City Takeover</b> auction starts.</>
-            : <>Skip it and it stays free. If you cannot afford it, a <b>City Takeover</b> auction starts.</>}
-          {' '}Everyone places <b>one sealed bid</b> (from 10% of the price); the highest wins.
+          Land on a free district and buy it at its price. <b>Pass</b> (or be unable to afford it) and the district simply <b>stays free</b>:
+          there is <b>no auction</b>, the turn moves on, and the next player to land there may buy it.
         </p>
         <p>Land on someone else&rsquo;s district and you pay them rent.{rentPercent !== 100 ? <> Rents at this table are <b>{rentPercent}%</b> of the usual amounts.</> : null}</p>
       </Rule>
@@ -121,7 +121,7 @@ export default function RulesSheet({ open, onClose, session }) {
           A district you buy opens its first business. {fullSetNeeded
             ? <>Once you own <b>every district of its collection</b>, you can upgrade them, twice each</>
             : <>You can upgrade any district you own, twice each (this table does not ask for the full collection)</>}
-          {' '}(<b>half the price</b> each time, on your turn), and the rent climbs.
+          {' '}(<b>{`${Math.round(UPGRADE_RATIO * 100)}% of the price`}</b> each time, on your turn), and the rent climbs.
           {HITEC && hitecRent.length ? <> {HITEC.name}: {hitecRent.map(formatINR).join(' → ')}.</> : null}
         </p>
         <ol className="hg-rules-ladder">
@@ -154,28 +154,28 @@ export default function RulesSheet({ open, onClose, session }) {
           ride ahead to the next stop{TRANSPORT.length > 1 && nextStop(TRANSPORT[0]) ? ` (${TRANSPORT[0].name} → ${nextStop(TRANSPORT[0]).name})` : ''}.
           Handy to skip a street full of rivals. Passing START on the way still pays.
         </p>
-        <p className="hg-rule-note">&ldquo;Meter kharab hai, saab!&rdquo;</p>
+        {w.isDefault ? <p className="hg-rule-note">&ldquo;Meter kharab hai, saab!&rdquo;</p> : null}
       </Rule>
 
-      <Rule icon={'🚦'} title="Traffic Jam">
+      <Rule icon={'🚦'} title={w.trafficCorner}>
         <p>
-          Land on the Traffic Jam corner (or draw &ldquo;Ameerpet traffic&rdquo;) and you are <b>stuck</b>: your turn ends.
-          Next turn pay <b>{formatINR(fine)}</b>, spend a <b>chai token</b>, or wait it out (no move that turn).
+          Land on the {w.trafficCorner} corner (or draw &ldquo;{w.isDefault ? 'Ameerpet traffic' : 'Traffic, Baboi!'}&rdquo;) and you are <b>stuck</b>: your turn ends.
+          Next turn pay <b>{formatINR(fine)}</b>, spend a <b>{w.chaiToken}</b>, or wait it out (no move that turn).
         </p>
       </Rule>
 
-      <Rule icon={'☕'} title="Chai Adda">
+      <Rule icon={w.isDefault ? '☕' : '🪁'} title={w.chaiCorner}>
         <p>
-          Grab a <b>chai token</b> (hold at most {chaiCap}). It is spent by itself on your next rent of <b>{formatINR(CHAI_MIN_RENT)}</b> or more and halves it,
+          Grab a <b>{w.chaiToken}</b> (hold at most {chaiCap}). It is spent by itself on your next rent of <b>{formatINR(CHAI_MIN_RENT)}</b> or more and halves it,
           or you can use it to get out of traffic.
         </p>
       </Rule>
 
-      <Rule icon={'🧾'} title="Municipal Charges">
+      <Rule icon={'🧾'} title={w.municipalCorner}>
         <p>Pay <b>{formatINR(MUNICIPAL_BASE)}</b> plus <b>{formatINR(MUNICIPAL_PER_LEVEL)}</b> for every upgrade level you own.</p>
       </Rule>
 
-      <Rule icon={'🔨'} title="Bazaar Auction">
+      <Rule icon={'🔨'} title={w.auctionTile}>
         <p>A random unowned district goes under the hammer. Everyone, the lander too, bids sealed; the minimum is half its price. Nothing unowned? Nothing happens.</p>
       </Rule>
 
@@ -192,8 +192,8 @@ export default function RulesSheet({ open, onClose, session }) {
                 Two or more snatchers bid for it in <b>sealed bidding</b> among themselves: only the winner pays and spends a button, and if nobody bids the buyer keeps it.
               </p>
               <p className="hg-rule-note">
-                Auctions, trades and cards never open a Snatch window.
-                {snatchCards > 0 ? <> A Nawabi Luck card can win you a button, up to {snatchCards} per game.</> : null}
+                Auctions, trades and cards never open a Snatch window, and passing never starts an auction: the only way to get a free district is to buy it (Snatch window) or to win the {w.auctionTile} corner.
+                {snatchCards > 0 ? <> A {w.luck} card can win you a button, up to {snatchCards} per game.</> : null}
               </p>
             </>
           ) : (
@@ -204,17 +204,17 @@ export default function RulesSheet({ open, onClose, session }) {
 
       <Rule icon={'🎴'} title={`${DECKS.luck.name} & ${DECKS.drama.name}`}>
         <p>
-          <b>{DECKS.luck.name}</b> cards bring windfalls, free chai and lucky rides. <b>{DECKS.drama.name}</b> brings bills, traffic and surprises.
+          <b>{DECKS.luck.name}</b> cards bring windfalls, free {w.isDefault ? 'chai' : w.chaiTokens} and lucky {w.isDefault ? 'rides' : 'trips'}. <b>{DECKS.drama.name}</b> brings bills, traffic and surprises.
           One funny hook, one clear effect.
         </p>
       </Rule>
 
-      <Rule icon={'🌆'} title="Hyderabad Rush Hour">
+      <Rule icon={'🌆'} title={w.isDefault ? 'Hyderabad Rush Hour' : 'City events'}>
         {eventEvery > 0
           ? <p>Every <b>{eventEvery} rounds</b> a city event hits for that round. Watch the banner and trade for the booming collection:</p>
           : <p>City events are switched off at this table. These are the ones the full game has:</p>}
         <ul className="hg-rule-list">
-          {CITY_EVENTS.map((e) => <li key={e.id}><b>{e.title}</b>{e.text ? <>: {e.text}</> : null}</li>)}
+          {cityEvents.map((e) => <li key={e.id}><b>{e.title}</b>{e.text ? <>: {e.text}</> : null}</li>)}
         </ul>
       </Rule>
 
@@ -243,7 +243,11 @@ export default function RulesSheet({ open, onClose, session }) {
           A bill bigger than your cash puts you in <b>debt</b>: sell upgrades or mortgage districts until you can pay.
           If that is not enough, or you give up, you are bankrupt and out.
         </p>
-        <p>You can also <b>resign</b> at any time from the menu: you lose, your districts return to the bank and you can watch the rest of the game.</p>
+        <p>
+          When you go bankrupt the <b>bank takes ALL your cash and districts</b> (upgrades are sold, mortgages cleared): the districts are free again to buy, auction or snatch.
+          Only a debt you owe to another player is paid to them, <b>by the bank</b>, and never more than your assets were worth (your cash, plus what the bank lends on each district, plus the sell-back of your upgrades). A debt to the bank pays nobody.
+        </p>
+        <p>You can also <b>resign</b> at any time from the menu: the same rule applies, you lose and you can watch the rest of the game.</p>
       </Rule>
 
       <Rule icon={fairDice ? '⚖️' : '🍀'} title={fairDice ? 'Fair dice' : 'Lucky dice'}>

@@ -770,8 +770,6 @@
   background: color-mix(in srgb, var(--hub-surface) 94%, transparent);
   border: 1px solid color-mix(in srgb, var(--hub-gold) 45%, var(--hub-line-2));
   box-shadow: var(--hub-shadow), 0 0 0 1px color-mix(in srgb, var(--hub-gold) 14%, transparent);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
   animation: sc-drop var(--dur-3) var(--ease-spring) both;
 }
 .sc-toast--friend_request, .sc-toast--friend_accepted { border-color: var(--hub-line-2); box-shadow: var(--hub-shadow); }
@@ -1099,7 +1097,7 @@
 .sl-pin { --sw: 54px; display: flex; flex-direction: column; gap: 6px; position: sticky; bottom: calc(var(--tabbar-h, 64px) + var(--safe-bottom, 0px) + 10px); z-index: 5; }
 .sl-pin__gap { display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .sl-pin__gap i { width: 4px; height: 4px; border-radius: 50%; background: var(--hub-faint); }
-.sl-pin__row { border: 1px solid color-mix(in srgb, var(--sc-accent) 55%, transparent); border-radius: 18px; background: color-mix(in srgb, var(--hub-surface) 94%, transparent); box-shadow: var(--hub-shadow); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); animation: none; }
+.sl-pin__row { border: 1px solid color-mix(in srgb, var(--sc-accent) 55%, transparent); border-radius: 18px; background: color-mix(in srgb, var(--hub-surface) 94%, transparent); box-shadow: var(--hub-shadow); animation: none; }
 .sl-pin__row.is-me { background: linear-gradient(90deg, color-mix(in srgb, var(--sc-accent) 22%, var(--hub-surface)), var(--hub-surface)); }
 @media (min-width: 640px) { .sl-pin { --sw: 78px; } .sl-pin .sl-row { --n: var(--cols, 2); } .sl-pin .sl-stat--2, .sl-pin .sl-stat--3 { display: flex; } }
 @media (min-width: 900px) { .sl-pin { position: static; } }

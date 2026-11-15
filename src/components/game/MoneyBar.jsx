@@ -7,26 +7,39 @@
 // What is SHOWN (cash, chai, stuck) comes from the presenter's display; presence comes from the room.
 import { useEffect, useRef } from 'react';
 import { formatINR, compactINR } from '@shared/format.js';
+import { wordsOf } from '@/lib/mapWords.js';
 import Icon from './ui/Icon.jsx';
 import Money from './ui/Money.jsx';
 import { activePlayer, useWorths } from './ui/helpers.js';
 import AvatarToken from './ui/AvatarToken.jsx';
 import SnatchChip from './ui/SnatchChip.jsx';
 import { TitleChip, cosmeticsOf, isConnected, tableSummary } from './turn/room.js';
+import { withMapLine } from '../online/mapModel.js';
 
 /** Chai glass + "Chai": the player holds a chai token (max 1). Dimmed (or hidden with `hideEmpty`) at 0. */
 export function ChaiToken({ count, hideEmpty = false, className = '' }) {
   const n = Number(count) || 0;
   if (n <= 0 && hideEmpty) return null;
-  const label = n > 0 ? `Chai token${n > 1 ? `s: ${n}` : ''}: halves the next big rent, or skips traffic` : 'No chai token';
+  const w = wordsOf();
+  const label = n > 0 ? `${w.ChaiToken}${n > 1 ? `s: ${n}` : ''}: halves the next big rent, or skips traffic` : `No ${w.chaiToken}`;
   return (
     <span className={`hg-chai${n > 0 ? ' is-on' : ''} ${className}`.trim()} role="img" aria-label={label} title={label}>
       <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" focusable="false">
-        <path d="M5 8h11l-1.3 10.2a2 2 0 0 1-2 1.8H8.3a2 2 0 0 1-2-1.8z" fill="currentColor" />
-        <path d="M16 10h1.6a2.4 2.4 0 0 1 0 4.8H15.6" fill="none" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M8.5 2.8c-.8 1 .8 1.6 0 2.8M12 2.8c-.8 1 .8 1.6 0 2.8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+        {w.isDefault ? (
+          <>
+            <path d="M5 8h11l-1.3 10.2a2 2 0 0 1-2 1.8H8.3a2 2 0 0 1-2-1.8z" fill="currentColor" />
+            <path d="M16 10h1.6a2.4 2.4 0 0 1 0 4.8H15.6" fill="none" stroke="currentColor" strokeWidth="1.8" />
+            <path d="M8.5 2.8c-.8 1 .8 1.6 0 2.8M12 2.8c-.8 1 .8 1.6 0 2.8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          </>
+        ) : (
+          <>
+            <path d="M12 2.5 19 10 12 17 5 10z" fill="currentColor" />
+            <path d="M12 2.5V17M5 10h14" fill="none" stroke="#fff" strokeOpacity=".5" strokeWidth="1" />
+            <path d="M12 17q-3 2.2 0 3.8t0 1.7" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          </>
+        )}
       </svg>
-      <span aria-hidden="true">{n > 1 ? `Chai x${n}` : 'Chai'}</span>
+      <span aria-hidden="true">{w.isDefault ? (n > 1 ? `Chai x${n}` : 'Chai') : (n > 1 ? `Token x${n}` : 'Token')}</span>
     </span>
   );
 }
@@ -97,7 +110,7 @@ export function rowLabel({ player, worth, isMe, isTurn, isLeader, offline }) {
     isLeader ? 'leading' : '',
     isTurn ? 'current turn' : '',
     player.stuck && !player.bankrupt ? 'stuck in traffic' : '',
-    player.chai > 0 && !player.bankrupt ? 'holds a chai token' : '',
+    player.chai > 0 && !player.bankrupt ? `holds a ${wordsOf().chaiToken}` : '',
     offline ? 'reconnecting' : '',
   ].filter(Boolean).join(', ');
 }
@@ -181,7 +194,7 @@ export default function MoneyBar({ session, onSelect, onOpenStats, compact = fal
   const { worths, leaderId, state } = useWorths(session);
   const active = (session.display?.phase ?? session.view?.phase) === 'over' ? null : activePlayer(session);
   const cfg = session.display?.cfg || session.view?.cfg;
-  const summary = tableSummary(cfg);
+  const summary = withMapLine(tableSummary(cfg), cfg); // "Map: Andhra Aatalu · Standard City Hustle · ..."
   const listRef = useRef(null);
   const activeId = active?.id ?? null;
 

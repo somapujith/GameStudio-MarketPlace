@@ -1,10 +1,10 @@
 # GameHub marketplace — build contract
 
-GameHub is a small **games marketplace** (reference: https://platoapp.com — a hub with a featured game, image-led cards grouped by category, a leaderboard, a People tab with friend links, public rooms, no-signup guest play, coins and profiles). **Hyderabad Tycoon is the first game, as a plugin.** More games will be added later, so nothing outside `src/games/<id>/`, `worker/games/<id>.js` and `shared/` (that game's rules) may know about Tycoon.
+GameHub is a small **games marketplace** (reference: https://platoapp.com — a hub with a featured game, image-led cards grouped by category, a leaderboard, a People tab with friend links, public rooms, no-signup guest play, coins and profiles). **Kingpin is the first game, as a plugin.** More games will be added later, so nothing outside `src/games/<id>/`, `worker/games/<id>.js` and `shared/` (that game's rules) may know about Tycoon.
 
 Stack is unchanged: React 19 + Vite 8 (plain JS/JSX, no TypeScript), Cloudflare Worker (Hono) + Durable Objects, Neon Postgres, Google login + guests.
 
-> **Status.** Sections 1-8 describe the product as built (flow, routes, manifest, settings schema, adapter, database, API). Sections 0 and 9 are the **historical** orchestration rules of the multi-agent build. The game itself (rules, WebSocket protocol, events, timers, redaction) is specified in [`GAME_RULES.md`](GAME_RULES.md); the engine and backend history in [`CONTRACT.md`](CONTRACT.md). Hyderabad Tycoon is humans only (no bots), has no ready toggle, voice, story, campaign or offline mode, and is English only.
+> **Status.** Sections 1-8 describe the product as built (flow, routes, manifest, settings schema, adapter, database, API). Sections 0 and 9 are the **historical** orchestration rules of the multi-agent build. The game itself (rules, WebSocket protocol, events, timers, redaction) is specified in [`GAME_RULES.md`](GAME_RULES.md); the engine and backend history in [`CONTRACT.md`](CONTRACT.md). Kingpin is humans only (no bots), has no ready toggle, voice, story, campaign or offline mode, and is English only.
 
 ## 0. Rules for every agent **[historical: how the build was organised]**
 1. **Work only in `A:\Coding\Projects\GameHub-marketplace`** (git branch `marketplace`). Never read-modify files in `A:\Coding\Projects\GameHub` (that is `main`; it auto-deploys to production and another session may be editing it). `node_modules` is a junction to the main folder's, and `.dev.vars` is a local copy; never print or copy secrets.
@@ -58,7 +58,7 @@ The legal and help pages (`/about`, `/help`, `/privacy`, `/terms`) are static an
 ```js
 export default {
   id: 'hyderabad-tycoon',                  // url-safe, never changes, also the server adapter id
-  name: 'Hyderabad Tycoon',
+  name: 'Kingpin',
   tagline: 'Buy Dilsukhnagar to Banjara Hills',  // one line, <= 48 chars
   description: '...',                       // 1-2 sentences
   category: 'board',                        // CATEGORIES id
@@ -96,7 +96,7 @@ export default {
 Coming-soon manifests only need `id,name,tagline,category,status,players,duration,theme,art` (no loaders). **Placeholder coming-soon games** (platform-core writes the manifests under `src/games/_soon/`): "Ludo Lanes" (board, 2-4), "Carrom Club" (sports, 2-4), "Tambola Night" (social, 2-20), "Word Rush" (word, 2-6). They are teasers the owner can rename or delete; their art comes from the art agent (`ComingSoonCover({ id })`).
 
 ## 4. Settings schema (host settings, lobby + server)
-Fields render in the lobby for the host (others see `summarize(settings)`); a manifest's optional `lobbySettings` lists the keys the lobby shows, the rest keep their defaults: `{ key, label, type: 'segmented'|'stepper'|'toggle', options?: [{value,label,hideIf?}], min?, max?, step?, default, format?: 'inr'|'number'|'text', help?, dependsOn? }` (`option.hideIf: { otherKey: [values] }` hides an option while another setting has one of those values; `dependsOn: { key, defaults: { [value]: fieldValue } }` resets the field to the default for the new value when `key` changes, and marks that option "(default)"; Hyderabad Tycoon uses both for its win target). The same defaults/limits live server-side in the adapter's `validateSettings`, which is the source of truth. A shared `visibility` ('private'|'public') and `maxPlayers` exist for every game and are NOT in the schema.
+Fields render in the lobby for the host (others see `summarize(settings)`); a manifest's optional `lobbySettings` lists the keys the lobby shows, the rest keep their defaults: `{ key, label, type: 'segmented'|'stepper'|'toggle', options?: [{value,label,hideIf?}], min?, max?, step?, default, format?: 'inr'|'number'|'text', help?, dependsOn? }` (`option.hideIf: { otherKey: [values] }` hides an option while another setting has one of those values; `dependsOn: { key, defaults: { [value]: fieldValue } }` resets the field to the default for the new value when `key` changes, and marks that option "(default)"; Kingpin uses both for its win target). The same defaults/limits live server-side in the adapter's `validateSettings`, which is the source of truth. A shared `visibility` ('private'|'public') and `maxPlayers` exist for every game and are NOT in the schema.
 
 ## 5. Server game adapter (`worker/games/<id>.js`, registry `worker/games/index.js`)
 `GameRoom` must contain no Tycoon knowledge: it talks only to an adapter.
@@ -123,6 +123,8 @@ The Tycoon adapter wraps `shared/index.js` and `worker/mask.js`, `worker/setting
 - `user_game_stats(user_id uuid REFERENCES users(id) ON DELETE CASCADE, game_id text, games int NOT NULL DEFAULT 0, wins int NOT NULL DEFAULT 0, best_score int NOT NULL DEFAULT 0, rating int NOT NULL DEFAULT 1000, extra jsonb NOT NULL DEFAULT '{}', updated_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (user_id, game_id))`. Backfill once from existing `users` columns / `match_players` for `hyderabad-tycoon` (idempotent: `INSERT ... ON CONFLICT DO NOTHING`).
 - `rooms(code text PRIMARY KEY, game_id text NOT NULL, host_id uuid, host_name text, visibility text NOT NULL DEFAULT 'private', status text NOT NULL DEFAULT 'lobby', player_count int NOT NULL DEFAULT 1, max_players int NOT NULL DEFAULT 4, settings jsonb NOT NULL DEFAULT '{}', created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now())` + index on `(visibility, status, game_id, updated_at DESC)`. The room Durable Object upserts its row on create / join / leave / settings / start / finish and removes it on expiry; rows older than 24 h are ignored by queries. This table only powers listings; the Durable Object stays the source of truth.
 - `users.xp/coins/level` stay platform-wide. Per-game numbers live in `user_game_stats`; the existing `users.games/wins/best_worth/rent_earned` columns keep being updated for Tycoon so the live (old) version keeps working during the rollout.
+
+Shop voice lines need no migration: they are ordinary `user_items` rows (kind `voice` in `shared/cosmetics.js`, owned-only, played in rooms with `{t:'voice', id}`; `CONTRACT.md` 9b). The audio files are static assets in `public/audio/voice/`.
 
 ## 7. API additions (everything existing stays backward compatible; missing `gameId` means `hyderabad-tycoon`)
 - `GET /api/games` -> `{ games:[{ id, name, minPlayers, maxPlayers, openTables:number }] }`

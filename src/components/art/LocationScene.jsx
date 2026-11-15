@@ -1,5 +1,7 @@
 import { memo, useId } from 'react';
 import { GROUPS, TILES } from '@shared/board.js';
+import { useArtMap, ANDHRA } from './andhra/artMap.js';
+import AndhraScene from './andhra/scenes.jsx';
 import '@/styles/locationScene.css';
 
 // Each precinct gets a physical setting and its own foreground business. Heritage stays scenery.
@@ -229,5 +231,10 @@ function LocationSceneBase({ tile: value, level = 0, className = '', animated = 
   </svg>;
 }
 
-export const LocationScene = memo(LocationSceneBase);
+// The Andhra map swaps in its own postcards (art/andhra/scenes.jsx); every other map keeps the Hyderabad scenes below.
+function LocationSceneRouter(props) {
+  return useArtMap() === ANDHRA ? <AndhraScene {...props} /> : <LocationSceneBase {...props} />;
+}
+
+export const LocationScene = memo(LocationSceneRouter);
 export default LocationScene;

@@ -20,11 +20,11 @@ beforeEach(async () => {
 
 describe('settings', () => {
   it('has sound and motion defaults and merges patches', () => {
-    expect(S.loadSettings()).toEqual({ sfx: true, volume: 0.8, sfxVolume: 1, ambient: false, reducedMotion: false, theme: 'system', playbackSpeed: 1, haptics: true, boardCamera: 'auto', shakeToRoll: false });
+    expect(S.loadSettings()).toEqual({ sfx: true, volume: 0.8, sfxVolume: 1, ambient: false, reducedMotion: false, theme: 'system', playbackSpeed: 1, haptics: true, boardCamera: 'auto', shakeToRoll: false, graphics: 'auto', voiceLines: true, voiceVolume: 1 });
     S.saveSettings({ volume: 5, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true });
-    expect(S.loadSettings()).toEqual({ sfx: true, volume: 1, sfxVolume: 1, ambient: false, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true, boardCamera: 'auto', shakeToRoll: false });
+    expect(S.loadSettings()).toEqual({ sfx: true, volume: 1, sfxVolume: 1, ambient: false, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true, boardCamera: 'auto', shakeToRoll: false, graphics: 'auto', voiceLines: true, voiceVolume: 1 });
     S.saveSettings({ sfx: false, voice: true, subtitles: 'te', actors: { ntr: false } }); // unknown keys are dropped
-    expect(S.loadSettings()).toEqual({ sfx: false, volume: 1, sfxVolume: 1, ambient: false, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true, boardCamera: 'auto', shakeToRoll: false });
+    expect(S.loadSettings()).toEqual({ sfx: false, volume: 1, sfxVolume: 1, ambient: false, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true, boardCamera: 'auto', shakeToRoll: false, graphics: 'auto', voiceLines: true, voiceVolume: 1 });
   });
 
   it('keeps the board camera mode (auto | manual | off) and falls back to auto for anything else', () => {
@@ -36,6 +36,15 @@ describe('settings', () => {
     expect(S.saveSettings({ sfx: false }).boardCamera).toBe('off'); // other patches leave it alone
     expect(S.saveSettings({ boardCamera: 'zoomy' }).boardCamera).toBe('auto');
     expect(S.saveSettings({ boardCamera: 7 }).boardCamera).toBe('auto');
+  });
+
+  it('keeps the table-effects mode (auto | lite | full) and falls back to auto for anything else', () => {
+    expect(S.GRAPHICS_MODES).toEqual(['auto', 'lite', 'full']);
+    expect(S.loadSettings().graphics).toBe('auto');
+    expect(S.saveSettings({ graphics: 'lite' }).graphics).toBe('lite');
+    expect(S.saveSettings({ sfx: false }).graphics).toBe('lite');
+    expect(S.saveSettings({ graphics: 'full' }).graphics).toBe('full');
+    expect(S.saveSettings({ graphics: 'ultra' }).graphics).toBe('auto');
   });
 
   it('keeps shake-to-roll off unless it is exactly true', () => {
@@ -50,7 +59,7 @@ describe('settings', () => {
     const m = stubLocalStorage();
     m.set('hyd.settings.v1', JSON.stringify({ sfx: false, voice: true, tts: false, volume: 0.3, subtitles: 'tn', reducedMotion: true, actors: { ntr: false } }));
     const O = await import('./storage.js');
-    expect(O.loadSettings()).toEqual({ sfx: false, volume: 0.3, sfxVolume: 1, ambient: false, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true, boardCamera: 'auto', shakeToRoll: false });
+    expect(O.loadSettings()).toEqual({ sfx: false, volume: 0.3, sfxVolume: 1, ambient: false, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true, boardCamera: 'auto', shakeToRoll: false, graphics: 'auto', voiceLines: true, voiceVolume: 1 });
   });
 
   it('notifies subscribers and keeps a stable snapshot between changes', () => {

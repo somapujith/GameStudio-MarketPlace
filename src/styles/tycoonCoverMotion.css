@@ -7,11 +7,11 @@
   animation: tc-auto calc(var(--dur-4, 600ms) * 5) var(--ease-out, ease-out) calc(var(--dur-4, 600ms) * 2) both;
 }
 .tycoon-cover.is-animated .tc-lake {
-  animation: tc-lake calc(var(--dur-4, 600ms) * 4) var(--ease-std, ease-in-out) 2;
+  animation: tc-lake calc(var(--dur-4, 600ms) * 4) var(--ease-std, ease-in-out) 1;
 }
 /* Existing light and coin details join the scene, then settle. */
 .tycoon-cover.is-animated :is(.hub-tw, .hub-bob, .hub-bob2, .hub-spin) {
-  animation-iteration-count: 2;
+  animation-iteration-count: 1;
 }
 @keyframes tc-train {
   0%, 8% { transform: translate(-15px, -7.5px); }

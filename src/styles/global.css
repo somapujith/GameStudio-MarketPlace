@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Hyderabad Tycoon — global styles: reset, base, utilities, app shell and the
+   Kingpin — global styles: reset, base, utilities, app shell and the
    shared widgets used by every page (buttons, cards, switches, modal, toast...).
    Hub pages live in hub.css / hubhome.css, the lobby and login in online.css.
    ========================================================================== */
@@ -153,7 +153,7 @@ code {
   --topbar-h: 60px;
   --tabbar-h: 64px;
   --maxw: 1100px;
-  --glass: linear-gradient(155deg, rgba(58, 47, 140, 0.72), rgba(29, 22, 80, 0.8));
+  --glass: linear-gradient(155deg, rgba(58, 47, 140, 0.92), rgba(29, 22, 80, 0.95));
   --glass-line: rgba(255, 255, 255, 0.14);
   --grad-gold: linear-gradient(180deg, #ffe08a 0%, var(--gold) 46%, var(--gold-2) 100%);
   --grad-saffron: linear-gradient(180deg, #ffb27a 0%, var(--saffron) 50%, #ee6a1c 100%);
@@ -256,15 +256,11 @@ code {
   --btn-bg: rgba(255, 255, 255, 0.16);
   --btn-edge: rgba(0, 0, 0, 0.3);
   border-color: rgba(255, 255, 255, 0.3);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
 }
 .btn--glass-quiet {
   --btn-bg: rgba(11, 8, 32, 0.4);
   --btn-edge: rgba(0, 0, 0, 0.35);
   border-color: rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
 }
 .btn--sm {
   padding: 0 14px;
@@ -327,8 +323,6 @@ code {
   background: var(--glass);
   border: 1px solid var(--glass-line);
   box-shadow: var(--shadow-1), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
 }
 
 .chip,
@@ -901,9 +895,7 @@ code {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  background: rgba(7, 14, 20, 0.76);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background: rgba(7, 14, 20, 0.86);
   animation: hh-fade 0.2s ease;
 }
 .hh-modal__panel {
@@ -1290,8 +1282,6 @@ h1, h2, h3, h4 { letter-spacing: -.025em; }
   background: var(--hub-glass-2);
   border-color: var(--hub-line-2);
   box-shadow: var(--hub-shadow);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
 }
 :root[data-theme='light'] .hh-toast--gold {
   border-color: rgba(var(--hub-gold-rgb), 0.55);
@@ -1315,5 +1305,20 @@ h1, h2, h3, h4 { letter-spacing: -.025em; }
 :root[data-motion='reduced']::view-transition-group(*),
 :root[data-motion='reduced']::view-transition-old(*),
 :root[data-motion='reduced']::view-transition-new(*) {
+  animation: none !important;
+}
+
+/* ---------- slow-render switch ----------
+   A frame-time sampler sets data-perf='low' on <html> (hub screens) or on the game root (.hg-game) when frames take
+   too long (software rendering, e.g. Brave without hardware acceleration, or a weak phone). Decorative loops stop and
+   the layers they kept alive go away; loaders, the first-run tour ring and anything that carries meaning stay. */
+:root[data-perf='low'] :is(.st-live, .sr-conn__dot, .xh-live-dot, .hh2-eyebrow__dot, .xl-hero)::after,
+[data-perf='low'] :is(.st-live, .sr-conn__dot, .xh-live-dot, .hh2-eyebrow__dot, .xl-hero)::after,
+:root[data-perf='low'] :is(.xh-resume.is-playing .xh-resume__cta, .xh-gift--ready, .hh2-daily.is-ready .hh2-daily__gift, .xs-cel__rays, .hub-nf__lantern, .xs-coins__dot),
+[data-perf='low'] :is(.xh-resume.is-playing .xh-resume__cta, .xh-gift--ready, .hh2-daily.is-ready .hh2-daily__gift, .xs-cel__rays, .hub-nf__lantern, .xs-coins__dot) {
+  animation: none !important;
+}
+:root[data-perf='low'] :is(.st-skel, .hub-skel, .hh-skel),
+[data-perf='low'] :is(.st-skel, .hub-skel, .hh-skel) {
   animation: none !important;
 }

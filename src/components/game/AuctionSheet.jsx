@@ -1,240 +1,251 @@
-// Sealed-bid auction of a district (phase 'auction', pending.type 'auction'). Three ways in (auction_start.reason):
-//   'bazaar'        the Bazaar Auction square drew a random unowned district (the lander bids like everyone)
-//   'decline'       City Takeover: the lander passed on buying it
-//   'unaffordable'  City Takeover: the lander could not afford it
-// Everyone still in the game places one sealed bid or passes. Opens by itself; a bidder closes it only by bidding or
-// passing. "Has bid" ticks come from the redacted `pending.bids` keys (amounts stay secret).
+// The bidding screen (phase 'auction', pending.type 'auction'): a phone bottom sheet / desktop modal, one component tree.
+//   header   the district as a mini deed (collection colour band, business art, price, base rent, minimum bid), the reason
+//            in plain words and a countdown ring over cfg.auctionSeconds
+//   strip    every eligible player with a status: thinking / Bid in / Not bidding (a pass reads "Bid in" while sealed)
+//   me       amount + steppers + slider + quick chips + advice + Place bid / Pass; after sending: a locked card
+//   others   observers and non-eligible players: the strip, the ring and "Bidding is private"
+//   reveal   on `auction_end` (the presenter's `session.auctionResult`, held for ANIM_MS.auctionEnd): bid cards flip lowest to
+//            highest, the winner slams in last. The sheet stays open for it although the phase has already moved on.
+// Two reasons (auction_start.reason): 'bazaar' and 'snatch' (only the snatchers bid).
+// Pure logic and wording live in auction/auctionModel.js.
 import '@/styles/sheets.css';
-import { useEffect, useState } from 'react';
+import '@/styles/auction.css';
+import { useEffect, useRef, useState } from 'react';
 import { TileIcon } from '@/components/art/index.js';
+import LocationScene from '@/components/art/LocationScene.jsx';
+import { buzz } from '@/lib/haptics.js';
 import { TILES } from '@shared/board.js';
 import { formatINR } from '@shared/format.js';
 import Sheet from './ui/Sheet.jsx';
 import Button from './ui/Button.jsx';
 import Icon from './ui/Icon.jsx';
-import PlayerToken from './ui/PlayerToken.jsx';
-import { collectionOf, levelNameOf, rentLadder, tileAccent, useHeld } from './ui/helpers.js';
+import { bandTones, bestInk } from './PropertySheet.jsx';
+import { collectionOf, rentLadder, tileAccent, useHeld, useReducedMotion } from './ui/helpers.js';
+import AuctionRing from './auction/AuctionRing.jsx';
+import BidderStrip from './auction/BidderStrip.jsx';
+import BidControls, { BidActions } from './auction/BidControls.jsx';
+import RevealStage from './auction/RevealStage.jsx';
+import {
+  AUCTION_KICKERS, kickerOf, REVEAL_MS, auctionInstance, auctionReason, auctionRole, bidderRows, bidInIds, eligibleIds, observerReason, privacyLine,
+  reasonLine, resultKey, setImpact, waitingLine,
+} from './auction/auctionModel.js';
 
-const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-const round1000 = (v) => Math.round(v / 1000) * 1000;
-const STEP = 5000;
+export { auctionInstance, auctionReason };
 
-/** One id per auction: the same tile can be auctioned again later, and must not inherit the old "I passed". */
-export const auctionInstance = (view, auction) =>
-  auction ? `${auction.tile}:${view.round}:${view.turnCount ?? view.turn}:${auction.reason || 'a'}` : null;
+/** Kept for callers of the old sheet: the kicker + line per reason. */
+export const AUCTION_LABELS = Object.fromEntries(
+  Object.keys(AUCTION_KICKERS).map((k) => [k, { kicker: AUCTION_KICKERS[k], line: (who) => reasonLine(k, who) }]),
+);
 
-/** Why this auction is running: the engine's `pending.reason`, else inferred from the lander. */
-export function auctionReason(view, auction) {
-  if (!auction) return null;
-  if (auction.reason) return auction.reason;
-  const lander = view?.players?.[view.turn];
-  const landed = lander ? TILES[lander.pos] : null;
-  if (landed?.type === 'auction' && landed.id !== auction.tile) return 'bazaar';
-  const tile = TILES[auction.tile];
-  if (lander && tile && (lander.cash ?? 0) < (tile.price ?? 0)) return 'unaffordable';
-  return 'decline';
+const SEND_TIMEOUT_MS = 6000;
+
+/** `on`, but it stays true for `ms` after it goes false (a result takes a beat to arrive after the auction closes). */
+function useLinger(on, ms) {
+  const [lingering, setLingering] = useState(!!on);
+  useEffect(() => {
+    if (on) {
+      setLingering(true);
+      return undefined;
+    }
+    const t = setTimeout(() => setLingering(false), ms);
+    return () => clearTimeout(t);
+  }, [on, ms]);
+  return on || lingering;
 }
 
-export const AUCTION_LABELS = {
-  bazaar: { kicker: 'Bazaar Auction', line: () => 'The bazaar put this district under the hammer. Everyone bids, the lander too.' },
-  decline: { kicker: 'City Takeover', line: (who) => `${who} passed on it, so the city auctions it off.` },
-  unaffordable: { kicker: 'City Takeover', line: (who) => `${who} could not afford it, so the city auctions it off.` },
-  // Snatch bidding (two or more players pressed Snatch): only they bid; `who` is the buyer, who already paid
-  snatch: { kicker: 'Snatch bidding', line: (who) => `${who} already paid and ${who === 'You' ? 'keep' : 'keeps'} it if nobody bids. The winner pays their bid and spends a Snatch button.` },
-};
-
 export default function AuctionSheet({ session }) {
-  const { options, view, me } = session;
+  const { view, me } = session;
   const pend = view?.pending;
   const auction = view?.phase === 'auction' && pend?.type === 'auction' ? pend : null;
-  const bidOpt = options?.bid || null;
-  const instance = auctionInstance(view, auction);
+  const result = session.auctionResult || null;
+  const reduced = useReducedMotion();
+  const instance = auctionInstance(view || {}, auction);
 
-  const [st, setSt] = useState({ key: null, amount: null, sent: null });
-  const cur = st.key === instance ? st : { key: instance, amount: null, sent: null };
+  // ---- my local state per auction: the amount, and the bid I just sent (before the server confirms it)
+  const [st, setSt] = useState({ key: null, amount: null, sent: null, err: '' });
+  const cur = st.key === instance ? st : { key: instance, amount: null, sent: null, err: '' };
   const update = (patch) => setSt({ ...cur, ...patch, key: instance });
   useEffect(() => {
-    if (!auction) setSt({ key: null, amount: null, sent: null });
+    if (!auction) setSt({ key: null, amount: null, sent: null, err: '' });
   }, [auction]);
 
-  const bids = auction?.bids || {};
-  const hasBid = (id) => Object.prototype.hasOwnProperty.call(bids, id);
-  const myRecorded = auction && hasBid(me) ? bids[me] : undefined;
-  const waiting = !!auction && (myRecorded !== undefined || cur.sent !== null);
+  // the sheet opens once the presenter has finished announcing the auction (busy -> idle), then stays for it
+  const [ready, setReady] = useState(null);
+  const readyNow = !!auction && (!session.busy || !!session.options?.bid);
+  if (readyNow && ready !== instance) setReady(instance);
+  const live = useLinger(!!auction && ready === instance, 700);
 
-  // Snatch bidding: the engine pre-fills a 0 bid for everyone who did not snatch, so "recorded 0" alone does not make a
-  // claimant. Use the public roster (`claimants`); without one: I can bid, I bid here, or I recorded a real bid.
-  const snatch = !!auction?.snatch;
-  const roster = Array.isArray(auction?.claimants) ? auction.claimants : null;
-  const claimant = !snatch || (roster ? roster.includes(me) : !!bidOpt || cur.sent !== null || myRecorded > 0);
-  const observer = snatch && !claimant;
-  const [hiddenKey, setHiddenKey] = useState(null); // an observer may close the snatch-bidding panel
-  const open = !!auction && (!!bidOpt || waiting) && !(observer && hiddenKey === instance);
+  const heldAuction = useHeld(auction);
+  const heldInstance = useHeld(instance);
+  const heldResult = useHeld(result);
+  const [dismissed, setDismissed] = useState(null);
+  const [hiddenKey, setHiddenKey] = useState(null); // an observer may close the panel; the reveal still opens
 
-  const heldTile = useHeld(auction ? auction.tile : null);
-  const heldMin = useHeld(bidOpt?.min ?? auction?.minBid ?? null);
-  const mineP = view?.players?.find((p) => p.id === me);
-  const heldMax = useHeld(bidOpt?.max ?? mineP?.cash ?? null);
-  const heldReason = useHeld(auctionReason(view, auction)) || 'decline';
+  const players = view?.players || [];
+  const sentNow = cur.sent !== null;
+  const roleNow = heldAuction ? auctionRole({ pending: heldAuction, players, me, sent: sentNow }) : 'observer';
+  const observer = roleNow === 'observer';
 
-  const tile = heldTile != null ? TILES[heldTile] : null;
-  const min = heldMin ?? 0;
-  const max = heldMax ?? 0;
-  const canBid = max >= min && max > 0;
-  const value = clamp(cur.amount ?? min, min, Math.max(min, max));
-  const sentAmount = cur.sent !== null ? cur.sent : myRecorded;
+  const rkey = resultKey(result);
+  const showReveal = !!result && dismissed !== rkey;
+  const showBidding = !showReveal && live && !!heldAuction && !(observer && hiddenKey === heldInstance);
+  const open = showReveal || showBidding;
+  const dismissible = showReveal || observer;
+  // while the sheet slides away it keeps showing what it showed (a reveal must not flash the bidding form on the way out)
+  const modeRef = useRef('bid');
+  if (open) modeRef.current = showReveal ? 'reveal' : 'bid';
+  const revealMode = open ? showReveal : modeRef.current === 'reveal' && !!heldResult;
+
+  // a bid I sent that the server never confirmed (rejected, or lost): unlock after a while
+  const confirmed = !!auction && bidInIds(auction).includes(me);
+  useEffect(() => {
+    if (!auction || cur.sent === null || confirmed) return undefined;
+    const t = setTimeout(() => setSt((s) => (s.sent === null ? s : { ...s, sent: null, err: 'Your bid did not go through. Try again.' })), SEND_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [auction, cur.sent, confirmed]);
+
+  // ---- what to draw
+  const shown = revealMode ? heldResult : heldAuction;
+  const tile = shown && TILES[shown.tile] ? TILES[shown.tile] : null;
+  const reason = revealMode ? heldResult?.reason || 'open' : auctionReason(view, heldAuction) || 'open';
+  const snatch = reason === 'snatch' || !!heldAuction?.snatch;
+  const mine = players.find((p) => p.id === me);
+  const cash = Number(mine?.cash) || 0;
+  const min = Number(heldAuction?.minBid ?? session.options?.bid?.min) || 0;
   const price = tile?.price ?? min * 2;
+  const cfg = view?.cfg || {};
+  const rows = heldAuction ? bidderRows({ players, pending: heldAuction, me, sent: sentNow }) : [];
+  const role = roleNow;
+  const lander = snatch ? players.find((p) => p.id === (heldAuction?.buyer ?? heldResult?.buyer)) : players[view?.turn];
+  const who = lander ? (lander.id === me ? 'You' : lander.name) : snatch ? 'The buyer' : 'The lander';
+  const { color } = tile ? tileAccent(tile) : { color: '#3b2d8f' };
+  const tones = bandTones(color);
+  const coll = tile ? collectionOf(tile) : null;
+  const baseRent = tile ? rentLadder(tile, cfg)[0] || 0 : 0;
+  const amount = Math.min(Math.max(cur.amount ?? min, min), Math.max(min, cash));
+  const myRecorded = heldAuction && heldAuction.bids ? heldAuction.bids[me] : undefined;
+  const myAmount = cur.sent !== null ? cur.sent : myRecorded || 0;
+  const impact = tile && role === 'bidder' ? setImpact({ tileId: tile.id, owners: view?.owners, me, players }) : null;
+  const winner = revealMode && heldResult && heldResult.winner != null ? players.find((p) => p.id === heldResult.winner) : null;
+  const kicker = kickerOf(reason);
+  const poor = role === 'observer' && !!heldAuction && observerReason({ pending: heldAuction, me, cash, min }) === 'poor';
+  // who could bid in the auction that just ended (so the "Passed" row never lists players who were out of it)
+  const revealOnly = revealMode && heldAuction && heldResult && heldAuction.tile === heldResult.tile ? eligibleIds(heldAuction, players) : null;
 
-  const set = (v) => update({ amount: clamp(round1000(v) || v, min, Math.max(min, max)) });
-  const send = (amount) => {
-    session.dispatch({ type: 'BID', amount });
-    update({ sent: amount });
+  const send = (value) => {
+    buzz('tap');
+    session.dispatch({ type: 'BID', amount: value });
+    update({ sent: value, err: '' });
+  };
+  const close = () => {
+    if (showReveal) setDismissed(rkey);
+    else if (observer) setHiddenKey(heldInstance);
   };
 
-  const chips = [
-    { key: 'min', label: 'Min', apply: () => min, on: value === min },
-    { key: 'p10', label: '+10%', apply: () => value + Math.max(1000, round1000(price * 0.1)) },
-    { key: 'p25', label: '+25%', apply: () => value + Math.max(1000, round1000(price * 0.25)) },
-  ];
+  const header = tile ? (
+    <div
+      className={`hga-band${dismissible ? ' has-x' : ''}`}
+      data-drag=""
+      style={{ '--band': color, '--ink': tones.ink, '--b1': tones.from, '--b2': tones.to, '--pill': tones.pill }}
+    >
+      <span className="hga-ico"><TileIcon tile={tile} size={42} /></span>
+      <div className="hga-titles">
+        <p className="hga-kicker">{kicker}{coll ? <> &middot; {coll.name}</> : null}</p>
+        <h2>{tile.name}</h2>
+      </div>
+      {revealMode ? (
+        winner ? (
+          <span className="hga-flag" style={{ '--pc': winner.color, '--flag-ink': bestInk(winner.color), '--at': '700ms' }} aria-label={`${winner.name} owns it now`}><Icon name="flag" size={22} /></span>
+        ) : null
+      ) : (
+        <AuctionRing clock={session.clock} cfg={cfg} windowMs={heldAuction?.ms} on={showBidding} />
+      )}
+    </div>
+  ) : null;
 
-  const { color, ink } = tile ? tileAccent(tile) : { color: '#3b2d8f', ink: '#fff' };
-  const coll = tile ? collectionOf(tile) : null;
-  const bidders = (view?.players || []).filter((p) => !p.bankrupt && (!snatch || !roster || roster.includes(p.id)));
-  const others = bidders.filter((p) => p.id !== me);
-  const lander = snatch ? view?.players?.find((p) => p.id === auction?.buyer) : view?.players?.[view?.turn];
-  const landerName = lander ? (lander.id === me ? 'You' : lander.name) : snatch ? 'The buyer' : 'The lander';
-  const label = AUCTION_LABELS[heldReason] || AUCTION_LABELS.decline;
-  const pct = max > min ? ((value - min) / (max - min)) * 100 : 0;
-  const bidCount = bidders.filter((p) => hasBid(p.id)).length;
+  const stage = tile ? (
+    <div className={`hga-stage${winner ? ' is-sold' : ''}`} style={{ '--band': color, ...(winner ? { '--win': winner.color } : null) }}>
+      <LocationScene key={tile.id} tile={tile} level={0} animated={false} />
+      <div className="hga-facts">
+        <span><i>Price</i><b>{formatINR(price)}</b></span>
+        <span><i>Base rent</i><b>{formatINR(baseRent)}</b></span>
+        {revealMode ? (
+          <span className="is-min"><i>{winner ? 'Sold for' : 'Result'}</i><b>{winner ? formatINR(heldResult?.amount) : 'Unsold'}</b></span>
+        ) : (
+          <span className="is-min"><i>Minimum bid</i><b>{formatINR(min)}</b></span>
+        )}
+      </div>
+    </div>
+  ) : null;
 
-  const ticks = (
-    <ul className="hg-auction-others" aria-label="Who has bid">
-      {others.map((p) => {
-        const done = hasBid(p.id);
-        return (
-          <li key={p.id} className={done ? 'is-done' : ''} style={{ '--pc': p.color }}>
-            <PlayerToken player={p} size={28} />
-            <span className="hg-auction-oname">{p.name}</span>
-            <span className="hg-auction-ostate">
-              {done ? <><Icon name="check" size={16} /><small>has bid</small></> : <><Icon name="hourglass" size={16} /><small>thinking</small></>}
-            </span>
-          </li>
-        );
-      })}
-    </ul>
-  );
+  let body = null;
+  if (tile && revealMode && heldResult) {
+    body = (
+      <>
+        <RevealStage key={rkey} end={heldResult} players={players} me={me} tileName={tile.name} ms={heldResult.ms || REVEAL_MS} reduced={reduced} only={revealOnly} />
+        <div className="hga-close">
+          <Button variant="dark" size="md" onClick={close}>Close</Button>
+          <small>Tap the cards to skip</small>
+        </div>
+      </>
+    );
+  } else if (tile && heldAuction) {
+    body = (
+      <>
+        <p className={`hga-why is-${reason}`}>
+          <Icon name={reason === 'bazaar' ? 'ticket' : 'info'} size={16} />
+          <span>{reasonLine(reason, who)}</span>
+        </p>
+        <BidderStrip rows={rows} players={players} me={me} />
+        {role === 'bidder' ? (
+          <BidControls
+            min={min}
+            cash={cash}
+            price={price}
+            value={amount}
+            onValue={(v) => update({ amount: v })}
+            impact={impact}
+            error={cur.err}
+          />
+        ) : role === 'locked' ? (
+          <div className="hga-locked" role="status">
+            <div className="hga-lockcard">
+              <Icon name="lock" size={24} />
+              <div>
+                <b>{myAmount > 0 ? <>Your bid is in &middot; {formatINR(myAmount)} <em>(sealed)</em></> : 'You passed'}</b>
+                <small>No way to change it. Bids open together.</small>
+              </div>
+            </div>
+            <p className="hga-wait">{waitingLine(rows, me)}</p>
+          </div>
+        ) : (
+          <p className="hga-private" role="status">
+            <Icon name="lock" size={18} />
+            <span>{privacyLine('observer', { snatch, tileName: tile.name, poor, min })}</span>
+          </p>
+        )}
+        {role === 'locked' ? <p className="hga-fine">{privacyLine(role)}</p> : null}
+      </>
+    );
+  }
 
   return (
     <Sheet
-      open={open}
-      onClose={() => { if (observer) setHiddenKey(instance); }}
-      dismissible={observer}
-      ariaLabel={tile ? `${label.kicker} for ${tile.name}` : 'Auction'}
-      className="hg-auction"
+      open={open && !!tile}
+      onClose={close}
+      dismissible={dismissible}
+      ariaLabel={tile ? `${kicker} for ${tile.name}` : 'Auction'}
+      className="hg-auction hga"
       desktop="modal"
-      header={tile ? (
-        <div className="hg-prop-band hg-auction-band" data-drag="" style={{ '--band': color, '--ink': ink }}>
-          <span className="hg-prop-icon"><TileIcon tile={tile} size={44} /></span>
-          <div className="hg-prop-titles">
-            <p className="hg-kicker">{label.kicker} &middot; sealed bids</p>
-            <h2>{tile.name}</h2>
-          </div>
-          <span className="hg-prop-type">{coll ? coll.name : 'District'} &middot; {formatINR(price)}</span>
-        </div>
+      header={header}
+      footer={!revealMode && role === 'bidder' && showBidding ? (
+        <BidActions min={min} cash={cash} value={amount} onBid={send} onPass={() => send(0)} busy={!!session.busy} />
       ) : null}
     >
       {tile ? (
         <>
-          <p className={`hg-auction-why is-${heldReason}`}>
-            <Icon name={heldReason === 'bazaar' ? 'ticket' : 'info'} size={16} />
-            <span>{label.line(landerName)}</span>
-          </p>
-          {observer ? (
-            <div className="hg-auction-wait" role="status">
-              <p className="hg-auction-waiting">
-                Snatchers are bidding for {tile.name}<span className="hg-dots" aria-hidden="true"><i /><i /><i /></span>
-              </p>
-              {ticks}
-            </div>
-          ) : waiting ? (
-            <div className="hg-auction-wait" role="status">
-              <div className="hg-auction-sealed">
-                <Icon name="lock" size={22} />
-                <div>
-                  <b>{sentAmount > 0 ? `Sealed bid: ${formatINR(sentAmount)}` : 'You passed'}</b>
-                  <small>Bids stay secret until everyone has chosen.</small>
-                </div>
-              </div>
-              <p className="hg-auction-waiting">
-                Waiting for others ({bidCount}/{bidders.length})<span className="hg-dots" aria-hidden="true"><i /><i /><i /></span>
-              </p>
-              {ticks}
-            </div>
-          ) : (
-            <div className="hg-auction-form">
-              <div className="hg-auction-facts">
-                <div><span>Minimum bid</span><b>{formatINR(min)}</b></div>
-                <div><span>Your cash</span><b className="is-gold">{formatINR(max)}</b></div>
-                <div><span>Base rent</span><b>{formatINR(rentLadder(tile, view?.cfg)[0] || 0)}</b><small>{levelNameOf(tile, 0)}</small></div>
-              </div>
-
-              {canBid ? (
-                <>
-                  <div className="hg-auction-amount" aria-live="polite">
-                    <span>Your sealed bid</span>
-                    <output>{formatINR(value)}</output>
-                  </div>
-
-                  <div className="hg-bidrow" role="group" aria-label="Adjust bid">
-                    <Button variant="dark" onClick={() => set(value - STEP)} aria-label={`Decrease by ${formatINR(STEP)}`} disabled={value <= min}>&minus;5k</Button>
-                    <input
-                      className="hg-range"
-                      type="range"
-                      min={min}
-                      max={max}
-                      step={1000}
-                      value={value}
-                      onChange={(e) => update({ amount: Number(e.target.value) })}
-                      aria-label="Bid amount"
-                      style={{ '--pct': `${pct}%` }}
-                    />
-                    <Button variant="dark" onClick={() => set(value + STEP)} aria-label={`Increase by ${formatINR(STEP)}`} disabled={value >= max}>+5k</Button>
-                  </div>
-
-                  <div className="hg-bidchips" role="group" aria-label="Quick bids">
-                    {chips.map((c) => {
-                      const next = clamp(c.apply(), min, max);
-                      return (
-                        <button
-                          key={c.key}
-                          type="button"
-                          className={`hg-bidchip${c.on ? ' is-on' : ''}`}
-                          disabled={c.key !== 'min' && value >= max}
-                          onClick={() => update({ amount: next })}
-                        >
-                          <span>{c.label}</span>
-                          <b>{formatINR(next)}</b>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </>
-              ) : (
-                <p className="hg-hint is-warn hg-auction-poor">
-                  <Icon name="info" size={16} /> You cannot afford the minimum bid of {formatINR(min)}.
-                </p>
-              )}
-
-              {others.length ? ticks : null}
-
-              <div className="hg-auction-actions">
-                <Button variant="dark" size="lg" disabled={session.busy} onClick={() => send(0)}>Pass</Button>
-                <Button variant="gold" size="lg" disabled={!canBid || session.busy} onClick={() => send(value)}>
-                  Place bid{canBid ? <> &middot; {formatINR(value)}</> : null}
-                </Button>
-              </div>
-            </div>
-          )}
+          {stage}
+          {body}
         </>
       ) : null}
     </Sheet>

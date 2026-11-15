@@ -50,14 +50,17 @@ export const TIMER_LABEL = 'Decision timer';
 export function TimerBar({ session, className = '' }) {
   const info = useClock(session);
   if (!info) return null;
-  // the Snatch window is its own countdown (the pop-up's ring and seconds); a second "Your move 6s" bar would only disagree with it
-  if (session?.view?.phase === 'snatch' && session.view.pending?.type === 'snatch') return null;
+  // the Snatch window is its own countdown (the SNATCH! button's ring and seconds); a second "Your move 6s" bar would only
+  // disagree with it. It is hidden, not removed: its height stays, so nothing under or over it jumps when the window opens.
+  const snatching = session?.view?.phase === 'snatch' && session.view.pending?.type === 'snatch';
   const label = waitLabel(session, info);
   return (
     <div
       className={`tt-bar${info.mine ? ' is-mine' : ''}${info.warn ? ' is-warn' : ''} ${className}`.trim()}
-      role="timer"
-      aria-label={TIMER_LABEL}
+      role={snatching ? undefined : 'timer'}
+      aria-label={snatching ? undefined : TIMER_LABEL}
+      aria-hidden={snatching ? 'true' : undefined}
+      style={snatching ? { visibility: 'hidden' } : undefined}
     >
       {/* readable on demand; never announced (role=timer is not live) and the label stays fixed while it ticks.
           The one "10 seconds left" line comes from the table's live region (GameView). */}

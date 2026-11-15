@@ -1,26 +1,19 @@
 // Calm full-bleed backdrop for hub pages: dark navy, slow aurora blobs and a few floating dice / pips / coins.
 // Absolutely positioned (zero-specificity defaults, so a className can override), aria-hidden, pointer-events none.
-// Animation is pure CSS and switches off under prefers-reduced-motion.
+// Static on purpose: moving full-screen gradient layers and 15 animated SVG children forced a repaint and a
+// recomposite of the whole viewport every frame (the hub ran at 5-20 fps with software rendering, e.g. Brave without
+// hardware acceleration). The motion was a 46-64 s drift that nobody could see, so it is gone; the look is the same.
 import { memo } from 'react';
 import { HUB, RUPEE } from './kit.jsx';
 
 const CSS = `
 :where(.hbd){position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0;contain:layout paint;background:linear-gradient(180deg,#0a0f20 0%,#0b1226 55%,#0e1430 100%)}
-.hbd i{position:absolute;display:block;border-radius:50%;will-change:transform}
-.hbd .b1{width:112vmin;height:112vmin;left:-30vmin;top:-38vmin;background:radial-gradient(closest-side,rgba(124,92,255,.42),rgba(124,92,255,.16) 50%,rgba(124,92,255,0));animation:hbd-a 46s ease-in-out infinite}
-.hbd .b2{width:96vmin;height:96vmin;right:-34vmin;top:6%;background:radial-gradient(closest-side,rgba(46,196,182,.28),rgba(46,196,182,.1) 50%,rgba(46,196,182,0));animation:hbd-b 52s ease-in-out infinite}
-.hbd .b3{width:104vmin;height:104vmin;left:12%;bottom:-52vmin;background:radial-gradient(closest-side,rgba(255,93,115,.24),rgba(255,93,115,.09) 50%,rgba(255,93,115,0));animation:hbd-c 58s ease-in-out infinite}
-.hbd .b4{width:70vmin;height:70vmin;right:8%;bottom:-24vmin;background:radial-gradient(closest-side,rgba(255,200,87,.15),rgba(255,200,87,.05) 50%,rgba(255,200,87,0));animation:hbd-a 64s ease-in-out -20s infinite}
+.hbd i{position:absolute;display:block;border-radius:50%}
+.hbd .b1{width:112vmin;height:112vmin;left:-30vmin;top:-38vmin;background:radial-gradient(closest-side,rgba(124,92,255,.42),rgba(124,92,255,.16) 50%,rgba(124,92,255,0))}
+.hbd .b2{width:96vmin;height:96vmin;right:-34vmin;top:6%;background:radial-gradient(closest-side,rgba(46,196,182,.28),rgba(46,196,182,.1) 50%,rgba(46,196,182,0))}
+.hbd .b3{width:104vmin;height:104vmin;left:12%;bottom:-52vmin;background:radial-gradient(closest-side,rgba(255,93,115,.24),rgba(255,93,115,.09) 50%,rgba(255,93,115,0))}
+.hbd .b4{width:70vmin;height:70vmin;right:8%;bottom:-24vmin;background:radial-gradient(closest-side,rgba(255,200,87,.15),rgba(255,200,87,.05) 50%,rgba(255,200,87,0))}
 .hbd svg{position:absolute;inset:0;width:100%;height:100%}
-.hbd .f{animation:hbd-f 15s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
-.hbd .f2{animation-duration:19s;animation-delay:-7s}
-.hbd .f3{animation-duration:23s;animation-delay:-3s}
-.hbd .f4{animation-duration:17s;animation-delay:-11s}
-@keyframes hbd-a{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(7vmin,5vmin,0)}}
-@keyframes hbd-b{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(-8vmin,6vmin,0)}}
-@keyframes hbd-c{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(6vmin,-7vmin,0)}}
-@keyframes hbd-f{0%,100%{transform:translateY(0) rotate(0deg)}50%{transform:translateY(-16px) rotate(7deg)}}
-@media (prefers-reduced-motion:reduce){.hbd i,.hbd .f{animation:none!important}}
 `;
 
 const Die = ({ s = 52, n = 5 }) => {

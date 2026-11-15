@@ -5,6 +5,7 @@ import { useNotify } from '@/platform/game/notify.js';
 import { GameCover } from '../GameArt.jsx';
 import { categoryLabel } from '../catalog.js';
 import { playersLabel, themeVars } from '../gameTheme.js';
+import '@/styles/mappicker.css';
 
 /**
  * The storefront game card: cover, name, tagline, fact chips, a live-table badge (only with a real open-table
@@ -40,6 +41,7 @@ export default function PlayCard({ game, tables = 0, solo = false }) {
           </Link>
         </h3>
         {game.tagline && <p className="sh-card__tag">{game.tagline}</p>}
+        {game.mapsLine && <p className="hh2-gcard__maps">{game.mapsLine}</p>}
         <div className="sh-card__chips">
           {players && (
             <span className="st-chip">

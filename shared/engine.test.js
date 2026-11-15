@@ -30,12 +30,12 @@ function stackCard(s, deck, cardId) {
 }
 
 describe('createGame and settings', () => {
-  it('standard mode: 15 lakh each, 20 rounds, lucky dice, auction on decline', () => {
+  it('standard mode: 15 lakh each, 20 rounds, lucky dice, no pass auction', () => {
     const s = createGame({ players: [{ id: 'a' }, { id: 'b' }], seed: 1 });
     expect(s.cfg).toEqual({
-      mode: 'standard', startCash: 1500000, passStart: 200000, maxRounds: 20, targetWorth: 5000000, dice: 'lucky', auctionOnDecline: true,
+      mode: 'standard', startCash: 1500000, passStart: 200000, maxRounds: 20, targetWorth: 5000000, dice: 'lucky',
       trafficFine: 25000, chaiCap: 1, rentPercent: 100, requireFullSet: true, eventEvery: 3, turnSeconds: 60, tradeSeconds: 45,
-      snatches: 1, snatchMs: 5000, snatchCardCap: 2,
+      auctionSeconds: 20, snatches: 1, snatchMs: 5000, snatchCardCap: 2,
     });
     expect(s.owners).toHaveLength(36);
     expect(s.levels).toHaveLength(36);
@@ -52,6 +52,9 @@ describe('createGame and settings', () => {
     expect(normalizeSettings({ mode: 'quick' })).toMatchObject({ mode: 'quick', maxRounds: 12, startCash: 2000000 });
     expect(normalizeSettings({ mode: 'classic' })).toMatchObject({ mode: 'classic', maxRounds: null, startCash: 1500000 });
     expect(normalizeSettings({ mode: 'turbo', dice: 'loaded', auctionOnDecline: 'yes', goal: 5 })).toEqual(normalizeSettings({}));
+    // the retired `auctionOnDecline` host rule (a pass auction) is dropped, whatever its value
+    for (const v of [true, false, 'yes', null]) expect(normalizeSettings({ auctionOnDecline: v })).toEqual(normalizeSettings({}));
+    expect(normalizeSettings({ auctionOnDecline: true })).not.toHaveProperty('auctionOnDecline');
     expect(normalizeSettings({ startCash: 500000, maxRounds: null })).toMatchObject({ startCash: 500000, maxRounds: null });
   });
 
@@ -111,8 +114,7 @@ describe('moving, START and buying', () => {
 
   it('a six rolls again; END_TURN is refused until then', () => {
     let r = roll(game(), 'a', 6); // tile 6 Laad Bazaar
-    r = act(r.state, { type: 'SKIP_BUY', playerId: 'a' }); // goes to auction
-    for (const id of ids) if (r.state.phase === 'auction') r = act(r.state, { type: 'BID', playerId: id, amount: 0 });
+    r = act(r.state, { type: 'SKIP_BUY', playerId: 'a' }); // pass: the district stays free, no auction
     expect(r.state.phase).toBe('manage');
     expect(r.state.extraRoll).toBe(true);
     expect(applyAction(r.state, { type: 'END_TURN', playerId: 'a' }).error).toMatch(/six/);
@@ -120,29 +122,22 @@ describe('moving, START and buying', () => {
     expect(again.state.players[0].pos).toBe(8);
   });
 
-  it('skipping opens a sealed auction (min 10%); unaffordable goes straight to auction', () => {
+  it('passing never starts an auction: the district stays free and a `skip` event says so; unaffordable is not offered at all', () => {
     let r = roll(game(), 'a', 4);
     r = act(r.state, { type: 'SKIP_BUY', playerId: 'a' });
-    expect(r.events.at(-1)).toEqual({ type: 'auction_start', tile: 4, minBid: 8000, reason: 'decline' });
-    r = act(r.state, { type: 'BID', playerId: 'b', amount: 50000 });
-    r = act(r.state, { type: 'BID', playerId: 'c', amount: 60000 });
-    r = act(r.state, { type: 'BID', playerId: 'a', amount: 0 });
-    expect(r.state.owners[4]).toBe('c');
-    expect(P(r.state, 'c').cash).toBe(1440000);
-    expect(r.events.find((e) => e.type === 'auction_end')).toMatchObject({ winner: 'c', amount: 60000, bids: { a: 0, b: 50000, c: 60000 }, reason: 'decline' });
+    expect(r.events).toEqual([{ type: 'skip', player: 'a', tile: 4 }]);
+    expect(r.state.phase).toBe('manage');
+    expect(r.state.pending).toBeNull();
+    expect(r.state.owners[4]).toBeNull();
+    expect(r.state.auctionSeq || 0).toBe(0);
 
     const poor = game();
     poor.players[0].cash = 50000;
     const u = roll(poor, 'a', 1); // Sultan Bazaar costs 60,000
-    expect(u.state.phase).toBe('auction');
-    expect(u.state.pending).toMatchObject({ tile: 1, minBid: 6000, reason: 'unaffordable' });
-  });
-
-  it('with auctionOnDecline off a skipped district simply stays unowned', () => {
-    let r = roll(game({ auctionOnDecline: false }), 'a', 1);
-    r = act(r.state, { type: 'SKIP_BUY', playerId: 'a' });
-    expect(r.state.phase).toBe('manage');
-    expect(r.state.owners[1]).toBeNull();
+    expect(u.state.phase).toBe('manage'); // nothing offered, nothing auctioned
+    expect(u.state.pending).toBeNull();
+    expect(u.state.owners[1]).toBeNull();
+    expect(u.events.map((e) => e.type)).not.toContain('auction_start');
   });
 });
 
@@ -152,9 +147,9 @@ describe('rent, levels and the set bonus', () => {
     s.owners[28] = 'b'; s.owners[29] = 'b'; s.owners[31] = 'b';
     expect(previewRent(s, 31)).toBe(51000); // full set, level 0
     s.levels[31] = 1;
-    expect(previewRent(s, 31)).toBe(65000);
+    expect(previewRent(s, 31)).toBe(92000);
     s.levels[31] = 2;
-    expect(previewRent(s, 31)).toBe(119000);
+    expect(previewRent(s, 31)).toBe(150000);
     s.owners[28] = 'c';
     s.levels[31] = 0;
     expect(previewRent(s, 31)).toBe(34000);
@@ -175,13 +170,13 @@ describe('rent, levels and the set bonus', () => {
     expect(P(r.state, 'b').stats.rentEarned).toBe(7000);
   });
 
-  it('upgrades need the whole collection, an unmortgaged tile, your turn and the cash; 50% of the price each, max level 2', () => {
+  it('upgrades need the whole collection, an unmortgaged tile, your turn and the cash; 40% of the price each, max level 2', () => {
     const s = game();
     for (const t of GROUP_TILES.cyber) s.owners[t] = 'a';
-    expect(canUpgrade(s, 'a', 31)).toEqual({ ok: true, cost: 170000 });
+    expect(canUpgrade(s, 'a', 31)).toEqual({ ok: true, cost: 136000 });
     let r = act(s, { type: 'UPGRADE', playerId: 'a', tile: 31 });
     expect(r.events).toEqual([
-      { type: 'cash', player: 'a', delta: -170000, reason: 'upgrade' },
+      { type: 'cash', player: 'a', delta: -136000, reason: 'upgrade' },
       { type: 'level', tile: 31, level: 1, reason: 'upgrade' },
     ]);
     r = act(r.state, { type: 'UPGRADE', playerId: 'a', tile: 31 });
@@ -190,7 +185,7 @@ describe('rent, levels and the set bonus', () => {
     expect(applyAction(r.state, { type: 'MORTGAGE', playerId: 'a', tile: 31 }).error).toMatch(/upgrades/);
     const sold = act(r.state, { type: 'SELL_BUILDING', playerId: 'a', tile: 31 });
     expect(sold.state.levels[31]).toBe(1);
-    expect(sold.events.at(-1)).toEqual({ type: 'cash', player: 'a', delta: 85000, reason: 'sell' });
+    expect(sold.events.at(-1)).toEqual({ type: 'cash', player: 'a', delta: 68000, reason: 'sell' });
     expect(canUpgrade(s, 'b', 31).ok).toBe(false);
     const m = { ...structuredClone(s) };
     m.mortgaged[31] = true;
@@ -234,7 +229,7 @@ describe('upgrades need the whole collection', () => {
 
   it('refuses with a human-readable reason when 1 or 2 of 3 districts are owned (the rest free or held by others)', () => {
     const one = own(game(), [31]);
-    expect(canUpgrade(one, 'a', 31)).toEqual({ ok: false, reason: reason(1), cost: 170000 });
+    expect(canUpgrade(one, 'a', 31)).toEqual({ ok: false, reason: reason(1), cost: 136000 });
     expect(applyAction(one, { type: 'UPGRADE', playerId: 'a', tile: 31 }).error).toBe(reason(1));
     expect(getOptions(one, 'a').upgrade).toEqual([]);
 
@@ -284,7 +279,7 @@ describe('upgrades need the whole collection', () => {
     expect(canUpgrade(r.state, 'a', 31).reason).toBe(reason(2));
     expect(canUpgrade(r.state, 'a', 29).reason).toBe(reason(2));
     expect(applyAction(r.state, { type: 'UPGRADE', playerId: 'a', tile: 31 }).error).toBe(reason(2));
-    expect(previewRent(r.state, 31)).toBe(65000); // level 1 rent unchanged
+    expect(previewRent(r.state, 31)).toBe(92000); // level 1 rent unchanged
     const sold = act(r.state, { type: 'SELL_BUILDING', playerId: 'a', tile: 31 });
     expect(sold.state.levels[31]).toBe(0);
     // win the district back and upgrading works again
@@ -300,7 +295,7 @@ describe('upgrades need the whole collection', () => {
       const s = own(game(), [1]);
       expect(canUpgrade(s, 'a', 1).reason).toBe('Own all 2 districts of Bazaar Beginnings first (you have 1)');
       s.owners[3] = 'a';
-      expect(canUpgrade(s, 'a', 1)).toEqual({ ok: true, cost: 30000 });
+      expect(canUpgrade(s, 'a', 1)).toEqual({ ok: true, cost: 24000 });
       expect(canUpgrade(s, 'a', 3).ok).toBe(true);
       expect(applyAction(s, { type: 'UPGRADE', playerId: 'a', tile: 3 }).state.levels[3]).toBe(1);
     } finally {
@@ -417,13 +412,13 @@ describe('traffic jam and chai', () => {
   it('chai halves the next rent of 20,000 or more automatically', () => {
     const s = game();
     s.owners[31] = 'b';
-    s.levels[31] = 1; // 65,000
+    s.levels[31] = 1; // 92,000
     s.players[0].pos = 28;
     s.players[0].chai = 1;
     const r = roll(s, 'a', 3);
-    expect(r.events).toContainEqual({ type: 'chai', player: 'a', chai: 0, change: -1, reason: 'rent', saved: 32500 });
-    expect(r.events).toContainEqual({ type: 'cash', player: 'a', delta: -32500, reason: 'rent', other: 'b' });
-    expect(P(r.state, 'a').stats.chaiSaved).toBe(32500);
+    expect(r.events).toContainEqual({ type: 'chai', player: 'a', chai: 0, change: -1, reason: 'rent', saved: 46000 });
+    expect(r.events).toContainEqual({ type: 'cash', player: 'a', delta: -46000, reason: 'rent', other: 'b' });
+    expect(P(r.state, 'a').stats.chaiSaved).toBe(46000);
     // a small rent keeps the chai
     const small = game();
     small.owners[1] = 'b';
@@ -450,13 +445,14 @@ describe('municipal charges and bazaar auction', () => {
     for (let i = 0; i < BOARD_SIZE; i++) if (TILES[i].type === 'property' && i !== 22) s.owners[i] = 'c';
     const r = roll(s, 'a', 3);
     expect(r.state.phase).toBe('auction');
-    expect(r.events.at(-1)).toEqual({ type: 'auction_start', tile: 22, minBid: 120000, reason: 'bazaar' });
+    expect(r.events.at(-1)).toEqual({ type: 'auction_start', tile: 22, minBid: 120000, reason: 'bazaar', eligible: ['a', 'b', 'c'], ms: 20000 });
     expect(getOptions(r.state, 'a').bid).toEqual({ tile: 22, min: 120000, max: 1500000 });
     expect(applyAction(r.state, { type: 'BID', playerId: 'b', amount: 100000 }).error).toMatch(/minimum/);
     let x = act(r.state, { type: 'BID', playerId: 'a', amount: 130000 });
     x = act(x.state, { type: 'BID', playerId: 'b', amount: 130000 });
     x = act(x.state, { type: 'BID', playerId: 'c', amount: 0 });
-    expect(x.state.owners[22]).toBe('a'); // tie -> earliest seat from the turn player
+    expect(['a', 'b']).toContain(x.state.owners[22]); // tie -> drawn with the game's seeded rng among the tied bidders
+    expect(x.events.find((e) => e.type === 'auction_end')).toMatchObject({ tie: true, amount: 130000 });
     expect(x.state.phase).toBe('manage');
   });
 
@@ -576,7 +572,7 @@ describe('city events (every 3 rounds)', () => {
   }
 
   it('no event in rounds 1-2; one in round 3 (before its first turn event), gone in round 4', () => {
-    const g = game({ auctionOnDecline: false });
+    const g = game();
     const r2 = toRound(g, 2);
     expect(r2.s.event).toBeNull();
     const r3 = toRound(r2.s, 3);
@@ -607,7 +603,7 @@ describe('city events (every 3 rounds)', () => {
     // Force each cash event by trying seeds until the round-3 draw is the one we want.
     const find = (id) => {
       for (let seed = 1; seed < 400; seed++) {
-        const g = game({ auctionOnDecline: false }, { seed });
+        const g = game({}, { seed });
         g.owners[20] = 'b'; g.levels[20] = 1;
         const { s, ev } = toRound(g, 3);
         if (s.event && s.event.id === id) return { s, ev };
@@ -628,35 +624,35 @@ describe('city events (every 3 rounds)', () => {
 describe('debt, bankruptcy and trades', () => {
   it('a rent too big for the cash pauses in debt; mortgaging and PAY_DEBT settle it', () => {
     const s = game();
-    s.owners[35] = 'b'; s.levels[35] = 2; // 1,40,000
+    s.owners[35] = 'b'; s.levels[35] = 2; // 1,76,000
     s.owners[1] = 'a';
-    s.players[0].cash = 120000;
+    s.players[0].cash = 150000;
     s.players[0].pos = 33;
     const r = roll(s, 'a', 2);
     expect(r.state.phase).toBe('debt');
-    expect(r.state.debt).toMatchObject({ player: 'a', amount: 140000, creditor: 'b', reason: 'rent' });
-    expect(getOptions(r.state, 'a').debt).toEqual({ amount: 140000, creditor: 'b', shortfall: 20000 });
+    expect(r.state.debt).toMatchObject({ player: 'a', amount: 176000, creditor: 'b', reason: 'rent' });
+    expect(getOptions(r.state, 'a').debt).toEqual({ amount: 176000, creditor: 'b', shortfall: 26000 });
     expect(applyAction(r.state, { type: 'END_TURN', playerId: 'a' }).error).toMatch(/debt/);
     expect(applyAction(r.state, { type: 'PAY_DEBT', playerId: 'a' }).error).toMatch(/more/);
     let x = act(r.state, { type: 'MORTGAGE', playerId: 'a', tile: 1 });
     x = act(x.state, { type: 'PAY_DEBT', playerId: 'a' });
     expect(x.state.phase).toBe('manage');
-    expect(P(x.state, 'b').cash).toBe(1640000);
+    expect(P(x.state, 'b').cash).toBe(1676000);
   });
 
-  it('an uncoverable debt is a bankruptcy: everything goes to the creditor', () => {
+  it('an uncoverable debt is a bankruptcy: the bank takes everything, the creditor is paid up to the estate (shared/bankruptcy.test.js)', () => {
     const s = game();
     s.owners[35] = 'b'; s.levels[35] = 2;
     s.owners[1] = 'a'; s.levels[1] = 1;
     s.players[0].cash = 10000;
     s.players[0].pos = 33;
-    expect(liquidationValue(s, 'a')).toBe(15000 + 30000);
+    expect(liquidationValue(s, 'a')).toBe(12000 + 30000);
     const r = roll(s, 'a', 2);
     expect(P(r.state, 'a').bankrupt).toBe(true);
-    expect(r.state.owners[1]).toBe('b');
+    expect(r.state.owners[1]).toBeNull(); // back to the bank, NOT to b
     expect(r.state.levels[1]).toBe(0);
-    expect(P(r.state, 'b').cash).toBe(1500000 + 10000 + 15000);
-    expect(r.events).toContainEqual({ type: 'bankrupt', player: 'a' });
+    expect(P(r.state, 'b').cash).toBe(1500000 + 10000 + 12000 + 30000); // b: only what a's assets were worth (cash + sell-back + mortgage value)
+    expect(r.events).toContainEqual({ type: 'bankrupt', player: 'a', paid: [{ to: 'b', amount: 52000 }] });
     expect(r.state.players[r.state.turn].id).toBe('b');
   });
 
@@ -836,9 +832,9 @@ describe('win target (net worth)', () => {
 
   it('is not decided while a debt is open; it is once the debt is settled', () => {
     const s = tgame();
-    s.owners[35] = 'b'; s.levels[35] = 2; // 1,40,000 rent
+    s.owners[35] = 'b'; s.levels[35] = 2; // 1,76,000 rent
     s.owners[1] = 'a';
-    P(s, 'a').cash = 120000;
+    P(s, 'a').cash = 150000;
     P(s, 'a').pos = 33;
     above(s, 'b'); // b is over the target before the rent lands
     const r = roll(s, 'a', 2);
@@ -853,12 +849,12 @@ describe('win target (net worth)', () => {
 
   it('rent paid on the way to the target settles first: the payee wins with the rent included', () => {
     const s = tgame();
-    s.owners[35] = 'b'; s.levels[35] = 2; // 1,40,000 rent
+    s.owners[35] = 'b'; s.levels[35] = 2; // 1,76,000 rent
     P(s, 'a').pos = 33;
     const before = netWorth(s, 'b');
-    P(s, 'b').cash += TARGET - before - 100000; // 1,00,000 short: the 1,40,000 rent lifts b over the line
+    P(s, 'b').cash += TARGET - before - 100000; // 1,00,000 short: the 1,76,000 rent lifts b over the line
     const r = roll(s, 'a', 2);
-    expect(P(r.state, 'a').cash).toBe(1500000 - 140000);
+    expect(P(r.state, 'a').cash).toBe(1500000 - 176000);
     expect(r.state).toMatchObject({ phase: 'over', winner: 'b', winReason: 'target' });
     expect(r.events.at(-1).worth).toBe(netWorth(r.state, 'b'));
   });

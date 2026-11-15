@@ -8,6 +8,7 @@ import { themeVars } from '@/platform/home/gameTheme.js';
 import Highlight from './Highlight.jsx';
 import { Facts, StatusBadge, isSoon } from './GameBits.jsx';
 import { ArrowIcon } from './icons.jsx';
+import '@/styles/mappicker.css';
 
 export default function BrowseCard({ game, query = '', index = 0 }) {
   const soon = isSoon(game);
@@ -31,6 +32,7 @@ export default function BrowseCard({ game, query = '', index = 0 }) {
             <Highlight text={game.tagline} query={query} />
           </p>
         )}
+        {game.mapsLine && <p className="hh2-gcard__maps">{game.mapsLine}</p>}
         <Facts game={game} tags={1} />
         <span className="bw-act" aria-hidden="true">
           {soon ? 'Details' : 'Play'}

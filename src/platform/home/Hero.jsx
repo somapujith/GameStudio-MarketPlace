@@ -11,6 +11,7 @@ import { useLive } from './store/live.js';
 import { categoryLabel, featured, liveList } from './catalog.js';
 import { GameCover } from './GameArt.jsx';
 import { playersLabel, themeVars } from './gameTheme.js';
+import '@/styles/mappicker.css';
 
 const INTERVAL_MS = 7000;
 const SWIPE_PX = 50;
@@ -48,6 +49,11 @@ function Slide({ game, active, index, total, tables = 0 }) {
         {game.tagline && (
           <p className="sh-spot__tag" style={step()}>
             {game.tagline}
+          </p>
+        )}
+        {game.mapsLine && (
+          <p className="hh2-gcard__maps" style={step()}>
+            {game.mapsLine}
           </p>
         )}
         {game.description && (

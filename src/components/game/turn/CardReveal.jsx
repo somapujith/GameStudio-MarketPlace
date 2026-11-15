@@ -17,6 +17,7 @@ import EventCardArt from '@/components/art/EventCardArt.jsx';
 import CardBack from '@/components/art/CardBack.jsx';
 import { getPlayer, useReducedMotion } from '../ui/helpers.js';
 import { BoltIcon } from '../ui/SnatchChip.jsx';
+import { wordsOf } from '@/lib/mapWords.js';
 import Confetti from '../moments/Confetti.jsx';
 import { cardEffect } from '../moments/momentsModel.js';
 import { GOLD_PALETTE } from '../moments/particles.js';
@@ -47,8 +48,8 @@ export function cardOf(session) {
   return {
     ref: session && 'card' in session ? c : session.bubble, // identity: a new object = a new reveal
     deck,
-    deckName: DECKS[deck].name,
-    title: c.title || DECKS[deck].name,
+    deckName: wordsOf()[deck], // "Nawabi Luck" / "Mana Adrushtam"
+    title: c.title || wordsOf()[deck],
     text: c.text || '',
     kind,
     cardId: c.cardId || c.id || null,

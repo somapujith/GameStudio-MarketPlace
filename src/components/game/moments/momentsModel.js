@@ -3,6 +3,7 @@
 import { TILES } from '@shared/board.js';
 import { SNATCH_CAP_PAYOUT, cardById } from '@shared/cards.js';
 import { compactINR, formatINR } from '@shared/format.js';
+import { wordsOf } from '@/lib/mapWords.js';
 
 const same = (a, b) => a != null && b != null && String(a) === String(b);
 const money = (n) => formatINR(Math.abs(Number(n) || 0));
@@ -30,7 +31,7 @@ export function cardEffect(card) {
         return card.capped
           ? { tone: 'up', label: `+${money(SNATCH_CAP_PAYOUT)} instead (Snatch limit)` }
           : { tone: 'snatch', label: `+${e.amount > 1 ? `${e.amount} ` : '1 '}Snatch button${e.amount > 1 ? 's' : ''}`, bolt: true };
-      case 'chai': return { tone: 'up', label: '+1 Chai token' };
+      case 'chai': return { tone: 'up', label: `+1 ${wordsOf().ChaiToken}` };
       case 'rentBoost': return { tone: 'up', label: `Your rents ${X}${e.mult} until your next turn` };
       case 'stuck': return { tone: 'down', label: 'Stuck in traffic' };
       case 'nextTransport': return { tone: 'move', label: 'Ride to the next stop' };
@@ -117,7 +118,7 @@ export function recapTiles(view, id, moments = []) {
 
 /** The text the share button copies. Pure. */
 export function shareText({ won, rank, total, winnerName, worth, rounds, reason }) {
-  const head = won ? 'I won Hyderabad Tycoon!' : `I finished ${rank}${rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th'} of ${total} in Hyderabad Tycoon.`;
+  const head = won ? 'I won Kingpin!' : `I finished ${rank}${rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th'} of ${total} in Kingpin.`;
   const tail = [];
   if (!won && winnerName) tail.push(`${winnerName} took the city`);
   if (worth != null) tail.push(`net worth ${formatINR(worth)}`);

@@ -10,6 +10,7 @@ import LiveStrip from '@/platform/home/store/LiveStrip.jsx';
 import HowItWorks from '@/platform/home/store/HowItWorks.jsx';
 import CategoryTiles, { categoryTiles } from '@/platform/home/store/CategoryTiles.jsx';
 import { LiveProvider, useHomeLive } from '@/platform/home/store/live.js';
+import HomeTour from '@/components/tour/HomeTour.jsx';
 import FriendsStrip from '@/components/shell/home/FriendsStrip.jsx';
 import DailyReward from '@/components/shell/home/DailyReward.jsx';
 import OpenTables from '@/components/shell/home/OpenTables.jsx';
@@ -48,22 +49,23 @@ export default function Home() {
     <LiveProvider value={live}>
       <div className="hub-page hh2 hh2-home xh-home sh-home">
         <h1 className="hub-sr">{BRAND.name} games</h1>
+        <HomeTour />
 
-        <div {...rise()}>
+        <div {...rise()} data-tour="home-hero">
           <Hero />
         </div>
-        <div {...rise()}>
+        <div {...rise()} data-tour="home-live">
           <LiveStrip live={live} />
         </div>
 
         {noSession && (
-          <div {...rise()}>
+          <div {...rise()} data-tour="home-how">
             <HowItWorks />
           </div>
         )}
 
         {games.length > 0 && (
-          <div {...rise()}>
+          <div {...rise()} data-tour="home-play">
             <Rail
               eyebrow="Ready to play"
               title="Play now"
@@ -83,18 +85,18 @@ export default function Home() {
           </div>
         )}
 
-        <div {...rise()}>
+        <div {...rise()} data-tour="home-tables">
           <OpenTables />
         </div>
 
         {(!noSession || loading) && (
-          <div {...rise()}>
+          <div {...rise()} data-tour="home-friends">
             <FriendsStrip />
           </div>
         )}
 
         {tiles.length > 0 && (
-          <div {...rise()}>
+          <div {...rise()} data-tour="home-categories">
             <Rail eyebrow="Browse" title="By category" sub="Board, card, word and more." moreTo={paths.games()} moreLabel="All games" bare>
               <CategoryTiles tiles={tiles} />
             </Rail>
@@ -102,7 +104,7 @@ export default function Home() {
         )}
 
         {soon.length > 0 && (
-          <div {...rise()}>
+          <div {...rise()} data-tour="home-soon">
             <Rail
               eyebrow="On the way"
               title="Coming soon"

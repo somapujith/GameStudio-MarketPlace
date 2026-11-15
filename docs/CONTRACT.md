@@ -1,6 +1,6 @@
-# Hyderabad Tycoon — build contract
+# Kingpin — build contract
 
-A Hyderabad-themed Monopoly-style business game. Mobile-first, desktop-friendly.
+A Hyderabad-themed Monopoly-style business game (display name Kingpin; the game id stays `hyderabad-tycoon`; maps Charminar Chaos and Andhra Aatalu). Mobile-first, desktop-friendly.
 Reference screenshot: `photo_2026-10-16_15-04-12.jpg` in the repo root (read it with your image reader).
 Stack: React 19 + Vite 8 (plain JS/JSX, **no TypeScript**), Cloudflare Worker (Hono) + Durable Objects, Neon Postgres, Google login.
 
@@ -52,11 +52,11 @@ import { createGame, applyAction, getOptions, canUpgrade, previewRent, netWorth,
 - `getOptions(state, playerId)`: what that player may do right now (keys listed in `GAME_RULES.md` 8.4). The client computes it locally; it is not sent over the wire.
 - `canUpgrade(state, playerId, tileId) -> { ok, reason?, cost }` (Hustle rule: you may only upgrade a district when you own every district of its collection; reason `Own all 3 districts of <collection> first (you have N)`), `previewRent(state, tileId, diceSum=7)`, `netWorth`, `liquidationValue`, `standings(state) -> [{id, cash, worth, rank}]`.
 - `chooseBotAction(state, playerId, rnd)`: the move chooser the server uses to auto-play an idle or disconnected seat (and the simulator uses for its bots). `nextBotMove` is the simulator's variant.
-- `DEFAULT_SETTINGS = { startCash:15000, goal:70000, passStart:2000, jailTurns:1, bailFine:500, maxRounds:50, dice:'lucky', auctionOnDecline:true, snatches:1, snatchMs:3000 }`; `PLAYER_COLORS`; `KISMET` (24 cards `{ id, kind, title, text, effect }`); `CITY_EVENTS`.
+- `DEFAULT_SETTINGS = { startCash:15000, goal:70000, passStart:2000, jailTurns:1, bailFine:500, maxRounds:50, dice:'lucky', snatches:1, snatchMs:3000 }`; `PLAYER_COLORS`; `KISMET` (24 cards `{ id, kind, title, text, effect }`); `CITY_EVENTS`.
 
 State, phases, actions and events are specified in `GAME_RULES.md` (sections 3, 7, 8.4-8.6). In short: phases `roll buy snatch auction manage debt over`; **one die** (`state.dice = [d]`), a six rolls again;
 passing or landing on START pays `passStart`; owning a whole collection pays 1.5x on level-0 districts and is required before any district of it can be upgraded; stations pay 250/500/1000/2000, utilities 40x / 100x the die;
-a skipped tile goes to a sealed auction; cash shortfalls go to the debt phase, then bankruptcy; you win by net worth >= `goal`, as last player standing, or by being richest when `maxRounds` runs out.
+a skipped tile simply stays free (never an auction); cash shortfalls go to the debt phase, then bankruptcy; you win by net worth >= `goal`, as last player standing, or by being richest when `maxRounds` runs out.
 Test-only: if `state.cfg.debug === true`, `ROLL` honours `action.dice = [d]`. The server never sets `debug`.
 
 ## 3b. Pre-game settings **[current; the full table is `GAME_RULES.md` section 2]**
@@ -71,7 +71,7 @@ The host chooses these BEFORE a game starts. Today the lobby shows only the **en
 
 ## 3d. Win target (net worth) **[current; the numbers above that mention `goal` are historical]**
 - Host / lobby setting `targetWorth`: `null` (off) or any legal amount (`TARGET_RANGE` = ₹10L - ₹50Cr in steps of ₹5L; the presets are `TARGET_OPTIONS` = `[null, 2500000, 3000000, 4000000, 5000000, 7500000, 10000000]`, `shared/modes.js`). Anything else from a client is sanitised to the mode default (no error). Mode defaults: standard 5000000, quick 5000000, classic 3000000. `null` is refused for a mode without a round limit (classic), so a game always has a way to end (the engine's 60-round cap stays as the last resort). The lobby shows it as "Win target (net worth)" next to the mode; changing the mode resets it to the new mode's default (server: `mergeSettingsPatch` via the adapter hook `mergeSettings`; client: the schema field's `dependsOn`).
-- `DEFAULT_SETTINGS` / `ROOM_DEFAULTS` = `{ mode:'standard', ...ruleDefaults('standard') }` (17 keys, section 3e). The room view's `settings` is the engine `cfg`: `{ mode, startCash, passStart, targetWorth:number|null, rentPercent, trafficFine, turnSeconds, tradeSeconds, maxRounds:number|null, dice, auctionOnDecline, requireFullSet, eventEvery, chaiCap, snatches, snatchMs, snatchCardCap }`.
+- `DEFAULT_SETTINGS` / `ROOM_DEFAULTS` = `{ mode:'standard', ...ruleDefaults('standard') }` (17 keys, section 3e; the retired `auctionOnDecline` is gone and any stored value is ignored). The room view's `settings` is the engine `cfg`: `{ mode, startCash, passStart, targetWorth:number|null, rentPercent, trafficFine, turnSeconds, tradeSeconds, auctionSeconds, maxRounds:number|null, dice, requireFullSet, eventEvery, chaiCap, snatches, snatchMs, snatchCardCap }`.
 - Engine: after every applied action `checkWin` ends the game when a non-bankrupt player's `netWorth(state, id) >= cfg.targetWorth` and nothing is pending (no debt, auction or trade): `phase = 'over'`, `winner = id`, `winReason = 'target'`, event `{ type:'win', player, reason:'target', worth }`. Several players over the line: richest, then more cash, then lower seat. `winReason` is now `'last_standing' | 'target' | 'rounds'`; match persistence stores it as `win_reason` text unchanged.
 
 ## 3e. Host rules: the settings message and `state.cfg` **[current; the table of keys, bounds and defaults is `GAME_RULES.md` section 2]**
@@ -79,11 +79,12 @@ The host customises **every rule of the game** in the lobby: money, timers, boar
 (also exported by `shared/index.js`): `RULE_FIELDS` (each `{ key, group, label, help, type: 'number'|'choice'|'boolean', unit?, min?, max?, step?, options?, nullable?, default(mode) }`),
 `RULE_GROUPS`, `RULE_KEYS`, `ruleDefaults(mode)`, `isRuleValue(field, v)`, `cleanRule(key, v, mode)`, `sanitizeRules(patch, mode)`, `ruleRangeText(field, fmt)`,
 `customRuleKeys(settings, mode?)` / `customRuleCount(settings, mode?)` (how many rules differ from the mode defaults) and `ruleWarnings(settings, mode?)`.
-- **Wire**: `{ t: 'settings', settings: { ...any subset of the keys below, maxPlayers? } }` (host only, lobby only; `POST /api/rooms { settings }` takes the same keys). Keys: `mode startCash passStart targetWorth rentPercent trafficFine turnSeconds tradeSeconds maxRounds dice auctionOnDecline requireFullSet eventEvery chaiCap snatches snatchMs snatchCardCap`.
+- **Wire**: `{ t: 'settings', settings: { ...any subset of the keys below, maxPlayers? } }` (host only, lobby only; `POST /api/rooms { settings }` takes the same keys). Keys: `mode startCash passStart targetWorth rentPercent trafficFine turnSeconds tradeSeconds auctionSeconds maxRounds dice requireFullSet eventEvery chaiCap snatches snatchMs snatchCardCap`.
   An illegal value gets `{ t: 'error', message }` naming the rule and its range (`Decision timer must be a whole number from 15 to 180 seconds in steps of 5.`) and changes nothing; an unknown key is ignored; `targetWorth` is never an error (the mode default replaces an illegal one). A mode change resets only `startCash`, `maxRounds`, `targetWorth` to the new mode's defaults (each unless the same message changes it); every other customised rule is kept.
 - **Room view**: `room.settings` carries `mode` and **every rule key** (the defaults filled in for a room stored before a rule existed), for the host and for everyone else.
-- **`state.cfg`**: `mode` + the 16 rules, read by the engine for every rule (`passStart` salary, `rentPercent` applied last on every rent, `trafficFine`, `chaiCap`, `dice`, `auctionOnDecline`, `maxRounds` / `targetWorth`, `eventEvery` 0 = no city events, `requireFullSet`, `startCash`, Snatch). `turnSeconds` / `tradeSeconds` are read by the room (and by the client clock): the adapter hook `turnMs(state)` replaces the fixed 60 s decision timer, `adapter.deadlines` uses `tradeMsOf(cfg)` for the trade offer; helpers `turnMsOf(cfg)`, `tradeMsOf(cfg)`, `warnMsFor(turnMs)` in `shared/timing.js`.
-- **Listings**: `GET /api/rooms/open` rows carry `customRules` (a count, adapter hook `customRules(settings)`).
+- **`state.cfg`**: `mode` + the 16 rules, read by the engine for every rule (`passStart` salary, `rentPercent` applied last on every rent, `trafficFine`, `chaiCap`, `dice`, `maxRounds` / `targetWorth`, `eventEvery` 0 = no city events, `requireFullSet`, `startCash`, Snatch). `turnSeconds` / `tradeSeconds` / `auctionSeconds` are read by the room (and by the client clock): the adapter hook `turnMs(state)` replaces the fixed 60 s decision timer, `adapter.deadlines` uses `tradeMsOf(cfg)` for the trade offer and `pending.ms` (`auctionMsOf(cfg)`) for the auction window; helpers `turnMsOf(cfg)`, `tradeMsOf(cfg)`, `auctionMsOf(cfg)`, `snatchBidMsOf(cfg)`, `warnMsFor(turnMs)` in `shared/timing.js`.
+- **Listings**: `GET /api/rooms/open` rows carry `customRules` (a count, adapter hook `customRules(settings)`) and, for a table on a non-default map, `map`.
+- **Maps (`map`)**: a lobby setting beside `mode`, NOT a rule (not in `RULE_FIELDS`, never counted by `customRuleCount`). `'hyderabad'` (default) or `'andhra'` (`shared/maps.js`, `GAME_RULES.md` section 15). `{ t: 'settings', settings: { map: 'andhra' } }` and `POST /api/rooms { settings: { map } }` accept it; anything else is an error `Map must be one of 'hyderabad', 'andhra'.`. `room.settings.map` and `state.cfg.map` exist ONLY for a non-default map (absent = Hyderabad, also for rooms and games stored before maps): read it with `mapOf(cfg)` / `mapIdOf(cfg)`, never as `cfg.map` alone. `shared/maps.js` exports `MAP_IDS`, `DEFAULT_MAP`, `MAPS` (`{ id, name, te?, tagline, blurb, palette, groups, tiles, terms, decks, events, pieceNames, tokenNames }`), `MAP_LIST`, `mapOf`, `mapIdOf`, `isMapId`, `sanitizeMap`, `applyMap` (CLIENT ONLY: rewrites the display fields of `TILES` / `GROUPS` in place; returns `{ id, version }`), `activeMapId`, `getMapVersion`, `subscribeMap`, and per-map readers `tileName tileShort tileLore tileSkin groupName groupSkin levelNameOf deckName deckCards cardOf cityEventsOf cityEventOf rushFlavourOf monsoonTextOf festivalsOf termsOf pieceNameOf`. The engine and the Worker read names ONLY through these readers (never `applyMap`); the structure (ids, types, prices, groups, fares) is identical on every map.
 - **Events**: `traffic` has a new `reason: 'free'` and `amount?` on `paid` (GAME_RULES 8.6).
 
 ## 3c. Rules v2 **[corrected]**: Monopoly-grade business logic (details and exact error strings: `GAME_RULES.md`)
@@ -95,18 +96,40 @@ in a turn; every face's multiplier is clamped to [0.6, 1.5] (`DICE_RULES`). The 
 
 **Mortgage / sell.** `MORTGAGE`, `UNMORTGAGE` (+10%), `SELL_BUILDING` (refund 50% of the build cost, even-sell rule). Mortgaged tiles collect no rent and block building on their whole colour. Net worth counts a mortgaged tile at price - mortgage value.
 
-**Auction on decline.** `SKIP_BUY` opens a sealed auction when `cfg.auctionOnDecline` (minimum bid `max(10, round(price*0.1/10)*10)`); a tile the player cannot afford is not offered at all. (The old Laad Bazaar auction corner no longer exists.)
+**Passing never starts an auction.** `SKIP_BUY` leaves the district free (event `skip { player, tile }`, phase `manage`); a tile the player cannot afford is not offered at all. There is no host rule for this (`auctionOnDecline` is retired: the engine ignores a stored value and `sanitizeSettings` drops it without an error), because declining into an auction let a buyer dodge Snatch, which only opens after a `BUY`. Sealed auctions remain only for the Bazaar Auction corner (`reason: 'bazaar'`) and Snatch bidding (`reason: 'snatch'`).
 
-**Debt phase + bankruptcy to a creditor.** See `GAME_RULES.md` 7.2-7.4: `state.debt = {player, amount, creditor|null, reason, returnPhase, rest}`; the debtor acts out of turn with `MORTGAGE` / `SELL_BUILDING` / `PAY_DEBT` / `RESIGN`; unpayable debts bankrupt the player, whose cash and properties go to the creditor (or the bank).
+**Debt phase + bankruptcy to a creditor.** See `GAME_RULES.md` 7.2-7.4: `state.debt = {player, amount, creditor|null, reason, returnPhase, rest}`; the debtor acts out of turn with `MORTGAGE` / `SELL_BUILDING` / `PAY_DEBT` / `RESIGN`; unpayable debts (or `RESIGN`) bankrupt the player: the BANK takes ALL their cash and districts (districts are free again), and a creditor player is paid ONLY the debt, by the bank, up to the player's estate (`estateValue` = cash + `liquidationValue`; exports `estateValue`, `owedPayments`, `bankruptcyPayouts`). The `bankrupt` event may carry `paid: [{to, amount}]`; creditors get a `cash` event reason `bankrupt`. Debts to the bank pay nobody.
 
 **Jail card.** One of the 24 Kismet cards is "Get out of jail free" (`jailCards`, `USE_JAIL_CARD`, `jail` reason `card_used`); it returns to the deck when used.
 
-**Trading.** `TRADE_OFFER {to, give:{cash,tiles}, get:{cash,tiles}}` by the turn player in `roll`/`manage` with nothing pending; one offer at a time; the recipient answers with `TRADE_ACCEPT` / `TRADE_REJECT`, the offerer may `TRADE_CANCEL`. Tiles must be owned by the right side with no buildings in their colour. The server auto-rejects an unanswered offer after 30 s. Auto-play never proposes trades.
+**Trading.** `TRADE_OFFER {to, give:{cash,tiles}, get:{cash,tiles}}` by the turn player in `roll`/`manage`/`buy` (`tradeBlock` in the engine gives the exact reason when not); one offer at a time; the recipient answers with `TRADE_ACCEPT` / `TRADE_REJECT` / `TRADE_COUNTER {give, get}` (a changed deal that atomically replaces the offer, from the recipient to the proposer, max 5 counters; events `trade_countered` + `trade_offer {counter:true}`), the offerer may `TRADE_CANCEL`. Tiles must be owned by the right side with no buildings in their colour. The server auto-rejects an unanswered offer after 30 s. Auto-play never proposes trades.
 
 **Added later** (specified in `GAME_RULES.md`): Snatch (section 14, simplified; shapes in 3e below), city events (9). Shield, token earning (laps / chai) and traps are gone.
 
 **Implementation notes.** Exports `SETTING_LIMITS`, `normalizeSettings`, `liquidationValue`, `diceCtx`. Players carry `jailCards, sixes, rollsSinceSix, rentStreak, rentThisTurn, lastOfferTurn, snatches, laps, traps`. `PAY_BAIL` needs cash >= `bailFine`, so mortgage first.
 **Sealed bids:** `state.pending.bids` holds every bid in clear in the engine; the server masks other players' amounts before sending (`worker/mask.js`, `GAME_RULES.md` 8.7). `auction_end` reveals all bids.
+
+## 3f. Sealed auctions: the process **[current; the rules are `GAME_RULES.md` section 6, the timer 8.8]**
+Shapes the client builds against (host rule `auctionSeconds`, 10 - 90 s step 5, default 20, group `timers`; Snatch bidding `min(auctionSeconds, 15 s)`):
+```
+state.phase = 'auction'
+state.pending = { type:'auction', id, tile, minBid,
+                  bids: { id: amount }   /*sealed: others' amounts are 0 on the wire; keys = who has a bid in (incl. auto-passes)*/,
+                  bidIn: playerId[]      /*PUBLIC: who SUBMITTED a bid (a pass counts; resigned too), amounts stay sealed*/,
+                  eligible: playerId[]   /*PUBLIC: who may bid = active players who can afford minBid; Snatch bidding: the claimants who can*/,
+                  ms,                    /*the window, ms; the server adds remainingMs (display only) to every view*/
+                  reason: 'decline'|'unaffordable'|'bazaar'|'snatch', returnPhase:'manage', snatch?, buyer?, claimants? }
+state.auctionSeq                         // auctions started in this game (pending.id)
+clock = { deadline: epochMs|null, waitingFor: playerId[] }   // deadline = when the window closes (counted from the end of the animation of the opening action, + 400 ms grace); waitingFor = eligible players without a bid
+getOptions(state, me).bid = { tile, min, max } | null
+action  { type:'BID', amount }           client, once per player (0 = pass), amount >= minBid and <= cash
+action  { type:'AUCTION_CLOSE' }         server only (adapter.deadlines key `auction:<pending.id>`): every active player without a bid passes, then it resolves; a client send fails with "Invalid action."
+events  auction_start { tile, minBid, reason, eligible, ms }
+        auction_end   { tile, winner: id|null, amount, bids: {id: amount} /*all revealed*/, order: playerId[] /*bidders highest first (winner leads a tie), then passers*/,
+                        tie: boolean, reason, saved?: number /*price - amount, only when > 0*/, timedOut?: playerId[] /*passed by the timer*/, buyer?: id /*snatch bidding*/ }
+        cash { player, delta: -amount, reason:'auction' }, own { tile, owner, reason:'auction' }      // only with a winner
+```
+First price: the winner pays their own bid to the bank. A tie for the top bid is drawn with the game's seeded rng among the tied bidders. No valid bid: the district stays unowned (`winner: null`). The last bid resolves the auction at once; otherwise `AUCTION_CLOSE` does at the end of the window. Nobody is auto-played in an auction before the window ends (`idleAction` is null). A resigning bidder passes (`bidIn` updated). The idle auto-play of a human seat is a pass; a simulator bot bids by `auctionBid` (`shared/bots.js`).
 
 ## 3e. Snatch **[current; the full rules are `GAME_RULES.md` section 14]**
 Every player holds `cfg.snatches` Snatch buttons (default 1; `player.snatches`, public) and can win at most `cfg.snatchCardCap` (default 2) more from Nawabi Luck cards (`player.snatchCards`, public; at the cap the card pays ₹50,000 and its event says so). After a successful `BUY` of a free district on landing, if another active player holds a button, `phase = 'snatch'` for `cfg.snatchMs` (default 5000 ms, plus a 400 ms server grace). Shapes the client builds against:
@@ -122,7 +145,7 @@ events  snatch_open  { tile, buyer, price, eligible, ms }
         snatch_token { player, snatches }                  // a button was spent
         token_earned { player, reason:'card', snatches }   // a button from a Nawabi Luck card
         own          { tile, owner, reason:'snatch' }      // the free district (bidding winners: reason 'auction')
-        auction_start{ tile, minBid, reason:'snatch', eligible }   /   auction_end { ..., reason:'snatch', buyer }
+        auction_start{ tile, minBid, reason:'snatch', eligible, ms }   /   auction_end { ..., reason:'snatch', buyer }   (section 3f)
         card         { ..., capped?: true }                // a Snatch card at the cap: text = capText, pays 50,000
 ```
 0 claimants: nothing, the buyer keeps the district. 1: the claimant gets it free and spends 1 button (the buyer is NOT refunded). 2+: sealed bidding among the claimants (the auction machinery, `pending.snatch === true`, `pending.claimants` public); the winner pays the bank and spends 1 button. Auto-play and bots never press (`botSnatchAction` is for the simulator only). `cfg.snatches = 0` turns Snatch off entirely.
@@ -198,6 +221,21 @@ Online pages (owned by *online*): `Login` (Google button via Google Identity Ser
 - **DB** (`db/schema.sql`, idempotent `CREATE TABLE IF NOT EXISTS`; `scripts/migrate.js` applies it using `DATABASE_URL` from `.dev.vars`/env via `@neondatabase/serverless`): `users`, `friendships`, `matches`, `match_players` (+ indexes). Use parameterised queries only. The Worker uses the `neon()` HTTP driver (works in Workers).
 - Worker also exports `GameRoom` and `UserHub` classes and falls through to `env.ASSETS.fetch` for everything else.
 - `README.md`: how to run locally (`npm run dev` + `npx wrangler dev`), how to migrate, secrets (`wrangler secret put …`), Google OAuth setup, deploy.
+
+## 9b. Voice lines (soundboard) **[current]**
+A cosmetic kind `voice`, sold in the shop for coins, **owned-only** (never equipped), playable only by owners, heard by everybody in the room. No schema change: ownership is a `user_items` row like any other item.
+
+* **Catalogue** (`shared/cosmetics.js`): `{ id, kind:'voice', name, price, rarity, icon, emoji, src, durationMs, caption }`.
+  * `voice-sheru-bhai`: name `Sheru Bhai`, 1000 coins, rare, `icon:'tiger'`, `emoji:'🐯'`, `src:'/audio/voice/sheru-bhai.mp3'` (332 KB), `durationMs:8300`, caption `Sheru Bhai!`.
+  * `voice-ladle-meow`: name `Ladle Meow`, 800 coins, rare, `icon:'cat'`, `emoji:'🐱'`, `src:'/audio/voice/ladle-meow.mp3'` (254 KB), `durationMs:6350`, caption `Ladle meow! gop gop gop`.
+  * `voice-old-man`: name `Old Man`, 600 coins, rare, `icon:'oldman'`, `emoji:'👴'`, `src:'/audio/voice/old-man.mp3'` (104 KB), `durationMs:2590`, caption `Oye!`.
+  * Helpers: `voiceLines()`, `isVoiceId(id)`, `voiceSrc(id)`; `COSMETIC_KINDS` includes `voice`, `EQUIPPABLE_KINDS` does not. The files live in `public/audio/voice/` (Vercel / Vite serve them as static files; the client fetches them lazily, they are not in the bundle and not in the service worker cache).
+* **Buying**: `POST /api/shop/buy { itemId }` (price and kind come from the catalogue, never the body); `GET /api/shop` lists the items with `owned`. The client learns what it owns from `GET /api/shop` (`owned: true`). Guests with a session can buy and use them like any cosmetic.
+* **Playing** (client -> room, lobby or game, any time, not only on your turn): `{t:'voice', id}`.
+* **Broadcast** (room -> EVERY open socket, the sender's included): `{t:'voice', from:<playerId>, id, ts, seq}`. `seq` counts the sender's accepted lines (1, 2, ...), so a client that plays optimistically drops its own echo by `(from, seq)`. Nothing is stored and it is not a game action: no state change, no `seq`/`clock` bump, no turn or idle timer reset, no afk/idle flag cleared.
+* **Errors** (to the sender only, `{t:'error', message}`): `Unknown voice line.` (unknown or malformed id), `Buy voice lines in the shop (sign in).` (does not own it), `Voice lines are limited: wait a few seconds.` (cooldown, burst or room cap), `Voice line limit reached for this game.`, `Could not check your voice lines. Try again.` (ownership lookup failed).
+* **Limits** (`VOICE_LIMITS`, in memory): per player 3000 ms cooldown, at most 3 in 10 s, 60 per match (the lobby counts separately); whole room at most 6 voice broadcasts per 5 s. The general 40-messages-per-5-s limit also applies.
+* **Ownership check**: one `SELECT item_id FROM user_items` per player, cached 60 s; a "not owned" answer is re-read at most every 5 s, so a purchase made mid-game works within seconds.
 
 ## 10. Quality bar
 It must look like a polished mobile game, not a prototype: consistent tokens, smooth transitions, no layout shift, no text overflow on 360px screens, empty/error/loading states everywhere, no console errors.

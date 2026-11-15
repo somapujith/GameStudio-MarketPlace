@@ -4,6 +4,7 @@
 
 import { GROUP_TILES, TILES } from '@shared/board.js';
 import { formatINR } from '@shared/format.js';
+import { DEFAULT_MAP, activeMapId } from '@shared/maps.js';
 import { coinTier } from './coins.js';
 
 export const BANK = 'bank';
@@ -31,7 +32,7 @@ const REASONS = {
 };
 
 /** 'RENT' / 'SALARY' / ... or '' for a reason without a word. */
-export const reasonLabel = (reason) => REASONS[String(reason || '')] || '';
+export const reasonLabel = (reason) => (reason === 'chai' && activeMapId() !== DEFAULT_MAP ? 'TOKEN' : REASONS[String(reason || '')]) || '';
 
 /** '+₹34,000' / '−₹34,000' (sign = +1 / -1; the amount's own sign is ignored). */
 export function signedAmount(amount, sign = 1) {

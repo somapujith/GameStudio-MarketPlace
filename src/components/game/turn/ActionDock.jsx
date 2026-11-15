@@ -2,7 +2,7 @@
 // inside `.hg-bottom`, which reports its own height as --hg-dock). It is in the page flow, never fixed, so it can not hide
 // behind the iOS Safari bar / the Android gesture bar and never covers the table.
 //   [ decision timer bar ]
-//   [ hint ] [ secondaries ] [ PRIMARY ] [ wide rows (ride / auction) ]
+//   [ hint ] [ secondaries ] [ PRIMARY ] [ wide rows (ride) ]
 //   [ Manage (badge) ] [ Trade (badge) ] [ Chat ]
 // <ActionDock session spec fire badges onManage onTrade onChat chatOpen />
 import ActionBar from '../ActionBar.jsx';
@@ -18,6 +18,7 @@ function Tool({ icon, label, badge, onClick, iconOnly = false, expanded }) {
       onClick={onClick}
       aria-label={badge ? `${label}, ${badge.label}` : label}
       aria-expanded={expanded}
+      data-tour={label === 'Manage' ? 'manage' : label === 'Trade' ? 'trade' : undefined}
     >
       <Icon name={icon} size={18} />
       {iconOnly ? null : <span>{label}</span>}
@@ -26,12 +27,12 @@ function Tool({ icon, label, badge, onClick, iconOnly = false, expanded }) {
   );
 }
 
-export default function ActionDock({ session, spec, fire, badges = {}, onManage, onTrade, onChat, chatOpen }) {
+export default function ActionDock({ session, spec, fire, badges = {}, onManage, onTrade, onChat, chatOpen, reopen = null }) {
   return (
     <div className="ad" role="region" aria-label="Your actions">
       <TimerBar session={session} className="ad-timer" />
       <div className="ad-main cp-docked-actions">
-        <ActionBar spec={spec} fire={fire} session={session} className="is-dock" />
+        <ActionBar spec={spec} fire={fire} session={session} className="is-dock" reopen={reopen} />
       </div>
       <div className="ad-tools">
         {spec?.kind === 'out' ? null : <Tool icon="home" label="Manage" badge={badges.manage} onClick={onManage} />}

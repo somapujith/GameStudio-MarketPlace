@@ -2,6 +2,7 @@
 //
 //   const { host, busy } = useHostRoom(game);
 //   host({ maxPlayers: 4 })              // a private table with 4 seats and the default settings
+//   host({ maxPlayers: 4, map: 'andhra' })  // ... on a map (only for a game whose settings have a `map`)
 //   host('private')                      // older form: just the visibility
 //
 // A session (guest or Google) is required; without one the player is sent to /login and brought back to the
@@ -20,6 +21,8 @@ import { paths } from '@/platform/paths.js';
 export function roomRequest(game, arg = 'private') {
   const opts = typeof arg === 'string' ? { visibility: arg } : arg && typeof arg === 'object' ? arg : {};
   const body = { gameId: game?.id, visibility: opts.visibility === 'public' ? 'public' : 'private', settings: defaultSettings(game) };
+  // a game with maps: the map picked on the game page (the server checks it; the lobby can still change it)
+  if (typeof opts.map === 'string' && game?.settings?.some((f) => f && f.key === 'map')) body.settings.map = opts.map;
   const { min = 1, max = Infinity } = game?.players || {};
   if (Number.isInteger(opts.maxPlayers) && opts.maxPlayers >= min && opts.maxPlayers <= max) body.maxPlayers = opts.maxPlayers;
   return body;

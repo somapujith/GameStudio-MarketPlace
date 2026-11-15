@@ -29,7 +29,7 @@ export default function NetRace({ session }) {
             key={r.id}
             className={`nr__dot${r.isMe ? ' is-me' : ''}${r.lead ? ' is-lead' : ''}`}
             data-lane={r.lane || undefined}
-            style={{ '--f': r.frac.toFixed(3), '--pc': r.color }}
+            style={{ '--f': r.frac.toFixed(3), '--pc': r.color, '--dx': `${r.dx || 0}px` }}
             title={`${r.isMe ? 'You' : r.name}: ${compactINR(r.worth)}`}
           >
             {r.lead ? <Icon name="crown" size={9} className="nr__crown" /> : null}

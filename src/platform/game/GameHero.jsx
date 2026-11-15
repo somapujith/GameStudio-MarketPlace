@@ -20,7 +20,7 @@ export const categoryHref = (cat) => (cat ? `${paths.games()}?cat=${encodeURICom
 /** The shopfront: an awning stripe in the game's colours over its cover, lit from below by the accent. */
 export function HeroArt({ game, soon = false }) {
   return (
-    <figure className={`gd-art${soon ? ' is-soon' : ''}`} aria-label={`${game.name} cover art`}>
+    <figure data-tour="game-art" className={`gd-art${soon ? ' is-soon' : ''}`} aria-label={`${game.name} cover art`}>
       <span className="gd-art__awning" aria-hidden="true" />
       <Cover game={game} className="gd-art__cover" />
       {soon && <span className="gd-art__badge">Coming soon</span>}
@@ -36,7 +36,7 @@ export function GameHead({ game, soon = false, tables }) {
   const cat = getCategory(game.category);
   const players = playersLabel(game.players);
   return (
-    <header className="gd-head">
+    <header className="gd-head" data-tour="game-head">
       {cat && (
         <Link to={categoryHref(cat)} className="gd-head__cat st-eyebrow" aria-label={`More ${cat.label} games`}>
           <CategoryIcon id={cat.icon} size={16} /> {cat.label}

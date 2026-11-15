@@ -1,5 +1,6 @@
 // "..." menu: table summary, playback speed, sound toggle + volume, haptics, reduce motion, player stats, log, rules, resign, quit.
 import { PLAYBACK_SPEEDS, useSettings } from '@/lib/storage.js';
+import { usePerfLevel } from '@/lib/perfMode.js';
 import { buzz } from '@/lib/haptics.js';
 import { sfx } from '@/lib/sfx.js';
 import Sheet from './ui/Sheet.jsx';
@@ -9,6 +10,7 @@ import { Segmented, Switch } from './ui/Controls.jsx';
 import { FAIR_DICE_TEXT, LUCKY_DICE_TEXT, diceLabel } from './ui/helpers.js';
 import { tableSummary, winRuleText } from './turn/room.js';
 import { canResign } from './turn/resign.js';
+import MapTag from '../online/MapTag.jsx';
 
 const SPEEDS = (PLAYBACK_SPEEDS?.length ? PLAYBACK_SPEEDS : [0.75, 1, 1.5, 2]).map((v) => ({
   value: v,
@@ -17,8 +19,9 @@ const SPEEDS = (PLAYBACK_SPEEDS?.length ? PLAYBACK_SPEEDS : [0.75, 1, 1.5, 2]).m
 
 const canVibrate = () => typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
 
-export default function MenuSheet({ open, onClose, onRules, onQuit, onStats, onLog, onManage, onTrade, onResign, session }) {
+export default function MenuSheet({ open, onClose, onRules, onTour, onQuit, onStats, onLog, onManage, onTrade, onResign, session }) {
   const [s, update] = useSettings();
+  const perf = usePerfLevel();
   const cfg = session?.display?.cfg || session?.view?.cfg;
   const summary = tableSummary(cfg);
   const fairDice = (cfg?.dice ?? 'lucky') === 'fair';
@@ -27,6 +30,7 @@ export default function MenuSheet({ open, onClose, onRules, onQuit, onStats, onL
   return (
     <Sheet open={open} onClose={onClose} title="Menu" className="hg-menu" desktop="modal">
       <div className="hg-menu-rules">
+        <p className="hg-menu-map"><MapTag value={cfg} variant="line" /></p>
         <p className="hg-summary is-strong">{summary}</p>
         <p className="hg-menu-note">{winRuleText(cfg)}</p>
         <div className="hg-menu-dice">
@@ -88,6 +92,30 @@ export default function MenuSheet({ open, onClose, onRules, onQuit, onStats, onL
         </div>
         <Switch
           icon="sound"
+          label="Voice lines"
+          hint="Hear the voice lines played at the table"
+          checked={s.voiceLines !== false}
+          onChange={(v) => update({ voiceLines: v })}
+        />
+        {s.voiceLines !== false ? (
+          <div className="hg-row-ctl hg-row-ctl--slider">
+            <span className="hg-row-ico"><Icon name="sound" size={20} /></span>
+            <span className="hg-row-txt"><label htmlFor="hg-voicevolume">Voice volume</label></span>
+            <input
+              id="hg-voicevolume"
+              className="hg-range is-small"
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={s.voiceVolume ?? 1}
+              onChange={(e) => update({ voiceVolume: Number(e.target.value) })}
+              style={{ '--pct': `${Math.round((s.voiceVolume ?? 1) * 100)}%` }}
+            />
+          </div>
+        ) : null}
+        <Switch
+          icon="sound"
           label="Night-market ambience"
           hint="A very quiet festival bed under the game"
           checked={!!s.ambient}
@@ -111,6 +139,13 @@ export default function MenuSheet({ open, onClose, onRules, onQuit, onStats, onL
           }}
         />
         <Switch icon="spark" label="Reduce motion" hint="Fewer animations" checked={!!s.reducedMotion} onChange={(v) => update({ reducedMotion: v })} />
+        <Switch
+          icon="spark"
+          label="Light graphics"
+          hint={s.graphics === 'auto' && perf === 'low' ? 'On: this browser draws slowly, so decorative effects are off' : 'Fewer glows and loops, smoother on slow browsers'}
+          checked={s.graphics === 'lite' || (s.graphics === 'auto' && perf === 'low')}
+          onChange={(v) => update({ graphics: v ? 'lite' : 'full' })}
+        />
       </div>
 
       <div className="hg-menu-actions">
@@ -127,6 +162,7 @@ export default function MenuSheet({ open, onClose, onRules, onQuit, onStats, onL
           <Button variant="dark" block icon={<Icon name="list" size={20} />} onClick={onLog}>Game log</Button>
         ) : null}
         <Button variant="dark" block icon={<Icon name="book" size={20} />} onClick={onRules}>How to play</Button>
+        {onTour ? <Button variant="dark" block icon={<Icon name="info" size={20} />} onClick={onTour} data-testid="menu-tour">Take the tour</Button> : null}
         <Button variant="rose" block icon={<Icon name="exit" size={20} />} onClick={onQuit}>Quit to home</Button>
       </div>
 
@@ -136,7 +172,7 @@ export default function MenuSheet({ open, onClose, onRules, onQuit, onStats, onL
             <span className="hg-resign__ico"><Icon name="flag" size={20} /></span>
             <span className="hg-resign__txt">
               <b>Resign</b>
-              <small>Give up this game: you lose and your districts return to the bank. You can stay and watch.</small>
+              <small>Give up this game: you lose, the bank takes all your cash and your districts return to the bank. You can stay and watch.</small>
             </span>
           </button>
         </div>

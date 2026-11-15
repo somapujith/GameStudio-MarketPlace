@@ -1,7 +1,7 @@
 // The whole table on a portrait phone, kept as simple as a two-player board game:
 //   top bar            back · "₹50L net worth to win · Round 7 of 20" · menu
 //   board              full width; its centre is the calm PhoneCentre (caption, tile chip, hero art, the die)
-//   buy popup          a card over the board while I decide on a district
+//   buy popup          a card over the board while I decide on a district (decision/DecisionCard.jsx does the same for a transport ride / the Traffic Jam)
 //   players            avatar + piece + name + "cash (net worth)" for everyone, "Your turn" under whoever plays
 //   snatch pop-up      a floating panel just above the action row while a Snatch window is open (zero-height slot: nothing moves)
 //   action row         ONE big button (Roll / Buy / End turn ...), Manage and Trade beside it
@@ -20,7 +20,9 @@ import PhoneActions from './PhoneActions.jsx';
 import PhoneChatBar from './PhoneChatBar.jsx';
 import BuyCard from './BuyCard.jsx';
 import SnatchPopup from '../SnatchPopup.jsx';
+import DecisionCard, { useDecisionCard } from '../decision/DecisionCard.jsx';
 import { buyActions, buyCardData } from './phoneModel.js';
+import { tradeStatus } from '../ui/tradeModel.js';
 import '../../../styles/phone.css';
 import '../../../styles/phoneboard.css';
 
@@ -41,17 +43,17 @@ export default function PhoneTable({
   const decision = buyDecision(session, spec);
   const key = decision ? `${decision.tile.id}:${session.view?.turnCount ?? ''}:${session.view?.round ?? ''}` : '';
   const showCard = !!decision && hidden !== key;
+  const landing = useDecisionCard(session, spec); // transport ride / Traffic Jam: the other landing decisions, same popup idea
   const me = (session.display?.players ?? session.view?.players ?? []).find((p) => p.id === session.me);
   const data = useMemo(
     () => (decision ? buyCardData(decision.tile, {
       cash: me?.cash ?? 0,
       price: decision.pend.price,
-      auction: session.view?.cfg?.auctionOnDecline !== false,
       canBuy: !!session.options?.buy,
       cfg: session.view?.cfg,
     }) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [key, me?.cash, session.options?.buy, session.view?.cfg?.auctionOnDecline, session.view?.cfg?.rentPercent],
+    [key, me?.cash, session.options?.buy, session.view?.cfg?.rentPercent],
   );
   const doors = buyActions(spec);
   const n = (session.display?.players ?? session.view?.players ?? []).length;
@@ -60,11 +62,12 @@ export default function PhoneTable({
     if (decision && chip.id === decision.tile.id && hidden === key) setHidden('');
     else onOpenTile?.(chip.id);
   };
-  const canOffer = !!session.options?.trade?.canOffer || !!session.view?.trade;
+  // the Trade button opens the composer when I may propose (or my offer is waiting); otherwise the Trade tab, which says why not
+  const canOffer = tradeStatus(session).can || session.view?.trade?.from === session.me;
 
   return (
     <PhoneBoardContext.Provider value>
-      <div className="ph" data-n={n} data-buy={showCard ? '' : undefined}>
+      <div className="ph" data-n={n} data-buy={showCard || landing.show ? '' : undefined}>
         <PhoneTopBar session={session} spec={spec} onBack={onBack} onMenu={onMenu} />
 
         <main className="ph-stage" aria-label="Game table">
@@ -85,6 +88,9 @@ export default function PhoneTable({
                 onDismiss={() => setHidden(key)}
               />
             ) : null}
+            {landing.show ? (
+              <DecisionCard decision={landing.decision} session={session} fire={fire} onDismiss={landing.hide} placement="phone" />
+            ) : null}
           </div>
         </main>
 
@@ -97,7 +103,8 @@ export default function PhoneTable({
           badges={badges}
           onManage={onManage}
           onTrade={canOffer ? onTrade : onManageTrade}
-          hidePills={showCard ? ['skip'] : undefined}
+          hidePills={showCard ? ['skip'] : landing.show ? (landing.decision.kind === 'ride' ? ['ride'] : ['pay', 'wait']) : undefined}
+          reopen={landing.reopen}
         />
         <PhoneChatBar session={session} />
       </div>

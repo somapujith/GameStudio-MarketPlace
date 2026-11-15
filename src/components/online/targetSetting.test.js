@@ -1,4 +1,4 @@
-// The win-target control of the Hyderabad Tycoon lobby, rendered from the real schema (server-side render, node env).
+// The win-target control of the Kingpin lobby, rendered from the real schema (server-side render, node env).
 // It is one rule of the host's "Game rules" editor now (the Money group); the editor itself is covered by rulesEditor.test.js.
 import { describe, it, expect } from 'vitest';
 import { createElement as h } from 'react';

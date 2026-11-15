@@ -6,7 +6,7 @@ import { requireUser } from '../auth.js';
 import { getUserById, rowEquipped } from '../users.js';
 import { limit } from '../ratelimit.js';
 import { readJson } from '../http.js';
-import { COSMETICS, COSMETIC_KINDS, FREE_COSMETICS, cosmeticById } from '../../shared/cosmetics.js';
+import { COSMETICS, EQUIPPABLE_KINDS, FREE_COSMETICS, cosmeticById } from '../../shared/cosmetics.js';
 
 const shop = new Hono();
 
@@ -28,13 +28,16 @@ export function shopItems(owned, equipped) {
   return COSMETICS.map((c) => {
     const item = { id: c.id, kind: c.kind, name: c.name, price: c.price, rarity: c.rarity };
     if (c.colors) item.colors = [...c.colors];
+    // Voice lines (owned-only, played at the table): symbol, clip, length and speech-bubble caption.
+    for (const k of ['icon', 'emoji', 'src', 'durationMs', 'caption']) if (c[k] !== undefined) item[k] = c[k];
     item.owned = own.has(c.id);
     item.equipped = equipped[c.kind] === c.id;
     return item;
   });
 }
 
-// GET /api/shop -> { items:[{ id, kind, name, price, rarity, colors?, owned, equipped }], coins, equipped }
+// GET /api/shop -> { items:[{ id, kind, name, price, rarity, colors?, icon?, emoji?, src?, durationMs?, caption?, owned, equipped }], coins, equipped }
+// Voice lines (kind 'voice') carry icon/emoji/src/durationMs/caption and are never "equipped": they are owned-only.
 // Session optional: signed out -> owned = free items only, coins null, equipped {}.
 shop.get('/', limit('shop-list', 60, 60), async (c) => {
   const session = c.get('session');
@@ -125,7 +128,8 @@ RETURNING equipped`;
 shop.post('/equip', requireUser, limit('shop-equip', 60, 60), async (c) => {
   const user = c.get('user');
   const { kind, itemId } = await readJson(c);
-  if (typeof kind !== 'string' || !COSMETIC_KINDS.includes(kind)) throw new HttpError(400, 'Unknown cosmetic kind.');
+  if (kind === 'voice') throw new HttpError(400, 'Voice lines are not equipped: buy one, then play it at the table.');
+  if (typeof kind !== 'string' || !EQUIPPABLE_KINDS.includes(kind)) throw new HttpError(400, 'Unknown cosmetic kind.');
   if (itemId === null || itemId === undefined) {
     const rows = await query(c.env, UNEQUIP_SQL, [user.id, kind]);
     return c.json({ equipped: rowEquipped(rows[0] || {}) });

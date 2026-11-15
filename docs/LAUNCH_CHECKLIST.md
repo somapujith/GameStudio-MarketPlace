@@ -125,7 +125,7 @@ curl -sI "$ORIGIN/" | grep -i -E 'content-security-policy|x-frame|nosniff|referr
 
 Manual end-to-end (two browsers or a phone and a laptop):
 
-1. Browser A: Play as guest, open Hyderabad Tycoon, 2 players, Create table. Copy the room code.
+1. Browser A: Play as guest, open Kingpin, 2 players, Create table. Copy the room code.
 2. Browser B: Have a code? -> enter the code -> joins as a guest. The seat count updates in A within a second.
 3. A: Start. Play a few turns. Kill B's network for 10 seconds: B reconnects and sees the same state.
 4. Sign in with Google in a third profile; add a friend by friend code; send and accept an invite.

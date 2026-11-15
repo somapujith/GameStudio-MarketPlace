@@ -1,6 +1,6 @@
 // GameRoom wire additions (docs/HUSTLE_PLAN.md 3.9): the decision clock in every `state`, presence
 // with the reconnect grace, lobby pieces, and cosmetics in `room.players`. Driven through a tiny
-// test game ("Piece Race") so nothing here depends on Hyderabad Tycoon's rules.
+// test game ("Piece Race") so nothing here depends on Kingpin's rules.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('cloudflare:workers', () => ({
@@ -233,7 +233,7 @@ describe('decision clock in state messages', () => {
     expect(again.last('state')).toMatchObject({ events: [], seq: 1, clock: { deadline: T0 + START_ANIM + TURN_MS, waitingFor: [h.first] } });
   });
 
-  it('an idle player is auto-played at the short pace; a disconnected one after the grace', async () => {
+  it('a slow player still gets a full timer next turn; a disconnected one is played for after the grace', async () => {
     const h = await started();
     await h.tick(); // TURN_MS ran out: the first player is flagged idle and played for
     expect(h.r.afk[h.first]).toBe(true);
@@ -242,7 +242,8 @@ describe('decision clock in state messages', () => {
 
     await h.say(h.sock(h.second), { t: 'action', action: { type: 'STEP' } });
     const t2 = Date.now();
-    expect(h.a.last('state').clock).toEqual({ deadline: t2 + 1500, waitingFor: [h.first] }); // idle pace (max(1500, anim))
+    // NOT the old 1.5 s idle pace: a connected player who was slow once is not auto-played on every later turn
+    expect(h.a.last('state').clock).toEqual({ deadline: t2 + STEP_ANIM + TURN_MS, waitingFor: [h.first] });
 
     // the idle player comes back and acts; then the other one drops: auto-play after the grace, not the full turn time
     await h.say(h.sock(h.first), { t: 'action', action: { type: 'STEP' } });

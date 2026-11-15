@@ -191,12 +191,12 @@ describe('rentPercent', () => {
       s.owners[35] = 'b';
       s.levels[35] = 1;
       s.players[0].pos = 32;
-      s.players[0].cash = 90000;
+      s.players[0].cash = 160000;
       s.owners[1] = 'a'; // two districts to mortgage: 65,000 more
       s.owners[3] = 'a';
       return roll(s, 'a', 3).state;
     };
-    expect(rentFor(TILES[35], 1, false)).toBe(76000);
+    expect(rentFor(TILES[35], 1, false)).toBe(108000);
     expect(play(200).phase).toBe('debt');
     expect(play(50).phase).not.toBe('debt');
   });
@@ -315,16 +315,32 @@ describe('dice', () => {
   });
 });
 
-describe('auctionOnDecline', () => {
-  it('on: a skipped district goes to auction; off: it stays free; an unaffordable one is still auctioned', () => {
-    const on = act(roll(game({ auctionOnDecline: true }), 'a', 1).state, { type: 'SKIP_BUY', playerId: 'a' });
-    expect(on.state.phase).toBe('auction');
-    const off = act(roll(game({ auctionOnDecline: false }), 'a', 1).state, { type: 'SKIP_BUY', playerId: 'a' });
-    expect(off.state.phase).toBe('manage');
-    expect(off.state.owners[1]).toBeNull();
-    const poor = game({ auctionOnDecline: false });
+describe('the retired auctionOnDecline rule', () => {
+  it('is gone from the rules, and a stored true or false changes nothing: a pass never starts an auction', () => {
+    expect(RULE_FIELDS.some((f) => f.key === 'auctionOnDecline')).toBe(false);
+    for (const stored of [true, false, undefined]) {
+      const g = game(stored === undefined ? {} : { auctionOnDecline: stored });
+      expect(g.cfg).not.toHaveProperty('auctionOnDecline');
+      const pass = act(roll(g, 'a', 1).state, { type: 'SKIP_BUY', playerId: 'a' });
+      expect(pass.state.phase).toBe('manage');
+      expect(pass.state.owners[1]).toBeNull();
+      const poor = game(stored === undefined ? {} : { auctionOnDecline: stored });
+      poor.players[0].cash = 1000;
+      expect(roll(poor, 'a', 1).state.phase).toBe('manage'); // cannot afford: nothing offered, no auction either
+    }
+  });
+
+  it('an old saved game whose cfg still carries auctionOnDecline: true behaves as no auction', () => {
+    const g = game();
+    g.cfg.auctionOnDecline = true; // what a game stored before the rule was retired holds
+    const pass = act(roll(g, 'a', 1).state, { type: 'SKIP_BUY', playerId: 'a' });
+    expect(pass.state.phase).toBe('manage');
+    expect(pass.events.map((e) => e.type)).toEqual(['skip']);
+    const poor = structuredClone(g);
     poor.players[0].cash = 1000;
-    expect(roll(poor, 'a', 1).state.phase).toBe('manage'); // cannot afford, no auction either
+    const r = roll(poor, 'a', 1);
+    expect(r.state.phase).toBe('manage');
+    expect(r.events.map((e) => e.type)).not.toContain('auction_start');
   });
 });
 
@@ -432,7 +448,7 @@ describe('requireFullSet', () => {
   it('on (stock): a single district of a collection cannot be upgraded, with the exact reason', () => {
     for (const settings of [{}, { requireFullSet: true }]) {
       const s = lone(settings);
-      expect(canUpgrade(s, 'a', 28)).toEqual({ ok: false, reason: `Own all 3 districts of ${GROUPS.cyber.name} first (you have 1)`, cost: 150000 });
+      expect(canUpgrade(s, 'a', 28)).toEqual({ ok: false, reason: `Own all 3 districts of ${GROUPS.cyber.name} first (you have 1)`, cost: 120000 });
       expect(getOptions(s, 'a').upgrade).toEqual([]);
       expect(applyAction(s, { type: 'UPGRADE', playerId: 'a', tile: 28 }).error).toBe(`Own all 3 districts of ${GROUPS.cyber.name} first (you have 1)`);
     }
@@ -440,11 +456,11 @@ describe('requireFullSet', () => {
 
   it('off: owning the district is enough; the other checks (turn, cash, mortgage, max level) still apply', () => {
     const s = lone({ requireFullSet: false });
-    expect(canUpgrade(s, 'a', 28)).toMatchObject({ ok: true, cost: 150000 });
-    expect(getOptions(s, 'a').upgrade).toEqual([{ tile: 28, cost: 150000, level: 0 }]);
+    expect(canUpgrade(s, 'a', 28)).toMatchObject({ ok: true, cost: 120000 });
+    expect(getOptions(s, 'a').upgrade).toEqual([{ tile: 28, cost: 120000, level: 0 }]);
     const r = act(s, { type: 'UPGRADE', playerId: 'a', tile: 28 });
     expect(r.state.levels[28]).toBe(1);
-    expect(P(r.state, 'a').cash).toBe(1500000 - 150000);
+    expect(P(r.state, 'a').cash).toBe(1500000 - 120000);
     expect(canUpgrade(s, 'b', 28)).toMatchObject({ ok: false, reason: 'You do not own this district' });
     const poor = lone({ requireFullSet: false });
     poor.players[0].cash = 1000;

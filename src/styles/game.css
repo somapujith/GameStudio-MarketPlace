@@ -1,4 +1,4 @@
-/* Hyderabad Tycoon: game screen panels. Owned by gameui-panels. All selectors are .hg- prefixed.
+/* Kingpin: game screen panels. Owned by gameui-panels. All selectors are .hg- prefixed.
    Board internals live in board.css (gameui-board) and are never restyled here. */
 
 .hg-game, .hg-game *, .hg-game *::before, .hg-game *::after,
@@ -88,10 +88,12 @@
     padding-top: 4px; padding-bottom: var(--hg-pad);
   }
   .hg-boardcol { width: auto; }
+  /* hug the board's height and centre the whole table vertically: on a very tall screen the pods stay at the board's corners */
+  .hg-table { flex: 0 1 auto; margin-block: auto; }
   .hg-chatcard { padding: 6px 8px; }
   .hg-chatcard .table-chat__reacts { gap: 2px; }
   .hg-chatcard .table-chat__react { font-size: 17px; border-radius: 10px; }
-  .hg-boardwrap { width: max(360px, min(calc(100vh - var(--hg-top) - var(--hg-pad) - 4px), calc(100vw - 2 * var(--hg-pod) - 4 * var(--hg-pad)))); width: max(360px, min(calc(100dvh - var(--hg-top) - var(--hg-pad) - 4px), calc(100vw - 2 * var(--hg-pod) - 4 * var(--hg-pad)))); }
+  .hg-boardwrap { width: max(360px, min(1500px, calc(100vh - var(--hg-top) - var(--hg-pad) - 4px), calc(100vw - 2 * var(--hg-pod) - 4 * var(--hg-pad)))); width: max(360px, min(1500px, calc(100dvh - var(--hg-top) - var(--hg-pad) - 4px), calc(100vw - 2 * var(--hg-pod) - 4 * var(--hg-pad)))); }
 }
 
 /* ============================================================ buttons / pills / money */
@@ -598,6 +600,7 @@
 .hg-debt-tile b { display: block; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hg-debt-tile small { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-dim); }
 .hg-debt-row .hg-btn { flex: none; }
+.hg-debt-rule { margin: 0 0 10px; font-size: 0.8rem; line-height: 1.35; }
 .hg-debt-actions { display: flex; align-items: center; gap: 8px; }
 .hg-debt-actions .hg-btn--lg { flex: 1; }
 

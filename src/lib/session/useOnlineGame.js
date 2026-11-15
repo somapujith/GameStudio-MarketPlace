@@ -32,7 +32,7 @@ export function normalizeClock(raw) {
 }
 
 // Socket + room state for ONE room code (no game in it) lives in components/online/useRoomConnection.js and is
-// re-exported here, because game plugins (Hyderabad Tycoon) import it from this module:
+// re-exported here, because game plugins (Kingpin) import it from this module:
 //   const { room, view, chat, connection, error, errorId, fatal, send, leave } = useRoomConnection(code, { onState, onChat });
 export { useRoomConnection };
 
@@ -138,13 +138,18 @@ export function useOnlineGame(code, { getOptions = tycoonGetOptions, standings =
         if (send({ t: 'action', action: { ...action, playerId: me } }, { queue: false })) snatchSent.current = key;
         return;
       }
-      if (busyRef.current || awaitingRef.current) return;
+      // A trade is a talk between players, not a move on the animated table: its actions never wait for the presenter
+      // (the server judges them against the latest state; it never drops one for an animation). A request of mine that is
+      // still in flight does block, so nothing is sent twice. Returns whether the action was sent.
+      const isTrade = typeof action.type === 'string' && action.type.startsWith('TRADE_');
+      if ((busyRef.current && !isTrade) || awaitingRef.current) return false;
       const ok = send({ t: 'action', action: { ...action, playerId: me } }, { queue: false });
-      if (!ok) return;
+      if (!ok) return false;
       awaitingRef.current = true;
       setAwaiting(true);
       clearTimeout(awaitTimer.current);
       awaitTimer.current = setTimeout(() => setAwaiting(false), ACTION_TIMEOUT);
+      return true;
     },
     [me, send],
   );
@@ -161,6 +166,8 @@ export function useOnlineGame(code, { getOptions = tycoonGetOptions, standings =
     [send],
   );
 
+  /** Soundboard: ask the room to play one of my voice lines. Returns whether it was sent (the server checks ownership and limits). */
+  const sendVoice = useCallback((id) => (typeof id === 'string' && id ? send({ t: 'voice', id }, { queue: false }) : false), [send]);
   const sendRoom = useCallback((msg, opts) => send(msg, opts), [send]);
 
   const busy = !!presenter.busy;
@@ -201,6 +208,7 @@ export function useOnlineGame(code, { getOptions = tycoonGetOptions, standings =
       log: presenter.log,
       card: presenter.card ?? null,
       handoff: presenter.handoff ?? null,
+      auctionResult: presenter.auctionResult ?? null,
       flights: presenter.flights ?? EMPTY,
       clock: liveClock,
       roomPlayers,
@@ -210,14 +218,15 @@ export function useOnlineGame(code, { getOptions = tycoonGetOptions, standings =
       dispatch,
       chat,
       sendChat,
+      sendVoice,
       result,
       connection,
       restart,
       quit: leave,
     }),
     [
-      me, view, display, busy, presenter.rolling, presenter.bubble, presenter.stageTile, presenter.lastCash, presenter.log, presenter.card, presenter.handoff,
-      presenter.flights, liveClock, roomPlayers, cosmetics, room, options, dispatch, chat, sendChat, result, connection, restart, leave,
+      me, view, display, busy, presenter.rolling, presenter.bubble, presenter.stageTile, presenter.lastCash, presenter.log, presenter.card, presenter.handoff, presenter.auctionResult,
+      presenter.flights, liveClock, roomPlayers, cosmetics, room, options, dispatch, chat, sendChat, sendVoice, result, connection, restart, leave,
     ],
   );
 

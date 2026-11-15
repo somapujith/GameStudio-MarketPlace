@@ -1,5 +1,5 @@
 // The pure model behind the host's "Game rules" editor: value formatting per unit, stepper and slider maths, the patches
-// the controls build, grouping and the "Custom rules" count. Run against the REAL Hyderabad Tycoon schema (which is built
+// the controls build, grouping and the "Custom rules" count. Run against the REAL Kingpin schema (which is built
 // from shared/ruleSettings.js) so a new or changed rule is covered without editing this file.
 import { describe, it, expect } from 'vitest';
 import {
@@ -64,7 +64,8 @@ describe('formatValue: every unit reads naturally', () => {
     expect(formatValue(field('eventEvery'), 4)).toBe('Every 4 rounds');
     expect(formatValue(field('dice'), 'fair')).toBe('Fair');
     expect(formatValue(field('targetWorth'), null)).toBe('Off');
-    expect(formatValue(field('auctionOnDecline'), true)).toBe('On');
+    expect(formatValue(field('requireFullSet'), true)).toBe('On');
+    expect(field('auctionOnDecline')).toBeUndefined(); // retired: a pass never starts an auction
     expect(formatValue(field('requireFullSet'), false)).toBe('Off');
     expect(formatValue(field('chaiCap'), 2)).toBe('2');
     expect(formatValue(field('snatches'), 0)).toBe('0');
@@ -180,7 +181,7 @@ describe('patches the controls build', () => {
     const current = resolveSettings(SETTINGS_SCHEMA, { mode: 'standard', turnSeconds: 90, dice: 'fair', snatches: 0, startCash: 3000000 });
     const sent = settingsMessage(SETTINGS_SCHEMA, current, presetPatch(SETTINGS_SCHEMA, 'mode', 'quick'));
     expect(sent.t).toBe('settings');
-    expect(Object.keys(sent.settings).sort()).toEqual(['mode', ...RULE_KEYS].sort());
+    expect(Object.keys(sent.settings).sort()).toEqual(['mode', 'map', ...RULE_KEYS].sort());
     expect(sent.settings).toMatchObject({ mode: 'quick', startCash: 2000000, maxRounds: 12, targetWorth: 5000000, turnSeconds: 90, dice: 'fair', snatches: 0 });
   });
   it('one control edit changes only its rule; the others go out at their current values', () => {
@@ -210,7 +211,7 @@ describe('patches the controls build', () => {
       { startCash: 5000000 },
       { turnSeconds: 120, tradeSeconds: 30 },
       presetPatch(SETTINGS_SCHEMA, 'mode', 'classic'),
-      { rentPercent: 150, eventEvery: 0, dice: 'fair', auctionOnDecline: false, requireFullSet: false, chaiCap: 3 },
+      { rentPercent: 150, eventEvery: 0, dice: 'fair', requireFullSet: false, chaiCap: 3 },
       { snatches: 3, snatchMs: 3000, snatchCardCap: 0 },
       { passStart: 0, trafficFine: 100000 },
       resetPatch(fields, room),
@@ -223,7 +224,7 @@ describe('patches the controls build', () => {
       expect(parsed.errors, JSON.stringify(patch)).toEqual([]);
       room = server.normalizeSettings(server.mergeSettingsPatch(room, parsed.settings));
       // what the room stores is what the lobby showed (the UI never lies about the server)
-      expect(room, JSON.stringify(patch)).toEqual(sent);
+      expect({ map: 'hyderabad', ...room }, JSON.stringify(patch)).toEqual(sent); // the home map is never stored: absent = Hyderabad
     }
   });
 });
@@ -285,7 +286,7 @@ describe('custom rules count', () => {
       { mode: 'standard', maxRounds: null, targetWorth: null },
       { mode: 'quick', startCash: 2000000, passStart: 0, rentPercent: 200 },
       { mode: 'standard', eventEvery: 0, snatches: 0, snatchMs: 10000, snatchCardCap: 0, chaiCap: 3 },
-      { mode: 'classic', turnSeconds: 15, tradeSeconds: 120, trafficFine: 0, auctionOnDecline: false, requireFullSet: false },
+      { mode: 'classic', turnSeconds: 15, tradeSeconds: 120, trafficFine: 0, requireFullSet: false },
     ];
     for (const room of rooms) {
       const full = resolveSettings(SETTINGS_SCHEMA, room);

@@ -7,6 +7,7 @@
 import { useCallback, useMemo, useState, useSyncExternalStore } from 'react';
 import * as Board from '@shared/board.js';
 import { formatINR } from '@shared/format.js';
+import { activeMapId, deckInfoOf, pieceNameOf, subscribeMap, termsOf } from '@shared/maps.js';
 import * as Engine from '@shared/index.js'; // namespace import: engine additions are probed, never assumed
 import { useSettings } from '@/lib/storage.js';
 import { targetSummary } from '../turn/target.js';
@@ -16,11 +17,25 @@ const GROUPS = Board.GROUPS || {};
 
 /* ------------------------------------------------------------------ media / motion */
 
+// One MediaQueryList per query for the whole app. `window.matchMedia(q)` builds (and the browser re-parses) a new list on
+// every call; useSyncExternalStore calls the snapshot on EVERY render of every component using this hook (dozens per
+// state change), which showed up as the second-biggest script cost in a profile of a slow browser.
+const mqls = new Map();
+function mqlOf(query) {
+  if (typeof window === 'undefined' || !window.matchMedia) return null;
+  let m = mqls.get(query);
+  if (!m) {
+    m = window.matchMedia(query);
+    mqls.set(query, m);
+  }
+  return m;
+}
+
 export function useMedia(query, fallback = false) {
   const subscribe = useCallback(
     (cb) => {
-      if (typeof window === 'undefined' || !window.matchMedia) return () => {};
-      const m = window.matchMedia(query);
+      const m = mqlOf(query);
+      if (!m) return () => {};
       m.addEventListener?.('change', cb);
       return () => m.removeEventListener?.('change', cb);
     },
@@ -28,7 +43,10 @@ export function useMedia(query, fallback = false) {
   );
   return useSyncExternalStore(
     subscribe,
-    () => (typeof window !== 'undefined' && window.matchMedia ? window.matchMedia(query).matches : fallback),
+    () => {
+      const m = mqlOf(query);
+      return m ? m.matches : fallback;
+    },
     () => fallback,
   );
 }
@@ -40,12 +58,26 @@ export function useMedia(query, fallback = false) {
 export function motionToken(name, fallback) {
   try {
     if (typeof document === 'undefined' || typeof getComputedStyle !== 'function') return fallback;
-    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    // getComputedStyle(...).getPropertyValue forces a style recalculation; the tokens only change with the theme or the
+    // reduced-motion switch (both are <html> attributes), so read each one once per such state.
+    const ds = document.documentElement.dataset || {};
+    const stamp = `${ds.motion || ''}|${ds.theme || ''}`;
+    if (stamp !== tokenStamp) {
+      tokenStamp = stamp;
+      tokenCache.clear();
+    }
+    let v = tokenCache.get(name);
+    if (v === undefined) {
+      v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      tokenCache.set(name, v);
+    }
     return v || fallback;
   } catch {
     return fallback;
   }
 }
+const tokenCache = new Map();
+let tokenStamp = '';
 
 /** `--dur-*` in ms (e.g. motionMs('--dur-3', 360)). */
 export function motionMs(name, fallback) {
@@ -159,6 +191,25 @@ export const COLLECTIONS = Object.keys(GROUPS)
   })
   .sort((a, b) => Math.min(...a.tiles) - Math.min(...b.tiles));
 
+// applyMap (shared/maps.js) rewrites GROUPS in place when the table's map changes: keep these snapshots in step, or the deed sheet,
+// rules and trade screens would keep printing the previous map's collection names and colours.
+subscribeMap(() => {
+  for (const c of COLLECTIONS) {
+    const g = GROUPS[c.id];
+    if (!g) continue;
+    c.name = g.name || c.id;
+    c.color = g.color || c.color;
+    c.ink = g.ink || inkOn(c.color);
+    if (Array.isArray(g.levelNames)) c.levelNames = g.levelNames;
+    c.theme = g.theme || c.theme;
+    c.identity = g.identity || COLLECTION_INFO[c.id]?.identity || '';
+  }
+  for (const id of ['luck', 'drama']) {
+    const d = deckInfoOf(activeMapId(), id); // the deck of the active map: "Nawabi Luck" / "Mana Adrushtam"
+    if (d) { DECKS[id].name = d.name; DECKS[id].blurb = d.blurb || DECKS[id].blurb; }
+  }
+});
+
 export const collectionOf = (tileOrGroup) => {
   const gid = typeof tileOrGroup === 'string' ? tileOrGroup : tileOrGroup?.group;
   return COLLECTIONS.find((c) => c.id === gid) || null;
@@ -208,7 +259,7 @@ function baseRentLadder(tile) {
   }
   if (Array.isArray(tile.rent)) return tile.rent.slice(0, MAX_LEVEL + 1);
   const base = Math.round((tile.price || 0) * 0.1);
-  return [base, round1000(base * 1.9), round1000(base * 3.5)].slice(0, MAX_LEVEL + 1);
+  return [base, round1000(base * 2.7), round1000(base * 4.4)].slice(0, MAX_LEVEL + 1);
 }
 
 export function upgradeCostOf(tile) {
@@ -217,7 +268,7 @@ export function upgradeCostOf(tile) {
     const c = Board.upgradeCost?.(tile);
     if (Number.isFinite(c)) return c;
   } catch { /* fall through */ }
-  return Math.round((tile.price || 0) * 0.5);
+  return Math.round((tile.price || 0) * 0.4);
 }
 
 export function mortgageOf(tile) {
@@ -259,7 +310,7 @@ const PIECES_FALLBACK = [
   { id: 'chai', name: 'Irani chai glass' }, { id: 'bat', name: 'Cricket bat' }, { id: 'camera', name: 'Film camera' },
 ];
 export const PIECES = Array.isArray(Board.PIECES) && Board.PIECES.length ? Board.PIECES : PIECES_FALLBACK;
-export const pieceName = (id) => PIECES.find((p) => p.id === id)?.name || '';
+export const pieceName = (id) => pieceNameOf(activeMapId(), id) || PIECES.find((p) => p.id === id)?.name || '';
 
 const MODES_FALLBACK = {
   standard: { id: 'standard', label: 'Standard City Hustle', rounds: 20, startCash: 1500000 },
@@ -366,10 +417,10 @@ export function tileTypeLabel(tile) {
     case 'start': return 'Start';
     case 'transport': return 'Transport';
     case 'card': return deckOf(tile)?.name || 'Card';
-    case 'traffic': return 'Traffic Jam';
-    case 'chai': return 'Chai Adda';
-    case 'municipal': return 'Municipal';
-    case 'auction': return 'Bazaar Auction';
+    case 'traffic': return termsOf(activeMapId()).trafficCorner;
+    case 'chai': return termsOf(activeMapId()).chaiCorner;
+    case 'municipal': return activeMapId() === 'hyderabad' ? 'Municipal' : termsOf(activeMapId()).municipalCorner;
+    case 'auction': return termsOf(activeMapId()).auctionTile;
     // old board
     case 'utility': return 'Utility';
     case 'kismet': return (KISMET_DECKS[tile.deck] || KISMET_DECKS.chance).name;

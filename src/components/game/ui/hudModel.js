@@ -45,10 +45,38 @@ export function ranksOf(players, worths) {
   return out;
 }
 
+/** Dots closer than this share of the track (about one dot width on a phone-sized bar) are one cluster. */
+export const RACE_CLUSTER_GAP = 0.04;
+/** Pixels between neighbouring dots of a cluster: a fan, each dot still shows its colour (and the ring of "me"). */
+export const RACE_FAN_PX = 13;
+
+/**
+ * Fans out dots that would sit on top of each other (equal net worth at the start of a game, or neck and neck).
+ * `runners` must be sorted back to front (ascending `frac`); sets `lane` (0 | 1 | 2: a tiny up / down zig-zag) and `dx`
+ * (px offset along the track) on each. The front-most (leader) dot keeps its true place when the cluster sits at the
+ * finish line, the back-most keeps it at the start line, otherwise the fan is centred on the cluster. Mutates + returns `runners`.
+ */
+export function spreadRunners(runners) {
+  let i = 0;
+  while (i < runners.length) {
+    let j = i + 1;
+    while (j < runners.length && runners[j].frac - runners[j - 1].frac < RACE_CLUSTER_GAP) j++;
+    const k = j - i;
+    const mid = (runners[i].frac + runners[j - 1].frac) / 2;
+    const shift = k === 1 ? 0 : mid >= 0.96 ? -(k - 1) : mid <= 0.04 ? 0 : -(k - 1) / 2; // in dot steps, for the first dot of the cluster
+    for (let n = 0; n < k; n++) {
+      runners[i + n].lane = k === 1 ? 0 : n % 3;
+      runners[i + n].dx = k === 1 ? 0 : Math.round((shift + n) * RACE_FAN_PX * 10) / 10;
+    }
+    i = j;
+  }
+  return runners;
+}
+
 /**
  * The net-worth race track. Everybody still in sits on a line from 0 to the win target (no target: to a little past the leader).
  *   -> { hasTarget, target, label, flag, runners: [{ id, name, color, worth, frac, isMe, rank, lane, lead }], sr } | null (fewer than 1 runner)
- * `runners` is drawn back to front (the leader last, so the leader sits on top). `lane` 0 | 1 | 2 nudges dots that would overlap.
+ * `runners` is drawn back to front (the leader last, so the leader sits on top). `lane` 0 | 1 | 2 + `dx` (px) fan out dots that would overlap.
  */
 export function raceModel({ players, worths, target = null, me = null, leaderId = null }) {
   const alive = (Array.isArray(players) ? players : []).filter((p) => !p.bankrupt);
@@ -61,13 +89,10 @@ export function raceModel({ players, worths, target = null, me = null, leaderId 
     .map((p) => {
       const worth = Number(worths?.[p.id]) || 0;
       const frac = hasTarget ? targetFraction(worth, span) : Math.max(0, Math.min(1, worth / span));
-      return { id: p.id, name: p.name, color: p.color, worth, frac, isMe: p.id === me, rank: ranks[p.id], lane: 0, lead: p.id === leaderId };
+      return { id: p.id, name: p.name, color: p.color, worth, frac, isMe: p.id === me, rank: ranks[p.id], lane: 0, dx: 0, lead: p.id === leaderId };
     })
     .sort((a, b) => a.frac - b.frac || b.rank - a.rank);
-  // dots that would sit on top of each other step up / down a lane
-  for (let i = 1; i < runners.length; i++) {
-    if (runners[i].frac - runners[i - 1].frac < 0.03) runners[i].lane = (runners[i - 1].lane + 1) % 3;
-  }
+  spreadRunners(runners);
   const standings = [...runners].reverse().map((r) => `${r.isMe ? 'You' : r.name} ${compactINR(r.worth)}`).join(', ');
   return {
     hasTarget,
@@ -108,7 +133,7 @@ export function hintLine(session, spec, activeName = '') {
     case 'buy': {
       const label = spec.primary?.label || 'Buy this district';
       const sec = spec.secondaries?.find((s) => s.key === 'skip');
-      const pass = sec ? (sec.label === 'Skip' ? 'skip it' : 'put it up for auction') : 'pass';
+      const pass = sec ? 'pass (it stays free, no auction)' : 'pass';
       return `${label} for ${spec.primary?.amount || 'its price'}, or ${pass}`;
     }
     case 'skip':

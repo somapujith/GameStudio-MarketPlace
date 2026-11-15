@@ -4,8 +4,9 @@ import { netStats } from '@/lib/netStats.js';
 import { createNetReporter } from '@/lib/rtt.js';
 import { api } from '@/lib/api.js';
 import { useAuth } from '@/lib/auth.jsx';
-import { isFatalRoomError, toConnection } from './gameHelpers.js';
+import { isFatalRoomError, roomKey, toConnection } from './gameHelpers.js';
 import { localClock } from '@/components/game/turn/clock.js';
+import { voiceEntryFromMessage } from '@/components/voice/voiceModel.js';
 
 // Socket + room state for ONE room code, with no game in it: the lobby, the generic online-game page and every
 // game plugin build on this. (It lives here, not in lib/session/useOnlineGame.js, so the lobby does not pull
@@ -70,7 +71,7 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
     netStats.reset();
     netStats.setStatus(sock.status);
     const reporter = createNetReporter({ send: (msg) => sock.send(msg, { queue: false }) });
-    const st = { fresh: true, gotRoom: false, lastSeq: -1, diagnosing: false, seen: new Set() };
+    const st = { fresh: true, gotRoom: false, lastSeq: -1, diagnosing: false, seen: new Set(), roomKey: null };
 
     const fail = (kind, message, reason) => {
       if (!alive) return;
@@ -124,7 +125,11 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
           if (!msg.room) break;
           st.gotRoom = true;
           if (msg.room.status === 'lobby') st.lastSeq = -1;
-          setRoom(msg.room);
+          const key = roomKey(msg.room);
+          if (key === null || key !== st.roomKey) {
+            st.roomKey = key;
+            setRoom(msg.room);
+          }
           break;
         }
         case 'state': {
@@ -152,6 +157,15 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
           if (typeof msg.ts === 'number') entry.ts = msg.ts;
           setChat((cur) => [...cur, entry].slice(-100));
           handlers.current.onChat?.(entry);
+          break;
+        }
+        case 'voice': {
+          // A voice line someone played (soundboard). Looked up in the catalogue; an unknown id or a replay is dropped.
+          // It shows up in the history like an emote and VoiceHost (components/voice) plays it. Never touches game state.
+          const entry = voiceEntryFromMessage(msg);
+          if (!entry || st.seen.has(entry.id)) break;
+          st.seen.add(entry.id);
+          setChat((cur) => [...cur, entry].slice(-100));
           break;
         }
         case 'error': {

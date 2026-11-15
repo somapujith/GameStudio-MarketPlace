@@ -1,9 +1,9 @@
-// Server adapter for Hyderabad Tycoon (Hyderabad Hustle rules; docs/MARKETPLACE.md section 5, docs/GAME_RULES.md).
+// Server adapter for Kingpin (Hyderabad Hustle rules; docs/MARKETPLACE.md section 5, docs/GAME_RULES.md).
 // Everything the generic GameRoom / persistence code needs to know about this game lives here: it wraps the rules
 // engine (shared/index.js) and the Tycoon-only helpers worker/{mask,settings,validate}.js.
 import * as engine from '../../shared/index.js';
 import { MAX_LEVEL, BOARD_SIZE, PIECES } from '../../shared/board.js';
-import { ANIM_MS, LONG_TRIP, MAX_ANIM_MS, TRADE_MS, SNATCH_GRACE_MS, AUTO_MOVE_MS, BID_MOVE_MS, START_ANIM_MS, cardMs, eventMs, turnMsOf, tradeMsOf } from '../../shared/timing.js';
+import { ANIM_MS, LONG_TRIP, MAX_ANIM_MS, TRADE_MS, SNATCH_GRACE_MS, AUCTION_GRACE_MS, AUTO_MOVE_MS, BID_MOVE_MS, START_ANIM_MS, cardMs, eventMs, turnMsOf, tradeMsOf, auctionMsOf } from '../../shared/timing.js';
 import { maskStateFor } from '../mask.js';
 import { sanitizeSettings, normalizeSettings, mergeSettingsPatch, ROOM_DEFAULTS, MAX_PLAYERS_MIN, MAX_PLAYERS_MAX } from '../settings.js';
 import { sanitizeAction, EMOTES } from '../validate.js';
@@ -83,6 +83,9 @@ export function estimateAnimMs(events, state = null) {
         break;
       case 'card':
         ms += cardMs(ev);
+        break;
+      case 'skip':
+        ms += A.quiet;
         break;
       case 'auction_start':
         ms += A.auctionStart;
@@ -186,7 +189,7 @@ const MODE_SUMMARY = (s) => engine.modeSummary(s.mode, s.targetWorth);
 
 const adapter = {
   id: ID,
-  name: 'Hyderabad Tycoon',
+  name: 'Kingpin',
   minPlayers: MAX_PLAYERS_MIN,
   maxPlayers: MAX_PLAYERS_MAX,
   defaultMaxPlayers: 4,
@@ -215,7 +218,9 @@ const adapter = {
 
   /** One line for open-table cards, e.g. "Standard City Hustle · 20 rounds · richest wins · ₹50L target". */
   summarize(settings) {
-    return MODE_SUMMARY(normalizeSettings(settings));
+    const s = normalizeSettings(settings);
+    const map = engine.mapOf(s);
+    return map.id === engine.DEFAULT_MAP ? MODE_SUMMARY(s) : `${MODE_SUMMARY(s)} · ${map.name} map`;
   },
 
   /** How many host rules differ from the stock rules of the room's mode (open-table cards say "Custom rules" above 0). */
@@ -281,6 +286,19 @@ const adapter = {
         anchor: 'apply',
       }];
     }
+    // The sealed-auction window: when it ends everyone who has not bid passes (AUCTION_CLOSE, server-only). Its key
+    // carries the auction's own number so two auctions in a row are two timers; it counts from the end of the
+    // animation that opened the sheet, and it survives a restart (the room stores the start of every timer).
+    if (state && state.phase === 'auction' && state.pending && state.pending.type === 'auction') {
+      const pend = state.pending;
+      const turnPlayer = state.players[state.turn];
+      return [{
+        key: `auction:${pend.id ?? `${state.turnCount ?? 0}:${pend.tile}`}`,
+        afterMs: (Number.isFinite(pend.ms) ? pend.ms : auctionMsOf(state.cfg)) + AUCTION_GRACE_MS,
+        playerId: turnPlayer ? turnPlayer.id : null,
+        action: { type: 'AUCTION_CLOSE' },
+      }];
+    }
     const t = state && state.phase !== 'over' ? state.trade : null;
     if (!t) return [];
     const to = state.players.find((p) => p.id === t.to);
@@ -294,6 +312,8 @@ const adapter = {
   /** Auto-play for an AFK / disconnected player. Ignoring a trade offer means rejecting it. */
   idleAction(state, playerId) {
     if (state && state.phase === 'snatch') return null; // auto-play never snatches and never acts during the window
+    // An AFK or disconnected bidder is passed when the auction window ends (AUCTION_CLOSE), never earlier.
+    if (state && state.phase === 'auction' && state.pending && state.pending.type === 'auction') return null;
     const t = state && state.trade;
     if (t) {
       if (t.to === playerId) return { type: 'TRADE_REJECT', playerId };

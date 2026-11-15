@@ -1,6 +1,6 @@
-# GameHub: Hyderabad Tycoon
+# GameHub: Kingpin
 
-GameHub is a small online games marketplace; **Hyderabad Tycoon** is its first (and so far only live) game: a Monopoly-style
+GameHub is a small online games marketplace; **Kingpin** is its first (and so far only live) game: a Monopoly-style
 property game on a 40-square Hyderabad board, for 2-6 friends, played in a private room. React 19 + Vite on the front, one Cloudflare Worker
 (Hono) with Durable Objects for real-time rooms, Neon Postgres for accounts / friends / match history, Google Sign-In or guest play.
 
@@ -48,12 +48,12 @@ Without `GOOGLE_CLIENT_ID` the Google button is hidden (`/api/config` returns `g
 
 Old links to the retired bots / open tables / story / campaign screens (`/play`, `/campaign`, `/story`, `/settings`, `/games/:id/play|tables|x/*`, `/play/:id/offline`) redirect. Every URL is built by `paths` in `src/platform/paths.js`; the full table with helpers is in [`docs/MARKETPLACE.md`](docs/MARKETPLACE.md) section 2. Public pages also ship `public/robots.txt`, a web app manifest with shortcuts, a service worker (push + branded offline page) and Open Graph / Twitter card metadata in `index.html`.
 
-## Hyderabad Tycoon in 60 seconds
+## Kingpin in 60 seconds
 
 * **One die.** Everyone starts with ₹15,000 at the airport (START) and walks clockwise around 40 squares. Roll one die; **a six rolls again**. Passing or landing on START pays ₹2,000. Dice are *lucky* by default (a small, disclosed help for whoever is behind) or *fair*.
-* **Buy, build, collect.** Buy a free property, station or utility; skip it and a sealed-bid auction opens. A full colour set doubles base rent and lets you build (Kirana, Apartments, Mall, Tower, Hotel). Mortgage, sell buildings, trade with other players, draw Nawab ka Farman / Hyderabadi Khazana cards, pay GHMC tax.
+* **Buy, build, collect.** Buy a free property, station or utility; pass and it simply stays free (there is no auction, so Snatch cannot be dodged). A full colour set doubles base rent and lets you build (Kirana, Apartments, Mall, Tower, Hotel). Mortgage, sell buildings, trade with other players, draw Nawab ka Farman / Hyderabadi Khazana cards, pay GHMC tax.
 * **Jail.** Go to Jail, a card or a trap sends you to Chanchalguda Jail: roll a six, pay ₹500 bail or use a Get Out of Jail Free card; a failed roll costs one turn.
-* **Short of cash?** The debt phase lets you mortgage and sell to pay; if you still cannot, you are bankrupt and your assets go to the creditor (or the bank). You can also resign.
+* **Short of cash?** The debt phase lets you mortgage and sell to pay; if you still cannot, you are bankrupt: the bank takes ALL your cash and districts, and only the amount you owe is paid to the player you owe, by the bank, up to what your assets were worth. You can also resign (same rule).
 * **Win** by reaching the end cash limit in net worth first, by being the last player standing, or by being richest when the round limit (50 by default) runs out.
 * **Five features on top:**
   * **Snatch**: everyone starts with a Snatch token; when someone buys a property the others get a 3-second window to grab it for free (the buyer still pays). Several snatchers bid in sealed bidding.
@@ -61,6 +61,8 @@ Old links to the retired bots / open tables / story / campaign screens (`/play`,
   * **Tokens**: earn more (max 3) every third lap and by landing on the Irani Chai & Biryani Break square.
   * **City events**: every fifth round a random event (monsoon, IPL night, metro strike, tax holiday, Bonalu gift) changes rents, taxes or cash for that round.
   * **Traps**: each player secretly places one trap before rolling; the first other player to land on it goes straight to jail.
+
+* **Two maps, one board.** The host picks the map in the lobby: **Charminar Chaos** (the Hyderabad map, the default) or **Andhra Aatalu** (ఆంధ్ర ఆటలు), a skin built from `Andhra_Empire_Game_Concept.md`: same 36 tiles, prices and rules, other names, collections, card decks (Mana Adrushtam, Oori Kaburlu) and city events. See `docs/GAME_RULES.md` section 15; `node scripts/simulate.js --map andhra` plays bots on it.
 
 The complete rules, state machine and wire protocol are in [`docs/GAME_RULES.md`](docs/GAME_RULES.md).
 
@@ -222,7 +224,7 @@ Friend codes are `HYD-XXXX` and room codes 6 characters, both from `ABCDEFGHJKLM
 
 ### Room settings (validated server-side, in the route *and* again in the room)
 
-Every room has two shared settings that are not part of any game: `visibility` (`private` by default; the app always creates private rooms, `public` is still accepted by the API) and `maxPlayers` (within the game's `minPlayers..maxPlayers`; also accepted inside `settings`). Everything else belongs to the game and is validated by its adapter (`validateSettings`, the source of truth). Hyderabad Tycoon:
+Every room has two shared settings that are not part of any game: `visibility` (`private` by default; the app always creates private rooms, `public` is still accepted by the API) and `maxPlayers` (within the game's `minPlayers..maxPlayers`; also accepted inside `settings`). Everything else belongs to the game and is validated by its adapter (`validateSettings`, the source of truth). Kingpin:
 
 | Setting | Accepted | Default |
 |---|---|---|
@@ -230,7 +232,6 @@ Every room has two shared settings that are not part of any game: `visibility` (
 | `startCash` | integer 5,000 – 100,000 | 15,000 |
 | `maxRounds` | exactly `30`, `50` or `null` (unlimited) | 50 |
 | `dice` | `'lucky'` or `'fair'` | `'lucky'` |
-| `auctionOnDecline` | boolean | `true` |
 | `snatches` (Snatch tokens each player starts with; 0 switches tokens, Shield and Snatch off) | integer 0 – 3 | 1 |
 | `snatchMs` (length of the Snatch window) | integer 1,000 – 10,000 | 3,000 |
 | `maxPlayers` | integer 2 – 6 (also accepted inside `settings`) | 4 |
@@ -259,7 +260,7 @@ Every message, field, error string, event, timer and redaction rule is specified
 
 `db/schema.sql` (idempotent, additive only): `users`, `friendships` (one row per pair, enforced by a unique index on `(LEAST, GREATEST)`), `matches` (`game_id` (default `hyderabad-tycoon`), `rounds`, `goal`, `max_rounds` (NULL = unlimited), `dice_mode`, `win_reason`: `'last_standing'`, `'target'` (net-worth win target) or `'rounds'`), `match_players` (`hotels_built`, ranks, final worth), `user_game_stats` (`games`, `wins`, `best_score`, `rating`, `extra` per user and game) and `rooms` (the listing behind open tables and "continue playing"; a room's Durable Object keeps its row in step and deletes it on expiry, queries ignore rows older than 24 h). `node scripts/migrate.js` applies it statement by statement (it refuses anything that is not `CREATE … IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`, plus the one-time `user_game_stats` backfill, an `INSERT … ON CONFLICT DO NOTHING`) and prints only table names and row counts.
 
-* **Stats.** When a game ends, one atomic statement (guarded by `ON CONFLICT (id) DO NOTHING`, so a retry never counts twice) writes the match with its `game_id` and `match_players`, adds `xp` / `coins` (platform-wide, same formula for every game), upserts `user_game_stats` and - for Hyderabad Tycoon only - keeps the legacy `users.games` / `wins` / `best_worth` / `rent_earned` columns up to date, so the previous version of the app keeps working during a rollout. Matches played on the previous version are not added to `user_game_stats`.
+* **Stats.** When a game ends, one atomic statement (guarded by `ON CONFLICT (id) DO NOTHING`, so a retry never counts twice) writes the match with its `game_id` and `match_players`, adds `xp` / `coins` (platform-wide, same formula for every game), upserts `user_game_stats` and - for Kingpin only - keeps the legacy `users.games` / `wins` / `best_worth` / `rent_earned` columns up to date, so the previous version of the app keeps working during a rollout. Matches played on the previous version are not added to `user_game_stats`.
 * **Rating** (`worker/rating.js`): Elo-style, new players start at 1000. For every player in a match: `actual = (N - rank) / (N - 1)`, `expected = 1 / (1 + 10^((opponentAverage - own) / 400))` where `opponentAverage` is the mean rating of the other seats, `delta = round(24 * (actual - expected))`, `rating = max(100, rating + delta)`.
 * **Rollout order.** Migrate first, then deploy (the deploy workflow does exactly that): the new Worker needs the new columns and tables, while the previous Worker ignores them, so the migration is safe to run ahead of time and rolling the code back needs no database change.
 

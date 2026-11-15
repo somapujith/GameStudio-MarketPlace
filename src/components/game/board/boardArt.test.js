@@ -63,7 +63,7 @@ describe('tipModel', () => {
     expect(row(m, 'Price')).toBe('₹3,40,000');
     expect(row(m, 'Owner')).toBe('Nobody yet');
     expect(m.ladder.map((l) => l.name)).toEqual(['Startup Office', 'Business Centre', 'Tech Campus']);
-    expect(m.ladder.map((l) => l.rent)).toEqual([34000, 65000, 119000]);
+    expect(m.ladder.map((l) => l.rent)).toEqual([34000, 92000, 150000]);
     expect(m.ladder.some((l) => l.current)).toBe(false);
     expect(m.foot).toBeTruthy();
   });
@@ -71,13 +71,13 @@ describe('tipModel', () => {
   it('an owned district: the owner, the level now and the rent it pays', () => {
     const m = tipModel(TILES[31], { owner, level: 1 });
     expect(row(m, 'Owner')).toBe('Asha');
-    expect(row(m, 'Rent')).toBe('₹65,000');
+    expect(row(m, 'Rent')).toBe('₹92,000');
     expect(m.status).toBe('Business Centre');
     expect(m.ladder.map((l) => l.current)).toEqual([false, true, false]);
   });
 
   it('follows the table rent level', () => {
-    expect(row(tipModel(TILES[31], { owner, level: 1, rentPct: 150 }), 'Rent')).toBe('₹97,500');
+    expect(row(tipModel(TILES[31], { owner, level: 1, rentPct: 150 }), 'Rent')).toBe('₹1,38,000');
     expect(tipModel(TILES[31], { owner, level: 0, rentPct: 50 }).ladder[0].rent).toBe(17000);
   });
 
@@ -178,9 +178,9 @@ describe('Pawn extras', () => {
     expect(out).toContain('--gx:0');
   });
 
-  it('gives only the pawn whose turn it is a halo', () => {
-    expect(pawn({ isTurn: true })).toContain('hb-pawn__halo');
-    expect(pawn()).not.toContain('hb-pawn__halo');
+  it('gives only the pawn whose turn it is a beacon', () => {
+    expect(pawn({ isTurn: true })).toContain('hb-pawn__beacon');
+    expect(pawn()).not.toContain('hb-pawn__beacon');
   });
 });
 

@@ -20,7 +20,7 @@ function sess({ turn = 0, options = { roll: true }, extra = {}, view = {}, cfg =
   const players = ALL;
   const v = {
     phase: 'roll', turn, round: 7, players, owners: Array(TILES.length).fill(null), levels: Array(TILES.length).fill(0), mortgaged: [], pending: null, trade: null, dice: [4],
-    cfg: { mode: 'standard', maxRounds: 20, targetWorth: 5000000, auctionOnDecline: true, ...cfg }, ...view,
+    cfg: { mode: 'standard', maxRounds: 20, targetWorth: 5000000, ...cfg }, ...view,
   };
   return { me: 'me', view: v, display: { ...v }, options, busy: false, rolling: false, log: [], chat: [], connection: 'open', sendChat() {}, dispatch() {}, ...extra };
 }

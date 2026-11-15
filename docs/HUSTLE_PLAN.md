@@ -1,7 +1,7 @@
 # Hyderabad Hustle rules + GameHub UI overhaul — build contract
 
 Source of the rules: `Hyderabad_Hustle_Game_Concept.md` (repo root). Product decisions (owner, 2026-11-15):
-the live game keeps its id `hyderabad-tycoon` and name **Hyderabad Tycoon**, but its rules are **replaced** by the Hustle ruleset below;
+the live game keeps its id `hyderabad-tycoon` and name **Hyderabad Tycoon** (since renamed **Kingpin**; the Hyderabad map is now **Charminar Chaos**), but its rules are **replaced** by the Hustle ruleset below;
 online only (no pass-and-play); **one die** (a six rolls again, as today); everything else uses the concept doc's recommended defaults.
 Snatch, Shield, Traps and the Get-Out-of-Jail card are **removed**. The hub/UI/animation plan runs in parallel.
 
@@ -41,7 +41,7 @@ accent (Tycoon: saffron/gold `#ffc857` -> `#ff8a3d`), big friendly display type,
 | Path | What |
 |---|---|
 | `shared/timing.js` | `ANIM_MS` (all presenter delays incl. new `ride`, `chai`, `turn`), `LONG_TRIP`, `MAX_ANIM_MS`, reading-time helpers `readMs` / `cardMs` / `eventMs`, and the human decision limits (`DECISION_MS` 60 s, `TRADE_MS` 45 s, `WARN_MS` 15 s). Single source for client pacing AND the server's `estimateAnimMs`. |
-| `shared/cosmetics.js` | `COSMETICS` catalogue (kinds `frame`, `dice`, `title`), `COSMETIC_KINDS`, `FREE_COSMETICS`, `cosmeticById`, `cleanEquipped(raw)`. |
+| `shared/cosmetics.js` | `COSMETICS` catalogue (kinds `frame`, `dice`, `title`, plus the owned-only `voice`), `COSMETIC_KINDS`, `EQUIPPABLE_KINDS`, `FREE_COSMETICS`, `cosmeticById`, `cleanEquipped(raw)`, `voiceLines()`, `isVoiceId(id)`, `voiceSrc(id)`, `VOICE_LIMITS` / `VOICE_COOLDOWN_MS` / `VOICE_BURST`. |
 | `src/lib/haptics.js` | `buzz(kind)` |
 | `src/lib/storage.js` | settings now also hold `theme: 'system'\|'dark'\|'light'`, `playbackSpeed: 0.75\|1\|1.5\|2`, `haptics: boolean` (`THEMES`, `PLAYBACK_SPEEDS`). Level curve now matches the server (`100 + (L-1)*50` per level). |
 | `src/lib/api.js` | `getMyRooms getOpenRooms getGamesLive claimDailyReward getMyMatches getShop buyCosmetic equipCosmetic getInvites dismissInvite getPushKey pushSubscribe pushUnsubscribe` (shapes in section 4). |
@@ -112,10 +112,10 @@ Tiles are **fictional commercial ventures** in the precincts (heritage rule), ea
 
 ### 3.2 Economy
 * Start cash 15,00,000 (`quick` mode 20,00,000). START pays **2,00,000** when passed or landed on (once per move; backwards never pays).
-* Buying: land on an unowned property -> buy at price, or skip -> sealed auction (City Takeover; `auctionOnDecline` default true). Unaffordable -> no buy offer, straight to auction.
-* **Levels:** a bought district is level 0 (its first business, `levelNames[0]`). `MAX_LEVEL = 2`. Upgrade cost = 50% of price (30,000 - 2,00,000).
+* Buying: land on an unowned property -> buy at price, or pass -> the district stays free (**no auction**, so nobody can dodge Snatch; the old `auctionOnDecline` rule is retired and ignored). Unaffordable -> no buy offer, it stays free.
+* **Levels:** a bought district is level 0 (its first business, `levelNames[0]`). `MAX_LEVEL = 2`. Upgrade cost = 40% of price (24,000 - 1,60,000; see docs/GAME_RULES.md 5.1).
   Upgrading needs the **whole collection** (you own every district of the tile's `group`; mortgaged siblings still count; levels already built stay if the set is later broken), no even-building rule, the tile unmortgaged, your turn in `roll`/`manage`, cash >= cost. Reason: `Own all 3 districts of <collection> first (you have N)`.
-* **Rent** = `rentTable(tile) = [base, round1000(base*1.9), round1000(base*3.5)]` with base = 10% of price (HITEC: 34,000 / 65,000 / 1,19,000->1,19,000).
+* **Rent** = `rentTable(tile) = [base, round1000(base*2.7), round1000(base*4.4)]` with base = 10% of price (HITEC: 34,000 / 92,000 / 1,50,000).
   **Full set bonus: 1.5x on level-0 tiles only.** Mortgaged tiles collect nothing. City events multiply on top (3.6).
 * Selling an upgrade (`SELL_BUILDING`) refunds 50% of its cost. Mortgage = 50% of price, lifting costs +10%. Mortgage needs level 0.
 * **Net worth** = cash + price of each owned unmortgaged property + (price - mortgage value) for mortgaged ones + 50% of upgrade costs paid - unpaid debt.
@@ -141,7 +141,7 @@ Tiles are **fictional commercial ventures** in the precincts (heritage rule), ea
 
 Win: last player standing, or highest **net worth** when the last round ends (tie: more cash, then seat order; `standings()` must agree with the winner).
 `winReason: 'last_standing' | 'target' | 'rounds'`. **Win target (added 2026-11-15):** host setting `targetWorth` (`null` | ₹25L | ₹30L | ₹40L | ₹50L | ₹75L | ₹1Cr; default ₹50L for standard and quick, ₹30L for classic, which cannot be switched off): the first player whose net worth reaches it wins at once (only when no debt, auction or trade is pending); `state.cfg.targetWorth`, `win` event `reason: 'target'`. See `GAME_RULES.md` 7.4.
-Host settings: `mode` and `targetWorth` (another mode resets the target), `dice: 'lucky'|'fair'` (default lucky), `auctionOnDecline` (default true), `maxPlayers` 2-6. **Host rules (added 2026-11-15): the host customises every rule** (`startCash passStart targetWorth rentPercent trafficFine turnSeconds tradeSeconds maxRounds dice auctionOnDecline requireFullSet eventEvery chaiCap` + the three Snatch keys): one source of truth `shared/ruleSettings.js`, read from `state.cfg`; table in `GAME_RULES.md` section 2, wire in `CONTRACT.md` 3e; a mode change resets only `startCash`, `maxRounds`, `targetWorth`.
+Host settings: `mode` and `targetWorth` (another mode resets the target), `dice: 'lucky'|'fair'` (default lucky), `maxPlayers` 2-6. **Host rules (added 2026-11-15): the host customises every rule** (`startCash passStart targetWorth rentPercent trafficFine turnSeconds tradeSeconds maxRounds dice requireFullSet eventEvery chaiCap` + the three Snatch keys): one source of truth `shared/ruleSettings.js`, read from `state.cfg`; table in `GAME_RULES.md` section 2, wire in `CONTRACT.md` 3e; a mode change resets only `startCash`, `maxRounds`, `targetWorth`.
 
 ### 3.5 Pieces
 `PIECES = [{id:'pearl',name:'Pearl'},{id:'auto',name:'Auto-rickshaw'},{id:'handi',name:'Biryani handi'},{id:'chai',name:'Irani chai glass'},{id:'bat',name:'Cricket bat'},{id:'camera',name:'Film camera'}]` (in `shared/board.js`).
@@ -156,7 +156,7 @@ Drawn when the round number becomes a multiple of **3** (never round 1), lasting
 
 ### 3.7 State, actions, options, events (deltas vs docs/GAME_RULES.md section 8)
 * `phase`: `roll | buy | auction | manage | debt | over` (no `snatch`).
-* `cfg`: `{ mode, startCash, passStart, maxRounds|null, dice, auctionOnDecline, trafficFine, chaiCap }`.
+* `cfg`: `{ mode, startCash, passStart, maxRounds|null, dice, trafficFine, chaiCap }`.
 * `owners[36]`, `levels[36]` (0-2), `mortgaged[36]`. `state.ride = null | { player, from, to, fare }` (offer open for the turn player).
 * Player: `{ id, name, avatar, color, piece, cash, pos, stuck, chai, laps, bankrupt, sixes, rollsSinceSix, rentStreak, rentThisTurn, lastOfferTurn,
   stats: { rentPaid, rentEarned, taxPaid, propertiesBought, upgrades, biggestRent, rides, chaiSaved } }`. Removed: `jailTurns jailCards snatches traps`. `state.traps` removed.
@@ -189,7 +189,7 @@ The client `playbackSpeed` setting may only make playback faster (>= 1) or sligh
 * `GET /api/me` -> user gains `daily: { streak, lastClaim /*'YYYY-MM-DD' IST or null*/, canClaim, nextReward }` and `equipped: { frame?, dice?, title? }`.
 * `POST /api/me/daily` (requireUser) -> `{ reward, streak, coins, daily }`; 409 `{error:'Already claimed today.'}`. IST (Asia/Kolkata) calendar days; streak +1 if the last claim was yesterday else 1; reward `100 + 50*min(streak,6)` (150..400).
 * `GET /api/me/matches?limit=20` (requireUser, max 50) -> `{ matches: [{ id, gameId, endedAt, rounds, playerCount, rank, won, score, players: [{ name, avatar, rank, score, isMe }] }] }`.
-* `GET /api/shop` (session optional; signed-out -> owned = free only) -> `{ items: [{ id, kind, name, price, rarity, colors?, owned, equipped }], coins, equipped }`.
+* `GET /api/shop` (session optional; signed-out -> owned = free only) -> `{ items: [{ id, kind, name, price, rarity, colors?, icon?, emoji?, src?, durationMs?, caption?, owned, equipped }], coins, equipped }`. Kind `voice` (voice lines: Sheru Bhai 1000 coins, Ladle Meow 800 coins, Old Man 600 coins) is **owned-only**: it carries `icon`/`emoji` (the symbol), `src` (`/audio/voice/<name>.mp3`, served from `public/`), `durationMs` and `caption`, is bought with the same `POST /api/shop/buy`, and is never `equipped` (`POST /api/shop/equip` with kind `voice` -> 400). The owner plays it in a room with `{t:'voice', id}`; see `CONTRACT.md` section 9b.
 * `POST /api/shop/buy { itemId }` -> `{ coins, owned: string[] }`; 400 unknown item, 402 `Not enough coins.`, 409 `Already owned.` (atomic: coins checked and spent in one UPDATE).
 * `POST /api/shop/equip { kind, itemId|null }` -> `{ equipped }`; 403 when not owned.
 * `GET /api/leaderboard?game=` rows gain `isMe`, `rating`, `level`, `frame`, `title`; response gains `me: row|null` (the caller's own row and rank even outside the top N).
@@ -199,7 +199,7 @@ The client `playbackSpeed` setting may only make playback faster (>= 1) or sligh
 
 ## 5. Manifest additions (`src/games/hyderabad-tycoon/manifest.js`)
 `tagline` "Own the city. Survive the madness." · `description` from the concept pitch · `duration` '35-60 min' · `features` · `createHint` (the line under Create table) ·
-`howToPlay: [{ title, text }]` (4 steps: Roll, Buy or auction, Upgrade, Richest after the last round wins) · `pieces: PIECES` · `badges: [{ id, label, desc, stat, target, icon }]`
+`howToPlay: [{ title, text }]` (4 steps: Roll, Buy or pass, Upgrade, Richest after the last round wins) · `pieces: PIECES` · `badges: [{ id, label, desc, stat, target, icon }]`
 (game-specific badges such as "Landlord: collect ₹5,00,000 in rent") · `stats` adds `{ key: 'rating', label: 'Rating' }` · `lobbySettings: ['mode', 'targetWorth']` · `tableRules` · `summarize`.
 
 ## 6. Work packages (owner = only agent allowed to edit)

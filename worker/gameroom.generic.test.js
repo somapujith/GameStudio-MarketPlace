@@ -1,6 +1,6 @@
 // GameRoom must be game-agnostic: this file defines a trivial second game ("Counter Race") inside
 // the test, registers it as an adapter and drives the Durable Object through the same code paths
-// Hyderabad Tycoon uses. Nothing here knows about properties, dice or auctions.
+// Kingpin uses. Nothing here knows about properties, dice or auctions.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('cloudflare:workers', () => ({
@@ -637,7 +637,7 @@ describe('rooms stored by the previous version keep working', () => {
     ...over,
   });
 
-  it('a record without gameId / visibility is a private Hyderabad Tycoon room', async () => {
+  it('a record without gameId / visibility is a private Kingpin room', async () => {
     const ctx = makeCtx();
     ctx.store.set('room', oldRecord());
     const h = await new Harness({}, ctx).loaded();
@@ -648,7 +648,8 @@ describe('rooms stored by the previous version keep working', () => {
     expect(host.last('room').room).toMatchObject({ gameId: 'hyderabad-tycoon', visibility: 'private', status: 'lobby' });
     // the old rules' lobby settings (end-cash goal, round limit) give way to the Hustle defaults; dice / auction are kept
     const settings = host.last('room').room.settings;
-    expect(settings).toMatchObject({ mode: 'standard', dice: 'lucky', auctionOnDecline: true, passStart: expect.any(Number) });
+    expect(settings).toMatchObject({ mode: 'standard', dice: 'lucky', passStart: expect.any(Number) });
+    expect(settings).not.toHaveProperty('auctionOnDecline');
     expect(settings).not.toHaveProperty('goal');
     // a seat stored before pieces existed gets the first free one when it reconnects to the lobby
     expect(host.last('room').room.players[0]).toMatchObject({ id: U(1), piece: GAME_ADAPTERS['hyderabad-tycoon'].pieces[0], connected: true });

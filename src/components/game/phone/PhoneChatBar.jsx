@@ -7,6 +7,10 @@ import { useEffect, useRef, useState } from 'react';
 import Icon from '../ui/Icon.jsx';
 import { getPlayer } from '../ui/helpers.js';
 import { QUICK_EMOTES, emoteInfo } from '../turn/emotes.js';
+import VoicePads from '../../voice/VoicePads.jsx';
+import VoiceIcon from '../../voice/VoiceIcon.jsx';
+import { useVoiceAccess } from '../../voice/useVoiceAccess.js';
+import { voiceItem } from '../../voice/voiceModel.js';
 
 export const COOLDOWN_MS = 1500;
 const SHOWN = 30;
@@ -22,13 +26,15 @@ const Smile = ({ size = 24 }) => (
 export function Message({ session, message }) {
   const player = getPlayer(session, message.from);
   const em = message.emote ? emoteInfo(message.emote) : null;
+  const vo = message.voice ? voiceItem(message.voice) : null;
   return (
-    <li className={em && !message.text ? 'is-emote' : undefined}>
+    <li className={(em || vo) && !message.text ? 'is-emote' : undefined}>
       <b style={{ color: player?.color }}>{message.from === session.me ? 'You' : player?.name || message.name || 'Player'}</b>
       <span>
         {message.text || null}
         {em ? <span>{message.text ? ' ' : ''}{em.emoji} {em.label}</span> : null}
-        {!message.text && !em ? '👋' : null}
+        {vo ? <span className="vl-line"><VoiceIcon item={vo} size={18} /> {vo.name}</span> : null}
+        {!message.text && !em && !vo ? '👋' : null}
       </span>
     </li>
   );
@@ -38,6 +44,7 @@ export default function PhoneChatBar({ session }) {
   const [text, setText] = useState('');
   const [panel, setPanel] = useState(null); // null | 'emoji' | 'history'
   const [cool, setCool] = useState(false);
+  const voice = useVoiceAccess();
   const [seen, setSeen] = useState(() => (session.chat || []).length);
   const timer = useRef(0);
   const root = useRef(null);
@@ -92,6 +99,7 @@ export default function PhoneChatBar({ session }) {
               <span aria-hidden="true">{e.emoji}</span>
             </button>
           ))}
+          <div className="vl-phone"><VoicePads session={session} access={voice} variant="phone" /></div>
         </div>
       ) : null}
       {panel === 'history' ? (

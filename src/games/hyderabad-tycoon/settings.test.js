@@ -17,17 +17,19 @@ import {
   settingsSummary,
   snatchNote,
 } from './settings.js';
+import { DEFAULT_MAP } from '@shared/maps.js';
 import { fieldOptions, formatValue, resolveSettings, settingsMessage } from '@/components/online/settings.js';
 
 const field = (key) => SETTINGS_SCHEMA.find((f) => f.key === key);
 
 describe('settings schema vs worker/settings.js', () => {
   it('describes exactly the host settings the server accepts', () => {
-    expect(SETTINGS_SCHEMA.map((f) => f.key).sort()).toEqual(Object.keys(server.ROOM_DEFAULTS).sort());
+    // the rooms store the mode and the rules; the map (a picker, not a rule) is stored only when it is not the home map
+    expect(SETTINGS_SCHEMA.map((f) => f.key).sort()).toEqual([...Object.keys(server.ROOM_DEFAULTS), 'map'].sort());
   });
 
   it('uses the server defaults, which are the engine defaults', () => {
-    for (const f of SETTINGS_SCHEMA) expect(f.default, f.key).toEqual(server.ROOM_DEFAULTS[f.key]);
+    for (const f of SETTINGS_SCHEMA) expect(f.default, f.key).toEqual(f.key === 'map' ? DEFAULT_MAP : server.ROOM_DEFAULTS[f.key]);
     expect(server.ROOM_DEFAULTS).toEqual(DEFAULT_SETTINGS);
   });
 
@@ -69,7 +71,7 @@ describe('settings schema vs worker/settings.js', () => {
 
   it('picking another mode resets the target to its default, exactly like the server', () => {
     const msg = (current, patch) => settingsMessage(SETTINGS_SCHEMA, current, patch).settings;
-    const cur = { mode: 'standard', dice: 'lucky', auctionOnDecline: true, targetWorth: 4000000 };
+    const cur = { mode: 'standard', dice: 'lucky', targetWorth: 4000000 };
     expect(msg(cur, { mode: 'classic' }).targetWorth).toBe(3000000);
     expect(msg(cur, { mode: 'quick' }).targetWorth).toBe(5000000);
     expect(msg(cur, { mode: 'standard' }).targetWorth).toBe(4000000); // the same mode again: no reset
@@ -77,7 +79,7 @@ describe('settings schema vs worker/settings.js', () => {
     expect(msg(cur, { mode: 'classic', targetWorth: 7500000 }).targetWorth).toBe(7500000);
     expect(msg({ ...cur, mode: 'classic', targetWorth: null }, { mode: 'standard' }).targetWorth).toBe(5000000);
     // the full set goes out: the mode and every rule the server stores
-    expect(Object.keys(msg(cur, { mode: 'classic' })).sort()).toEqual(Object.keys(server.ROOM_DEFAULTS).sort());
+    expect(Object.keys(msg(cur, { mode: 'classic' })).sort()).toEqual([...Object.keys(server.ROOM_DEFAULTS), 'map'].sort());
     // the server agrees with every combination the lobby can send
     for (const from of ['standard', 'quick', 'classic']) {
       for (const to of ['standard', 'quick', 'classic']) {
@@ -91,7 +93,7 @@ describe('settings schema vs worker/settings.js', () => {
     // a room from before a rule existed shows the default of ITS mode, exactly what the server stores for it
     const old = { mode: 'classic', dice: 'fair' };
     expect(resolveSettings(SETTINGS_SCHEMA, old).targetWorth).toBe(3000000);
-    expect(resolveSettings(SETTINGS_SCHEMA, old)).toEqual(server.normalizeSettings(old));
+    expect(resolveSettings(SETTINGS_SCHEMA, old)).toEqual({ ...server.normalizeSettings(old), map: DEFAULT_MAP });
   });
 
   it('every value the UI offers passes the server validation, as is', () => {
@@ -130,6 +132,16 @@ describe('settings schema vs worker/settings.js', () => {
       expect('default' in f).toBe(true);
       if (f.type === 'segmented') expect(f.options.length).toBeGreaterThan(1);
     }
+  });
+});
+
+describe('auction timer in the lobby editor', () => {
+  it('appears as a stepper in the Timers group, after the trade timer, with the shared range', () => {
+    const f = field('auctionSeconds');
+    expect(f).toMatchObject({ group: 'timers', type: 'stepper', unit: 'seconds', min: 10, max: 90, step: 5, default: 20, label: 'Auction timer' });
+    const keys = SETTINGS_SCHEMA.map((x) => x.key);
+    expect(keys.indexOf('auctionSeconds')).toBe(keys.indexOf('tradeSeconds') + 1);
+    expect(LOBBY_SETTINGS).toContain('auctionSeconds');
   });
 });
 

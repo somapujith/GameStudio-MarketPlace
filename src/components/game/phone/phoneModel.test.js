@@ -16,7 +16,7 @@ const levels = Array(TILES.length).fill(0);
 function sess({ cfg = {}, round = 7, turn = 0, owner = {}, level = {}, options = {}, pending = null, bubble = null, extra = {}, trade = null, phase = 'roll', debt = null, event = null } = {}) {
   const view = {
     phase, turn, round, players, owners: owners.map((o, i) => owner[i] ?? o), levels: levels.map((l, i) => level[i] ?? l), mortgaged: [], pending, trade, debt, dice: [4], event,
-    cfg: { mode: 'standard', maxRounds: 20, targetWorth: 5000000, auctionOnDecline: true, ...cfg },
+    cfg: { mode: 'standard', maxRounds: 20, targetWorth: 5000000, ...cfg },
   };
   return { me: 'me', view, display: { ...view }, options, bubble, busy: false, rolling: false, log: [], ...extra };
 }
@@ -305,7 +305,7 @@ describe('buyCardData', () => {
   const madhapur = TILES[29];
   it('prints price, base rent, mortgage value, three levels and the upgrade cost', () => {
     const d = buyCardData(madhapur, { cash: 1000000 });
-    expect(d).toMatchObject({ name: 'Madhapur', price: 320000, rent: 32000, mortgage: 160000, upgradeCost: 160000, canBuy: true, short: 0, reason: '' });
+    expect(d).toMatchObject({ name: 'Madhapur', price: 320000, rent: 32000, mortgage: 160000, upgradeCost: 128000, canBuy: true, short: 0, reason: '' });
     expect(d.collection).toBe(GROUPS.cyber.name);
     expect(d.levels).toHaveLength(3);
     expect(d.levels.map((l) => l.name)).toEqual(['Startup Office', 'Business Centre', 'Tech Campus']);
@@ -320,9 +320,11 @@ describe('buyCardData', () => {
     expect(buyCardData(madhapur, { cash: 20000, canBuy: true }).canBuy).toBe(true);
   });
 
-  it('says where a pass goes: a sealed auction when the table plays it, else the city', () => {
-    expect(buyCardData(madhapur, { auction: true }).passNote).toMatch(/sealed auction/);
-    expect(buyCardData(madhapur, { auction: false }).passNote).toMatch(/city/);
+  it('says what a pass does: no auction, the district stays free (whatever an old table passed in)', () => {
+    for (const o of [{}, { auction: true }, { auction: false }]) {
+      expect(buyCardData(madhapur, o).passNote).toBe('Pass: no auction, the district stays free');
+      expect(buyCardData(madhapur, o)).not.toHaveProperty('auction');
+    }
     expect(buyCardData(null)).toBeNull();
   });
 

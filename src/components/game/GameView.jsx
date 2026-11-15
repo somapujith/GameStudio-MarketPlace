@@ -10,6 +10,7 @@
 // row, inside PhoneTable); fixed overlays: speech bubbles, emote pops, coin flights.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { sfx } from '@/lib/sfx.js';
+import { DEFAULT_MAP, mapOf } from '@shared/maps.js';
 import Board from './Board.jsx';
 import ControlPanel, { panelBadges } from './ControlPanel.jsx';
 import { useActionSpec } from './ActionBar.jsx';
@@ -32,21 +33,29 @@ import { useGameChrome, useKeyboardInset, useLayoutMode } from './ui/viewport.js
 import RoundBadge, { TargetBadge } from './turn/RoundBadge.jsx';
 import NetRace, { ConnChip, LeaderChip } from './ui/NetRace.jsx';
 import { TargetToasts, useTargetWatch, withNotes } from './turn/TargetWatch.jsx';
-import { RESIGN_CONFIRM, RESIGN_KEEP, RESIGN_TEXT, RESIGN_TITLE, canResign, leaveDialog, useResign } from './turn/resign.js';
+import { RESIGN_CONFIRM, RESIGN_KEEP, RESIGN_TITLE, canResign, leaveDialog, resignText, useResign } from './turn/resign.js';
 import { targetOf } from './turn/target.js';
 import TurnBanner from './turn/TurnBanner.jsx';
 import CardReveal, { useCardAnnouncer } from './turn/CardReveal.jsx';
 import SnatchPopup, { useSnatchAnnouncer } from './SnatchPopup.jsx';
 import SpeechBubble, { EmoteFloats } from './turn/SpeechBubble.jsx';
+import VoiceHost from '../voice/VoiceHost.jsx';
 import ActionDock from './turn/ActionDock.jsx';
 import ChatTray from './turn/ChatTray.jsx';
 import ManageSheet from './turn/ManageSheet.jsx';
 import PhoneTable from './phone/PhoneTable.jsx';
+import DecisionCard, { useDecisionCard } from './decision/DecisionCard.jsx';
+import { useGameTour } from './GameTour.jsx';
+import { ArtMapContext, artMapId, useArtMap } from '@/components/art/andhra/artMap.js';
+import TourHelpButton from '../tour/TourHelpButton.jsx';
 import { useTurnAlerts } from './turn/clock.js';
 import { modeLabel } from './turn/room.js';
 import '../../styles/game.css';
 import '../../styles/turn.css';
 import '../../styles/gamemobile.css';
+import '../../styles/perf.css';
+import { usePerfMode } from '@/lib/perfMode.js';
+import '../../styles/map-andhra.css'; // the Andhra map's look; every rule is scoped under [data-map='andhra']
 import FxLayer from './fx/FxLayer.jsx';
 import ActivityFeed from './feed/ActivityFeed.jsx';
 import FeedToasts from './feed/FeedToasts.jsx';
@@ -78,7 +87,7 @@ function useReportHeight(ref, on) {
   }, [ref, on]);
 }
 
-function TopBar({ session, onBack, onMenu }) {
+function TopBar({ session, onBack, onMenu, onTour }) {
   const cfg = session.display?.cfg || session.view?.cfg;
   return (
     <header className="hg-top" data-goal={targetOf(cfg) ? '' : undefined}>
@@ -87,7 +96,10 @@ function TopBar({ session, onBack, onMenu }) {
       </button>
       <div className="hg-top-mid">
         <div className="hg-top-row">
-          <span className="hg-table-title"><i className="hg-table-mark" aria-hidden="true" />HYDERABAD TYCOON</span>
+          <span className="hg-table-title">
+            <i className="hg-table-mark" aria-hidden="true" />KINGPIN
+            {mapOf(cfg).id !== DEFAULT_MAP ? <em className="hg-table-map" style={{ fontStyle: 'normal' }}>{` · ${mapOf(cfg).name.toUpperCase()}`}</em> : null}
+          </span>
           <p className="hg-goal">
             <span className="hg-mode">{modeLabel(cfg)}</span>
             <span className="hg-goal-sep" aria-hidden="true">&middot;</span>
@@ -100,7 +112,8 @@ function TopBar({ session, onBack, onMenu }) {
       </div>
       <div className="hg-top-end">
         <ConnChip session={session} />
-        <button type="button" className="hg-roundbtn" onClick={onMenu} aria-label="Menu" aria-haspopup="dialog">
+        {onTour ? <TourHelpButton onClick={onTour} label="Take the tour" /> : null}
+        <button type="button" className="hg-roundbtn" onClick={onMenu} data-tour="menu" aria-label="Menu" aria-haspopup="dialog">
           <Icon name="more" size={22} />
         </button>
       </div>
@@ -133,7 +146,8 @@ export function tradeDeadline(session) {
   return c.waitingFor.map(String).includes(String(t.to)) ? c.deadline : undefined;
 }
 
-export default function GameView({ session: rawSession, onExit }) {
+function GameViewInner({ session: rawSession, onExit }) {
+  const artMap = useArtMap(); // 'andhra' | 'hyderabad': the root's data-map (styles/map-andhra.css) and the art kit's switch
   const resign = useResign(rawSession);
   // the screen's session: the real one plus what only this screen knows (you resigned / are resigning) and the heads-up log notes
   const base = useMemo(() => ({ ...rawSession, resigned: resign.resigned, resigning: resign.resigning }), [rawSession, resign.resigned, resign.resigning]);
@@ -165,10 +179,13 @@ export default function GameView({ session: rawSession, onExit }) {
   const actions = useActionSpec(ready ? base : { options: {}, view: { players: [] }, me: '', dispatch: () => {} }, { keys: ready });
   const [liveText, say] = useLiveRegion();
   useTurnAlerts(base, say);
+  usePerfMode(); // slow-render detection: <html data-perf="low|high"> (styles/perf.css); Settings > Light graphics overrides it
   useCardAnnouncer(base, say);
   useSnatchAnnouncer(base, say);
   const { toasts: targetToasts, notes: targetNotes } = useTargetWatch(base, say);
   const session = useMemo(() => withNotes(base, targetNotes), [base, targetNotes]);
+  const gameTour = useGameTour({ session, ready, phone: phoneSimple }); // first-run tour + its safety rules (GameTour.jsx)
+  const landing = useDecisionCard(session, actions.spec); // wide / tablet / landscape: the transport ride + Traffic Jam popup (phones: PhoneTable)
   useEffect(() => {
     if (resign.resigned) say('You resigned. You are out of the game and can watch the rest of it.');
   }, [resign.resigned, say]);
@@ -215,11 +232,12 @@ export default function GameView({ session: rawSession, onExit }) {
   return (
     <div
       className={`hg-game${compact ? ` hg-game--compact hg-game--${layout}` : ''}`}
+      data-map={artMap}
       data-wide={wide ? '' : undefined}
       data-rm={reduced ? '' : undefined}
       data-layout={phoneSimple ? 'phone-simple' : undefined}
     >
-      <h1 className="hg-sr">Hyderabad Tycoon</h1>
+      <h1 className="hg-sr">Kingpin{artMap === DEFAULT_MAP ? '' : `: ${mapOf(artMap).name}`}</h1>
       <p className="hg-sr" aria-live="polite" aria-atomic="true" data-testid="table-live">{liveText}</p>
       {phoneSimple ? (
         <PhoneTable
@@ -243,7 +261,7 @@ export default function GameView({ session: rawSession, onExit }) {
           onTrade={openTrade}
           onManageTrade={() => setManage('trade')}
         />
-      ) : <TopBar session={session} onBack={() => setConfirm(true)} onMenu={() => setMenu(true)} />}
+      ) : <TopBar session={session} onBack={() => setConfirm(true)} onMenu={() => setMenu(true)} onTour={compact ? undefined : gameTour.start} />}
 
       {phoneSimple ? null : <main className="hg-table" aria-label="Game table" data-n={playerCount} data-opp={opponents} data-mid={usesMiddleEdges(playerCount) ? '' : undefined} data-goal={targetOf(session.display?.cfg || session.view?.cfg) ? '' : undefined}>
         <PlayerPods session={session} onSelect={setPlayerId} mode={compact ? 'others' : 'all'} layout={layout} />
@@ -260,6 +278,7 @@ export default function GameView({ session: rawSession, onExit }) {
                   onOpenTrade={openTrade}
                   actions={actions}
                   docked={compact}
+                  reopen={landing.reopen}
                 />
               )}
             />
@@ -268,6 +287,9 @@ export default function GameView({ session: rawSession, onExit }) {
             <TurnBanner session={session} />
             <CardReveal session={session} />
             <SnatchPopup session={session} placement="board" />
+            {landing.show ? (
+              <DecisionCard decision={landing.decision} session={session} fire={actions.fire} onDismiss={landing.hide} placement="board" />
+            ) : null}
           </div>
         </div>
         {compact || usesMiddleEdges(playerCount) ? null : <div className="hg-feedcard"><ActivityFeed session={session} max={14} /></div>}
@@ -283,6 +305,7 @@ export default function GameView({ session: rawSession, onExit }) {
             fire={actions.fire}
             badges={badges}
             chatOpen={chatOpen}
+            reopen={landing.reopen}
             onChat={() => setChatOpen((v) => !v)}
             onManage={() => setManage('manage')}
             onTrade={() => setManage('trade')}
@@ -293,6 +316,7 @@ export default function GameView({ session: rawSession, onExit }) {
 
       <SpeechBubble session={session} />
       <EmoteFloats session={session} />
+      <VoiceHost session={session} />
       <FxLayer flights={session.flights || []} session={session} />
       <FeedToasts session={session} />
 
@@ -324,6 +348,7 @@ export default function GameView({ session: rawSession, onExit }) {
         open={menu}
         onClose={() => setMenu(false)}
         onRules={() => setRules(true)}
+        onTour={() => { setMenu(false); gameTour.start(); }}
         onStats={() => { setMenu(false); setStats(true); }}
         onLog={() => { setMenu(false); setLogOpen(true); }}
         onManage={phoneSimple ? () => { setMenu(false); setManage('manage'); } : undefined}
@@ -333,10 +358,11 @@ export default function GameView({ session: rawSession, onExit }) {
       />
       <LogSheet session={session} open={logOpen} onClose={() => setLogOpen(false)} />
       <RulesSheet session={session} open={rules} onClose={() => setRules(false)} />
+      {gameTour.node}
       <ConfirmDialog
         open={resign.asking && canResign(session)}
         title={RESIGN_TITLE}
-        text={RESIGN_TEXT}
+        text={resignText(session)}
         confirmLabel={RESIGN_CONFIRM}
         cancelLabel={RESIGN_KEEP}
         danger
@@ -356,6 +382,13 @@ export default function GameView({ session: rawSession, onExit }) {
       <GameOverModal session={session} onExit={onExit} />
     </div>
   );
+}
+
+/** The table's map (from the game's cfg) reaches the whole game screen, portals included, through ArtMapContext. */
+export default function GameView(props) {
+  const s = props.session;
+  const cfg = s?.display?.cfg || s?.view?.cfg || s?.cfg; // no cfg yet (loading): follow the active client map
+  return (<ArtMapContext.Provider value={cfg ? artMapId(cfg) : null}><GameViewInner {...props} /></ArtMapContext.Provider>);
 }
 
 export { GameView };

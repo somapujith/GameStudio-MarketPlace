@@ -74,6 +74,7 @@ export default function PhoneTopBar({ session, spec, onBack, onMenu }) {
         type="button"
         className="ph-round ph-menu"
         onClick={onMenu}
+        data-tour="menu"
         aria-label={att.any ? `Menu, ${att.reasons.join(', ')}` : 'Menu'}
         aria-haspopup="dialog"
       >

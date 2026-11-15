@@ -1,5 +1,7 @@
 import { memo, useId } from 'react';
 import '@/styles/characterMotion.css';
+import { useArtMap, ANDHRA } from './andhra/artMap.js';
+import AndhraMascot from './andhra/mascot.jsx';
 
 export const MASCOT_MOODS = ['welcome', 'waiting', 'roll', 'buy', 'earn', 'traffic', 'win'];
 
@@ -54,5 +56,10 @@ function AutoMascotBase({ mood = 'welcome', className = '', size = 120, animated
   );
 }
 
-export const AutoMascot = memo(AutoMascotBase);
+// The Andhra map swaps the auto-rickshaw guide for a Kondapalli toy elephant (art/andhra/mascot.jsx), same moods and motion.
+function AutoMascotRouter(props) {
+  return useArtMap() === ANDHRA ? <AndhraMascot {...props} /> : <AutoMascotBase {...props} />;
+}
+
+export const AutoMascot = memo(AutoMascotRouter);
 export default AutoMascot;

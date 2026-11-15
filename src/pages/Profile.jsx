@@ -7,6 +7,7 @@ import BadgeGrid from '@/platform/home/BadgeGrid.jsx';
 import SettingsSection from '@/platform/home/SettingsSection.jsx';
 import AccountSection from '@/platform/home/AccountSection.jsx';
 import AboutSection from '@/platform/home/AboutSection.jsx';
+import ProfileTour from '@/components/tour/ProfileTour.jsx';
 import { useAccountProgress } from '@/platform/home/accountProgress.js';
 import { useAccount, useReducedMotion } from '@/components/shell/hooks.js';
 import '@/styles/hubhome.css';
@@ -73,6 +74,7 @@ export default function Profile() {
   return (
     <div className="hub-page hh2 hh2-profilepage xp-page sa-profile st-scope">
       <h1 className="hub-sr">Your profile</h1>
+      <ProfileTour />
       {loading ? <ProfileSkeleton /> : <ProfileHeader />}
       <nav className="sa-jump" aria-label="Profile sections">
         {JUMPS.map((j) => (

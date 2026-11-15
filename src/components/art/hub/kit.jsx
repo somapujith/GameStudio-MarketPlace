@@ -252,16 +252,27 @@ export function Stars({ rand, n = 40, w = 800, ymax = 260, xmin = 0, c = '#fff',
   return <g fill={c}>{out}</g>;
 }
 
-/** CSS shared by animated covers; every rule is disabled under prefers-reduced-motion. */
+/**
+ * CSS shared by animated covers; every rule is disabled under prefers-reduced-motion.
+ * SVG children animate on the main thread (they cannot be composited), so a twinkle on every cover of a grid kept the
+ * page repainting (5-20 fps with software rendering, e.g. Brave without hardware acceleration). A cover therefore moves
+ * only where it is the focus: the active hero slide, the detail-page art, or a card under the pointer. Each loop runs
+ * once and settles. The `data-perf='low'` switch (set by the frame-time samplers on <html> or on the game root) turns
+ * it off completely.
+ */
+const COVER_ON = ':is(.is-active,.gd-art,.hub-cover:hover,.hub-gamecard:hover)';
+const COVER_ANIMS = '.hub-tw,.hub-bob,.hub-bob2,.hub-spin';
 export const COVER_CSS = `
-.hub-tw{animation:hub-tw 3.6s ease-in-out infinite}
-.hub-bob{animation:hub-bob 5s ease-in-out infinite}
-.hub-bob2{animation:hub-bob 6.4s ease-in-out -2s infinite}
-.hub-spin{animation:hub-spin 9s ease-in-out infinite}
+${COVER_ANIMS}{animation:none}
+${COVER_ON} .hub-tw{animation:hub-tw 3.6s ease-in-out 1}
+${COVER_ON} .hub-bob{animation:hub-bob 5s ease-in-out 1}
+${COVER_ON} .hub-bob2{animation:hub-bob 6.4s ease-in-out -2s 1}
+${COVER_ON} .hub-spin{animation:hub-spin 9s ease-in-out 1}
 @keyframes hub-tw{0%,100%{opacity:.25}50%{opacity:1}}
 @keyframes hub-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
 @keyframes hub-spin{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
-@media (prefers-reduced-motion: reduce){.hub-tw,.hub-bob,.hub-bob2,.hub-spin{animation:none!important}}
+@media (prefers-reduced-motion: reduce){${COVER_ANIMS}{animation:none!important}}
+:root[data-perf='low'] :is(${COVER_ANIMS}),[data-perf='low'] :is(${COVER_ANIMS}){animation:none!important}
 `;
 
 /* ---- stroke digits (6 wide x 10 tall, y-down) so numbers never depend on a font ---- */

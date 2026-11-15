@@ -104,7 +104,7 @@ describe('listing model', () => {
   it('lists only the sections that will render', () => {
     expect(sectionList(null)).toEqual([]);
     const live = sectionList(getGame('hyderabad-tycoon'), { live: true }).map((s) => s.id);
-    expect(live).toEqual(['gd-about', 'gd-how', 'gd-gallery', 'gd-live', 'gd-board', 'gd-details']);
+    expect(live).toEqual(['gd-about', 'gd-maps', 'gd-how', 'gd-gallery', 'gd-live', 'gd-board', 'gd-details']);
     const soon = sectionList(getGame('carrom-club'), { live: false }).map((s) => s.id);
     expect(soon).toEqual(['gd-about', 'gd-gallery', 'gd-details']);
     expect(sectionList({ id: 'x', status: 'live' }, { live: true }).map((s) => s.id)).toEqual(['gd-live', 'gd-board', 'gd-details']);

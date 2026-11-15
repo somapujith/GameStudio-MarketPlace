@@ -1,4 +1,4 @@
-// The host's "Game rules" editor, rendered from the real Hyderabad Tycoon manifest data (server-side render, node env;
+// The host's "Game rules" editor, rendered from the real Kingpin manifest data (server-side render, node env;
 // effects do not run here, the timing is covered by editSession.test.js and the real browser runs).
 import { afterEach, describe, expect, it } from 'vitest';
 import { createElement as h } from 'react';
@@ -13,7 +13,7 @@ import { groupFields, lobbyFields, resolveSettings } from './settings.js';
 const GAME = { settings: SETTINGS_SCHEMA, lobbySettings: LOBBY_SETTINGS, settingsGroups: SETTINGS_GROUPS, tableRules: TABLE_RULES, summarize: settingsSummary };
 const strip = (html) => html.replace(/<!-- -->/g, '');
 const panel = (props) => strip(renderToString(h(SettingsPanel, { game: GAME, settings: {}, isHost: true, onSend() {}, errorId: 0, ...props })));
-const CUSTOM = { mode: 'standard', startCash: 3000000, turnSeconds: 90, auctionOnDecline: false, snatches: 2 }; // 4 rules changed
+const CUSTOM = { mode: 'standard', startCash: 3000000, turnSeconds: 90, requireFullSet: false, snatches: 2 }; // 4 rules changed
 const tags = (html, name) => html.match(new RegExp(`<${name}\\b[^>]*>`, 'g')) || [];
 /** The markup of one rule row (its `data-rule` div up to the next rule or the end of its group). */
 const row = (html, key) => {
@@ -116,9 +116,9 @@ describe('host: the editor', () => {
   });
 
   it('switches: a labelled role=switch with its state', () => {
-    const auction = row(html, 'auctionOnDecline');
-    expect(auction).toMatch(/role="switch" aria-checked="true"/);
-    expect(auction).toContain('Auction on pass');
+    const fullSet = row(html, 'requireFullSet');
+    expect(fullSet).toMatch(/role="switch" aria-checked="true"/);
+    expect(fullSet).toContain('Full set to upgrade');
     expect(row(panel({ settings: { requireFullSet: false } }), 'requireFullSet')).toMatch(/role="switch" aria-checked="false"/);
   });
 
@@ -145,8 +145,17 @@ describe('host: the editor', () => {
   });
 
   it('short labels in the rows', () => {
-    for (const label of ['Starting cash', 'START salary', 'Win target (net worth)', 'Decision timer', 'Snatch buttons', 'Chai token limit', 'Auction on pass']) expect(html, label).toContain(`>${label}<`);
+    for (const label of ['Starting cash', 'START salary', 'Win target (net worth)', 'Decision timer', 'Snatch buttons', 'Chai token limit', 'Full set to upgrade']) expect(html, label).toContain(`>${label}<`);
     expect(html).not.toContain('Snatch buttons each player starts with');
+  });
+
+  it('no pass-auction rule: passing never starts an auction, so the host cannot switch it (nor read it)', () => {
+    expect(html).not.toContain('data-rule="auctionOnDecline"');
+    expect(html).not.toMatch(/Auction on pass|Auction when someone passes|auction on decline/i);
+    const stored = panel({ settings: { auctionOnDecline: false } }); // a room stored by an older version
+    expect(stored).not.toContain('auctionOnDecline');
+    expect(stored).not.toContain('Custom rules');
+    expect(panel({ isHost: false, settings: { auctionOnDecline: false } })).not.toMatch(/on pass|someone passes|on decline/i);
   });
 });
 
@@ -168,12 +177,12 @@ describe('host: custom rules, resets', () => {
     expect([...html.matchAll(/data-rule="(\w+)"/g)].map((m) => m[1]).filter((k) => new RegExp(`xl-rule is-modified" data-rule="${k}"`).test(html))).toEqual([
       'startCash',
       'turnSeconds',
-      'auctionOnDecline',
+      'requireFullSet',
       'snatches',
     ]);
     expect(row(html, 'startCash')).toContain('aria-label="Reset Starting cash to its default, ₹15L"');
     expect(row(html, 'turnSeconds')).toContain('aria-label="Reset Decision timer to its default, 60 s"');
-    expect(row(html, 'auctionOnDecline')).toContain('aria-label="Reset Auction on pass to its default, On"');
+    expect(row(html, 'requireFullSet')).toContain('aria-label="Reset Full set to upgrade to its default, On"');
     expect(row(html, 'passStart')).not.toContain('xl-rule__reset');
     expect(html).not.toMatch(/<button type="button" class="xl-rules__reset" disabled="">/); // Reset all is live
     expect(html).toContain('Reset all to defaults');
@@ -237,7 +246,7 @@ describe('error state', () => {
   });
 
   it('a switch points at its error with aria-describedby', () => {
-    const f = SETTINGS_SCHEMA.find((x) => x.key === 'auctionOnDecline');
+    const f = SETTINGS_SCHEMA.find((x) => x.key === 'requireFullSet');
     const html = strip(renderToString(h(SettingField, { field: f, rule: true, value: true, values: {}, error: 'No.', onChange() {} })));
     const err = /id="([^"]+-err)"/.exec(html)[1];
     expect(html).toContain(`aria-describedby="${[...html.matchAll(/id="([^"]+-help)"/g)].map((m) => m[1])[0]} ${err}"`);
@@ -273,7 +282,7 @@ describe('guest: the same list, read only', () => {
     expect(html).toContain('<h3 class="xl-ro__h">Money</h3>');
     expect(html).toContain('<div class="xl-ro__row is-changed"><dt>Starting cash</dt><dd><b>₹30L</b><small>Default ₹15L</small></dd></div>');
     expect(html).toContain('<div class="xl-ro__row is-changed"><dt>Decision timer</dt><dd><b>90 s</b><small>Default 60 s</small></dd></div>');
-    expect(html).toContain('<div class="xl-ro__row is-changed"><dt>Auction on pass</dt><dd><b>Off</b><small>Default On</small></dd></div>');
+    expect(html).toContain('<div class="xl-ro__row is-changed"><dt>Full set to upgrade</dt><dd><b>Off</b><small>Default On</small></dd></div>');
     expect(html).toContain('<div class="xl-ro__row"><dt>Trade offer timer</dt><dd><b>45 s</b></dd></div>'); // unchanged: plain
     expect(html).toContain('<div class="xl-ro__row"><dt>Snatch timer</dt><dd><b>5 s</b></dd></div>');
     expect((html.match(/is-changed/g) || []).length).toBe(4);

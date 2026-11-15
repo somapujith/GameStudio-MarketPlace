@@ -16,17 +16,26 @@
 
 import { TILES, GROUPS, MAX_LEVEL, levelName } from '@shared/board.js';
 import { formatINR } from '@shared/format.js';
+import { activeMapId } from '@shared/maps.js';
+import { wordsOf } from './mapWords.js';
 
 const tileName = (id) => (TILES[id] ? TILES[id].name : `tile ${id}`);
 
-const DECK_NAME = { luck: 'Nawabi Luck', drama: 'City Drama' };
+/** The deck names of the table's map ("Nawabi Luck" / "Mana Adrushtam"), read when a line is built. */
+const deckNames = () => { const w = wordsOf(); return { luck: w.luck, drama: w.drama }; };
 
-/** One funny line per transport stop (keyed by where the ride starts). */
+/** One funny line per transport stop (keyed by where the ride starts), per map. */
 const RIDE_LINES = {
   5: '"Meter kharab hai, saab!"',
   14: '"Please stand clear of the doors."',
   23: '"Next stop: everywhere, eventually."',
 };
+const RIDE_LINES_ANDHRA = {
+  5: '"All aboard, the sea breeze is free!"',
+  14: '"Platform packed, train slightly late."',
+  23: '"Fasten your seat belts for the festival flight."',
+};
+const rideLines = () => (activeMapId() === 'andhra' ? RIDE_LINES_ANDHRA : RIDE_LINES);
 
 function playerName(ctx, id) {
   if (id === null || id === undefined) return 'Someone';
@@ -104,7 +113,7 @@ function describeCash(ev, ctx) {
       return { text: `${who} paid ${amt} rent${to}`, tone, icon: '🏠' };
     }
     case 'tax':
-      return { text: `${who} paid ${amt} in Municipal Charges`, tone: toneFor(ctx, ev.player, 'bad'), tile: 27, icon: '🏛️' };
+      return { text: `${who} paid ${amt} in ${wordsOf().municipalCorner}`, tone: toneFor(ctx, ev.player, 'bad'), tile: 27, icon: '🏛️' };
     case 'event':
       return ev.delta >= 0
         ? { text: `${who} received ${amt} from the city event`, tone: toneFor(ctx, ev.player, 'good'), icon: '🎁' }
@@ -120,6 +129,7 @@ function describeCash(ev, ctx) {
     case 'unmortgage':
     case 'sell':
     case 'trade':
+    case 'bankrupt': // the bank paying the creditor of a bankrupt player: the bankrupt line tells it
       return null; // told by own / level / auction_end / card / ride / traffic / mortgage / trade events
     default:
       return {
@@ -146,7 +156,7 @@ function describeLand(ev, ctx) {
     case 'card':
       return null; // the traffic / chai / cash / card line follows
     case 'auction':
-      return { ...base, text: `${who} landed on the Bazaar Auction` };
+      return { ...base, text: `${who} landed on the ${wordsOf().auctionTile}` };
     case 'start':
       return { ...base, text: `${who} landed right on START` };
     default:
@@ -179,7 +189,7 @@ function describeTraffic(ev, ctx) {
     case 'free':
       return { text: `${who} ${be(ctx, ev.player)} out of the traffic jam, free of charge`, tone: toneFor(ctx, ev.player, 'good'), icon: '🚦' };
     case 'chai':
-      return { text: `${who} sipped a chai and the traffic melted away`, tone: toneFor(ctx, ev.player, 'good'), icon: '☕' };
+      return { text: wordsOf().isDefault ? `${who} sipped a chai and the traffic melted away` : `${who} spent a ${wordsOf().chaiToken} and the traffic melted away`, tone: toneFor(ctx, ev.player, 'good'), icon: '☕' };
     default:
       return { text: `${who} waited out the traffic jam`, tone: toneFor(ctx, ev.player, 'warn'), icon: '🚦' };
   }
@@ -189,16 +199,16 @@ function describeChai(ev, ctx) {
   const who = playerName(ctx, ev.player);
   if (ev.change > 0) {
     return {
-      text: ev.reason === 'card' ? `${who} got a free chai token` : `${who} picked up a chai token at the Chai Adda`,
-      bubble: '+1 chai',
+      text: ev.reason === 'card' ? `${who} got a free ${wordsOf().chaiToken}` : `${who} picked up a ${wordsOf().chaiToken} at the ${wordsOf().chaiCorner}`,
+      bubble: wordsOf().isDefault ? '+1 chai' : `+1 ${wordsOf().chaiToken}`,
       tone: toneFor(ctx, ev.player, 'good'),
       icon: '☕',
     };
   }
   if (ev.reason === 'rent') {
     return {
-      text: `Chai break! ${who} saved ${formatINR(ev.saved || 0)} on rent`,
-      bubble: `Chai saved ${formatINR(ev.saved || 0)}`,
+      text: wordsOf().isDefault ? `Chai break! ${who} saved ${formatINR(ev.saved || 0)} on rent` : `Festival token! ${who} saved ${formatINR(ev.saved || 0)} on rent`,
+      bubble: wordsOf().isDefault ? `Chai saved ${formatINR(ev.saved || 0)}` : `Saved ${formatINR(ev.saved || 0)}`,
       tone: toneFor(ctx, ev.player, 'good'),
       icon: '☕',
     };
@@ -219,10 +229,23 @@ function describeTrade(ev, ctx) {
   const involvesMe = isMe(ctx, ev.from) || isMe(ctx, ev.to);
   switch (ev.type) {
     case 'trade_offer':
+      if (ev.counter) {
+        return {
+          text: `${playerName(ctx, ev.from)} changed the deal and offered ${whom(ctx, ev.to)}: ${bundleText(ev.give)} for ${bundleText(ev.get)}`,
+          tone: isMe(ctx, ev.to) ? 'warn' : 'info',
+          icon: '🔁',
+        };
+      }
       return {
         text: `${playerName(ctx, ev.from)} offered ${whom(ctx, ev.to)} a trade: ${bundleText(ev.give)} for ${bundleText(ev.get)}`,
         tone: isMe(ctx, ev.to) ? 'warn' : 'info',
         icon: '🤝',
+      };
+    case 'trade_countered':
+      return {
+        text: `${playerName(ctx, ev.by)} countered ${isMe(ctx, ev.from) ? 'your' : `${playerName(ctx, ev.from)}'s`} offer`,
+        tone: involvesMe ? 'warn' : 'info',
+        icon: '🔁',
       };
     case 'trade_done':
       return {
@@ -274,7 +297,7 @@ function describeWin(ev, ctx) {
       icon: '🏆',
     };
   }
-  return { text: `The last round is over! ${who} ${be(ctx, ev.player)} the richest in Hyderabad with ${worth}`, bubble: `${who} ${me ? 'win' : 'wins'}!`, tone: 'cheer', icon: '🏆' };
+  return { text: `The last round is over! ${who} ${be(ctx, ev.player)} the richest in ${wordsOf().place} with ${worth}`, bubble: `${who} ${me ? 'win' : 'wins'}!`, tone: 'cheer', icon: '🏆' };
 }
 
 export function describeEvent(ev, ctx) {
@@ -346,7 +369,7 @@ export function describeEvent(ev, ctx) {
       case 'card': {
         const me = isMe(ctx, ev.player);
         const tone = !me ? 'info' : ev.kind === 'good' ? 'good' : ev.kind === 'bad' ? 'bad' : 'info';
-        const deck = DECK_NAME[ev.deck] || 'a';
+        const deck = deckNames()[ev.deck] || 'a';
         return {
           text: me ? `${ev.title} ${ev.text}` : `${playerName(ctx, ev.player)} drew ${deck}: "${ev.title}" ${ev.text}`,
           bubble: ev.title,
@@ -357,7 +380,7 @@ export function describeEvent(ev, ctx) {
       }
 
       case 'ride': {
-        const line = RIDE_LINES[ev.from] || '"Hold on tight!"';
+        const line = rideLines()[ev.from] || '"Hold on tight!"';
         return {
           text: `${playerName(ctx, ev.player)} paid ${formatINR(ev.fare)} and rode from the ${tileName(ev.from)} to the ${tileName(ev.to)}. ${line}`,
           bubble: line.replace(/"/g, ''),
@@ -377,11 +400,17 @@ export function describeEvent(ev, ctx) {
         if (ev.reason === 'snatch') return null; // snatch_end ("Snatch bidding: ...") tells it
         const min = formatINR(ev.minBid);
         if (ev.reason === 'bazaar') {
-          return { text: `Bazaar Auction! ${tileName(ev.tile)} goes under the hammer (min ${min})`, bubble: 'Bazaar Auction!', tone: 'warn', tile: ev.tile, icon: '🔨' };
+          return { text: `${wordsOf().auctionTile}! ${tileName(ev.tile)} goes under the hammer (min ${min})`, bubble: `${wordsOf().auctionTile}!`, tone: 'warn', tile: ev.tile, icon: '🔨' };
         }
-        const why = ev.reason === 'unaffordable' ? 'is too pricey for the lander, so' : 'was skipped, so';
-        return { text: `${tileName(ev.tile)} ${why} it goes to a sealed auction (min ${min})`, bubble: 'Auction!', tone: 'info', tile: ev.tile, icon: '🔨' };
+        // never started by a pass any more (only the Bazaar Auction and Snatch bidding); an older saved game may still carry one
+        return { text: `${tileName(ev.tile)} goes under the hammer (min ${min})`, bubble: 'Auction!', tone: 'info', tile: ev.tile, icon: '🔨' };
       }
+
+      case 'skip': // a player passed on a free district: it simply stays free (no auction)
+        return {
+          text: `${playerName(ctx, ev.player)} passed on ${tileName(ev.tile)}. It stays free`,
+          tone: 'info', tile: ev.tile, icon: '🚶',
+        };
 
       case 'auction_end': {
         const snatch = ev.reason === 'snatch';
@@ -390,10 +419,16 @@ export function describeEvent(ev, ctx) {
             const keeper = ev.buyer === null || ev.buyer === undefined ? 'its buyer' : whom(ctx, ev.buyer);
             return { text: `Nobody bid. ${tileName(ev.tile)} stays with ${keeper}`, tone: 'info', tile: ev.tile, icon: '⚡' };
           }
-          return { text: `No bids. ${tileName(ev.tile)} stays with the city`, tone: 'info', tile: ev.tile, icon: '🔨' };
+          return { text: `Nobody bid on ${tileName(ev.tile)}`, tone: 'info', tile: ev.tile, icon: '🔨' };
+        }
+        const saved = Number(ev.saved) > 0 ? ` (saved ${formatINR(ev.saved)})` : '';
+        if (ev.tie === true && !snatch) {
+          // equal top bids: the engine draws among the tied bidders (seeded); a server `tieRule` text wins when it sends one
+          const rule = ev.tieRule || ev.tieBreak || ev.tieText;
+          return { text: `Tie on ${tileName(ev.tile)} — ${playerName(ctx, ev.winner)} won ${rule ? `on ${rule}` : 'the draw'}${saved}`, tone: toneFor(ctx, ev.winner, 'good'), tile: ev.tile, icon: '🔨' };
         }
         return {
-          text: `${playerName(ctx, ev.winner)} won ${tileName(ev.tile)} ${snatch ? 'in the snatch bidding' : 'at auction'} for ${formatINR(ev.amount)}`,
+          text: `${playerName(ctx, ev.winner)} won ${tileName(ev.tile)} ${snatch ? 'in the snatch bidding' : 'at auction'} for ${formatINR(ev.amount)}${saved}`,
           tone: toneFor(ctx, ev.winner, 'good'),
           tile: ev.tile,
           icon: snatch ? '⚡' : '🔨',
@@ -436,20 +471,30 @@ export function describeEvent(ev, ctx) {
           title: ev.title,
         };
 
-      case 'bankrupt':
+      case 'bankrupt': {
+        // The bank took everything; `paid` ([{ to, amount }], only when a creditor was paid) says who the bank paid.
+        const paid = Array.isArray(ev.paid) ? ev.paid.filter((r) => Number(r?.amount) > 0) : [];
+        const tail = paid.length
+          ? `; ${paid.map((r) => `${playerName(ctx, r.to)} ${isMe(ctx, r.to) ? 'were' : 'was'} paid ${formatINR(r.amount)}`).join(', ')}`
+          : '';
         // `reason: 'resign'` (the player gave up; the engine may mark it) reads as a choice, not a collapse
         if (ev.reason === 'resign' || ev.resigned === true) {
           return {
-            text: isMe(ctx, ev.player) ? 'You resigned. You can keep watching the rest of the game' : `${playerName(ctx, ev.player)} resigned`,
+            text: isMe(ctx, ev.player)
+              ? `You resigned: the bank took everything${tail}. You can keep watching the rest of the game`
+              : `${playerName(ctx, ev.player)} resigned: the bank took everything${tail}`,
             tone: toneFor(ctx, ev.player, 'warn', 'warn'),
             icon: '🏳️',
           };
         }
         return {
-          text: isMe(ctx, ev.player) ? 'You went bankrupt! The city wins this time' : `${playerName(ctx, ev.player)} went bankrupt`,
+          text: isMe(ctx, ev.player)
+            ? `You went bankrupt! The bank took everything${tail}`
+            : `${playerName(ctx, ev.player)} went bankrupt: the bank took everything${tail}`,
           tone: toneFor(ctx, ev.player, 'bad', 'warn'),
           icon: '💥',
         };
+      }
 
       case 'set_complete': {
         const g = GROUPS[ev.group];
@@ -478,6 +523,7 @@ export function describeEvent(ev, ctx) {
         };
 
       case 'trade_offer':
+      case 'trade_countered':
       case 'trade_done':
       case 'trade_rejected':
         return describeTrade(ev, ctx);

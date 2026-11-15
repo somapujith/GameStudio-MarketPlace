@@ -96,8 +96,6 @@
   background: color-mix(in srgb, var(--hub-night) 78%, transparent);
   border: 1px solid rgba(var(--hub-good-rgb), 0.45);
   border: 1px solid color-mix(in srgb, var(--hub-good) 45%, transparent);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
   animation: xh-pop var(--xh-dur-2) var(--xh-ease-out) both;
 }
 

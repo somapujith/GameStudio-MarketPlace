@@ -33,7 +33,8 @@ export function schemaFields(schema) {
 
 /** The fields the lobby renders: the schema narrowed to `game.lobbySettings` (all of it when the game sets none). */
 export function lobbyFields(game) {
-  const fields = schemaFields(game && game.settings);
+  // a `widget: 'map'` field is the map picker (cards, drawn by SettingsPanel): stored by the server, but neither a plain control nor a custom rule
+  const fields = schemaFields(game && game.settings).filter((f) => f.widget !== 'map');
   const keys = game && game.lobbySettings;
   return Array.isArray(keys) ? fields.filter((f) => keys.includes(f.key)) : fields;
 }
@@ -288,7 +289,7 @@ export function resetPatch(fields, values, keys) {
   return patch;
 }
 
-/** Short read-only chips for non-hosts: ["Winning target ₹70k", "Rounds 50", "Auction skipped properties", ...]. */
+/** Short read-only chips for non-hosts: ["Winning target ₹70k", "Rounds 50", "Dice Lucky", ...]. */
 export function settingsChips(schema, raw) {
   const s = resolveSettings(schema, raw);
   return schemaFields(schema).map((f) => {

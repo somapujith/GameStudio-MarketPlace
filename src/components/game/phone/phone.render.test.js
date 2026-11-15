@@ -25,7 +25,7 @@ function sess({ n = 2, turn = 0, options = { roll: true }, extra = {}, view = {}
   const players = ALL.slice(0, n);
   const v = {
     phase: 'roll', turn, round: 7, players, owners: Array(TILES.length).fill(null), levels: Array(TILES.length).fill(0), mortgaged: [], pending: null, trade: null, dice: [4],
-    cfg: { mode: 'standard', maxRounds: 20, targetWorth: 5000000, auctionOnDecline: true, ...cfg }, ...view,
+    cfg: { mode: 'standard', maxRounds: 20, targetWorth: 5000000, ...cfg }, ...view,
   };
   return { me: 'me', view: v, display: { ...v }, options, busy: false, rolling: false, log: [], chat: [], connection: 'open', sendChat() {}, dispatch() {}, ...extra };
 }
@@ -307,8 +307,9 @@ describe('BuyCard', () => {
     expect(out).toContain('₹32,000');
     expect(out).toContain('₹1,60,000');
     expect((out.match(/<li aria-label=/g) || []).length).toBe(3);
-    expect(out).toContain('Each upgrade costs <b>₹1,60,000</b>');
-    expect(out).toContain('Pass and it goes to a sealed auction');
+    expect(out).toContain('Each upgrade costs <b>₹1,28,000</b>');
+    expect(out).toContain('Pass: no auction, the district stays free');
+    expect(out).not.toMatch(/sealed auction/);
     expect(out).toContain('>PASS<');
     expect(out).toMatch(/BUY<span> ₹3,20,000<\/span>/);
     expect(out).toContain('data-autofocus');
@@ -322,8 +323,9 @@ describe('BuyCard', () => {
     expect(out).not.toMatch(/bcard-pass[^>]*disabled/);
   });
 
-  it('no auction rule: the pass line says so', () => {
-    expect(html(h(BuyCard, { data: data({ auction: false }) }))).toContain('stays with the city');
+  it('the pass line says there is no auction, even when an old table passes the retired flag', () => {
+    expect(html(h(BuyCard, { data: data({ auction: true }) }))).toContain('no auction, the district stays free');
+    expect(html(h(BuyCard, { data: data({ auction: false }) }))).toContain('no auction, the district stays free');
   });
 
   it('renders nothing without data', () => {

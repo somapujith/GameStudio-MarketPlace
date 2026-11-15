@@ -18,6 +18,8 @@
 //   { type:'perLevel', amount }          pay `amount` for every upgrade level you own
 //   { type:'perProperty', amount }       pay `amount` for every district you own
 
+import { ANDHRA_LUCK_CARDS, ANDHRA_DRAMA_CARDS } from './maps/andhra.js'; // the second map's decks (shared/maps.js); `cardById` finds their cards too
+
 export const LUCK_CARDS = [
   { id: 'biryani_viral', kind: 'good', title: 'Biryani franchise goes viral',
     text: 'Your food business has a blockbuster weekend. Collect ₹80,000.', effect: { type: 'cash', amount: 80000 } },
@@ -115,4 +117,6 @@ export const DECKS = Object.freeze({ luck: LUCK_CARDS, drama: DRAMA_CARDS });
 /** Human name of a deck. */
 export const DECK_NAMES = Object.freeze({ luck: 'Nawabi Luck', drama: 'City Drama' });
 
-export const cardById = (id) => LUCK_CARDS.find((c) => c.id === id) || DRAMA_CARDS.find((c) => c.id === id) || null;
+/** A card of the Hyderabad decks by id, else of the Andhra decks (card ids are unique across maps; see shared/maps.js). */
+export const cardById = (id) => LUCK_CARDS.find((c) => c.id === id) || DRAMA_CARDS.find((c) => c.id === id)
+  || ANDHRA_LUCK_CARDS.find((c) => c.id === id) || ANDHRA_DRAMA_CARDS.find((c) => c.id === id) || null;

@@ -42,6 +42,18 @@ describe('gateOptions', () => {
     expect(gateOptions(snatchReal, { phase: 'snatch' }, { busy: true, connection: 'closed' }).snatch).toBeNull();
   });
 
+  it('trading is not a table move: while the presenter animates, an offer to me and the Trade button stay live', () => {
+    const t = { ...real, roll: false, trade: { canOffer: true }, tradeOffer: { id: 4, from: 'x', give: {}, get: {}, canCounter: true }, tradeSent: null };
+    const busy = gateOptions(t, { phase: 'manage' }, { busy: true });
+    expect(busy.tradeOffer).toMatchObject({ id: 4, canCounter: true });
+    expect(busy.trade.canOffer).toBe(true);
+    expect(busy.endTurn).toBe(false);
+    // a request of mine in flight (or a dead connection) still blanks it, so nothing is sent twice
+    expect(gateOptions(t, { phase: 'manage' }, { awaiting: true }).tradeOffer).toBeNull();
+    expect(gateOptions(t, { phase: 'manage' }, { awaiting: true, busy: true }).trade.canOffer).toBe(false);
+    expect(gateOptions(t, { phase: 'manage' }, { busy: true, connection: 'closed' }).tradeOffer).toBeNull();
+  });
+
   it('blanks everything when the connection is not open', () => {
     const out = gateOptions(real, { phase: 'roll' }, { connection: 'connecting' });
     expect(out.roll).toBe(false);

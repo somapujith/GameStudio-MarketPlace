@@ -11,6 +11,7 @@ import '@/styles/sheets.css';
 import { useEffect, useRef, useState } from 'react';
 import { compactINR, formatINR } from '@shared/format.js';
 import { buzz } from '@/lib/haptics.js';
+import { wordsOf } from '@/lib/mapWords.js';
 import Sheet from './ui/Sheet.jsx';
 import Button from './ui/Button.jsx';
 import Icon from './ui/Icon.jsx';
@@ -66,7 +67,7 @@ export function matchMoments(players = []) {
   add('rentEarned', '🏦', 'Top landlord', compactINR);
   add('upgrades', '🏗️', 'Master builder', (v) => `${v} upgrade${v === 1 ? '' : 's'}`);
   add('rides', '🛺', 'Most rides', (v) => `${v} ride${v === 1 ? '' : 's'}`);
-  add('chaiSaved', '☕', 'Chai saves', compactINR);
+  add('chaiSaved', '☕', wordsOf().isDefault ? 'Chai saves' : 'Token saves', compactINR);
   add('propertiesBought', '🏠', 'Most districts bought', String);
   return out;
 }

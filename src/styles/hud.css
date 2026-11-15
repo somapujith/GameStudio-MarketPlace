@@ -25,7 +25,10 @@
 }
 @media (min-width: 900px) {
   .hg-game .hg-goal { flex-wrap: nowrap; }
+  /* the chips and the divider already separate the mode name from them: a lone dot would just dangle */
+  .hg-game .hg-top .hg-goal-sep { display: none; }
 }
+.hg-game .hg-top .hg-mode:empty + .hg-goal-sep { display: none; }
 
 /* ---------------------------------------------------------------- round track + win-target micro bar */
 .hg-game .hg-top .tb-round__txt { padding-bottom: 1px; background: rgba(255, 255, 255, 0.06); }
@@ -63,12 +66,14 @@
 .tb-conn.is-offline, .tb-conn.is-reconnecting { border-color: rgba(255, 177, 0, 0.5); background: rgba(255, 177, 0, 0.1); }
 
 /* ---------------------------------------------------------------- the net-worth race */
-.nr { display: flex; align-items: center; gap: 8px; width: min(100%, 540px); height: 17px; padding: 0 2px 0 8px; }
+.nr { --nr-gw: 52px; display: flex; align-items: center; gap: 8px; width: min(100%, 540px); height: 17px; padding: 0 4px; }
+/* an empty spacer as wide as the goal flag keeps the TRACK (not track + flag) centred under the chips */
+.nr:not(.is-open)::before { content: ''; flex: none; width: var(--nr-gw); }
 .nr__track { position: relative; flex: 1 1 auto; min-width: 0; height: 17px; container-type: inline-size; }
 .nr__line {
   position: absolute; left: 0; right: 0; top: 50%; height: 5px; margin-top: -2.5px; border-radius: 99px;
   background:
-    linear-gradient(90deg, transparent 80%, rgba(255, 200, 87, 0.32) 80%),
+    linear-gradient(90deg, transparent 80%, rgba(255, 200, 87, 0.24) 80%),
     rgba(255, 255, 255, 0.11);
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45);
 }
@@ -80,18 +85,20 @@
 }
 .nr__dot {
   --ly: 0px;
-  position: absolute; left: 0; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%;
+  z-index: 1; position: absolute; left: 0; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%;
   background: radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.8) 0, rgba(255, 255, 255, 0) 46%), var(--pc);
   box-shadow: 0 0 0 1.5px #0f1a22, 0 1px 4px rgba(0, 0, 0, 0.55);
-  transform: translate(calc(var(--f, 0) * 100cqw), var(--ly));
+  transform: translate(calc(var(--f, 0) * 100cqw + var(--dx, 0px)), var(--ly));
   transition: transform var(--dur-4) var(--ease-spring);
 }
-.nr__dot[data-lane='1'] { --ly: -3px; }
-.nr__dot[data-lane='2'] { --ly: 3px; }
-.nr__dot.is-me { box-shadow: 0 0 0 1.5px #0f1a22, 0 0 0 3px var(--gold), 0 1px 5px rgba(0, 0, 0, 0.55); }
-.nr__dot.is-lead { width: 15px; height: 15px; margin: -7.5px 0 0 -7.5px; }
+.nr__dot[data-lane='1'] { --ly: -2px; }
+.nr__dot[data-lane='2'] { --ly: 2px; }
+/* "me": a calm gold ring with a soft static halo (box-shadow only: it is centred on the dot and never clipped by the track) */
+.nr__dot.is-me { z-index: 2; box-shadow: 0 0 0 1.5px #0f1a22, 0 0 0 3px var(--gold), 0 0 9px 3px rgba(255, 202, 122, 0.38), 0 1px 5px rgba(0, 0, 0, 0.55); }
+.nr__dot.is-lead { z-index: 3; width: 15px; height: 15px; margin: -7.5px 0 0 -7.5px; }
 .nr__crown { position: absolute; left: 50%; top: -9px; translate: -50% 0; color: var(--gold); filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.7)); }
-.nr__goal { flex: none; display: inline-flex; align-items: center; gap: 3px; color: var(--text-dim); font-size: 11.5px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.nr__goal { flex: none; display: inline-flex; align-items: center; justify-content: flex-start; gap: 4px; width: var(--nr-gw); height: 17px; line-height: 17px; white-space: nowrap; color: var(--text-dim); font-size: 11.5px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.nr__goal b { font-weight: 800; line-height: 17px; }
 .nr__goal .hg-icon { color: var(--gold); }
 .nr.is-hot .nr__goal { color: var(--gold); }
 .nr.is-hot .nr__goal .hg-icon { animation: hud-glow 1.4s var(--ease-std) infinite; }

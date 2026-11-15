@@ -3,6 +3,7 @@ import {
   BOARD_SIZE, GRID, START_TILE, TRAFFIC_TILE, CHAI_TILE, MUNICIPAL_TILE, AUCTION_TILE, TRANSPORT_TILES, CORNER_TILES,
   TILES, GROUPS, GROUP_TILES, TILE_TYPES, MAX_LEVEL, PIECES, isBuyable, rentTable, rentFor, upgradeCost, sellRefund,
   mortgageValue, unmortgageCost, levelName, nextTransport, tilePosition, tileSide, municipalFor, auctionMinBid,
+  PRICE_UNIT, START_CASH, QUICK_START_CASH, MUNICIPAL_PER_LEVEL,
 } from './board.js';
 import { LUCK_CARDS, DRAMA_CARDS } from './cards.js';
 import { CITY_EVENTS, RUSH_FLAVOUR, EVENT_EVERY } from './events.js';
@@ -70,31 +71,90 @@ describe('board integrity', () => {
 });
 
 describe('economy helpers', () => {
-  it('rent table = base 10%, x1.9, x3.5 rounded to thousands (HITEC 34,000 / 65,000 / 1,19,000)', () => {
-    expect(rentTable(TILES[31])).toEqual([34000, 65000, 119000]);
-    expect(rentTable(TILES[1])).toEqual([6000, 11000, 21000]);
-    expect(rentTable(TILES[35])).toEqual([40000, 76000, 140000]);
+  it('rent table = base 10%, x2.7, x4.4 rounded to thousands (HITEC 34,000 / 92,000 / 1,50,000)', () => {
+    expect(rentTable(TILES[31])).toEqual([34000, 92000, 150000]);
+    expect(rentTable(TILES[1])).toEqual([6000, 16000, 26000]);
+    expect(rentTable(TILES[35])).toEqual([40000, 108000, 176000]);
     expect(rentTable(TILES[5])).toEqual([]);
   });
 
   it('the full-set bonus is 1.5x on level 0 only', () => {
     expect(rentFor(TILES[31], 0, true)).toBe(51000);
     expect(rentFor(TILES[31], 0, false)).toBe(34000);
-    expect(rentFor(TILES[31], 1, true)).toBe(65000);
-    expect(rentFor(TILES[31], 2, true)).toBe(119000);
-    expect(rentFor(TILES[31], 9)).toBe(119000); // clamped
+    expect(rentFor(TILES[31], 1, true)).toBe(92000);
+    expect(rentFor(TILES[31], 2, true)).toBe(150000);
+    expect(rentFor(TILES[31], 9)).toBe(150000); // clamped
     expect(rentFor(TILES[9], 0)).toBe(0);
   });
 
-  it('upgrade = 50% of the price (30,000 - 2,00,000); selling refunds half; mortgage 50%, lifting +10%', () => {
+  it('upgrade = 40% of the price (24,000 - 1,60,000); selling refunds half; mortgage 50%, lifting +10%', () => {
     const costs = TILES.filter(isBuyable).map(upgradeCost);
-    expect(Math.min(...costs)).toBe(30000);
-    expect(Math.max(...costs)).toBe(200000);
-    expect(sellRefund(TILES[31])).toBe(85000);
+    expect(Math.min(...costs)).toBe(24000);
+    expect(Math.max(...costs)).toBe(160000);
+    expect(upgradeCost(TILES[31])).toBe(136000);
+    expect(sellRefund(TILES[31])).toBe(68000);
     expect(mortgageValue(TILES[31])).toBe(170000);
     expect(unmortgageCost(TILES[31])).toBe(187000);
     expect(upgradeCost(TILES[0])).toBe(0);
     expect(mortgageValue(TILES[5])).toBe(0);
+  });
+
+  // The price : upgrade : rent relationship, for every district (docs/GAME_RULES.md 5, "Economy of an upgrade"). Upgrades need
+  // the whole collection, so the rent an upgrade REPLACES is the level-0 rent WITH the 1.5x set bonus.
+  describe('upgrade economy (price : upgrade cost : rent)', () => {
+    const districts = TILES.filter(isBuyable);
+    const row = (t) => {
+      const [r0, r1, r2] = rentTable(t);
+      const set0 = rentFor(t, 0, true);
+      const cost = upgradeCost(t);
+      return { t, r0, r1, r2, set0, cost, pay1: cost / (r1 - set0), pay2: cost / (r2 - r1) };
+    };
+
+    it('rent strictly increases with every level, also on the cheapest district and with the set bonus', () => {
+      for (const t of districts) {
+        const { r0, r1, r2, set0 } = row(t);
+        expect(r1, t.name).toBeGreaterThan(r0);
+        expect(r2, t.name).toBeGreaterThan(r1);
+        expect(r1, `${t.name}: level 1 must beat the set-bonus level 0`).toBeGreaterThan(set0);
+        for (const r of [r0, r1, r2]) expect(r % PRICE_UNIT, `${t.name} rent ${r}`).toBe(0); // whole thousands
+      }
+    });
+
+    it('every upgrade pays for itself in a few opponent landings: level 1 in 3-5, level 2 in 2-4', () => {
+      for (const t of districts) {
+        const { pay1, pay2 } = row(t);
+        expect(pay1, `${t.name} level 1`).toBeGreaterThanOrEqual(3);
+        expect(pay1, `${t.name} level 1`).toBeLessThanOrEqual(5);
+        expect(pay2, `${t.name} level 2`).toBeGreaterThanOrEqual(2);
+        expect(pay2, `${t.name} level 2`).toBeLessThanOrEqual(4);
+      }
+    });
+
+    it('the payback is the same for the cheap and the dear districts (one ratio set for all 24)', () => {
+      const p1 = districts.map((t) => row(t).pay1);
+      const p2 = districts.map((t) => row(t).pay2);
+      expect(Math.max(...p1) - Math.min(...p1)).toBeLessThan(0.6);
+      expect(Math.max(...p2) - Math.min(...p2)).toBeLessThan(0.6);
+    });
+
+    it('a fully upgraded district clearly out-earns a bare one, without a runaway rent', () => {
+      for (const t of districts) {
+        const { r0, r2, set0 } = row(t);
+        expect(r2, t.name).toBeGreaterThanOrEqual(4 * r0); // 4x a bare district (2.9x a bare full-set one)
+        expect(r2, t.name).toBeGreaterThan(2.5 * set0);
+        expect(r2, t.name).toBeLessThanOrEqual(0.5 * t.price); // never more than half its price in one landing
+        expect(r2, t.name).toBeLessThanOrEqual(0.15 * Math.min(START_CASH, QUICK_START_CASH)); // one rent is at most 15% of a fresh player's cash
+      }
+    });
+
+    it('an upgrade is a whole number of thousands, cheaper than the district itself, and the Municipal levy per level stays a minor slice of it', () => {
+      for (const t of districts) {
+        expect(upgradeCost(t), t.name).toBe(Math.round(t.price * 0.4));
+        expect(upgradeCost(t) % PRICE_UNIT, t.name).toBe(0);
+        expect(upgradeCost(t), t.name).toBeLessThan(t.price);
+        expect(MUNICIPAL_PER_LEVEL / upgradeCost(t), t.name).toBeLessThanOrEqual(0.5);
+      }
+    });
   });
 
   it('level names come from the collection', () => {

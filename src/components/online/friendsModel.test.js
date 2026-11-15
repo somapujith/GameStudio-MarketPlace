@@ -131,12 +131,12 @@ describe('equipped cosmetics on friend rows', () => {
 describe('invites inbox model', () => {
   const now = Date.parse('2026-11-15T12:00:00Z');
   const stored = (id, code, fromId, minsAgo, extra = {}) =>
-    normalizeInvite({ id, code, gameId: 'hyderabad-tycoon', gameName: 'Hyderabad Tycoon', from: { id: fromId, name: `P${fromId}`, avatar: 2 }, createdAt: new Date(now - minsAgo * 60000).toISOString(), ...extra }, now);
-  const live = (code, fromId) => normalizeInvite({ t: 'invite', code, gameId: 'hyderabad-tycoon', gameName: 'Hyderabad Tycoon', from: { id: fromId, name: `P${fromId}` } }, now);
+    normalizeInvite({ id, code, gameId: 'hyderabad-tycoon', gameName: 'Kingpin', from: { id: fromId, name: `P${fromId}`, avatar: 2 }, createdAt: new Date(now - minsAgo * 60000).toISOString(), ...extra }, now);
+  const live = (code, fromId) => normalizeInvite({ t: 'invite', code, gameId: 'hyderabad-tycoon', gameName: 'Kingpin', from: { id: fromId, name: `P${fromId}` } }, now);
 
   it('normalizes stored rows and realtime messages; rejects junk', () => {
     const s = stored(7, 'ABC234', 'u1', 5);
-    expect(s).toMatchObject({ id: '7', code: 'ABC234', live: false, key: 'ABC234:u1', gameName: 'Hyderabad Tycoon' });
+    expect(s).toMatchObject({ id: '7', code: 'ABC234', live: false, key: 'ABC234:u1', gameName: 'Kingpin' });
     expect(s.createdAt).toBe(now - 5 * 60000);
     const l = live('ABC234', 'u1');
     expect(l).toMatchObject({ id: null, live: true, createdAt: now, key: 'ABC234:u1' });

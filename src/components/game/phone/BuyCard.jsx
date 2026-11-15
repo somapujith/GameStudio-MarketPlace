@@ -2,7 +2,7 @@
 //   [ district name on the collection colour ]
 //   Price | Rent | Mortgage value
 //   the three businesses (Stall / Shop / Trading Hub ...) as little buildings with the rent each one pays
-//   "Each upgrade costs ₹X"      "Pass and it goes to a sealed auction"
+//   "Each upgrade costs ₹X"      "Pass: no auction, the district stays free"
 //   [ PASS ]   [ BUY ₹70,000 ]
 // It only appears for MY decision (spec.kind 'buy', or 'skip' when I cannot afford it: BUY is then disabled with the reason).
 // Focus stays inside the card; Esc / a tap on the scrim only HIDES it (the decision stays pending: the bottom button still

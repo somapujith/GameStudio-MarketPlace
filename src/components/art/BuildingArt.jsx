@@ -7,6 +7,8 @@ import { memo } from 'react';
 import { ThemeModel, THEME_LEVEL_NAMES, THEME_ACCENT, THEME_SCALE, THEMES } from './HustleBuildings.jsx';
 import { PAL, tone, lighten, darken } from './palette.js';
 import Hotel from './Hotel.jsx';
+import { useArtMap, ANDHRA } from './andhra/artMap.js';
+import AndhraBuilding from './andhra/buildings.jsx';
 import { Box, Pad, Cyl, Cone, Dome, Face, Gable, Disc, Shade, Tree, Bush, Letters, Windows, archPath, pt, Poly, Slab, lettersWidth } from './iso.jsx';
 
 const WALL = '#fff0d2';
@@ -458,6 +460,12 @@ function BuildingArtBase({ theme, group, level = 0, color, size = 96, className,
   );
 }
 
-export const BuildingArt = memo(BuildingArtBase);
+// Andhra map: flat folk-art stalls / shops / complexes (art/andhra/buildings.jsx) for the themed (Hustle) businesses.
+function BuildingArtRouter(props) {
+  const andhra = useArtMap() === ANDHRA && (THEMES.includes(props.theme) || GROUP_THEME[props.group]);
+  return andhra ? <AndhraBuilding {...props} /> : <BuildingArtBase {...props} />;
+}
+
+export const BuildingArt = memo(BuildingArtRouter);
 export default BuildingArt;
 export { THEMES, THEME_LEVEL_NAMES };

@@ -59,3 +59,6 @@
   Cache-Control: public, max-age=86400
 /sfx/*
   Cache-Control: public, max-age=604800
+# Voice lines (shop soundboard clips): fetched lazily, keep their names, one week.
+/audio/*
+  Cache-Control: public, max-age=604800

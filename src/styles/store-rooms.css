@@ -793,15 +793,10 @@
     order: 5;
   }
   .sr-o-start {
-    order: 6;
-    position: sticky;
-    bottom: max(10px, var(--safe-bottom, 0px));
-    z-index: 15;
+    order: 0; /* the host's Start button is the first card on a phone (it used to be a bar at the bottom) */
     padding: 12px 14px;
     gap: 6px;
     background: var(--hub-glass-2);
-    -webkit-backdrop-filter: blur(14px);
-    backdrop-filter: blur(14px);
     box-shadow: var(--hub-shadow);
   }
   .sr-o-start .sr-start__mascot {
@@ -1365,12 +1360,20 @@ button.sr-seat__invite:active {
     border-color var(--dur-2) var(--ease-out);
 }
 .sr-conn__dot {
+  position: relative;
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: currentColor;
 }
-.sr-conn--good .sr-conn__dot {
+/* the ring is a pseudo-element animated with transform + opacity (a box-shadow animation repaints every frame) */
+.sr-conn--good .sr-conn__dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(var(--hub-good-rgb), 0.5);
+  opacity: 0;
   animation: sr-dot-live 2s var(--ease-out) infinite;
 }
 .sr-conn--info .sr-conn__dot,
@@ -1534,8 +1537,6 @@ button.sr-seat__invite:active {
   overflow: hidden;
   text-align: center;
   background: var(--hub-glass-2);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
   border: 1px solid var(--g-line, var(--hub-line-2));
   border-radius: 26px;
   box-shadow: var(--hub-shadow-l), 0 30px 60px -36px var(--g-glow-strong, transparent);
@@ -1672,11 +1673,14 @@ button.sr-seat__invite:active {
   }
 }
 @keyframes sr-dot-live {
-  70% {
-    box-shadow: 0 0 0 7px rgba(var(--hub-good-rgb), 0);
+  0% {
+    opacity: 1;
+    transform: scale(1);
   }
+  70%,
   100% {
-    box-shadow: 0 0 0 0 rgba(var(--hub-good-rgb), 0);
+    opacity: 0;
+    transform: scale(2.8);
   }
 }
 @keyframes sr-dot-wait {
@@ -1698,7 +1702,8 @@ button.sr-seat__invite:active {
   .sr-load__note,
   .sr-conn__label,
   .sr-conn__hint,
-  .sr-conn__dot {
+  .sr-conn__dot,
+  .sr-conn__dot::after {
     animation: none;
   }
   .sr-joining__bar {
@@ -1717,7 +1722,7 @@ button.sr-seat__invite:active {
     transform: none;
   }
 }
-:root[data-motion='reduced'] :is(.sr-ticket__status > span, .sr-preview, .sr-gate, .sr-blocked, .sr-seat, .sr-qr, .ho-status.sr-status, .sr-load__card, .sr-load__note, .sr-conn__label, .sr-conn__hint, .sr-conn__dot) {
+:root[data-motion='reduced'] :is(.sr-ticket__status > span, .sr-preview, .sr-gate, .sr-blocked, .sr-seat, .sr-qr, .ho-status.sr-status, .sr-load__card, .sr-load__note, .sr-conn__label, .sr-conn__hint, .sr-conn__dot, .sr-conn__dot::after) {
   animation: none;
 }
 :root[data-motion='reduced'] .sr-joining__bar {

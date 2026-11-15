@@ -219,10 +219,10 @@
 .ph .hb-pawn__glyph svg { display: block; width: 100% !important; height: 100% !important; overflow: visible; }
 /* the contact shadow stays on the tile while the disc hops, and tightens when it lands (board.css animates it) */
 .ph .hb-pawn__shadow { display: block; left: -4%; right: -4%; bottom: -26%; height: 38%; background: radial-gradient(ellipse at center, rgba(4, 3, 22, 0.78) 0%, rgba(4, 3, 22, 0.34) 55%, transparent 76%); }
-.ph .hb-pawn.is-turn .hb-pawn__disc { box-shadow: 0 0 0 max(0.5cqw, 1.5px) #fff, 0 0 0 max(0.95cqw, 3px) var(--c), inset 0 calc(var(--d) * -0.09) 0 rgba(0, 0, 0, 0.2); }
+.ph .hb-pawn.is-turn .hb-pawn__disc { box-shadow: 0 0 0 max(0.6cqw, 2px) #fff, 0 0 0 max(1cqw, 3.2px) rgba(12, 9, 38, 0.88), inset 0 calc(var(--d) * -0.09) 0 rgba(0, 0, 0, 0.2); }
+.ph .hb-pawn.is-turn.is-me .hb-pawn__disc { box-shadow: 0 0 0 max(0.6cqw, 2px) #fff1b0, 0 0 0 max(1cqw, 3.2px) rgba(12, 9, 38, 0.88), 0 0 max(1.6cqw, 6px) #fff1b0, inset 0 calc(var(--d) * -0.09) 0 rgba(0, 0, 0, 0.2); }
 /* anticipation (squash), action (stretch up, carry), settle (squash on landing, spring back): replaces the plain lift on a phone */
 .ph .hb-pawn.is-walk .hb-pawn__hop.is-step { animation: ph-hop var(--step) cubic-bezier(0.3, 0.6, 0.4, 1) both; }
-.ph .hb-pawn__marker { filter: none; }
 
 /* ---- the middle: a calm dusk panel lit by a lantern -------------------------- */
 .ph .hb-center {

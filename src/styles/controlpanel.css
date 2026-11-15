@@ -433,7 +433,7 @@
 }
 @media (hover: none) { .cp-kbd { display: none; } }
 
-/* full-width rows under the primary: Ride (Auto / Metro / MMTS), Put up for auction */
+/* full-width rows under the primary: Ride (Auto / Metro / MMTS) */
 .cp-actions[data-wide] { flex-wrap: wrap; }
 .cp-wide { flex: 1 1 100%; order: 3; flex-wrap: wrap; row-gap: 0; column-gap: 0.6em; min-height: 44px; padding-block: 0.15em; background: #e4f1fb; }
 .cp-wide.is-skip { background: #fff3d6; }

@@ -98,7 +98,7 @@ export default function TopPlayers() {
   }
 
   return (
-    <section className="hub-panel hh2-topplayers sh-panel" aria-labelledby="hh2-top-h" aria-busy={state === 'loading'}>
+    <section data-tour="home-top" className="hub-panel hh2-topplayers sh-panel" aria-labelledby="hh2-top-h" aria-busy={state === 'loading'}>
       <header className="st-head sh-head">
         <div className="sh-head__text">
           <span className="st-eyebrow">Leaderboard</span>

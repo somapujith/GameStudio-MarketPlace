@@ -3,7 +3,7 @@
 //   ribbon    the city event (EventBanner), slim, above the die
 //   hero      the big die (+ the Odds toggle), one plain status line ("Your turn - roll!" / "Ravi is playing...") and the slim decision timer
 //   pane      Play = the quiet activity log + a chip for the tile being played | Manage = my districts | Trade
-//   bottom    the action row (Roll / Buy / auction / Pay / Use chai / Wait it out / Ride / End turn)
+//   bottom    the action row (Roll / Buy / Pass / Pay / Use chai / Wait it out / Ride / End turn)
 // Players and their cash live in the pods around the board (PlayerPods), not here.
 // Contract: <ControlPanel session onOpenTile={(tileId) => void} onOpenTrade={() => void} actions? docked? />
 //   actions  { spec, fire } from useActionSpec (GameView owns the one keyboard shortcut); omitted = computed here
@@ -13,6 +13,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { PASS_START, TILES, isBuyable } from '@shared/board.js';
 import { formatINR } from '@shared/format.js';
+import { wordsOf } from '@/lib/mapWords.js';
 import Dice, { dieValue } from './Dice.jsx';
 import EventBanner from './EventBanner.jsx';
 import ActionBar, { PanelButton, rideVehicle, useActionSpec } from './ActionBar.jsx';
@@ -26,6 +27,7 @@ import { sceneOf } from './sceneModel.js';
 import { activePlayer, previewRentSafe, tileAccent, useStateLike } from './ui/helpers.js';
 import { hintLine } from './ui/hudModel.js';
 import { TimerBar } from './turn/TurnTimer.jsx';
+import { tradeStatus } from './ui/tradeModel.js';
 import { cosmeticsOf } from './turn/room.js';
 import '@/styles/controlpanel.css';
 import '@/styles/cpPremium.css';
@@ -75,10 +77,10 @@ export function landedInfo(state, player, me, sum = 4, tiles = TILES) {
     }
     case 'traffic':
       return player.stuck
-        ? out('warn', `Stuck in traffic · pay ${formatINR(cfg.trafficFine ?? 25000)}, use chai or wait a turn`)
-        : out('plain', 'Traffic Jam · land here and you are stuck');
+        ? out('warn', `Stuck in traffic · pay ${formatINR(cfg.trafficFine ?? 25000)}, use ${wordsOf().chai} or wait a turn`)
+        : out('plain', `${wordsOf().trafficCorner} · land here and you are stuck`);
     case 'chai':
-      return out('good', (player.chai || 0) >= (cfg.chaiCap ?? 1) ? 'Chai Adda · you already hold a chai' : 'Chai Adda · free chai token');
+      return out('good', (player.chai || 0) >= (cfg.chaiCap ?? 1) ? `${wordsOf().chaiCorner} · you already hold a ${wordsOf().isDefault ? 'chai' : wordsOf().chaiToken}` : `${wordsOf().chaiCorner} · free ${wordsOf().chaiToken}`);
     case 'municipal': {
       const base = tile.charge ?? tile.amount ?? MUNICIPAL_BASE;
       const per = tile.perLevel ?? MUNICIPAL_PER_LEVEL;
@@ -86,10 +88,10 @@ export function landedInfo(state, player, me, sum = 4, tiles = TILES) {
       return out('plain', `Pay ${formatINR(base + per * lv)}${lv ? ` (${formatINR(base)} + ${formatINR(per)} x ${lv} upgrades)` : ''}`);
     }
     case 'auction':
-      return out('plain', 'Bazaar Auction · a free district goes under the hammer');
+      return out('plain', `${wordsOf().auctionTile} · a free district goes under the hammer`);
     case 'card':
     case 'kismet':
-      return out('plain', `Draw a ${tile.deck === 'drama' ? 'City Drama' : tile.deck === 'luck' ? 'Nawabi Luck' : tile.short || tile.name} card`);
+      return out('plain', `Draw a ${tile.deck === 'drama' ? wordsOf().drama : tile.deck === 'luck' ? wordsOf().luck : tile.short || tile.name} card`);
     case 'tax':
       return out('plain', `Pay ${formatINR(tile.taxFlat ?? tile.price ?? 0)}`);
     case 'start':
@@ -172,6 +174,7 @@ function Tabs({ tab, onTab, badges, ids }) {
             type="button"
             role="tab"
             id={`${ids}-tab-${t.id}`}
+            data-tour={t.id === 'buy' ? undefined : t.id}
             aria-selected={on}
             aria-controls={`${ids}-pane`}
             tabIndex={on ? 0 : -1}
@@ -218,25 +221,23 @@ function BuyPane({ session, landed, buying, onOpenTile }) {
 /** Trade tab: what trading is, the pending-offer banner, and the entry to the trade sheet. */
 export function TradePane({ session, onOpenTrade }) {
   const { view, me } = session;
-  const canOffer = !!session.options?.trade?.canOffer;
   const t = view.trade;
+  const { can: canOffer, reason } = tradeStatus(session);
   const nameOf = (id) => (id === me ? 'You' : view.players.find((p) => p.id === id)?.name || 'Someone');
-  const myTurn = view.players[view.turn]?.id === me;
 
   let banner = null;
   if (t) {
-    if (t.to === me) banner = { tone: 'in', text: `${nameOf(t.from)} offered you a trade. Answer it to carry on.` };
+    if (t.to === me) banner = { tone: 'in', text: `${nameOf(t.from)} ${t.replaces ? 'changed the offer to you' : 'offered you a trade'}. Answer it to carry on.` };
     else if (t.from === me) banner = { tone: 'out', text: `Waiting for ${nameOf(t.to)} to answer your offer…` };
     else banner = { tone: 'info', text: `${nameOf(t.from)} and ${nameOf(t.to)} are making a deal.` };
   }
-  let why = '';
-  if (!canOffer && !t) why = myTurn ? 'Settle the current purchase or bid first, then you can trade.' : 'You can propose a trade on your own turn.';
+  const why = canOffer || t ? '' : reason; // always the exact reason: whose turn, which step, an animation is not one
 
   return (
     <div className="cp-trade">
       {banner ? <p className={`cp-banner is-${banner.tone}`} role="status">{banner.text}</p> : null}
-      <p>Swap districts and cash with another player. Districts keep their upgrades. The other side can accept or reject.</p>
-      <PanelButton tone="dark" size="lg" className="cp-trade__go" disabled={!canOffer || session.busy} onClick={onOpenTrade}>
+      <p>Swap districts and cash with another player. Districts keep their upgrades. The other side can accept, reject or change the offer.</p>
+      <PanelButton tone="dark" size="lg" className="cp-trade__go" disabled={!canOffer} onClick={onOpenTrade}>
         <Icon name="swap" size={20} />
         Propose a trade
       </PanelButton>
@@ -304,7 +305,7 @@ function OddsToggle() {
   );
 }
 
-export default function ControlPanel({ session, onOpenTile, onOpenTrade, actions = null, docked = false }) {
+export default function ControlPanel({ session, onOpenTile, onOpenTrade, actions = null, docked = false, reopen = null }) {
   const ids = useId();
   const own = useActionSpec(session, { keys: !actions });
   const { spec, fire } = actions || own;
@@ -358,7 +359,7 @@ export default function ControlPanel({ session, onOpenTile, onOpenTrade, actions
           </div>
         </div>
 
-        {docked ? null : <ActionBar spec={spec} fire={fire} session={session} />}
+        {docked ? null : <ActionBar spec={spec} fire={fire} session={session} reopen={reopen} />}
       </div>
     </section>
   );

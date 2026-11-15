@@ -93,3 +93,15 @@ export function buildResult(view, me, standings) {
 
 /** True when `a` and `b` are the same id regardless of number/string typing. */
 export const sameId = (a, b) => a != null && b != null && String(a) === String(b);
+
+/**
+ * A stable fingerprint of a `{t:'room'}` payload, so a frame that repeats the room unchanged (a reconnect echo, a ping that
+ * only re-sent the same seats) does not replace the room object and re-render the whole table for nothing.
+ */
+export function roomKey(room) {
+  try {
+    return JSON.stringify(room);
+  } catch {
+    return null; // not serialisable: never treat it as "the same"
+  }
+}

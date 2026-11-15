@@ -31,7 +31,8 @@ describe('resignStatus / canResign', () => {
 describe('words', () => {
   it('asks plainly and keeps the wording of the request', () => {
     expect(RESIGN_TITLE).toBe('Resign from this game?');
-    expect(RESIGN_TEXT).toContain("You lose, your districts return to the bank and you can't rejoin.");
+    expect(RESIGN_TEXT).toContain('the bank takes ALL your cash and your districts go back to the bank');
+    expect(RESIGN_TEXT).toContain("You can't rejoin");
     expect(RESIGN_CONFIRM).toBe('Resign');
     expect(RESIGN_KEEP).toBe('Keep playing');
   });

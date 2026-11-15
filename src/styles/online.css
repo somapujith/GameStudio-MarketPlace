@@ -1208,8 +1208,6 @@
   text-align: left;
   box-shadow: var(--hub-shadow);
   cursor: pointer;
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
   animation: ho-pop var(--dur-2) var(--ease-out);
 }
 .ho-toast--good {
@@ -1248,8 +1246,6 @@
   background: var(--hub-glass-2);
   color: var(--hub-text);
   box-shadow: var(--hub-shadow);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
   animation: ho-drop var(--dur-3) var(--ease-spring);
 }
 .ho-notice--invite {
@@ -1308,8 +1304,6 @@
   place-items: center;
   padding: var(--space-4);
   background: var(--hub-overlay);
-  -webkit-backdrop-filter: blur(4px);
-  backdrop-filter: blur(4px);
   animation: ho-fade var(--dur-2) var(--ease-out);
 }
 @keyframes ho-fade {
@@ -2158,8 +2152,6 @@
   padding: 12px;
   border-radius: var(--hub-r-l);
   background: var(--hub-glass);
-  -webkit-backdrop-filter: blur(18px) saturate(1.2);
-  backdrop-filter: blur(18px) saturate(1.2);
   box-shadow: 0 -6px 28px rgba(var(--hub-shadow-rgb), 0.35), var(--hub-shadow-s);
   transition: border-color var(--dur-2) var(--ease-std), box-shadow var(--dur-2) var(--ease-std);
 }

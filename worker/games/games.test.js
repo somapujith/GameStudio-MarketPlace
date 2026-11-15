@@ -7,7 +7,7 @@ import { ANIM_MS, MAX_ANIM_MS, LONG_TRIP } from '../../shared/timing.js';
 import * as engine from '../../shared/index.js';
 
 describe('registry', () => {
-  it('knows Hyderabad Tycoon and nothing else by default', () => {
+  it('knows Kingpin and nothing else by default', () => {
     expect(DEFAULT_GAME_ID).toBe('hyderabad-tycoon');
     expect(getAdapter('hyderabad-tycoon')).toBe(tycoon);
     expect(Object.keys(GAME_ADAPTERS)).toEqual(['hyderabad-tycoon']);
@@ -20,7 +20,7 @@ describe('registry', () => {
   });
 
   it('listGames is the public, function-free description', () => {
-    expect(listGames()).toEqual([{ id: 'hyderabad-tycoon', name: 'Hyderabad Tycoon', minPlayers: 2, maxPlayers: 6 }]);
+    expect(listGames()).toEqual([{ id: 'hyderabad-tycoon', name: 'Kingpin', minPlayers: 2, maxPlayers: 6 }]);
   });
 
   it('the Tycoon adapter implements the required interface and lists the pieces', () => {
@@ -59,7 +59,7 @@ describe('Tycoon adapter: settings', () => {
 
   it('the lobby shows every rule exactly as the game will run it (also for rooms stored before the rules existed)', () => {
     const old = { mode: 'quick', dice: 'fair', auctionOnDecline: false, targetWorth: 4000000 };
-    expect(tycoon.lobbySettings(old)).toEqual({ ...engine.ruleDefaults('quick'), mode: 'quick', dice: 'fair', auctionOnDecline: false, targetWorth: 4000000 });
+    expect(tycoon.lobbySettings(old)).toEqual({ ...engine.ruleDefaults('quick'), mode: 'quick', dice: 'fair', targetWorth: 4000000 }); // the retired auctionOnDecline is dropped
     const custom = tycoon.validateSettings({ startCash: 3000000, turnSeconds: 15, requireFullSet: false, eventEvery: 0 }).settings;
     const state = tycoon.createGame({ players: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }], settings: custom, seed: 2 });
     expect(state.cfg).toMatchObject({ startCash: 3000000, turnSeconds: 15, requireFullSet: false, eventEvery: 0 });
@@ -88,7 +88,7 @@ describe('Tycoon adapter: settings', () => {
     expect(ok({ mode: 'classic', targetWorth: 7500000 })).toBe(7500000);
     expect(tycoon.validateSettings({ targetWorth: 99 }).ok).toBe(true); // sanitised, not an error
     // a patch: another mode resets the target unless the patch also changes it
-    const cur = { mode: 'standard', dice: 'lucky', auctionOnDecline: true, targetWorth: 4000000 };
+    const cur = { mode: 'standard', dice: 'lucky', targetWorth: 4000000 };
     expect(tycoon.mergeSettings(cur, { mode: 'classic', targetWorth: 4000000 }).targetWorth).toBeUndefined();
     expect(tycoon.mergeSettings(cur, { mode: 'classic', targetWorth: 7500000 }).targetWorth).toBe(7500000);
     expect(tycoon.mergeSettings(cur, { dice: 'fair' }).targetWorth).toBe(4000000);

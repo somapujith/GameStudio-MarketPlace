@@ -98,14 +98,15 @@ describe('snatch: adapter timer and auto-play', () => {
     expect(pendingActors(pressed.state)).toEqual([others[1]]);
   });
 
-  it('auto-plays the sealed bidding that follows two presses (they chose to snatch), but never a press', () => {
+  it('never auto-plays the sealed bidding that follows two presses either: the auction timer passes the non-bidders at the end', () => {
     const { state, buyer } = snatchWindow();
     const [a, b] = state.players.map((p) => p.id).filter((id) => id !== buyer);
     let s = adapter.applyAction(state, { type: 'SNATCH', playerId: a }).state;
     s = adapter.applyAction(s, { type: 'SNATCH', playerId: b }).state;
     expect(s.phase).toBe('auction');
-    expect(adapter.idleAction(s, a)).toMatchObject({ type: 'BID', playerId: a });
+    expect(adapter.idleAction(s, a)).toBeNull();
     expect(adapter.idleAction(s, buyer)).toBeNull(); // the buyer is not bidding
+    expect(adapter.deadlines(s)[0]).toMatchObject({ action: { type: 'AUCTION_CLOSE' }, afterMs: 15000 + 400 });
   });
 
   it('times the window events: a short open, a readable end, no animation for the press', () => {

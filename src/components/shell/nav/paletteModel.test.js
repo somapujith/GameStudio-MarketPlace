@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildSections, codeFromQuery, flatten, isOpenShortcut, shortcutLabel, stepIndex } from './paletteModel.js';
 
 const games = [
-  { id: 'tycoon', name: 'Hyderabad Tycoon', tagline: 'Buy the city', status: 'live', category: 'board' },
+  { id: 'tycoon', name: 'Kingpin', tagline: 'Buy the city', status: 'live', category: 'board' },
   { id: 'ludo', name: 'Ludo Lanes', tagline: 'Race home', status: 'coming_soon', category: 'board' },
 ];
 // deterministic stand-in for searchGames
@@ -34,9 +34,9 @@ describe('buildSections', () => {
     expect(signin.to).toBe('/login?next=%2Fgames');
   });
   it('ranks games first, then actions, then a search-all row', () => {
-    const s = buildSections({ query: 'hyder', games, search, signedIn: true });
+    const s = buildSections({ query: 'kingpin', games, search, signedIn: true });
     expect(s.map((x) => x.id)).toEqual(['games', 'search']);
-    expect(flatten(s).at(-1).to).toBe('/search?q=hyder');
+    expect(flatten(s).at(-1).to).toBe('/search?q=kingpin');
   });
   it('offers Join table for a code-shaped query, first when no game matches', () => {
     const s = buildSections({ query: 'k7m2qx', games, search, signedIn: true });

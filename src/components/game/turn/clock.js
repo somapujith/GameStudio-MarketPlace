@@ -1,6 +1,6 @@
 // The decision clock (docs/HUSTLE_PLAN.md 3.9): `session.clock = { deadline: epochMs|null, waitingFor: playerId[] }`.
 //   clockInfo(clock, me, now)   pure: what the timer shows right now (exported for tests)
-//   useClock(session)           re-renders 4x a second while a deadline is running
+//   useClock(session)           re-renders once per displayed second while a deadline is running
 //   useTurnAlerts(session, onWarn)  one soft warning (sound + buzz + onWarn, e.g. a screen-reader line) per deadline
 //                                   when MY time drops to the warning point (15 s, or half of a shorter room timer)
 // The bar's full length follows the host rules in `session.view.cfg` (`turnSeconds`, `tradeSeconds`): see timerMs().
@@ -85,10 +85,51 @@ export function useNow(on, ms = 250) {
 
 const isOver = (session) => (session?.display?.phase ?? session?.view?.phase) === 'over' || !!session?.result;
 
+/** Delay until just after the next whole second of `leftMs` (so the displayed `secs` flips right after the boundary). Pure. */
+export function nextSecondDelay(leftMs) {
+  const left = Number(leftMs);
+  if (!(left > 0)) return 0; // nothing left to count
+  return (left % 1000) + SECOND_SLACK_MS;
+}
+const SECOND_SLACK_MS = 8;
+
+/**
+ * The current epoch ms, refreshed once per displayed SECOND of the countdown to `deadline` (not 4x a second), and when the
+ * tab becomes visible again. The ring / bar CSS transitions glide between the steps; ticking 4x a second kept every
+ * timer re-rendering and repainting a ring on every avatar for the whole turn.
+ */
+export function useSecondNow(deadline, on) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!on || !(Number(deadline) > 0)) return undefined;
+    let timer = 0;
+    let stopped = false;
+    const tick = () => {
+      if (stopped) return;
+      clearTimeout(timer);
+      const n = Date.now();
+      setNow(n);
+      const wait = nextSecondDelay(Number(deadline) - n);
+      if (wait > 0) timer = setTimeout(tick, wait);
+    };
+    const onVisible = () => {
+      if (typeof document !== 'undefined' && !document.hidden) tick();
+    };
+    tick();
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [deadline, on]);
+  return now;
+}
+
 export function useClock(session) {
   const clock = session?.clock;
   const running = Number(clock?.deadline) > 0 && !isOver(session);
-  const now = useNow(running);
+  const now = useSecondNow(Number(clock?.deadline) || 0, running);
   const state = session?.view ?? session?.display ?? null;
   return running ? clockInfo(clock, session.me, now, state?.cfg ?? null, state) : null;
 }
@@ -99,30 +140,65 @@ export const WARN_TEXT = `${Math.round(WARN_MS / 1000)} seconds left`;
 /** The same line for a room's own timer: the warning starts at `warnMsFor`, never more than half of the time. */
 export const warnTextFor = (cfg, state = null) => `${Math.round(warnMsFor(timerMs(cfg, state)) / 1000)} seconds left`;
 
-/** One `warn` sound + buzz (+ `onWarn()`) per deadline, when the clock waits for ME and 10 s are left. */
+/**
+ * One look at the clock for the alert loop (pure; exported for tests).
+ * `mem` = { warned: deadline|0, tickKey: string }. -> { warn: bool, tick: { secs } | null, mem }
+ * `warn`: the one soft warning per deadline when MY time drops to the warning point; `tick`: the soft tick-tock in the
+ * last 10 seconds of MY decision (once per displayed second). Never during a Snatch window: its 5 seconds are the
+ * pop-up's own countdown, not a decision running out.
+ */
+export function alertStep(info, snatching, mem = { warned: 0, tickKey: '' }) {
+  const deadline = info?.deadline || 0;
+  const warn = !!info?.warn && info.leftMs > 0 && !snatching;
+  const secs = info?.mine && info.leftMs > 0 && !snatching ? info.secs : 0;
+  const next = { ...mem };
+  const out = { warn: false, tick: null, mem: next };
+  if (warn && mem.warned !== deadline) {
+    out.warn = true;
+    next.warned = deadline;
+  }
+  const tickKey = secs ? `${deadline}:${secs}` : '';
+  if (tickKey !== mem.tickKey) {
+    next.tickKey = tickKey;
+    if (secs && secs <= 10) out.tick = { secs };
+  }
+  return out;
+}
+
+/**
+ * One `warn` sound + buzz (+ `onWarn()`) per deadline, when the clock waits for ME and 10 s are left, and the tick-tock
+ * of the last 10 seconds. It runs on its own timer and holds NO React state: the table (GameView, the board, 36 tiles, the
+ * pods) used to re-render 4x a second just to watch this clock, which is what made slow-rendering browsers stutter.
+ */
 export function useTurnAlerts(session, onWarn) {
-  const info = useClock(session);
-  const warned = useRef(0);
+  const latest = useRef(session);
+  latest.current = session;
   const cb = useRef(onWarn);
   cb.current = onWarn;
-  const deadline = info?.deadline || 0;
-  // never during a Snatch window: its 5 seconds are the pop-up's own countdown, not a decision running out
-  const snatching = session?.view?.phase === 'snatch';
-  const warn = !!info?.warn && info.leftMs > 0 && !snatching;
+  const mem = useRef({ warned: 0, tickKey: '' });
+  const deadline = Number(session?.clock?.deadline) || 0;
+  const over = isOver(session);
   useEffect(() => {
-    if (!warn || warned.current === deadline) return;
-    warned.current = deadline;
-    try { sfx.play('warn'); } catch { /* optional */ }
-    buzz('warn');
-    const state = session?.view ?? session?.display ?? null;
-    try { cb.current?.(warnTextFor(state?.cfg ?? null, state)); } catch { /* optional */ }
-  }, [warn, deadline]);
-  // the last 10 seconds of MY decision: a soft tick-tock that climbs as time runs out, a light buzz in the last 3
-  const secs = info?.mine && info.leftMs > 0 && !snatching ? info.secs : 0;
-  useEffect(() => {
-    if (!secs || secs > 10) return;
-    try { sfx.play('tick', { tock: secs % 2 === 0, urgency: 1 - secs / 10 }); } catch { /* optional */ }
-    if (secs <= 3) buzz('tick');
-  }, [secs, deadline]);
-  return info;
+    if (!(deadline > 0) || over) return undefined;
+    const look = () => {
+      const s = latest.current;
+      const state = s?.view ?? s?.display ?? null;
+      const info = clockInfo(s?.clock, s?.me, Date.now(), state?.cfg ?? null, state);
+      const r = alertStep(info, s?.view?.phase === 'snatch', mem.current);
+      mem.current = r.mem;
+      if (r.warn) {
+        try { sfx.play('warn'); } catch { /* optional */ }
+        buzz('warn');
+        try { cb.current?.(warnTextFor(state?.cfg ?? null, state)); } catch { /* optional */ }
+      }
+      if (r.tick) {
+        // a soft tick-tock that climbs as time runs out, a light buzz in the last 3
+        try { sfx.play('tick', { tock: r.tick.secs % 2 === 0, urgency: 1 - r.tick.secs / 10 }); } catch { /* optional */ }
+        if (r.tick.secs <= 3) buzz('tick');
+      }
+    };
+    look();
+    const id = setInterval(look, 250);
+    return () => clearInterval(id);
+  }, [deadline, over]);
 }

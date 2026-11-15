@@ -27,7 +27,7 @@ vi.mock('./push.js', async (importOriginal) => ({ ...(await importOriginal()), s
 
 // The registry is faked so these tests do not depend on the game engine (it is being rewritten in parallel).
 vi.mock('./games/index.js', () => {
-  const GAME_ADAPTERS = { 'hyderabad-tycoon': { id: 'hyderabad-tycoon', name: 'Hyderabad Tycoon' } };
+  const GAME_ADAPTERS = { 'hyderabad-tycoon': { id: 'hyderabad-tycoon', name: 'Kingpin' } };
   return {
     DEFAULT_GAME_ID: 'hyderabad-tycoon',
     GAME_ADAPTERS,
@@ -129,7 +129,7 @@ describe('POST /api/invites (stored)', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(webPushMock).toHaveBeenCalledWith(expect.objectContaining(vapid), FRIEND, {
       title: 'Me invited you to play',
-      body: 'Hyderabad Tycoon · room ABCD23. Tap to join.',
+      body: 'Kingpin · room ABCD23. Tap to join.',
       url: '/join/ABCD23',
       tag: 'invite-ABCD23',
     });
@@ -177,7 +177,7 @@ describe('GET /api/invites', () => {
     expect(res.status).toBe(200);
     expect(res.json).toEqual({
       invites: [
-        { id: INVITE, from: { id: FRIEND, name: 'Friend', avatar: 5 }, code: 'ABCD23', gameId: 'hyderabad-tycoon', gameName: 'Hyderabad Tycoon', createdAt: '2026-11-15T10:00:00.000Z' },
+        { id: INVITE, from: { id: FRIEND, name: 'Friend', avatar: 5 }, code: 'ABCD23', gameId: 'hyderabad-tycoon', gameName: 'Kingpin', createdAt: '2026-11-15T10:00:00.000Z' },
         { id: 'x2', from: { id: FRIEND, name: 'Friend', avatar: 5 }, code: 'ZZZZ99', gameId: 'gone-game', gameName: 'gone-game', createdAt: '2026-11-15T10:00:00.000Z' },
       ],
     });

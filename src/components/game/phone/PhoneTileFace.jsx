@@ -9,6 +9,7 @@ import { useRef } from 'react';
 import { compactINR } from '@shared/format.js';
 import { MAX_LEVEL } from '@shared/board.js';
 import { TileIcon } from '@/components/art/index.js';
+import { useArtMap } from '@/components/art/andhra/artMap.js';
 import { ChaiSteam, CardShimmer } from '../fx/TileFx.jsx';
 import { bestInk } from '../PropertySheet.jsx';
 import { calloutFor, faceKind, faceLabel, faceName, faceTones, isLightInk, pipStates } from './phoneModel.js';
@@ -65,6 +66,7 @@ function Face({
   tile, group, owned = false, ownerColor = null, level = 0, rent = 0, mortgaged = false, stuck = 0, chai = 0, drawing = false,
 }) {
   const kind = faceKind(tile);
+  const mapId = useArtMap();
 
   if (kind === 'prop') {
     const tones = faceTones(group?.color || '#8a7a66');
@@ -92,7 +94,7 @@ function Face({
     );
   }
 
-  const label = faceLabel(tile);
+  const label = faceLabel(tile, mapId);
   const labelStyle = { '--chars': Math.max(label.length, 1) };
 
   if (kind === 'transport') {

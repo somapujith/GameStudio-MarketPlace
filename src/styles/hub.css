@@ -661,11 +661,9 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--hub-on-media);
-  background: rgba(10, 15, 31, 0.72);
-  background: color-mix(in srgb, var(--hub-night) 72%, transparent);
+  background: rgba(10, 15, 31, 0.84);
+  background: color-mix(in srgb, var(--hub-night) 84%, transparent);
   border: 1px solid var(--hub-line-2);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
 }
 .hub-badge--soon {
   color: var(--hub-warn);
@@ -862,8 +860,6 @@
   background: var(--hub-glass);
   view-transition-name: hub-topbar; /* stays put while the page cross-fades */
   border-bottom: 1px solid var(--hub-line);
-  backdrop-filter: blur(16px) saturate(1.2);
-  -webkit-backdrop-filter: blur(16px) saturate(1.2);
 }
 .hub-topbar__inner {
   display: flex;
@@ -1051,8 +1047,6 @@
   background: var(--hub-glass-2);
   border-top: 1px solid var(--hub-line);
   view-transition-name: hub-tabbar;
-  backdrop-filter: blur(18px) saturate(1.2);
-  -webkit-backdrop-filter: blur(18px) saturate(1.2);
 }
 .hub-tabbar ul {
   display: grid;
@@ -1718,11 +1712,9 @@
   font-size: 12.5px;
   font-weight: 800;
   color: var(--hub-on-media);
-  background: rgba(10, 15, 31, 0.62);
-  background: color-mix(in srgb, var(--hub-night) 62%, transparent);
+  background: rgba(10, 15, 31, 0.78);
+  background: color-mix(in srgb, var(--hub-night) 78%, transparent);
   border: 1px solid rgba(255, 255, 255, 0.18);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
 }
 .hub-quick__facts i {
   width: 3px;

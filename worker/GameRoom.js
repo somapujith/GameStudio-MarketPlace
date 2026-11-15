@@ -29,10 +29,10 @@ import {
   defaultSanitizeAction,
   DEFAULT_VISIBILITY,
 } from './roomrules.js';
-import { roomRow, rowSignature, upsertRoomRow, deleteRoomRow, hasDb, loadEquipped, LISTING_HEARTBEAT_MS } from './roomsdb.js';
-import { sanitizeName, parseAvatar, sanitizeChat, sanitizeEmote, isUuid, parseNetRtt } from './validate.js';
+import { roomRow, rowSignature, upsertRoomRow, deleteRoomRow, hasDb, loadEquipped, loadOwnedItemIds, LISTING_HEARTBEAT_MS } from './roomsdb.js';
+import { sanitizeName, parseAvatar, sanitizeChat, sanitizeEmote, sanitizeVoiceId, isUuid, parseNetRtt } from './validate.js';
 import { NetPresence, NET_BROADCAST_GAP_MS } from './netpresence.js';
-import { cleanEquipped } from '../shared/cosmetics.js';
+import { cleanEquipped, isVoiceId, VOICE_LIMITS } from '../shared/cosmetics.js';
 import { DECISION_MS } from '../shared/timing.js';
 
 // Version of the stored room record. 3 = the 40-square Hyderabad board; a record below it still holds
@@ -41,6 +41,12 @@ export const ROOM_VERSION = 3;
 export const TURN_MS = DECISION_MS; // human idle limit per decision (shared/timing.js)
 export const GRACE_MS = 30_000; // disconnected human is auto-played after this (long enough to switch apps and come back)
 const AUTO_MOVE_DELAY_MS = 1500; // pause before an automated move (adapters may shorten it via moveDelayMs)
+// A CONNECTED human is never auto-played after a short pause: every decision gets the room's full decision timer (turnMs).
+// Only a player who let AFK_STRIKES decisions run out in a row without doing anything (no action, no reconnect) is treated as
+// away: from then on their window is shortened to AFK_TURN_MS (never below a few seconds). "In a row" counts whole turns. A DISCONNECTED human is played for
+// only after GRACE_MS. Any action or a reconnect clears the strikes. docs/GAME_RULES.md (timers).
+export const AFK_STRIKES = 2;
+export const AFK_TURN_MS = 10_000;
 const LOBBY_GRACE_MS = 60_000; // a disconnected lobby member is dropped after this
 const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
 const ABANDON_MS = 5 * 60 * 1000; // nobody connected for this long -> stop playing the game
@@ -51,6 +57,12 @@ const MAX_SOCKETS_PER_USER = 3;
 const PERSIST_BACKOFF_MS = [2_000, 10_000, 30_000, 120_000, 600_000];
 const PERSIST_MAX_ATTEMPTS = 8;
 const COSMETICS_REFRESH_MS = 30_000; // a member's equipped cosmetics are re-read at most this often
+
+// Voice lines (soundboard, docs/CONTRACT.md "Voice lines"): a purchased clip any owner may play at any time, heard by the whole
+// room. Limits are in memory only (a hibernating object forgets them: harmless). Never touches game state, timers or idle logic.
+// The numbers are VOICE_LIMITS in shared/cosmetics.js (the client's cooldown ring reads the same ones); the lobby counts as its own "match".
+const VOICE_OWNED_TTL_MS = 60_000; // a member's owned voice lines are cached this long
+const VOICE_RECHECK_MS = 5000; // a "not owned" answer is re-checked against the database at most this often (a fresh purchase works within seconds)
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
@@ -93,6 +105,11 @@ export class GameRoom extends DurableObject {
     this.listingChain = Promise.resolve(); // listing writes run strictly in order
     this.listedSig = null; // signature of the last row written to `rooms`
     this.listedAt = 0;
+    this.voiceOwned = new Map(); // userId -> { ids:Set, at } owned voice lines (one DB read, then cached)
+    this.voiceTimes = new Map(); // userId -> accepted voice timestamps within the burst window
+    this.voiceRoomTimes = []; // accepted voice timestamps of the whole room within the room window
+    this.voiceSeq = new Map(); // userId -> number of voice lines accepted from them (the `seq` field; never reset)
+    this.voiceGame = { key: null, counts: new Map() }; // per-match voice counts
     this.cosmeticsAt = new Map(); // userId -> when their equipped cosmetics were last read
     this.cosmeticsJob = Promise.resolve(); // the latest background cosmetics read (tests await it)
     this.net = new NetPresence(); // connection strength per member: memory only, never stored (netpresence.js)
@@ -116,7 +133,7 @@ export class GameRoom extends DurableObject {
 
   /**
    * Pick the adapter of the loaded room and fill in fields that rooms created by older versions
-   * lack (they were all Hyderabad Tycoon rooms, private, without per-match meta or deadlines).
+   * lack (they were all Kingpin rooms, private, without per-match meta or deadlines).
    */
   bindAdapter() {
     const r = this.room;
@@ -187,7 +204,8 @@ export class GameRoom extends DurableObject {
   withWindowClock(view) {
     const r = this.room;
     const p = view && view.pending;
-    if (!view || view.phase !== 'snatch' || !p || p.type !== 'snatch' || !Number.isFinite(p.ms)) return view;
+    // Same for an open sealed auction (`pending.type` 'auction', window `pending.ms`): the countdown survives a reload.
+    if (!view || (view.phase !== 'snatch' && view.phase !== 'auction') || !p || p.type !== view.phase || !Number.isFinite(p.ms)) return view;
     const d = (typeof this.adapter.deadlines === 'function' ? this.adapter.deadlines(r.state) : [])[0];
     const startedAt = d ? this.deadlineStart(d) : Date.now();
     return { ...view, pending: { ...p, remainingMs: Math.max(0, Math.min(p.ms, startedAt + p.ms - Date.now())) } };
@@ -263,6 +281,18 @@ export class GameRoom extends DurableObject {
     const a = this.adapter;
     const ms = a && typeof a.turnMs === 'function' ? Number(a.turnMs(this.room && this.room.state)) : NaN;
     return Number.isFinite(ms) && ms >= 1000 ? Math.round(ms) : TURN_MS;
+  }
+
+  /** How many decisions in a row this connected human let run out without acting (0 for anyone who has acted or reconnected since). */
+  idleStrikes(id) {
+    const r = this.room;
+    return (r && r.idle && r.idle[id]) || 0;
+  }
+
+  clearIdle(id) {
+    const r = this.room;
+    if (r.idle) delete r.idle[id];
+    if (r.idleTurn) delete r.idleTurn[id];
   }
 
   roomView() {
@@ -523,6 +553,7 @@ export class GameRoom extends DurableObject {
       meta: {}, // opaque per-match data the adapter folds events into (see adapter.track)
       deadlines: {}, // adapter timer key -> when it started counting
       afk: {},
+      idle: {}, // consecutive decisions a connected human let run out (see AFK_STRIKES)
       disc: { [host.id]: now }, // the host must connect within LOBBY_GRACE_MS
       banned: {},
       noHumanSince: null,
@@ -602,6 +633,7 @@ export class GameRoom extends DurableObject {
     }
     delete r.disc[userId];
     delete r.afk[userId];
+    this.clearIdle(userId); // back at the table: a full decision timer again
     r.noHumanSince = null;
     this.touch();
 
@@ -684,6 +716,8 @@ export class GameRoom extends DurableObject {
         return this.onAction(ws, me, msg);
       case 'chat':
         return this.onChat(ws, me, msg);
+      case 'voice':
+        return this.onVoice(ws, me, msg);
       case 'leave':
         return this.onLeave(ws, me);
       default:
@@ -870,6 +904,8 @@ export class GameRoom extends DurableObject {
     r.deadlines = {};
     this.syncDeadlines(); // a game may start with a timer already running
     r.afk = {};
+    r.idle = {};
+    r.idleTurn = {};
     r.disc = {};
     r.noHumanSince = null;
     this.autoFailures.clear();
@@ -890,6 +926,7 @@ export class GameRoom extends DurableObject {
     const action = typeof a.sanitizeAction === 'function' ? a.sanitizeAction(msg.action, me.id) : defaultSanitizeAction(msg.action, me.id);
     if (!action) return this.sendError(ws, 'Invalid action.');
     delete r.afk[me.id]; // a human who acts is no longer idle
+    this.clearIdle(me.id);
     delete r.disc[me.id];
     const res = await this.applyAndBroadcast(action);
     if (res.error) {
@@ -968,6 +1005,58 @@ export class GameRoom extends DurableObject {
     }
   }
 
+  /** Does this member own voice line `id`? Cached per member; a miss re-reads the database at most every VOICE_RECHECK_MS. Throws if the read fails. */
+  async ownsVoice(userId, id) {
+    const now = Date.now();
+    const c = this.voiceOwned.get(userId);
+    if (c && now - c.at < VOICE_OWNED_TTL_MS && c.ids.has(id)) return true;
+    if (c && now - c.at < VOICE_RECHECK_MS) return false;
+    const bought = await loadOwnedItemIds(this.env, userId);
+    this.voiceOwned.set(userId, { ids: new Set(bought.filter(isVoiceId)), at: Date.now() });
+    return this.voiceOwned.get(userId).ids.has(id);
+  }
+
+  /**
+   * `{t:'voice', id}`: play an owned voice line for everybody in the room (lobby or game, any time, not only on the sender's
+   * turn). Broadcast to EVERY open socket including the sender's: `{t:'voice', from, id, ts, seq}` (seq counts this sender's
+   * accepted lines so their client can drop the echo of an optimistic local play). Nothing is stored; it is not an action:
+   * it never changes the game, resets no timer and clears no idle / afk flag.
+   */
+  async onVoice(ws, me, msg) {
+    const id = sanitizeVoiceId(msg.id);
+    if (!id) return this.sendError(ws, 'Unknown voice line.');
+    let owns = false;
+    try {
+      owns = await this.ownsVoice(me.id, id);
+    } catch (err) {
+      console.error('voice ownership check failed:', err && err.code ? `${err.code} ${err.message}` : err && err.message);
+      return this.sendError(ws, 'Could not check your voice lines. Try again.');
+    }
+    if (!owns) return this.sendError(ws, 'Buy voice lines in the shop (sign in).');
+
+    const L = VOICE_LIMITS;
+    const now = Date.now();
+    const key = (this.room && this.room.matchId) || 'lobby';
+    if (this.voiceGame.key !== key) this.voiceGame = { key, counts: new Map() };
+    const mine = (this.voiceTimes.get(me.id) || []).filter((t) => now - t < L.burstWindowMs);
+    this.voiceRoomTimes = this.voiceRoomTimes.filter((t) => now - t < L.roomWindowMs);
+    if ((this.voiceGame.counts.get(me.id) || 0) >= L.perGame) return this.sendError(ws, 'Voice line limit reached for this game.');
+    if (
+      (mine.length && now - mine[mine.length - 1] < L.cooldownMs) ||
+      mine.length >= L.burst ||
+      this.voiceRoomTimes.length >= L.roomMax
+    ) {
+      return this.sendError(ws, 'Voice lines are limited: wait a few seconds.');
+    }
+    mine.push(now);
+    this.voiceTimes.set(me.id, mine);
+    this.voiceRoomTimes.push(now);
+    this.voiceGame.counts.set(me.id, (this.voiceGame.counts.get(me.id) || 0) + 1);
+    const seq = (this.voiceSeq.get(me.id) || 0) + 1;
+    this.voiceSeq.set(me.id, seq);
+    this.broadcast({ t: 'voice', from: me.id, id, ts: now, seq });
+  }
+
   // ------------------------------------------------------------------ timers (alarms)
 
   /**
@@ -1003,12 +1092,17 @@ export class GameRoom extends DurableObject {
       if (!action) continue;
       let at;
       let timeout = false;
-      if (r.afk[id]) at = pace(action);
-      else if (r.disc[id] != null) at = Math.max(pace(action), r.disc[id] + GRACE_MS);
-      else {
+      if (r.disc[id] != null) {
+        // Gone (no socket): played for only once the reconnect grace has run out, however idle they were before.
+        at = Math.max(pace(action), r.disc[id] + GRACE_MS);
+      } else {
+        // Present: the full decision timer for THIS decision, counted from when the last animation ends. Being slow on an
+        // earlier turn never shortens it (a stale idle flag used to auto-roll every later turn after ~1.5 s); only a player
+        // who let AFK_STRIKES decisions run out in a row gets the shorter AFK window.
         // A running adapter timer (an unanswered trade offer) is the timer for what it waits on: the idle move never
         // comes before it, so a trade timer longer than the decision timer is not cut short (and nobody is flagged idle).
-        at = Math.max(r.lastApplyAt + r.animMs + this.turnMs(), adapterAt);
+        const limit = this.idleStrikes(id) >= AFK_STRIKES ? Math.min(this.turnMs(), AFK_TURN_MS) : this.turnMs();
+        at = Math.max(r.lastApplyAt + r.animMs + limit, adapterAt);
         timeout = true;
       }
       candidates.push({ at, id, action, timeout });
@@ -1155,7 +1249,15 @@ export class GameRoom extends DurableObject {
       } else {
         const plan = this.plan();
         if (plan && plan.at <= now + 25) {
-          if (plan.timeout) r.afk[plan.id] = true;
+          if (plan.timeout) {
+            r.afk[plan.id] = true;
+            // One strike per TURN left idle (roll + buy + end turn are three decisions of one turn, not three strikes).
+            const turnKey = r.state && r.state.turnCount;
+            r.idle = r.idle || {};
+            r.idleTurn = r.idleTurn || {};
+            if (turnKey == null || r.idleTurn[plan.id] !== turnKey) r.idle[plan.id] = (r.idle[plan.id] || 0) + 1;
+            r.idleTurn[plan.id] = turnKey ?? null;
+          }
           const res = await this.applyAndBroadcast(plan.action);
           dirty = false;
           if (res.error) await this.handleAutoFailure(plan.id, res.error);

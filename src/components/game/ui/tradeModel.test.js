@@ -5,7 +5,7 @@ import { applyAction, createGame } from '@shared/index.js';
 import {
   CASH_CHIPS, CASH_STEP, NOT_YOUR_TURN, NO_PARTNER, balanceSplit, byCollection, cashAfter, clampCash, deedFacts, districtsOf, fairness,
   fullSets, hasImpact, impactRows, offerProblem, parseCash, partnerHints, setImpact, setsToComplete, sideBrief, sideParts, sideValue,
-  tileHint, tileValue,
+  tileHint, tileValue, SAME_DEAL, counterDiff, sameSide, sideChanged, tradeStatus,
 } from './tradeModel.js';
 
 const game = () => createGame({ players: [{ id: 'me', name: 'Asha' }, { id: 'b1', name: 'Ravi' }, { id: 'c2', name: 'Zoya' }], seed: 3 });
@@ -16,11 +16,11 @@ describe('values', () => {
     const v = game();
     v.levels[31] = 2;
     v.mortgaged[1] = true;
-    expect(tileValue(v, 31)).toBe(340000 + 170000);
+    expect(tileValue(v, 31)).toBe(340000 + 136000);
     expect(tileValue(v, 1)).toBe(30000);
     expect(tileValue(v, 3)).toBe(70000);
     expect(tileValue(v, 0)).toBe(0); // not a district
-    expect(sideValue(v, { cash: 10000, tiles: [31] })).toBe(10000 + 340000 + 170000);
+    expect(sideValue(v, { cash: 10000, tiles: [31] })).toBe(10000 + 340000 + 136000);
   });
 
   it('splits a side into cash, districts and a count', () => {
@@ -59,7 +59,7 @@ describe('values', () => {
     const v = game();
     v.levels[31] = 1;
     v.mortgaged[28] = true;
-    expect(deedFacts(v, 31)).toMatchObject({ id: 31, level: 1, mortgaged: false, price: 340000, rent: 65000, value: 340000 + 85000 });
+    expect(deedFacts(v, 31)).toMatchObject({ id: 31, level: 1, mortgaged: false, price: 340000, rent: 92000, value: 340000 + 68000 });
     expect(deedFacts(v, 28)).toMatchObject({ mortgaged: true, rent: 0, value: 150000 });
     expect(deedFacts(v, 29).rent).toBe(32000);
   });
@@ -204,5 +204,59 @@ describe('cash and wording helpers', () => {
     expect(sideBrief({ cash: 0, tiles: [1] })).toBe('1 district');
     expect(sideBrief({ cash: 150000, tiles: [1, 3] })).toBe('2 districts + ₹1.5L');
     expect(sideBrief(null)).toBe('nothing');
+  });
+});
+
+describe('can I propose a trade right now (tradeStatus), and why not', () => {
+  const sessionOf = (patch = {}, extra = {}) => {
+    const v = game();
+    Object.assign(v, patch);
+    return { me: 'me', view: v, connection: 'open', options: { trade: { canOffer: true } }, busy: false, ...extra };
+  };
+
+  it('is true on my turn before the roll, after landing (buy phase) and after buying, even while the table animates', () => {
+    expect(tradeStatus(sessionOf()).can).toBe(true);
+    expect(tradeStatus(sessionOf({ phase: 'manage' })).can).toBe(true);
+    expect(tradeStatus(sessionOf({ phase: 'buy', pending: { type: 'buy', tile: 3, price: 70000 } })).can).toBe(true);
+    expect(tradeStatus(sessionOf({}, { busy: true })).can).toBe(true); // presenter playing: not a reason
+  });
+
+  it('names the exact reason otherwise', () => {
+    expect(tradeStatus(sessionOf({ turn: 1 })).reason).toBe('You can propose a trade on your own turn');
+    expect(tradeStatus(sessionOf({ phase: 'debt' })).reason).toBe('Settle the debt before trading');
+    expect(tradeStatus(sessionOf({ phase: 'auction' })).reason).toMatch(/auction/);
+    expect(tradeStatus(sessionOf({ phase: 'snatch' })).reason).toMatch(/Snatch/);
+    expect(tradeStatus(sessionOf({ trade: { id: 1, from: 'me', to: 'b1' } })).reason).toMatch(/waiting/);
+    expect(tradeStatus(sessionOf({}, { connection: 'connecting' })).reason).toMatch(/Reconnecting/);
+    expect(tradeStatus(sessionOf({}, { options: { trade: { canOffer: false } } })).reason).toMatch(/One moment/);
+    expect(tradeStatus({ me: 'me', view: null }).can).toBe(false);
+  });
+});
+
+describe('counter-offers', () => {
+  it('sameSide ignores the order of districts; an unchanged counter cannot be sent', () => {
+    expect(sameSide({ cash: 5, tiles: [1, 3] }, { cash: 5, tiles: [3, 1] })).toBe(true);
+    expect(sameSide({ cash: 5, tiles: [1] }, { cash: 6, tiles: [1] })).toBe(false);
+    expect(sameSide({ cash: 0, tiles: [1] }, { tiles: [] })).toBe(false);
+    const me = { id: 'me', name: 'Asha', cash: 500000 };
+    const rav = { id: 'b1', name: 'Ravi', cash: 500000 };
+    const original = { give: { cash: 0, tiles: [1] }, get: { cash: 10000, tiles: [] } };
+    expect(offerProblem({ me, partner: rav, give: original.give, get: original.get, original })).toBe(SAME_DEAL);
+    expect(offerProblem({ me, partner: rav, give: original.give, get: { cash: 20000, tiles: [] }, original })).toBeNull();
+  });
+
+  it('counterDiff maps the replaced deal to the proposer who now answers: added, removed, cash before and after', () => {
+    // I (a) offered: give [1] + 0 cash, get [31]. Ravi (b1) countered: he gives [31, 28], asks [3] and 20k from me
+    const trade = {
+      id: 9, from: 'b1', to: 'a', give: { cash: 0, tiles: [31, 28] }, get: { cash: 20000, tiles: [3] },
+      replaces: { id: 8, give: { cash: 0, tiles: [1] }, get: { cash: 0, tiles: [31] } },
+    };
+    const d = counterDiff(trade, 'a');
+    expect(d.get).toEqual({ added: [28], removed: [], cashFrom: 0, cashTo: 0 });
+    expect(d.give).toEqual({ added: [3], removed: [1], cashFrom: 0, cashTo: 20000 });
+    expect(sideChanged(d.get)).toBe(true);
+    expect(sideChanged({ added: [], removed: [], cashFrom: 5, cashTo: 5 })).toBe(false);
+    expect(counterDiff(trade, 'b1')).toBeNull(); // only the one who answers sees it
+    expect(counterDiff({ id: 1, from: 'b1', to: 'a' }, 'a')).toBeNull(); // not a counter
   });
 });

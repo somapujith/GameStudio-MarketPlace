@@ -5,6 +5,7 @@ import {
   parseAvatar,
   sanitizeChat,
   sanitizeEmote,
+  sanitizeVoiceId,
   sanitizeAction,
   isUuid,
   NAME_MAX,
@@ -60,6 +61,13 @@ describe('avatar / uuid / chat / emote', () => {
     expect(sanitizeEmote('emote_mass')).toBe('emote_mass');
     expect(sanitizeEmote('emote_hack')).toBe('');
     expect(sanitizeEmote(5)).toBe('');
+  });
+
+  it('only catalogue voice lines pass', () => {
+    expect(sanitizeVoiceId('voice-sheru-bhai')).toBe('voice-sheru-bhai');
+    for (const bad of ['voice-nope', 'frame-lake', '', null, undefined, 3, {}, ['voice-sheru-bhai'], 'VOICE-SHERU-BHAI']) {
+      expect(sanitizeVoiceId(bad)).toBe('');
+    }
   });
 });
 
@@ -132,6 +140,22 @@ describe('sanitizeAction forces the player id and drops everything unexpected', 
       { type: 'TRADE_OFFER', to: { id: 'bob' }, give: { cash: 1, tiles: [] }, get: { cash: 0, tiles: [] } },
     ];
     for (const b of bad) expect(sanitizeAction(b, 'me')).toBeNull();
+  });
+
+  it('TRADE_COUNTER carries only the two sides (the proposer is implied), shape-checked like an offer', () => {
+    expect(sanitizeAction({ type: 'TRADE_COUNTER', give: { cash: 500, tiles: [1] }, get: { tiles: [4] }, to: 'x', junk: 1 }, 'me')).toEqual({
+      type: 'TRADE_COUNTER',
+      give: { cash: 500, tiles: [1] },
+      get: { cash: 0, tiles: [4] },
+      playerId: 'me',
+    });
+    for (const bad of [
+      { type: 'TRADE_COUNTER' },
+      { type: 'TRADE_COUNTER', give: { cash: 0, tiles: [] }, get: { cash: 0, tiles: [] } }, // empty deal
+      { type: 'TRADE_COUNTER', give: { cash: -1, tiles: [] }, get: { cash: 5, tiles: [] } },
+      { type: 'TRADE_COUNTER', give: { cash: 1, tiles: [1, 1] }, get: { cash: 5, tiles: [] } },
+      { type: 'TRADE_COUNTER', give: 'x', get: { cash: 5, tiles: [] } },
+    ]) expect(sanitizeAction(bad, 'me')).toBeNull();
   });
 
   it('rejects unknown / malformed actions', () => {

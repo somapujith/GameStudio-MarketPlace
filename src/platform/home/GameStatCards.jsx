@@ -13,7 +13,7 @@ import { useApi, useApiReady } from './useApi.js';
 export default function GameStatCards({ games, user }) {
   if (!games.length) return null;
   return (
-    <section id="games" className="hub-section sa-anchor" aria-labelledby="hh2-stats-h">
+    <section id="games" className="hub-section sa-anchor" aria-labelledby="hh2-stats-h" data-tour="profile-stats">
       <div className="hub-section__head">
         <h2 id="hh2-stats-h" className="hub-section__title">
           Your games

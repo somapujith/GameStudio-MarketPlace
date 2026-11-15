@@ -3,7 +3,7 @@ import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { TILES } from '@shared/board.js';
-import { empireOf, empireWords, hintLine, leaderFraction, raceModel, ranksOf } from './hudModel.js';
+import { RACE_FAN_PX, empireOf, empireWords, hintLine, leaderFraction, raceModel, ranksOf, spreadRunners } from './hudModel.js';
 import NetRace, { LeaderChip } from './NetRace.jsx';
 
 const html = (node) => renderToString(node).replaceAll('<!-- -->', '');
@@ -74,6 +74,34 @@ describe('raceModel', () => {
     expect(r.runners[1].lane).toBe(1);
   });
 
+  it('fans out dots with equal net worth so none hides another (a game that has just started)', () => {
+    const three = [
+      { id: 'a', name: 'A', color: '#f00' }, { id: 'b', name: 'B', color: '#0f0' }, { id: 'c', name: 'C', color: '#00f' },
+    ];
+    const r = raceModel({ players: three, worths: { a: 1500000, b: 1500000, c: 1500000 }, target: 5000000, me: 'a' });
+    expect(r.runners.map((x) => x.frac)).toEqual([0.3, 0.3, 0.3]);
+    expect(r.runners.map((x) => x.lane)).toEqual([0, 1, 2]);
+    expect(r.runners.map((x) => x.dx)).toEqual([-RACE_FAN_PX, 0, RACE_FAN_PX]); // centred on the true spot
+    const xs = r.runners.map((x) => x.frac * 400 + x.dx);
+    for (let i = 1; i < xs.length; i++) expect(xs[i] - xs[i - 1]).toBeGreaterThanOrEqual(RACE_FAN_PX);
+  });
+
+  it('leaves well-spaced dots alone and fans a cluster at the finish line inwards (the leader keeps the true spot)', () => {
+    const r = raceModel({ players, worths: { me: 500000, rav: 2500000 }, target: 5000000, me: 'me' });
+    expect(r.runners.map((x) => [x.lane, x.dx])).toEqual([[0, 0], [0, 0]]);
+    const done = raceModel({ players, worths: { me: 6000000, rav: 5990000 }, target: 5000000, me: 'me' });
+    expect(done.runners.map((x) => x.dx)).toEqual([-RACE_FAN_PX, 0]);
+    const start = [{ frac: 0, lane: 0, dx: 0 }, { frac: 0.01, lane: 0, dx: 0 }, { frac: 0.5, lane: 0, dx: 0 }];
+    expect(spreadRunners(start).map((x) => x.dx)).toEqual([0, RACE_FAN_PX, 0]); // at the start line it fans out forwards
+  });
+
+  it('chains neighbours: a-b close and b-c close is one cluster, but a far dot is not pulled in', () => {
+    const rs = [0.3, 0.33, 0.36, 0.7].map((frac) => ({ frac, lane: 0, dx: 0 }));
+    spreadRunners(rs);
+    expect(rs.map((x) => x.lane)).toEqual([0, 1, 2, 0]);
+    expect(rs[3].dx).toBe(0);
+  });
+
   it('works without a target (scaled to a little past the leader, no flag) and is null for an empty table', () => {
     const r = raceModel({ players, worths: { me: 1000000, rav: 2000000 }, target: null, me: 'me' });
     expect(r.hasTarget).toBe(false);
@@ -96,10 +124,10 @@ describe('hintLine', () => {
   it('tells you what to do on your own turn, in plain words', () => {
     expect(hintLine(sess(), { kind: 'roll', primary: { label: 'Roll' } })).toBe('Roll the die to move around the city');
     expect(hintLine(sess(), { kind: 'roll', primary: { label: 'Roll again' } })).toMatch(/six/);
-    expect(hintLine(sess('buy'), { kind: 'buy', primary: { label: 'Buy Madhapur', amount: '₹3,20,000' }, secondaries: [{ key: 'skip', label: 'Put up for auction' }] }))
-      .toBe('Buy Madhapur for ₹3,20,000, or put it up for auction');
+    expect(hintLine(sess('buy'), { kind: 'buy', primary: { label: 'Buy Madhapur', amount: '₹3,20,000' }, secondaries: [{ key: 'skip', label: 'Pass' }] }))
+      .toBe('Buy Madhapur for ₹3,20,000, or pass (it stays free, no auction)');
     expect(hintLine(sess('buy'), { kind: 'buy', primary: { label: 'Buy Madhapur', amount: '₹3,20,000' }, secondaries: [{ key: 'skip', label: 'Skip' }] }))
-      .toBe('Buy Madhapur for ₹3,20,000, or skip it');
+      .toBe('Buy Madhapur for ₹3,20,000, or pass (it stays free, no auction)');
     expect(hintLine(sess(), { kind: 'end', upgrades: 2 })).toBe('Upgrade a district in Manage, or end your turn');
     expect(hintLine(sess(), { kind: 'end', upgrades: 0 })).toMatch(/End your turn/);
     expect(hintLine(sess(), { kind: 'traffic' })).toBe('');

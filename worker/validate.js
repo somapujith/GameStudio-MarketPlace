@@ -1,5 +1,6 @@
 // Input validation / sanitising. Pure functions, no Worker APIs: easy to unit-test.
 import { BOARD_SIZE } from '../shared/board.js';
+import { isVoiceId } from '../shared/cosmetics.js';
 
 export const NAME_MAX = 24;
 export const AVATAR_MAX = 11;
@@ -59,6 +60,9 @@ export function sanitizeChat(input) {
 /** Emote key if it is on the allow-list (default: the Tycoon soundboard keys), else ''. */
 export const sanitizeEmote = (v, allowed = EMOTES) => (typeof v === 'string' && allowed.includes(v) ? v : '');
 
+/** Voice line id from a `{t:'voice', id}` message if it is in the catalogue (shared/cosmetics.js), else ''. */
+export const sanitizeVoiceId = (v) => (isVoiceId(v) ? v : '');
+
 // Actions that carry no parameters besides the (server-forced) player id (docs/HUSTLE_PLAN.md 3.7).
 const SIMPLE_ACTIONS = new Set([
   'ROLL',
@@ -73,7 +77,7 @@ const SIMPLE_ACTIONS = new Set([
   'TRADE_ACCEPT',
   'TRADE_REJECT',
   'TRADE_CANCEL',
-  'SNATCH', // sealed press during a Snatch window (SNATCH_CLOSE is server-only and never allowed from a client)
+  'SNATCH', // sealed press during a Snatch window (SNATCH_CLOSE and AUCTION_CLOSE are server-only and never allowed from a client)
 ]);
 // Actions that carry a single tile id.
 const TILE_ACTIONS = new Set(['UPGRADE', 'MORTGAGE', 'UNMORTGAGE', 'SELL_BUILDING']);
@@ -118,6 +122,14 @@ export function sanitizeAction(input, playerId) {
       if (!give || !get) return null;
       if (!give.cash && !give.tiles.length && !get.cash && !get.tiles.length) return null; // empty deal
       return { type, to, give, get, playerId };
+    }
+    case 'TRADE_COUNTER': {
+      // the recipient's changed deal: same shape as an offer without `to` (the proposer is implied); give leaves the sender
+      const give = sanitizeTradeSide(input.give);
+      const get = sanitizeTradeSide(input.get);
+      if (!give || !get) return null;
+      if (!give.cash && !give.tiles.length && !get.cash && !get.tiles.length) return null;
+      return { type, give, get, playerId };
     }
     default:
       return null;

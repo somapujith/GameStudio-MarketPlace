@@ -3,6 +3,7 @@ import { GROUPS, TILES } from '@shared/board.js';
 import { formatINR } from '@shared/format.js';
 import { PieceToken } from '../Pawn.jsx';
 import { eventMark } from '../Tile.jsx';
+import { eventFlagFor } from './eventFlag.js';
 import { tipAnchor, tipModel, tipPlacement } from './tipModel.js';
 
 const NONE = [];
@@ -87,7 +88,7 @@ export const TileTipLayer = memo(function TileTipLayer({ players = NONE, owners 
     }
     const stuck = players.filter((x) => !x.bankrupt && x.stuck && x.pos === tile.id).length;
     return {
-      model: tipModel(tile, { owner: p ? { name: p.name, color: p.color, piece: p.piece } : null, level: levels[tile.id] || 0, mortgaged: !!mortgaged[tile.id], setFull, rentPct, salary, stuck, event: eventMark(event, tile) }),
+      model: tipModel(tile, { owner: p ? { name: p.name, color: p.color, piece: p.piece } : null, level: levels[tile.id] || 0, mortgaged: !!mortgaged[tile.id], setFull, rentPct, salary, stuck, event: eventMark(event, tile), flag: eventFlagFor(event, tile) }),
       owner: p,
     };
   }, [tile, players, owners, levels, mortgaged, rentPct, salary, event]);

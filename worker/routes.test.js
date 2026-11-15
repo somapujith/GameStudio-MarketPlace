@@ -109,7 +109,7 @@ describe('GET /api/games', () => {
     installDb((text) => (/GROUP BY game_id/.test(text) ? [{ game_id: 'hyderabad-tycoon', n: 3 }] : undefined));
     const res = await call('/api/games');
     expect(res.status).toBe(200);
-    expect(res.json).toEqual({ games: [{ id: 'hyderabad-tycoon', name: 'Hyderabad Tycoon', minPlayers: 2, maxPlayers: 6, openTables: 3 }] });
+    expect(res.json).toEqual({ games: [{ id: 'hyderabad-tycoon', name: 'Kingpin', minPlayers: 2, maxPlayers: 6, openTables: 3 }] });
     expect(res.headers.get('cache-control')).toBe('public, max-age=5');
     expect(res.headers.get('x-content-type-options')).toBe('nosniff'); // the other security headers still apply
   });
@@ -282,7 +282,6 @@ describe('POST /api/rooms', () => {
       { maxPlayers: 9 },
       { settings: { mode: 'marathon' } },
       { settings: { dice: 'loaded' } },
-      { settings: { auctionOnDecline: 'yes' } },
       { settings: 'x' },
       { gameId: 7 },
     ]) {
@@ -341,10 +340,10 @@ describe('POST /api/invites', () => {
       from: { id: 'u', name: 'N', avatar: 1 },
       code: 'ABCD23',
       gameId: 'hyderabad-tycoon',
-      gameName: 'Hyderabad Tycoon',
+      gameName: 'Kingpin',
     });
     // rooms created before games existed, and games this build does not know
-    expect(inviteMessage({}, 'ABCD23', undefined)).toMatchObject({ gameId: 'hyderabad-tycoon', gameName: 'Hyderabad Tycoon' });
+    expect(inviteMessage({}, 'ABCD23', undefined)).toMatchObject({ gameId: 'hyderabad-tycoon', gameName: 'Kingpin' });
     expect(inviteMessage({}, 'ABCD23', 'ludo')).toMatchObject({ gameId: 'ludo', gameName: 'ludo' });
   });
 
@@ -359,7 +358,7 @@ describe('POST /api/invites', () => {
       from: { id: ME, name: 'Me', avatar: 3 },
       code: 'ABCD23',
       gameId: 'hyderabad-tycoon',
-      gameName: 'Hyderabad Tycoon',
+      gameName: 'Kingpin',
     });
   });
 

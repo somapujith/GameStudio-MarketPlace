@@ -22,6 +22,8 @@ import '@/styles/feed.css';
 
 const NONE = [];
 const KEY = 'hg-feed-collapsed';
+/** Rows in the full-log sheet. The presenter keeps 200 entries; more than this many rows at once only slows a slow browser down. */
+export const SHEET_MAX = 100;
 
 function readCollapsed() {
   try {
@@ -108,7 +110,7 @@ export default function ActivityFeed({ session, max = 12, compact = false, varia
   const players = session?.display?.players || session?.view?.players || NONE;
   const me = session?.me;
   const reduced = useReducedMotion();
-  const items = useMemo(() => buildFeed(log, { max: sheet ? 200 : max }), [log, max, sheet]);
+  const items = useMemo(() => buildFeed(log, { max: sheet ? SHEET_MAX : max }), [log, max, sheet]);
   useTick(5000, items.length > 0);
   const now = Date.now();
   const [collapsed, setCollapsed] = useState(() => (sheet ? false : readCollapsed()));

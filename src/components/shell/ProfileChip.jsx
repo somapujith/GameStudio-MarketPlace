@@ -26,7 +26,7 @@ export default function ProfileChip() {
   // A visitor gets a clear call to action instead of a grey avatar: signing in is how coins, friends and rank start.
   if (!signedIn) {
     return (
-      <Link to={to} className="hub-btn hub-btn--primary hub-btn--sm hub-signin" aria-label="Sign in to play: Google or guest">
+      <Link to={to} data-tour="nav-profile" className="hub-btn hub-btn--primary hub-btn--sm hub-signin" aria-label="Sign in to play: Google or guest">
         <HubIcon name="user" size={18} />
         <span>Sign in</span>
       </Link>
@@ -34,7 +34,7 @@ export default function ProfileChip() {
   }
 
   return (
-    <Link to={to} className="hub-userchip" aria-label={signedIn ? `Profile: ${name}. ${status}, level ${level}` : 'Sign in to play: Google or guest'}>
+    <Link to={to} data-tour="nav-profile" className="hub-userchip" aria-label={signedIn ? `Profile: ${name}. ${status}, level ${level}` : 'Sign in to play: Google or guest'}>
       <AvatarRing preset={avatar} size={32} dot={signedIn ? (guest ? 'guest' : 'on') : 'off'} />
       <span className="hub-userchip__meta">
         <b>{name}</b>

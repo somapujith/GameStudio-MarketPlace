@@ -3,6 +3,7 @@
 
 import * as B from '@shared/board.js';
 import { compactINR, formatINR } from '@shared/format.js';
+import { wordsOf } from '@/lib/mapWords.js';
 import { cornerOf, sideOf, tileCenter } from '../fx/geometry.js';
 
 const { GROUPS, MAX_LEVEL } = B;
@@ -73,9 +74,18 @@ function rentAt(tile, level, rentPct) {
 /**
  * What the tooltip card says about a tile.
  *   { id, title, kicker, color, status, tone, rows: [{ label, value }], ladder: [{ name, rent, current }] | null, foot }
- * `info` = { owner: { name, color, piece } | null, level, mortgaged, setFull, rentPct, salary, stuck }.
+ * `info` = { owner: { name, color, piece } | null, level, mortgaged, setFull, rentPct, salary, stuck, event, flag }.
+ * `flag` (eventFlag.js) adds a "City event" row on a tile that raises a city event's flag but has no event mark of its own
+ * (the corner tiles of a whole-city event).
  */
 export function tipModel(tile, info = {}) {
+  const out = baseTipModel(tile, info);
+  const flag = info && info.flag;
+  if (out && flag && flag.line && !out.rows.some((r) => r.label === 'This round')) out.rows.push({ label: 'City event', value: flag.line });
+  return out;
+}
+
+function baseTipModel(tile, info = {}) {
   if (!tile) return null;
   const { owner = null, level = 0, mortgaged = false, setFull = false, rentPct = 100, salary = 200000, stuck = 0, event = null } = info;
   const lvl = Math.max(0, Math.min(MAX_LEVEL, level | 0));
@@ -129,7 +139,7 @@ export function tipModel(tile, info = {}) {
     return out;
   }
   if (tile.type === 'card') {
-    out.rows.push({ label: 'Deck', value: tile.deck === 'drama' ? 'City Drama' : 'Nawabi Luck' });
+    out.rows.push({ label: 'Deck', value: tile.deck === 'drama' ? wordsOf().drama : wordsOf().luck });
     out.status = 'Draw a card';
     return out;
   }
@@ -140,7 +150,7 @@ export function tipModel(tile, info = {}) {
     return out;
   }
   if (tile.type === 'chai') {
-    out.status = 'Collect a chai token';
+    out.status = `Collect a ${wordsOf().chaiToken}`;
     return out;
   }
   if (tile.type === 'municipal') {

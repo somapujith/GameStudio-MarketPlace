@@ -135,9 +135,11 @@ describe('parseSettingsPatch (host settings message)', () => {
   });
 
   it('rejects bad values and non-objects; unknown keys are ignored', () => {
-    for (const bad of [{ mode: 'marathon' }, { mode: 3 }, { dice: 'loaded' }, { auctionOnDecline: 'yes' }]) {
+    for (const bad of [{ mode: 'marathon' }, { mode: 3 }, { dice: 'loaded' }]) {
       expect(parseSettingsPatch(tycoon, current, bad).ok, JSON.stringify(bad)).toBe(false);
     }
+    // the retired auctionOnDecline is no error, whatever it holds, and is not stored
+    for (const v of ['yes', true, false, 5]) expect(parseSettingsPatch(tycoon, current, { auctionOnDecline: v })).toEqual({ ok: true, settings: ROOM_DEFAULTS });
     // a win target that is not on the list is sanitised to the mode default, not refused
     expect(parseSettingsPatch(tycoon, current, { targetWorth: 42 })).toEqual({ ok: true, settings: ROOM_DEFAULTS });
     for (const bad of ['x', 5, [1], true]) expect(parseSettingsPatch(tycoon, current, bad)).toEqual({ ok: false, error: 'Settings must be an object.' });

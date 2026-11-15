@@ -1,4 +1,4 @@
-// Hyderabad Hustle rules engine (the "Hyderabad Tycoon" game). Pure + deterministic: runs in the browser AND the
+// Hyderabad Hustle rules engine (the "Kingpin" game). Pure + deterministic: runs in the browser AND the
 // Cloudflare Worker.
 //
 //   createGame({ players, settings?, seed? })  -> state
@@ -9,15 +9,17 @@
 import {
   BOARD_SIZE, START_TILE, MAX_LEVEL, SELL_RATIO, PASS_START, CHAI_MIN_RENT,
   GROUPS, GROUP_TILES, TILES, PIECE_IDS, isBuyable, rentFor, upgradeCost, sellRefund, setMultiplier,
-  mortgageValue, unmortgageCost, nextTransport, municipalFor, auctionMinBid, levelName,
+  mortgageValue, unmortgageCost, nextTransport, municipalFor, auctionMinBid,
 } from './board.js';
-import { DECKS, SNATCH_CAP_PAYOUT } from './cards.js';
+import { SNATCH_CAP_PAYOUT } from './cards.js';
 import { shuffle, seedToUint32, randInt } from './rng.js';
-import { CITY_EVENTS, EVENT_EVERY, RUSH_FLAVOUR, MONSOON_TEXT, FESTIVALS } from './events.js';
+import { EVENT_EVERY } from './events.js';
+import { MAP_IDS, DEFAULT_MAP, levelNameOf, groupName, tileName, termsOf, deckCards, cityEventsOf, rushFlavourOf, monsoonTextOf, festivalsOf } from './maps.js';
 import { MODES, MODE_IDS, DEFAULT_MODE, ROUND_CAP, TARGET_OPTIONS, isTargetAmount } from './modes.js';
 import { ruleDefaults } from './ruleSettings.js';
 import { formatINR } from './format.js';
 import { rollDice, DICE_RULES } from './dice.js';
+import { auctionMsOf, snatchBidMsOf } from './timing.js';
 
 export { MODES, MODE_IDS, DEFAULT_MODE, ROUND_CAP, TARGET_OPTIONS };
 
@@ -46,6 +48,7 @@ export const SETTING_LIMITS = Object.freeze({
   turnSeconds: Object.freeze({ min: 5, max: 600 }),
   tradeSeconds: Object.freeze({ min: 5, max: 600 }),
   snatches: Object.freeze({ min: 0, max: 3 }), // 0 = Snatch is off
+  auctionSeconds: Object.freeze({ min: 1, max: 600 }),
   snatchMs: Object.freeze({ min: 500, max: 60000 }),
   snatchCardCap: Object.freeze({ min: 0, max: 2 }),
 });
@@ -58,13 +61,14 @@ const toInt = (v) => {
 
 /**
  * Turns whatever the UI / server hands us into the engine config (`state.cfg`):
- *   `{ mode, startCash, passStart, maxRounds|null, targetWorth|null, dice, auctionOnDecline, trafficFine, chaiCap,
- *      rentPercent, requireFullSet, eventEvery, turnSeconds, tradeSeconds, snatches, snatchMs, snatchCardCap }`
+ *   `{ mode, startCash, passStart, maxRounds|null, targetWorth|null, dice, trafficFine, chaiCap,
+ *      rentPercent, requireFullSet, eventEvery, turnSeconds, tradeSeconds, auctionSeconds, snatches, snatchMs, snatchCardCap }`
  * (the keys of shared/ruleSettings.js plus `mode`). `targetWorth` is the win target (net worth): `null` or any legal
  * amount (see modes.js TARGET_RANGE), anything else (or missing) becomes the mode default. The room server additionally
  * refuses `null` for a mode without a round limit (worker/settings.js); the engine itself accepts it (the ROUND_CAP
  * safety net still ends such a game). Numbers are clamped to SETTING_LIMITS, unknown keys are dropped, a missing key
- * is the mode default. `debug: true` is kept (tests only).
+ * is the mode default. `debug: true` is kept (tests only). The retired `auctionOnDecline` of older rooms is dropped like any
+ * unknown key: a district nobody buys is never auctioned (docs/GAME_RULES.md section 6).
  */
 export function normalizeSettings(input) {
   const src = input && typeof input === 'object' ? input : {};
@@ -72,18 +76,19 @@ export function normalizeSettings(input) {
   const cfg = { mode, ...ruleDefaults(mode) };
   if (src.targetWorth === null || isTargetAmount(src.targetWorth)) cfg.targetWorth = src.targetWorth;
   if (src.dice === 'fair' || src.dice === 'lucky') cfg.dice = src.dice;
-  if (typeof src.auctionOnDecline === 'boolean') cfg.auctionOnDecline = src.auctionOnDecline;
   if (typeof src.requireFullSet === 'boolean') cfg.requireFullSet = src.requireFullSet;
   const ranged = (key) => {
     if (!(key in src) || src[key] === undefined) return;
     const n = toInt(src[key]);
     if (!Number.isNaN(n)) cfg[key] = Math.min(SETTING_LIMITS[key].max, Math.max(SETTING_LIMITS[key].min, n));
   };
-  for (const key of ['startCash', 'passStart', 'trafficFine', 'rentPercent', 'chaiCap', 'eventEvery', 'turnSeconds', 'tradeSeconds', 'snatches', 'snatchMs', 'snatchCardCap']) ranged(key);
+  for (const key of ['startCash', 'passStart', 'trafficFine', 'rentPercent', 'chaiCap', 'eventEvery', 'turnSeconds', 'tradeSeconds', 'auctionSeconds', 'snatches', 'snatchMs', 'snatchCardCap']) ranged(key);
   if ('maxRounds' in src && src.maxRounds !== undefined) {
     if (src.maxRounds === null) cfg.maxRounds = null;
     else ranged('maxRounds');
   }
+  // The map is a lobby setting, not a rule. Only a non-default map is stored: no `cfg.map` means the Hyderabad map (docs/CONTRACT.md).
+  if (typeof src.map === 'string' && src.map !== DEFAULT_MAP && MAP_IDS.includes(src.map)) cfg.map = src.map;
   if (src.debug === true) cfg.debug = true;
   return cfg;
 }
@@ -203,6 +208,52 @@ export function liquidationValue(state, playerId) {
 }
 
 /**
+ * The player's estate in a bankruptcy: their cash + liquidationValue (the bank's mortgage value of every unmortgaged
+ * district + the sell-back value of every upgrade). The bank takes ALL cash and districts; the estate is the most it
+ * will pay out to the people the bankrupt player owes.
+ */
+export function estateValue(state, playerId) {
+  const p = byId(state, playerId);
+  return p ? Math.max(0, p.cash) + liquidationValue(state, playerId) : 0;
+}
+
+/** Payments `playerId` still owes in the open debt, in order: [{ to, amount, reason }] (`to` null = the bank). */
+export function owedPayments(state, playerId) {
+  const d = state.debt;
+  if (!d) return [];
+  const out = [];
+  if (d.player === playerId) out.push({ to: d.creditor || null, amount: Math.max(0, Math.round(d.amount) || 0), reason: d.reason });
+  for (const r of d.rest || []) if (r.from === playerId) out.push({ to: r.to || null, amount: Math.max(0, Math.round(r.amount) || 0), reason: r.reason });
+  return out;
+}
+
+/** Walk the owed payments in order and give each a share of the estate: [{ to, amount, reason }] (only real creditors). */
+function planPayouts(state, playerId, owed) {
+  let left = estateValue(state, playerId);
+  const rows = [];
+  for (const o of owed) {
+    const creditor = o.to ? byId(state, o.to) : null;
+    if (!creditor || creditor.bankrupt || creditor.id === playerId) continue; // owed to the bank (or to someone out): the bank keeps it
+    const amount = Math.min(Math.max(0, Math.round(o.amount) || 0), left);
+    if (amount <= 0) continue;
+    left -= amount;
+    rows.push({ to: creditor.id, amount, reason: o.reason });
+  }
+  return rows;
+}
+
+/**
+ * What each creditor would be paid, by the bank, if `playerId` went bankrupt right now: [{ to, amount }] in the order of
+ * the debts, one row per creditor. Each debt is paid in full while the estate (cash + liquidationValue) lasts, the rest
+ * is forgiven. `owed` defaults to the player's open debt (a resign without a debt pays nobody).
+ */
+export function bankruptcyPayouts(state, playerId, owed = owedPayments(state, playerId)) {
+  const sums = new Map();
+  for (const r of planPayouts(state, playerId, owed)) sums.set(r.to, (sums.get(r.to) || 0) + r.amount);
+  return [...sums].map(([to, amount]) => ({ to, amount }));
+}
+
+/**
  * The winner order: players still in the game first, by net worth, then cash, then seat; bankrupt players after
  * them, the last to go out first. [{ id, cash, worth, rank, bankrupt }] (rank is 1-based). The rounds / last-standing
  * winner is always rank 1.
@@ -243,13 +294,13 @@ export function canUpgrade(state, playerId, tileId) {
   if (state.phase === 'over') return no('The game is over');
   if (state.owners[tileId] !== playerId) return no('You do not own this district');
   const level = state.levels[tileId] || 0;
-  if (level >= MAX_LEVEL) return no(`Already a ${levelName(tile, MAX_LEVEL)}`);
+  if (level >= MAX_LEVEL) return no(`Already a ${levelNameOf(state, tile, MAX_LEVEL)}`);
   // Hustle rule: you may only upgrade a district once you own EVERY district of its collection (host rule
   // `requireFullSet`, on by default; off = owning the district is enough).
   // Ownership only: a mortgaged sibling still counts. Levels already built stay if the set is later broken.
   const need = GROUP_TILES[tile.group].length;
   const have = ownedInGroup(state, playerId, tile.group);
-  if (needsFullSet(state) && have < need) return no(`Own all ${need} districts of ${GROUPS[tile.group].name} first (you have ${have})`);
+  if (needsFullSet(state) && have < need) return no(`Own all ${need} districts of ${groupName(state, tile.group)} first (you have ${have})`);
   if (isMort(state, tileId)) return no('Unmortgage this district first');
   if (turnPlayer(state).id !== playerId) return no('Wait for your turn');
   if (state.trade) return no('Answer the trade offer first');
@@ -330,6 +381,30 @@ function setsFor(s, playerId) {
   return out;
 }
 
+/** Counter-offers one negotiation may go through (the offer, its counter, the counter of the counter ...). */
+export const MAX_COUNTERS = 5;
+
+/**
+ * null when `playerId` may PROPOSE a trade right now, else the exact reason (the Trade button shows it). One rule for
+ * the engine (TRADE_OFFER), getOptions().trade.canOffer and the client: your own turn, in a quiet moment (before the roll,
+ * after landing and while deciding about the district, after buying, on an extra roll), nothing else waiting for an answer.
+ */
+export function tradeBlock(state, playerId) {
+  const p = byId(state, playerId);
+  if (!p || p.bankrupt) return 'You are out of the game';
+  if (state.phase === 'over') return 'The game is over';
+  if (state.trade) return state.trade.from === playerId ? 'Your offer is waiting for an answer' : 'Answer the trade offer first';
+  if (activePlayers(state).length < 2) return 'No other active players to trade with';
+  if (state.phase === 'debt') return 'Settle the debt before trading';
+  if (state.phase === 'auction') return 'Trading opens again when the auction ends';
+  if (state.phase === 'snatch') return 'Trading opens again when the Snatch window closes';
+  if (turnPlayer(state).id !== playerId) return 'You can propose a trade on your own turn';
+  if (state.phase === 'buy') return state.pending && state.pending.type === 'buy' ? null : 'Finish the current step before trading';
+  if (state.phase !== 'roll' && state.phase !== 'manage') return 'Finish the current step before trading';
+  if (state.pending) return 'Finish the current step before trading';
+  return null;
+}
+
 /** What `playerId` may do right now. Everything false/null/[] when it is not their moment. */
 export function getOptions(state, playerId) {
   const none = {
@@ -343,7 +418,9 @@ export function getOptions(state, playerId) {
 
   if (state.trade) {
     const t = state.trade;
-    if (t.to === playerId) out.tradeOffer = { id: t.id, from: t.from, give: t.give, get: t.get };
+    if (t.to === playerId) {
+      out.tradeOffer = { id: t.id, from: t.from, give: t.give, get: t.get, counters: t.counters || 0, canCounter: (t.counters || 0) < MAX_COUNTERS };
+    }
     if (t.from === playerId) out.tradeSent = { id: t.id, to: t.to, give: t.give, get: t.get };
     return out;
   }
@@ -394,6 +471,7 @@ export function getOptions(state, playerId) {
   } else if (state.phase === 'buy') {
     out.skipBuy = true;
     out.buy = !!state.pending && p.cash >= state.pending.price;
+    out.trade = { canOffer: !tradeBlock(state, playerId) }; // you may trade while you make up your mind about the district
   } else if (state.phase === 'manage') {
     if (state.extraRoll) out.roll = true;
     else out.endTurn = true;
@@ -408,7 +486,7 @@ export function getOptions(state, playerId) {
       if (u.ok) out.unmortgage.push({ tile: t, cost: u.cost });
     }
     raiseCash();
-    out.trade = { canOffer: !state.pending && activePlayers(state).length >= 2 };
+    out.trade = { canOffer: !tradeBlock(state, playerId) };
   }
   return out;
 }
@@ -554,31 +632,48 @@ function cancelTradeOf(s, ev, playerId, reason) {
   }
 }
 
-/** Bankruptcy: upgrades are sold to the bank, all cash + every district goes to the creditor (or back to the bank). */
-function bankruptPlayer(s, ev, p, creditorId, reason, how = null) {
-  const creditor = creditorId ? byId(s, creditorId) : null;
-  const heir = creditor && !creditor.bankrupt && creditor.id !== p.id ? creditor : null;
+/** Remove (and return) the payments `playerId` still has queued in `list`. */
+function takeOwnPayments(list, playerId) {
+  const mine = [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (list[i].from !== playerId) continue;
+    mine.unshift({ to: list[i].to || null, amount: list[i].amount, reason: list[i].reason });
+    list.splice(i, 1);
+  }
+  return mine;
+}
+
+/**
+ * Bankruptcy: the BANK takes ALL the player's cash and districts (every upgrade is sold off, mortgages are cleared, the
+ * districts are free again). The people the player owes get ONLY what is owed, paid by the bank, and never more than the
+ * estate (cash + liquidationValue) was worth: `owed` = [{ to, amount, reason }] in order, each paid in full while the
+ * estate lasts, the rest forgiven. Debts to the bank (`to` null) or to someone already out pay nobody.
+ */
+function bankruptPlayer(s, ev, p, owed, how = null) {
+  const payouts = planPayouts(s, p.id, owed || []); // before anything is sold: it prices the estate as it stands
   for (let t = 0; t < BOARD_SIZE; t++) {
     if (s.owners[t] !== p.id || !(s.levels[t] > 0)) continue;
-    const refund = s.levels[t] * sellRefund(TILES[t]);
     s.levels[t] = 0;
     ev.push({ type: 'level', tile: t, level: 0, reason: 'bankrupt' });
-    gain(s, ev, p, refund, 'liquidate');
   }
-  if (heir && p.cash > 0) transfer(s, ev, p, heir, p.cash, reason || 'rent');
-  const given = [];
   for (let t = 0; t < BOARD_SIZE; t++) {
     if (s.owners[t] !== p.id) continue;
-    if (heir) {
-      s.owners[t] = heir.id; // mortgaged districts stay mortgaged
-      given.push(t);
-    } else {
-      s.owners[t] = null;
-      s.mortgaged[t] = false;
-    }
-    ev.push({ type: 'own', tile: t, owner: heir ? heir.id : null, reason: 'bankrupt' });
+    s.owners[t] = null;
+    s.mortgaged[t] = false;
+    ev.push({ type: 'own', tile: t, owner: null, reason: 'bankrupt' });
   }
-  if (heir) emitSets(s, ev, heir.id, given);
+  const paid = new Map();
+  for (const r of payouts) {
+    const creditor = byId(s, r.to);
+    creditor.cash += r.amount;
+    paid.set(r.to, (paid.get(r.to) || 0) + r.amount);
+    if (r.reason === 'rent') {
+      p.stats.rentPaid += r.amount;
+      creditor.stats.rentEarned += r.amount;
+      creditor.stats.biggestRent = Math.max(creditor.stats.biggestRent, r.amount);
+    }
+  }
+  for (const [to, amount] of paid) ev.push({ type: 'cash', player: to, delta: amount, reason: 'bankrupt', other: p.id });
   p.bankrupt = true;
   s.outCount = (s.outCount || 0) + 1;
   p.outOrder = s.outCount;
@@ -590,7 +685,11 @@ function bankruptPlayer(s, ev, p, creditorId, reason, how = null) {
   p.rentBoost = 0;
   if (s.ride && s.ride.player === p.id) s.ride = null;
   cancelTradeOf(s, ev, p.id, 'bankrupt');
-  ev.push({ type: 'bankrupt', player: p.id, ...(how ? { reason: how } : null) }); // reason 'resign' = left by choice
+  // reason 'resign' = left by choice; `paid` (only when a creditor was paid) tells who the bank paid, for the log
+  ev.push({
+    type: 'bankrupt', player: p.id, ...(how ? { reason: how } : null),
+    ...(paid.size ? { paid: [...paid].map(([to, amount]) => ({ to, amount })) } : null),
+  });
 }
 
 /**
@@ -630,7 +729,9 @@ function settlePayment(s, ev, pay, rest) {
     ev.push({ type: 'debt', player: p.id, amount, creditor: s.debt.creditor });
     return false;
   }
-  bankruptPlayer(s, ev, p, creditor ? creditor.id : null, pay.reason);
+  // too deep in debt even after selling everything: the bank takes all; the creditor is paid up to the estate, then the
+  // player's other queued payments (same cause) in order
+  bankruptPlayer(s, ev, p, [{ to: creditor ? creditor.id : null, amount, reason: pay.reason }, ...takeOwnPayments(rest, p.id)]);
   return true;
 }
 
@@ -697,9 +798,8 @@ function land(s, ev, p, depth = 0) {
         if (p.cash >= tile.price) {
           s.pending = { type: 'buy', tile: tileId, price: tile.price };
           s.phase = 'buy';
-        } else if (s.cfg.auctionOnDecline !== false) {
-          openAuction(s, ev, tileId, 'unaffordable');
         }
+        // Cannot afford it: nothing is offered and nothing is auctioned; the district stays free (no way around Snatch).
       } else if (ownerId !== p.id) {
         const owner = byId(s, ownerId);
         if (owner && !owner.bankrupt) runPayments(s, ev, [{ from: p.id, to: ownerId, amount: rentOf(s, tileId, ownerId), reason: 'rent' }]);
@@ -739,7 +839,7 @@ function land(s, ev, p, depth = 0) {
 function deckOrder(s, deckId) {
   const canSnatch = snatchOn(s) && snatchCardCapOf(s) > 0;
   const order = [];
-  DECKS[deckId].forEach((c, i) => {
+  deckCards(s, deckId).forEach((c, i) => {
     if (c.effect.type !== 'snatch' || canSnatch) order.push(i);
   });
   return order;
@@ -749,7 +849,7 @@ function deckOrder(s, deckId) {
 const canWinSnatchCard = (s, p) => snatchOn(s) && (p.snatchCards || 0) < snatchCardCapOf(s);
 
 function drawCard(s, ev, p, depth, deckId) {
-  const cards = DECKS[deckId];
+  const cards = deckCards(s, deckId);
   if (!s.deck || typeof s.deck !== 'object' || Array.isArray(s.deck)) s.deck = { luck: [], drama: [] };
   if (!s.deckPos || typeof s.deckPos !== 'object') s.deckPos = { luck: 0, drama: 0 };
   if (!Array.isArray(s.deck[deckId]) || (s.deckPos[deckId] || 0) >= s.deck[deckId].length) {
@@ -825,38 +925,79 @@ function drawCard(s, ev, p, depth, deckId) {
   }
 }
 
-/** Open a sealed auction for `tile`. Players who cannot afford `minBid` are auto-passed. */
-function openAuction(s, ev, tile, reason) {
+/**
+ * Open a sealed auction for `tile` (docs/GAME_RULES.md section 6). `pending`:
+ *   { type:'auction', id, tile, minBid, bids:{ id: amount }, bidIn:[ids who submitted a bid], eligible:[ids who may bid],
+ *     ms (the bidding window, the server's timer), reason, returnPhase, snatch?, buyer?, claimants? }
+ * `eligible` = the active players who can afford `minBid` (for Snatch bidding: the claimants who can). The others are
+ * passed at once (`bids[id] = 0`, not in `bidIn`). Nobody able to bid: the auction ends in this very call.
+ */
+function beginAuction(s, ev, tile, reason, extra = {}) {
   const minBid = auctionMinBid(tile, reason);
-  s.pending = { type: 'auction', tile, minBid, bids: {}, reason, returnPhase: 'manage' };
+  const ms = extra.snatch ? snatchBidMsOf(s.cfg) : auctionMsOf(s.cfg);
+  s.auctionSeq = (s.auctionSeq || 0) + 1;
+  const bids = {};
+  const eligible = [];
+  for (const q of s.players) {
+    if (q.bankrupt) continue;
+    if (extra.claimants && !extra.claimants.includes(q.id)) bids[q.id] = 0; // non-claimants auto-pass
+    else if (q.cash < minBid) bids[q.id] = 0; // so do the broke
+    else eligible.push(q.id);
+  }
+  s.pending = { type: 'auction', id: s.auctionSeq, tile, minBid, bids, bidIn: [], eligible, ms, reason, ...extra, returnPhase: extra.returnPhase || 'manage' };
   s.phase = 'auction';
-  ev.push({ type: 'auction_start', tile, minBid, reason });
-  for (const q of activePlayers(s)) if (q.cash < minBid) s.pending.bids[q.id] = 0;
+  ev.push({ type: 'auction_start', tile, minBid, reason, eligible: [...eligible], ms });
   maybeResolveAuction(s, ev);
+}
+
+function openAuction(s, ev, tile, reason) {
+  beginAuction(s, ev, tile, reason);
+}
+
+/** Record that `id` has submitted a bid (or passed): the public `pending.bidIn`. Amounts stay in `bids` (sealed on the wire). */
+function markBidIn(pend, id) {
+  if (!Array.isArray(pend.bidIn)) pend.bidIn = [];
+  if (!pend.bidIn.includes(id) && (!Array.isArray(pend.eligible) || pend.eligible.includes(id))) pend.bidIn.push(id);
 }
 
 function maybeResolveAuction(s, ev) {
   const pend = s.pending;
   if (s.phase !== 'auction' || !pend) return;
   if (!activePlayers(s).every((p) => p.id in pend.bids)) return;
+  resolveAuction(s, ev, []);
+}
 
-  // Highest bid wins; ties go to the earliest seat counted from the current turn player.
+/**
+ * Close the sealed auction: highest valid bid wins and pays its own bid (first price). A tie for the top bid is drawn
+ * with the game's seeded rng among the tied bidders (seats counted from the turn player, so the draw is reproducible).
+ * `timedOut` = the players the server passed because the window ran out.
+ */
+function resolveAuction(s, ev, timedOut) {
+  const pend = s.pending;
   const n = s.players.length;
-  let winner = null;
-  let best = 0;
-  for (let k = 0; k < n; k++) {
-    const p = s.players[(s.turn + k) % n];
-    if (p.bankrupt) continue;
+  const seats = [];
+  for (let k = 0; k < n; k++) seats.push(s.players[(s.turn + k) % n]);
+  const eligible = Array.isArray(pend.eligible) ? pend.eligible : seats.filter((p) => p.id in pend.bids).map((p) => p.id);
+  const valid = seats.filter((p) => {
     const bid = pend.bids[p.id] || 0;
-    if (bid >= pend.minBid && bid <= p.cash && bid > best) {
-      best = bid;
-      winner = p;
-    }
-  }
+    return !p.bankrupt && eligible.includes(p.id) && bid >= pend.minBid && bid <= p.cash;
+  });
+  let best = 0;
+  for (const p of valid) best = Math.max(best, pend.bids[p.id]);
+  const tied = valid.filter((p) => pend.bids[p.id] === best);
+  const tie = tied.length > 1;
+  const winner = tied.length ? (tie ? tied[randInt(s, tied.length)] : tied[0]) : null;
+  // Ranked highest bid first (the winner leads its tie), then the players who passed, in seat order.
+  const ranked = valid.filter((p) => p !== winner).sort((a, b) => pend.bids[b.id] - pend.bids[a.id]);
+  const order = [...(winner ? [winner.id] : []), ...ranked.map((p) => p.id)];
+  for (const p of seats) if (eligible.includes(p.id) && !order.includes(p.id)) order.push(p.id);
   const bids = {};
   for (const p of s.players) bids[p.id] = pend.bids[p.id] || 0;
-  const end = { type: 'auction_end', tile: pend.tile, winner: winner ? winner.id : null, amount: winner ? best : 0, bids, reason: pend.reason };
+  const end = { type: 'auction_end', tile: pend.tile, winner: winner ? winner.id : null, amount: winner ? best : 0, bids, order, tie, reason: pend.reason };
   if (pend.snatch) end.buyer = pend.buyer; // the bidding that follows two or more Snatch presses
+  const price = TILES[pend.tile] ? TILES[pend.tile].price : 0;
+  if (winner && price > best) end.saved = price - best; // what the winner saved against the district price
+  if (timedOut && timedOut.length) end.timedOut = [...timedOut]; // passed by the server when the window ran out
   ev.push(end);
   s.pending = null;
   s.phase = pend.returnPhase || 'manage';
@@ -931,18 +1072,9 @@ function resolveSnatch(s, ev) {
     emitSets(s, ev, taker.id, [tile]);
     return;
   }
-  const minBid = auctionMinBid(tile, 'snatch');
   ev.push({ type: 'snatch_end', tile, buyer, outcome: 'bidding', claimants: [...claimants] });
-  s.pending = {
-    type: 'auction', tile, minBid, bids: {}, reason: 'snatch', snatch: true, buyer, claimants: [...claimants],
-    returnPhase: pend.returnPhase || 'manage',
-  };
-  s.phase = 'auction';
-  ev.push({ type: 'auction_start', tile, minBid, reason: 'snatch', eligible: [...claimants] });
-  for (const q of activePlayers(s)) {
-    if (!claimants.includes(q.id) || q.cash < minBid) s.pending.bids[q.id] = 0; // non-claimants (and the broke) auto-pass
-  }
-  maybeResolveAuction(s, ev);
+  // Non-claimants (and the claimants who cannot afford the minimum) auto-pass; the bidding has its own, shorter window.
+  beginAuction(s, ev, tile, 'snatch', { snatch: true, buyer, claimants: [...claimants], returnPhase: pend.returnPhase || 'manage' });
 }
 
 /** Resolve at once when every player who could still press has pressed. */
@@ -961,22 +1093,26 @@ function startRound(s, ev) {
   if (s.round > roundLimit(s)) return; // the round limit just ended the game: no event
   const every = eventEveryOf(s);
   if (every <= 0 || s.round % every !== 0) return; // host rule `eventEvery`: 0 = no city events
-  const def = CITY_EVENTS[randInt(s, CITY_EVENTS.length)];
+  const defs = cityEventsOf(s);
+  const def = defs[randInt(s, defs.length)];
   const event = { id: def.id, title: def.title, text: def.text, kind: def.kind, round: s.round };
   if (def.pick === 'owned') {
     const all = Object.keys(GROUPS);
     const owned = all.filter((g) => GROUP_TILES[g].some((t) => s.owners[t]));
     const pool = owned.length ? owned : all;
     event.group = pool[randInt(s, pool.length)];
-    if (def.id === 'rush_hour') Object.assign(event, RUSH_FLAVOUR[event.group]);
-    if (def.id === 'monsoon') event.text = MONSOON_TEXT(GROUPS[event.group].name);
+    if (def.id === 'rush_hour') Object.assign(event, rushFlavourOf(s)[event.group]);
+    if (def.id === 'monsoon') event.text = monsoonTextOf(s, groupName(s, event.group));
   }
   if (def.groups) event.groups = [...def.groups];
   if (def.mult) event.mult = def.mult;
   if (def.upgradedOnly) event.upgradedOnly = true;
   if (def.amount) event.amount = def.amount;
   if (def.bonus) event.bonus = def.bonus;
-  if (def.id === 'festival') Object.assign(event, FESTIVALS[randInt(s, FESTIVALS.length)]);
+  if (def.id === 'festival') {
+    const fests = festivalsOf(s);
+    Object.assign(event, fests[randInt(s, fests.length)]);
+  }
   s.event = event;
   ev.push({ type: 'city_event', ...event });
 
@@ -1114,7 +1250,7 @@ function tradeProblem(s, from, to, give, get) {
     for (const t of tiles) {
       const tile = TILES[t];
       if (!isBuyable(tile)) return 'Only districts can be traded';
-      if (s.owners[t] !== owner.id) return owner === from ? `You do not own ${tile.name}` : `${owner.name} does not own ${tile.name}`;
+      if (s.owners[t] !== owner.id) return owner === from ? `You do not own ${tileName(s, t)}` : `${owner.name} does not own ${tileName(s, t)}`;
     }
     return null;
   };
@@ -1211,11 +1347,12 @@ function doBuy(s, ev) {
   if (!openSnatch(s, ev, p, tile, price)) emitSets(s, ev, p.id, [tile]);
 }
 
+/** Pass on a district: it stays free, there is never an auction (it would let a buyer dodge the Snatch window). */
 function doSkipBuy(s, ev) {
   const { tile } = s.pending;
   s.pending = null;
   s.phase = 'manage';
-  if (s.cfg.auctionOnDecline !== false) openAuction(s, ev, tile, 'decline');
+  ev.push({ type: 'skip', player: turnPlayer(s).id, tile });
 }
 
 function doUpgrade(s, ev, tile) {
@@ -1231,14 +1368,23 @@ function doUpgrade(s, ev, tile) {
 function doResign(s, ev, p) {
   p.resigned = true; // left by choice (public): the UI says "Forfeit" instead of "Bankrupt"
   const debt = s.debt && s.debt.player === p.id ? s.debt : null;
-  bankruptPlayer(s, ev, p, debt ? debt.creditor : null, debt ? debt.reason : 'rent', 'resign');
+  // What they owe: the open debt, then their other queued payments (a debt of someone else may hold some in its `rest`).
+  // The bank takes everything either way; only these creditors are paid, up to the estate. No debt: nobody is paid.
+  const owed = [];
+  if (debt) owed.push({ to: debt.creditor || null, amount: debt.amount, reason: debt.reason });
+  if (s.debt) {
+    if (!Array.isArray(s.debt.rest)) s.debt.rest = [];
+    owed.push(...takeOwnPayments(s.debt.rest, p.id));
+  }
+  bankruptPlayer(s, ev, p, owed, 'resign');
   if (debt) {
     s.debt = null;
     s.phase = debt.returnPhase || 'manage';
     runPayments(s, ev, (debt.rest || []).slice());
   }
   if (s.phase === 'auction' && s.pending) {
-    s.pending.bids[p.id] = 0;
+    s.pending.bids[p.id] = 0; // a resigned bidder passes; the others still get their window
+    markBidIn(s.pending, p.id);
     maybeResolveAuction(s, ev);
   }
   if (s.phase === 'snatch' && s.pending) {
@@ -1263,7 +1409,7 @@ function doPayDebt(s, ev) {
 // applyAction
 // ---------------------------------------------------------------------------------------------
 
-const TRADE_ANSWERS = ['TRADE_ACCEPT', 'TRADE_REJECT', 'TRADE_CANCEL'];
+const TRADE_ANSWERS = ['TRADE_ACCEPT', 'TRADE_REJECT', 'TRADE_CANCEL', 'TRADE_COUNTER'];
 const DEBT_ACTIONS = ['MORTGAGE', 'SELL_BUILDING', 'PAY_DEBT'];
 
 function validate(prev, action) {
@@ -1271,6 +1417,8 @@ function validate(prev, action) {
   if (prev.phase === 'over') return 'The game is over';
   // Server-only: the room fires it when the Snatch timer ends. It carries no player (the buyer may have resigned).
   if (action.type === 'SNATCH_CLOSE') return prev.phase === 'snatch' && prev.pending?.type === 'snatch' ? null : 'There is nothing to snatch';
+  // Server-only too: the auction window ran out. Every player who has not bid passes and the auction resolves.
+  if (action.type === 'AUCTION_CLOSE') return prev.phase === 'auction' && prev.pending?.type === 'auction' ? null : 'There is no auction right now';
   const p = byId(prev, action.playerId);
   if (!p) return 'Unknown player';
   if (p.bankrupt) return 'You are out of the game';
@@ -1302,8 +1450,8 @@ function validate(prev, action) {
     case 'USE_CHAI':
       if (!isTurn) return 'Not your turn';
       if (!p.stuck) return 'You are not stuck in traffic';
-      if (prev.phase !== 'roll') return 'You can only use chai before rolling';
-      if (!((p.chai || 0) > 0)) return 'You have no chai token';
+      if (prev.phase !== 'roll') return `You can only use ${termsOf(prev).chaiUse} before rolling`;
+      if (!((p.chai || 0) > 0)) return `You have no ${termsOf(prev).chaiToken}`;
       return null;
     case 'BUY':
       if (!isTurn) return 'Not your turn';
@@ -1355,8 +1503,8 @@ function validate(prev, action) {
     }
     case 'TRADE_OFFER': {
       if (!isTurn) return 'Not your turn';
-      if (prev.phase !== 'roll' && prev.phase !== 'manage') return 'Finish the current step before trading';
-      if (prev.pending) return 'Finish the current step before trading';
+      const block = tradeBlock(prev, p.id);
+      if (block) return block;
       const to = byId(prev, action.to);
       const give = normSide(action.give);
       const get = normSide(action.get);
@@ -1372,6 +1520,17 @@ function validate(prev, action) {
       if (!prev.trade) return 'There is no trade offer';
       if (prev.trade.from !== p.id) return 'Only the player who made the offer can cancel it';
       return null;
+    case 'TRADE_COUNTER': {
+      // The recipient answers with a changed deal (same rules as an offer, seen from their chair): give leaves me, get leaves the proposer.
+      const t = prev.trade;
+      if (!t) return 'There is no trade offer';
+      if (t.to !== p.id) return 'This offer is not for you';
+      if ((t.counters || 0) >= MAX_COUNTERS) return `Counter-offers are used up (${MAX_COUNTERS}). Accept or reject`;
+      const give = normSide(action.give);
+      const get = normSide(action.get);
+      if (!give || !get) return 'Invalid offer';
+      return tradeProblem(prev, p, byId(prev, t.from), give, get);
+    }
     case 'SNATCH': {
       const pend = prev.pending;
       if (prev.phase !== 'snatch' || !pend || pend.type !== 'snatch') return 'There is nothing to snatch';
@@ -1454,8 +1613,20 @@ export function applyAction(prev, action) {
       break;
     case 'BID':
       s.pending.bids[p.id] = action.amount;
+      markBidIn(s.pending, p.id);
       maybeResolveAuction(s, ev);
       break;
+    case 'AUCTION_CLOSE': {
+      // The window ran out: everyone who has not bid passes (bid 0), then the auction resolves.
+      const timedOut = [];
+      for (const q of activePlayers(s)) {
+        if (q.id in s.pending.bids) continue;
+        s.pending.bids[q.id] = 0;
+        timedOut.push(q.id);
+      }
+      resolveAuction(s, ev, timedOut);
+      break;
+    }
     case 'TRADE_OFFER': {
       s.tradeSeq = (s.tradeSeq || 0) + 1;
       s.trade = { id: s.tradeSeq, from: p.id, to: action.to, give: normSide(action.give), get: normSide(action.get) };
@@ -1472,6 +1643,19 @@ export function applyAction(prev, action) {
       } else {
         doTradeDone(s, ev);
       }
+      break;
+    }
+    case 'TRADE_COUNTER': {
+      // Atomic swap: the old offer is marked countered and the new one (recipient -> proposer) takes its place in the same
+      // step, with a fresh id (so a fresh timer). `replaces` keeps the old deal for the "what changed" view.
+      const old = s.trade;
+      s.tradeSeq = (s.tradeSeq || 0) + 1;
+      s.trade = {
+        id: s.tradeSeq, from: p.id, to: old.from, give: normSide(action.give), get: normSide(action.get),
+        counters: (old.counters || 0) + 1, replaces: { id: old.id, give: old.give, get: old.get },
+      };
+      ev.push({ type: 'trade_countered', id: old.id, from: old.from, to: old.to, by: p.id, newId: s.trade.id, counters: s.trade.counters });
+      ev.push({ type: 'trade_offer', id: s.trade.id, from: s.trade.from, to: s.trade.to, give: s.trade.give, get: s.trade.get, counter: true, counters: s.trade.counters });
       break;
     }
     case 'TRADE_REJECT':

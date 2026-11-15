@@ -138,6 +138,9 @@ export function rowToOpenRoom(r, lookup = getAdapter) {
     customRules,
   };
   if (summary) out.summary = summary;
+  // A table on a non-default map says which one (Kingpin: settings.map, shared/maps.js; absent = the default map).
+  const map = r.settings && typeof r.settings === 'object' ? r.settings.map : undefined;
+  if (typeof map === 'string' && map && map.length <= 32) out.map = map;
   return out;
 }
 
@@ -225,6 +228,15 @@ export async function listMyRooms(env, userId) {
 // ---------------------------------------------------------------- member cosmetics
 
 export const EQUIPPED_SQL = 'SELECT equipped FROM users WHERE id = $1::uuid';
+
+export const OWNED_ITEMS_SQL = 'SELECT item_id FROM user_items WHERE user_id = $1::uuid';
+
+/** Ids of the items a user has bought (`user_items`; free items are not rows). Throws on failure. */
+export async function loadOwnedItemIds(env, userId) {
+  if (!hasDb(env) || !isUuid(userId)) return [];
+  const rows = await query(env, OWNED_ITEMS_SQL, [userId]);
+  return rows.map((r) => r.item_id);
+}
 
 /** A user's equipped cosmetics (raw `users.equipped`; callers clean it). Throws on failure. */
 export async function loadEquipped(env, userId) {

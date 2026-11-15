@@ -17,8 +17,11 @@ import {
   summarizeSettings,
 } from './settings.js';
 import { SettingField } from './SettingControls.jsx';
+import MapPicker from './MapPicker.jsx';
+import { MAP_KEY, mapFieldOf, mapIdOf, skinGame } from './mapModel.js';
 import { ruleWarnings } from '@shared/ruleSettings.js';
 import { compactINR } from '@shared/format.js';
+import RulesTourButton from '@/components/tour/RulesTourButton.jsx';
 import { CustomBadge, PresetPicker, RuleGroup, RulesReadOnly, isWide, useOpenGroups } from './RulesEditor.jsx';
 import '@/styles/online.css';
 import '@/styles/x-lobby.css';
@@ -42,11 +45,15 @@ const SLIDER_DELAY = 250; // ms: a slider drag sends when it rests this long (or
  * `errorId` / `error` (rolls the optimistic UI back when the server rejects a change, and says why).
  * A panel with a single shown field has no heading of its own: the field's label is the title.
  */
-export default function SettingsPanel({ game, settings, isHost, disabled, onSend, errorId, error }) {
+export default function SettingsPanel({ game: baseGame, settings, isHost, disabled, onSend, errorId, error }) {
+  // the copy speaks the words of the room's map ("Festival tokens" on Andhra Aatalu); the default map keeps the manifest as it is
+  const mapId = mapIdOf(settings);
+  const game = useMemo(() => skinGame(baseGame, mapId), [baseGame, mapId]);
   const schema = game && game.settings;
   const fields = useMemo(() => lobbyFields(game), [game]);
   const layout = useMemo(() => groupFields(fields, game && game.settingsGroups), [fields, game]);
   const ruled = layout.groups.length > 0;
+  const mapField = useMemo(() => mapFieldOf(schema), [schema]); // the map is its own picker (cards), never a plain field or a rule
   const solo = fields.length === 1;
   const server = useMemo(() => resolveSettings(schema, settings), [schema, settings]);
   const serverKey = settingsKey(schema, settings);
@@ -81,6 +88,10 @@ export default function SettingsPanel({ game, settings, isHost, disabled, onSend
     </p>
   ) : null;
 
+  const mapPicker = mapField ? (
+    <MapPicker value={eff[MAP_KEY]} isHost={isHost} disabled={disabled} onPick={(patch) => commit(patch, 0, MAP_KEY)} helpText={isHost ? mapField.help : undefined} />
+  ) : null;
+
   const [open, toggle, setOpen] = useOpenGroups(layout.groups);
   const [showAll, setShowAll] = useState(isWide);
   const listId = useId();
@@ -96,6 +107,7 @@ export default function SettingsPanel({ game, settings, isHost, disabled, onSend
             <h2 className="ho-h2">Game rules</h2>
             <span className="ho-muted">Set by the host</span>
           </div>
+          {mapPicker}
           <p className="ho-summary" aria-live="polite">
             {summary || 'The host has not changed anything yet.'}
           </p>
@@ -121,11 +133,13 @@ export default function SettingsPanel({ game, settings, isHost, disabled, onSend
     const ruleKeys = new Set(layout.groups.flatMap((g) => g.fields.map((f) => f.key)));
 
     return (
-      <section className="ho-card ho-settings xl-rules is-host" aria-label="Game settings">
+      <section className="ho-card ho-settings xl-rules is-host" aria-label="Game settings" data-tour="lobby-rules-host">
         <div className="ho-card__head">
           <h2 className="ho-h2">Game rules</h2>
           <span className="ho-muted">You are the host</span>
         </div>
+
+        {mapPicker}
 
         {layout.plain.map((f) =>
           f === modeField ? (
@@ -142,7 +156,7 @@ export default function SettingsPanel({ game, settings, isHost, disabled, onSend
           ),
         )}
 
-        <div className="xl-rules__bar">
+        <div className="xl-rules__bar" data-tour="lobby-rules-bar">
           <CustomBadge count={count} />
           {count === 0 && <span className="ho-muted">Nothing changed from the defaults</span>}
           <button type="button" className="xl-rules__reset" onClick={() => commit(resetPatch(fields, cur()), 0, null)} disabled={disabled || !rulesChanged}>
@@ -151,6 +165,7 @@ export default function SettingsPanel({ game, settings, isHost, disabled, onSend
           <button type="button" className="xl-rules__toggle" onClick={() => setOpen(Object.fromEntries(layout.groups.map((g) => [g.id, !allOpen])))}>
             {allOpen ? 'Collapse all' : 'Expand all'}
           </button>
+          <RulesTourButton />
         </div>
 
         <p className="ho-summary" aria-live="polite">
@@ -209,6 +224,7 @@ export default function SettingsPanel({ game, settings, isHost, disabled, onSend
             <span className="ho-muted">Set by the host</span>
           </div>
         )}
+        {mapPicker}
         <p className="ho-summary" aria-live="polite">
           {summarizeSettings(game, settings) || 'The host has not changed anything yet.'}
         </p>
@@ -234,6 +250,8 @@ export default function SettingsPanel({ game, settings, isHost, disabled, onSend
           <span className="ho-muted">You are the host</span>
         </div>
       )}
+
+      {mapPicker}
 
       {fields.map((f) => (
         <SettingField

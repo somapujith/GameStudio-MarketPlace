@@ -143,7 +143,7 @@ describe('join preview', () => {
     const f = previewFacts(info);
     expect(f.host).toBe('Ravi');
     expect(f.seats).toBe('2 of 4 seats taken');
-    expect(f.name).toBe('Hyderabad Tycoon');
+    expect(f.name).toBe('Kingpin');
     expect(previewFacts({ ...info, maxPlayers: undefined }).seats).toBe('2 players here');
     expect(previewFacts({ gameId: 'nope', players: 1 }).name).toBe('nope');
   });
@@ -151,7 +151,7 @@ describe('join preview', () => {
     const html = renderToString(h(RoomPreview, { info }));
     expect(html).toContain('Hosted by Ravi');
     expect(html).toContain('2 of 4 seats taken');
-    expect(html).toContain('Hyderabad Tycoon');
+    expect(html).toContain('Kingpin');
     expect(renderToString(h(RoomPreviewSkeleton))).toContain('st-skel');
   });
 });

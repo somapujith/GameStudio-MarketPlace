@@ -14,6 +14,7 @@ import '@/styles/trade.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { TILES } from '@shared/board.js';
 import { compactINR, formatINR } from '@shared/format.js';
+import { MAX_COUNTERS } from '@shared/engine.js';
 import { TRADE_MS, tradeMsOf } from '@shared/timing.js';
 import Sheet from './ui/Sheet.jsx';
 import Button from './ui/Button.jsx';
@@ -29,8 +30,8 @@ import {
   useHeld, useReducedMotion, worthParts,
 } from './ui/helpers.js';
 import {
-  CASH_CHIPS, CASH_STEP, balanceSplit, byCollection, cashAfter, clampCash, deedFacts, fairness, fullSets, impactRows,
-  offerProblem, parseCash, partnerHints, setImpact, sideBrief, sideParts, sideValue, tileHint,
+  CASH_CHIPS, CASH_STEP, balanceSplit, byCollection, cashAfter, clampCash, counterDiff, deedFacts, fairness, fullSets, impactRows,
+  offerProblem, parseCash, partnerHints, setImpact, sideBrief, sideChanged, sideParts, sideValue, tileHint, tradeStatus,
 } from './ui/tradeModel.js';
 
 const OFFER_SECONDS = Math.round(TRADE_MS / 1000); // the server auto-rejects an unanswered offer after this (default; host rule `tradeSeconds`)
@@ -41,7 +42,7 @@ const IN_NUM = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 
 /* ------------------------------------------------------------------ pure helpers (exported for tests) */
 
-export { fairness, sideValue };
+export { fairness, sideValue, ComposerSheet };
 
 /** Collections that `playerId` would own completely after receiving `receive` tiles and handing over `hand` tiles. */
 export const completedGroups = completedGroupsBase;
@@ -79,7 +80,7 @@ function hintSay(h, themName) {
  * One district as a small title deed: collection-coloured band, the business as it stands (art + level pips), price and
  * rent, a set badge. With `onToggle` it is a toggle button (aria-pressed); without it a read-only card.
  */
-function Deed({ state, id, selected = false, hint = null, onToggle = null, locked = false, themName = 'them' }) {
+function Deed({ state, id, selected = false, hint = null, onToggle = null, locked = false, themName = 'them', mark = null }) {
   const f = deedFacts(state, id);
   const { tile } = f;
   if (!tile) return null;
@@ -100,7 +101,7 @@ function Deed({ state, id, selected = false, hint = null, onToggle = null, locke
   return (
     <Tag
       {...tagProps}
-      className={`tx-deed${interactive ? ' is-btn' : ''}${selected ? ' is-on' : ''}${f.mortgaged ? ' is-mort' : ''}${showTag && hint ? ` has-${hint.kind}` : ''}`}
+      className={`tx-deed${interactive ? ' is-btn' : ''}${selected ? ' is-on' : ''}${f.mortgaged ? ' is-mort' : ''}${showTag && hint ? ` has-${hint.kind}` : ''}${mark ? ` is-${mark}` : ''}`}
       style={{ '--band': color, '--ink': tones.ink, '--b1': tones.from, '--b2': tones.to }}
       title={f.mortgaged ? `${tile.name} (mortgaged)` : `${tile.name}: ${levelName}`}
       aria-label={label}
@@ -120,7 +121,9 @@ function Deed({ state, id, selected = false, hint = null, onToggle = null, locke
         <b>{compactINR(f.price)}</b>
         <small>{f.mortgaged ? 'No rent' : `Rent ${compactINR(f.rent)}`}</small>
       </span>
-      {locked ? (
+      {mark === 'added' ? (
+        <span className="tx-deed__tag is-gold"><Icon name="plus" size={11} />Added</span>
+      ) : locked ? (
         <span className="tx-deed__tag is-info"><Icon name="lock" size={11} />Locked</span>
       ) : showTag ? (
         <span className={`tx-deed__tag is-${H.tone}`}><Icon name={H.icon} size={11} />{H.label}</span>
@@ -133,7 +136,7 @@ function Deed({ state, id, selected = false, hint = null, onToggle = null, locke
 }
 
 /** Districts grouped by collection: a header (name, the owner's progress, "Full set") and a row of deed cards. */
-function DeedGroups({ state, options = null, owner = null, ids, selected = [], onToggle = null, hintFor = null, themName }) {
+function DeedGroups({ state, options = null, owner = null, ids, selected = [], onToggle = null, hintFor = null, themName, added = [] }) {
   const owned = fullSets(state.owners, owner?.id);
   return byCollection(ids).map(({ coll, ids: row }) => {
     const total = coll.tiles.length;
@@ -161,6 +164,7 @@ function DeedGroups({ state, options = null, owner = null, ids, selected = [], o
               onToggle={onToggle}
               locked={isLocked(options, id)}
               themName={themName}
+              mark={added.includes(id) ? 'added' : null}
             />
           ))}
         </div>
@@ -491,30 +495,52 @@ function OfferBand({ session, player, kicker, children, ring }) {
 }
 
 /** Read-only side of an offer: a cash note and the deed cards grouped by collection. */
-function OfferSide({ title, tone, side, state, owner, hintFor, themName }) {
+function OfferSide({ title, tone, side, state, owner, hintFor, themName, diff = null }) {
   const tiles = side?.tiles || [];
   const cash = side?.cash || 0;
+  const changed = sideChanged(diff);
+  const tileName = (id) => TILES[id]?.name || `Tile ${id}`;
   return (
-    <section className={`tx-side is-${tone}`} aria-label={title}>
+    <section className={`tx-side is-${tone}${changed ? ' is-changed' : ''}`} aria-label={title}>
       <header className="tx-side__head">
         <h3>{title}</h3>
         <b>Worth {formatINR(sideValue(state, side))}</b>
       </header>
-      {cash > 0 ? (
-        <p className="tx-note"><Icon name="coin" size={18} /><b>{formatINR(cash)}</b><small>cash</small></p>
+      {cash > 0 || (diff && diff.cashFrom > 0) ? (
+        <p className={`tx-note${diff && diff.cashFrom !== diff.cashTo ? ' is-changed' : ''}`}>
+          <Icon name="coin" size={18} /><b>{formatINR(cash)}</b><small>cash</small>
+          {diff && diff.cashFrom !== diff.cashTo ? <small className="tx-was">was {formatINR(diff.cashFrom)}</small> : null}
+        </p>
       ) : null}
       {tiles.length ? (
-        <DeedGroups state={state} owner={owner} ids={tiles} hintFor={hintFor} themName={themName} />
+        <DeedGroups state={state} owner={owner} ids={tiles} hintFor={hintFor} themName={themName} added={diff ? diff.added : []} />
       ) : cash > 0 ? null : (
         <p className="tx-side__none">Nothing</p>
       )}
+      {diff && diff.removed.length ? (
+        <p className="tx-removed"><Icon name="close" size={12} strokeWidth={2.6} />Taken out: {diff.removed.map(tileName).join(', ')}</p>
+      ) : null}
     </section>
+  );
+}
+
+/** "Original offer": the deal that was replaced, seen from my chair; collapsed until asked for. */
+function OriginalChip({ give, get }) {
+  return (
+    <details className="tx-orig">
+      <summary><Icon name="swap" size={13} />Original offer</summary>
+      <p>You give <b>{sideBrief(give)}</b> <span aria-hidden="true">{'·'}</span> You get <b>{sideBrief(get)}</b></p>
+    </details>
   );
 }
 
 /* ------------------------------------------------------------------ composer + waiting */
 
-function ComposerSheet({ session, open, onClose, deadline }) {
+/**
+ * `counter` (optional) is the offer addressed to me that I am changing: the composer then starts as that deal seen from
+ * my chair (what they give is what I get ...), the partner is fixed (the proposer) and Send becomes a TRADE_COUNTER.
+ */
+function ComposerSheet({ session, open, onClose, deadline, counter = null, onCounterBack = null }) {
   const view = session.view;
   const me = session.me;
   const o = session.options || {};
@@ -527,9 +553,10 @@ function ComposerSheet({ session, open, onClose, deadline }) {
   if (trade) lastTrade.current = trade;
   const modeRef = useRef('compose'); // keep the same content while the sheet animates out
   if (waiting) modeRef.current = 'wait';
-  else if (open) modeRef.current = 'compose';
+  else if (open || counter) modeRef.current = 'compose';
   const showWait = modeRef.current === 'wait' && !!lastTrade.current;
   const tradeShown = trade || lastTrade.current;
+  const status = tradeStatus(session);
 
   const [to, setTo] = useState(null);
   const [giveCash, setGiveCash] = useState(0);
@@ -540,14 +567,34 @@ function ComposerSheet({ session, open, onClose, deadline }) {
 
   /* fresh composer every time it opens */
   useEffect(() => {
-    if (open && !wasOpen.current && !waiting) {
+    if (open && !wasOpen.current && !waiting && !counter) {
       setTo(others[0]?.id ?? null);
       setGiveCash(0); setGetCash(0); setGiveTiles([]); setGetTiles([]);
     }
     wasOpen.current = open;
-  }, [open, waiting, others]);
+  }, [open, waiting, others, counter]);
 
-  const toId = to != null && others.some((p) => p.id === to) ? to : others[0]?.id ?? null; // first paint: default partner
+  /* a counter-offer starts as the deal I received, mapped to my chair: what they give is what I get, what they ask is what I give */
+  const [seeded, setSeeded] = useState(null);
+  if (counter && seeded !== counter.id) {
+    // seeded while rendering (not in an effect) so the first paint of the counter composer is already the received deal
+    setSeeded(counter.id);
+    setTo(counter.from);
+    setGiveCash(counter.get?.cash || 0); setGiveTiles([...(counter.get?.tiles || [])]);
+    setGetCash(counter.give?.cash || 0); setGetTiles([...(counter.give?.tiles || [])]);
+  }
+
+  /* the sheet I sent from closes when my offer is answered (not at once: a refused offer keeps what I picked) */
+  const sentRef = useRef(false);
+  useEffect(() => {
+    if (waiting) sentRef.current = true;
+    else if (sentRef.current) {
+      sentRef.current = false;
+      onClose?.();
+    }
+  }, [waiting, onClose]);
+
+  const toId = counter ? counter.from : to != null && others.some((p) => p.id === to) ? to : others[0]?.id ?? null; // first paint: default partner
   const partner = view.players.find((p) => p.id === (trade ? trade.to : toId)) || null;
   const waitPartner = tradeShown ? view.players.find((p) => p.id === tradeShown.to) || null : null;
 
@@ -560,7 +607,13 @@ function ComposerSheet({ session, open, onClose, deadline }) {
   const getting = sideValue(view, get);
   const fair = fairness(giving, getting);
   const impact = partner ? setImpact(view.owners, me, partner.id, giveTiles, getTiles) : null;
-  const problem = offerProblem({ me: myP, partner, give, get, canOffer: o.trade ? !!o.trade.canOffer : true });
+  const original = counter ? { give: counter.get, get: counter.give } : null; // the received deal from my chair
+  const problem = offerProblem({
+    me: myP, partner, give, get,
+    canOffer: counter ? true : o.trade ? !!o.trade.canOffer : true,
+    reason: status.reason,
+    original,
+  });
   const valid = !problem;
   const myIds = useMemo(() => TILES.filter((t) => isBuyableTile(t) && view.owners?.[t.id] === me).map((t) => t.id), [view.owners, me]);
   const theirIds = useMemo(
@@ -571,8 +624,10 @@ function ComposerSheet({ session, open, onClose, deadline }) {
 
   const send = () => {
     if (!valid) return;
-    session.dispatch({ type: 'TRADE_OFFER', to: partner.id, give: { cash: giveCash, tiles: giveTiles }, get: { cash: getCash, tiles: getTiles } });
-    onClose?.();
+    const sides = { give: { cash: giveCash, tiles: giveTiles }, get: { cash: getCash, tiles: getTiles } };
+    // The sheet stays until the offer shows up as "sent" (then it turns into the waiting view): a request that could not be
+    // sent, or that the server refuses, keeps everything I picked and says why instead of closing on nothing.
+    session.dispatch(counter ? { type: 'TRADE_COUNTER', ...sides } : { type: 'TRADE_OFFER', to: partner.id, ...sides });
   };
 
   const timed = !!deadline || session.mode === 'online';
@@ -596,7 +651,7 @@ function ComposerSheet({ session, open, onClose, deadline }) {
       <div className="tx-foot">
         <p className="tx-foot__line">Nobody can move until the offer is answered or cancelled.</p>
         <div className="tx-foot__btns">
-          <Button variant="rose" size="lg" disabled={session.busy} onClick={() => session.dispatch({ type: 'TRADE_CANCEL' })}>Cancel offer</Button>
+          <Button variant="rose" size="lg" onClick={() => session.dispatch({ type: 'TRADE_CANCEL' })}>Cancel offer</Button>
         </div>
       </div>
     );
@@ -623,7 +678,16 @@ function ComposerSheet({ session, open, onClose, deadline }) {
       </div>
     );
   } else {
-    header = (
+    header = counter && partner ? (
+      <OfferBand
+        session={session}
+        player={partner}
+        kicker="Counter-offer"
+        ring={timed ? <Countdown deadline={deadline} seconds={offerSeconds(view.cfg)} resetKey={counter.id} size={52} /> : null}
+      >
+        Counter-offer to {partner.name}
+      </OfferBand>
+    ) : (
       <div className="tx-head" data-drag="">
         <span className="tx-head__medal" aria-hidden="true"><Icon name="swap" size={22} /></span>
         <div>
@@ -645,15 +709,21 @@ function ComposerSheet({ session, open, onClose, deadline }) {
           </p>
         ) : null}
         <div className="tx-foot__btns">
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="gold" size="lg" disabled={!valid || session.busy} onClick={send}>Send offer</Button>
+          <Button variant="ghost" onClick={counter ? onCounterBack : onClose}>{counter ? 'Back to the offer' : 'Cancel'}</Button>
+          <Button variant="gold" size="lg" disabled={!valid} onClick={send}>{counter ? 'Send counter-offer' : 'Send offer'}</Button>
         </div>
       </div>
     );
     body = (
       <>
-        <h3 className="tx-label">Trade with</h3>
-        <PartnerPicker session={session} state={view} me={me} players={rivals} value={toId} onPick={pick} />
+        {counter ? (
+          <OriginalChip give={original.give} get={original.get} />
+        ) : (
+          <>
+            <h3 className="tx-label">Trade with</h3>
+            <PartnerPicker session={session} state={view} me={me} players={rivals} value={toId} onPick={pick} />
+          </>
+        )}
         {partner ? (
           <>
             <div className="tx-panes">
@@ -699,10 +769,10 @@ function ComposerSheet({ session, open, onClose, deadline }) {
 
   return (
     <Sheet
-      open={open || waiting}
-      onClose={onClose}
-      dismissible={!waiting}
-      ariaLabel={showWait && waitPartner ? `Trade offer sent. Waiting for ${waitName}` : 'Propose a trade'}
+      open={open || waiting || !!counter}
+      onClose={counter ? onCounterBack : onClose}
+      dismissible={!waiting && !counter}
+      ariaLabel={showWait && waitPartner ? `Trade offer sent. Waiting for ${waitName}` : counter && partner ? `Counter-offer to ${partner.name}` : 'Propose a trade'}
       className={`tx-sheet ${showWait && waitPartner ? 'tx-sheet--wait' : 'tx-sheet--compose'}`}
       desktop="modal"
       header={header}
@@ -715,7 +785,7 @@ function ComposerSheet({ session, open, onClose, deadline }) {
 
 /* ------------------------------------------------------------------ incoming offer */
 
-function IncomingSheet({ session, deadline }) {
+function IncomingSheet({ session, deadline, hidden = false, onChange = null }) {
   const view = session.view;
   const me = session.me;
   const o = session.options || {};
@@ -728,8 +798,11 @@ function IncomingSheet({ session, deadline }) {
     else if (o.tradeOffer) setLatched(true);
   }, [offer, o.tradeOffer]);
 
-  const open = !!offer && (!!o.tradeOffer || latched);
+  const open = !hidden && !!offer && (!!o.tradeOffer || latched);
   const heldOffer = useHeld(offer);
+  const isCounter = !!heldOffer?.replaces;
+  const diff = heldOffer ? counterDiff(heldOffer, me) : null;
+  const canCounter = !!heldOffer && (heldOffer.counters || 0) < MAX_COUNTERS;
   const from = heldOffer ? view.players.find((p) => p.id === heldOffer.from) : null;
   const sig = heldOffer ? heldOffer.id : null;
   const iGet = heldOffer?.give; // proposer gives -> I receive
@@ -757,10 +830,10 @@ function IncomingSheet({ session, deadline }) {
         <OfferBand
           session={session}
           player={from}
-          kicker="Trade offer"
+          kicker={isCounter ? 'Counter-offer' : 'Trade offer'}
           ring={timed ? <Countdown deadline={deadline} seconds={offerSeconds(view.cfg)} resetKey={sig} size={52} /> : null}
         >
-          {from.name} wants to trade
+          {isCounter ? `${from.name} changed the offer` : `${from.name} wants to trade`}
         </OfferBand>
       ) : null}
       footer={(
@@ -771,9 +844,19 @@ function IncomingSheet({ session, deadline }) {
               Get <b>{sideBrief(iGet)}</b> <span aria-hidden="true">{'·'}</span> Give <b>{sideBrief(iGive)}</b>
             </p>
           ) : null}
-          <div className="tx-foot__btns is-answer">
-            <Button variant="dark" size="lg" disabled={session.busy} onClick={() => session.dispatch({ type: 'TRADE_REJECT' })}>Reject</Button>
-            <Button variant="gold" size="lg" disabled={session.busy} onClick={() => session.dispatch({ type: 'TRADE_ACCEPT' })}>Accept</Button>
+          <div className="tx-foot__btns is-answer is-three">
+            <Button variant="dark" size="lg" onClick={() => session.dispatch({ type: 'TRADE_REJECT' })}>Reject</Button>
+            <Button
+              variant="ghost"
+              size="lg"
+              className="tx-change"
+              disabled={!canCounter}
+              title={canCounter ? 'Change what is offered and send it back' : `Counter-offers are used up (${MAX_COUNTERS}). Accept or reject`}
+              onClick={() => onChange?.()}
+            >
+              <Icon name="swap" size={16} />Change offer
+            </Button>
+            <Button variant="gold" size="lg" onClick={() => session.dispatch({ type: 'TRADE_ACCEPT' })}>Accept</Button>
           </div>
         </div>
       )}
@@ -781,10 +864,11 @@ function IncomingSheet({ session, deadline }) {
       {heldOffer ? (
         <>
           <div className="tx-panes is-view">
-            <OfferSide title="You get" tone="get" side={iGet} state={view} owner={from} hintFor={hintFor('get')} themName={themName} />
+            <OfferSide title="You get" tone="get" side={iGet} state={view} owner={from} hintFor={hintFor('get')} themName={themName} diff={diff ? diff.get : null} />
             <Medallion />
-            <OfferSide title="You give" tone="give" side={iGive} state={view} owner={myP} hintFor={hintFor('give')} themName={themName} />
+            <OfferSide title="You give" tone="give" side={iGive} state={view} owner={myP} hintFor={hintFor('give')} themName={themName} diff={diff ? diff.give : null} />
           </div>
+          {isCounter ? <OriginalChip give={heldOffer.replaces.give} get={heldOffer.replaces.get} /> : null}
           <Summary
             state={view}
             give={iGive}
@@ -804,10 +888,14 @@ function IncomingSheet({ session, deadline }) {
 
 export default function TradeSheet({ session, open, onClose, deadline = null }) {
   const dl = Number.isFinite(deadline) && deadline > 0 ? deadline : null;
+  const view = session.view;
+  const incoming = view && view.trade && view.trade.to === session.me ? view.trade : null;
+  const [countering, setCountering] = useState(null); // id of the offer I am changing (the counter composer)
+  const counter = incoming && countering === incoming.id ? incoming : null; // a newer / answered offer closes it by itself
   return (
     <>
-      <ComposerSheet session={session} open={open} onClose={onClose} deadline={dl} />
-      <IncomingSheet session={session} deadline={dl} />
+      <ComposerSheet session={session} open={open} onClose={onClose} deadline={dl} counter={counter} onCounterBack={() => setCountering(null)} />
+      <IncomingSheet session={session} deadline={dl} hidden={!!counter} onChange={() => incoming && setCountering(incoming.id)} />
     </>
   );
 }

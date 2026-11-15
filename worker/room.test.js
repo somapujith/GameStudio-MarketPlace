@@ -25,7 +25,7 @@ vi.mock('./match.js', async (importOriginal) => {
   };
 });
 
-const { GameRoom, TURN_MS, GRACE_MS } = await import('./GameRoom.js');
+const { GameRoom, TURN_MS, GRACE_MS, AFK_STRIKES, AFK_TURN_MS } = await import('./GameRoom.js');
 const { pendingActors, estimateAnimMs, autoMove, TRADE_MS } = await import('./games/hyderabad-tycoon.js');
 const { persistMatch } = await import('./match.js');
 const engine = await import('../shared/index.js');
@@ -255,14 +255,15 @@ describe('lobby', () => {
     const h = new Harness();
     await h.init();
     const host = await h.connect(user(1));
-    expect(host.last('room').room.settings).toMatchObject({ mode: 'standard', startCash: 1500000, maxRounds: 20, targetWorth: 5000000, dice: 'lucky', auctionOnDecline: true });
+    expect(host.last('room').room.settings).toMatchObject({ mode: 'standard', startCash: 1500000, maxRounds: 20, targetWorth: 5000000, dice: 'lucky' });
     expect(host.last('room').room.settings).not.toHaveProperty('goal');
+    expect(host.last('room').room.settings).not.toHaveProperty('auctionOnDecline');
     const guest = await h.connect(user(2));
 
     await h.say(guest, { t: 'settings', settings: { mode: 'quick' } });
     expect(guest.last('error').message).toMatch(/host/);
 
-    for (const bad of [{ mode: 'marathon' }, { mode: 3 }, { mode: null }, { dice: 'loaded' }, { auctionOnDecline: 'yes' }, { maxPlayers: 9 }]) {
+    for (const bad of [{ mode: 'marathon' }, { mode: 3 }, { mode: null }, { dice: 'loaded' }, { maxPlayers: 9 }]) {
       const before = host.of('error').length;
       await h.say(host, { t: 'settings', settings: bad });
       expect(host.of('error').length, JSON.stringify(bad)).toBe(before + 1);
@@ -272,7 +273,8 @@ describe('lobby', () => {
     // only the mode and the host rules reach the room: retired or engine-only keys are dropped
     await h.say(host, { t: 'settings', settings: { mode: 'quick', dice: 'fair', auctionOnDecline: false, debug: true, goal: 100000, seed: 1 } });
     const s = host.last('room').room.settings;
-    expect(s).toMatchObject({ mode: 'quick', startCash: 2000000, maxRounds: 12, targetWorth: 5000000, dice: 'fair', auctionOnDecline: false });
+    expect(s).toMatchObject({ mode: 'quick', startCash: 2000000, maxRounds: 12, targetWorth: 5000000, dice: 'fair' });
+    expect(s).not.toHaveProperty('auctionOnDecline'); // the retired pass-auction rule is dropped silently
     expect(s.debug).toBeUndefined();
     expect(s.goal).toBeUndefined();
     expect(guest.last('room').room.settings.mode).toBe('quick');
@@ -295,18 +297,18 @@ describe('lobby', () => {
     expect(target()).toBe(5000000);
     expect(host.of('error')).toHaveLength(0);
     // the lobby sends every setting: a mode change arrives with the old target and still resets it
-    await h.say(host, { t: 'settings', settings: { mode: 'standard', dice: 'lucky', auctionOnDecline: true, targetWorth: 7500000 } });
+    await h.say(host, { t: 'settings', settings: { mode: 'standard', dice: 'lucky', targetWorth: 7500000 } });
     expect(target()).toBe(7500000);
-    await h.say(host, { t: 'settings', settings: { mode: 'classic', dice: 'lucky', auctionOnDecline: true, targetWorth: 7500000 } });
+    await h.say(host, { t: 'settings', settings: { mode: 'classic', dice: 'lucky', targetWorth: 7500000 } });
     expect(host.last('room').room.settings).toMatchObject({ mode: 'classic', targetWorth: 3000000 });
-    await h.say(host, { t: 'settings', settings: { mode: 'classic', dice: 'lucky', auctionOnDecline: true, targetWorth: null } });
+    await h.say(host, { t: 'settings', settings: { mode: 'classic', dice: 'lucky', targetWorth: null } });
     expect(target()).toBe(3000000); // no round limit: never without a target
     await h.say(host, { t: 'settings', settings: { targetWorth: 4000000 } });
     expect(target()).toBe(4000000);
-    await h.say(host, { t: 'settings', settings: { mode: 'quick', dice: 'lucky', auctionOnDecline: true, targetWorth: 4000000 } });
+    await h.say(host, { t: 'settings', settings: { mode: 'quick', dice: 'lucky', targetWorth: 4000000 } });
     expect(host.last('room').room.settings).toMatchObject({ mode: 'quick', targetWorth: 5000000 });
     // a mode change together with a deliberate new target keeps that target
-    await h.say(host, { t: 'settings', settings: { mode: 'classic', dice: 'lucky', auctionOnDecline: true, targetWorth: 2500000 } });
+    await h.say(host, { t: 'settings', settings: { mode: 'classic', dice: 'lucky', targetWorth: 2500000 } });
     expect(host.last('room').room.settings).toMatchObject({ mode: 'classic', targetWorth: 2500000 });
   });
 
@@ -461,9 +463,9 @@ describe('game start', () => {
 
 
   it('passes the normalised settings to the engine (state.cfg matches room.settings)', async () => {
-    const h = await startedGame({ mode: 'quick', dice: 'fair', auctionOnDecline: false, targetWorth: 4000000 });
+    const h = await startedGame({ mode: 'quick', dice: 'fair', targetWorth: 4000000 });
     const cfg = h.state.cfg;
-    expect(cfg).toMatchObject({ mode: 'quick', startCash: 2000000, maxRounds: 12, targetWorth: 4000000, dice: 'fair', auctionOnDecline: false });
+    expect(cfg).toMatchObject({ mode: 'quick', startCash: 2000000, maxRounds: 12, targetWorth: 4000000, dice: 'fair' });
     expect(h.state.players.every((p) => p.cash === 2000000)).toBe(true);
     // the pieces picked in the lobby are the pieces the engine plays with
     const seats = h.host.last('room').room.players;
@@ -613,9 +615,103 @@ describe('game flow', () => {
     await h.tick();
     expect(h.room.room.seq).toBeGreaterThan(seq);
     expect(h.room.room.afk[U(1)]).toBe(true);
-    // idle humans move fast afterwards; acting yourself clears the flag
+    // acting yourself clears the flag (and the strikes)
     await h.say(h.host, { t: 'action', action: { type: 'END_TURN' } });
     expect(h.room.room.afk[U(1)]).toBeUndefined();
+    expect(h.room.room.idle[U(1)]).toBeUndefined();
+  });
+
+  // ---- "the roll goes by itself": a present human who was slow once is NOT auto-played on later turns ----
+
+  it('a connected human who let a turn run out gets a FULL decision timer on their next turn (never the 1.5 s pace)', async () => {
+    const h = await startedGame();
+    await toHumanTurn(h, h.host);
+    const firstTurn = h.state.turnCount;
+    // the human does nothing: the server plays their whole turn, then everyone else's, until it is their roll again
+    let guard = 0;
+    while (guard < 600 && !(h.state.turnCount > firstTurn && h.state.phase === 'roll' && h.state.players[h.state.turn].id === U(1) && !h.state.trade)) {
+      await h.tick();
+      guard += 1;
+    }
+    expect(h.state.turnCount).toBeGreaterThan(firstTurn);
+    expect(h.room.room.afk[U(1)]).toBe(true); // they did time out once
+    expect(h.room.room.idle[U(1)]).toBe(1); // one whole turn (roll + buy / end turn are one strike, not three)
+    const r = h.room.room;
+    const plan = h.room.plan();
+    expect(plan.id).toBe(U(1));
+    expect(plan.action.type).toBe('ROLL');
+    expect(plan.timeout).toBe(true);
+    expect(plan.at - r.lastApplyAt).toBe(r.animMs + TURN_MS); // not max(1500, animMs)
+    expect(h.room.clockView().deadline).toBe(plan.at); // the countdown the client shows is the same
+    // an alarm a few seconds in does nothing: the player is not rolled for
+    const seq = r.seq;
+    vi.setSystemTime(r.lastApplyAt + r.animMs + 5000);
+    await h.room.alarm();
+    expect(r.seq).toBe(seq);
+  });
+
+  it('a present human who has let AFK_STRIKES turns run out in a row gets the shorter AFK window, still never 1.5 s', async () => {
+    const h = await startedGame();
+    await toHumanTurn(h, h.host);
+    const r = h.room.room;
+    r.idle[U(1)] = AFK_STRIKES;
+    r.afk[U(1)] = true;
+    const plan = h.room.plan();
+    expect(plan.timeout).toBe(true);
+    expect(plan.at - r.lastApplyAt).toBe(r.animMs + Math.min(TURN_MS, AFK_TURN_MS));
+    expect(plan.at - r.lastApplyAt).toBeGreaterThanOrEqual(r.animMs + 5000);
+    // one deliberate action puts them back on the full timer
+    await h.say(h.host, { t: 'action', action: { type: 'ROLL' } });
+    expect(r.idle[U(1)]).toBeUndefined();
+    expect(r.afk[U(1)]).toBeUndefined();
+  });
+
+  it('a reconnect clears the idle strikes and the flag', async () => {
+    const h = await startedGame();
+    await toHumanTurn(h, h.host);
+    const r = h.room.room;
+    r.idle[U(1)] = 5;
+    r.idleTurn = { [U(1)]: 3 };
+    r.afk[U(1)] = true;
+    await h.close(h.host);
+    const back = await h.connect(user(1));
+    expect(back).toBeTruthy();
+    expect(r.idle[U(1)]).toBeUndefined();
+    expect(r.idleTurn[U(1)]).toBeUndefined();
+    expect(r.afk[U(1)]).toBeUndefined();
+  });
+
+  it('a flaky connection never speeds an auto-move up: a slow human who drops is still given the whole grace', async () => {
+    const h = await startedGame();
+    await toHumanTurn(h, h.host);
+    const r = h.room.room;
+    r.afk[U(1)] = true; // flagged idle earlier
+    r.idle[U(1)] = 5;
+    await h.close(h.host); // a blip: the socket closes
+    const dropped = r.disc[U(1)];
+    const plan = h.room.plan();
+    expect(plan.at).toBeGreaterThanOrEqual(dropped + GRACE_MS); // not "1.5 s because the flag was set"
+    const seq = r.seq;
+    vi.setSystemTime(dropped + 5000);
+    await h.room.alarm();
+    expect(r.seq).toBe(seq);
+    // back within the grace: no auto-play at all, and a full timer
+    await h.connect(user(1));
+    const plan2 = h.room.plan();
+    expect(plan2.timeout).toBe(true);
+    expect(plan2.at - r.lastApplyAt).toBe(r.animMs + TURN_MS);
+  });
+
+  it('a human who is truly gone (past the grace) is still played for at the short pace', async () => {
+    const h = await startedGame();
+    await toHumanTurn(h, h.host);
+    const r = h.room.room;
+    await h.close(h.host);
+    vi.setSystemTime(r.disc[U(1)] + GRACE_MS + 1000);
+    const plan = h.room.plan();
+    expect(plan.timeout).toBe(false);
+    expect(plan.at).toBeLessThanOrEqual(Date.now() + 5000);
+    expect(plan.action.type).toBe('ROLL');
   });
 
   it('a disconnected human is auto-played after the 15 s grace, and reconnecting stops it', async () => {
@@ -719,14 +815,27 @@ describe('rules v2: trades and debts', () => {
     expect(h.room.plan().at).toBeGreaterThan(Date.now());
   });
 
-  it('an idle recipient is rejected without waiting 30 s', async () => {
+  it('a recipient who is gone (disconnected past the grace) is rejected without waiting for the trade timer', async () => {
     for (const [from, to] of [[U(2), U(1)], [U(1), U(2)]]) {
       const h = await withState((s) => ({ trade: offer(s, from, to) }));
       h.room.room.deadlines = { 'trade:trade-1': Date.now() };
-      h.room.room.afk[to] = true;
+      h.room.room.disc[to] = Date.now() - 10 * 60_000;
       const plan = h.room.plan();
       expect(plan.action).toEqual({ type: 'TRADE_REJECT', playerId: to });
       expect(plan.at).toBeLessThan(Date.now() + 5000);
+    }
+  });
+
+  it('a connected recipient who was slow before still gets the whole trade timer', async () => {
+    for (const [from, to] of [[U(2), U(1)], [U(1), U(2)]]) {
+      const h = await withState((s) => ({ trade: offer(s, from, to) }));
+      const startedAt = Date.now();
+      h.room.room.deadlines = { 'trade:trade-1': startedAt };
+      h.room.room.afk[to] = true;
+      h.room.room.idle = { [to]: 5 };
+      const plan = h.room.plan();
+      expect(plan.action).toEqual({ type: 'TRADE_REJECT', playerId: to });
+      expect(plan.at).toBeGreaterThanOrEqual(startedAt + TRADE_MS);
     }
   });
 
@@ -739,9 +848,9 @@ describe('rules v2: trades and debts', () => {
     expect(plan.action).toEqual({ type: 'TRADE_CANCEL', playerId: U(1) });
   });
 
-  it('an idle turn player who made an offer takes it back', async () => {
+  it('a turn player who made an offer and is gone takes it back', async () => {
     const h = await withState((s) => ({ trade: offer(s, U(1), U(2)) }));
-    h.room.room.afk[U(1)] = true;
+    h.room.room.disc[U(1)] = Date.now() - 10 * 60_000;
     const plan = h.room.plan();
     expect(plan.action).toEqual({ type: 'TRADE_CANCEL', playerId: U(1) });
   });
@@ -801,6 +910,86 @@ describe('rules v2: trades and debts', () => {
     expect(h.state.trade).toBeNull();
     expect(h.state.owners[1]).toBe(from);
     expect(a.last('state').events.some((e) => e.type === 'trade_done')).toBe(true);
+  });
+
+  it('REAL ENGINE: a counter-offer replaces the offer in one step, with a fresh timer for the original proposer', async () => {
+    const h = new Harness();
+    await h.init(user(1), {}, 2);
+    const a = await h.connect(user(1));
+    const b = await h.connect(user(2));
+    await h.say(a, { t: 'start' });
+    const r = h.room.room;
+    const from = h.state.players[h.state.turn].id;
+    const to = from === U(1) ? U(2) : U(1);
+    const sockFrom = from === U(1) ? a : b;
+    const sockTo = to === U(1) ? a : b;
+    r.state.owners[1] = to;
+    await h.say(sockFrom, { t: 'action', action: { type: 'TRADE_OFFER', to, give: { cash: 100, tiles: [] }, get: { cash: 0, tiles: [1] } } });
+    const firstId = h.state.trade.id;
+    const firstKey = `trade:${firstId}`;
+    expect(Object.keys(r.deadlines)).toEqual([firstKey]);
+
+    // the recipient answers with a changed deal (a TRADE_COUNTER carries no `to`: the proposer is implied)
+    await h.say(sockTo, { t: 'action', action: { type: 'TRADE_COUNTER', give: { cash: 0, tiles: [1] }, get: { cash: 5000, tiles: [] }, to: 'ignored' } });
+    expect(h.state.trade).toMatchObject({ from: to, to: from, counters: 1 });
+    expect(h.state.trade.id).not.toBe(firstId);
+    const evs = a.last('state').events.map((e) => e.type);
+    expect(evs).toEqual(['trade_countered', 'trade_offer']); // never a rejected / empty moment in between
+    expect(Object.keys(r.deadlines)).toEqual([`trade:${h.state.trade.id}`]); // the old timer is gone, a new one runs
+    const plan = h.room.plan();
+    expect(plan.action).toEqual({ type: 'TRADE_REJECT', playerId: from }); // now the original proposer is the one to answer
+
+    // the proposer accepts: the deal goes through the right way round
+    await h.say(sockFrom, { t: 'action', action: { type: 'TRADE_ACCEPT' } });
+    expect(h.state.trade).toBeNull();
+    expect(h.state.owners[1]).toBe(from);
+  });
+
+  it('REAL ENGINE: trade actions are never dropped for an animation, and a refused one is reported with its reason', async () => {
+    const h = new Harness();
+    await h.init(user(1), {}, 2);
+    const a = await h.connect(user(1));
+    const b = await h.connect(user(2));
+    await h.say(a, { t: 'start' });
+    const r = h.room.room;
+    const from = h.state.players[h.state.turn].id;
+    const to = from === U(1) ? U(2) : U(1);
+    const sockFrom = from === U(1) ? a : b;
+    const sockTo = to === U(1) ? a : b;
+    r.state.owners[1] = to;
+    r.animMs = 20_000; // the table is still animating the last move
+    r.lastApplyAt = Date.now();
+    // while I am not on turn: an exact reason, not silence
+    await h.say(sockTo, { t: 'action', action: { type: 'TRADE_OFFER', to: from, give: { cash: 100, tiles: [] }, get: { cash: 0, tiles: [] } } });
+    expect(sockTo.last('error').message).toMatch(/turn/i);
+    // the player on turn: applied at once, mid-animation
+    await h.say(sockFrom, { t: 'action', action: { type: 'TRADE_OFFER', to, give: { cash: 100, tiles: [] }, get: { cash: 0, tiles: [1] } } });
+    expect(h.state.trade).toMatchObject({ from, to });
+    // and answered at once too
+    await h.say(sockTo, { t: 'action', action: { type: 'TRADE_ACCEPT' } });
+    expect(h.state.trade).toBeNull();
+    expect(h.state.owners[1]).toBe(from);
+  });
+
+  it('REAL ENGINE: while deciding about the district I landed on, I can still trade', async () => {
+    const h = new Harness();
+    await h.init(user(1), {}, 2);
+    const a = await h.connect(user(1));
+    const b = await h.connect(user(2));
+    await h.say(a, { t: 'start' });
+    const r = h.room.room;
+    const from = h.state.players[h.state.turn].id;
+    const to = from === U(1) ? U(2) : U(1);
+    const sockFrom = from === U(1) ? a : b;
+    const sockTo = to === U(1) ? a : b;
+    r.state.owners[1] = to;
+    r.state.phase = 'buy';
+    r.state.pending = { type: 'buy', tile: 3, price: 70000 };
+    await h.say(sockFrom, { t: 'action', action: { type: 'TRADE_OFFER', to, give: { cash: 100, tiles: [] }, get: { cash: 0, tiles: [1] } } });
+    expect(h.state.trade).toMatchObject({ from, to });
+    await h.say(sockTo, { t: 'action', action: { type: 'TRADE_REJECT' } });
+    expect(h.state.trade).toBeNull();
+    expect(h.state.phase).toBe('buy'); // the district is still waiting for my decision
   });
 
   it('REAL ENGINE: the 45 s timer resolves a debt for an idle human (mortgages, then pays)', async () => {
@@ -1065,7 +1254,7 @@ describe('host rules in a room', () => {
     const host = await h.connect(user(1));
     await h.connect(user(2));
     h.room.room.settings = { mode: 'quick', dice: 'fair', auctionOnDecline: false, targetWorth: 4000000 }; // what an older room has stored
-    expect(h.room.roomView().settings).toEqual({ ...engine.ruleDefaults('quick'), mode: 'quick', dice: 'fair', auctionOnDecline: false, targetWorth: 4000000 });
+    expect(h.room.roomView().settings).toEqual({ ...engine.ruleDefaults('quick'), mode: 'quick', dice: 'fair', targetWorth: 4000000 }); // the old auctionOnDecline is dropped
     await h.say(host, { t: 'start' });
     expect(h.state.cfg).toMatchObject({ mode: 'quick', startCash: 2000000, maxRounds: 12, turnSeconds: 60, tradeSeconds: 45, rentPercent: 100, requireFullSet: true, eventEvery: 3, dice: 'fair', targetWorth: 4000000 });
     expect(h.state.players.every((p) => p.cash === 2000000)).toBe(true);

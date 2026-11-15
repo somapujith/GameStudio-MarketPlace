@@ -137,17 +137,26 @@
 
 /* Live dot: the "something is happening now" pulse */
 .st-live {
+  position: relative;
   display: inline-block;
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: var(--hub-good);
-  box-shadow: 0 0 0 0 rgba(var(--hub-good-rgb), 0.55);
+}
+/* the ring is a pseudo-element animated with transform + opacity (a box-shadow animation repaints every frame) */
+.st-live::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(var(--hub-good-rgb), 0.55);
+  opacity: 0;
   animation: st-pulse 2s var(--ease-out) infinite;
 }
 @keyframes st-pulse {
-  70% { box-shadow: 0 0 0 8px rgba(var(--hub-good-rgb), 0); }
-  100% { box-shadow: 0 0 0 0 rgba(var(--hub-good-rgb), 0); }
+  0% { opacity: 1; transform: scale(1); }
+  70%, 100% { opacity: 0; transform: scale(3); }
 }
 
 /* Reveal: enter animation for sections (transform + opacity only) */
@@ -157,10 +166,11 @@
 /* Skeleton block shaped like content */
 .st-skel {
   border-radius: var(--st-radius-tile);
-  background: linear-gradient(100deg, var(--hub-skel) 30%, var(--hub-skel-hi) 50%, var(--hub-skel) 70%) 0 0 / 200% 100%;
-  animation: st-shimmer 1.4s linear infinite;
+  background: linear-gradient(100deg, var(--hub-skel) 30%, var(--hub-skel-hi) 50%, var(--hub-skel) 70%);
+  /* a breathing opacity instead of a sliding gradient: background-position repaints every skeleton every frame */
+  animation: st-shimmer 1.4s ease-in-out infinite alternate;
 }
-@keyframes st-shimmer { to { background-position: -200% 0; } }
+@keyframes st-shimmer { from { opacity: 0.55; } to { opacity: 1; } }
 
 .st-scope :focus-visible,
 .hub-app :focus-visible {
@@ -169,8 +179,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .st-reveal, .st-live, .st-skel { animation: none; }
+  .st-reveal, .st-live, .st-live::after, .st-skel { animation: none; }
 }
 :root[data-motion='reduced'] .st-reveal,
 :root[data-motion='reduced'] .st-live,
+:root[data-motion='reduced'] .st-live::after,
 :root[data-motion='reduced'] .st-skel { animation: none; }

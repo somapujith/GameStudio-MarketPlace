@@ -216,3 +216,65 @@ describe('equipped cosmetics are visible to friends', () => {
     expect(sql).toMatch(/u\.equipped/);
   });
 });
+
+describe('voice lines in the shop', () => {
+  const V = 'voice-sheru-bhai';
+  const price = COSMETICS.find((c) => c.id === V).price;
+
+  it('GET /api/shop lists the voice line with its symbol, clip and caption, never equipped', async () => {
+    const out = await call('/api/shop', { cookie: await cookieFor(ME) });
+    const v = out.json.items.find((i) => i.id === V);
+    expect(v).toEqual({
+      id: V, kind: 'voice', name: 'Sheru Bhai', price, rarity: 'rare', icon: 'tiger', emoji: '🐯',
+      src: '/audio/voice/sheru-bhai.mp3', durationMs: 8300, caption: 'Sheru Bhai!', owned: false, equipped: false,
+    });
+    items.set(ME, new Set([V]));
+    const after = await call('/api/shop', { cookie: await cookieFor(ME) });
+    expect(after.json.items.find((i) => i.id === V)).toMatchObject({ owned: true, equipped: false });
+  });
+
+  it('buy: coins drop by exactly the catalogue price (a client price is ignored), it is owned, and not buyable twice', async () => {
+    const cookie = await cookieFor(ME);
+    users.get(ME).coins = price + 250;
+    const res = await call('/api/shop/buy', { method: 'POST', cookie, body: { itemId: V, price: 1, kind: 'title' } });
+    expect(res.status).toBe(200);
+    expect(res.json.coins).toBe(250);
+    expect(res.json.owned).toContain(V);
+    expect(queryMock.mock.calls.find((c) => c[1] === BUY_SQL)[2]).toEqual([ME, V, price]);
+    const again = await call('/api/shop/buy', { method: 'POST', cookie, body: { itemId: V } });
+    expect(again).toEqual({ status: 409, json: { error: 'Already owned.' } });
+    expect(users.get(ME).coins).toBe(250);
+  });
+
+  it('buy: 402 when it costs more than the balance, nothing is spent', async () => {
+    users.get(ME).coins = price - 1;
+    const res = await call('/api/shop/buy', { method: 'POST', cookie: await cookieFor(ME), body: { itemId: V } });
+    expect(res).toEqual({ status: 402, json: { error: 'Not enough coins.' } });
+    expect(users.get(ME).coins).toBe(price - 1);
+    expect(owned(ME).has(V)).toBe(false);
+  });
+
+  it('all three voice lines are listed (owned-only) and each buys for exactly its own catalogue price', async () => {
+    const out = await call('/api/shop', { cookie: await cookieFor(ME) });
+    const voices = out.json.items.filter((i) => i.kind === 'voice');
+    expect(voices.map((i) => i.id)).toEqual(['voice-sheru-bhai', 'voice-ladle-meow', 'voice-old-man']);
+    expect(voices.map((i) => [i.icon, i.emoji])).toEqual([['tiger', '🐯'], ['cat', '🐱'], ['oldman', '👴']]);
+    users.get(ME).coins = 5000;
+    let left = 5000;
+    for (const v of voices) {
+      const res = await call('/api/shop/buy', { method: 'POST', cookie: await cookieFor(ME), body: { itemId: v.id } });
+      left -= v.price;
+      expect(res.json.coins).toBe(left);
+    }
+  });
+
+  it('voice lines are never equipped', async () => {
+    items.set(ME, new Set([V]));
+    const cookie = await cookieFor(ME);
+    const res = await call('/api/shop/equip', { method: 'POST', cookie, body: { kind: 'voice', itemId: V } });
+    expect(res.status).toBe(400);
+    expect(res.json.error).toMatch(/not equipped/);
+    expect((await call('/api/shop/equip', { method: 'POST', cookie, body: { kind: 'frame', itemId: V } })).status).toBe(400);
+    expect(users.get(ME).equipped).toEqual({});
+  });
+});

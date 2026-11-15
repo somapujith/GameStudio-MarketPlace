@@ -89,6 +89,15 @@ export const SNATCH_GRACE_MS = 400;
 const secondsToMs = (v, fallback) => (Number.isFinite(Number(v)) && Number(v) >= 1 ? Math.round(Number(v) * 1000) : fallback);
 export const turnMsOf = (cfg) => secondsToMs(cfg && cfg.turnSeconds, DECISION_MS);
 export const tradeMsOf = (cfg) => secondsToMs(cfg && cfg.tradeSeconds, TRADE_MS);
+/** Sealed-auction window (host rule `auctionSeconds`, default 20 s): everyone who has not bid when it ends passes. */
+export const AUCTION_MS = 20_000;
+/** Bidding among Snatch claimants is shorter: at most this long (they are already at the table with a decision made). */
+export const SNATCH_BID_MAX_MS = 15_000;
+/** The server closes an auction this long after its countdown ends, so a bid sent at the last moment still arrives. */
+export const AUCTION_GRACE_MS = 400;
+export const auctionMsOf = (cfg) => secondsToMs(cfg && cfg.auctionSeconds, AUCTION_MS);
+/** The window of the sealed bidding that follows two or more Snatch presses: `min(auctionSeconds, 15 s)`. */
+export const snatchBidMsOf = (cfg) => Math.min(auctionMsOf(cfg), SNATCH_BID_MAX_MS);
 /** The "time is running out" warning point for a decision timer of `turnMs`: WARN_MS, but never more than half of it. */
 export const warnMsFor = (turnMs = DECISION_MS) => Math.min(WARN_MS, Math.max(1000, Math.floor(turnMs / 2)));
 export const AUTO_MOVE_MS = 1500; // pause before an idle / disconnected player's move is played for them

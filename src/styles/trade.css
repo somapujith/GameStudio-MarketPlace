@@ -367,3 +367,26 @@
 :root[data-motion='reduced'] .tx-sheet .tx-impact, :root[data-motion='reduced'] .tx-sheet .tx-partner__tick svg, :root[data-motion='reduced'] .tx-sheet .tx-deed__tick svg,
 .hg-sheet-root[data-rm] .tx-sheet .tx-impact, .hg-sheet-root[data-rm] .tx-sheet .tx-partner__tick svg, .hg-sheet-root[data-rm] .tx-sheet .tx-deed__tick svg,
 .hg-game[data-rm] .tx-sheet .tx-impact { animation: none !important; }
+
+/* ---- counter-offers: "Change offer", the original-offer chip and what a counter changed ---- */
+.tx-foot__btns.is-three .hg-btn { flex: 1 1 0; min-width: 0; }
+.tx-foot__btns.is-three .hg-btn--gold { flex: 1.4 1 0; }
+.tx-foot__btns.is-three .tx-change { gap: 6px; border: 1px solid rgba(255, 255, 255, 0.22); }
+.tx-orig { margin: 4px 0 10px; border-radius: 12px; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); }
+.tx-orig summary { display: flex; align-items: center; gap: 6px; padding: 8px 12px; font-size: 12.5px; font-weight: 800; letter-spacing: 0.04em; color: var(--tx-dim); cursor: pointer; list-style: none; }
+.tx-orig summary::-webkit-details-marker { display: none; }
+.tx-orig summary::after { content: '+'; margin-left: auto; font-size: 16px; line-height: 1; }
+.tx-orig[open] summary::after { content: '\2212'; }
+.tx-orig p { margin: 0; padding: 0 12px 10px; font-size: 13px; line-height: 1.35; color: var(--tx-dim); }
+.tx-orig p b { color: var(--text); font-weight: 700; }
+.tx-side.is-changed { box-shadow: inset 0 0 0 1px rgba(255, 208, 97, 0.45); }
+.tx-deed.is-added { box-shadow: 0 0 0 2px #ffd061, 0 0 14px rgba(255, 208, 97, 0.45); }
+.tx-deed__tag.is-gold { background: rgba(255, 208, 97, 0.22); color: #ffd061; }
+.tx-note.is-changed b { color: #ffd061; }
+.tx-note .tx-was { margin-left: 8px; text-decoration: line-through; color: #ff8c8c; }
+.tx-removed { display: flex; align-items: center; gap: 6px; margin: 6px 0 4px; font-size: 12.5px; line-height: 1.3; color: #ff8c8c; }
+.tx-removed svg { flex: none; }
+.tx-foot__btns.is-three { min-width: 0; }
+.tx-foot__btns.is-three .tx-change { padding-inline: 10px; font-size: 14px; white-space: nowrap; }
+@media (min-width: 900px) { .tx-sheet .tx-foot__btns.is-three { min-width: 430px; } }
+@media (max-width: 480px) { .tx-foot__btns.is-three .tx-change svg { display: none; } .tx-foot__btns.is-three { gap: 8px; } }

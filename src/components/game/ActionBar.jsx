@@ -12,6 +12,10 @@ import Icon from './ui/Icon.jsx';
 import { hasOpenSheet } from './ui/Sheet.jsx';
 import { watchingLine } from './turn/resign.js';
 import { snatchBannerText, snatchInfo } from './snatch.js';
+import { decisionCardOpen } from './decision/decisionModel.js';
+import { wordsOf } from '@/lib/mapWords.js';
+import { guardAction, noteRollOffer, specOffersRoll } from './rollGuard.js';
+import SnatchButton, { useSnatchControl } from './SnatchButton.jsx';
 import '@/styles/controlpanel.css';
 
 const TRAFFIC_FINE = 25000;
@@ -57,7 +61,7 @@ export function buildActionSpec(session) {
     return { ...spec, label: 'Resigning…', sr: 'Resigning from the game', upgrades: 0 };
   }
   // The Snatch window is real time and read from the latest state: it wins over `busy` (the presenter may still be playing
-  // the purchase). The button itself is the pop-up's (SnatchPopup); the row just says what is going on.
+  // the purchase). The button itself is SnatchButton, in the primary slot; this spec just says what is going on.
   const sn = snatchInfo(session);
   if (sn) {
     const label = sn.pressed ? 'Snatch locked in…' : sn.canPress ? 'Snatch it now!' : 'Snatch window open…';
@@ -78,8 +82,8 @@ export function buildActionSpec(session) {
 
   if (o.buy || (o.skipBuy && pend?.type === 'buy')) {
     const tile = TILES[pend?.tile];
-    const auction = view.cfg?.auctionOnDecline !== false;
-    const skipLabel = auction ? 'Put up for auction' : 'Skip';
+    // Passing never starts an auction (that would let a buyer dodge Snatch): the district just stays free.
+    const skipLabel = 'Pass';
     const price = pend?.price ?? tile?.price ?? 0;
     if (o.buy) {
       spec.kind = 'buy';
@@ -88,11 +92,10 @@ export function buildActionSpec(session) {
       };
       if (o.skipBuy) {
         spec.secondaries.push({
-          key: 'skip', wide: auction, icon: auction ? 'bank' : undefined, label: skipLabel,
-          sub: auction ? 'Everyone bids, sealed' : undefined, action: { type: 'SKIP_BUY' },
+          key: 'skip', label: skipLabel, sub: 'No auction, stays free', action: { type: 'SKIP_BUY' },
         });
       }
-      spec.sr = `Buy ${tile?.name ?? 'this district'} for ${formatINR(price)}, or ${auction ? 'put it up for auction' : 'skip'}`;
+      spec.sr = `Buy ${tile?.name ?? 'this district'} for ${formatINR(price)}, or pass: no auction, the district stays free`;
     } else {
       const short = Math.max(0, price - (mine?.cash ?? 0));
       spec.kind = 'skip';
@@ -106,14 +109,14 @@ export function buildActionSpec(session) {
       // Traffic Jam: pay the fine, spend chai, or wait it out (ROLL = no move, the turn ends). Never on Space.
       spec.kind = 'traffic';
       const fine = Number(o.payTraffic) > 0 ? Number(o.payTraffic) : (view.cfg?.trafficFine ?? TRAFFIC_FINE);
-      const chai = o.useChai ? { key: 'chai', tone: 'green', icon: 'spark', label: 'Use chai', sub: 'Free, then roll', action: { type: 'USE_CHAI' } } : null;
+      const chai = o.useChai ? { key: 'chai', tone: 'green', icon: 'spark', label: wordsOf().isDefault ? 'Use chai' : 'Use token', sub: 'Free, then roll', action: { type: 'USE_CHAI' } } : null;
       const pay = o.payTraffic ? { key: 'pay', tone: 'gold', icon: 'coin', label: `Pay ${formatINR(fine)}`, sub: 'Then roll', action: { type: 'PAY_TRAFFIC' } } : null;
       const wait = { key: 'wait', tone: 'dark', icon: 'hourglass', label: 'Wait it out', sub: 'No move this turn', action: { type: 'ROLL' } };
       const choices = [chai, pay, wait].filter(Boolean);
       spec.primary = choices[0];
       spec.secondaries.push(...choices.slice(1));
-      spec.hint = { key: 'traffic', icon: 'warn', text: 'Stuck in Traffic Jam: pay the fine, use chai, or wait a turn', short: 'Stuck in traffic' };
-      spec.sr = `You are stuck in traffic. ${[chai && 'Use your chai', pay && `pay ${formatINR(fine)}`, 'or wait it out'].filter(Boolean).join(', ')}.`;
+      spec.hint = { key: 'traffic', icon: 'warn', text: `Stuck in ${wordsOf().trafficCorner}: pay the fine, use ${wordsOf().chai}, or wait a turn`, short: 'Stuck in traffic' };
+      spec.sr = `You are stuck in traffic. ${[chai && `Use your ${wordsOf().chai}`, pay && `pay ${formatINR(fine)}`, 'or wait it out'].filter(Boolean).join(', ')}.`;
     } else {
       spec.kind = 'roll';
       spec.primary = { key: 'roll', tone: 'gold', icon: 'dice', label: again ? 'Roll again' : 'Roll', kbd: 'Space', action: { type: 'ROLL' } };
@@ -148,6 +151,9 @@ export function buildActionSpec(session) {
   return spec;
 }
 
+/** Any modal dialog on the page (resign / leave confirm, shell modals, sheets): Space / Enter belong to it, never to the die. */
+const modalDialogOpen = () => typeof document !== 'undefined' && !!document.querySelector('[role="dialog"][aria-modal="true"], [role="alertdialog"]:not([aria-modal="false"])');
+
 const isTyping = (t) => {
   if (!t) return false;
   if (typeof document !== 'undefined' && (t === document.body || t === document.documentElement)) return false;
@@ -161,7 +167,7 @@ const isTyping = (t) => {
  * Only a primary that advertises a `kbd` qualifies (Roll, End turn): Buy, auction and the traffic choices must be a deliberate click.
  */
 export function shortcutAction(spec, e, sheetOpen = false) {
-  if (e.defaultPrevented || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return null;
+  if (e.defaultPrevented || e.repeat || e.isComposing || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return null;
   if (e.key !== ' ' && e.key !== 'Enter') return null;
   if (sheetOpen || isTyping(e.target)) return null;
   return spec?.primary?.kbd ? spec.primary.action : null;
@@ -180,16 +186,20 @@ export function useActionSpec(session, { keys = true } = {}) {
   dispatchRef.current = session.dispatch;
   const lastFire = useRef(0);
 
+  // Tell the roll guard when a ROLL appears or goes away (see rollGuard.js: no roll in the first moments after it appears)
+  useEffect(() => { noteRollOffer(specOffersRoll(spec)); }, [spec]);
+
   /* Space / Enter (not while a sheet is open, or when focus is on something interactive) */
   useEffect(() => {
     if (!keys) return undefined;
     const onKey = (e) => {
-      const action = shortcutAction(specRef.current, e, hasOpenSheet());
+      const action = shortcutAction(specRef.current, e, hasOpenSheet() || decisionCardOpen() || modalDialogOpen()); // a decision popup owns Enter / Esc
       if (!action) return;
       e.preventDefault();
       e.stopImmediatePropagation();
       const now = performance.now();
       if (now - lastFire.current < 350) return;
+      if (!guardAction(action)) return; // a ROLL right after the button appeared / after the last roll is a stray press
       lastFire.current = now;
       dispatchRef.current?.(action);
     };
@@ -200,6 +210,7 @@ export function useActionSpec(session, { keys = true } = {}) {
   const fire = (action) => () => {
     const now = performance.now();
     if (now - lastFire.current < 250) return;
+    if (!guardAction(action)) return; // ghost click / double tap that landed on the Roll that just replaced the old button
     lastFire.current = now;
     session.dispatch(action);
   };
@@ -229,8 +240,9 @@ const SOUND = { RIDE: 'ride', USE_CHAI: 'chai', PAY_TRAFFIC: 'pay' };
 const soundOf = (action) => SOUND[action?.type] || 'click';
 const Glyph = ({ name, size }) => <Icon name={name} size={size} />;
 
-export default function ActionBar({ spec, fire, className = '' }) {
+export default function ActionBar({ spec, fire, session, className = '', reopen = null }) {
   const { primary } = spec;
+  const sn = useSnatchControl(session); // while I may snatch, the primary slot IS the SNATCH! button (SnatchButton.jsx)
   const secondaries = spec.secondaries.filter((sec) => !sec.wide);
   const wide = spec.secondaries.filter((sec) => sec.wide);
   return (
@@ -238,11 +250,17 @@ export default function ActionBar({ spec, fire, className = '' }) {
       className={`cp-actions ${className}`.trim()}
       data-kind={spec.kind}
       data-sec={secondaries.length}
-      data-wide={wide.length || spec.hint ? 1 : undefined}
+      data-wide={wide.length || spec.hint || reopen ? 1 : undefined}
       role="group"
       aria-label="Actions"
     >
       <p className="cp-sr" role="status" aria-live="polite">{spec.sr}</p>
+
+      {reopen ? (
+        <PanelButton tone="paper" size="sm" className="cp-wide is-reopen" onClick={reopen.onClick} aria-label={`${reopen.label}. Show the choices again`}>
+          <span className="cp-btn__label"><Glyph name={reopen.icon} size={16} />{reopen.label}</span>
+        </PanelButton>
+      ) : null}
 
       {spec.hint ? (
         <p className={`cp-hint is-${spec.hint.key}`}>
@@ -270,7 +288,9 @@ export default function ActionBar({ spec, fire, className = '' }) {
         </div>
       ) : null}
 
-      {primary ? (
+      {sn.show ? (
+        <SnatchButton ctl={sn} variant="panel" className="cp-primary" />
+      ) : primary ? (
         <PanelButton
           tone={primary.tone}
           size="lg"

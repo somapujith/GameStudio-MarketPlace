@@ -12,7 +12,7 @@ vi.mock('@/components/art/index.js', () => ({ Avatar: ({ preset }) => h('span', 
 const mod = await import('./InviteBanner.jsx');
 const { setInvitesUser, refreshInvites, addLiveInvite, dismissInviteEntry, subscribeInvites, useInvites, pendingSummary, quietPath } = mod;
 
-const row = (id, code, fromId, extra = {}) => ({ id, code, gameId: 'hyderabad-tycoon', gameName: 'Hyderabad Tycoon', from: { id: fromId, name: `P${fromId}`, avatar: 1 }, createdAt: new Date().toISOString(), ...extra });
+const row = (id, code, fromId, extra = {}) => ({ id, code, gameId: 'hyderabad-tycoon', gameName: 'Kingpin', from: { id: fromId, name: `P${fromId}`, avatar: 1 }, createdAt: new Date().toISOString(), ...extra });
 let snap;
 function Probe() {
   snap = useInvites();
@@ -33,7 +33,7 @@ describe('invites store', () => {
     const off = subscribeInvites((s) => seen.push(s));
     setInvitesUser('me');
     await refreshInvites({ force: true });
-    addLiveInvite({ t: 'invite', code: 'AAA222', from: { id: 'u1', name: 'P1' }, gameId: 'hyderabad-tycoon', gameName: 'Hyderabad Tycoon' });
+    addLiveInvite({ t: 'invite', code: 'AAA222', from: { id: 'u1', name: 'P1' }, gameId: 'hyderabad-tycoon', gameName: 'Kingpin' });
     addLiveInvite({ t: 'invite', code: 'CCC444', from: { id: 'u3', name: 'P3' } });
     const s = seen[seen.length - 1];
     expect(s.status).toBe('ready');
@@ -91,10 +91,10 @@ describe('invites store', () => {
 
 describe('compact banner copy', () => {
   const now = Date.now();
-  const inv = (code, name, minsAgo, gameName = 'Hyderabad Tycoon') => ({ key: `${code}:${name}`, code, gameName, from: { name }, createdAt: now - minsAgo * 60000 });
+  const inv = (code, name, minsAgo, gameName = 'Kingpin') => ({ key: `${code}:${name}`, code, gameName, from: { name }, createdAt: now - minsAgo * 60000 });
   it('one invite: who, which game, Join goes through the join page', () => {
     const s = pendingSummary([inv('ABC234', 'Ravi', 12)], now);
-    expect(s).toMatchObject({ count: 1, title: 'Ravi invited you to Hyderabad Tycoon', actionLabel: 'Join', target: '/join/ABC234' });
+    expect(s).toMatchObject({ count: 1, title: 'Ravi invited you to Kingpin', actionLabel: 'Join', target: '/join/ABC234' });
     expect(s.body).toBe('12 min ago · Room ABC234');
   });
   it('several: a count and a link to the inbox', () => {

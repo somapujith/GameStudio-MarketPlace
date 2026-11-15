@@ -8,6 +8,7 @@
 //
 //   card     null | { player, deck, title, text, kind, cardId }   while a card event plays
 //   handoff  null | { player, round, isFinal }                     while a turn event plays (isFinal: last round)
+//   auctionResult  null | { ...auction_end, id, ms }              while an auction_end plays (the bidding screen's reveal; ms = how long it is held)
 //   flights  [{ id, from, to, amount, reason, ms }]                money in the air; from / to = player id | 'bank'.
 //            Pushed on cash transfers (rent pair -> player->player, gains -> bank->player, payments ->
 //            player->bank) and dropped again once their animation is over (`ms`). FxLayer flies them.
@@ -68,7 +69,7 @@ const QUICK = {
 const NEEDS_ATTENTION = new Set([
   'win', 'bankrupt', 'debt', 'set_complete',
   'auction_start', 'auction_end',
-  'trade_offer', 'trade_done', 'trade_rejected', 'city_event',
+  'trade_offer', 'trade_countered', 'trade_done', 'trade_rejected', 'city_event',
   'snatch_open', 'snatch_end', 'token_earned',
 ]);
 
@@ -162,6 +163,7 @@ function makeSnapshot(state) {
     lastCash: null,
     card: null,
     handoff: null,
+    auctionResult: null,
     flights: [],
     log: [],
   };
@@ -524,7 +526,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
         patchDisplay((d) => ({
           ...d,
           owners: setAt(d.owners, ev.tile, ev.owner ?? null),
-          // a tile that goes back to the bank comes back unmortgaged (a creditor inherits the flag)
+          // a tile that goes back to the bank comes back unmortgaged and without upgrades (bankruptcy: the bank takes everything)
           mortgaged: ev.owner === null || ev.owner === undefined ? setAt(d.mortgaged, ev.tile, false) : d.mortgaged,
           levels: ev.owner === null || ev.owner === undefined ? setAt(d.levels, ev.tile, 0) : d.levels,
         }));
@@ -586,6 +588,13 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
         return wait(dl('trade'));
       }
 
+      case 'trade_countered': {
+        // the counter-offer itself follows as a normal trade_offer: this one only announces and chimes
+        announce(ev);
+        fx('trade');
+        return true;
+      }
+
       case 'trade_done': {
         patchDisplay((d) => ({ ...d, trade: null }));
         announce(ev);
@@ -631,6 +640,11 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
         announce(ev);
         fx('ride', 'step');
         return wait(dl('ride'));
+      }
+
+      case 'skip': {
+        announce(ev); // "Ravi passed on Madhapur. It stays free": the log line; nothing animates
+        return wait(dl('quiet'));
       }
 
       case 'chai': {
@@ -723,7 +737,11 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
         const hasWinner = ev.winner !== null && ev.winner !== undefined;
         fx(hasWinner ? 'sold' : 'click'); // the hammer and "sold"; the `own` event that follows rings the till
         if (hasWinner && ev.winner === me) hp('sold');
-        return wait(dl('auctionEnd'));
+        // the bidding screen stays open for the reveal: `auctionResult` is the event + how long it is held (ms), for as long as we wait
+        commit({ auctionResult: { ...ev, bids: { ...(ev.bids || {}) }, id: `ar${nextId()}`, ms: Math.round(dl('auctionEnd') * factor()) } });
+        const ok = await wait(dl('auctionEnd'));
+        if (ok) commit({ auctionResult: null });
+        return ok;
       }
 
       case 'bankrupt': {
@@ -803,7 +821,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
 
   function snapTo(state) {
     if (!state || !Array.isArray(state.players)) {
-      commit({ rolling: false, card: null, handoff: null });
+      commit({ rolling: false, card: null, handoff: null, auctionResult: null });
       return;
     }
     // `assist` belongs to the last roll, which the state itself does not carry: keep it.
@@ -812,6 +830,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
       rolling: false,
       card: null,
       handoff: null,
+      auctionResult: null,
     });
   }
 

@@ -460,18 +460,7 @@
   background: radial-gradient(ellipse at center, rgba(5, 4, 24, 0.7) 0%, rgba(5, 4, 24, 0.32) 52%, transparent 74%);
 }
 
-/* whose turn: a ground halo in the player's colour (one transform + opacity loop) */
-.hb-pawn__halo {
-  position: absolute;
-  left: -20%;
-  right: -20%;
-  bottom: -18%;
-  height: 52%;
-  border-radius: 50%;
-  border: max(1.5px, calc(var(--d) * 0.05)) solid color-mix(in srgb, var(--c) 70%, #fff);
-  background: radial-gradient(ellipse at center, color-mix(in srgb, var(--c) 50%, transparent) 0%, transparent 70%);
-  animation: hb-halo 1.5s ease-in-out infinite alternate;
-}
+/* whose turn: beacon + name tag, see pawnbeacon.css */
 
 /* the footprint: a faded copy stays on the tile it left while the pawn moves on */
 .hb-pawn__ghost {
@@ -498,10 +487,6 @@
 }
 .hb-pawn.is-ride .hb-pawn__dust { display: none; }
 
-@keyframes hb-halo {
-  from { transform: scale(0.9); opacity: 0.6; }
-  to { transform: scale(1.08); opacity: 1; }
-}
 @keyframes hb-ghost {
   0%, 22% { transform: translate(0, 0); opacity: 0.5; animation-timing-function: cubic-bezier(0.45, 0.05, 0.4, 1); }
   78% { transform: translate(calc(var(--gx) * var(--ring)), calc(var(--gy) * var(--ring))); opacity: 0.3; animation-timing-function: ease-out; }
@@ -525,10 +510,8 @@
 .hg-game[data-rm] .hb-pawn__dust { display: none; }
 :root[data-motion='reduced'] .hb-site__art,
 :root[data-motion='reduced'] .hb-tip__card,
-:root[data-motion='reduced'] .hb-pawn__halo,
 .hg-game[data-rm] .hb-site__art,
 .hg-game[data-rm] .hb-tip__card,
-.hg-game[data-rm] .hb-pawn__halo,
 .hg-game[data-rm] .hb-frame__lights::before,
 .hg-game[data-rm] .hb-frame__lights::after,
 .hg-game[data-rm] .hb-tile.is-active::after { animation: none !important; }
@@ -538,8 +521,7 @@
   .hb-pawn__ghost,
   .hb-pawn__dust { display: none; }
   .hb-site__art,
-  .hb-tip__card,
-  .hb-pawn__halo { animation: none !important; }
+  .hb-tip__card { animation: none !important; }
 }
 
 /* ---- built plots: the business is the star (boards wider than a phone) ----------------------- */

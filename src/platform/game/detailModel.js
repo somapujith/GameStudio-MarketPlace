@@ -41,6 +41,9 @@ export function highlightList(game) {
     .map((h) => ({ title: h.title.trim(), text: str(h.text), icon: str(h.icon) || null }));
 }
 
+/** A game that has maps (a `map` setting drawn as the map picker): the listing gets a Maps section. */
+export const hasMaps = (game) => Array.isArray(game?.settings) && game.settings.some((f) => f && f.key === 'map' && f.widget === 'map');
+
 const KINDS = new Set(['cover', 'scene', 'board', 'icon']);
 const FOCUS = { left: '18% 52%', right: '80% 54%', center: '50% 50%', top: '50% 22%', bottom: '50% 80%' };
 
@@ -90,6 +93,7 @@ export function sectionList(game, { live = true } = {}) {
   const has = (v) => (Array.isArray(v) ? v.length > 0 : !!v);
   const out = [];
   if (game.description || has(game.highlights) || has(game.features)) out.push({ id: 'gd-about', label: live ? 'About' : 'What to expect' });
+  if (live && hasMaps(game)) out.push({ id: 'gd-maps', label: 'Maps' });
   if (live && howToPlaySteps(game).length) out.push({ id: 'gd-how', label: 'How to play' });
   if (galleryItems(game).length) out.push({ id: 'gd-gallery', label: 'Gallery' });
   if (live) {

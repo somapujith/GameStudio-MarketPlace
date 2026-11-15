@@ -87,8 +87,8 @@ describe('game over helpers', () => {
     expect(recapTiles({ owners: [], players: [{ id: 'me', stats: { snatches: 3 } }] }, 'me').map((x) => x.key)).toContain('snatches');
   });
   it('words the share text', () => {
-    expect(shareText({ won: true, worth: 1000000, rounds: 20 })).toBe('I won Hyderabad Tycoon! net worth ₹10,00,000, 20 rounds.');
-    expect(shareText({ won: false, rank: 2, total: 4, winnerName: 'Sana' })).toBe('I finished 2nd of 4 in Hyderabad Tycoon. Sana took the city.');
+    expect(shareText({ won: true, worth: 1000000, rounds: 20 })).toBe('I won Kingpin! net worth ₹10,00,000, 20 rounds.');
+    expect(shareText({ won: false, rank: 2, total: 4, winnerName: 'Sana' })).toBe('I finished 2nd of 4 in Kingpin. Sana took the city.');
   });
   it('counts up with an ease-out and lands exactly', () => {
     expect(countAt(1000, 0)).toBe(0);

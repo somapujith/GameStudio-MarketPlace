@@ -18,7 +18,7 @@ describe('the rules a room stores', () => {
     expect(ROOM_DEFAULTS).toEqual({ mode: 'standard', ...ruleDefaults('standard') });
     expect(ROOM_DEFAULTS).toMatchObject({
       mode: 'standard', startCash: 1500000, passStart: 200000, targetWorth: 5000000, rentPercent: 100, trafficFine: 25000, turnSeconds: 60,
-      tradeSeconds: 45, maxRounds: 20, dice: 'lucky', auctionOnDecline: true, requireFullSet: true, eventEvery: 3, chaiCap: 1,
+      tradeSeconds: 45, maxRounds: 20, dice: 'lucky', requireFullSet: true, eventEvery: 3, chaiCap: 1,
       snatches: 1, snatchMs: 5000, snatchCardCap: 2,
     });
     expect(MODE_BOUND_RULES).toEqual(['startCash', 'maxRounds', 'targetWorth']);
@@ -34,9 +34,9 @@ describe('sanitizeSettings (strict, untrusted input)', () => {
   });
 
   it('accepts valid values', () => {
-    const r = sanitizeSettings({ mode: 'quick', dice: 'fair', auctionOnDecline: false, targetWorth: 4000000 });
+    const r = sanitizeSettings({ mode: 'quick', dice: 'fair', targetWorth: 4000000 });
     expect(r.errors).toEqual([]);
-    expect(r.settings).toEqual({ mode: 'quick', dice: 'fair', auctionOnDecline: false, targetWorth: 4000000 });
+    expect(r.settings).toEqual({ mode: 'quick', dice: 'fair', targetWorth: 4000000 });
     expect(MODE_IDS).toEqual(['standard', 'quick', 'classic']);
     expect(DICE_MODES).toEqual(['lucky', 'fair']);
   });
@@ -54,7 +54,7 @@ describe('sanitizeSettings (strict, untrusted input)', () => {
 
   it('refuses every illegal value of every rule with one message that names the rule (never the win target)', () => {
     for (const f of RULE_FIELDS) {
-      if (f.key === 'targetWorth' || f.key === 'dice' || f.key === 'auctionOnDecline') continue;
+      if (f.key === 'targetWorth' || f.key === 'dice') continue;
       for (const v of illegal(f)) {
         const r = sanitizeSettings({ [f.key]: v });
         expect(r.errors, `${f.key}=${String(v)}`).toHaveLength(1);
@@ -88,9 +88,13 @@ describe('sanitizeSettings (strict, untrusted input)', () => {
     }
   });
 
-  it('auctionOnDecline: strictly boolean', () => {
-    expect(sanitizeSettings({ auctionOnDecline: false }).settings).toEqual({ auctionOnDecline: false });
-    for (const bad of ['true', 'false', 0, 1, null, [], {}]) expect(sanitizeSettings({ auctionOnDecline: bad }).errors).toHaveLength(1);
+  it('the retired auctionOnDecline is tolerated and dropped: never stored, never an error, whatever its value', () => {
+    for (const v of [true, false, 'true', 'yes', 0, 1, null, [], {}]) {
+      expect(sanitizeSettings({ auctionOnDecline: v }), String(v)).toEqual({ settings: {}, errors: [], maxPlayers: undefined });
+    }
+    expect(sanitizeSettings({ mode: 'quick', auctionOnDecline: true, rentPercent: 150 }).settings).toEqual({ mode: 'quick', rentPercent: 150 });
+    expect(RULE_KEYS).not.toContain('auctionOnDecline');
+    expect(Object.keys(ROOM_DEFAULTS)).not.toContain('auctionOnDecline');
   });
 
   it('maxRounds: no limit (null) or one of the listed round counts', () => {
@@ -127,7 +131,7 @@ describe('sanitizeSettings (strict, untrusted input)', () => {
 
   it('reports every bad value and keeps the good ones', () => {
     const r = sanitizeSettings({ mode: 'x', dice: 'fair', auctionOnDecline: 'no', startCash: 1, rentPercent: 150 });
-    expect(r.errors).toHaveLength(3);
+    expect(r.errors).toHaveLength(2); // the mode and the starting cash; the retired auctionOnDecline is ignored
     expect(r.settings).toEqual({ dice: 'fair', rentPercent: 150 });
   });
 
@@ -160,8 +164,8 @@ describe('normalizeSettings', () => {
 
   it('keeps every legal custom rule and drops illegal ones back to the default', () => {
     const custom = {
-      mode: 'quick', startCash: 3000000, passStart: 0, targetWorth: 12500000, rentPercent: 150, trafficFine: 0, turnSeconds: 15, tradeSeconds: 120,
-      maxRounds: null, dice: 'fair', auctionOnDecline: false, requireFullSet: false, eventEvery: 0, chaiCap: 3, snatches: 0, snatchMs: 3000, snatchCardCap: 1,
+      mode: 'quick', startCash: 3000000, passStart: 0, targetWorth: 12500000, rentPercent: 150, trafficFine: 0, turnSeconds: 15, tradeSeconds: 120, auctionSeconds: 45,
+      maxRounds: null, dice: 'fair', requireFullSet: false, eventEvery: 0, chaiCap: 3, snatches: 0, snatchMs: 3000, snatchCardCap: 1,
     };
     expect(normalizeSettings(custom)).toEqual(custom);
     expect(normalizeSettings({ ...custom, startCash: 7, rentPercent: 33, turnSeconds: 'fast' })).toEqual({
@@ -171,7 +175,7 @@ describe('normalizeSettings', () => {
 
   it('a room stored before the rules existed (old keys only, or no keys) gets every default, the mode default for the target', () => {
     expect(normalizeSettings({ mode: 'quick', dice: 'fair', auctionOnDecline: false })).toEqual({
-      mode: 'quick', ...ruleDefaults('quick'), dice: 'fair', auctionOnDecline: false,
+      mode: 'quick', ...ruleDefaults('quick'), dice: 'fair', // a stored auctionOnDecline of an older room is dropped
     });
     expect(normalizeSettings({ mode: 'classic', dice: 'lucky', auctionOnDecline: true, targetWorth: 4000000 })).toEqual({
       mode: 'classic', ...ruleDefaults('classic'), targetWorth: 4000000,
@@ -232,7 +236,7 @@ describe('mergeSettingsPatch', () => {
   });
 
   it('an old room without the new keys: a mode change leaves the old mode defaults behind, not stale values', () => {
-    const old = { mode: 'quick', dice: 'fair', auctionOnDecline: true };
+    const old = { mode: 'quick', dice: 'fair' };
     expect(out({ mode: 'standard' }, old)).toMatchObject({ mode: 'standard', startCash: 1500000, maxRounds: 20, dice: 'fair' });
     // the client echoes the quick defaults it saw: they are not a change from what the old room ran with
     expect(out({ mode: 'standard', startCash: 2000000, maxRounds: 12 }, old)).toMatchObject({ startCash: 1500000, maxRounds: 20 });
@@ -252,12 +256,38 @@ describe('describeSettings / fresh objects', () => {
     const a = normalizeSettings();
     a.mode = 'x';
     expect(normalizeSettings().mode).toBe('standard');
-    expect(describeSettings({ mode: 'classic', dice: 'fair' })).toBe('classic / fair dice / auction on / target ₹30L');
-    expect(describeSettings({ mode: 'quick', targetWorth: null })).toBe('quick / lucky dice / auction on / no target');
+    expect(describeSettings({ mode: 'classic', dice: 'fair' })).toBe('classic / fair dice / target ₹30L');
+    expect(describeSettings({ mode: 'quick', targetWorth: null })).toBe('quick / lucky dice / no target');
   });
 
   it('says how many other rules are customised', () => {
-    expect(describeSettings({ rentPercent: 150 })).toBe('standard / lucky dice / auction on / target ₹50L / +1 custom rule');
-    expect(describeSettings({ rentPercent: 150, turnSeconds: 30, startCash: 3000000 })).toBe('standard / lucky dice / auction on / target ₹50L / +3 custom rules');
+    expect(describeSettings({ rentPercent: 150 })).toBe('standard / lucky dice / target ₹50L / +1 custom rule');
+    expect(describeSettings({ rentPercent: 150, turnSeconds: 30, startCash: 3000000 })).toBe('standard / lucky dice / target ₹50L / +3 custom rules');
+  });
+});
+
+describe('auctionSeconds (the auction timer)', () => {
+  it('is a timers rule, 10-90 s in steps of 5, default 20, not mode-bound', () => {
+    const f = RULE_FIELDS.find((x) => x.key === 'auctionSeconds');
+    expect(f).toMatchObject({ group: 'timers', label: 'Auction timer', type: 'number', unit: 'seconds', min: 10, max: 90, step: 5 });
+    expect(f.help).toBe('Time to place a bid before the auction closes; players who have not bid pass.');
+    for (const mode of MODE_IDS) expect(ruleDefaults(mode).auctionSeconds).toBe(20);
+    expect(MODE_BOUND_RULES).not.toContain('auctionSeconds');
+  });
+
+  it('accepts every legal value and refuses everything else with one clear message', () => {
+    for (let v = 10; v <= 90; v += 5) {
+      expect(sanitizeSettings({ auctionSeconds: v })).toMatchObject({ settings: { auctionSeconds: v }, errors: [] });
+    }
+    for (const bad of [0, 5, 9, 11, 95, 100, 20.5, '20', null, NaN, true, {}]) {
+      expect(sanitizeSettings({ auctionSeconds: bad }).errors, String(bad)).toEqual(['Auction timer must be a whole number from 10 to 90 seconds in steps of 5.']);
+    }
+  });
+
+  it('defaults to 20 for a room stored before the rule; a mode change keeps a customised value', () => {
+    expect(normalizeSettings({ mode: 'quick' }).auctionSeconds).toBe(20);
+    expect(normalizeSettings({}).auctionSeconds).toBe(20);
+    const merged = mergeSettingsPatch({ mode: 'standard', auctionSeconds: 45 }, { mode: 'classic' });
+    expect(normalizeSettings(merged)).toMatchObject({ mode: 'classic', auctionSeconds: 45 });
   });
 });

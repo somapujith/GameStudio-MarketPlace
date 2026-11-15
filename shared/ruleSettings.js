@@ -1,7 +1,8 @@
 // THE CONTRACT for host-customisable rules (one source of truth: the lobby UI renders these fields, the Worker
 // validates a host's patch with `sanitizeRules`, the engine reads the result from `state.cfg`).
 //
-// Pure data + pure functions, no imports from the engine. Keys never change once shipped.
+// Pure data + pure functions, no imports from the engine. Keys never change once shipped (one key was retired:
+// `auctionOnDecline`, a passed district is never auctioned any more so nobody can dodge Snatch; stored values are ignored).
 //
 // A field: { key, group, label, help, type: 'number' | 'choice' | 'boolean', unit?, min?, max?, step?, options?,
 //            default(mode) }
@@ -60,6 +61,11 @@ export const RULE_FIELDS = Object.freeze([
     min: 15, max: 120, step: 5, help: 'An unanswered trade offer is rejected after this.', default: () => 45,
   },
   {
+    key: 'auctionSeconds', group: 'timers', label: 'Auction timer', type: 'number', unit: 'seconds',
+    min: 10, max: 90, step: 5, help: 'Time to place a bid before the auction closes; players who have not bid pass.',
+    default: () => 20,
+  },
+  {
     key: 'maxRounds', group: 'timers', label: 'Round limit', type: 'choice', nullable: true,
     help: `After the last round the richest player wins. No limit = play to the target (safety cap ${ROUND_CAP} rounds).`,
     options: [{ value: null, label: 'No limit' }, ...ROUND_CHOICES], default: (mode) => modeOf(mode).rounds,
@@ -68,10 +74,6 @@ export const RULE_FIELDS = Object.freeze([
   {
     key: 'dice', group: 'rules', label: 'Dice', type: 'choice', help: 'Lucky dice give a stuck player a small nudge; fair is uniform.',
     options: [{ value: 'lucky', label: 'Lucky' }, { value: 'fair', label: 'Fair' }], default: () => 'lucky',
-  },
-  {
-    key: 'auctionOnDecline', group: 'rules', label: 'Auction when someone passes', type: 'boolean',
-    help: 'A district a player does not buy goes to a sealed auction.', default: () => true,
   },
   {
     key: 'requireFullSet', group: 'rules', label: 'Full set needed to upgrade', type: 'boolean',

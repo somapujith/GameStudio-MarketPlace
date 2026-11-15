@@ -4,6 +4,7 @@ import { memo, useId } from 'react';
 import { cosmeticById } from '@shared/cosmetics.js';
 import { lighten, darken, mix } from './palette.js';
 import { Avatar } from './Avatar.jsx';
+import { VoiceArt } from '../voice/VoiceShop.jsx';
 
 export const RARITY_COLORS = { common: '#9fb0d8', rare: '#4cc9f0', epic: '#c58cff' };
 /** CSS colour for a rarity: the theme's `--rarity-<r>` token (hub.css; darker in the light theme) over the night default. */
@@ -245,6 +246,14 @@ export function CosmeticPreview({ item, size = 64, className }) {
     return (
       <span className={className} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: size, width: '100%', maxWidth: '100%', minWidth: 0 }}>
         <TitleChip title={it} />
+      </span>
+    );
+  }
+  if (it.kind === 'voice') {
+    // a voice line: its icon (tiger / cat, else the emoji) on a gold-ringed medallion
+    return (
+      <span className={className} style={{ display: 'inline-flex' }}>
+        <VoiceArt item={it} size={size} />
       </span>
     );
   }

@@ -1,4 +1,4 @@
-/* Hyderabad Tycoon game screen on phones.
+/* Kingpin game screen on phones.
    .hg-game--phone  portrait phone (< 600px wide): top bar / opponents row(s) / board / [wallet bar + action dock]
    .hg-game--land   a phone on its side (landscape, <= 520px tall): [opponents | board | wallet bar + dock]
    Both are `.hg-game--compact`: the game is one fixed, non-scrolling frame. The bottom stack (wallet + dock) is IN the
