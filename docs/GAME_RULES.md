@@ -284,7 +284,7 @@ Common errors for everything except `ping`: `You are not in this room.` (sender 
 |---|---|---|
 | `pong` | | reply to `ping` |
 | `room` | `room` (below) | on every join, leave, disconnect, reconnect, settings change, piece pick, kick, start, game over and abandon. Not after every action. |
-| `state` | `state`, `events`, `seq`, `clock` | after every applied action (to every socket, each with its own redacted view), and once to a socket that connects while a game exists (`events: []`). `clock = { deadline: epochMs\|null, waitingFor: playerId[] }` = when the decision timer (45 s after the animation) auto-plays. |
+| `state` | `state`, `events`, `seq`, `clock` | after every applied action (to every socket, each with its own redacted view), and once to a socket that connects while a game exists (`events: []`). `clock = { deadline: epochMs\|null, waitingFor: playerId[] }` = when the decision timer (60 s after the animation) auto-plays. |
 | `error` | `message` | a rejected request (8.2), a refused join (8.1) or `This room has expired.` |
 | `chat` | `id`, `from` (user id), `name`, `text`, `emote`, `ts` (ms) | every accepted chat message, to all sockets including the sender |
 | `kicked` | | to the removed player's sockets, just before they are closed |
@@ -394,8 +394,8 @@ every key but shows `0` for every player except the viewer; `auction_end.bids` r
 public (cash, districts, chai, stuck, pieces, `deckPos`).
 
 ### 8.8 Timers, auto-play and presence (server side, Durable Object alarms)
-* **Decision timer, 45 s (`TURN_MS`).** Everyone the game is waiting for (the turn player; the debtor in a debt; every
-  player who has not bid in an auction; the recipient and the offerer of a pending trade) gets 45 s, counted from when
+* **Decision timer, 60 s (`TURN_MS` = `DECISION_MS`).** Everyone the game is waiting for (the turn player; the debtor in a debt; every
+  player who has not bid in an auction; the recipient and the offerer of a pending trade) gets 60 s, counted from when
   the client animation of the last applied action ends (`lastApplyAt + animationMs`). It is announced in
   `state.clock`. The animation estimate (`estimateAnimMs(events, state?)` in the adapter) uses the presenter's own
   table, `ANIM_MS` / `LONG_TRIP` / `MAX_ANIM_MS` from `shared/timing.js`: dice + afterDice; step x path length (a trip
@@ -403,11 +403,11 @@ public (cash, districts, chai, stuck, pieces, `deckPos`).
   out/in; cash; own; level (x1.5 for level 2); set_complete; mortgage; trade; debt; card; auctionStart / auctionEnd;
   cityEvent; ride; chai; traffic (jail when stuck, jailStay when waited, else quiet); bankrupt; turn (turn, a new
   round max(round, turn), the final round finalRound - this needs the state; without it every turn counts as a new
-  round); win; capped at `MAX_ANIM_MS` (8 s). The game start adds 1.5 s. The client's `playbackSpeed` may only make
+  round); win; capped at `MAX_ANIM_MS` (24 s). Cards and city events are held for the time it takes to read them (`cardMs` / `eventMs`: about 330 ms a word, 4-9 s for a card, 3.2-7 s for an event). The game start adds 2.5 s. The client's `playbackSpeed` may only make
   playback faster (or 0.75x), so the server never waits less than the speed-1 estimate.
-* When it fires the player is flagged **idle** and the engine's move chooser plays one move for them (~900 ms per
+* When it fires the player is flagged **idle** and the engine's move chooser plays one move for them (~1.5 s per
   move, ~400 ms for bids, never faster than the animation) until they send any `action` (or reconnect).
-* **Disconnect grace, 15 s.** A member with no open socket is auto-played once 15 s have passed since the last socket
+* **Disconnect grace, 30 s.** A member with no open socket is auto-played once 30 s have passed since the last socket
   closed. Reconnecting cancels it.
 * **Trade, 30 s.** A pending trade offer is auto-rejected (`TRADE_REJECT` for the recipient) 30 s after it appears
   (`adapter.deadlines`). If the recipient is out of the game the offerer's offer is cancelled after 0.9 s.

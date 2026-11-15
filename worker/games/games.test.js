@@ -91,12 +91,12 @@ describe('Tycoon adapter: turn, idle and deadlines', () => {
     expect(tycoon.pendingPlayerIds({ ...base, phase: 'over' })).toEqual([]);
   });
 
-  it('deadlines: only the 30 s trade auto-reject (no snatch timers any more)', () => {
+  it('deadlines: only the 45 s trade auto-reject (no snatch timers any more)', () => {
     const base = three();
     const offer = (to) => ({ ...base, trade: { id: 9, from: 'a', to, give: { cash: 1, tiles: [] }, get: { cash: 0, tiles: [] } } });
     expect(tycoon.deadlines(base)).toEqual([]);
     expect(tycoon.deadlines(offer('b'))).toEqual([{ key: 'trade:9', afterMs: TRADE_MS, playerId: 'b', action: { type: 'TRADE_REJECT', playerId: 'b' } }]);
-    expect(TRADE_MS).toBe(30_000);
+    expect(TRADE_MS).toBe(45_000);
     const gone = offer('b');
     gone.players = gone.players.map((p) => (p.id === 'b' ? { ...p, bankrupt: true } : p));
     expect(tycoon.deadlines(gone)[0]).toMatchObject({ playerId: 'a', action: { type: 'TRADE_CANCEL', playerId: 'a' } });

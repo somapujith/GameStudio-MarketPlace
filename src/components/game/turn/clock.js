@@ -6,9 +6,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { sfx } from '@/lib/sfx.js';
 import { buzz } from '@/lib/haptics.js';
+import { DECISION_MS, WARN_MS } from '@shared/timing.js';
 
-export const DECISION_MS = 45_000; // the server's decision timer (after the animation)
-export const WARN_MS = 10_000;
+export { DECISION_MS, WARN_MS }; // the server's decision timer (after the animation) and the "running out" warning (shared/timing.js)
 
 // deadline -> the full length the bar drains over (the first remaining time we saw, at least DECISION_MS)
 const totals = new Map();
@@ -66,7 +66,7 @@ export function useClock(session) {
 }
 
 /** The screen-reader line for the warning. */
-export const WARN_TEXT = '10 seconds left';
+export const WARN_TEXT = `${Math.round(WARN_MS / 1000)} seconds left`;
 
 /** One `warn` sound + buzz (+ `onWarn()`) per deadline, when the clock waits for ME and 10 s are left. */
 export function useTurnAlerts(session, onWarn) {

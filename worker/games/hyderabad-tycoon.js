@@ -3,17 +3,14 @@
 // engine (shared/index.js) and the Tycoon-only helpers worker/{mask,settings,validate}.js.
 import * as engine from '../../shared/index.js';
 import { MAX_LEVEL, BOARD_SIZE, PIECES } from '../../shared/board.js';
-import { ANIM_MS, LONG_TRIP, MAX_ANIM_MS } from '../../shared/timing.js';
+import { ANIM_MS, LONG_TRIP, MAX_ANIM_MS, TRADE_MS, AUTO_MOVE_MS, BID_MOVE_MS, START_ANIM_MS, cardMs, eventMs } from '../../shared/timing.js';
 import { maskStateFor } from '../mask.js';
 import { sanitizeSettings, normalizeSettings, ROOM_DEFAULTS, MAX_PLAYERS_MIN, MAX_PLAYERS_MAX } from '../settings.js';
 import { sanitizeAction, EMOTES } from '../validate.js';
 
 export const ID = 'hyderabad-tycoon';
-export const TRADE_MS = 30_000; // an unanswered trade offer is auto-rejected after this
+export { TRADE_MS }; // an unanswered trade offer is auto-rejected after this (shared/timing.js)
 const TRADE_VOID_MS = 900; // an offer to a player who is out of the game is cancelled right away
-const AUTO_MOVE_MS = 900; // pause before an idle / disconnected player's move is played for them
-const BID_MOVE_MS = 400; // sealed bids are quick
-const START_ANIM_MS = 1500; // the client plays a short "game start" intro
 
 // ------------------------------------------------------------------ pure helpers (also used by tests)
 
@@ -75,7 +72,7 @@ export function estimateAnimMs(events, state = null) {
         ms += A.debt;
         break;
       case 'card':
-        ms += A.card;
+        ms += cardMs(ev);
         break;
       case 'auction_start':
         ms += A.auctionStart;
@@ -84,7 +81,7 @@ export function estimateAnimMs(events, state = null) {
         ms += A.auctionEnd;
         break;
       case 'city_event':
-        ms += A.cityEvent;
+        ms += eventMs(ev);
         break;
       case 'ride':
         ms += A.ride;

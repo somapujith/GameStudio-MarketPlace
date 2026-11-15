@@ -242,9 +242,9 @@ describe('decision clock in state messages', () => {
 
     await h.say(h.sock(h.second), { t: 'action', action: { type: 'STEP' } });
     const t2 = Date.now();
-    expect(h.a.last('state').clock).toEqual({ deadline: t2 + 900, waitingFor: [h.first] }); // idle pace (max(900, anim))
+    expect(h.a.last('state').clock).toEqual({ deadline: t2 + 1500, waitingFor: [h.first] }); // idle pace (max(1500, anim))
 
-    // the idle player comes back and acts; then the other one drops: auto-play after 15 s, not 45 s
+    // the idle player comes back and acts; then the other one drops: auto-play after the grace, not the full turn time
     await h.say(h.sock(h.first), { t: 'action', action: { type: 'STEP' } });
     await h.drop(h.sock(h.second));
     expect(h.room.clockView()).toEqual({ deadline: Date.now() + GRACE_MS, waitingFor: [h.second] });

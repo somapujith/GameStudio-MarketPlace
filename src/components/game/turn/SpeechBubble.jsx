@@ -8,8 +8,8 @@ import { activePlayer, getPlayer } from '../ui/helpers.js';
 import { emoteInfo } from './emotes.js';
 import '@/styles/turn.css';
 
-const BUBBLE_MS = 2600;
-const EMOTE_MS = 1900;
+const BUBBLE_MS = 4200;
+const EMOTE_MS = 2600;
 
 function findAnchor(id) {
   if (typeof document === 'undefined' || id == null) return null;

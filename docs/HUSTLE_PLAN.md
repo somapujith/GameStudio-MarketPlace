@@ -40,7 +40,7 @@ accent (Tycoon: saffron/gold `#ffc857` -> `#ff8a3d`), big friendly display type,
 
 | Path | What |
 |---|---|
-| `shared/timing.js` | `ANIM_MS` (all presenter delays incl. new `ride`, `chai`, `turn`), `LONG_TRIP`, `MAX_ANIM_MS`. Single source for client pacing AND the server's `estimateAnimMs`. |
+| `shared/timing.js` | `ANIM_MS` (all presenter delays incl. new `ride`, `chai`, `turn`), `LONG_TRIP`, `MAX_ANIM_MS`, reading-time helpers `readMs` / `cardMs` / `eventMs`, and the human decision limits (`DECISION_MS` 60 s, `TRADE_MS` 45 s, `WARN_MS` 15 s). Single source for client pacing AND the server's `estimateAnimMs`. |
 | `shared/cosmetics.js` | `COSMETICS` catalogue (kinds `frame`, `dice`, `title`), `COSMETIC_KINDS`, `FREE_COSMETICS`, `cosmeticById`, `cleanEquipped(raw)`. |
 | `src/lib/haptics.js` | `buzz(kind)` |
 | `src/lib/storage.js` | settings now also hold `theme: 'system'\|'dark'\|'light'`, `playbackSpeed: 0.75\|1\|1.5\|2`, `haptics: boolean` (`THEMES`, `PLAYBACK_SPEEDS`). Level curve now matches the server (`100 + (L-1)*50` per level). |
@@ -181,7 +181,7 @@ The presenter's base delays live in `shared/timing.js` `ANIM_MS`. The server's `
 The client `playbackSpeed` setting may only make playback faster (>= 1) or slightly slower (0.75); the server never waits less than the speed-1 estimate.
 
 ### 3.9 Room / clock / presence (GameRoom contract)
-* `{t:'state', state, events, seq, clock}` — `clock = { deadline: epochMs|null, waitingFor: playerId[] }` = when the decision timer (45 s after the animation) auto-plays.
+* `{t:'state', state, events, seq, clock}` — `clock = { deadline: epochMs|null, waitingFor: playerId[] }` = when the decision timer (60 s after the animation) auto-plays.
 * `{t:'room', room}` — `room.players[i]` gains `connected: boolean`, `piece: string|null`, `cosmetics: { frame?, dice?, title? }` (from `users.equipped`).
 * Lobby: client -> `{t:'piece', piece}` picks a free piece (adapter optional hook `pieces: string[]`); taken / unknown -> `{t:'error'}`. Pieces are passed to `createGame` as `players[i].piece`.
 

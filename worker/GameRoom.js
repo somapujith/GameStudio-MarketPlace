@@ -30,13 +30,14 @@ import {
 import { roomRow, rowSignature, upsertRoomRow, deleteRoomRow, hasDb, loadEquipped, LISTING_HEARTBEAT_MS } from './roomsdb.js';
 import { sanitizeName, parseAvatar, sanitizeChat, sanitizeEmote, isUuid } from './validate.js';
 import { cleanEquipped } from '../shared/cosmetics.js';
+import { DECISION_MS } from '../shared/timing.js';
 
 // Version of the stored room record. 3 = the 40-square Hyderabad board; a record below it still holds
 // a 28-tile game, which the game adapter's `upgradeRecord` calls off instead of resuming.
 export const ROOM_VERSION = 3;
-export const TURN_MS = 45_000; // human idle limit per decision
-export const GRACE_MS = 15_000; // disconnected human is auto-played after this
-const AUTO_MOVE_DELAY_MS = 900; // pause before an automated move (adapters may shorten it via moveDelayMs)
+export const TURN_MS = DECISION_MS; // human idle limit per decision (shared/timing.js)
+export const GRACE_MS = 30_000; // disconnected human is auto-played after this (long enough to switch apps and come back)
+const AUTO_MOVE_DELAY_MS = 1500; // pause before an automated move (adapters may shorten it via moveDelayMs)
 const LOBBY_GRACE_MS = 60_000; // a disconnected lobby member is dropped after this
 const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
 const ABANDON_MS = 5 * 60 * 1000; // nobody connected for this long -> stop playing the game

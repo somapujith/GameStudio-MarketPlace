@@ -9,8 +9,8 @@ import Confetti from './ui/Confetti.jsx';
 import Icon from './ui/Icon.jsx';
 import { COLLECTIONS, SET_BONUS_MULT, useStateLike } from './ui/helpers.js';
 
-const MINE_MS = 3600;
-const TOAST_MS = 2800;
+const MINE_MS = 4800;
+const TOAST_MS = 4000;
 const X = '×';
 
 /** "playerId:groupId" for every complete collection on the board. Pure; exported for tests. */

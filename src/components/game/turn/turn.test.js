@@ -46,9 +46,10 @@ describe('clockInfo', () => {
 
   it('drains over a longer window when the deadline includes the animation', () => {
     const now = 2_000_000;
-    const c = { deadline: now + 52_000, waitingFor: ['rav'] };
+    const long = DECISION_MS + 7_000; // the animation time is added on top of the decision time
+    const c = { deadline: now + long, waitingFor: ['rav'] };
     expect(clockInfo(c, 'me', now).frac).toBe(1);
-    expect(clockInfo(c, 'me', now + 26_000).frac).toBeCloseTo(0.5, 5);
+    expect(clockInfo(c, 'me', now + long / 2).frac).toBeCloseTo(0.5, 5);
   });
 });
 
@@ -216,7 +217,7 @@ describe('screen-reader announcements', () => {
     expect(cardAnnouncement(c)).toBe('Nawabi Luck: An investor is impressed!. +1,00,000');
     expect(cardAnnouncement(cardOf({ card: { deck: 'drama', title: 'Rain!', text: '' } }))).toBe('City Drama: Rain!.');
     expect(cardAnnouncement(null)).toBe('');
-    expect(WARN_TEXT).toBe('10 seconds left');
+    expect(WARN_TEXT).toBe(`${WARN_MS / 1000} seconds left`);
   });
 
   it('the card reveal has no live region of its own', () => {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ANIM_MS } from '@shared/timing.js';
+import { ANIM_MS, eventMs } from '@shared/timing.js';
 import { clampSpeed, createPresenterCore, displayFromState } from './usePresenter.js';
 
 afterEach(() => vi.useRealTimers());
@@ -92,9 +92,9 @@ describe('playback speed', () => {
     const b = setup({ speed: 2 });
     const t2 = await timed(b.core, ev, b.state);
     b.core.dispose();
-    expect(t1).toBeGreaterThanOrEqual(ANIM_MS.cityEvent);
+    expect(t1).toBeGreaterThanOrEqual(eventMs(ev[0]));
     expect(t2).toBeLessThan(t1 * 0.6);
-    expect(t2).toBeGreaterThanOrEqual(ANIM_MS.cityEvent / 2 - 10);
+    expect(t2).toBeGreaterThanOrEqual(eventMs(ev[0]) / 2 - 10);
   });
 });
 
@@ -397,7 +397,7 @@ describe('traffic, chai and city events', () => {
     core.dispose();
   });
 
-  it('a city event pauses the queue about 1.2 s and shows in the display', async () => {
+  it('a city event pauses the queue long enough to read it and shows in the display', async () => {
     const { core, state } = setup({ describe: (ev) => (ev.type === 'city_event' ? { text: `${ev.title} ${ev.text}` } : null) });
     const ev = { type: 'city_event', id: 'rush_hour', title: 'Rush Hour!', text: 'Cyberabad rents x1.5.', kind: 'rent', group: 'cyber', mult: 1.5, round: 3 };
     const t0 = Date.now();
@@ -406,7 +406,7 @@ describe('traffic, chai and city events', () => {
     expect(core.getSnapshot().busy).toBe(true);
     expect(core.getSnapshot().display.event).toMatchObject({ id: 'rush_hour', group: 'cyber', mult: 1.5 });
     await vi.runAllTimersAsync();
-    expect(Date.now() - t0).toBeGreaterThanOrEqual(ANIM_MS.cityEvent - 100);
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(eventMs(ev) - 100);
     expect(core.getSnapshot().log[0].text).toBe('Rush Hour! Cyberabad rents x1.5.');
     core.dispose();
   });

@@ -23,7 +23,7 @@
 // timers. The hook only subscribes React to the core's snapshots.
 
 import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
-import { ANIM_MS, LONG_TRIP } from '@shared/timing.js';
+import { ANIM_MS, LONG_TRIP, cardMs, eventMs } from '@shared/timing.js';
 import { BOARD_SIZE, MAX_LEVEL, TILES } from '@shared/board.js';
 import * as SFX from '../sfx.js';
 import { CARD_CLIPS, playCardClip } from '../cardClips.js';
@@ -39,27 +39,27 @@ const TRAFFIC_TILE = (TILES.find((t) => t && t.type === 'traffic') || { id: 9 })
  * A multiplier on the base delay (events missing here keep full length).
  */
 const QUICK = {
-  dice: 0.75,
-  afterDice: 0.4,
-  step: 0.7,
-  teleportPre: 0.6,
-  teleport: 0.6,
-  land: 0.5,
-  rentOut: 0.75,
-  rentIn: 0.6,
-  cash: 0.6,
-  own: 0.5,
-  level: 0.5,
-  jail: 0.7,
-  jailStay: 0.7,
-  card: 0.42,
-  round: 0.7,
-  finalRound: 0.7,
-  mortgage: 0.7,
-  quiet: 0.6,
-  ride: 0.6,
-  chai: 0.6,
-  turn: 0.6,
+  dice: 0.85,
+  afterDice: 0.6,
+  step: 0.8,
+  teleportPre: 0.7,
+  teleport: 0.7,
+  land: 0.7,
+  rentOut: 0.85,
+  rentIn: 0.75,
+  cash: 0.75,
+  own: 0.7,
+  level: 0.7,
+  jail: 0.8,
+  jailStay: 0.8,
+  card: 0.8,
+  round: 0.8,
+  finalRound: 0.8,
+  mortgage: 0.8,
+  quiet: 0.7,
+  ride: 0.75,
+  chai: 0.75,
+  turn: 0.8,
 };
 
 /** Events the human should always get to see at full pacing, whoever caused them. */
@@ -250,13 +250,13 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
   }
   const waiting = () => Math.max(0, pending - 1);
   /** True when more than 3 enqueues are queued behind the one playing: hurry up and stay quiet. */
-  const backedUp = () => waiting() > 3;
+  const backedUp = () => waiting() > 5;
   /** Overall delay multiplier: 1 / playback rate, then the catch-up and reduced-motion limits. */
   function factor() {
     const w = waiting();
     let f = 1 / rate;
-    if (w > 8) f = Math.min(f, 0.05);
-    else if (w > 3) f = Math.min(f, 0.3);
+    if (w > 10) f = Math.min(f, 0.05);
+    else if (w > 5) f = Math.min(f, 0.4);
     if (reducedNow) f = Math.min(f, 0.35);
     return f;
   }
@@ -599,7 +599,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
             /* ignore */
           }
         }
-        const ok = await wait(dl('card'));
+        const ok = await wait(cardMs(ev) * (quickNow ? QUICK.card : 1));
         if (ok) commit({ card: null });
         return ok;
       }
@@ -611,7 +611,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
         }));
         announce(ev);
         fx((ev.mult != null && ev.mult < 1) || (ev.amount != null && ev.amount < 0) ? 'error' : 'card');
-        return wait(dl('cityEvent'));
+        return wait(eventMs(ev));
       }
 
       case 'auction_start': {

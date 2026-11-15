@@ -2,11 +2,11 @@
 // Source: `session.card` ({ player, deck: 'luck'|'drama', title, text, kind, cardId }) from the presenter; until the
 // presenter provides it, the card bubble (`session.bubble.card`) is used. The card back flips to its face
 // (Nawabi Luck = gold / emerald, City Drama = rose / indigo). Tap or Escape dismisses it early; it also hides itself
-// after the card's time (ANIM_MS.card at the playback speed). Reduced motion: a plain fade.
+// after the card's time (cardMs: long enough to read the title and sentence, at the playback speed). Reduced motion: a plain fade.
 // Screen readers: the reveal itself is not live; GameView announces `cardAnnouncement()` through the table's one
 // polite live region (useCardAnnouncer).
 import { useEffect, useRef, useState } from 'react';
-import { ANIM_MS } from '@shared/timing.js';
+import { cardMs } from '@shared/timing.js';
 import { useSettings } from '@/lib/storage.js';
 import { getPlayer, motionMs } from '../ui/helpers.js';
 import '@/styles/turn.css';
@@ -90,7 +90,7 @@ export default function CardReveal({ session }) {
     if (!heldRef) return undefined;
     const ms = leaving
       ? motionMs('--dur-2', 220) + 40
-      : Math.max(1200, (ANIM_MS.card || 2200) / Math.max(0.75, speed)) + 400;
+      : Math.max(1500, cardMs(held.card) / Math.max(0.75, speed)) + 400;
     const t = setTimeout(leaving ? () => setHeld(null) : leave, ms);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
