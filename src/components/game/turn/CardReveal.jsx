@@ -6,9 +6,12 @@
 // Screen readers: the reveal itself is not live; GameView announces `cardAnnouncement()` through the table's one
 // polite live region (useCardAnnouncer).
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { cardMs } from '@shared/timing.js';
 import { useSettings } from '@/lib/storage.js';
-import { getPlayer, motionMs } from '../ui/helpers.js';
+import EventCardArt from '@/components/art/EventCardArt.jsx';
+import CardBack from '@/components/art/CardBack.jsx';
+import { getPlayer, motionMs, useReducedMotion } from '../ui/helpers.js';
 import '@/styles/turn.css';
 
 export const DECKS = {
@@ -35,6 +38,7 @@ export function cardOf(session) {
     title: c.title || DECKS[deck].name,
     text: c.text || '',
     kind,
+    cardId: c.cardId || c.id || null,
     player: c.player ?? null,
   };
 }
@@ -62,10 +66,12 @@ export function useCardAnnouncer(session, say) {
 
 export default function CardReveal({ session }) {
   const [settings] = useSettings();
+  const reduced = useReducedMotion();
   const speed = Number(settings?.playbackSpeed) > 0 ? Number(settings.playbackSpeed) : 1;
   const card = cardOf(session);
   const [held, setHeld] = useState(null); // { card, leaving }
   const lastRef = useRef(null);
+  const sequence = useRef(0);
   const leave = () => {
     setHeld((h) => (h && !h.leaving ? { ...h, leaving: true } : h));
   };
@@ -75,7 +81,7 @@ export default function CardReveal({ session }) {
   useEffect(() => {
     if (ref && ref !== lastRef.current) {
       lastRef.current = ref;
-      setHeld({ card, leaving: false });
+      setHeld({ card, leaving: false, sequence: ++sequence.current });
     } else if (!ref && lastRef.current && session?.card === null) {
       lastRef.current = null;
       leave();
@@ -112,18 +118,19 @@ export default function CardReveal({ session }) {
   const who = drawer ? (String(drawer.id) === String(session.me) ? 'You drew' : `${drawer.name} drew`) : 'Card drawn';
   const tone = TONES[c.kind];
 
-  return (
-    <div className={`cr-root${held.leaving ? ' is-leaving' : ''}`} data-deck={c.deck} data-kind={c.kind}>
+  const reveal = (
+    <div className={`cr-root cr-illustrated${held.leaving ? ' is-leaving' : ''}`} data-deck={c.deck} data-kind={c.kind} data-rm={reduced ? '' : undefined}>
       <button type="button" className="cr-hit" onClick={leave} aria-label={`${c.deckName} card: ${c.title}. ${c.text} Tap to close.`}>
         <span className="cr-card" aria-hidden="true">
-          <span className="cr-card__inner">
+          <span className="cr-card__inner" key={held.sequence}>
             <span className="cr-face cr-back">
-              <span className="cr-back__mark">{DECKS[c.deck].mark}</span>
+              <span className="cr-back__art"><CardBack deck={c.deck} size={130} /></span>
               <span className="cr-back__name">{c.deckName}</span>
             </span>
             <span className="cr-face cr-front">
               <span className="cr-front__deck">{c.deckName}</span>
               <span className="cr-front__who" style={drawer ? { '--pc': drawer.color } : undefined}>{who}</span>
+              <span className="cr-front__art"><EventCardArt cardId={c.cardId} kind={c.kind} deck={c.deck} animated={!reduced} /></span>
               <b className="cr-front__title">{c.title}</b>
               {c.text ? <span className="cr-front__text">{c.text}</span> : null}
               <span className="cr-front__tone">
@@ -137,4 +144,7 @@ export default function CardReveal({ session }) {
       </button>
     </div>
   );
+  // The phone board is height-constrained and clips its table. A card must have
+  // enough viewport space for the complete rule, independent of the wallet dock.
+  return typeof document === 'undefined' ? reveal : createPortal(reveal, document.body);
 }

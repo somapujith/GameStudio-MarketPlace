@@ -1,0 +1,44 @@
+/* Art is allowed to perform; numbers and controls stay still. All sequences settle. */
+.auto-mascot { display: block; overflow: visible; flex: none; }
+.auto-mascot :is(.am-body,.am-hand,.am-wheel,.am-eyes,.am-prop,.am-crown), .piece-part { transform-box: fill-box; transform-origin: center; }
+.auto-mascot .am-body { transform-origin: 50% 95%; }
+.auto-mascot .am-hand { transform-origin: 0 100%; }
+.auto-mascot.is-animated .am-arrive { animation: am-arrive var(--dur-4,600ms) var(--ease-out) both; }
+.auto-mascot.is-animated .am-body { animation: am-suspension var(--dur-4,600ms) var(--ease-out) both; }
+.auto-mascot.is-animated:is([data-mood='welcome'],[data-mood='roll']) .am-wheel { animation: piece-spin var(--dur-4,600ms) var(--ease-out) both; }
+.auto-mascot.is-animated .am-eyes { animation: am-blink var(--dur-4,600ms) ease-in-out 2; animation-delay: var(--dur-4,600ms); }
+.auto-mascot.is-animated[data-mood='welcome'] .am-hand, .auto-mascot.is-animated[data-mood='win'] .am-hand { animation: am-wave var(--dur-4,600ms) ease-in-out 2; }
+.auto-mascot.is-animated .am-prop { animation: am-prop var(--dur-3,360ms) var(--ease-out) var(--dur-2,220ms) backwards; }
+.auto-mascot.is-animated[data-mood='traffic'] .am-body { animation-name: am-brake; }
+.auto-mascot.is-animated[data-mood='waiting'] .am-eyes { animation-name: am-look; }
+.auto-mascot.is-animated[data-mood='win'] .am-crown { animation: am-crown var(--dur-4,600ms) var(--ease-out) both; }
+.auto-mascot.is-animated .am-sparks { animation: am-spark var(--dur-4,600ms) ease-out 2; }
+.hh2-hero__mascot { position: absolute; right: 4%; bottom: 14px; width: clamp(90px,14vw,154px); height: auto; z-index: 1; pointer-events: none; }
+.hh2-hero__slide:not(.is-active) .auto-mascot * { animation-play-state: paused; }
+.ho-startcard .auto-mascot { width: 98px; height: 74px; margin: -8px auto 2px; }
+.hg-over-head .auto-mascot { width: 132px; height: 99px; margin: -8px auto 0; }
+:is(.hb-pawn__hop.is-step,.xl-piece[aria-checked='true']) .piece-wheel { animation: piece-spin var(--hb-step,var(--dur-3,360ms)) linear both; }
+:is(.hb-pawn__hop.is-step,.xl-piece[aria-checked='true']) .piece-lid { animation: piece-lid var(--hb-step,var(--dur-3,360ms)) var(--ease-out) both; transform-origin: 65% 100%; }
+:is(.hb-pawn__hop.is-step,.xl-piece[aria-checked='true']) .piece-steam { animation: piece-steam var(--hb-step,var(--dur-3,360ms)) ease-out both; }
+:is(.hb-pawn__hop.is-step,.xl-piece[aria-checked='true']) .piece-gleam { animation: piece-gleam var(--hb-step,var(--dur-3,360ms)) ease-out both; }
+:is(.hb-pawn__hop.is-step,.xl-piece[aria-checked='true']) .piece-bat { animation: piece-bat var(--hb-step,var(--dur-3,360ms)) ease-in-out both; transform-origin: 55% 75%; }
+:is(.hb-pawn__hop.is-step,.xl-piece[aria-checked='true']) .piece-reel { animation: piece-spin var(--hb-step,var(--dur-3,360ms)) linear both; }
+@keyframes am-arrive { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: none; } }
+@keyframes am-suspension { 0%,100% { transform: none; } 45% { transform: translateY(2px) rotate(-2deg); } 70% { transform: translateY(-2px) rotate(1deg); } }
+@keyframes am-brake { 0%,100% { transform: none; } 45% { transform: rotate(-4deg); } 75% { transform: rotate(1deg); } }
+@keyframes am-blink { 0%,32%,45%,100% { transform: none; } 37% { transform: scaleY(.12); } }
+@keyframes am-look { 0%,100% { transform: none; } 45%,70% { transform: translateX(3px); } }
+@keyframes am-wave { 0%,100% { transform: none; } 35% { transform: rotate(-18deg); } 70% { transform: rotate(7deg); } }
+@keyframes am-prop { from { opacity: 0; transform: translateY(6px) rotate(-8deg); } to { opacity: 1; transform: none; } }
+@keyframes am-crown { from { opacity: 0; transform: translateY(-12px) rotate(-8deg); } to { opacity: 1; transform: none; } }
+@keyframes am-spark { 0%,100% { opacity: .5; } 40% { opacity: 1; } }
+@keyframes piece-spin { from { transform: rotate(0deg); } to { transform: rotate(180deg); } }
+@keyframes piece-lid { 0%,100% { transform: none; } 40% { transform: translateY(-1.5px) rotate(-7deg); } }
+@keyframes piece-steam { 0%,100% { opacity: .85; transform: none; } 50% { opacity: .4; transform: translateY(-2px); } }
+@keyframes piece-gleam { 0%,100% { opacity: .8; } 45% { opacity: .2; } }
+@keyframes piece-bat { 0%,100% { transform: none; } 40% { transform: rotate(13deg); } }
+@media (max-width: 767px) { .hh2-hero__mascot { top: 16px; bottom: auto; right: 12px; width: 96px; } }
+@media (max-height: 500px) { .ho-startcard .auto-mascot { display: none; } }
+:root[data-motion='reduced'] :is(.auto-mascot,.hb-pawn,.xl-piece) *, .hg-game[data-rm] :is(.auto-mascot,.hb-pawn) * { animation: none !important; }
+:root[data-motion='reduced'] :is(.hub-tw,.hub-bob,.hub-bob2,.hub-spin) { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { :is(.auto-mascot,.hb-pawn,.xl-piece) * { animation: none !important; } }

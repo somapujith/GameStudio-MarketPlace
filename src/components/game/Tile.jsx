@@ -5,6 +5,7 @@ import { BuildingArt, TileIcon } from '@/components/art/index.js';
 import { cornerOf, sideOf } from './fx/geometry.js';
 import { BuildPop, CardShimmer, ChaiSteam, OwnerChip, OwnerStamp } from './fx/TileFx.jsx';
 import { PieceToken } from './Pawn.jsx';
+import { labelLines } from './tileLabel.js';
 import '@/styles/board.css';
 
 const { GROUPS, MAX_LEVEL } = B;
@@ -156,6 +157,22 @@ const Route = () => (
   </span>
 );
 
+/**
+ * The tile's printed name for phone boards (board.css shows it instead of `.hb-tile__name` when the board is narrow):
+ * one or two short lines with real hyphens, see tileLabel.js. Decorative: the button's aria-label has the full name.
+ */
+function PhoneName({ tile }) {
+  const lines = labelLines(tile);
+  if (!lines.length) return null;
+  return (
+    <span className="hb-tile__nm" aria-hidden="true" data-lines={lines.length}>
+      {lines.map((line, i) => (
+        <span key={i}>{line}</span>
+      ))}
+    </span>
+  );
+}
+
 const CORNER_SUB = {
   traffic: 'Stuck here',
   chai: 'Free chai',
@@ -258,7 +275,10 @@ function TileImpl({
             </span>
           )}
         </span>
-        <span className="hb-pill">{tile.short || tile.name}</span>
+        <span className="hb-pill">
+          <span className="hb-pill__t">{tile.short || tile.name}</span>
+          <PhoneName tile={tile} />
+        </span>
         {sub && <span className="hb-tile__sub">{sub}</span>}
         {tile.type === 'traffic' && stuck > 0 && (
           <span className="hb-tile__stuck" aria-hidden="true">
@@ -288,6 +308,7 @@ function TileImpl({
           )}
           <span className="hb-tile__txt">
             <span className="hb-tile__name">{name}</span>
+            <PhoneName tile={tile} />
             <span className="hb-tile__price">
               <span className="hb-amt--full">{formatINR(owned ? rent : tile.price)}</span>
               <span className="hb-amt--short">{compactINR(owned ? rent : tile.price)}</span>
@@ -303,6 +324,7 @@ function TileImpl({
           <Icon tile={tile} size={48} />
         </span>
         <span className="hb-tile__name">{name}</span>
+        <PhoneName tile={tile} />
         <CardShimmer active={drawing} />
       </span>
     );
@@ -321,6 +343,7 @@ function TileImpl({
           </span>
           <span className="hb-tile__txt">
             <span className="hb-tile__name">{name}</span>
+            <PhoneName tile={tile} />
             {tile.fare != null && (
               <span className="hb-tile__price">
                 <span className="hb-amt--full">{formatINR(tile.fare)}</span>

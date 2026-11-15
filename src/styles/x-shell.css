@@ -27,6 +27,7 @@
 .xs-ind--tab {
   border-radius: 999px;
   background: var(--hub-brand-soft);
+  box-shadow: inset 0 0 0 1px rgba(var(--hub-brand-rgb), 0.26);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hub-brand) 26%, transparent);
 }
 .xs-ind-host .hub-tab.is-active .hub-tab__icon {
@@ -71,9 +72,11 @@
     border-color var(--dur-1) var(--ease-std),
     transform var(--dur-1) var(--ease-out);
 }
-.xs-coins:hover {
-  background: rgba(255, 200, 87, 0.17);
-  border-color: rgba(255, 200, 87, 0.5);
+@media (hover: hover) {
+  .xs-coins:hover {
+    background: rgba(255, 200, 87, 0.17);
+    border-color: rgba(255, 200, 87, 0.5);
+  }
 }
 .xs-coins:active {
   transform: scale(0.96);
@@ -146,9 +149,11 @@
 }
 .xs-toast--good,
 .hh-toast--good.xs-toast {
+  border-color: rgba(var(--hub-good-rgb), 0.45);
   border-color: color-mix(in srgb, var(--hub-good) 45%, transparent);
 }
 .hh-toast--bad.xs-toast {
+  border-color: rgba(var(--hub-bad-rgb), 0.5);
   border-color: color-mix(in srgb, var(--hub-bad) 50%, transparent);
 }
 .xs-toast__msg {
@@ -167,8 +172,10 @@
   background: var(--hub-brand);
   transition: background var(--dur-1) var(--ease-std);
 }
-.xs-toast__action:hover {
-  background: var(--hub-brand-2);
+@media (hover: hover) {
+  .xs-toast__action:hover {
+    background: var(--hub-brand-2);
+  }
 }
 .xs-toast__close {
   display: grid;
@@ -181,9 +188,11 @@
   color: var(--hub-faint);
   transition: background var(--dur-1) var(--ease-std), color var(--dur-1) var(--ease-std);
 }
-.xs-toast__close:hover {
-  color: var(--hub-text);
-  background: rgba(127, 127, 127, 0.16);
+@media (hover: hover) {
+  .xs-toast__close:hover {
+    color: var(--hub-text);
+    background: rgba(127, 127, 127, 0.16);
+  }
 }
 .xs-toast__close .hh-icon {
   color: inherit !important;
@@ -269,6 +278,7 @@
   border-radius: 50%;
   color: #4a2a00;
   background: radial-gradient(circle at 35% 30%, #fff3c4, var(--cel-a, #ffc857) 45%, var(--cel-b, #ff8a3d));
+  box-shadow: 0 0 0 5px transparent, 0 10px 26px rgba(0, 0, 0, 0.35);
   box-shadow: 0 0 0 5px color-mix(in srgb, var(--cel-a, #ffc857) 25%, transparent), 0 10px 26px rgba(0, 0, 0, 0.35);
   animation: xs-cel-medal var(--dur-4) var(--ease-spring) 80ms both;
 }
@@ -385,9 +395,9 @@
 /* ---------- install card ---------- */
 .xs-install {
   position: fixed;
-  left: var(--hub-gutter, 16px);
-  right: var(--hub-gutter, 16px);
-  bottom: calc(64px + var(--safe-bottom, 0px) + 12px);
+  left: var(--hub-pad-l, 16px);
+  right: var(--hub-pad-r, 16px);
+  bottom: calc(var(--tabbar-h, 64px) + 1px + var(--safe-bottom, 0px) + 12px);
   z-index: 45;
   display: flex;
   align-items: center;
@@ -432,12 +442,19 @@
   color: var(--hub-text);
 }
 .xs-install__share {
+  display: inline-block; /* the global svg { display: block } would break the line around the icon */
   vertical-align: -3px;
   color: var(--hub-brand);
 }
 .xs-install__go {
   flex: none;
   min-height: 44px;
+}
+/* narrow phones: the text needs the room more than the app mark does */
+@media (max-width: 380px) {
+  .xs-install__mark {
+    display: none;
+  }
 }
 .xs-install__x {
   display: grid;
@@ -448,9 +465,11 @@
   border-radius: 50%;
   color: var(--hub-faint);
 }
-.xs-install__x:hover {
-  color: var(--hub-text);
-  background: rgba(127, 127, 127, 0.14);
+@media (hover: hover) {
+  .xs-install__x:hover {
+    color: var(--hub-text);
+    background: rgba(127, 127, 127, 0.14);
+  }
 }
 @media (min-width: 900px) {
   .xs-install {
@@ -659,4 +678,13 @@
 :root[data-motion='reduced'] .xs-coins__dot,
 :root[data-motion='reduced'] .xs-cel__rays {
   animation: none;
+}
+
+/* engines without color-mix() (iOS < 16.2, old Android WebView) */
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+  .xs-cel--badge,
+  .xs-cel--purchase {
+    --cel-edge: rgba(var(--hub-brand-rgb), 0.6);
+    --cel-glow: rgba(var(--hub-brand-rgb), 0.4);
+  }
 }

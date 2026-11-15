@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BadgeArt } from './GameArt.jsx';
 import { buildBadgeContext, evaluateBadges, gameBadges, loadSeen, newlyEarned, saveSeen } from './badges.js';
 import { fmtStat, resolveGameStats } from './gameStats.js';
@@ -7,6 +7,7 @@ import { useAccount } from '@/components/shell/hooks.js';
 import { useProfile } from '@/components/shell/stores.js';
 import { BRAND } from '@/platform/brand.js';
 import { celebrate } from '@/components/shell/celebrate.js';
+import '@/styles/hubMoments.css';
 
 /**
  * Badges: the platform's (badges.js) plus each live game's `manifest.badges`. When a badge becomes earned that
@@ -41,6 +42,7 @@ export default function BadgeGrid({ games, user, level }) {
   const uid = user?.id ? String(user.id) : 'local';
   const settled = !loading && (!account || friendsRes.status !== 'loading');
   const done = useRef(new Set());
+  const [freshBadges, setFreshBadges] = useState(() => new Set());
   useEffect(() => {
     if (!settled) return;
     const earnedIds = all.filter((b) => b.earned).map((b) => b.id);
@@ -52,6 +54,7 @@ export default function BadgeGrid({ games, user, level }) {
     const fresh = newlyEarned(seen, all).filter((id) => !done.current.has(id));
     if (!fresh.length) return;
     fresh.forEach((id) => done.current.add(id));
+    setFreshBadges(new Set(fresh));
     saveSeen(uid, [...seen, ...fresh]);
     const first = all.find((b) => b.id === fresh[0]);
     celebrate({
@@ -73,23 +76,45 @@ export default function BadgeGrid({ games, user, level }) {
           </span>
         </h2>
       </div>
-      <BadgeList badges={platform} />
+      <BadgeList badges={platform} fresh={freshBadges} />
       {perGame.map(({ game, badges }) => (
         <div key={game.id} className="xp-badgegroup">
           <h3 className="xp-badgegroup__h">{game.name}</h3>
-          <BadgeList badges={badges} />
+          <BadgeList badges={badges} fresh={freshBadges} />
         </div>
       ))}
     </section>
   );
 }
 
-function BadgeList({ badges }) {
+/** Wait for a new badge to enter view; old achievements remain still. */
+function BadgeArtwork({ badge, fresh }) {
+  const node = useRef(null);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    if (!fresh) return undefined;
+    if (typeof IntersectionObserver === 'undefined') {
+      setVisible(true);
+      return undefined;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setVisible(true);
+        observer.disconnect();
+      }
+    }, { threshold: .5 });
+    if (node.current) observer.observe(node.current);
+    return () => observer.disconnect();
+  }, [fresh]);
+  return <span ref={node} className={`hub-moment-badge${badge.earned && fresh && visible ? ' is-new' : ''}`}><BadgeArt id={badge.art} size={64} locked={!badge.earned} /></span>;
+}
+
+function BadgeList({ badges, fresh }) {
   return (
     <ul className="hh2-badges xp-badges">
       {badges.map((b, i) => (
         <li key={b.id} className={`hh2-badge ${b.earned ? 'is-earned' : 'is-locked'}`} style={{ '--i': Math.min(i, 12) }}>
-          <BadgeArt id={b.art} size={64} locked={!b.earned} />
+          <BadgeArtwork badge={b} fresh={fresh?.has(b.id)} />
           <b className="hh2-badge__name">{b.label}</b>
           <small className="hh2-badge__desc">{b.desc}</small>
           {b.earned ? (

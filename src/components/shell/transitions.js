@@ -10,6 +10,7 @@
 import { useCallback, useLayoutEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { loadSettings } from '@/lib/storage.js';
+import { isIos } from './install.js';
 import { isGameRoute } from './theme.js';
 
 const COMMIT_TIMEOUT_MS = 450; // max time the old snapshot stays frozen while the new route renders
@@ -36,9 +37,19 @@ function pathOf(to) {
   return null;
 }
 
+/**
+ * Engine gate. iOS / iPadOS stay on plain navigation: the WebKit build available for testing hard-crashed the page
+ * during a route view-transition at phone widths (a bare page was fine), and a cross-fade is not worth a crash.
+ * Chrome on Android and desktop browsers keep the transition. Safari without the API never gets here anyway.
+ */
+export function engineAllowsViewTransition(ua, touchPoints) {
+  return !isIos(ua, touchPoints);
+}
+
 /** True when a view transition should run for a navigation from `fromPath` to `to`. */
 export function canViewTransition(fromPath, to) {
   if (typeof document === 'undefined' || typeof document.startViewTransition !== 'function') return false;
+  if (!engineAllowsViewTransition()) return false;
   if (document.visibilityState === 'hidden') return false;
   if (isGameRoute(fromPath)) return false;
   const target = pathOf(to);

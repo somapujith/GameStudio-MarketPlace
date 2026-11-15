@@ -102,7 +102,7 @@ export function displayFromState(state) {
     return {
       players: [], owners: [...EMPTY_OWNERS], levels: [...EMPTY_LEVELS], mortgaged: [...EMPTY_MORTGAGED], turn: 0, round: 1, dice: [0],
       phase: 'roll', cfg: {}, winner: null, lastCash: null, assist: null, assistPlayer: null, debt: null, trade: null, event: null,
-      ride: null, landing: null,
+      ride: null, landing: null, moving: null,
     };
   }
   return {
@@ -137,6 +137,7 @@ export function displayFromState(state) {
     event: copyEvent(state.event), // the city event of this round (public)
     ride: state.ride ? { ...state.ride } : null, // open transport offer for the turn player
     landing: null,
+    moving: null,
   };
 }
 
@@ -358,7 +359,8 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
         tile: d.tile !== undefined ? d.tile : ev.tile,
         icon: d.icon,
         type: ev.type,
-        ...(ev.type === 'card' ? { card: { title: ev.title, text: ev.text, kind: ev.kind, deck: ev.deck } } : null),
+        ...(ev.reason ? { reason: ev.reason } : null),
+        ...(ev.type === 'card' ? { card: { title: ev.title, text: ev.text, kind: ev.kind, deck: ev.deck, cardId: ev.cardId } } : null),
       };
     }
     commit(patch);
@@ -391,7 +393,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
       case 'move': {
         const path = Array.isArray(ev.path) ? ev.path : [];
         const motion = ev.teleport ? 'teleport' : ev.ride ? 'ride' : null;
-        patchDisplay((d) => ({ ...d, landing: null }));
+        patchDisplay((d) => ({ ...d, landing: null, moving: ev.player }));
         if (ev.teleport || path.length === 0) {
           // one arc over the board: the pawn flies for teleportPre + teleport (`stepMs` = its flight time)
           fx(ev.teleport ? 'card' : 'step');
@@ -403,7 +405,10 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
           if (ev.teleport) announce(ev);
           if (!(await wait(dl('teleportPre')))) return false;
           const ok = await wait(dl('teleport'));
-          if (ok) patchPlayer(ev.player, () => ({ motion: null }));
+          if (ok) {
+            patchPlayer(ev.player, () => ({ motion: null }));
+            patchDisplay((d) => ({ ...d, moving: null }));
+          }
           return ok;
         }
         // Long trips (a card can send you across the board) hop faster; a ride skims along faster still.
@@ -421,6 +426,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
         const p = playerById(ev.player);
         if (p && p.pos !== ev.to && Number.isInteger(ev.to)) setPos(ev.player, ev.to);
         patchPlayer(ev.player, () => ({ motion: null }));
+        patchDisplay((d) => ({ ...d, moving: null }));
         return true;
       }
 

@@ -1,0 +1,30 @@
+/* A short city scene: the train crosses the viaduct, then an auto makes its road pass.
+   World x projects to screen (x, x/2), so both vehicles follow the drawn isometric roads. */
+.tycoon-cover.is-animated .tc-train {
+  animation: tc-train calc(var(--dur-4, 600ms) * 8) var(--ease-std, ease-in-out) var(--dur-3, 360ms) both;
+}
+.tycoon-cover.is-animated .tc-auto {
+  animation: tc-auto calc(var(--dur-4, 600ms) * 5) var(--ease-out, ease-out) calc(var(--dur-4, 600ms) * 2) both;
+}
+.tycoon-cover.is-animated .tc-lake {
+  animation: tc-lake calc(var(--dur-4, 600ms) * 4) var(--ease-std, ease-in-out) 2;
+}
+/* Existing light and coin details join the scene, then settle. */
+.tycoon-cover.is-animated :is(.hub-tw, .hub-bob, .hub-bob2, .hub-spin) {
+  animation-iteration-count: 2;
+}
+@keyframes tc-train {
+  0%, 8% { transform: translate(-15px, -7.5px); }
+  90%, 100% { transform: translate(17px, 8.5px); }
+}
+@keyframes tc-auto {
+  0%, 8% { transform: translate(0, 0); }
+  88%, 100% { transform: translate(23px, 11.5px); }
+}
+@keyframes tc-lake {
+  0%, 100% { transform: translateX(0); opacity: .8; }
+  50% { transform: translateX(4px); opacity: .4; }
+}
+.hh2-hero__slide[aria-hidden='true'] .tycoon-cover * { animation-play-state: paused !important; }
+.tycoon-cover:not(.is-animated) *, :root[data-motion='reduced'] .tycoon-cover *, .hg-game[data-rm] .tycoon-cover * { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { .tycoon-cover * { animation: none !important; } }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { AVATAR_PRESETS, Avatar } from '@/components/art/index.js';
 import { HubLogo } from '@/components/art/hub/index.js';
+import AutoMascot from '@/components/art/AutoMascot.jsx';
 import { errorMessage } from '@/lib/api.js';
 import { GoogleButton, useAuth } from '@/lib/auth.jsx';
 import { loadProfile } from '@/lib/storage.js';
@@ -11,6 +12,7 @@ import { safeNext } from '@/components/online/codes.js';
 import { Loading } from '@/components/online/StatusPanel.jsx';
 import '@/styles/online.css';
 import '@/styles/x-social.css';
+import '@/styles/hubMoments.css';
 
 const NAME_MAX = 24;
 
@@ -85,7 +87,7 @@ export default function Login() {
       <header className="ho-hero ho-hero--hub">
         <div className="ho-hero__glow" aria-hidden="true" />
         <div className="ho-hero__inner">
-          <HubLogo size={52} />
+          <div className="hub-moment-welcome"><HubLogo size={52} /><AutoMascot mood="welcome" size={96} /></div>
           <p className="ho-hero__tag">{BRAND.tagline} Pick a game, grab your friends, and play in seconds.</p>
         </div>
       </header>

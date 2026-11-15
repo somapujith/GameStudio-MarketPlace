@@ -11,6 +11,7 @@ import Icon from './ui/Icon.jsx';
 import Confetti from './ui/Confetti.jsx';
 import PlayerToken, { cosmeticsOf } from './ui/PlayerToken.jsx';
 import { ordinal, useHeld, worthParts } from './ui/helpers.js';
+import AutoMascot from '@/components/art/AutoMascot.jsx';
 
 const same = (a, b) => a != null && b != null && String(a) === String(b);
 
@@ -76,7 +77,7 @@ export default function GameOverModal({ session, onExit }) {
     content = (
       <>
         <div className={`hg-over-head${won ? ' is-won' : ''}`}>
-          <span className={`hg-over-trophy${won ? ' is-won' : ''}`}><Icon name="trophy" size={34} /></span>
+          {won ? <AutoMascot mood="win" /> : <span className="hg-over-trophy"><Icon name="trophy" size={34} /></span>}
           <h2 className="hg-over-title">{won ? 'You own the city!' : `You finished ${ordinal(rank)}`}</h2>
           {!won && winner ? <p className="hg-over-sub">{winner.name} wins with {formatINR(winner.worth)}</p> : null}
           {reason ? <p className="hg-over-reason">{reason}</p> : null}

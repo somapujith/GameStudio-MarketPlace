@@ -106,6 +106,7 @@
   --hb-fs-name: max(calc(var(--hb-u) * 0.17), 6px);
   --hb-fs-price: max(calc(var(--hb-u) * 0.17), 6px);
   --hb-fs-pill: max(calc(var(--hb-u) * 0.16), 6px);
+  --hb-fs-nm: max(calc(var(--hb-u) * 0.215), 6.2px); /* the printed name on a phone board (see tileLabel.js) */
   position: relative;
   width: 100%;
   height: 100%;
@@ -303,6 +304,8 @@
 }
 .hb-tile.is-owned .hb-tile__price { color: color-mix(in srgb, var(--o) 45%, var(--hb-ink)); }
 .hb-amt--short { display: none; }
+/* the phone-board name (tileLabel.js): only shown by the narrow-board rules below */
+.hb-tile__nm { display: none; }
 
 /* icon wrappers make whatever size the art asked for fill the box */
 .hb-tile__icon {
@@ -735,23 +738,60 @@
   .hb-tile__sub { display: none; }
 }
 
-/* phone boards (10 tiles across, ~33px each): names cannot be read, so tiles keep their band / icon / business
-   and a bigger amount; the name comes from tapping the tile (its deed), the tooltip and the accessible label */
+/* phone boards (10 tiles across, ~30-38px each): the long form of a name cannot fit, so each tile prints a short
+   one- or two-line label instead (tileLabel.js: real hyphens, never an ellipsis), with a smaller amount under it.
+   Band / icon / business / owner chip / pips stay. The full name is in the aria-label and the tooltip. */
 @container (max-width: 520px) {
   .hb-tile--property .hb-tile__name,
-  .hb-tile--transport .hb-tile__name { display: none; }
+  .hb-tile--transport .hb-tile__name,
+  .hb-tile--auction .hb-tile__name,
+  .hb-tile--card .hb-tile__name,
+  .hb-tile--corner .hb-pill__t { display: none; }
+
+  .hb-tile__nm {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; flex: none;
+    max-width: 100%; min-width: 0; pointer-events: none;
+    font-size: var(--hb-fs-nm); font-weight: 800; line-height: 1.04; letter-spacing: -0.025em; text-align: center; color: var(--hb-ink);
+    /* a paper-coloured halo keeps the ink crisp over the jali texture and the tile's own gradients */
+    text-shadow: 0 0 1.5px var(--paper, #f7ecd8), 0 0 1px var(--paper, #f7ecd8);
+    -webkit-font-smoothing: antialiased;
+  }
+  .hb-tile__nm > span { display: block; max-width: 100%; white-space: nowrap; }
+  .hb-tile--auction .hb-tile__nm { color: #7a1f2b; }
+  .hb-tile.is-mortgaged .hb-tile__nm { color: #6b655c; }
+  .hb-deck--luck .hb-tile__nm { color: #3b2300; text-shadow: 0 0 2px rgba(255, 236, 170, 0.9); }
+  .hb-deck--drama .hb-tile__nm { color: #fff; text-shadow: 0 1px 1px rgba(30, 6, 60, 0.7); }
+
   .hb-tile--property .hb-tile__price,
-  .hb-tile--transport .hb-tile__price { font-size: max(calc(var(--hb-u) * 0.24), 8px); color: var(--hb-ink); }
+  .hb-tile--transport .hb-tile__price { font-size: max(calc(var(--hb-u) * 0.21), 7px); color: var(--hb-ink-dim); }
+  .hb-tile--transport .hb-tile__price { color: color-mix(in srgb, var(--route) 55%, var(--hb-ink)); }
+  .hb-tile.is-owned .hb-tile__price { color: color-mix(in srgb, var(--o) 45%, var(--hb-ink)); }
   .hb-tile--transport .hb-tile__body--icon { flex-direction: column; }
+  .hb-tile__txt { gap: calc(var(--hb-u) * 0.02); }
+  .hb-tile__body { padding-inline: calc(var(--hb-u) * 0.03); }
   .hb-tile__body--built .hb-tile__bldg { max-width: 100%; }
   .hb-tile__ev { padding: 0; width: max(calc(var(--hb-u) * 0.26), 8px); height: max(calc(var(--hb-u) * 0.26), 8px); border-radius: 50%; }
   .hb-tile__ev svg,
   .hb-tile__ev-t { display: none; }
   .hb-tile__go { display: none; }
-  .hb-tile--card .hb-tile__name { display: none; }
-  /* corners: the illustration speaks; only START keeps its word */
+  /* corners: the illustration plus its short word in the pill (two lines for "Traffic / Jam", "Chai / Adda") */
+  .hb-tile--corner .hb-pill { padding: calc(var(--hb-u) * 0.04) calc(var(--hb-u) * 0.07); border-radius: calc(var(--hb-u) * 0.14); text-transform: none; }
+  .hb-tile--corner .hb-pill .hb-tile__nm { font-size: max(calc(var(--hb-u) * 0.19), 6.2px); color: inherit; text-shadow: none; letter-spacing: -0.02em; }
+  /* pawns rest nearer the outer edge so they cover less of the printed name */
+  .hb-pawn[data-side='top'] .hb-pawn__body { translate: 0 calc(var(--hb-u) * -0.1); }
+  .hb-pawn[data-side='bottom'] .hb-pawn__body { translate: 0 calc(var(--hb-u) * 0.1); }
+  .hb-pawn[data-side='left'] .hb-pawn__body { translate: calc(var(--hb-u) * -0.1) 0; }
+  .hb-pawn[data-side='right'] .hb-pawn__body { translate: calc(var(--hb-u) * 0.1) 0; }
+}
+
+/* boards under ~300px (a phone on its side, squeezed): a name cannot be printed, keep the amount bigger and the corner words only for START */
+@container (max-width: 299px) {
+  .hb-tile__nm { display: none; }
+  .hb-tile--property .hb-tile__price,
+  .hb-tile--transport .hb-tile__price { font-size: max(calc(var(--hb-u) * 0.26), 7px); color: var(--hb-ink); }
   .hb-tile--corner:not(.hb-tile--start) .hb-pill { display: none; }
-  .hb-tile__body--built .hb-tile__name { display: none; }
+  .hb-tile--start .hb-pill__t { display: inline; }
+  .hb-tile--start .hb-pill .hb-tile__nm { display: none; }
 }
 
 /* ---- pawns -------------------------------------------------------------------- */

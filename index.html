@@ -2,18 +2,30 @@
 <html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
+    <!-- viewport-fit=cover lets the app paint under the notch / home indicator; the shell pads itself with env(safe-area-inset-*).
+         Zoom stays enabled on purpose (accessibility). -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#0a0f1f" />
-    <meta name="color-scheme" content="dark" />
+    <!-- Browser chrome colour: the OS scheme picks one until the app's own theme setting takes over (theme.js updates both). -->
+    <meta name="theme-color" content="#0a0f1f" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f7f1e6" media="(prefers-color-scheme: light)" />
+    <meta name="color-scheme" content="dark light" />
     <meta name="description" content="GameHub: a little marketplace of multiplayer games. Pick a game, grab your friends, and play in seconds. Start with Hyderabad Tycoon." />
     <meta name="application-name" content="GameHub" />
+    <meta name="format-detection" content="telephone=no" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="GameHub" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/icons/hub-192.svg" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/icons/favicon-48.png" />
+    <!-- iOS ignores SVG touch icons: a real 180x180 PNG (also served at the root path iOS probes by default) -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- Paint the right page colour before the bundle's CSS arrives (no white flash / rubber-band showing white). -->
+    <style>
+      html { background: #0a0f1f; }
+      @media (prefers-color-scheme: light) { html { background: #f7f1e6; } }
+    </style>
     <title>GameHub</title>
   </head>
   <body>

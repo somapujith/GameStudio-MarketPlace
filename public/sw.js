@@ -4,7 +4,9 @@
 // service worker were installed, so a deploy is never served stale (nothing is cached here, ever).
 // Payload (worker/push.js): { title, body, url, tag }.
 
-const ICON = '/icons/hub-192.svg';
+// PNG: Android / iOS do not render SVG notification icons. The badge is a white silhouette (Android tints it).
+const ICON = '/icons/icon-192.png';
+const BADGE = '/icons/badge-96.png';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -42,7 +44,7 @@ self.addEventListener('push', (event) => {
   const options = {
     body: typeof data.body === 'string' ? data.body.slice(0, 300) : '',
     icon: ICON,
-    badge: ICON,
+    badge: BADGE,
     data: { url: safePath(data.url) },
   };
   if (typeof data.tag === 'string' && data.tag) {

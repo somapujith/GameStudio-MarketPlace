@@ -17,6 +17,7 @@ import { useProfile } from '@/components/shell/stores.js';
 import { celebrate } from '@/components/shell/celebrate.js';
 import '@/styles/hubhome.css';
 import '@/styles/x-profile.css';
+import '@/styles/hubMoments.css';
 
 const KIND_LABEL = { frame: 'Frames', dice: 'Dice', title: 'Titles' };
 const KIND_ONE = { frame: 'frame', dice: 'dice skin', title: 'title' };
@@ -106,7 +107,7 @@ function ItemCard({ item, i, equipped, selected, coins, canBuy, signedIn, offlin
       style={{ '--i': Math.min(i, 12) }}
     >
       <button type="button" className="xp-item__art" onClick={() => onSelect(item.id)} aria-pressed={selected} aria-label={`Preview ${item.name}`}>
-        <Preview item={item} size={76} avatar={avatar} />
+        <span className="hub-moment-preview"><Preview item={item} size={76} avatar={avatar} /></span>
       </button>
       <div className="xp-item__body">
         <b className="xp-item__name" title={item.name}>

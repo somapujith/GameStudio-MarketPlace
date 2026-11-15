@@ -1,0 +1,201 @@
+/* ==========================================================================
+   Mobile / PWA layer (owner: mobile). Imported last by App.jsx so it can refine the hub chrome.
+   Notch + home-indicator insets, landscape phones, on-screen keyboard, touch behaviour, installed-app (standalone)
+   behaviour and the fallbacks for engines without backdrop-filter. The game screen has its own CSS.
+   Variables: --safe-top/-bottom/-left/-right (tokens.css) · --kb-inset / --vvh (src/lib/viewport.js)
+   ========================================================================== */
+
+/* ---------- touch behaviour ---------- */
+/* no double-tap-zoom delay on anything tappable (pinch zoom still works: zooming is never disabled) */
+a,
+button,
+input,
+select,
+textarea,
+label,
+summary,
+[role='button'],
+[role='tab'],
+[role='switch'],
+[role='radio'],
+[role='checkbox'] {
+  touch-action: manipulation;
+}
+/* long-press: no callout / text selection on chrome and art (text, codes and inputs stay selectable) */
+button,
+summary,
+nav a,
+[role='button'],
+[role='tab'],
+[role='switch'],
+.hub-topbar,
+.hub-tabbar,
+.hub-rail,
+.hh-modal__grip,
+.hub-skel,
+.hh-skel {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+img,
+svg {
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+}
+/* momentum scrolling in every overflow container on old iOS; sheets never chain scroll to the page behind */
+.hh-modal__panel,
+.ho-sheet,
+.ho-sheet__body,
+.hub-row {
+  -webkit-overflow-scrolling: touch;
+}
+.hh-modal,
+.ho-modal,
+.hh-modal__panel,
+.ho-sheet,
+.ho-sheet__body,
+.ho-modal__box {
+  overscroll-behavior: contain;
+}
+
+/* ---------- pull-to-refresh and rubber-band, on purpose ----------
+   Browser tabs keep the platform behaviour (pull down to refresh). An installed app and the lobby do not: an
+   accidental pull there would reload the app and drop the table connection. */
+:root[data-standalone],
+:root[data-standalone] body,
+:root[data-route='lobby'],
+:root[data-route='lobby'] body,
+:root[data-route='game'],
+:root[data-route='game'] body {
+  overscroll-behavior-y: none;
+}
+
+/* ---------- installed iOS app: translucent status bar ----------
+   `black-translucent` paints the page under the status bar and always draws it in white, so the strip behind it is
+   dark in the light theme too (white clock on sandstone would be unreadable). */
+:root[data-ios][data-standalone]:not([data-route='game'])::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 31;
+  height: var(--safe-top, 0px);
+  background: var(--hub-bg);
+  pointer-events: none;
+}
+:root[data-ios][data-standalone][data-theme='light']:not([data-route='game'])::before {
+  background: #0a0f1f;
+}
+
+/* ---------- on-screen keyboard (see src/lib/viewport.js) ---------- */
+/* the sheet layer ends where the keyboard starts, so a sheet's field and its button stay visible */
+.hh-modal,
+.ho-modal {
+  bottom: var(--kb-inset, 0px);
+}
+.hh-modal__panel {
+  max-height: 90vh;
+  max-height: min(90dvh, calc(var(--vvh, 100dvh) - 12px));
+}
+.ho-sheet {
+  max-height: min(86dvh, 640px, calc(var(--vvh, 100dvh) - 16px));
+}
+/* the tab bar and the install card are not useful while typing and would float over the field */
+:root[data-kb] .hub-tabbar,
+:root[data-kb] .xs-install {
+  display: none;
+}
+
+/* ---------- landscape phones: a short screen cannot spare a top bar plus a bottom tab bar ---------- */
+@media (orientation: landscape) and (max-height: 500px) {
+  :root {
+    --topbar-h: 52px;
+    --tabbar-h: 0px;
+    --hub-gutter: 20px;
+  }
+  .hub-main {
+    padding-top: 12px;
+    padding-bottom: calc(var(--safe-bottom, 0px) + 24px);
+  }
+  .hub-pageheader,
+  .hh-pageheader {
+    margin-bottom: 14px;
+  }
+}
+/* phones (< 900 px wide): the tab bar becomes a slim rail on the left, below the top bar */
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 899.98px) {
+  :root {
+    --rail-compact: 76px;
+    --hub-pad-l: var(--hub-gutter); /* the rail already sits in the notch inset */
+  }
+  .hub-tabbar {
+    top: calc(var(--safe-top, 0px) + var(--topbar-h) + 1px);
+    right: auto;
+    width: calc(var(--rail-compact) + var(--safe-left, 0px));
+    padding: 0 0 var(--safe-bottom, 0px) var(--safe-left, 0px);
+    overflow-y: auto;
+    border-top: 0;
+    border-right: 1px solid var(--hub-line);
+  }
+  .hub-tabbar ul {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-width: none;
+    margin: 0;
+    padding: 8px 6px;
+  }
+  .hub-tab {
+    min-height: 56px;
+    padding: 4px 2px;
+    font-size: 10.5px;
+  }
+  .hub-tab__icon {
+    width: 52px;
+    height: 28px;
+  }
+  .hub-body {
+    padding-left: calc(var(--rail-compact) + var(--safe-left, 0px));
+  }
+  .xs-install {
+    left: calc(var(--rail-compact) + var(--safe-left, 0px) + 12px);
+    right: max(12px, var(--safe-right, 0px));
+    bottom: calc(var(--safe-bottom, 0px) + 10px);
+    max-width: 420px;
+    margin: 0 auto 0 0;
+  }
+}
+/* wide landscape phones (>= 900 px): the existing left rail, made compact, clear of the notch */
+@media (orientation: landscape) and (max-height: 500px) and (min-width: 900px) {
+  .hub-body {
+    padding-left: var(--safe-left, 0px);
+  }
+  .hub-rail {
+    overflow-y: auto;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  .hub-rail__link {
+    min-height: 54px;
+  }
+  .hub-main {
+    padding-top: 12px;
+  }
+}
+
+/* ---------- engines without backdrop-filter: the translucent bars become solid ---------- */
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .hub-topbar,
+  .hub-tabbar {
+    background: var(--hub-bg);
+  }
+  .hh-modal,
+  .ho-modal {
+    background: var(--hub-overlay);
+  }
+  :root[data-theme='light'] .hh-toast {
+    background: var(--hub-surface-2);
+  }
+}

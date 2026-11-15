@@ -89,6 +89,7 @@
 }
 .xp-pin .xp-pin__row.is-me {
   box-shadow: var(--hub-shadow);
+  background: linear-gradient(90deg, rgba(var(--hub-brand-rgb), 0.26), transparent 85%), var(--hub-bg);
   background: linear-gradient(90deg, color-mix(in srgb, var(--hub-brand) 26%, transparent), transparent 85%), var(--hub-bg);
 }
 @media (min-width: 900px) {
@@ -151,6 +152,37 @@
 }
 .xp-pro__title {
   align-self: flex-start;
+}
+/* long names wrap to two lines (a single-line ellipsis left "Ve..." on narrow phones) */
+.hh2-pro__name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+/* phones: a smaller level ring gives the name and the XP line room next to it */
+@container hh2 (max-width: 459px) {
+  .xp-ring {
+    width: 92px;
+    height: 92px;
+  }
+  .xp-ring__ava {
+    transform: scale(0.82);
+  }
+  .hh2-pro__top {
+    gap: 12px;
+  }
+}
+@container hh2 (max-width: 339px) {
+  .xp-ring {
+    width: 84px;
+    height: 84px;
+  }
+  .xp-ring__ava {
+    transform: scale(0.75);
+  }
 }
 @container hh2 (max-width: 459px) {
   .xp-pro__editlbl {
@@ -281,7 +313,9 @@
   animation-delay: calc(var(--i, 0) * 40ms);
 }
 .xp-match--win {
+  background: linear-gradient(90deg, var(--hub-surface), var(--hub-surface) 70%);
   background: linear-gradient(90deg, color-mix(in srgb, var(--xp-gold, #ffc857) 14%, var(--hub-surface)), var(--hub-surface) 70%);
+  border-color: var(--hub-line-2);
   border-color: color-mix(in srgb, var(--xp-gold, #ffc857) 36%, transparent);
 }
 .xp-match__main {
@@ -371,6 +405,7 @@
 .xp-chip--podium {
   color: var(--hub-text);
   background: var(--hub-brand-soft);
+  border-color: rgba(var(--hub-brand-rgb), 0.5);
   border-color: color-mix(in srgb, var(--hub-brand) 50%, transparent);
 }
 .xp-inline-err {
@@ -454,6 +489,7 @@
 .xp-seg .hh-seg__opt.is-on {
   color: #fff;
   background: var(--hub-brand);
+  box-shadow: 0 6px 16px -6px rgba(var(--hub-brand-rgb), 0.7);
   box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--hub-brand) 70%, transparent);
 }
 .xp-seg .hh-seg__opt:focus-visible {
@@ -472,7 +508,9 @@
   height: 44px;
   padding: 0 16px;
   border-radius: 999px;
+  background: transparent;
   background: color-mix(in srgb, var(--xp-gold, #ffc857) 12%, transparent);
+  border: 1px solid var(--hub-line-2);
   border: 1px solid color-mix(in srgb, var(--xp-gold, #ffc857) 32%, transparent);
 }
 .xp-balance b {
@@ -540,6 +578,7 @@
 }
 .xp-banner--warn {
   color: var(--hub-warn);
+  background: rgba(var(--hub-warn-rgb), 0.1);
   background: color-mix(in srgb, var(--hub-warn) 10%, transparent);
 }
 .xp-items {
@@ -583,6 +622,7 @@
 }
 .xp-item--epic {
   --rc: color-mix(in srgb, var(--xp-epic, #c77dff) 60%, transparent);
+  background: radial-gradient(90% 70% at 50% 0, transparent, transparent 75%), var(--hub-surface);
   background: radial-gradient(90% 70% at 50% 0, color-mix(in srgb, var(--xp-epic, #c77dff) 14%, transparent), transparent 75%), var(--hub-surface);
 }
 .xp-item.is-sel {
@@ -643,6 +683,11 @@
   flex: 1;
   justify-content: center;
   min-height: 44px;
+  min-width: 0; /* "Need 1,50,000 more" wraps inside a 2-up card on a 320 px phone instead of spilling out of it */
+  padding-inline: 8px;
+  white-space: normal;
+  line-height: 1.15;
+  text-align: center;
 }
 .xp-rarity {
   display: inline-flex;
@@ -659,10 +704,12 @@
 }
 .xp-rarity--rare {
   color: var(--hub-text);
+  background: transparent;
   background: color-mix(in srgb, var(--xp-rare, #4cc9f0) 22%, transparent);
 }
 .xp-rarity--epic {
   color: var(--hub-text);
+  background: transparent;
   background: color-mix(in srgb, var(--xp-epic, #c77dff) 28%, transparent);
 }
 .xp-state {
@@ -756,4 +803,14 @@
 :root[data-motion='reduced'] .xp-page *::after {
   animation: none !important;
   transition: none !important;
+}
+
+/* engines without color-mix() (iOS < 16.2, old Android WebView): custom properties cannot carry a fallback line */
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+  .xp-item--rare {
+    --rc: rgba(76, 201, 240, 0.55);
+  }
+  .xp-item--epic {
+    --rc: rgba(199, 125, 255, 0.6);
+  }
 }

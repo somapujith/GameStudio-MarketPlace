@@ -1,6 +1,6 @@
 import { memo, useRef, useState } from 'react';
 import * as Art from '@/components/art/index.js';
-import { pawnPlacement } from './fx/geometry.js';
+import { isCorner, pawnPlacement, sideOf } from './fx/geometry.js';
 import '@/styles/board.css';
 
 export { pawnPlacement } from './fx/geometry.js';
@@ -84,6 +84,7 @@ function PawnImpl({
       style={style}
       role="img"
       data-fx-pawn={id || undefined}
+      data-side={isCorner(pos) ? undefined : sideOf(pos)}
       aria-label={`${name}${tileName ? ` on ${tileName}` : ''}${stuck ? ', stuck in traffic' : ''}${isTurn ? ', current turn' : ''}${bankrupt ? ', bankrupt' : ''}`}
     >
       <span className="hb-pawn__body">

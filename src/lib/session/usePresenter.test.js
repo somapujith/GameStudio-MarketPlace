@@ -4,6 +4,32 @@ import { clampSpeed, createPresenterCore, displayFromState } from './usePresente
 
 afterEach(() => vi.useRealTimers());
 
+describe('scene playback metadata', () => {
+  it('marks ordinary walking and clears it when a fresh reconnect cancels playback', async () => {
+    const { core, state } = setup();
+    core.enqueue([{ type: 'move', player: 'me', path: [1, 2, 3], to: 3 }], state);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(core.getSnapshot().display.moving).toBe('me');
+    core.reset(state);
+    await vi.runAllTimersAsync();
+    expect(core.getSnapshot().display.moving).toBeNull();
+    expect(core.getSnapshot().display.players[0].pos).toBe(0);
+    core.dispose();
+  });
+
+  it('preserves transaction reasons and card artwork identity in presentation bubbles', async () => {
+    const { core, state } = setup({ describe: () => ({ text: 'A scene', tone: 'good' }) });
+    core.enqueue([{ type: 'own', player: 'me', tile: 7, owner: 'me', reason: 'buy' }], state);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(core.getSnapshot().bubble).toMatchObject({ type: 'own', reason: 'buy' });
+    core.reset(state);
+    core.enqueue([{ type: 'card', player: 'me', deck: 'luck', title: 'Chai', text: 'Take a chai', kind: 'good', cardId: 'free_chai' }], state);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(core.getSnapshot().bubble.card.cardId).toBe('free_chai');
+    core.dispose();
+  });
+});
+
 // A minimal Hustle-shaped state (independent of the engine build, the presenter only reads these fields).
 const N = 36;
 function makeState(overrides = {}) {

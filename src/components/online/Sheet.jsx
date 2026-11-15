@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef } from 'react';
+import { useScrollLock } from '@/lib/useScrollLock.js';
 import '@/styles/online.css';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -10,6 +11,7 @@ const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), [tabi
 export default function Sheet({ open, title, subtitle, onClose, children, footer }) {
   const titleId = useId();
   const boxRef = useRef(null);
+  useScrollLock(open);
 
   useEffect(() => {
     if (!open) return undefined;

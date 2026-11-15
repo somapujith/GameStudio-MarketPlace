@@ -17,6 +17,7 @@
   border-radius: 50%;
   padding: 3px;
   background: conic-gradient(from 210deg, var(--xs-f1), var(--xs-f2), var(--xs-f1));
+  box-shadow: 0 0 0 1px var(--hub-line-2), 0 4px 14px transparent;
   box-shadow: 0 0 0 1px var(--hub-line-2), 0 4px 14px color-mix(in srgb, var(--xs-f1) 35%, transparent);
 }
 .xs-frame > * {
@@ -73,12 +74,15 @@
 }
 .xs-title--rare {
   color: var(--hub-text);
+  border-color: rgba(var(--hub-brand-rgb), 0.55);
   border-color: color-mix(in srgb, var(--hub-brand) 55%, transparent);
   background: var(--hub-brand-soft);
 }
 .xs-title--epic {
   color: var(--hub-text);
+  border-color: rgba(var(--hub-warn-rgb), 0.6);
   border-color: color-mix(in srgb, var(--hub-warn) 60%, transparent);
+  background: rgba(var(--hub-warn-rgb), 0.16);
   background: color-mix(in srgb, var(--hub-warn) 16%, transparent);
 }
 .xs-rowava {
@@ -214,7 +218,9 @@
 .xs-note--warn {
   margin: 0;
   color: var(--hub-text);
+  border-color: rgba(var(--hub-warn-rgb), 0.5);
   border-color: color-mix(in srgb, var(--hub-warn) 50%, transparent);
+  background: rgba(var(--hub-warn-rgb), 0.12);
   background: color-mix(in srgb, var(--hub-warn) 12%, transparent);
 }
 
@@ -264,16 +270,19 @@
 .xs-offline {
   flex-wrap: wrap;
   border-style: solid;
+  border-color: rgba(var(--hub-warn-rgb), 0.45);
   border-color: color-mix(in srgb, var(--hub-warn) 45%, transparent);
 }
 .xs-offline .xs-empty__icon {
   color: var(--hub-warn);
+  background: rgba(var(--hub-warn-rgb), 0.14);
   background: color-mix(in srgb, var(--hub-warn) 14%, transparent);
 }
 
 /* ---------- invites inbox ---------- */
 .xs-inbox {
   scroll-margin-top: 80px;
+  border-color: var(--hub-line);
   border-color: color-mix(in srgb, var(--hub-warn) 30%, var(--hub-line));
 }
 .xs-invite__icon {
@@ -324,8 +333,10 @@
   cursor: pointer;
   transition: background-color var(--dur-1) var(--ease-std), transform var(--dur-1) var(--ease-std);
 }
-.xs-friend__main:hover:not(:disabled) {
-  background: var(--hub-surface-2);
+@media (hover: hover) {
+  .xs-friend__main:hover:not(:disabled) {
+    background: var(--hub-surface-2);
+  }
 }
 .xs-friend__main:active:not(:disabled) {
   transform: scale(0.99);
@@ -364,13 +375,17 @@
     transform var(--dur-1) var(--ease-std);
   z-index: 3;
 }
-.xs-tip[data-tip]:is(:hover, :focus-visible):not(:disabled)::after {
-  opacity: 1;
-  transform: translate(50%, 0);
+@media (hover: hover) {
+  .xs-tip[data-tip]:is(:hover, :focus-visible):not(:disabled)::after {
+    opacity: 1;
+    transform: translate(50%, 0);
+  }
 }
 @media (hover: none) {
-  .xs-tip[data-tip]:hover:not(:focus-visible)::after {
-    opacity: 0;
+  @media (hover: hover) {
+    .xs-tip[data-tip]:hover:not(:focus-visible)::after {
+      opacity: 0;
+    }
   }
 }
 
@@ -425,9 +440,11 @@
     border-color var(--dur-1) var(--ease-std),
     transform var(--dur-1) var(--ease-std);
 }
-.xs-qa__btn:hover:not(:disabled) {
-  border-color: var(--hub-line-2);
-  background: var(--hub-surface-3);
+@media (hover: hover) {
+  .xs-qa__btn:hover:not(:disabled) {
+    border-color: var(--hub-line-2);
+    background: var(--hub-surface-3);
+  }
 }
 .xs-qa__btn:active:not(:disabled) {
   transform: scale(0.985);
@@ -464,6 +481,7 @@
   overflow-wrap: anywhere;
 }
 .xs-qa__btn.is-primary {
+  border-color: rgba(var(--hub-brand-rgb), 0.5);
   border-color: color-mix(in srgb, var(--hub-brand) 50%, transparent);
   background: var(--hub-brand-soft);
 }
@@ -479,6 +497,7 @@
   color: var(--hub-bad);
 }
 .xs-qa__btn.is-danger .xs-qa__icon {
+  background: rgba(var(--hub-bad-rgb), 0.12);
   background: color-mix(in srgb, var(--hub-bad) 12%, transparent);
 }
 
@@ -498,7 +517,9 @@
   padding: 8px 8px 8px 10px;
   border-radius: var(--hub-r-l);
   color: var(--hub-text);
+  background: var(--hub-surface);
   background: color-mix(in srgb, var(--hub-surface) 94%, transparent);
+  border: 1px solid var(--hub-warn);
   border: 1px solid color-mix(in srgb, var(--hub-warn) 50%, var(--hub-line-2));
   box-shadow: var(--hub-shadow);
   -webkit-backdrop-filter: blur(14px);
@@ -542,6 +563,13 @@
   display: flex;
   align-items: center;
   gap: 4px;
+}
+.xs-pending__actions .ho-btn {
+  min-height: var(--hub-tap);
+}
+.xs-pending__close {
+  width: var(--hub-tap);
+  height: var(--hub-tap);
 }
 
 /* ---------- signed-out / guest upsell ---------- */
@@ -628,6 +656,7 @@
   background: radial-gradient(circle, var(--hub-brand-soft), transparent 70%);
 }
 .xs-fl--friends .xs-fl__ring {
+  background: radial-gradient(circle, rgba(var(--hub-good-rgb), 0.22), transparent 70%);
   background: radial-gradient(circle, color-mix(in srgb, var(--hub-good) 22%, transparent), transparent 70%);
 }
 .xs-fl--skel {
@@ -666,13 +695,17 @@
 }
 .xs-relchip--friends {
   color: var(--hub-good);
+  border-color: rgba(var(--hub-good-rgb), 0.45);
   border-color: color-mix(in srgb, var(--hub-good) 45%, transparent);
+  background: rgba(var(--hub-good-rgb), 0.12);
   background: color-mix(in srgb, var(--hub-good) 12%, transparent);
 }
 .xs-relchip--incoming,
 .xs-relchip--outgoing {
   color: var(--hub-warn);
+  border-color: rgba(var(--hub-warn-rgb), 0.45);
   border-color: color-mix(in srgb, var(--hub-warn) 45%, transparent);
+  background: rgba(var(--hub-warn-rgb), 0.12);
   background: color-mix(in srgb, var(--hub-warn) 12%, transparent);
 }
 
@@ -697,9 +730,11 @@
     color var(--dur-1) var(--ease-std),
     background-color var(--dur-1) var(--ease-std);
 }
-.xs-back:hover {
-  color: var(--hub-text);
-  background: var(--hub-surface-2);
+@media (hover: hover) {
+  .xs-back:hover {
+    color: var(--hub-text);
+    background: var(--hub-surface-2);
+  }
 }
 .xs-back:focus-visible {
   outline: 3px solid var(--hub-brand);
@@ -708,8 +743,10 @@
 .xs-back svg {
   transition: transform var(--dur-1) var(--ease-std);
 }
-.xs-back:hover svg {
-  transform: translateX(-2px);
+@media (hover: hover) {
+  .xs-back:hover svg {
+    transform: translateX(-2px);
+  }
 }
 
 /* ---------- 404 ---------- */
@@ -749,11 +786,14 @@
 .xs-friends .ho-count {
   color: var(--hub-text);
   background: var(--hub-brand-soft);
+  border-color: rgba(var(--hub-brand-rgb), 0.4);
   border-color: color-mix(in srgb, var(--hub-brand) 40%, transparent);
 }
 .xs-friends .xs-inbox .ho-count {
   color: var(--hub-text);
+  background: rgba(var(--hub-warn-rgb), 0.22);
   background: color-mix(in srgb, var(--hub-warn) 22%, transparent);
+  border-color: rgba(var(--hub-warn-rgb), 0.55);
   border-color: color-mix(in srgb, var(--hub-warn) 55%, transparent);
 }
 .xs-head .ho-pill {
@@ -784,6 +824,7 @@
 
 /* the login hero is a dark art panel in both themes: keep its tagline light */
 .xs-login .ho-hero__tag {
+  color: rgba(255, 255, 255, 0.84);
   color: color-mix(in srgb, #fff 84%, transparent);
 }
 

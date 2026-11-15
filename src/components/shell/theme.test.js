@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { isGameRoute, resolveTheme, routeKind } from './theme.js';
 import { skeletonKind } from './RouteSkeleton.jsx';
-import { isIosSafari, MIN_VISITS, shouldOfferInstall } from './install.js';
+import { engineAllowsViewTransition } from './transitions.js';
+import { canAddToHomeScreenIos, isIos, isIosSafari, MIN_VISITS, shouldOfferInstall } from './install.js';
 
 describe('resolveTheme', () => {
   it('explicit choices win on hub routes', () => {
@@ -64,5 +65,43 @@ describe('install prompt gate', () => {
     expect(isIosSafari(safari, 5)).toBe(true);
     expect(isIosSafari(chromeIos, 5)).toBe(false);
     expect(isIosSafari(android, 5)).toBe(false);
+  });
+});
+
+describe('iOS Add to Home Screen support', () => {
+  const safari = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+  const chromeIos = (os) => `Mozilla/5.0 (iPhone; CPU iPhone OS ${os} like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/120.0 Mobile/15E148 Safari/604.1`;
+  const inApp = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 300.0';
+  const ipadOs = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15';
+  const android = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36';
+  it('Safari always can, other iOS browsers from iOS 16.4', () => {
+    expect(canAddToHomeScreenIos(safari, 5)).toBe(true);
+    expect(canAddToHomeScreenIos(chromeIos('17_2'), 5)).toBe(true);
+    expect(canAddToHomeScreenIos(chromeIos('16_4'), 5)).toBe(true);
+    expect(canAddToHomeScreenIos(chromeIos('16_3'), 5)).toBe(false);
+    expect(canAddToHomeScreenIos(chromeIos('15_7'), 5)).toBe(false);
+  });
+  it('in-app browsers, desktop and Android cannot', () => {
+    expect(canAddToHomeScreenIos(inApp, 5)).toBe(false);
+    expect(canAddToHomeScreenIos(android, 5)).toBe(false);
+    expect(canAddToHomeScreenIos(ipadOs, 0)).toBe(false);
+  });
+  it('iPadOS (Mac UA with touch points) counts as iOS', () => {
+    expect(isIos(ipadOs, 5)).toBe(true);
+    expect(isIos(ipadOs, 0)).toBe(false);
+    expect(canAddToHomeScreenIos(ipadOs, 5)).toBe(true);
+  });
+});
+
+describe('route view transitions engine gate', () => {
+  it('iOS / iPadOS stay on plain navigation, everything else may animate', () => {
+    const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+    const ipad = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15';
+    const android = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36';
+    const desktop = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
+    expect(engineAllowsViewTransition(iphone, 5)).toBe(false);
+    expect(engineAllowsViewTransition(ipad, 5)).toBe(false);
+    expect(engineAllowsViewTransition(android, 5)).toBe(true);
+    expect(engineAllowsViewTransition(desktop, 0)).toBe(true);
   });
 });

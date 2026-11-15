@@ -1,0 +1,78 @@
+/* Illustrated event postcards. Text and amounts stay still while the little scene plays once. */
+.event-card-art { display: block; width: 100%; height: auto; flex: none; overflow: hidden; border-radius: 12px; }
+.event-card-art :is(.eca-prop,.eca-paper,.eca-phone,.eca-lid,.eca-vehicle,.eca-train,.eca-awning,.eca-boat,.eca-brake) { transform-box: fill-box; transform-origin: center; }
+.event-card-art.is-animated .eca-prop { animation: eca-arrive var(--dur-4,600ms) var(--ease-out) 800ms backwards; }
+.event-card-art.is-animated .eca-paper { animation: eca-paper var(--dur-4,600ms) var(--ease-out) 800ms backwards; }
+.event-card-art.is-animated .eca-vehicle { animation: eca-drive calc(var(--dur-4,600ms) * 2) var(--ease-out) 700ms backwards; }
+.event-card-art.is-animated .eca-train { animation: eca-train calc(var(--dur-4,600ms) * 2) var(--ease-out) 700ms backwards; }
+.event-card-art.is-animated .eca-lid { animation: eca-lid calc(var(--dur-4,600ms) * 2) var(--ease-std) 800ms both; transform-origin: 50% 100%; }
+.event-card-art.is-animated .eca-steam { animation: eca-steam calc(var(--dur-4,600ms) * 3) var(--ease-out) 2 both; }
+.event-card-art.is-animated .eca-stamp { transform-box: fill-box; transform-origin: center; animation: eca-stamp var(--dur-3,360ms) var(--ease-spring) 1200ms backwards; }
+.event-card-art.is-animated .eca-phone { animation: eca-phone var(--dur-4,600ms) var(--ease-std) 950ms 2; }
+.event-card-art.is-animated .eca-rain { animation: eca-rain var(--dur-4,600ms) linear 800ms 5; }
+.event-card-art.is-animated .eca-drop { animation: eca-drop calc(var(--dur-4,600ms) * 2) var(--ease-in) 800ms 2; }
+.event-card-art.is-animated .eca-light { animation: eca-light calc(var(--dur-4,600ms) * 2) var(--ease-std) 800ms 2; }
+.event-card-art.is-animated .eca-power { animation: eca-light var(--dur-4,600ms) var(--ease-std) 1000ms 2; }
+.event-card-art.is-animated .eca-boat { animation: eca-boat calc(var(--dur-4,600ms) * 4) var(--ease-std) 800ms both; }
+.event-card-art.is-animated .eca-ripple { animation: eca-light calc(var(--dur-4,600ms) * 2) var(--ease-std) 800ms 2; }
+.event-card-art.is-animated .eca-confetti { animation: eca-confetti calc(var(--dur-4,600ms) * 3) var(--ease-out) 800ms backwards; }
+.event-card-art.is-animated .eca-brake { animation: eca-brake var(--dur-4,600ms) var(--ease-out) 800ms backwards; }
+.event-card-art.is-animated .eca-awning { animation: eca-awning var(--dur-4,600ms) var(--ease-out) 800ms backwards; transform-origin: 50% 0; }
+.event-card-art.is-animated .eca-route { animation: eca-light calc(var(--dur-4,600ms) * 2) var(--ease-std) 800ms 2; }
+@keyframes eca-arrive { from { opacity: 0; transform: translateY(12px) rotate(-3deg); } to { opacity: 1; transform: none; } }
+@keyframes eca-paper { from { opacity: 0; transform: translateY(24px) rotate(5deg); } to { opacity: 1; transform: none; } }
+@keyframes eca-drive { 0% { transform: translateX(-42px); } 72% { transform: translateX(3px) rotate(-2deg); } 100% { transform: none; } }
+@keyframes eca-train { from { transform: translateX(-100px); } to { transform: none; } }
+@keyframes eca-lid { 0%,100% { transform: none; } 35%,70% { transform: translateY(-13px) rotate(-6deg); } }
+@keyframes eca-steam { 0% { opacity: 0; transform: translateY(7px); } 30% { opacity: .85; } 100% { opacity: 0; transform: translateY(-12px); } }
+@keyframes eca-stamp { from { opacity: 0; transform: scale(1.25) rotate(-8deg); } to { opacity: 1; transform: none; } }
+@keyframes eca-phone { 0%,100% { transform: none; } 25% { transform: rotate(-2deg); } 75% { transform: rotate(2deg); } }
+@keyframes eca-rain { from { opacity: .2; transform: translate(4px,-7px); } to { opacity: .7; transform: translate(-4px,9px); } }
+@keyframes eca-drop { 0% { opacity: 0; transform: translateY(-6px); } 40% { opacity: 1; } 100% { opacity: 0; transform: translateY(40px); } }
+@keyframes eca-light { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+@keyframes eca-boat { 0% { transform: translateX(12px); } 50% { transform: translateX(-2px) rotate(-2deg); } 100% { transform: translateX(-12px); } }
+@keyframes eca-confetti { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: none; } }
+@keyframes eca-brake { from { transform: translateX(14px); } to { transform: none; } }
+@keyframes eca-awning { from { transform: rotate(3deg); } to { transform: none; } }
+
+/* A slightly wider illustrated card preserves a useful text measure on the small board. */
+.cr-root.cr-illustrated { position: fixed; inset: 0; z-index: 45; padding: 16px; }
+.cr-root.cr-illustrated::before { border-radius: 0; background: rgba(6, 20, 26, .73); }
+.cr-root.cr-illustrated .cr-hit { width: min(100%, 340px); max-height: calc(100dvh - 32px); }
+.cr-illustrated .cr-card { aspect-ratio: auto; }
+.cr-illustrated .cr-card__inner { height: auto; }
+.cr-illustrated .cr-front { position: relative; min-height: 0; max-height: calc(100dvh - 64px); overflow-y: auto; padding: 0 14px 12px; gap: 6px; }
+.cr-illustrated .cr-front > * { flex-shrink: 0; }
+.cr-illustrated .cr-back { position: absolute; }
+.cr-illustrated .cr-back__art { position: relative; display: block; width: min(45%, 130px); }
+.cr-illustrated .cr-back__art > svg { width: 100%; height: auto; }
+.cr-illustrated .cr-back__name { font-size: clamp(12px, 2.7vmin, 18px); }
+.cr-illustrated .cr-front__deck { margin-bottom: 0; padding-block: 9px; font-size: 11px; }
+.cr-illustrated .cr-front__art { display: block; width: 100%; max-width: 300px; margin: 2px 0; }
+.cr-illustrated .cr-front__who { font-size: 11px; }
+.cr-illustrated .cr-front__title { font-size: clamp(16px, 3.4vmin, 23px); line-height: 1.1; }
+.cr-illustrated .cr-front__text { font-size: clamp(12px, 2.5vmin, 14px); line-height: 1.35; }
+.cr-illustrated .cr-front__tone { margin-top: 3px; font-size: 11px; }
+@media (max-width: 599px) {
+  .cr-root.cr-illustrated .cr-hit { width: min(100%, 310px); }
+  .cr-illustrated .cr-front { gap: 4px; padding: 0 11px 9px; }
+  .cr-illustrated .cr-front__deck { margin-inline: -11px; padding-block: 7px; font-size: 10px; }
+  .cr-illustrated .cr-front__art { max-width: 225px; }
+  .cr-illustrated .cr-front__title { font-size: 16px; }
+  .cr-illustrated .cr-front__text { font-size: 12px; }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .cr-root.cr-illustrated .cr-hit { width: min(100%, 280px); }
+  .cr-illustrated .cr-front { gap: 3px; }
+  .cr-illustrated .cr-front__art { max-width: 130px; }
+  .cr-illustrated .cr-front__title { font-size: 14px; }
+  .cr-illustrated .cr-front__text { font-size: 11px; }
+  .cr-illustrated .cr-front__deck { padding-block: 5px; font-size: 9px; }
+}
+:root[data-motion='reduced'] .event-card-art *, .hg-game[data-rm] .event-card-art *,
+.event-card-art:not(.is-animated) * { animation: none !important; }
+:root[data-motion='reduced'] .cr-illustrated .cr-card__inner { animation: none; transform: none; }
+:root[data-motion='reduced'] .cr-illustrated .cr-back { display: none; }
+.cr-illustrated[data-rm] *, :root[data-motion='reduced'] .cr-illustrated * { animation: none !important; }
+.cr-illustrated[data-rm] .cr-back { display: none; }
+@media (prefers-reduced-motion: reduce) { .event-card-art *, .cr-illustrated * { animation: none !important; } }

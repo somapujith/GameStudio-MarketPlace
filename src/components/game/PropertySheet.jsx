@@ -11,6 +11,7 @@ import '@/styles/deed.css';
 import '@/styles/sheets.css';
 import '@/styles/property.css';
 import { TileIcon } from '@/components/art/index.js';
+import LocationScene from '@/components/art/LocationScene.jsx';
 import { TILES } from '@shared/board.js';
 import { formatINR } from '@shared/format.js';
 import Sheet from './ui/Sheet.jsx';
@@ -212,54 +213,6 @@ function CountUp({ value }) {
   return <span ref={ref} className="hg-count">{formatINR(value)}</span>;
 }
 
-/** A hand-drawn Hyderabad skyline (fort wall + dome, Charminar, glass towers) behind the diorama. Decorative. */
-function Skyline() {
-  return (
-    <svg className="hg-prop-sky" viewBox="0 0 360 100" preserveAspectRatio="xMidYMax slice" aria-hidden="true" focusable="false">
-      <g fill="currentColor">
-        {/* fort wall with battlements running the whole width */}
-        <path d="M0 100V82h360v18z" />
-        <path d="M0 79H360" stroke="currentColor" strokeWidth="5" strokeDasharray="6 4" fill="none" />
-        {/* domes and minarets of a small mosque */}
-        <path d="M14 82a14 14 0 0 1 28 0z" />
-        <rect x="27.3" y="60" width="1.4" height="8" />
-        <circle cx="28" cy="59" r="1.8" />
-        <rect x="46" y="58" width="7" height="24" />
-        <path d="M45 58a4.5 4.5 0 0 1 9 0z" />
-        <rect x="49" y="48" width="1.2" height="6" />
-        {/* Charminar */}
-        <g transform="translate(-92 0)">
-          <path fillRule="evenodd" d="M132 100V54h96v46h-32V80a16 16 0 0 0-32 0v20z" />
-          <rect x="138" y="42" width="84" height="12" />
-          <path d="M166 42a14 14 0 0 1 28 0z" />
-          <rect x="179.3" y="22" width="1.4" height="8" />
-          <circle cx="180" cy="21" r="2" />
-          <rect x="124" y="16" width="8" height="84" />
-          <rect x="228" y="16" width="8" height="84" />
-          <rect x="122" y="40" width="12" height="2.4" />
-          <rect x="226" y="40" width="12" height="2.4" />
-          <rect x="122" y="26" width="12" height="2.4" />
-          <rect x="226" y="26" width="12" height="2.4" />
-          <path d="M122.6 16a5.4 5.4 0 0 1 10.8 0z" />
-          <path d="M226.6 16a5.4 5.4 0 0 1 10.8 0z" />
-          <rect x="127.3" y="6" width="1.4" height="6" />
-          <rect x="231.3" y="6" width="1.4" height="6" />
-          <circle cx="148" cy="42" r="3.4" />
-          <circle cx="212" cy="42" r="3.4" />
-        </g>
-        {/* glass towers */}
-        <rect x="262" y="62" width="14" height="38" />
-        <rect x="279" y="40" width="16" height="60" />
-        <rect x="298" y="54" width="12" height="46" />
-        <rect x="313" y="26" width="18" height="74" />
-        <rect x="321.3" y="10" width="1.4" height="16" />
-        <rect x="334" y="58" width="16" height="42" />
-        <rect x="352" y="70" width="8" height="30" />
-      </g>
-    </svg>
-  );
-}
-
 /** Landing-chance meter: a gradient bar that fills (a quarter chance = full) with a die riding its tip. */
 function OddsMeter({ p }) {
   const m = oddsMeter(p);
@@ -374,12 +327,10 @@ export default function PropertySheet({ session, tileId, onClose }) {
     /* ---- the stage: the business you run here (or would open), under a Hyderabad skyline ---- */
     const stage = (
       <div
-        className={`hg-prop-stage${district ? '' : ' is-special'}${owner ? ' is-owned' : ''}${mortgaged ? ' is-mort' : ''}${fullSet ? ' is-set' : ''}`}
+        className={`hg-prop-stage has-location${district ? '' : ' is-special'}${owner ? ' is-owned' : ''}${mortgaged ? ' is-mort' : ''}${fullSet ? ' is-set' : ''}`}
         style={{ '--band': color, ...(owner ? { '--pc': owner.color } : null) }}
       >
-        <Skyline />
-        <i className="hg-prop-rays" aria-hidden="true" />
-        <i className="hg-prop-glow" aria-hidden="true" />
+        <LocationScene key={`${tile.id}-${stageLevel}`} tile={tile} level={stageLevel} animated={!mortgaged} />
         {district ? (
           <div className="hg-prop-chips">
             <span className="hg-prop-chip">
@@ -394,26 +345,6 @@ export default function PropertySheet({ session, tileId, onClose }) {
             ) : null}
           </div>
         ) : null}
-        <div className="hg-prop-diorama">
-          <i className="hg-prop-ring" aria-hidden="true" />
-          <i className="hg-prop-shadow" aria-hidden="true" />
-          <div className="hg-prop-float">
-            <div className="hg-prop-pop" key={`${tile.id}-${stageLevel}`}>
-              {district ? (
-                BuildingArt
-                  ? <BuildingArt theme={coll?.theme} group={tile.group} level={stageLevel} color={color} size={176} slab={slab} />
-                  : <TileIcon tile={tile} size={120} />
-              ) : CardBack ? (
-                <CardBack deck={tile.deck} size={92} />
-              ) : (
-                <span className="hg-prop-pedestal"><TileIcon tile={tile} size={112} /></span>
-              )}
-            </div>
-          </div>
-        </div>
-        <i className="hg-prop-spark s1" aria-hidden="true" />
-        <i className="hg-prop-spark s2" aria-hidden="true" />
-        <i className="hg-prop-spark s3" aria-hidden="true" />
         {district ? (
           <div className="hg-deed-hero">
             <div className="is-price"><span>Price</span><b><CountUp value={tile.price} /></b></div>

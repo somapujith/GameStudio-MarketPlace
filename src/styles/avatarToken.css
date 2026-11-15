@@ -55,6 +55,8 @@
 .avt__timer.is-warn .avt__timer-run { stroke: #ff5d73; filter: drop-shadow(0 0 4px rgba(255, 93, 115, 0.8)); }
 .avt__timer.is-warn { animation: avt-warn 0.9s var(--ease-std) infinite; }
 @keyframes avt-warn { 50% { transform: scale(1.07); } }
+/* touch screens: no glow filter on the draining arc (it is re-rasterised every 250ms on phone GPUs) */
+@media (hover: none) { .avt__timer-run, .avt__timer.is-warn .avt__timer-run { filter: none; } }
 
 /* ---------- whose turn: two ripples leave the rim, the token hops gently ---------- */
 .avt__ripple {

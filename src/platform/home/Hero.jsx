@@ -10,6 +10,7 @@ import { openTablesById } from '@/components/shell/home/homeModel.js';
 import { categoryLabel, featured, liveList } from './catalog.js';
 import { GameCover } from './GameArt.jsx';
 import { playersLabel, themeVars } from './gameTheme.js';
+import AutoMascot from '@/components/art/AutoMascot.jsx';
 
 const INTERVAL_MS = 7000;
 const SWIPE_PX = 50;
@@ -31,6 +32,7 @@ function Slide({ game, active, index, total, tables = 0 }) {
       inert={!active}
     >
       <GameCover game={game} className="hh2-hero__art" />
+      {game.id === 'hyderabad-tycoon' && <AutoMascot mood="welcome" className="hh2-hero__mascot" animated={active} />}
       <div className="hh2-hero__body">
         <p className="hub-eyebrow hh2-hero__eyebrow">
           <span className="hh2-eyebrow__dot" aria-hidden="true" />

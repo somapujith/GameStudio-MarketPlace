@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { Avatar } from '@/components/art/index.js';
+import AutoMascot from '@/components/art/AutoMascot.jsx';
 import { api, errorMessage, getMyRooms, sendInvite } from '@/lib/api.js';
 import { useAuth, useUserEvents, useUserSocket } from '@/lib/auth.jsx';
 import { paths } from '@/platform/paths.js';
@@ -31,6 +32,7 @@ import {
 } from '@/components/online/friendsModel.js';
 import '@/styles/online.css';
 import '@/styles/x-social.css';
+import '@/styles/hubMoments.css';
 
 const byId = (u) => String(u.id);
 
@@ -73,15 +75,13 @@ function Upsell({ user }) {
   return (
     <div className="ho-page xs-upsell-page">
       <section className="ho-card xs-upsell" aria-labelledby="xs-upsell-title">
-        <div className="xs-upsell__art" aria-hidden="true">
+        <div className="xs-upsell__art hub-moment-friends" aria-hidden="true">
           <span className="xs-upsell__ava xs-upsell__ava--a">
-            <Avatar preset={3} size={56} />
+            <Avatar preset={3} size={44} />
           </span>
-          <span className="xs-upsell__ava xs-upsell__ava--b">
-            <Avatar preset={7} size={64} />
-          </span>
+          <AutoMascot mood="welcome" size={112} />
           <span className="xs-upsell__ava xs-upsell__ava--c">
-            <Avatar preset={10} size={56} />
+            <Avatar preset={10} size={44} />
           </span>
         </div>
         <span className="ho-eyebrow xs-eyebrow">Friends</span>
@@ -729,10 +729,8 @@ function FriendsInner({ user }) {
                 {!data ? (
                   <SkeletonRows />
                 ) : friendsShown.length === 0 ? (
-                  <div className="xs-empty xs-empty--big">
-                    <span className="xs-empty__icon" aria-hidden="true">
-                      <SvgIcon d="M16 19v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 17.5V19M10 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M19 8v6M22 11h-6" size={22} />
-                    </span>
+                  <div className="xs-empty xs-empty--big hub-moment-empty">
+                    <AutoMascot mood="waiting" size={76} />
                     <span>
                       <strong>No friends yet</strong>
                       <span>Share your friend link or add someone by code. Friends show a green dot when they are online, and you can invite them to any game.</span>

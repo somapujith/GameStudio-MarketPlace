@@ -20,6 +20,8 @@ import { LogList } from './LogPanel.jsx';
 import MyProperties from './MyProperties.jsx';
 import { oddsSupported, useOddsPref } from './oddsPref.js';
 import Icon from './ui/Icon.jsx';
+import SceneStage from './SceneStage.jsx';
+import { sceneOf } from './sceneModel.js';
 import { activePlayer, previewRentSafe, tileAccent, useStateLike } from './ui/helpers.js';
 import { TimerBar } from './turn/TurnTimer.jsx';
 import { cosmeticsOf } from './turn/room.js';
@@ -183,7 +185,8 @@ function Tabs({ tab, onTab, badges, ids }) {
 function BuyPane({ session, landed, buying, onOpenTile }) {
   return (
     <div className="cp-buy">
-      <LogList log={session.log || []} variant="center" />
+      <SceneStage session={session} />
+      <div className="city-story-log"><LogList log={session.log || []} variant="center" /></div>
       {landed ? (
         <button
           type="button"
@@ -309,7 +312,7 @@ export default function ControlPanel({ session, onOpenTile, onOpenTrade, actions
 
   return (
     <section className={`cp${docked ? ' cp--docked' : ''}`} aria-label="Game controls">
-      <div className="cp__in" data-kind={spec.kind} data-tab={shownTab} style={{ '--pc': pc }}>
+      <div className="cp__in" data-kind={spec.kind} data-tab={shownTab} data-scene={sceneOf(session)?.kind} style={{ '--pc': pc }}>
         <div className="cp-mat" aria-hidden="true"><MatGlow color={pc} /></div>
 
         {docked ? null : <Tabs tab={tab} onTab={setTab} badges={panelBadges(spec, session)} ids={ids} />}

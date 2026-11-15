@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef } from 'react';
+import { useScrollLock } from '@/lib/useScrollLock.js';
 import '@/styles/online.css';
 
 /** Small accessible confirm modal: Esc / backdrop = cancel, focus starts on Cancel, Tab stays inside. */
@@ -7,6 +8,7 @@ export default function ConfirmDialog({ open, title, body, confirmLabel = 'Confi
   const bodyId = useId();
   const cancelRef = useRef(null);
   const boxRef = useRef(null);
+  useScrollLock(open);
 
   useEffect(() => {
     if (!open) return undefined;

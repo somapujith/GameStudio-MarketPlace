@@ -1,11 +1,12 @@
 import { useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useScrollLock } from '@/lib/useScrollLock.js';
 import { Icon } from './icons.jsx';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
- * Accessible dialog: portal, focus trap, Esc / backdrop to close, scroll lock, focus restore.
+ * Accessible dialog: portal, focus trap, Esc / backdrop to close, scroll lock (iOS-safe), focus restore.
  * Bottom sheet on phones, centred card on desktop.
  */
 export default function Modal({ open, onClose, title, children, actions, tone = 'default', dismissible = true, className = '' }) {
@@ -14,12 +15,11 @@ export default function Modal({ open, onClose, title, children, actions, tone = 
   const last = useRef(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  useScrollLock(open); // iOS-safe, reference counted (src/lib/scrollLock.js)
 
   useEffect(() => {
     if (!open) return undefined;
     last.current = document.activeElement;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     const first = panel.current?.querySelector('[data-autofocus]') || panel.current?.querySelector(FOCUSABLE);
     (first || panel.current)?.focus?.();
 
@@ -48,7 +48,6 @@ export default function Modal({ open, onClose, title, children, actions, tone = 
     document.addEventListener('keydown', onKey, true);
     return () => {
       document.removeEventListener('keydown', onKey, true);
-      document.body.style.overflow = prevOverflow;
       last.current?.focus?.();
     };
   }, [open, dismissible]);

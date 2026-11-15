@@ -40,10 +40,31 @@ export function pushSupported() {
 export async function registerServiceWorker() {
   if (!hasWindow() || !('serviceWorker' in navigator) || isDev()) return null;
   try {
-    return await navigator.serviceWorker.register(SW_URL, { scope: '/', updateViaCache: 'none' });
+    const reg = await navigator.serviceWorker.register(SW_URL, { scope: '/', updateViaCache: 'none' });
+    watchForUpdates(reg);
+    return reg;
   } catch {
     return null;
   }
+}
+
+const UPDATE_EVERY_MS = 30 * 60 * 1000;
+
+/**
+ * An installed iOS / Android app is resumed from the background without a navigation, so the browser never gets the
+ * chance to check for a new sw.js: ask when the app comes back to the foreground (at most every 30 minutes).
+ * The worker has no fetch handler and no caches, so a new version takes over silently (skipWaiting + claim).
+ */
+function watchForUpdates(reg) {
+  if (!reg || typeof document === 'undefined') return;
+  let last = Date.now();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || Date.now() - last < UPDATE_EVERY_MS) return;
+    last = Date.now();
+    reg.update().catch(() => {
+      /* offline: try again next time */
+    });
+  });
 }
 
 async function registration() {

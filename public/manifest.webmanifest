@@ -2,9 +2,9 @@
   "name": "GameHub: play together",
   "short_name": "GameHub",
   "description": "A little marketplace of multiplayer games. Pick a game, grab your friends, and play in seconds.",
-  "id": "/",
-  "start_url": "/?source=pwa",
-  "scope": "/",
+  "id": "./",
+  "start_url": "./?source=pwa",
+  "scope": "./",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
   "orientation": "any",
@@ -15,24 +15,26 @@
   "categories": ["games", "entertainment", "social"],
   "prefer_related_applications": false,
   "icons": [
-    { "src": "/icons/hub-192.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any" },
-    { "src": "/icons/hub-512.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any" },
-    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ],
   "shortcuts": [
     {
       "name": "Play Hyderabad Tycoon",
       "short_name": "Play",
       "description": "Start a table and invite your friends",
-      "url": "/games/hyderabad-tycoon?source=shortcut",
-      "icons": [{ "src": "/icons/hub-192.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+      "url": "./games/hyderabad-tycoon?source=shortcut",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "Friends",
       "short_name": "Friends",
       "description": "See who is online and invite them to a game",
-      "url": "/friends?source=shortcut",
-      "icons": [{ "src": "/icons/hub-192.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+      "url": "./friends?source=shortcut",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
 }

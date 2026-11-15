@@ -291,11 +291,11 @@
 
 /* ---------- lobby: own compact header (no hub chrome around /lobby) ---------- */
 .xl-lobby {
-  padding-top: max(8px, env(safe-area-inset-top, 0px));
+  padding-top: max(8px, var(--safe-top, 0px));
 }
 .xl-head {
   position: sticky;
-  top: max(8px, env(safe-area-inset-top, 0px));
+  top: max(8px, var(--safe-top, 0px));
   z-index: 20;
   padding: 8px 10px 8px 6px;
   gap: 10px;
@@ -310,8 +310,10 @@
   color: var(--hub-text);
   transition: background-color var(--dur-1) var(--ease-std), transform var(--dur-1) var(--ease-std);
 }
-.xl-head__back:hover {
-  background: var(--hub-line);
+@media (hover: hover) {
+  .xl-head__back:hover {
+    background: var(--hub-line);
+  }
 }
 .xl-head__back:active {
   transform: scale(0.94);
@@ -491,9 +493,11 @@
     border-color var(--dur-2) var(--ease-out),
     background-color var(--dur-2) var(--ease-out);
 }
-.xl-piece:hover:not(:disabled) {
-  border-color: var(--hub-line-2);
-  transform: translateY(-1px);
+@media (hover: hover) {
+  .xl-piece:hover:not(:disabled) {
+    border-color: var(--hub-line-2);
+    transform: translateY(-1px);
+  }
 }
 .xl-piece:active:not(:disabled) {
   transform: scale(0.97);
@@ -504,6 +508,7 @@
 }
 .xl-piece.is-mine {
   border-color: var(--ho-accent, var(--hub-brand));
+  background: var(--hub-surface-2);
   background: color-mix(in srgb, var(--ho-accent, var(--hub-brand)) 16%, var(--hub-surface-2));
   box-shadow: 0 0 0 1px var(--ho-accent, var(--hub-brand)) inset;
 }
@@ -611,11 +616,13 @@
   height: 48px;
   border-radius: 14px;
   color: var(--hub-warn);
+  background: rgba(var(--hub-warn-rgb), 0.16);
   background: color-mix(in srgb, var(--hub-warn) 16%, transparent);
 }
 .xl-blocked--missing .xl-blocked__icon,
 .xl-blocked--finished .xl-blocked__icon {
   color: var(--hub-bad);
+  background: rgba(var(--hub-bad-rgb), 0.14);
   background: color-mix(in srgb, var(--hub-bad) 14%, transparent);
 }
 .xl-blocked__text {
@@ -708,7 +715,7 @@
 /* ---------- lobby page gutter (the lobby runs outside the hub shell, so it brings its own side margin) ---------- */
 .xl-lobby,
 .ho-page.xl-page {
-  padding-inline: max(var(--hub-gutter), env(safe-area-inset-left, 0px)) max(var(--hub-gutter), env(safe-area-inset-right, 0px));
+  padding-inline: var(--hub-pad-l) var(--hub-pad-r);
 }
 
 /* ---------- wide lobby: balanced columns. Left = share card + invite friends, right = seats, piece, mode, start.

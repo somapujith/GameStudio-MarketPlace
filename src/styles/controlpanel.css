@@ -144,7 +144,7 @@
   -webkit-tap-highlight-color: transparent;
   transition: color var(--dur-1) var(--ease-std);
 }
-.cp-tab:hover { color: var(--cp-ink); }
+@media (hover: hover) { .cp-tab:hover { color: var(--cp-ink); } }
 .cp-tab.is-on { color: #fff; }
 .cp-tab.is-on .hg-icon { color: var(--gold); }
 .cp-tab:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; }
@@ -362,7 +362,7 @@
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
-.cp-landed:hover { background: rgba(255, 255, 255, 0.09); }
+@media (hover: hover) { .cp-landed:hover { background: rgba(255, 255, 255, 0.09); } }
 .cp-landed:active { transform: scale(0.985); }
 .cp-landed:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
 .cp-landed__chip { flex: none; align-self: stretch; width: 0.5em; border-radius: 99px; background: var(--tc); }
@@ -468,7 +468,7 @@
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
-.cp-btn:hover:not(:disabled) { filter: brightness(1.05); }
+@media (hover: hover) { .cp-btn:hover:not(:disabled) { filter: brightness(1.05); } }
 .cp-btn:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 var(--cp-line); }
 .cp-btn:focus-visible { outline: 3px solid #f08a00; outline-offset: 2px; }
 .cp-btn:disabled { cursor: default; box-shadow: none; transform: translateY(2px); }
@@ -520,18 +520,18 @@
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
   transition: transform var(--dur-1) var(--ease-std), background var(--dur-1) var(--ease-std), filter var(--dur-1) var(--ease-std), box-shadow var(--dur-1) var(--ease-std);
 }
-.cp .cp-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.14); filter: none; transform: translateY(-1px); }
+@media (hover: hover) { .cp .cp-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.14); filter: none; transform: translateY(-1px); } }
 .cp .cp-btn:active:not(:disabled) { transform: translateY(1px) scale(0.99); }
 .cp .cp-btn:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
 .cp .cp-btn:disabled { box-shadow: none; transform: none; opacity: 0.5; }
 .cp .cp-btn--sm { border-radius: 10px; box-shadow: none; }
 .cp .cp-btn--lg { border-radius: 16px; }
 .cp .cp-btn--gold { border-color: #ffe7b0; background: linear-gradient(180deg, #ffdc82, #ffbd4d); color: #2b1a00; box-shadow: 0 3px 0 #a8670e, 0 8px 20px rgba(255, 170, 60, 0.2); }
-.cp .cp-btn--gold:hover:not(:disabled) { background: linear-gradient(180deg, #ffe39a, #ffc561); }
+@media (hover: hover) { .cp .cp-btn--gold:hover:not(:disabled) { background: linear-gradient(180deg, #ffe39a, #ffc561); } }
 .cp .cp-btn--green { border-color: rgba(120, 235, 170, 0.45); background: linear-gradient(180deg, #1f9a5d, #178049); color: #fff; box-shadow: 0 3px 0 #0a4627, 0 8px 20px rgba(61, 220, 151, 0.14); }
-.cp .cp-btn--green:hover:not(:disabled) { background: linear-gradient(180deg, #25a666, #1b8a52); }
+@media (hover: hover) { .cp .cp-btn--green:hover:not(:disabled) { background: linear-gradient(180deg, #25a666, #1b8a52); } }
 .cp .cp-btn--blue { border-color: rgba(130, 205, 245, 0.45); background: linear-gradient(180deg, #2b84b8, #1f6f9e); color: #fff; box-shadow: 0 3px 0 #11405c; }
-.cp .cp-btn--blue:hover:not(:disabled) { background: linear-gradient(180deg, #3592c8, #2679aa); }
+@media (hover: hover) { .cp .cp-btn--blue:hover:not(:disabled) { background: linear-gradient(180deg, #3592c8, #2679aa); } }
 .cp .cp-btn--red { border-color: rgba(255, 150, 165, 0.45); background: linear-gradient(180deg, #d9304a, #c81d34); color: #fff; box-shadow: 0 3px 0 #70101d; }
 .cp .cp-btn--dark, .cp .cp-btn--paper { background: rgba(255, 255, 255, 0.09); color: var(--cp-ink); }
 .cp .cp-btn--gold:active:not(:disabled), .cp .cp-btn--green:active:not(:disabled), .cp .cp-btn--blue:active:not(:disabled), .cp .cp-btn--red:active:not(:disabled) { box-shadow: 0 1px 0 #00000066; transform: translateY(2px); }
@@ -540,17 +540,17 @@
 .cp .cp-btn--gold .cp-btn__amount { background: rgba(43, 26, 0, 0.14); }
 .cp .cp-btn--gold .cp-btn__sub { opacity: 0.8; }
 .cp .cp-trade__go { border-color: rgba(120, 235, 215, 0.45); background: linear-gradient(180deg, #5fe0cc, #36bfa9); color: #052b27; box-shadow: 0 3px 0 #17695c; }
-.cp .cp-trade__go:hover:not(:disabled) { background: linear-gradient(180deg, #74e8d6, #44c9b3); }
+@media (hover: hover) { .cp .cp-trade__go:hover:not(:disabled) { background: linear-gradient(180deg, #74e8d6, #44c9b3); } }
 .cp .cp-trade__go:disabled { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.16); color: var(--cp-ink); box-shadow: none; }
 /* waiting for someone else: a quiet slot that keeps the row from jumping */
 .cp .cp-primary.is-wait:disabled { opacity: 1; }
 .cp .cp-primary.is-wait { min-height: max(40px, 8cqmin); border: 1px dashed rgba(255, 255, 255, 0.24); background: rgba(255, 255, 255, 0.03); color: var(--cp-ink-2); box-shadow: none; font-size: 1em; font-weight: 700; }
 .cp .cp-primary.is-wait .cp-btn__mini { padding: 1.5px; }
 .cp .cp-wide { border-color: rgba(76, 201, 240, 0.4); background: rgba(76, 201, 240, 0.1); color: var(--cp-ink); }
-.cp .cp-wide:hover:not(:disabled) { background: rgba(76, 201, 240, 0.18); }
+@media (hover: hover) { .cp .cp-wide:hover:not(:disabled) { background: rgba(76, 201, 240, 0.18); } }
 .cp .cp-wide .hg-icon { color: var(--sky); }
 .cp .cp-wide.is-skip { border-color: rgba(255, 202, 122, 0.45); background: rgba(255, 202, 122, 0.1); }
-.cp .cp-wide.is-skip:hover:not(:disabled) { background: rgba(255, 202, 122, 0.18); }
+@media (hover: hover) { .cp .cp-wide.is-skip:hover:not(:disabled) { background: rgba(255, 202, 122, 0.18); } }
 .cp .cp-wide.is-skip .hg-icon { color: var(--gold); }
 .cp .cp-hint .hg-icon { color: var(--gold-2); }
 .cp .cp-hint.is-traffic { border: 1px solid rgba(255, 177, 0, 0.5); background: rgba(255, 177, 0, 0.12); color: #ffe4a6; }
@@ -570,7 +570,7 @@
   cursor: pointer;
   transition: background var(--dur-1) var(--ease-std), color var(--dur-1) var(--ease-std);
 }
-.cp-odds:hover { background: rgba(255, 255, 255, 0.13); color: var(--cp-ink); }
+@media (hover: hover) { .cp-odds:hover { background: rgba(255, 255, 255, 0.13); color: var(--cp-ink); } }
 .cp-odds.is-on { border-color: #ffe7b0; background: var(--cp-gold); color: #2b1a00; }
 .cp-odds:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
 /* looks 22px tall, hits 44 x 44 */

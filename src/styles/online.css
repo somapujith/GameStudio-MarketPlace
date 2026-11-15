@@ -71,6 +71,7 @@
   font-weight: 800;
   letter-spacing: 0.14em;
   text-transform: uppercase;
+  color: var(--hub-text);
   color: color-mix(in srgb, var(--ho-accent, var(--hub-brand)) var(--hub-ink-mix), var(--hub-text));
 }
 .ho-head {
@@ -94,6 +95,7 @@
 }
 .ho-count {
   background: var(--hub-brand-soft);
+  color: var(--hub-text);
   color: color-mix(in srgb, var(--ho-accent, var(--hub-brand)) var(--hub-ink-mix), var(--hub-text));
   border-color: rgba(var(--hub-brand-rgb), 0.35);
 }
@@ -237,9 +239,11 @@
   cursor: pointer;
   transition: background var(--dur-1) var(--ease-std), color var(--dur-1) var(--ease-std), transform var(--dur-1) var(--ease-out);
 }
-.ho-iconbtn:hover:not(:disabled) {
-  background: rgba(var(--hub-bad-rgb), 0.16);
-  color: var(--hub-bad-ink);
+@media (hover: hover) {
+  .ho-iconbtn:hover:not(:disabled) {
+    background: rgba(var(--hub-bad-rgb), 0.16);
+    color: var(--hub-bad-ink);
+  }
 }
 .ho-iconbtn:active:not(:disabled) {
   transform: scale(0.92);
@@ -391,9 +395,11 @@
   cursor: pointer;
   transition: background var(--dur-2) var(--ease-std), color var(--dur-2) var(--ease-std), transform var(--dur-1) var(--ease-out);
 }
-.ho-seg__opt:hover:not(.is-on):not(:disabled) {
-  color: var(--hub-text);
-  background: rgba(var(--hub-tint), 0.07);
+@media (hover: hover) {
+  .ho-seg__opt:hover:not(.is-on):not(:disabled) {
+    color: var(--hub-text);
+    background: rgba(var(--hub-tint), 0.07);
+  }
 }
 .ho-seg__opt:active:not(:disabled) {
   transform: scale(0.97);
@@ -425,8 +431,10 @@
   cursor: pointer;
   transition: background var(--dur-1) var(--ease-std), transform var(--dur-1) var(--ease-out);
 }
-.ho-stepper__btn:hover:not(:disabled) {
-  background: var(--hub-brand-soft);
+@media (hover: hover) {
+  .ho-stepper__btn:hover:not(:disabled) {
+    background: var(--hub-brand-soft);
+  }
 }
 .ho-stepper__btn:active:not(:disabled) {
   transform: scale(0.92);
@@ -458,8 +466,10 @@
   font: inherit;
   cursor: pointer;
 }
-.ho-switch:hover:not(:disabled) {
-  background: rgba(var(--hub-tint), 0.08);
+@media (hover: hover) {
+  .ho-switch:hover:not(:disabled) {
+    background: rgba(var(--hub-tint), 0.08);
+  }
 }
 .ho-switch:disabled {
   opacity: 0.5;
@@ -651,7 +661,7 @@
 .ho-linkrow__input {
   flex: 1;
   min-width: 0;
-  font-size: 0.85rem;
+  font-size: 1rem; /* 16px: iOS zooms the page when a smaller field takes focus (read-only ones too) */
   color: var(--hub-dim);
 }
 .ho-qr {
@@ -991,8 +1001,10 @@
   cursor: pointer;
   transition: border-color var(--dur-1), background var(--dur-1), transform var(--dur-1);
 }
-.ho-avatar-opt:hover {
-  background: rgba(var(--hub-tint), 0.1);
+@media (hover: hover) {
+  .ho-avatar-opt:hover {
+    background: rgba(var(--hub-tint), 0.1);
+  }
 }
 .ho-avatar-opt.is-on {
   border-color: var(--hub-brand);
@@ -1215,14 +1227,14 @@
 
 .ho-notices {
   position: fixed;
-  top: calc(var(--safe-top) + 64px);
+  top: calc(var(--safe-top) + var(--topbar-h, 60px) + 4px);
   left: 50%;
   transform: translateX(-50%);
   z-index: var(--z-toast);
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: min(calc(100vw - 24px), 520px);
+  width: min(calc(100vw - 24px - var(--safe-left, 0px) - var(--safe-right, 0px)), 520px);
   pointer-events: none;
 }
 .ho-notice {
@@ -1436,6 +1448,9 @@
   border-radius: var(--hub-r-l);
   border: 1px solid var(--hub-line);
   background:
+    radial-gradient(420px 140px at 0% 0%, transparent, transparent 70%),
+    linear-gradient(135deg, var(--ho-game-bg) var(--ho-gamebg-mix, 88%), var(--hub-surface));
+  background:
     radial-gradient(420px 140px at 0% 0%, color-mix(in srgb, var(--ho-accent) 28%, transparent), transparent 70%),
     linear-gradient(135deg, color-mix(in srgb, var(--ho-game-bg) var(--ho-gamebg-mix, 88%), var(--hub-bg)), var(--hub-surface));
   box-shadow: var(--hub-shadow);
@@ -1473,10 +1488,13 @@
 }
 .ho-lobby .ho-eyebrow,
 .ho-lobby .ho-count {
+  color: var(--hub-text);
   color: color-mix(in srgb, var(--ho-accent, var(--hub-brand)) var(--hub-ink-mix), var(--hub-text));
 }
 .ho-lobby .ho-count {
+  border-color: var(--hub-line-2);
   border-color: color-mix(in srgb, var(--ho-accent) 40%, transparent);
+  background: transparent;
   background: color-mix(in srgb, var(--ho-accent) 14%, transparent);
 }
 /* game context: primary = the game accent, exactly like .hub-btn--accent; text picks black or white from the accent */
@@ -1488,21 +1506,30 @@
   background: var(--b-bg);
   color: #0f1220;
   color: lch(from var(--ho-accent, var(--hub-brand)) calc((62 - l) * 100) 0 0);
+  box-shadow: 0 8px 24px transparent, inset 0 1px 0 rgba(255, 255, 255, 0.28);
   box-shadow: 0 8px 24px color-mix(in srgb, var(--ho-accent, var(--hub-brand)) 35%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.28);
 }
 .ho-lobby .ho-chip.is-on {
   border-color: var(--ho-accent);
+  background: transparent;
   background: color-mix(in srgb, var(--ho-accent) 18%, transparent);
+  color: var(--hub-text);
   color: color-mix(in srgb, var(--ho-accent, var(--hub-brand)) var(--hub-ink-mix), var(--hub-text));
 }
 .ho-lobby .ho-stepper__btn {
+  color: var(--hub-text);
   color: color-mix(in srgb, var(--ho-accent, var(--hub-brand)) var(--hub-ink-mix), var(--hub-text));
 }
-.ho-lobby .ho-stepper__btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ho-accent) 16%, transparent);
+@media (hover: hover) {
+  .ho-lobby .ho-stepper__btn:hover:not(:disabled) {
+    background: transparent;
+    background: color-mix(in srgb, var(--ho-accent) 16%, transparent);
+  }
 }
 .ho-lobby .ho-summary {
+  background: transparent;
   background: color-mix(in srgb, var(--ho-accent) 9%, transparent);
+  border-color: var(--hub-line-2);
   border-color: color-mix(in srgb, var(--ho-accent) 40%, transparent);
 }
 .ho-lobby .ho-bigcode {
@@ -1512,6 +1539,7 @@
 }
 .ho-lobby .ho-linkbtn,
 .ho-lobby .ho-empty a {
+  color: var(--hub-text);
   color: color-mix(in srgb, var(--ho-accent, var(--hub-brand)) var(--hub-ink-mix), var(--hub-text));
 }
 .ho-field .ho-field__row {
@@ -1572,9 +1600,11 @@
   cursor: pointer;
   transition: border-color var(--dur-1), background var(--dur-1), transform var(--dur-1);
 }
-.ho-gamepick:hover:not(:disabled) {
-  background: rgba(var(--hub-tint), 0.09);
-  border-color: var(--hub-line-2);
+@media (hover: hover) {
+  .ho-gamepick:hover:not(:disabled) {
+    background: rgba(var(--hub-tint), 0.09);
+    border-color: var(--hub-line-2);
+  }
 }
 .ho-gamepick:active:not(:disabled) {
   transform: scale(0.99);
@@ -1730,6 +1760,7 @@
 /* ---------- login hero (hub) ---------- */
 .ho-hero--hub {
   min-height: 190px;
+  background: linear-gradient(145deg, var(--hub-night), var(--hub-bg-2) 62%, var(--hub-bg));
   background: linear-gradient(145deg, color-mix(in srgb, var(--hub-brand) 22%, var(--hub-night)), var(--hub-bg-2) 62%, var(--hub-bg));
 }
 .ho-hero__glow {
@@ -1795,7 +1826,7 @@
 /* the Start button stays reachable on phones / portrait tablets instead of sitting below the fold */
 .ho-startcard {
   position: sticky;
-  bottom: calc(var(--tabbar-h, 0px) + env(safe-area-inset-bottom, 0px) + 8px);
+  bottom: calc(var(--tabbar-h, 0px) + var(--safe-bottom, 0px) + 8px);
   z-index: 5;
 }
 
@@ -1864,6 +1895,9 @@
 .ho-share {
   position: relative;
   overflow: hidden;
+  background:
+    radial-gradient(360px 180px at 100% 0%, transparent, transparent 70%),
+    var(--ho-card-bg);
   background:
     radial-gradient(360px 180px at 100% 0%, color-mix(in srgb, var(--ho-accent, var(--hub-brand)) 14%, transparent), transparent 70%),
     var(--ho-card-bg);
@@ -1972,20 +2006,30 @@
 .ho-seatgrid {
   gap: 10px;
 }
+/* 2 or 4 seats on a phone: two columns (2 x 2) instead of a lone seat on a second row */
+@media (max-width: 519.98px) {
+  .ho-seatgrid[data-seats='2'],
+  .ho-seatgrid[data-seats='4'] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 .ho-seat {
   min-height: 132px;
   padding: 14px 6px 10px;
   gap: 6px;
+  background: linear-gradient(180deg, transparent, rgba(var(--hub-tint), 0.03));
   background: linear-gradient(180deg, color-mix(in srgb, var(--ho-seat, rgb(var(--hub-tint))) 9%, transparent), rgba(var(--hub-tint), 0.03));
   animation: ho-seat-in var(--dur-3) var(--ease-spring) both;
 }
 .ho-seat.is-me {
+  box-shadow: 0 0 0 1px transparent, 0 8px 22px rgba(var(--hub-shadow-rgb), 0.3);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--ho-seat, var(--hub-brand)) 55%, transparent), 0 8px 22px rgba(var(--hub-shadow-rgb), 0.3);
 }
 .ho-seat__avatar {
   width: 50px;
   height: 50px;
   border-radius: 50%;
+  box-shadow: 0 0 0 3px var(--ho-seat, var(--hub-line-2));
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--ho-seat, var(--hub-line-2)) 70%, transparent);
 }
 .ho-seat__avatar > svg,
@@ -2050,6 +2094,7 @@
 /* ---------- settings: the end-cash limit ---------- */
 .ho-settings .ho-field__label {
   margin-bottom: 10px;
+  color: var(--hub-text);
   color: color-mix(in srgb, var(--ho-accent, var(--hub-brand)) var(--hub-ink-mix), var(--hub-text));
   font-size: 0.74rem;
   letter-spacing: 0.14em;
@@ -2066,6 +2111,7 @@
   font-variant-numeric: tabular-nums;
 }
 .ho-settings .ho-chip.is-on {
+  box-shadow: 0 0 0 1px var(--ho-accent, var(--hub-brand)) inset, 0 6px 18px transparent;
   box-shadow: 0 0 0 1px var(--ho-accent, var(--hub-brand)) inset, 0 6px 18px color-mix(in srgb, var(--ho-accent, var(--hub-brand)) 22%, transparent);
 }
 .ho-settings .ho-field__row {
@@ -2083,9 +2129,11 @@
   gap: 10px;
   margin-top: var(--space-4);
   padding: 12px 14px;
+  border: 1px solid var(--hub-line-2);
   border: 1px solid color-mix(in srgb, var(--ho-accent, var(--hub-brand)) 34%, transparent);
   border-left: 4px solid var(--ho-accent, var(--hub-brand));
   border-radius: var(--hub-r-m);
+  background: transparent;
   background: color-mix(in srgb, var(--ho-accent, var(--hub-brand)) 9%, transparent);
   font-weight: 700;
   color: var(--hub-text);
@@ -2106,7 +2154,7 @@
 
 /* ---------- start card ---------- */
 .ho-startcard {
-  bottom: calc(var(--tabbar-h, 0px) + env(safe-area-inset-bottom, 0px) + 10px);
+  bottom: calc(var(--tabbar-h, 0px) + var(--safe-bottom, 0px) + 10px);
   padding: 12px;
   border-radius: var(--hub-r-l);
   background: var(--hub-glass);
@@ -2120,7 +2168,9 @@
   font-size: 0.84rem;
 }
 .ho-startcard.is-ready {
+  border-color: var(--hub-line-2);
   border-color: color-mix(in srgb, var(--ho-accent, var(--hub-brand)) 55%, transparent);
+  box-shadow: 0 -6px 28px rgba(var(--hub-shadow-rgb), 0.35), 0 0 0 1px transparent, 0 10px 34px transparent;
   box-shadow: 0 -6px 28px rgba(var(--hub-shadow-rgb), 0.35), 0 0 0 1px color-mix(in srgb, var(--ho-accent, var(--hub-brand)) 30%, transparent), 0 10px 34px color-mix(in srgb, var(--ho-accent, var(--hub-brand)) 18%, transparent);
 }
 .ho-startcard .ho-btn--lg {
@@ -2140,6 +2190,7 @@
     box-shadow: var(--hub-shadow-s);
   }
   .ho-startcard.is-ready {
+    box-shadow: 0 0 0 1px transparent, 0 10px 34px transparent;
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--ho-accent, var(--hub-brand)) 30%, transparent), 0 10px 34px color-mix(in srgb, var(--ho-accent, var(--hub-brand)) 18%, transparent);
   }
 }
@@ -2386,6 +2437,7 @@
   --ho-gamebg-mix: 12%;
 }
 :root[data-theme='light'] .ho-lobby .ho-bigcode {
+  background: linear-gradient(180deg, var(--ho-accent), var(--hub-text));
   background: linear-gradient(180deg, color-mix(in srgb, var(--ho-accent) 62%, var(--hub-text)), color-mix(in srgb, var(--ho-accent-2) 48%, var(--hub-text)));
   -webkit-background-clip: text;
   background-clip: text;

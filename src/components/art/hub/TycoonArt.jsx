@@ -9,6 +9,7 @@ import { CharminarFront } from '../marks.jsx';
 import { PieceGlyph } from '../PieceArt.jsx';
 import { MiniAuto, Car } from '../HustleBuildings.jsx';
 import { CoverSvg, IconSvg, Coin, Die, Sparkle, Stars, skyline, rng, f, useUid, COVER_CSS, RUPEE, HUB } from './kit.jsx';
+import '@/styles/tycoonCoverMotion.css';
 
 const STONE = '#f1e2c0';
 const STONE_D = '#d8c49a';
@@ -203,7 +204,7 @@ function Collage({ id }) {
       <Pad x={24} y={92} w={40} d={40} c="#1f7fb0" r={10} />
       <Pad x={26} y={94} w={36} d={36} c="#3ec1e3" r={9} />
       <Face p="T" at={0}>
-        <path d="M32 104h8M44 116h10M34 124h7" stroke="#d8f6ff" strokeWidth="1.2" strokeLinecap="round" opacity=".8" />
+        <g className="tc-lake"><path d="M32 104h8M44 116h10M34 124h7" stroke="#d8f6ff" strokeWidth="1.2" strokeLinecap="round" opacity=".8" /></g>
       </Face>
       <Cyl x={44} y={110} r={2.4} h={2} c="#e8e0ff" />
       <Cyl x={44} y={110} z={2} r={1.2} h={9} c="#f4f0ff" />
@@ -221,14 +222,17 @@ function Collage({ id }) {
       {/* metro viaduct along the front, with a train */}
       {[76, 96, 116, 134].map((x) => <Box key={x} x={x - 1.6} y={116} w={3.2} d={3.2} h={13} c="#e8e0ff" />)}
       <Box x={66} y={114} z={13} w={74} d={7} h={2.4} t={{ top: '#efeaff', left: '#d6cdf0', right: '#a99fd6' }} />
-      <Box x={84} y={115.2} z={15.4} w={34} d={4.6} h={5} t={{ top: '#ffffff', left: '#f4f0ff', right: '#cfc7ea' }} />
-      <Face p="L" at={119.8}>
-        <rect x={84} y={16.4} width={34} height={1} fill="#ff5d73" />
-        {[86, 91, 96, 101, 106, 111].map((x) => <rect key={x} x={x} y={18} width={3} height={1.8} fill="#2e2475" />)}
-      </Face>
-      <Box x={118} y={115.6} z={15.4} w={3} d={3.8} h={4} t={{ top: '#ffffff', left: '#f4f0ff', right: '#cfc7ea' }} />
+      {/* Only this outer group moves: child face matrices retain their world positions. */}
+      <g className="tc-train">
+        <Box x={84} y={115.2} z={15.4} w={34} d={4.6} h={5} t={{ top: '#ffffff', left: '#f4f0ff', right: '#cfc7ea' }} />
+        <Face p="L" at={119.8}>
+          <rect x={84} y={16.4} width={34} height={1} fill="#ff5d73" />
+          {[86, 91, 96, 101, 106, 111].map((x) => <rect key={x} x={x} y={18} width={3} height={1.8} fill="#2e2475" />)}
+        </Face>
+        <Box x={118} y={115.6} z={15.4} w={3} d={3.8} h={4} t={{ top: '#ffffff', left: '#f4f0ff', right: '#cfc7ea' }} />
+      </g>
       {/* road traffic */}
-      <MiniAuto x={70} y={128} c="#ffd23f" />
+      <g className="tc-auto"><MiniAuto x={70} y={128} c="#ffd23f" /></g>
       <Car x={104} y={128} c="#ff5d73" />
     </g>
   );
@@ -311,7 +315,7 @@ function TycoonCoverBase({ className, title, animated = true }) {
     streaks.push(<rect key={i} x={x} y={HZ + 14 + (i % 4) * 3} width="3" height={18 + (i % 5) * 7} rx="1.5" fill={i % 2 ? '#ffd36e' : '#8fe3ff'} opacity=".14" />);
   }
   return (
-    <CoverSvg className={className} title={title} css={animated ? COVER_CSS : COVER_CSS.replace(/animation:[^;}]+/g, 'animation:none')}>
+    <CoverSvg className={`tycoon-cover${animated ? ' is-animated' : ''}${className ? ` ${className}` : ''}`} title={title} css={animated ? COVER_CSS : COVER_CSS.replace(/animation:[^;}]+/g, 'animation:none')}>
       <defs>
         <linearGradient id={u + 'sky'} gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2={HZ + 10}>
           <stop offset="0" stopColor="#0c0724" />

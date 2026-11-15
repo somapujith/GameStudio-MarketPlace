@@ -3,6 +3,7 @@
 // the player's colour tints the base and the body of the object. No filters (dozens of these can be on a board).
 import { memo, useId } from 'react';
 import { lighten, darken, mix } from './palette.js';
+import '@/styles/characterMotion.css';
 
 const OUT = '#1b1340';
 const OW = 1.3; // outline width in the 40-unit box
@@ -45,7 +46,7 @@ function Pearl({ c, uid }) {
       <path d="M12.4 24.4Q13.4 28.4 20 28.4Q26.6 28.4 27.6 24.4Z" {...o(lighten(c, 0.12))} />
       <circle cx="20" cy="16.6" r="9" fill={`url(#${g})`} stroke={OUT} strokeWidth={OW} />
       <path d="M13.6 19.6Q15.6 24 20.4 24.4" fill="none" stroke={mix(c, '#8f86c7', 0.5)} strokeWidth="1.2" strokeLinecap="round" opacity=".55" />
-      <ellipse cx="16.8" cy="12.8" rx="2.6" ry="1.9" fill="#fff" transform="rotate(-30 16.8 12.8)" />
+      <ellipse className="piece-part piece-gleam" cx="16.8" cy="12.8" rx="2.6" ry="1.9" fill="#fff" transform="rotate(-30 16.8 12.8)" />
       <circle cx="23.4" cy="20.6" r=".9" fill="#fff" opacity=".8" />
       {/* prongs */}
       <path d="M13.2 24.6L12.4 21.6M26.8 24.6L27.6 21.6" stroke={OUT} strokeWidth="1" strokeLinecap="round" />
@@ -74,10 +75,16 @@ function Auto({ c, base }) {
       <circle cx="8.6" cy="21.6" r="1.5" fill="#ffe27a" stroke={OUT} strokeWidth=".8" />
       <path d="M6 28.4H11" stroke={OUT} strokeWidth="1.6" strokeLinecap="round" />
       {/* wheels */}
-      <circle cx="11.6" cy="29.4" r="3.4" {...o('#2b2260')} />
-      <circle cx="11.6" cy="29.4" r="1.2" fill="#c9c3e6" />
-      <circle cx="29" cy="29.4" r="3.4" {...o('#2b2260')} />
-      <circle cx="29" cy="29.4" r="1.2" fill="#c9c3e6" />
+      <g className="piece-part piece-wheel">
+        <circle cx="11.6" cy="29.4" r="3.4" {...o('#2b2260')} />
+        <circle cx="11.6" cy="29.4" r="1.2" fill="#c9c3e6" />
+        <path d="m10 27.8 3.2 3.2m0-3.2L10 31" stroke="#c9c3e6" strokeWidth=".7" />
+      </g>
+      <g className="piece-part piece-wheel">
+        <circle cx="29" cy="29.4" r="3.4" {...o('#2b2260')} />
+        <circle cx="29" cy="29.4" r="1.2" fill="#c9c3e6" />
+        <path d="m27.4 27.8 3.2 3.2m0-3.2L27.4 31" stroke="#c9c3e6" strokeWidth=".7" />
+      </g>
     </g>
   );
 }
@@ -86,7 +93,7 @@ function Handi({ c }) {
   const brass = '#e0a64a';
   return (
     <g>
-      <g fill="none" stroke="#fff" strokeWidth="1.3" strokeLinecap="round" opacity=".85">
+      <g className="piece-part piece-steam" fill="none" stroke="#fff" strokeWidth="1.3" strokeLinecap="round" opacity=".85">
         <path d="M16.4 7.4C14.8 5.6 17.6 4.4 16 2.4" />
         <path d="M23.8 7.4C22.2 5.6 25 4.4 23.4 2.4" />
       </g>
@@ -101,9 +108,11 @@ function Handi({ c }) {
       {/* rim + dough seal + lid */}
       <ellipse cx="20" cy="15.2" rx="8.6" ry="2.6" {...o(brass)} />
       <path d="M11.8 14.6Q20 17.2 28.2 14.6" fill="none" stroke="#fff1cf" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M12.6 14.2Q13 9.2 20 9.2Q27 9.2 27.4 14.2Q20 16 12.6 14.2Z" {...o(lighten(brass, 0.2))} />
-      <path d="M15 12.2Q16.4 10.6 19 10.4" fill="none" stroke="#fff6d6" strokeWidth="1" strokeLinecap="round" />
-      <circle cx="20" cy="8.6" r="1.7" {...o(brass, { strokeWidth: 1 })} />
+      <g className="piece-part piece-lid">
+        <path d="M12.6 14.2Q13 9.2 20 9.2Q27 9.2 27.4 14.2Q20 16 12.6 14.2Z" {...o(lighten(brass, 0.2))} />
+        <path d="M15 12.2Q16.4 10.6 19 10.4" fill="none" stroke="#fff6d6" strokeWidth="1" strokeLinecap="round" />
+        <circle cx="20" cy="8.6" r="1.7" {...o(brass, { strokeWidth: 1 })} />
+      </g>
     </g>
   );
 }
@@ -111,7 +120,7 @@ function Handi({ c }) {
 function Chai({ c }) {
   return (
     <g>
-      <g fill="none" stroke="#fff" strokeWidth="1.3" strokeLinecap="round" opacity=".85">
+      <g className="piece-part piece-steam" fill="none" stroke="#fff" strokeWidth="1.3" strokeLinecap="round" opacity=".85">
         <path d="M17.4 6.6C15.8 4.8 18.6 3.6 17 1.6" />
         <path d="M23.2 6.8C21.6 5 24.4 3.8 22.8 1.8" />
       </g>
@@ -133,7 +142,7 @@ function Chai({ c }) {
 function Bat({ c }) {
   return (
     <g>
-      <g transform="rotate(-20 19 22)">
+      <g className="piece-part piece-bat"><g transform="rotate(-20 19 22)">
         {/* handle + grip */}
         <rect x="17.6" y="2.4" width="3.4" height="11" rx="1.6" {...o(c)} />
         <path d="M17.8 5H20.8M17.8 7.6H20.8M17.8 10.2H20.8" stroke={darken(c, 0.3)} strokeWidth=".9" />
@@ -142,7 +151,7 @@ function Bat({ c }) {
         <path d="M20.6 13V31.2" stroke="#d9a75b" strokeWidth="2" opacity=".7" />
         <rect x="15.8" y="17.6" width="7" height="2.6" fill={c} opacity=".95" />
         <path d="M16.8 14.6V28.6" stroke="#fff7df" strokeWidth="1" strokeLinecap="round" />
-      </g>
+      </g></g>
       {/* ball */}
       <circle cx="28.4" cy="27" r="3.8" {...o('#d62839')} />
       <path d="M26.2 24.2Q28.6 27 26.6 30M30.4 24.2Q28.4 27 30.6 29.8" fill="none" stroke="#fff" strokeWidth=".7" strokeDasharray="1 .8" />
@@ -154,7 +163,7 @@ function Bat({ c }) {
 function Camera({ c }) {
   const dark = '#2b2260';
   const reel = (cx, cy, r) => (
-    <g>
+    <g className="piece-part piece-reel">
       <circle cx={cx} cy={cy} r={r} {...o(dark)} />
       <circle cx={cx} cy={cy} r={r * 0.32} fill="#c9c3e6" />
       {[0, 120, 240].map((a) => (

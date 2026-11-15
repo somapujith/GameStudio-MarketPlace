@@ -71,6 +71,24 @@ export function isIosSafari(ua = typeof navigator !== 'undefined' ? navigator.us
   return ios && /safari/i.test(s) && !/crios|fxios|edgios|opios|gsa\//i.test(s);
 }
 
+/** iPhone / iPad / iPod (iPadOS reports a Mac UA, told apart by its touch points). */
+export function isIos(ua = typeof navigator !== 'undefined' ? navigator.userAgent : '', touchPoints = typeof navigator !== 'undefined' ? navigator.maxTouchPoints : 0) {
+  const s = String(ua || '');
+  return /iphone|ipad|ipod/i.test(s) || (/macintosh/i.test(s) && Number(touchPoints) > 1);
+}
+
+/**
+ * Can this iOS browser add the site to the Home Screen? Safari always; Chrome / Firefox / Edge on iOS only since
+ * iOS 16.4 (Share -> Add to Home Screen). In-app browsers (no 'Safari' token) never can.
+ */
+export function canAddToHomeScreenIos(ua = typeof navigator !== 'undefined' ? navigator.userAgent : '', touchPoints = typeof navigator !== 'undefined' ? navigator.maxTouchPoints : 0) {
+  const s = String(ua || '');
+  if (!isIos(s, touchPoints) || !/safari/i.test(s) || /gsa\//i.test(s)) return false;
+  if (!/crios|fxios|edgios|opios/i.test(s)) return true;
+  const m = /OS (\d+)[_.](\d+)/i.exec(s);
+  return !!m && (Number(m[1]) > 16 || (Number(m[1]) === 16 && Number(m[2]) >= 4));
+}
+
 /** Pure gate: may the install card show? */
 export function shouldOfferInstall({ visits = 0, dismissedAt = null, now = Date.now(), standalone = false, platform = null } = {}) {
   if (standalone || !platform) return false;
@@ -83,7 +101,7 @@ export function shouldOfferInstall({ visits = 0, dismissedAt = null, now = Date.
 export function installPlatform() {
   if (installed || isStandalone()) return null;
   if (deferred) return 'prompt';
-  if (isIosSafari()) return 'ios';
+  if (canAddToHomeScreenIos()) return 'ios';
   return null;
 }
 
@@ -137,4 +155,25 @@ export async function promptInstall() {
 export function subscribeInstall(fn) {
   subs.add(fn);
   return () => subs.delete(fn);
+}
+
+/**
+ * Marks <html> for CSS: `data-ios` on iPhone / iPad, `data-standalone` while running as an installed app (kept in
+ * sync when the display mode changes). Pull-to-refresh and the status-bar strip are styled from these.
+ */
+export function tagPlatform(root = typeof document !== 'undefined' ? document.documentElement : null) {
+  if (!root) return;
+  if (isIos()) root.setAttribute('data-ios', '');
+  const sync = () => {
+    if (isStandalone()) root.setAttribute('data-standalone', '');
+    else root.removeAttribute('data-standalone');
+  };
+  sync();
+  try {
+    const mq = matchMedia('(display-mode: standalone)');
+    if (mq.addEventListener) mq.addEventListener('change', sync);
+    else mq.addListener?.(sync);
+  } catch {
+    /* no matchMedia */
+  }
 }

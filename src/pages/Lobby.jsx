@@ -20,6 +20,7 @@ import StatusPanel, { Loading } from '@/components/online/StatusPanel.jsx';
 import { useToasts } from '@/components/online/Toasts.jsx';
 import HubIcon from '@/platform/game/HubIcon.jsx';
 import PiecePicker from '@/platform/game/PiecePicker.jsx';
+import AutoMascot from '@/components/art/AutoMascot.jsx';
 import '@/styles/online.css';
 import '@/styles/x-lobby.css';
 
@@ -282,7 +283,7 @@ function LobbyInner({ code, user }) {
             <div className="ho-progress" role="progressbar" aria-label="Seats taken" aria-valuemin={0} aria-valuemax={maxPlayers} aria-valuenow={Math.min(joined, maxPlayers)}>
               <span style={{ transform: `scaleX(${joinedPercent(joined, maxPlayers) / 100})` }} />
             </div>
-            <ul className="ho-seatgrid">
+            <ul className="ho-seatgrid" data-seats={players.length + emptySeats}>
               {players.map((p, i) => {
                 const me = sameId(p.id, user.id);
                 return (
@@ -318,6 +319,7 @@ function LobbyInner({ code, user }) {
             className={`ho-card ho-startcard xl-o-start${isHost && canStart ? ' is-ready' : ''}${full ? ' is-full' : ''}${starting ? ' is-starting' : ''}`}
             aria-label="Start"
           >
+            {gameId === 'hyderabad-tycoon' && <AutoMascot key={canStart ? 'ready' : 'waiting'} mood={canStart ? 'roll' : 'waiting'} />}
             {isHost ? (
               <>
                 <button type="button" className={`ho-btn ho-btn--primary ho-btn--lg ho-btn--block${full && canStart ? ' ho-btn--full' : ''}`} onClick={start} disabled={!canStart}>
