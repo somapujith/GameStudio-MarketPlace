@@ -253,7 +253,7 @@ export function Board({ session, onTileClick, highlightTile = null, center = nul
                 );
               })}
             </div>
-            <TileTipLayer players={players} owners={owners} levels={levels} mortgaged={mortgaged} rentPct={rentPct} salary={salary} event={cityEvent} />
+            <TileTipLayer players={players} owners={owners} levels={levels} mortgaged={mortgaged} rentPct={rentPct} salary={salary} event={cityEvent} resetKey={`${d.turn}:${d.phase}`} />
           </div>
         </div>
       </CameraFocus>

@@ -61,6 +61,9 @@
   overflow: hidden;
   pointer-events: none;
 }
+/* the Telugu title is a quiet watermark in the clear band left of the dice (below the kite): it never sits under the tab pill
+   or a caption, and the phone (whose caption stack covers the whole middle) keeps only the artwork */
+[data-map='andhra'] .ph .ah-title { display: none; }
 [data-map='andhra'] .ph .hb-center {
   background: #171d58;
   box-shadow: inset 0 0 0 1px rgba(242, 177, 29, 0.35);

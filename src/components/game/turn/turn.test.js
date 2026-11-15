@@ -7,7 +7,7 @@ import RoundBadge, { TargetBadge, roundBadgeInfo } from './RoundBadge.jsx';
 import TurnBanner, { BANNER_INIT, bannerReducer, currentHandoff, handoffKey, handoffMs } from './TurnBanner.jsx';
 import CardReveal, { cardAnnouncement, cardOf } from './CardReveal.jsx';
 import { shouldRestoreFocus } from '../ui/Sheet.jsx';
-import { bubbleSpeaker, placeBubble } from './SpeechBubble.jsx';
+import { bubbleSpeaker, placeBubble, placeBubbleClear } from './SpeechBubble.jsx';
 import { TIMER_LABEL, TimerBar, TimerRing, waitLabel } from './TurnTimer.jsx';
 import { QUICK_EMOTES, EMOTE_INFO } from './emotes.js';
 import { isConnected, modeLabel, roomPlayer, tableSummary } from './room.js';
@@ -136,6 +136,30 @@ describe('speech bubbles', () => {
     expect(below.below).toBe(true);
     expect(below.top).toBe(90);
     expect(placeBubble(null, 360, 800).below).toBe(true);
+  });
+
+  it('never lands on a pod: above when clear, else beside it, else below, never over the pod it speaks for', () => {
+    const box = (left, top, width, height) => ({ left, top, width, height, right: left + width, bottom: top + height });
+    const overlaps = (p, b, vw, vh, w = 260, h = 64) => {
+      const r = p.side === 'l' ? { left: vw - p.right - w, right: vw - p.right, top: p.top, bottom: p.top + h }
+        : p.side === 'r' ? { left: p.left, right: p.left + w, top: p.top, bottom: p.top + h }
+        : p.below ? { left: p.left - w / 2, right: p.left + w / 2, top: p.top, bottom: p.top + h }
+        : { left: p.left - w / 2, right: p.left + w / 2, top: vh - p.bottom - h, bottom: vh - p.bottom };
+      return Math.min(r.right, b.right) > Math.max(r.left, b.left) && Math.min(r.bottom, b.bottom) > Math.max(r.top, b.top);
+    };
+    // a pod at the top right (the avatar inside it): there is no room above, so the bubble goes to its left
+    const pod = box(1475, 60, 250, 145);
+    const ava = box(1490, 72, 48, 48);
+    const side = placeBubbleClear(ava, pod, 1920, 1080, [pod]);
+    expect(side.side).toBe('l');
+    expect(overlaps(side, pod, 1920, 1080)).toBe(false);
+    // a pod low on the screen: above it, as before
+    const mine = box(190, 860, 250, 200);
+    const up = placeBubbleClear(box(205, 872, 48, 48), mine, 1920, 1080, [mine]);
+    expect(up.below).toBe(false);
+    expect(overlaps(up, mine, 1920, 1080)).toBe(false);
+    // no pod known: the plain placement
+    expect(placeBubbleClear(null, null, 360, 800, []).below).toBe(true);
   });
 
   it('speaks for the bubble player, else the newest log line, else the player on turn', () => {

@@ -42,7 +42,7 @@ describe('voice lines', () => {
   it('Ladle Meow: a paid, rare, cat-marked item, a little cheaper than Sheru Bhai', () => {
     const v = cosmeticById('voice-ladle-meow');
     expect(v).toMatchObject({
-      kind: 'voice', name: 'Ladle Meow', rarity: 'rare', price: 800, icon: 'cat', emoji: '🐱', src: '/audio/voice/ladle-meow.mp3',
+      kind: 'voice', name: 'Ladle Meow', rarity: 'rare', price: 700, icon: 'cat', emoji: '🐱', src: '/audio/voice/ladle-meow.mp3',
     });
     expect(v.price).toBeLessThan(cosmeticById('voice-sheru-bhai').price);
     expect(v.caption.length).toBeLessThanOrEqual(40);
@@ -53,7 +53,7 @@ describe('voice lines', () => {
   it('Old Man: a short, cheaper rare line with a neutral name, path and caption', () => {
     const v = cosmeticById('voice-old-man');
     expect(v).toMatchObject({
-      kind: 'voice', name: 'Old Man', rarity: 'rare', price: 600, icon: 'oldman', emoji: '👴', src: '/audio/voice/old-man.mp3', caption: 'Oye!',
+      kind: 'voice', name: 'Old Man', rarity: 'rare', price: 500, icon: 'oldman', emoji: '👴', src: '/audio/voice/old-man.mp3', caption: 'Oye!',
     });
     expect(v.price).toBeLessThan(cosmeticById('voice-ladle-meow').price);
     expect(v.durationMs).toBe(2590);

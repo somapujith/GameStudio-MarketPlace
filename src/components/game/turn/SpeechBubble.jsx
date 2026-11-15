@@ -40,7 +40,68 @@ export function placeBubble(rect, vw, vh, maxHalf = 130) {
     : { left, bottom: vh - rect.top + 10, below: false, tail: x - left, half };
 }
 
-function useAnchor(playerId, active) {
+/** The box a speaker's bubble must keep clear of: the whole pod / strip the avatar sits in (its name, worth and cash badge). */
+function findHost(id) {
+  if (typeof document === 'undefined' || id == null) return null;
+  const sel = `[data-fx-player="${String(id).replace(/["\\]/g, '\\$&')}"]`;
+  for (const el of document.querySelectorAll(sel)) {
+    const r = el.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) {
+      const pod = el.closest('.hg-pod, .hg-mb-row, .ph-pod');
+      return { avatar: r, host: pod ? pod.getBoundingClientRect() : r };
+    }
+  }
+  return null;
+}
+
+/** Every player pod / strip on screen: the bubble never lands on one (their cash, worth and badges are what changes). */
+function podRects() {
+  if (typeof document === 'undefined') return [];
+  const out = [];
+  for (const el of document.querySelectorAll('[data-fx-player]')) {
+    const box = el.closest('.hg-pod, .hg-mb-row, .ph-pod') || el;
+    const r = box.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) out.push(r);
+  }
+  return out;
+}
+
+const overlap = (a, b) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+
+/**
+ * Where a bubble goes for a speaker whose avatar is `avatar` inside the pod `host`: above the pod, else beside it (left, then
+ * right), else below it, taking the first spot that is on screen and clear of every pod in `pods` (else the least covered).
+ * Same shape as placeBubble, plus `side` ('l' | 'r') for a bubble beside the pod (no tail; it hugs the pod). Pure; exported for tests.
+ */
+export function placeBubbleClear(avatar, host, vw, vh, pods = [], maxHalf = 130, height = 64) {
+  const base = placeBubble(avatar, vw, vh, maxHalf);
+  if (!avatar) return base;
+  const hostBox = host || avatar;
+  const half = base.half;
+  const w = half * 2;
+  const gap = 10;
+  const ax = avatar.left + avatar.width / 2;
+  const left = Math.min(Math.max(ax, half + 12), vw - half - 12);
+  const cy = hostBox.top + hostBox.height / 2;
+  const sideTop = Math.min(Math.max(cy - height / 2, 8), Math.max(8, vh - height - 8));
+  const cands = [
+    { pos: { left, bottom: vh - hostBox.top + gap, below: false, tail: ax - left, half }, box: { left: left - half, right: left + half, top: hostBox.top - gap - height, bottom: hostBox.top - gap } },
+    { pos: { right: vw - hostBox.left + gap, top: sideTop, below: true, side: 'l', tail: 0, half }, box: { left: hostBox.left - gap - w, right: hostBox.left - gap, top: sideTop, bottom: sideTop + height } },
+    { pos: { left: hostBox.right + gap, top: sideTop, below: true, side: 'r', tail: 0, half }, box: { left: hostBox.right + gap, right: hostBox.right + gap + w, top: sideTop, bottom: sideTop + height } },
+    { pos: { left, top: hostBox.bottom + gap, below: true, tail: ax - left, half }, box: { left: left - half, right: left + half, top: hostBox.bottom + gap, bottom: hostBox.bottom + gap + height } },
+  ];
+  let best = null;
+  for (const c of cands) {
+    const off = c.box.left < 4 || c.box.top < 4 || c.box.right > vw - 4 || c.box.bottom > vh - 4;
+    const hit = pods.reduce((n, p) => n + overlap(c.box, p), 0);
+    const score = hit + (off ? 1e9 : 0);
+    if (score === 0) return c.pos;
+    if (!best || score < best.score) best = { score, pos: c.pos };
+  }
+  return best.pos;
+}
+
+function useAnchor(playerId, active, clear = false) {
   const [pos, setPos] = useState(null);
   useLayoutEffect(() => {
     if (!active || typeof window === 'undefined') {
@@ -48,7 +109,11 @@ function useAnchor(playerId, active) {
       return undefined;
     }
     let raf = 0;
-    const measure = () => setPos(placeBubble(findAnchor(playerId), window.innerWidth, window.innerHeight));
+    const measure = () => {
+      if (!clear) { setPos(placeBubble(findAnchor(playerId), window.innerWidth, window.innerHeight)); return; }
+      const f = findHost(playerId);
+      setPos(placeBubbleClear(f && f.avatar, f && f.host, window.innerWidth, window.innerHeight, podRects()));
+    };
     measure();
     const later = () => {
       cancelAnimationFrame(raf);
@@ -61,13 +126,15 @@ function useAnchor(playerId, active) {
       window.removeEventListener('resize', later);
       window.removeEventListener('scroll', later, true);
     };
-  }, [playerId, active]);
+  }, [playerId, active, clear]);
   return pos;
 }
 
 const styleFor = (pos) => {
   if (!pos) return undefined;
-  const s = { left: `${pos.left}px`, '--tail': `${pos.tail}px`, '--half': `${pos.half}px` };
+  const s = { '--tail': `${pos.tail}px`, '--half': `${pos.half}px` };
+  if (pos.left != null) s.left = `${pos.left}px`;
+  if (pos.right != null) s.right = `${pos.right}px`;
   if (pos.below) s.top = `${pos.top}px`;
   else s.bottom = `${pos.bottom}px`;
   return s;
@@ -115,13 +182,13 @@ export default function SpeechBubble({ session }) {
 
   // portrait phones already get the toast, the centre caption and the floating amount for the same news: no fourth copy
   const phone = useMedia('(max-width: 599px)');
-  const pos = useAnchor(shown?.player, !!shown && !phone);
+  const pos = useAnchor(shown?.player, !!shown && !phone, true);
   if (!shown || !pos || phone) return null;
   const p = getPlayer(session, shown.player);
   return (
     <div
       key={shown.id}
-      className={`sb-bubble is-${shown.tone}${pos.below ? ' is-below' : ''}${shown.leaving ? ' is-leaving' : ''}`}
+      className={`sb-bubble is-${shown.tone}${pos.below ? ' is-below' : ''}${pos.side ? ` is-side is-side-${pos.side}` : ''}${shown.leaving ? ' is-leaving' : ''}`}
       style={{ ...styleFor(pos), '--pc': p?.color || 'var(--gold)' }}
       aria-hidden="true"
     >

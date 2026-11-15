@@ -328,6 +328,11 @@
 }
 .sb-bubble.is-below { transform-origin: calc(50% + var(--tail, 0px)) 0; }
 .sb-bubble.is-below::after { bottom: auto; top: -9px; transform: rotate(225deg); }
+/* beside the pod (never on top of its worth / cash badge): no tail, it hugs the pod's edge */
+.sb-bubble.is-side { translate: none; transform-origin: 50% 50%; }
+.sb-bubble.is-side::after { display: none; }
+.sb-bubble.is-side-l { transform-origin: 100% 50%; }
+.sb-bubble.is-side-r { transform-origin: 0 50%; }
 .sb-bubble.is-good { background: #effbf3; }
 .sb-bubble.is-bad { background: #fff1f2; }
 .sb-bubble.is-warn { background: #fff7e0; }

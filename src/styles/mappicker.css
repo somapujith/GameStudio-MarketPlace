@@ -199,7 +199,15 @@ button.mp-card:disabled {
   stroke-width: 0.8;
 }
 .mp-ring__core {
-  fill: color-mix(in srgb, var(--mp-accent) 22%, #17122b);
+  fill: color-mix(in srgb, var(--mp-accent) 10%, #17122b);
+  stroke: color-mix(in srgb, var(--mp-accent) 40%, transparent);
+  stroke-width: 0.6;
+}
+.mp-ring__mark {
+  fill: var(--mp-accent);
+  font-weight: 800;
+  font-family: inherit;
+  opacity: 0.92;
 }
 .mp-ring__cell.is-start {
   stroke: #fff;

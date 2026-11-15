@@ -7,27 +7,41 @@ import '@/styles/mappicker.css';
  * The mini board of a map: its tiles as a 10x10 ring, each cell in the colour of its collection (from the map's own
  * groups), START bottom-left, a lit centre. Cheap SVG, no images; decorative (the card's text says everything).
  */
-export function MapRing({ cells, size = 100, accent }) {
+export function MapRing({ cells, size = 100, accent, mark }) {
   const pad = 1.2;
   const span = size - pad * 2;
-  const n = size / 10;
-  const cw = span / n; // one cell
+  const n = Math.max(3, Math.round(size / 10));
+  const band = span * 0.2; // the ring is a chunky band (a fifth of the width) so each collection reads as a clear segment
+  const edge = (span - 2 * band) / (n - 2); // the length of a cell along a side
+  const seg = (k) => (k <= 0 ? [pad, band] : k >= n - 1 ? [pad + span - band, band] : [pad + band + (k - 1) * edge, edge]);
+  const inner = pad + band + 1.4;
+  const innerSpan = span - 2 * band - 2.8;
+  const letter = typeof mark === 'string' ? mark.trim().charAt(0).toUpperCase() : '';
   return (
     <svg className="mp-ring" viewBox={`0 0 ${size} ${size}`} aria-hidden="true" focusable="false" style={accent ? { '--mp-accent': accent } : undefined}>
-      <rect className="mp-ring__bed" x="0.5" y="0.5" width={size - 1} height={size - 1} rx="5" />
-      <rect className="mp-ring__core" x={pad + cw + 0.6} y={pad + cw + 0.6} width={span - 2 * cw - 1.2} height={span - 2 * cw - 1.2} rx="3" />
-      {cells.map((c) => (
-        <rect
-          key={c.i}
-          className={`mp-ring__cell is-${c.kind}${c.i === 0 ? ' is-start' : ''}`}
-          x={c.col * (span / n) + pad + 0.35}
-          y={c.row * (span / n) + pad + 0.35}
-          width={span / n - 0.7}
-          height={span / n - 0.7}
-          rx="0.9"
-          fill={c.color}
-        />
-      ))}
+      <rect className="mp-ring__bed" x="0.5" y="0.5" width={size - 1} height={size - 1} rx="7" />
+      <rect className="mp-ring__core" x={inner} y={inner} width={innerSpan} height={innerSpan} rx="4" />
+      {letter && (
+        <text className="mp-ring__mark" x={size / 2} y={size / 2} textAnchor="middle" dominantBaseline="central" fontSize={size * 0.36}>
+          {letter}
+        </text>
+      )}
+      {cells.map((c) => {
+        const [x, w] = seg(c.col);
+        const [y, h] = seg(c.row);
+        return (
+          <rect
+            key={c.i}
+            className={`mp-ring__cell is-${c.kind}${c.i === 0 ? ' is-start' : ''}`}
+            x={x + 0.45}
+            y={y + 0.45}
+            width={Math.max(0.5, w - 0.9)}
+            height={Math.max(0.5, h - 0.9)}
+            rx="1.2"
+            fill={c.color}
+          />
+        );
+      })}
     </svg>
   );
 }
@@ -51,7 +65,7 @@ export function MapCard({ id }) {
 function Card({ c, selected, interactive, disabled, onPick, tabIndex, refCb }) {
   const inner = (
     <>
-      <MapRing cells={c.cells} size={c.size} accent={c.accent} />
+      <MapRing cells={c.cells} size={c.size} accent={c.accent} mark={c.name} />
       <span className="mp-card__body">
         <span className="mp-card__head">
           <b className="mp-card__name">{c.name}</b>

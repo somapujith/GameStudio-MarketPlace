@@ -91,17 +91,17 @@ describe('soundboard pads', () => {
     const out = html(h(VoicePads, { session: session(), access: access() }));
     expect(out).toContain('aria-label="Play Sheru Bhai for everyone"');
     expect(out).toMatch(/<a class="vl-pad is-locked" href="\/shop\?kind=voice" target="_blank" rel="noopener noreferrer"/);
-    expect(out).toContain('Ladle Meow is locked. 800 coins. Get it in the shop (opens in a new tab)');
-    expect(out).toContain('Old Man is locked. 600 coins.');
+    expect(out).toContain('Ladle Meow is locked. 700 coins. Get it in the shop (opens in a new tab)');
+    expect(out).toContain('Old Man is locked. 500 coins.');
     expect(out).toContain('Get it in the shop');
     expect(out).not.toContain('Play Ladle Meow');
   });
   it('owns nothing: both pads locked with prices, a hint and a shop link', () => {
     const out = html(h(VoicePads, { session: session(), access: access({ state: 'locked', owned: new Set() }) }));
     expect(out.match(/is-locked/g).length).toBeGreaterThanOrEqual(2);
-    expect(out).toContain('1,000');
-    expect(out).toContain('800');
-    expect(out).toContain('600');
+    expect(out).toContain('900');
+    expect(out).toContain('700');
+    expect(out).toContain('500');
     expect(out).toContain('Open the shop');
     expect(out).not.toContain('Play Sheru Bhai');
   });
@@ -237,16 +237,16 @@ describe('shop card', () => {
     const out = await card(base(SHERU));
     expect(out).toContain('Sheru Bhai');
     expect(out).toContain('Locked');
-    expect(out).toContain('1,000');
-    expect(out).toContain('Buy Sheru Bhai for 1,000 coins');
+    expect(out).toContain('900');
+    expect(out).toContain('Buy Sheru Bhai for 900 coins');
     expect(out).toContain('vl-medal__lock');
     expect(out).not.toContain('aria-label="Play Sheru Bhai"');
     expect(out).not.toContain('Equip');
   });
   it("can't afford: says how many coins are still needed", async () => {
     const out = await card(base(SHERU), { coins: 400 });
-    expect(out).toContain('Sheru Bhai: need 600 more coins');
-    expect(out).toContain('Need 600 more');
+    expect(out).toContain('Sheru Bhai: need 500 more coins');
+    expect(out).toContain('Need 500 more');
   });
   it('owned: an Owned badge and a Play button (no Equip, no lock)', async () => {
     const out = await card(base(MEOW, { owned: true }));

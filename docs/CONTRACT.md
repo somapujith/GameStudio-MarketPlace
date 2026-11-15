@@ -226,9 +226,9 @@ Online pages (owned by *online*): `Login` (Google button via Google Identity Ser
 A cosmetic kind `voice`, sold in the shop for coins, **owned-only** (never equipped), playable only by owners, heard by everybody in the room. No schema change: ownership is a `user_items` row like any other item.
 
 * **Catalogue** (`shared/cosmetics.js`): `{ id, kind:'voice', name, price, rarity, icon, emoji, src, durationMs, caption }`.
-  * `voice-sheru-bhai`: name `Sheru Bhai`, 1000 coins, rare, `icon:'tiger'`, `emoji:'🐯'`, `src:'/audio/voice/sheru-bhai.mp3'` (332 KB), `durationMs:8300`, caption `Sheru Bhai!`.
-  * `voice-ladle-meow`: name `Ladle Meow`, 800 coins, rare, `icon:'cat'`, `emoji:'🐱'`, `src:'/audio/voice/ladle-meow.mp3'` (254 KB), `durationMs:6350`, caption `Ladle meow! gop gop gop`.
-  * `voice-old-man`: name `Old Man`, 600 coins, rare, `icon:'oldman'`, `emoji:'👴'`, `src:'/audio/voice/old-man.mp3'` (104 KB), `durationMs:2590`, caption `Oye!`.
+  * `voice-sheru-bhai`: name `Sheru Bhai`, 900 coins, rare, `icon:'tiger'`, `emoji:'🐯'`, `src:'/audio/voice/sheru-bhai.mp3'` (332 KB), `durationMs:8300`, caption `Sheru Bhai!`.
+  * `voice-ladle-meow`: name `Ladle Meow`, 700 coins, rare, `icon:'cat'`, `emoji:'🐱'`, `src:'/audio/voice/ladle-meow.mp3'` (254 KB), `durationMs:6350`, caption `Ladle meow! gop gop gop`.
+  * `voice-old-man`: name `Old Man`, 500 coins, rare, `icon:'oldman'`, `emoji:'👴'`, `src:'/audio/voice/old-man.mp3'` (104 KB), `durationMs:2590`, caption `Oye!`.
   * Helpers: `voiceLines()`, `isVoiceId(id)`, `voiceSrc(id)`; `COSMETIC_KINDS` includes `voice`, `EQUIPPABLE_KINDS` does not. The files live in `public/audio/voice/` (Vercel / Vite serve them as static files; the client fetches them lazily, they are not in the bundle and not in the service worker cache).
 * **Buying**: `POST /api/shop/buy { itemId }` (price and kind come from the catalogue, never the body); `GET /api/shop` lists the items with `owned`. The client learns what it owns from `GET /api/shop` (`owned: true`). Guests with a session can buy and use them like any cosmetic.
 * **Playing** (client -> room, lobby or game, any time, not only on your turn): `{t:'voice', id}`.

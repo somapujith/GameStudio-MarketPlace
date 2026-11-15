@@ -158,3 +158,13 @@
     transition: none;
   }
 }
+
+/* While the board is zoomed the middle of it is mostly off screen, so its caption would be cut at the viewport edge
+   ("ou rolled 5"). The camera HUD pill says the same thing in a fixed spot, so the in-board caption steps aside. */
+[data-bc-viewport][data-zoomed] .pc-cap {
+  opacity: 0;
+  transition: opacity 120ms linear;
+}
+.pc-cap {
+  transition: opacity 160ms linear;
+}

@@ -38,6 +38,14 @@ export function tipPlacement(id) {
   }
 }
 
+/** How long a card stays up with no new pointer activity, by how it was opened: touch / pen / keyboard cards are short-lived,
+ *  a resting mouse card still goes away (a stationary cursor must never pin a card over the centre and the Roll button). */
+export const TIP_TOUCH_MS = 4000;
+export const TIP_MOUSE_IDLE_MS = 9000;
+export function tipLifetime(source) {
+  return source === 'mouse' ? TIP_MOUSE_IDLE_MS : TIP_TOUCH_MS;
+}
+
 /** Anchor of the tooltip as fractions (0..1) of the ring box. */
 export const tipAnchor = (id) => tileCenter(id);
 

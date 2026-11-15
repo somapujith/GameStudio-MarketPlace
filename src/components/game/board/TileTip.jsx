@@ -4,7 +4,7 @@ import { formatINR } from '@shared/format.js';
 import { PieceToken } from '../Pawn.jsx';
 import { eventMark } from '../Tile.jsx';
 import { eventFlagFor } from './eventFlag.js';
-import { tipAnchor, tipModel, tipPlacement } from './tipModel.js';
+import { tipAnchor, tipLifetime, tipModel, tipPlacement } from './tipModel.js';
 
 const NONE = [];
 const OPEN_DELAY = 320; // a mouse resting on a tile; moving between tiles while a card is open switches instantly
@@ -14,37 +14,60 @@ const OPEN_DELAY = 320; // a mouse resting on a tile; moving between tiles while
  * whole rent ladder. A child of `.hb-grid`, it listens to its parent (so the Board never re-renders for a hover),
  * ignores touch (the tile tap opens the property sheet) and never takes pointer events.
  */
-export const TileTipLayer = memo(function TileTipLayer({ players = NONE, owners = NONE, levels = NONE, mortgaged = NONE, rentPct = 100, salary, event = null }) {
+export const TileTipLayer = memo(function TileTipLayer({ players = NONE, owners = NONE, levels = NONE, mortgaged = NONE, rentPct = 100, salary, event = null, resetKey = '' }) {
   const ref = useRef(null);
   const [id, setId] = useState(null);
   const open = useRef(null);
   open.current = id;
 
+  // a new turn / phase clears whatever card a resting cursor left behind
+  useEffect(() => {
+    setId(null);
+  }, [resetKey]);
+
   useEffect(() => {
     const grid = ref.current?.parentElement;
     if (!grid) return undefined;
     let timer = 0;
+    let idle = 0;
+    let source = 'mouse';
+    const arm = () => {
+      clearTimeout(idle);
+      idle = setTimeout(() => setId(null), tipLifetime(source));
+    };
     const idOf = (e) => {
       const el = e.target?.closest?.('[data-tile]');
       return el && grid.contains(el) ? Number(el.dataset.tile) : null;
     };
     const hide = () => {
       clearTimeout(timer);
+      clearTimeout(idle);
       setId(null);
     };
     const show = (tid, delay) => {
       clearTimeout(timer);
       if (tid == null) return hide();
       if (tid === open.current) return undefined;
-      if (delay <= 0) setId(tid);
-      else timer = setTimeout(() => setId(tid), delay);
+      if (delay <= 0) {
+        setId(tid);
+        arm();
+      } else {
+        timer = setTimeout(() => {
+          setId(tid);
+          arm();
+        }, delay);
+      }
       return undefined;
     };
     const onOver = (e) => {
       if (e.pointerType && e.pointerType !== 'mouse' && e.pointerType !== 'pen') return;
       const tid = idOf(e);
+      source = 'mouse';
       if (tid == null) hide();
       else show(tid, open.current != null ? 0 : OPEN_DELAY);
+    };
+    const onMove = (e) => {
+      if (open.current != null && (!e.pointerType || e.pointerType === 'mouse' || e.pointerType === 'pen')) arm();
     };
     const onFocus = (e) => {
       const tid = idOf(e);
@@ -54,11 +77,26 @@ export const TileTipLayer = memo(function TileTipLayer({ players = NONE, owners 
       } catch {
         kbd = false;
       }
-      if (tid != null && kbd) show(tid, 0);
+      if (tid != null && kbd) {
+        source = 'kbd';
+        show(tid, 0);
+      }
     };
     const onKey = (e) => {
       if (e.key === 'Escape') hide();
     };
+    // anything outside the board (the Roll button, a sheet, the page) also dismisses; so does leaving the tab or scrolling
+    const onDocDown = (e) => {
+      if (!grid.contains(e.target)) hide();
+    };
+    document.addEventListener('pointerdown', onDocDown, true);
+    document.addEventListener('keydown', onKey, true);
+    window.addEventListener('blur', hide);
+    window.addEventListener('scroll', hide, true);
+    window.addEventListener('pagehide', hide);
+    grid.addEventListener('pointermove', onMove);
+    grid.addEventListener('pointercancel', hide);
+    grid.addEventListener('touchend', hide);
     grid.addEventListener('pointerover', onOver);
     grid.addEventListener('pointerleave', hide);
     grid.addEventListener('pointerdown', hide);
@@ -67,6 +105,15 @@ export const TileTipLayer = memo(function TileTipLayer({ players = NONE, owners 
     grid.addEventListener('keydown', onKey);
     return () => {
       clearTimeout(timer);
+      clearTimeout(idle);
+      document.removeEventListener('pointerdown', onDocDown, true);
+      document.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('blur', hide);
+      window.removeEventListener('scroll', hide, true);
+      window.removeEventListener('pagehide', hide);
+      grid.removeEventListener('pointermove', onMove);
+      grid.removeEventListener('pointercancel', hide);
+      grid.removeEventListener('touchend', hide);
       grid.removeEventListener('pointerover', onOver);
       grid.removeEventListener('pointerleave', hide);
       grid.removeEventListener('pointerdown', hide);

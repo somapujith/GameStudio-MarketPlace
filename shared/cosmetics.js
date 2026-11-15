@@ -37,15 +37,15 @@ export const COSMETICS = Object.freeze([
   // Voice lines: owned-only clips played for the whole table (docs/CONTRACT.md "Voice lines").
   // src is served from public/ (Vercel / Vite / Worker assets); durationMs is the real length of the file.
   {
-    id: 'voice-sheru-bhai', kind: 'voice', name: 'Sheru Bhai', price: 1000, rarity: 'rare',
+    id: 'voice-sheru-bhai', kind: 'voice', name: 'Sheru Bhai', price: 900, rarity: 'rare',
     icon: 'tiger', emoji: '🐯', src: '/audio/voice/sheru-bhai.mp3', durationMs: 8300, caption: 'Sheru Bhai!',
   },
   {
-    id: 'voice-ladle-meow', kind: 'voice', name: 'Ladle Meow', price: 800, rarity: 'rare',
+    id: 'voice-ladle-meow', kind: 'voice', name: 'Ladle Meow', price: 700, rarity: 'rare',
     icon: 'cat', emoji: '🐱', src: '/audio/voice/ladle-meow.mp3', durationMs: 6350, caption: 'Ladle meow! gop gop gop',
   },
   {
-    id: 'voice-old-man', kind: 'voice', name: 'Old Man', price: 600, rarity: 'rare',
+    id: 'voice-old-man', kind: 'voice', name: 'Old Man', price: 500, rarity: 'rare',
     icon: 'oldman', emoji: '👴', src: '/audio/voice/old-man.mp3', durationMs: 2590, caption: 'Oye!',
   },
 ]);

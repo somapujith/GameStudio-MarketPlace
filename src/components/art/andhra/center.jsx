@@ -87,7 +87,7 @@ function CentreBase() {
         <path d="M22 18V33M17 25h10" stroke={K.cream} strokeWidth=".3" />
         <path d="M22 33q-3 4 0 7t-1 6" stroke={K.cream} strokeWidth=".4" />
       </g>
-      <text x="7.5" y="9" fontSize="3.7" fontWeight="700" fill={K.turm} stroke="none" fontFamily="'Noto Sans Telugu','Nirmala UI','Gautami','Telugu Sangam MN',sans-serif">ఆంధ్ర ఆటలు</text>
+      <text className="ah-title" x="7.5" y="64" fontSize="3.1" fontWeight="700" fill={K.turm} fillOpacity=".5" stroke="none" fontFamily="'Noto Sans Telugu','Nirmala UI','Gautami','Telugu Sangam MN',sans-serif">ఆంధ్ర ఆటలు</text>
     </svg>
   );
 }
