@@ -58,6 +58,8 @@ export function rowToUser(r, gameStats, now = Date.now()) {
     avatar: r.avatar,
     friendCode: r.friend_code,
     isGuest: !!r.is_guest,
+    // When the account was created (ISO). The first-run tours use it to tell a new player from a returning one.
+    createdAt: r.created_at ? new Date(r.created_at).toISOString() : null,
     level: levelFromXp(r.xp),
     xp: r.xp,
     coins: r.coins,

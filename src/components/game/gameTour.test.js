@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { buildGameSteps, owesDecision, pauseState, tableBusy, winLine } from './gameTour.js';
+import { afterEach, beforeEach, vi } from 'vitest';
+import { _resetAutoSession, markAutoToursDone, resetAllTours } from '../tour/tourState.js';
+import { buildGameSteps, firstGameEligible, owesDecision, pauseState, tableBusy, winLine } from './gameTour.js';
 
 const ids = (cfg) => buildGameSteps({ cfg, me: 'me' }).map((s) => s.id);
 const body = (cfg, id) => buildGameSteps({ cfg, me: 'me' }).find((s) => s.id === id)?.body;
@@ -104,5 +106,35 @@ describe('owesDecision / tableBusy / pauseState', () => {
     expect(pauseState({ open: true, owes: false, busy: false, minimised: true })).toMatchObject({ paused: true, canResume: true });
     expect(pauseState({ open: true, owes: false, busy: false, minimised: false }).paused).toBe(false);
     expect(pauseState({ open: false, owes: true, busy: true, minimised: true }).paused).toBe(false);
+  });
+});
+
+describe('firstGameEligible (the table tour is for the first game ever)', () => {
+  const NOW = Date.UTC(2026, 5, 1);
+  const DAY = 86400000;
+  const mem = () => { const m = new Map(); return { get length() { return m.size; }, key: (i) => [...m.keys()][i] ?? null, getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => { m.set(k, String(v)); }, removeItem: (k) => { m.delete(k); } }; };
+  let ls;
+  beforeEach(() => { ls = mem(); vi.stubGlobal('localStorage', ls); resetAllTours(); _resetAutoSession(); });
+  afterEach(() => { vi.unstubAllGlobals(); resetAllTours(); _resetAutoSession(); });
+
+  it('offers it in the first game of a new account', () => {
+    const user = { stats: { games: 0 }, createdAt: NOW - DAY };
+    expect(firstGameEligible(user, { now: NOW, storage: ls })).toBe(true);
+  });
+  it('never in a later game, even with cleared storage', () => {
+    expect(firstGameEligible({ stats: { games: 1 }, createdAt: NOW - DAY }, { now: NOW, storage: ls })).toBe(false);
+    expect(firstGameEligible({ stats: { games: 0 }, createdAt: NOW - 90 * DAY }, { now: NOW, storage: ls })).toBe(false);
+    expect(firstGameEligible({ id: 'x' }, { now: NOW, storage: ls })).toBe(false); // games unknown
+  });
+  it('not when the invite or the tour was seen, or once the first game marked auto tours done', () => {
+    const user = { stats: { games: 0 }, createdAt: NOW - DAY };
+    expect(firstGameEligible(user, { inviteSeen: true, now: NOW, storage: ls })).toBe(false);
+    expect(firstGameEligible(user, { tourSeen: true, now: NOW, storage: ls })).toBe(false);
+    markAutoToursDone(ls);
+    expect(firstGameEligible(user, { now: NOW, storage: ls })).toBe(false);
+  });
+  it('a guest or signed-out first-timer on a fresh browser gets it once', () => {
+    expect(firstGameEligible({ isGuest: true, stats: { games: 0 } }, { now: NOW, storage: ls })).toBe(true);
+    expect(firstGameEligible(null, { now: NOW, storage: mem() })).toBe(true);
   });
 });

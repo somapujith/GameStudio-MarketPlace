@@ -1,16 +1,20 @@
 // The guided tour of the game table, and the safety rules around it (the server's decision timer never waits for a tour):
-//   - the tour offers itself ONCE, as a small non-blocking card, while it is NOT my decision ("New here? Take a quick tour")
+//   - the tour offers itself ONCE, as a small non-blocking card, while it is NOT my decision ("New here? Take a quick tour"),
+//     and only in the player's FIRST game ever (0 games played, new player; see firstGameEligible). Starting that game also
+//     marks every auto tour seen for good, so nothing replays later even on a cleared browser. The "?" button and the Menu
+//     always replay it (explicit start: no gate)
 //   - while it runs and a decision becomes mine (my roll / buy / bid / Snatch / debt / trade answer), it shrinks to a
 //     "Tour paused" pill at the top and the table is fully playable; Resume only works once my decision is done
 //   - an auction / debt / Snatch window / trade of someone else's pauses it for as long as that lasts
 //   - replay any time: the "?" button in the top bar (wide screens) or Menu > Take the tour
 // const gameTour = useGameTour({ session, ready, phone });  ...  gameTour.start()  ...  {gameTour.node}
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useAuth } from '@/lib/auth.jsx';
 import { Tour, TourInvite, TourPausedPill } from '../tour/Tour.jsx';
 import { useTour } from '../tour/useTour.js';
-import { hasSeen, markSeen } from '../tour/tourState.js';
+import { claimAuto, hasSeen, markAutoToursDone, markSeen } from '../tour/tourState.js';
 import {
-  GAME_INVITE_ID, GAME_TOUR_ID, buildGameSteps, owesDecision, pauseState, tableBusy,
+  GAME_INVITE_ID, GAME_TOUR_ID, buildGameSteps, firstGameEligible, owesDecision, pauseState, tableBusy,
 } from './gameTour.js';
 
 const INVITE_MS = 20000; // the invite stays this long, then folds away (still offered by the ? button and the Menu)
@@ -20,7 +24,8 @@ export function useGameTour({ session, ready = true, phone = false }) {
   const cfgKey = JSON.stringify(cfg || {});
   const me = session?.me;
   const steps = useMemo(() => buildGameSteps({ cfg: cfg || {}, me }), [cfgKey, me]); // eslint-disable-line react-hooks/exhaustive-deps
-  const tour = useTour(GAME_TOUR_ID);
+  const tour = useTour(GAME_TOUR_ID); // never autoStart here: the invite below is the only automatic offer
+  const { user, loading: authLoading } = useAuth();
   const [minimised, setMinimised] = useState(false);
   const [inviteDone, setInviteDone] = useState(() => hasSeen(GAME_INVITE_ID));
 
@@ -35,7 +40,25 @@ export function useGameTour({ session, ready = true, phone = false }) {
   /* the game ended: the tour has nothing left to say */
   useEffect(() => { if (over && tour.open) tour.close('later'); }, [over, tour.open]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const showInvite = !!ready && !over && !tour.open && !tour.seen && !inviteDone && !owes && !busy;
+  /* the table has started: is it this player's first game ever? Decided once, then everything auto is marked seen for good */
+  const started = !!ready && !!session?.view && !!session?.me;
+  const [eligible, setEligible] = useState(false);
+  const latched = useRef(false);
+  useEffect(() => {
+    if (latched.current || !started || authLoading) return;
+    latched.current = true;
+    const ok = firstGameEligible(user || null, { inviteSeen: hasSeen(GAME_INVITE_ID), tourSeen: hasSeen(GAME_TOUR_ID) });
+    markSeen(GAME_TOUR_ID);
+    markSeen(GAME_INVITE_ID);
+    markAutoToursDone();
+    setEligible(ok);
+  }, [started, authLoading, user]);
+
+  /* at most one invite per session: take the slot the first time it could be shown */
+  const canOffer = eligible && !!ready && !over && !tour.open && !tour.seen && !inviteDone && !owes && !busy;
+  const [offered, setOffered] = useState(false);
+  useEffect(() => { if (canOffer && !offered && claimAuto('invite')) setOffered(true); }, [canOffer, offered]);
+  const showInvite = canOffer && offered;
   const answerInvite = useCallback(() => { markSeen(GAME_INVITE_ID); setInviteDone(true); }, []);
   useEffect(() => {
     if (!showInvite) return undefined;

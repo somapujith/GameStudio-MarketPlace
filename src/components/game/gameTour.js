@@ -10,6 +10,7 @@ import { compactINR, formatINR } from '@shared/format.js';
 import { activeMapId } from '@shared/maps.js';
 import { wordsOf } from '@/lib/mapWords.js';
 import { resolveTarget } from '../tour/tourModel.js';
+import { canAutoStart, gamesPlayedOf } from '../tour/tourState.js';
 
 export const GAME_TOUR_ID = 'game@1'; // bump to show the tour again after a big change
 export const GAME_INVITE_ID = 'game-invite@1'; // the "New here?" card is offered once per browser
@@ -276,4 +277,15 @@ export function pauseState({ open, owes, busy, minimised }) {
   const canResume = paused && !owes && !busy;
   const text = owes ? 'Your move first' : 'Tour paused';
   return { paused, canResume, text };
+}
+
+/**
+ * May the table offer its tour by itself? Only in the player's FIRST game ever: 0 games played (so a returning player on a
+ * cleared browser or a new device is never offered it), a new player, and neither the invite nor the tour seen / used before.
+ * Pure given its inputs (`opts` = { now, storage } for tests). `user` = the /api/me user, null = signed out.
+ */
+export function firstGameEligible(user, { inviteSeen = false, tourSeen = false, now, storage } = {}) {
+  if (inviteSeen || tourSeen) return false;
+  if (user && gamesPlayedOf(user) !== 0) return false; // signed in: needs a known 0
+  return canAutoStart(user, { now, storage });
 }
