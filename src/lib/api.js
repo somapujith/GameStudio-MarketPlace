@@ -1,4 +1,5 @@
 // Tiny fetch wrapper for the Worker API. Cookie session (httpOnly `hyd_session`), JSON in/out.
+// Cross-origin mode (VITE_API_ORIGIN, see config.js): absolute URLs, `Authorization: Bearer <hyd_token>`, no cookies.
 //
 //   const { friends } = await api.get('/api/friends');
 //   await api.post('/api/rooms', { maxPlayers: 4 });
@@ -7,7 +8,12 @@
 //   - server errors use the server's `{ error }` text as `message`
 //   - network failure / timeout / the Worker not running  ->  status 0, message 'Offline'
 
+import { apiUrl, isCrossOrigin } from './config.js';
+import { getToken, setToken, clearToken } from './token.js';
+
 const TIMEOUT_MS = 15000;
+// Sign-in endpoints: in cross-origin mode their response carries the session token.
+const SIGN_IN_PATHS = new Set(['/api/auth/guest', '/api/auth/google']);
 
 export class ApiError extends Error {
   constructor(status, message) {
@@ -35,12 +41,16 @@ async function request(method, path, body, { signal, timeout = TIMEOUT_MS } = {}
     if (signal.aborted) ctrl.abort();
     else signal.addEventListener('abort', () => ctrl.abort(), { once: true });
   }
+  const cross = isCrossOrigin();
+  const token = cross ? getToken() : null;
   const init = {
     method,
-    credentials: 'same-origin',
+    // Same-origin: the httpOnly cookie. Cross-origin: never send cookies, the bearer token is the credential.
+    credentials: cross ? 'omit' : 'same-origin',
     headers: { Accept: 'application/json' },
     signal: ctrl.signal,
   };
+  if (token) init.headers.Authorization = `Bearer ${token}`;
   if (body !== undefined) {
     init.headers['Content-Type'] = 'application/json';
     init.body = JSON.stringify(body);
@@ -49,7 +59,7 @@ async function request(method, path, body, { signal, timeout = TIMEOUT_MS } = {}
   let res;
   let text = '';
   try {
-    res = await fetch(path, init);
+    res = await fetch(apiUrl(path), init);
     text = await res.text();
   } catch {
     throw OFFLINE();
@@ -67,6 +77,8 @@ async function request(method, path, body, { signal, timeout = TIMEOUT_MS } = {}
     }
   }
 
+  // A 401 for a request that carried a token means it is stale: forget it (unless a newer sign-in replaced it meanwhile).
+  if (res.status === 401 && token && !path.startsWith('/api/auth/') && getToken() === token) clearToken();
   if (!res.ok) {
     const msg = data && typeof data === 'object' && typeof data.error === 'string' ? data.error : '';
     // A proxy with nothing behind it answers 5xx with an empty / non-JSON body: that is "Offline", not our bug.
@@ -77,6 +89,7 @@ async function request(method, path, body, { signal, timeout = TIMEOUT_MS } = {}
     // 2xx but not JSON: the dev server's index.html fallback => the Worker is not reachable
     throw OFFLINE();
   }
+  if (cross && SIGN_IN_PATHS.has(path) && data && typeof data.token === 'string') setToken(data.token);
   return data;
 }
 

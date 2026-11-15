@@ -4,10 +4,10 @@ import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { TILES } from '@shared/board.js';
-import ControlPanel, { TABS, TradePane, landedInfo, panelBadges } from './ControlPanel.jsx';
+import ControlPanel, { TABS, TradePane, landedInfo, panelBadges, statusLine } from './ControlPanel.jsx';
 import ActionBar, { buildActionSpec, rideLabel, rideVehicle, shortcutAction } from './ActionBar.jsx';
 import MoneyBar, { ChaiToken } from './MoneyBar.jsx';
-import { LogList } from './LogPanel.jsx';
+import { CENTER_LINES, LogList, centerLines } from './LogPanel.jsx';
 
 /** renderToString separates adjacent text nodes with comment markers; drop them so text assertions read naturally. */
 const html = (node) => renderToString(node).replaceAll('<!-- -->', '');
@@ -244,6 +244,7 @@ describe('<ControlPanel>', () => {
     const out = html(createElement(ControlPanel, { session, onOpenTile: () => {}, onOpenTrade: () => {} }));
     for (const t of TABS) expect(out).toContain(`>${t.label}<`);
     expect(out).toContain('role="tablist"');
+    expect(out).toContain('aria-selected="true"');
     expect(out).toContain('Nithin rolled 4');
     expect(out).toContain(TILES[0].name);
     expect(out).toContain('cp-primary is-roll');
@@ -261,15 +262,28 @@ describe('<ControlPanel>', () => {
     const out = html(createElement(ControlPanel, { session: mkSession(mkView(), { options: { roll: true } }), docked: true }));
     expect(out).not.toContain('role="tablist"');
     expect(out).not.toContain('cp-primary');
-    expect(out).toContain('cp-log');
+    expect(out).not.toContain('tt-bar'); // the dock carries the timer
+    expect(out).toContain('cp-clog');
+    expect(out).toContain('Your turn — roll!');
   });
 
-  it('shows the decision timer bar and the ring while the clock waits for me', () => {
+  it('keeps the middle quiet: no cash, round or player card, just die + status + log', () => {
+    const out = html(createElement(ControlPanel, { session: mkSession(mkView(), { options: { roll: true } }) }));
+    expect(out).not.toContain('₹15,00,000');
+    expect(out).not.toContain('cp-who');
+    expect(out).not.toMatch(/Round 3/);
+    expect(out).toContain('cp-status');
+    expect(out).toContain('cp-clog');
+    expect(out).toContain('--pc:#ff4d6d'); // the mat glows in the turn player's colour
+  });
+
+  it('shows a slim decision timer bar under the status line while the clock waits for me (the ring lives on the pod)', () => {
     const clock = { deadline: Date.now() + 30000, waitingFor: ['me'] };
     const out = html(createElement(ControlPanel, { session: mkSession(mkView(), { options: { roll: true }, clock }) }));
     expect(out).toContain('tt-bar is-mine');
     expect(out).toContain('Your move');
-    expect(out).toContain('tt-ring is-on');
+    expect(out.indexOf('cp-status')).toBeLessThan(out.indexOf('tt-bar'));
+    expect(out).not.toContain('tt-ring');
     expect(out).not.toContain('is-warn');
   });
 
@@ -287,17 +301,114 @@ describe('<ControlPanel>', () => {
     expect(out).not.toContain('tt-ring is-on');
   });
 
-  it('shows the chai token and the traffic tag of the player on turn', () => {
+  it('shows the traffic way-outs of the player on turn (chai and the traffic tag live in the pods)', () => {
     const v = mkView({ players: [P('me', 'Nithin', { chai: 1, stuck: true }), P('rav', 'Ravi')] });
     const out = html(createElement(ControlPanel, { session: mkSession(v, { options: { roll: true, payTraffic: 25000, useChai: true } }) }));
-    expect(out).toContain('hg-chai is-on');
-    expect(out).toContain('Stuck in traffic');
+    expect(out).toContain('Stuck in traffic — your move');
+    expect(out).toContain('Stuck in Traffic Jam: pay the fine');
     expect(out).toContain('Use chai');
     expect(out).toContain('Wait it out');
   });
 
   it('keeps the log empty-state friendly', () => {
     expect(html(createElement(LogList, { log: [], variant: 'mono' }))).toContain('Your story starts with a roll.');
+    expect(html(createElement(LogList, { log: [], variant: 'center' }))).toContain('Your story starts with a roll.');
+  });
+
+  it('segmented tabs: the thumb follows the selected tab and Manage / Trade keep their badges', () => {
+    const v = mkView({ phase: 'manage', trade: { from: 'rav', to: 'me' } });
+    const out = html(createElement(ControlPanel, { session: mkSession(v, { options: { endTurn: true, upgrade: [1, 3] } }) }));
+    expect(out).toContain('cp-tabs__thumb');
+    expect(out).toContain('--i:0');
+    expect(out).toContain('aria-label="2 can be upgraded"');
+    expect(out).toContain('aria-label="A trade offer is open"');
+    expect(out).toContain('cp-tab is-on');
+  });
+
+  it('puts the tile being played in a chip that still opens the sheet', () => {
+    const out = html(createElement(ControlPanel, { session: mkSession(mkView(), { options: { roll: true } }) }));
+    expect(out).toMatch(/aria-label="[^"]+\. Open details"/);
+    expect(out).toContain('cp-landed');
+  });
+});
+
+describe('statusLine', () => {
+  const mine = (spec, extra = {}, view = {}) => statusLine(mkSession(mkView(view), extra), spec);
+
+  it('says "Your turn — roll!" on my turn at the roll phase, and the six case', () => {
+    const roll = buildActionSpec(mkSession(mkView(), { options: { roll: true } }));
+    expect(mine(roll, { options: { roll: true } })).toEqual({ tone: 'mine', text: 'Your turn — roll!', name: 'You' });
+    const six = buildActionSpec(mkSession(mkView({ phase: 'manage', extraRoll: true }), { options: { roll: true } }));
+    expect(mine(six, { options: { roll: true } }, { phase: 'manage', extraRoll: true }).text).toBe('Six! Roll again');
+  });
+
+  it('says "<Name> is playing…" for someone else, whatever I am offered', () => {
+    const s = statusLine(mkSession(mkView(), { me: 'rav' }), null);
+    expect(s).toEqual({ tone: 'other', text: 'Nithin is playing…', name: 'Nithin' });
+    const bought = statusLine(mkSession(mkView({ phase: 'buy' }), { me: 'rav' }), { kind: 'busy' });
+    expect(bought.text).toBe('Nithin is playing…');
+  });
+
+  it("follows my decision: traffic, buy, can't afford, end of turn, anything else", () => {
+    expect(mine({ kind: 'traffic' }).text).toBe('Stuck in traffic — your move');
+    expect(mine({ kind: 'buy' }).text).toBe('Your turn — buy it?');
+    expect(mine({ kind: 'skip' }).text).toMatch(/afford/);
+    expect(mine({ kind: 'end' }).text).toBe('Your turn — end it when ready');
+    expect(mine({ kind: 'busy' }).text).toBe('You are playing…');
+    expect(mine({ kind: 'busy' }, { rolling: true }).text).toBe('Rolling…');
+  });
+
+  it('says "Final" when the game is over, and handles auctions, debts and an empty table', () => {
+    expect(statusLine(mkSession(mkView({ phase: 'over' })), null)).toMatchObject({ tone: 'final', text: 'Final' });
+    expect(statusLine(mkSession(mkView(), { result: { winner: 'me' } }), null).text).toBe('Final');
+    expect(statusLine(mkSession(mkView({ phase: 'auction' })), null).text).toBe('Auction in progress…');
+    expect(statusLine(mkSession(mkView({ phase: 'auction' }), { options: { bid: true } }), null).text).toBe('Auction — place your bid');
+    expect(statusLine(mkSession(mkView({ phase: 'debt', debt: { player: 'rav' } })), null).text).toBe('Ravi is settling a debt…');
+    expect(statusLine(mkSession(mkView({ phase: 'debt', debt: { player: 'me' } })), null).text).toBe('Settle your debt');
+    expect(statusLine({ view: { players: [], turn: 0, phase: 'roll' }, me: 'me' }, null).tone).toBe('idle');
+  });
+
+  it('renders under the die, with a colour dot for the player, and "Final" without one', () => {
+    const live = html(createElement(ControlPanel, { session: mkSession(mkView(), { me: 'rav' }) }));
+    expect(live).toContain('Nithin is playing…');
+    expect(live).toContain('cp-status__dot');
+    const over = html(createElement(ControlPanel, { session: mkSession(mkView({ phase: 'over' })) }));
+    expect(over).toContain('>Final<');
+    expect(over).not.toContain('cp-status__dot');
+  });
+});
+
+describe('<LogList variant="center">', () => {
+  const lines = (n, tone = 'info') => Array.from({ length: n }, (_, i) => ({ id: i + 1, text: `line ${i + 1}`, tone: i % 3 === 0 ? tone : 'good' }));
+
+  it('keeps only the last few lines, oldest first, with the newest at age 0', () => {
+    const c = centerLines(lines(10));
+    expect(c).toHaveLength(CENTER_LINES);
+    expect(c.map((l) => l.entry.text)).toEqual(['line 5', 'line 6', 'line 7', 'line 8', 'line 9', 'line 10']);
+    expect(c.map((l) => l.age)).toEqual([5, 4, 3, 2, 1, 0]);
+    expect(centerLines(lines(2)).map((l) => l.age)).toEqual([1, 0]);
+    expect(centerLines([])).toEqual([]);
+    expect(centerLines(lines(10), 3)).toHaveLength(3);
+  });
+
+  it('renders centred, tone-coloured lines with their age for the CSS fade, and stays silent', () => {
+    const log = [{ id: 1, text: 'Ravi got stuck', tone: 'bad' }, { id: 2, text: 'Sana bought Tolichowki', tone: 'good' }, { id: 3, text: 'Round 7 begins' }];
+    const out = html(createElement(LogList, { log, variant: 'center' }));
+    expect(out).toContain('class="cp-clog"');
+    expect(out).toContain('role="log"');
+    expect(out).toContain('aria-live="off"');
+    expect(out).toContain('cp-clog__line is-bad" data-age="2"');
+    expect(out).toContain('cp-clog__line is-good" data-age="1"');
+    expect(out).toContain('cp-clog__line is-info" data-age="0"');
+    expect(out).not.toContain('tabindex');
+    expect(out).not.toContain('is-fresh'); // lines that were there at the first paint do not animate in
+  });
+
+  it('leaves the other variants alone', () => {
+    const log = lines(3);
+    expect(html(createElement(LogList, { log, variant: 'mono' }))).toContain('cp-log__line');
+    expect(html(createElement(LogList, { log }))).toContain('hg-log-item');
+    expect(html(createElement(LogList, { log }))).not.toContain('cp-clog');
   });
 });
 

@@ -24,7 +24,7 @@ export default {
   howToPlay: [
     { title: 'Roll', text: 'Roll one die and move round the city. A six rolls again; passing START pays ₹2 lakh.' },
     { title: 'Buy or auction', text: 'Buy the district you land on, or skip it and everyone bids in a sealed auction.' },
-    { title: 'Upgrade', text: 'Grow a district twice, from a stall to a trading hub. Bigger businesses ask bigger rent.' },
+    { title: 'Upgrade', text: 'Own all the districts of a collection to start upgrading them, twice each, from a stall to a trading hub. Bigger businesses ask bigger rent.' },
     { title: 'Richest wins', text: 'After the last round the highest net worth wins: cash, districts and half your upgrades.' },
   ],
   pieces: PIECES,

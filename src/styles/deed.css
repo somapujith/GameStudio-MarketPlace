@@ -1,133 +1,201 @@
 /* ============================================================ title deed (PropertySheet)
-   A paper card in the style of a Monopoly title deed, inside the dark game sheet.
-   --band (set inline) is the colour of the tile's group. */
+   A paper card in the dark game sheet: laid-paper texture, a collection-coloured header strip, a rent ladder whose rows
+   carry a little diorama of each business, and a perforated stub (Upgrade / Mortgage) with punched notches.
+   --band is the collection colour; --ink / --b1 / --b2 are the AA-safe header tones (bandTones in PropertySheet.jsx).
+   Motion: transform / opacity only, off for reduced motion (see the end of this file). */
+
+@keyframes hg-deed-stamp { from { opacity: 0; transform: rotate(-4deg) scale(1.7); } }
+@keyframes hg-deed-row { from { opacity: 0; transform: translate3d(-8px, 0, 0); } }
+@keyframes hg-deed-thumb { from { opacity: 0; transform: translate3d(0, 8px, 0) scale(0.7); } }
+@keyframes hg-deed-glow { 0%, 100% { opacity: 0.25; } 50% { opacity: 0.95; } }
 
 .hg-deed-kicker { letter-spacing: 0.32em !important; }
 
 .hg-deed {
-  --paper: #fbf8ee;
+  --paper: #fbf7ea;
   --paper-ink: #1c1a16;
   --paper-dim: #5b5546;
-  --paper-rule: #15130f;
-  position: relative;
-  margin: 0 0 12px;
-  border: 2px solid var(--paper-rule);
-  border-top-width: 8px;
-  border-top-color: var(--band, var(--paper-rule));
-  border-radius: 6px;
-  background: var(--paper);
-  color: var(--paper-ink);
-  font-family: Calibri, 'Segoe UI', Arial, sans-serif;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
-  overflow: hidden;
+  --paper-rule: rgba(28, 26, 22, 0.34);
+  --hole: #1a2630; /* the sheet behind the paper, for the punched notches */
+  position: relative; isolation: isolate; margin: 0 0 14px; border-radius: 16px; overflow: hidden;
+  color: var(--paper-ink); font-family: Calibri, 'Segoe UI', Arial, sans-serif;
+  background:
+    radial-gradient(120% 80% at 6% 0%, rgba(255, 255, 255, 0.9), transparent 58%),
+    radial-gradient(90% 70% at 100% 100%, rgba(176, 138, 60, 0.14), transparent 62%),
+    repeating-linear-gradient(0deg, rgba(120, 92, 40, 0.04) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(90deg, rgba(120, 92, 40, 0.028) 0 1px, transparent 1px 5px),
+    linear-gradient(180deg, #fffcf2, #f4ecd4);
+  box-shadow: inset 0 1px 0 #fff, 0 0 0 1px rgba(28, 26, 22, 0.6), 0 14px 28px rgba(0, 0, 0, 0.46);
+  transition: transform var(--dur-2) var(--ease-out);
+}
+/* a faint rupee watermark in the collection colour */
+.hg-deed::after {
+  content: '\20B9'; position: absolute; right: 12px; bottom: -6px; z-index: -1; pointer-events: none;
+  font: 900 120px/1 Georgia, 'Times New Roman', serif; color: var(--band, #1c1a16); opacity: 0.07;
+}
+@media (hover: hover) {
+  .hg-deed:hover { transform: translate3d(0, -2px, 0); }
 }
 
-.hg-deed-table { width: 100%; border-collapse: collapse; font-size: 15px; }
-.hg-deed-table th, .hg-deed-table td { padding: 5px 14px; border-bottom: 1px dotted rgba(21, 19, 15, 0.28); vertical-align: baseline; }
-.hg-deed-table tr:last-child th, .hg-deed-table tr:last-child td { border-bottom: 0; }
+/* ---- the header strip ---- */
+.hg-deed-top {
+  position: relative; isolation: isolate; overflow: hidden; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 14px;
+  color: var(--ink, #fff); font-size: 10.5px; font-weight: 800; letter-spacing: 0.24em; text-transform: uppercase;
+  background:
+    radial-gradient(90% 200% at 0% 0%, var(--hl, rgba(255, 255, 255, 0.06)), transparent 60%),
+    linear-gradient(100deg, var(--b1, var(--band, #444)), var(--b2, var(--band, #444)));
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.25), 0 1px 0 rgba(255, 255, 255, 0.7), 0 3px 0 rgba(28, 26, 22, 0.28);
+}
+/* guilloche arcs, as on a banknote, only on the right */
+.hg-deed-top::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: 0.5;
+  background: repeating-radial-gradient(circle at 78% 160%, transparent 0 5px, rgba(255, 255, 255, 0.16) 5px 6px);
+  -webkit-mask-image: linear-gradient(90deg, transparent 40%, #000); mask-image: linear-gradient(90deg, transparent 40%, #000);
+}
+.hg-deed-top-t { display: inline-flex; align-items: center; gap: 8px; text-shadow: 0 1px 0 var(--emb, transparent); }
+.hg-deed-top-t i { width: 7px; height: 7px; background: currentColor; transform: rotate(45deg); border-radius: 1px; }
+.hg-deed-no { font-variant-numeric: tabular-nums; letter-spacing: 0.16em; opacity: 1; }
+
+/* ---- the rent ladder (a real table: every cell on one grid, so the dotted rules line up) ---- */
+.hg-deed-table { width: calc(100% - 12px); margin: 8px 6px 6px; border-collapse: separate; border-spacing: 0; font-size: 15px; }
+.hg-deed-table th, .hg-deed-table td { padding: 7px 10px; vertical-align: middle; }
+/* one continuous dotted rule per row, painted by the row itself so it can never break between the cells */
+.hg-deed-table tr { background: radial-gradient(circle at 50% 50%, rgba(28, 26, 22, 0.5) 0.7px, transparent 1.2px) 0 100% / 4px 2px repeat-x; }
+.hg-deed-table tr:last-child { background: none; }
 .hg-deed-table th { text-align: left; font-weight: 600; }
-.hg-deed-table th em { margin-left: 6px; font-style: normal; font-weight: 400; font-size: 12.5px; color: var(--paper-dim); }
-.hg-deed-table td { text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.hg-deed-table td small { display: block; font-size: 11px; font-weight: 500; color: var(--paper-dim); white-space: normal; }
-.hg-deed-table tr:first-child th { font-size: 17px; letter-spacing: 0.04em; }
-.hg-deed-table tr:first-child td { font-size: 19px; }
-.hg-deed-table tr.is-hotel th, .hg-deed-table tr.is-hotel td { text-transform: uppercase; letter-spacing: 0.03em; }
-.hg-deed-table tr.is-current th, .hg-deed-table tr.is-current td {
-  background: color-mix(in srgb, var(--band, #f2b705) 26%, #fff);
-}
-.hg-deed-table tr.is-current th { box-shadow: inset 4px 0 0 var(--band, #f2b705); }
-.hg-deed-table tr.is-current th::after { content: ' \25C0'; font-size: 10px; color: var(--paper-dim); }
+.hg-deed-table td { text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
+.hg-deed-table td small { display: block; margin-top: 2px; font-size: 11px; font-weight: 600; line-height: 1.25; color: var(--paper-dim); }
 
-.hg-deed-foot { padding: 8px 14px 10px; border-top: 2px solid var(--paper-rule); font-size: 14px; }
-.hg-deed-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 6px; margin: 2px 0; }
-.hg-deed-line b { font-variant-numeric: tabular-nums; }
+.hg-deed-name { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.hg-deed-thumb {
+  position: relative; flex: none; width: 52px; height: 46px; border-radius: 13px; overflow: hidden;
+  background:
+    radial-gradient(70% 70% at 50% 70%, color-mix(in srgb, var(--band) 34%, #fff), color-mix(in srgb, var(--band) 12%, #fff) 100%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--band) 36%, rgba(28, 26, 22, 0.15)), inset 0 -3px 6px color-mix(in srgb, var(--band) 20%, transparent);
+  transition: transform var(--dur-2) var(--ease-spring);
+}
+.hg-deed-thumb > svg { position: absolute; left: -3px; top: -9px; width: 58px; height: 58px; display: block; }
+.hg-deed-lvltxt { display: grid; min-width: 0; line-height: 1.15; }
+.hg-deed-lvltxt small { font-size: 10px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--paper-dim); }
+.hg-deed-lvltxt b { font-size: 15.5px; font-weight: 800; letter-spacing: -0.005em; }
+.hg-deed-rent { display: block; font-size: 18px; line-height: 1.15; }
+.hg-deed-table tr:first-child .hg-deed-rent { font-size: 19px; }
+
+/* levels you have not built yet look like blueprints; the ones behind you are done */
+.hg-deed-table tr.is-next .hg-deed-thumb > svg { filter: grayscale(1) contrast(0.9); opacity: 0.55; }
+.hg-deed-table tr.is-next .hg-deed-lvltxt b, .hg-deed-table tr.is-next .hg-deed-rent { color: #4a4538; }
+.hg-deed-table tr.is-built .hg-deed-thumb::after {
+  content: ''; position: absolute; right: 3px; bottom: 3px; width: 13px; height: 13px; border-radius: 50%;
+  background: #1d7a4b url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.6 4.6L19 7.6'/%3E%3C/svg%3E") center / 9px no-repeat;
+}
+
+/* the live row: lit like a stage, with a NOW tag */
+.hg-deed-table tr.is-current th, .hg-deed-table tr.is-current td {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--band) 26%, #fff), color-mix(in srgb, var(--band) 14%, #fff));
+}
+.hg-deed-table tr.is-current th { border-radius: 14px 0 0 14px; box-shadow: inset 4px 0 0 var(--band); }
+.hg-deed-table tr.is-current td { border-radius: 0 14px 14px 0; }
+.hg-deed-table tr.is-current .hg-deed-thumb { box-shadow: inset 0 0 0 2px var(--band), 0 3px 8px rgba(0, 0, 0, 0.22); transform: scale(1.05); }
+.hg-deed-table tr.is-current .hg-deed-lvltxt small::after {
+  content: 'NOW'; margin-left: 7px; padding: 1px 6px; border-radius: 99px; vertical-align: 1px;
+  background: var(--paper-ink); color: var(--paper); font-size: 9.5px; font-weight: 800; letter-spacing: 0.08em;
+}
+@media (hover: hover) {
+  .hg-deed-table tr:not(.is-current):hover th, .hg-deed-table tr:not(.is-current):hover td { background: color-mix(in srgb, var(--band) 9%, transparent); }
+  .hg-deed-table tr:hover .hg-deed-thumb { transform: translate3d(0, -2px, 0) scale(1.04); }
+}
+
+/* the full-set line under the first rent: dim promise, then a glowing green badge when you hold the set */
+.hg-deed-ladder td small.is-on {
+  position: relative; isolation: isolate; display: inline-block; margin-top: 4px; padding: 2px 9px; white-space: nowrap; border-radius: 99px;
+  background: #d9f4e4; color: #0f5c35; font-weight: 800; box-shadow: inset 0 0 0 1px rgba(29, 122, 75, 0.45);
+}
+.hg-deed-ladder td small.is-on::before {
+  content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; pointer-events: none; opacity: 0.25; box-shadow: 0 0 12px 2px rgba(61, 220, 151, 0.95);
+  animation: hg-deed-glow 2.4s var(--ease-std) infinite;
+}
+.hg-deed-ladder td small.is-event { color: #5b24c7; font-weight: 800; }
+
+/* ---- the perforated stub ---- */
+.hg-deed-foot {
+  position: relative; display: grid; gap: 3px; margin-top: 4px; padding: 14px 14px 13px; font-size: 14px;
+  border-top: 2px dashed var(--paper-rule); background: linear-gradient(180deg, rgba(120, 92, 40, 0.08), rgba(120, 92, 40, 0.02));
+}
+.hg-deed-foot::before, .hg-deed-foot::after {
+  content: ''; position: absolute; top: -10px; width: 18px; height: 18px; border-radius: 50%; background: var(--hole); box-shadow: inset 0 2px 3px rgba(0, 0, 0, 0.35);
+}
+.hg-deed-foot::before { left: -9px; }
+.hg-deed-foot::after { right: -9px; }
+.hg-deed-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; margin: 1px 0; }
+.hg-deed-line span:first-child { min-width: 9.5em; color: var(--paper-dim); }
+.hg-deed-line b { font-size: 15.5px; font-variant-numeric: tabular-nums; }
 .hg-deed-line small { margin-left: auto; font-size: 11.5px; color: var(--paper-dim); }
 .hg-deed-note { margin: 6px 0 0; font-size: 12px; font-style: italic; line-height: 1.4; color: var(--paper-dim); }
-.hg-deed-foot .hg-deed-note:first-child { margin-top: 0; margin-bottom: 4px; }
 
-/* corners, card squares, taxes */
-.hg-deed--special { padding: 18px 18px 16px; text-align: center; }
-.hg-deed-rule {
-  margin: 0; padding: 10px 0; font-size: 18px; font-weight: 700; line-height: 1.35;
-  border-block: 2px solid var(--paper-rule);
+/* ---- a city event touching this collection ---- */
+.hg-deed-event {
+  display: flex; align-items: center; gap: 7px; margin: 0; padding: 7px 14px; font-size: 12.5px; line-height: 1.3;
+  background: linear-gradient(90deg, rgba(138, 63, 252, 0.18), rgba(138, 63, 252, 0.05)); color: #46199c; border-bottom: 1px dotted rgba(28, 26, 22, 0.3);
 }
-.hg-deed--special .hg-deed-note { margin-top: 12px; font-style: normal; font-size: 14px; }
+.hg-deed-event.is-down { background: linear-gradient(90deg, rgba(59, 130, 246, 0.18), rgba(59, 130, 246, 0.05)); color: #1b4a94; }
+.hg-deed-event .hg-icon { flex: none; }
 
-/* the card turned over: mortgaged */
-.hg-deed--mortgaged {
-  display: grid; justify-items: center; gap: 4px; padding: 20px 18px 18px; text-align: center; font-size: 16px;
+/* ---- corners, card squares, taxes: the rule on a notice plate ---- */
+.hg-deed-sbody { display: grid; gap: 4px; padding: 16px 18px 18px; text-align: center; }
+.hg-deed-rule { margin: 0; padding: 4px 0 0; font-size: 18px; font-weight: 700; line-height: 1.35; text-wrap: balance; }
+.hg-deed-sbody .hg-deed-note { margin: 0; padding-top: 12px; font-style: normal; font-size: 14px; }
+.hg-deed-sbody .hg-deed-note::before {
+  content: ''; display: block; width: 62px; height: 9px; margin: 0 auto 10px;
   background:
-    repeating-linear-gradient(135deg, rgba(21, 19, 15, 0.05) 0 8px, transparent 8px 16px),
-    var(--paper);
+    linear-gradient(var(--b2, var(--band, #444)), var(--b2, var(--band, #444))) 0 50% / 24px 2px no-repeat,
+    linear-gradient(var(--b2, var(--band, #444)), var(--b2, var(--band, #444))) 100% 50% / 24px 2px no-repeat,
+    linear-gradient(var(--b2, var(--band, #444)), var(--b2, var(--band, #444))) 50% 50% / 7px 7px no-repeat;
 }
+
+/* ---- the card turned over: mortgaged ---- */
+.hg-deed--mortgaged {
+  background:
+    repeating-linear-gradient(135deg, rgba(28, 26, 22, 0.06) 0 8px, transparent 8px 16px),
+    linear-gradient(180deg, #f1ecdc, #e5ddc6);
+}
+.hg-deed-mbody { display: grid; justify-items: center; gap: 8px; padding: 18px 18px 20px; text-align: center; font-size: 16px; }
 .hg-deed-mname { font-size: 18px; text-transform: uppercase; letter-spacing: 0.04em; }
 .hg-deed-stamp {
-  padding: 2px 16px; border: 3px solid #b3261e; border-radius: 4px; color: #b3261e;
+  padding: 3px 18px; border: 3px solid #b3261e; border-radius: 6px; color: #a8211a; background: rgba(179, 38, 30, 0.05);
   font-size: 22px; letter-spacing: 0.14em; text-transform: uppercase; transform: rotate(-4deg);
+  box-shadow: inset 0 0 0 2px rgba(251, 247, 234, 0.9), inset 0 0 0 3.5px rgba(179, 38, 30, 0.7);
+  animation: hg-deed-stamp var(--dur-3) var(--ease-spring) 0.35s backwards;
 }
 .hg-deed--mortgaged p { margin: 0; font-weight: 700; }
 .hg-deed--mortgaged em { max-width: 30ch; font-size: 13px; line-height: 1.4; color: var(--paper-dim); }
-.hg-deed-dot { color: var(--paper-dim); line-height: 1; }
 
-/* polish: the live rent row carries a clear "now" tag instead of a tiny arrow */
-.hg-deed-table tr.is-current th::after {
-  content: 'NOW'; margin-left: 8px; padding: 1px 6px; border-radius: 99px; vertical-align: 2px;
-  background: var(--paper-ink); color: var(--paper); font-size: 9.5px; font-weight: 800; letter-spacing: 0.08em;
-}
-.hg-deed { background: linear-gradient(180deg, #fffdf6, var(--paper)); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.42), inset 0 0 0 1px #fff; }
-.hg-deed-table th, .hg-deed-table td { padding-block: 6px; }
-
-/* ============================================================ Hustle deed: 3 themed businesses, hero facts, events */
-.hg-deed-identity {
-  margin: 0 0 6px; padding-left: 10px; border-left: 3px solid var(--band, var(--gold));
-  font-size: 13.5px; font-weight: 700; line-height: 1.35; color: var(--text);
-}
-.hg-propsheet .hg-lore { margin-bottom: 12px; }
-.hg-heritage { display: block; margin-top: 4px; font-size: 11.5px; font-style: normal; letter-spacing: 0.01em; color: var(--text-faint); }
-
-/* the three numbers a player needs at a glance */
-.hg-deed-hero { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0 0 12px; }
-.hg-deed-hero > div { min-width: 0; padding: 9px 10px; border-radius: 14px; background: rgba(255, 255, 255, 0.06); }
-.hg-deed-hero span { display: block; font-size: 10.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); }
-.hg-deed-hero b {
-  display: flex; align-items: center; gap: 6px; min-height: 26px; margin-top: 2px; overflow: hidden;
-  font-family: var(--font-display); font-size: clamp(15px, 4.4vw, 19px); font-variant-numeric: tabular-nums; white-space: nowrap;
-}
-.hg-deed-hero b.is-gold { color: var(--gold); }
-.hg-deed-hero b.is-dim { color: var(--text-faint); }
-.hg-deed-hero .hg-owner { font-family: var(--font-body); font-size: 14px; }
-.hg-owner-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.hg-deed-hero .hg-token { padding: 2px; }
-
-/* the ladder: one row per business, level number badge + themed name */
-.hg-deed-ladder th { display: flex; align-items: center; gap: 8px; }
-.hg-deed-ladder tr:first-child th { font-size: 15px; letter-spacing: 0; }
-.hg-deed-ladder tr:first-child td { font-size: 17px; }
-.hg-deed-lvl {
-  flex: none; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 7px;
-  background: var(--band, var(--paper-ink)); color: #fff; font-size: 12px; font-weight: 900;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
-}
-.hg-deed-ladder td small.is-on { color: #1d7a4b; font-weight: 800; }
-.hg-deed-ladder td small.is-event { color: #8a3ffc; font-weight: 800; }
-.hg-deed-ladder tr.is-current .hg-deed-lvl { transform: scale(1.12); box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--band, var(--paper-ink)); }
-.hg-deed-foot .hg-deed-line span:first-child { min-width: 9.5em; color: var(--paper-dim); }
-
-.hg-deed-event {
-  display: flex; align-items: center; gap: 6px; margin: 0; padding: 7px 14px; font-size: 12.5px; line-height: 1.3;
-  background: linear-gradient(90deg, rgba(138, 63, 252, 0.16), rgba(138, 63, 252, 0.05)); color: #4b1fa3; border-bottom: 1px dotted rgba(21, 19, 15, 0.28);
-}
-.hg-deed-event.is-down { background: linear-gradient(90deg, rgba(59, 130, 246, 0.16), rgba(59, 130, 246, 0.05)); color: #1e4f9c; }
-
-.hg-deed-level { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 13px; color: var(--text-dim); }
-.hg-deed--mortgaged { gap: 8px; }
+/* ---- entrance: the ladder rows slide in, the thumbs build up one after another ---- */
+.hg-sheet-root.is-open .hg-propsheet .hg-deed-table tr { animation: hg-deed-row var(--dur-3) var(--ease-out) backwards; }
+.hg-sheet-root.is-open .hg-propsheet .hg-deed-table tr:nth-child(1) { animation-delay: 0.26s; }
+.hg-sheet-root.is-open .hg-propsheet .hg-deed-table tr:nth-child(2) { animation-delay: 0.34s; }
+.hg-sheet-root.is-open .hg-propsheet .hg-deed-table tr:nth-child(3) { animation-delay: 0.42s; }
+.hg-sheet-root.is-open .hg-propsheet .hg-deed-thumb > svg { animation: hg-deed-thumb var(--dur-3) var(--ease-spring) backwards; }
+.hg-sheet-root.is-open .hg-propsheet .hg-deed-table tr:nth-child(1) .hg-deed-thumb > svg { animation-delay: 0.36s; }
+.hg-sheet-root.is-open .hg-propsheet .hg-deed-table tr:nth-child(2) .hg-deed-thumb > svg { animation-delay: 0.5s; }
+.hg-sheet-root.is-open .hg-propsheet .hg-deed-table tr:nth-child(3) .hg-deed-thumb > svg { animation-delay: 0.64s; }
 
 @media (max-width: 380px) {
-  .hg-deed-hero { grid-template-columns: 1fr 1fr; }
-  .hg-deed-hero > div:last-child { grid-column: 1 / -1; }
-  .hg-deed-table th, .hg-deed-table td { padding-inline: 10px; }
+  .hg-deed-table th, .hg-deed-table td { padding-inline: 7px; }
+  .hg-deed-ladder td small.is-on { padding-inline: 7px; font-size: 10px; }
+  .hg-deed-name { gap: 8px; }
+  .hg-deed-thumb { width: 46px; height: 42px; }
+  .hg-deed-thumb > svg { left: -3px; top: -8px; width: 52px; height: 52px; }
+  .hg-deed-lvltxt b { font-size: 14.5px; }
+  .hg-deed-rent { font-size: 17px; }
+  .hg-deed-line span:first-child { min-width: 8.5em; }
 }
 
-/* deed enters with a small lift once the sheet is open */
-.hg-sheet-root .hg-propsheet .hg-deed { transform: translate3d(0, 10px, 0); opacity: 0; transition: transform var(--dur-3) var(--ease-out) 60ms, opacity var(--dur-2) var(--ease-out) 60ms; }
-.hg-sheet-root.is-open .hg-propsheet .hg-deed { transform: none; opacity: 1; }
+/* ---- reduced motion: OS, in-game switch, hub switch ---- */
+@media (prefers-reduced-motion: reduce) {
+  .hg-deed, .hg-deed *, .hg-deed *::before, .hg-deed *::after { animation: none !important; transition: none !important; }
+  .hg-deed-ladder td small.is-on::before { opacity: 0.55; }
+}
+:root[data-motion='reduced'] .hg-deed, :root[data-motion='reduced'] .hg-deed *, :root[data-motion='reduced'] .hg-deed *::before, :root[data-motion='reduced'] .hg-deed *::after,
+.hg-sheet-root[data-rm] .hg-deed, .hg-sheet-root[data-rm] .hg-deed *, .hg-sheet-root[data-rm] .hg-deed *::before, .hg-sheet-root[data-rm] .hg-deed *::after,
+.hg-game[data-rm] .hg-deed, .hg-game[data-rm] .hg-deed *, .hg-game[data-rm] .hg-deed *::before, .hg-game[data-rm] .hg-deed *::after { animation: none !important; transition: none !important; }
+:root[data-motion='reduced'] .hg-deed-ladder td small.is-on::before, .hg-sheet-root[data-rm] .hg-deed-ladder td small.is-on::before, .hg-game[data-rm] .hg-deed-ladder td small.is-on::before { opacity: 0.55; }

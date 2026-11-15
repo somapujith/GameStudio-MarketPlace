@@ -5,12 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:lan": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "sim": "node scripts/simulate.js",
     "worker": "wrangler dev --port 8787",
+    "worker:staging": "wrangler dev --port 8787 --env-file .dev.vars.staging",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
     "migrate": "node scripts/migrate.js",
+    "migrate:staging": "node --env-file=.dev.vars.staging scripts/migrate.js",
     "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {

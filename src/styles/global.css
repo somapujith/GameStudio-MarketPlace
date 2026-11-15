@@ -1138,7 +1138,17 @@ h1, h2, h3, h4 { letter-spacing: -.025em; }
 .btn--primary { --btn-edge: transparent; --btn-fg: #102d2b; border-color: transparent; text-shadow: none; }
 .btn--ghost { box-shadow: none; }
 .btn--lg { min-height: 50px; }
-.hh-avring { box-shadow: none; padding: 2px; background: #4d6b72; width: calc(var(--sz) + 6px); height: calc(var(--sz) + 6px); }
+.hh-avring {
+  padding: 3px;
+  width: calc(var(--sz) + 8px);
+  height: calc(var(--sz) + 8px);
+  /* a glossy gradient rim: lit top-left, shaded bottom-right, with a hairline gap before the face */
+  background: linear-gradient(135deg, #b4f5e9 0%, #55d6c2 48%, #23867b 100%);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+.hh-avring > svg:first-child { box-shadow: 0 0 0 1.5px rgba(8, 14, 22, 0.65); }
+.hh-avring--good { background: linear-gradient(135deg, #c4f8dd 0%, #3ddc97 50%, #178a5b 100%); }
+.hh-avring--dim { background: linear-gradient(135deg, #7d8f96, #4d6b72); box-shadow: none; }
 .hh-avring__dot--on { box-shadow: none; }
 .hh-seg__opt.is-on { background: var(--teal); box-shadow: none; }
 .hh-modal__panel { background: var(--surface); }

@@ -68,7 +68,7 @@ describe('<EventBanner>', () => {
     expect(eventInfo(null)).toBeNull();
   });
 
-  it('sits in the control panel above the tabs while view.event is set, and is gone without one', () => {
+  it('sits in the control panel as a slim ribbon above the die while view.event is set, and is gone without one', () => {
     const n = TILES.length;
     const view = {
       phase: 'roll', turn: 0, round: 3, players: [{ id: 'me', name: 'Nithin', cash: 1500000, pos: 0, color: '#ff4d6d', avatar: 0 }],
@@ -80,7 +80,8 @@ describe('<EventBanner>', () => {
     };
     const out = html(createElement(ControlPanel, { session, onOpenTile: () => {}, onOpenTrade: () => {} }));
     expect(out.indexOf('Monsoon')).toBeGreaterThan(-1);
-    expect(out.indexOf('Monsoon')).toBeLessThan(out.indexOf('role="tablist"'));
+    expect(out.indexOf('Monsoon')).toBeGreaterThan(out.indexOf('role="tablist"'));
+    expect(out.indexOf('Monsoon')).toBeLessThan(out.indexOf('class="cp-dice'));
     delete session.view.event;
     expect(html(createElement(ControlPanel, { session }))).not.toContain('cp-event__title');
   });

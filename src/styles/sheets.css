@@ -225,8 +225,7 @@
   .hg-coinshower { display: none; }
 }
 :root[data-motion='reduced'] .hg-sheet-root[data-variant][data-desktop] > .hg-sheet, :root[data-motion='reduced'] .hg-sheet-root > .hg-backdrop,
-:root[data-motion='reduced'] .hg-bidchip, :root[data-motion='reduced'] .hg-setdots i,
-:root[data-motion='reduced'] .hg-sheet-root .hg-propsheet .hg-deed { transition: none !important; }
+:root[data-motion='reduced'] .hg-bidchip, :root[data-motion='reduced'] .hg-setdots i { transition: none !important; }
 :root[data-motion='reduced'] .hg-trade-set, :root[data-motion='reduced'] .hg-mp-tag.is-full, :root[data-motion='reduced'] .hg-moment,
 :root[data-motion='reduced'] .hg-over .hg-pod, :root[data-motion='reduced'] .hg-worth-bar i, :root[data-motion='reduced'] .hg-setwin,
 :root[data-motion='reduced'] .hg-settoast, :root[data-motion='reduced'] .hg-celebrate-in,

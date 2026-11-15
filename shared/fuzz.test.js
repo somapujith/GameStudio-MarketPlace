@@ -4,8 +4,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   createGame, applyAction, getOptions, netWorth, standings, liquidationValue, mulberry32,
-  BOARD_SIZE, MAX_LEVEL, TILES, isBuyable,
+  BOARD_SIZE, MAX_LEVEL, TILES, GROUP_TILES, isBuyable, canUpgrade, nextBotMove, chooseBotAction,
 } from './index.js';
+
+/** The Hustle upgrade rule, restated independently of canUpgrade: the actor owns EVERY district of the tile's collection. */
+const ownsWholeCollection = (s, playerId, tileId) => GROUP_TILES[TILES[tileId].group].every((t) => s.owners[t] === playerId);
 
 const actorOf = (s) => {
   if (s.phase === 'debt') return s.debt.player;
@@ -124,6 +127,7 @@ describe('fuzz: random legal actions', () => {
           let s = createGame({ players: Array.from({ length: n }, (_, i) => ({ id: `p${i}`, name: `P${i}` })), settings: { mode }, seed });
           for (let step = 0; step < 2500 && s.phase !== 'over'; step++) {
             const a = randomAction(s, rnd);
+            if (a.type === 'UPGRADE') expect(ownsWholeCollection(s, a.playerId, a.tile)).toBe(true);
             const r = applyAction(s, a);
             if (r.error) throw new Error(`step ${step} ${JSON.stringify(a)} -> ${r.error}`);
             cashMatchesEvents(s, r.state, r.events);
@@ -134,6 +138,44 @@ describe('fuzz: random legal actions', () => {
       });
     }
   }
+
+  it('bots and auto-played humans only ever UPGRADE a district whose whole collection they own', () => {
+    let upgrades = 0;
+    for (const asBots of [true, false]) {
+      for (let g = 0; g < 12; g++) {
+        const n = 2 + (g % 4);
+        const seed = 500 + g * 31 + (asBots ? 1 : 0);
+        const rnd = mulberry32(seed);
+        let s = createGame({
+          players: Array.from({ length: n }, (_, i) => ({ id: `p${i}`, name: `P${i}`, isBot: asBots })),
+          settings: { mode: 'quick' }, seed,
+        });
+        // Hand out whole collections to some seats and half-collections to others so upgrades happen AND get refused.
+        s.owners[28] = 'p0'; s.owners[29] = 'p0'; s.owners[31] = 'p0'; // p0 holds Cyberabad
+        s.owners[1] = 'p1'; s.owners[3] = 'p1'; // p1 has 2 of 3 Bazaar districts
+        s.owners[33] = 'p1'; s.owners[34] = 'p1'; s.owners[35] = 'p1'; // and the whole New City
+        for (let step = 0; step < 1500 && s.phase !== 'over'; step++) {
+          let a;
+          if (asBots) a = nextBotMove(s, rnd);
+          else {
+            const who = actorOf(s);
+            a = chooseBotAction(s, who, rnd); // what the server auto-plays for an idle human seat
+          }
+          if (!a) break;
+          if (a.type === 'UPGRADE') {
+            upgrades++;
+            expect(ownsWholeCollection(s, a.playerId, a.tile), `step ${step} ${JSON.stringify(a)}`).toBe(true);
+            expect(canUpgrade(s, a.playerId, a.tile).ok).toBe(true);
+          }
+          const r = applyAction(s, a);
+          if (r.error) throw new Error(`step ${step} ${JSON.stringify(a)} -> ${r.error}`);
+          s = r.state;
+          invariants(s);
+        }
+      }
+    }
+    expect(upgrades).toBeGreaterThan(0); // the bots do build once they own a collection
+  });
 
   it('never mutates the input state and refuses junk without throwing', () => {
     const s = createGame({ players: [{ id: 'a' }, { id: 'b' }], seed: 3 });

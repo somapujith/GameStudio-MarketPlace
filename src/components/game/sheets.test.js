@@ -50,6 +50,11 @@ describe('RulesSheet', () => {
     ]) expect(out, s).toContain(s);
   });
 
+  it('says upgrading needs the whole collection', () => {
+    expect(out).toContain('every district of its collection');
+    expect(out).not.toContain('no full set needed');
+  });
+
   it('has no trace of the removed rules', () => {
     for (const gone of ['Snatch', 'Shield', 'trap', 'Trap', 'jail', 'Jail', 'hotel', 'Hotel', 'utility', 'Kismet', 'Rajiv Gandhi']) expect(out, gone).not.toContain(gone);
     expect(out.toLowerCase()).not.toContain('two dice');
@@ -284,6 +289,27 @@ describe('MyProperties', () => {
     expect(out).toContain('Upgrade ₹1,70,000');
     expect(out).toContain('Mortgage +₹1,50,000');
     expect(out).not.toContain('No properties yet.');
+  });
+
+  it('explains the whole-collection upgrade rule instead of offering Upgrade on an incomplete collection', () => {
+    const v = base();
+    v.owners[28] = 'me'; v.owners[29] = 'me'; // 2 of 3 Cyberabad districts
+    const reason = 'Own all 3 districts of Cyberabad first (you have 2)';
+    // Mortgage is on offer, so the row has actions: the reason still shows and there is no Upgrade button.
+    const withActions = text(createElement(MyProperties, {
+      session: sess(v, { options: { mortgage: [{ tile: 28, value: 150000 }, { tile: 29, value: 150000 }] } }), onOpenTile() {},
+    }));
+    expect(withActions).toContain(reason);
+    expect(withActions).not.toContain('Upgrade ₹');
+    // No actions at all: the reason is the row's note.
+    expect(text(createElement(MyProperties, { session: sess(v), onOpenTile() {} }))).toContain(reason);
+    // Own the third district and the reason is gone (the engine then offers the upgrade).
+    v.owners[31] = 'me';
+    const full = text(createElement(MyProperties, {
+      session: sess(v, { options: { upgrade: [{ tile: 28, cost: 150000 }] } }), onOpenTile() {},
+    }));
+    expect(full).not.toContain('Own all 3 districts');
+    expect(full).toContain('Upgrade ₹1,50,000');
   });
 
   it('keeps an empty-state note and the overview with nothing owned', () => {

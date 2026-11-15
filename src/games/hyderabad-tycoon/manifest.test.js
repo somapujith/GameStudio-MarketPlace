@@ -25,6 +25,7 @@ describe('hyderabad-tycoon manifest', () => {
   it('how to play in 4 steps, the six pieces, badges on client-visible stats', () => {
     expect(manifest.howToPlay.map((s) => s.title)).toEqual(['Roll', 'Buy or auction', 'Upgrade', 'Richest wins']);
     for (const s of manifest.howToPlay) expect(s.text.length).toBeGreaterThan(10);
+    expect(manifest.howToPlay.find((s) => s.title === 'Upgrade').text).toMatch(/all the districts of a collection/); // the whole-collection rule
     expect(manifest.pieces.map((p) => p.id)).toEqual(['pearl', 'auto', 'handi', 'chai', 'bat', 'camera']);
     expect(manifest.badges.length).toBeGreaterThan(0);
     for (const b of manifest.badges) {

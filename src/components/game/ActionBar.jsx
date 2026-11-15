@@ -285,6 +285,7 @@ export default function ActionBar({ spec, fire, className = '' }) {
                   <span className="cp-btn__mini" style={{ '--pc': spec.waitFor.color }}><Avatar preset={spec.waitFor.avatar} size={24} /></span>
                 ) : null}
                 <span className="cp-btn__label">{spec.label}</span>
+                {spec.waitFor ? <span className="cp-dots is-quiet" aria-hidden="true"><i /><i /><i /></span> : null}
               </span>
               {spec.sub ? <span className="cp-btn__sub">{spec.sub}</span> : null}
             </>

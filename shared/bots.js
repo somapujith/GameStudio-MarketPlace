@@ -13,7 +13,7 @@
 // the turn player.
 
 import { TILES, GROUP_TILES, GROUPS, BOARD_SIZE, rentFor, mortgageValue, MAX_LEVEL } from './board.js';
-import { DEFAULT_BOT, getOptions, previewRent } from './engine.js';
+import { DEFAULT_BOT, getOptions, previewRent, canUpgrade } from './engine.js';
 
 const thousand = (x) => Math.floor(x / 1000) * 1000;
 
@@ -217,9 +217,12 @@ export function chooseBotAction(state, playerId, rnd = Math.random) {
     .sort((a, b) => TILES[b.tile].price - TILES[a.tile].price)[0];
   if (lift) return { type: 'UNMORTGAGE', playerId, tile: lift.tile };
 
-  // Upgrade the most lucrative district we can afford while keeping the reserve.
+  // Upgrade the most lucrative district we can afford while keeping the reserve. Upgrading needs the WHOLE collection
+  // (engine canUpgrade; getOptions already filters on it, the explicit check keeps the bot honest). That is why
+  // completing a collection is worth so much to a bot: see completesSet in wantsToBuy / bidFor / proposeTrade.
   let best = null;
   for (const u of opts.upgrade) {
+    if (!canUpgrade(state, playerId, u.tile).ok) continue;
     if (player.cash - u.cost < reserve) continue;
     const tile = TILES[u.tile];
     const gain = rentFor(tile, Math.min(MAX_LEVEL, u.level + 1)) - rentFor(tile, u.level);

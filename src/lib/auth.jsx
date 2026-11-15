@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { api, errorMessage } from './api.js';
 import { openUserSocket } from './socket.js';
+import { isCrossOrigin } from './config.js';
+import { clearToken } from './token.js';
 import { InviteBanner } from '@/components/online/InviteBanner.jsx';
 import { paths } from '@/platform/paths.js';
 
@@ -11,6 +13,8 @@ import { paths } from '@/platform/paths.js';
 // `user` is the `user` object of GET /api/me, passed through untouched (id, name, avatar, isGuest, friendCode, level,
 // xp, coins, stats and the per-game `gameStats: { [gameId]: { games, wins, bestScore, rating } }`).
 // The session itself is the httpOnly `hyd_session` cookie: nothing sensitive is kept in JS or localStorage.
+// Only in the optional cross-origin mode (SPA hosted away from the Worker, VITE_API_ORIGIN) the session is a bearer
+// token kept in localStorage (token.js) instead, because browsers block third-party cookies.
 // If the Worker is unreachable (plain `vite` dev), everything degrades to "signed out" without errors.
 
 /** Exported so tests (and storybook-style harnesses) can provide a fake auth state. */
@@ -75,6 +79,11 @@ function initGis(g, clientId) {
 
 const NOTICE_MAX = 4;
 
+const sessionNotAccepted = () =>
+  isCrossOrigin()
+    ? 'Signed in, but the session was not accepted. Please try again.'
+    : 'Signed in, but the session cookie was not accepted. Check that cookies are enabled.';
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -107,6 +116,7 @@ export function AuthProvider({ children }) {
     try {
       const r = await api.get('/api/me');
       const u = r && r.user ? r.user : null;
+      if (!u) clearToken(); // cross-origin mode: the Worker no longer accepts the stored token
       setUser(u);
       setReachable(true);
       return u;
@@ -128,6 +138,7 @@ export function AuthProvider({ children }) {
         setGoogleClientId(cfg.value.googleClientId);
       }
       if (me.status === 'fulfilled' && me.value && me.value.user) setUser(me.value.user);
+      else if (me.status === 'fulfilled') clearToken(); // answered "signed out": a stored bearer token (cross-origin mode) is stale
       setLoading(false);
     })();
     return () => {
@@ -146,7 +157,7 @@ export function AuthProvider({ children }) {
       try {
         await api.post('/api/auth/google', { credential });
         const u = await refresh();
-        if (!u) throw new Error('Signed in, but the session cookie was not accepted. Check that cookies are enabled.');
+        if (!u) throw new Error(sessionNotAccepted());
         return u;
       } catch (e) {
         setAuthError(errorMessage(e, 'Google sign-in failed. Please try again.'));
@@ -202,7 +213,7 @@ export function AuthProvider({ children }) {
       await api.post('/api/auth/guest', body);
       const u = await refresh();
       if (!u) {
-        const err = new Error('Could not start a guest session. Check that cookies are enabled.');
+        const err = new Error(isCrossOrigin() ? 'Could not start a guest session. Please try again.' : 'Could not start a guest session. Check that cookies are enabled.');
         err.status = 0;
         throw err;
       }
@@ -217,6 +228,7 @@ export function AuthProvider({ children }) {
     } catch {
       /* offline: still sign out locally */
     }
+    clearToken(); // cross-origin mode: forget the bearer token whatever the server answered
     try {
       window.google?.accounts?.id?.disableAutoSelect();
     } catch {

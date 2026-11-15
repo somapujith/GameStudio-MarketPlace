@@ -1,29 +1,28 @@
-// The control panel that sits in the CENTRE of the board:
-//   top row   the player whose turn it is (avatar with the decision ring, name, cash, chai / traffic) + the die
-//   timer     a slim bar while the decision clock runs (session.clock)
-//   tabs      Play (alert log + the tile being played) | Manage (my properties) | Trade
-//   bottom    the action row (Roll / Buy / Put up for auction / Pay / Use chai / Wait it out / Ride / End turn)
+// The centre of the board: a calm, dark play-mat inside the ring of tiles.
+//   tabs      Play | Manage | Trade as small segmented pills (wide layout; phones keep Manage / Trade in the dock)
+//   ribbon    the city event (EventBanner), slim, above the die
+//   hero      the big die (+ the Odds toggle), one plain status line ("Your turn - roll!" / "Ravi is playing...") and the slim decision timer
+//   pane      Play = the quiet activity log + a chip for the tile being played | Manage = my districts | Trade
+//   bottom    the action row (Roll / Buy / auction / Pay / Use chai / Wait it out / Ride / End turn)
+// Players and their cash live in the pods around the board (PlayerPods), not here.
 // Contract: <ControlPanel session onOpenTile={(tileId) => void} onOpenTrade={() => void} actions? docked? />
 //   actions  { spec, fire } from useActionSpec (GameView owns the one keyboard shortcut); omitted = computed here
-//   docked   phone layout: the actions and the Manage / Trade tabs live in the bottom dock, the panel keeps the Play pane
+//   docked   phone layout: the actions and the Manage / Trade tabs live in the bottom dock, the panel keeps die + status + log
 // The landing-odds toggle beside the die is the shared preference from ./oddsPref.js (the Board paints the overlay).
 // The root fills its parent and is a size container, so everything scales with cqmin.
 import { useEffect, useId, useRef, useState } from 'react';
 import { PASS_START, TILES, isBuyable } from '@shared/board.js';
 import { formatINR } from '@shared/format.js';
-import { Avatar } from '@/components/art/index.js';
-import Dice, { LuckyBadge, dieValue } from './Dice.jsx';
+import Dice, { dieValue } from './Dice.jsx';
 import EventBanner from './EventBanner.jsx';
 import ActionBar, { PanelButton, rideVehicle, useActionSpec } from './ActionBar.jsx';
 import { LogList } from './LogPanel.jsx';
 import MyProperties from './MyProperties.jsx';
-import { ChaiToken, TrafficTag } from './MoneyBar.jsx';
 import { oddsSupported, useOddsPref } from './oddsPref.js';
 import Icon from './ui/Icon.jsx';
 import { activePlayer, previewRentSafe, tileAccent, useStateLike } from './ui/helpers.js';
-import { TimerBar, TimerRing } from './turn/TurnTimer.jsx';
+import { TimerBar } from './turn/TurnTimer.jsx';
 import { cosmeticsOf } from './turn/room.js';
-import { roundBadgeInfo } from './turn/RoundBadge.jsx';
 import '@/styles/controlpanel.css';
 
 export const TABS = [
@@ -95,7 +94,47 @@ export function landedInfo(state, player, me, sum = 4, tiles = TILES) {
   }
 }
 
-/** Tab strip: arrow keys / Home / End move between tabs (roving tabindex). */
+/**
+ * The one plain line under the die. Pure; exported for testing.
+ *   my turn       "Your turn — roll!" (a six: "Six! Roll again"), "Stuck in traffic — your move", "Your turn — buy it?", ...
+ *   someone else  "Ravi is playing…"
+ *   game over     "Final"
+ * `spec` is the action spec (ActionBar.buildActionSpec); it is only read for what I am being asked to do.
+ * -> { tone: 'mine' | 'other' | 'final' | 'idle', text, name }
+ */
+export function statusLine(session, spec = null) {
+  const phase = session?.display?.phase ?? session?.view?.phase;
+  if (phase === 'over' || session?.result) return { tone: 'final', text: 'Final', name: '' };
+  const player = activePlayer(session);
+  if (!player) return { tone: 'idle', text: 'Waiting for players…', name: '' };
+
+  const me = session?.me;
+  const isMe = player.id === me;
+  const name = isMe ? 'You' : player.name;
+  if (player.bankrupt) return { tone: 'other', text: `${name} ${isMe ? 'are' : 'is'} out of the game`, name };
+
+  if (phase === 'auction') {
+    return { tone: 'other', text: session?.options?.bid ? 'Auction — place your bid' : 'Auction in progress…', name };
+  }
+  if (phase === 'debt') {
+    const debtor = session?.view?.players?.find((p) => p.id === session?.view?.debt?.player);
+    if (debtor && debtor.id === me) return { tone: 'mine', text: 'Settle your debt', name: 'You' };
+    return { tone: 'other', text: `${debtor?.name ?? name} is settling a debt…`, name: debtor?.name ?? name };
+  }
+  if (!isMe) return { tone: 'other', text: `${name} is playing…`, name };
+  if (session?.rolling) return { tone: 'mine', text: 'Rolling…', name };
+
+  switch (spec?.kind) {
+    case 'roll': return { tone: 'mine', text: spec.primary?.label === 'Roll again' ? 'Six! Roll again' : 'Your turn — roll!', name };
+    case 'traffic': return { tone: 'mine', text: 'Stuck in traffic — your move', name };
+    case 'buy': return { tone: 'mine', text: 'Your turn — buy it?', name };
+    case 'skip': return { tone: 'mine', text: 'Your turn — can’t afford it', name };
+    case 'end': return { tone: 'mine', text: 'Your turn — end it when ready', name };
+    default: return { tone: 'mine', text: 'You are playing…', name };
+  }
+}
+
+/** Tab strip: small segmented pills; arrow keys / Home / End move between tabs (roving tabindex). */
 function Tabs({ tab, onTab, badges, ids }) {
   const refs = useRef({});
   const onKey = (e) => {
@@ -110,8 +149,10 @@ function Tabs({ tab, onTab, badges, ids }) {
     onTab(TABS[next].id);
     refs.current[TABS[next].id]?.focus();
   };
+  const at = Math.max(0, TABS.findIndex((t) => t.id === tab));
   return (
-    <div className="cp-tabs" role="tablist" aria-label="Control panel" onKeyDown={onKey}>
+    <div className="cp-tabs" role="tablist" aria-label="Control panel" onKeyDown={onKey} style={{ '--i': at, '--n': TABS.length }}>
+      <span className="cp-tabs__thumb" aria-hidden="true" />
       {TABS.map((t) => {
         const on = t.id === tab;
         const badge = badges[t.id];
@@ -128,7 +169,7 @@ function Tabs({ tab, onTab, badges, ids }) {
             className={`cp-tab${on ? ' is-on' : ''}`}
             onClick={() => onTab(t.id)}
           >
-            <Icon name={t.icon} size={16} />
+            <Icon name={t.icon} size={14} />
             <span className="cp-tab__label">{t.label}</span>
             {badge ? <span className="cp-badge" aria-label={badge.label}>{badge.text}</span> : null}
           </button>
@@ -138,11 +179,11 @@ function Tabs({ tab, onTab, badges, ids }) {
   );
 }
 
-/** Play tab: the scrolling alert log, then the tile the current player stands on. */
+/** Play tab: the quiet activity log, then a compact chip for the tile the current player stands on (opens its sheet). */
 function BuyPane({ session, landed, buying, onOpenTile }) {
   return (
     <div className="cp-buy">
-      <LogList log={session.log || []} variant="mono" />
+      <LogList log={session.log || []} variant="center" />
       {landed ? (
         <button
           type="button"
@@ -201,31 +242,32 @@ export function panelBadges(spec, session) {
   };
 }
 
-/** The turn player, big: avatar with the decision ring, name, "your turn", cash, chai and traffic state. */
-function Who({ session, player, isMe, over }) {
-  const round = roundBadgeInfo(session);
+/** The line under the die. Remounts (and so re-enters) whenever its words change. */
+function Status({ session, spec, player }) {
+  const s = statusLine(session, spec);
   return (
-    <div className={`cp-who${player?.bankrupt ? ' is-out' : ''}`} style={{ '--pc': player?.color || '#8aa09b' }}>
-      <TimerRing session={session} playerId={player?.id} size={46}>
-        <span className="cp-token" aria-hidden="true">
-          {player ? <Avatar preset={player.avatar} size={36} /> : null}
-        </span>
-      </TimerRing>
-      <div className="cp-who__txt">
-        <span className="cp-who__row">
-          <b className="cp-who__name">{player ? (isMe ? 'You' : player.name) : '—'}</b>
-          <span className={`cp-who__turn${isMe && !over ? ' is-mine' : ''}`}>{over ? 'Final' : isMe ? 'your turn' : 'playing'}</span>
-        </span>
-        <span className="cp-who__cash">{formatINR(player?.cash ?? 0)}</span>
-        <span className="cp-who__tags">
-          <small className="cp-who__meta">{round.text}</small>
-          {player && !player.bankrupt ? <ChaiToken count={player.chai} /> : null}
-          {player?.stuck && !player.bankrupt ? <TrafficTag /> : null}
-          <LuckyBadge session={session} />
-        </span>
-      </div>
-    </div>
+    <p key={s.text} className={`cp-status is-${s.tone}`}>
+      {player && s.tone !== 'final' && s.tone !== 'idle' ? <i className="cp-status__dot" aria-hidden="true" /> : null}
+      <span className="cp-status__txt">{s.text}</span>
+    </p>
   );
+}
+
+/** The faint glow of the turn player's colour in the middle of the mat; a new colour cross-fades in over the old one. */
+function MatGlow({ color }) {
+  const [layers, setLayers] = useState(() => [{ id: 0, color }]);
+  const seq = useRef(0);
+  useEffect(() => {
+    setLayers((ls) => (ls[ls.length - 1].color === color ? ls : [...ls.slice(-1), { id: ++seq.current, color }]));
+  }, [color]);
+  useEffect(() => {
+    if (layers.length < 2) return undefined;
+    const t = setTimeout(() => setLayers((ls) => ls.slice(-1)), 900);
+    return () => clearTimeout(t);
+  }, [layers]);
+  return layers.map((l, i) => (
+    <i key={l.id} className={`cp-glow${i < layers.length - 1 ? ' is-out' : ''}`} style={{ '--pc': l.color }} />
+  ));
 }
 
 function OddsToggle() {
@@ -260,37 +302,41 @@ export default function ControlPanel({ session, onOpenTile, onOpenTrade, actions
   }, [spec.kind]);
 
   const player = activePlayer(session);
-  const isMe = !!player && player.id === session.me;
-  const over = (session.display?.phase ?? session.view?.phase) === 'over';
   const landed = player && !player.bankrupt ? landedInfo(state, player, session.me, dieValue(session)) : null;
   const shownTab = docked ? 'buy' : tab;
   const diceSkin = player ? cosmeticsOf(session, player.id).dice : undefined;
+  const pc = player?.color || '#55d6c2';
 
   return (
     <section className={`cp${docked ? ' cp--docked' : ''}`} aria-label="Game controls">
-      <div className="cp__in" data-kind={spec.kind} data-tab={shownTab}>
-        <header className="cp-top">
-          <Who session={session} player={player} isMe={isMe} over={over} />
-          <div className="cp-top__dice">
-            <Dice session={session} skin={diceSkin} />
-            <OddsToggle />
-          </div>
-        </header>
-
-        {docked ? null : <TimerBar session={session} className="cp-timer" />}
-        <EventBanner session={session} />
+      <div className="cp__in" data-kind={spec.kind} data-tab={shownTab} style={{ '--pc': pc }}>
+        <div className="cp-mat" aria-hidden="true"><MatGlow color={pc} /></div>
 
         {docked ? null : <Tabs tab={tab} onTab={setTab} badges={panelBadges(spec, session)} ids={ids} />}
+        <EventBanner session={session} />
 
-        <div
-          className="cp-pane"
-          role={docked ? undefined : 'tabpanel'}
-          id={`${ids}-pane`}
-          aria-labelledby={docked ? undefined : `${ids}-tab-${shownTab}`}
-        >
-          {shownTab === 'buy' ? <BuyPane session={session} landed={landed} buying={spec.kind === 'buy'} onOpenTile={onOpenTile} /> : null}
-          {shownTab === 'manage' ? <div className="cp-scroll"><MyProperties session={session} onOpenTile={onOpenTile} /></div> : null}
-          {shownTab === 'trade' ? <div className="cp-scroll"><TradePane session={session} onOpenTrade={onOpenTrade} /></div> : null}
+        <div className="cp-stage">
+          <div className="cp-hero">
+            <div className="cp-hero__die">
+              <Dice session={session} skin={diceSkin} />
+              <OddsToggle />
+            </div>
+            <div className="cp-hero__txt">
+              <Status session={session} spec={spec} player={player} />
+              {docked ? null : <TimerBar session={session} className="cp-timer" />}
+            </div>
+          </div>
+
+          <div
+            className="cp-pane"
+            role={docked ? undefined : 'tabpanel'}
+            id={`${ids}-pane`}
+            aria-labelledby={docked ? undefined : `${ids}-tab-${shownTab}`}
+          >
+            {shownTab === 'buy' ? <BuyPane session={session} landed={landed} buying={spec.kind === 'buy'} onOpenTile={onOpenTile} /> : null}
+            {shownTab === 'manage' ? <div className="cp-scroll"><MyProperties session={session} onOpenTile={onOpenTile} /></div> : null}
+            {shownTab === 'trade' ? <div className="cp-scroll"><TradePane session={session} onOpenTrade={onOpenTrade} /></div> : null}
+          </div>
         </div>
 
         {docked ? null : <ActionBar spec={spec} fire={fire} session={session} />}

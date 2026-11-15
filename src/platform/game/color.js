@@ -46,5 +46,7 @@ export function themeVars(theme) {
     '--g-soft': alpha(t.accent, 0.16),
     '--g-line': alpha(t.accent, 0.4),
     '--g-glow': alpha(t.accent, 0.35),
+    // the same glow at full strength, for shadows with a negative spread (they stay inside the shape's outline)
+    '--g-glow-strong': alpha(t.accent, 0.6),
   };
 }

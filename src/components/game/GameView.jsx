@@ -1,15 +1,15 @@
 // The whole game screen. Depends ONLY on the `session` interface (docs/CONTRACT.md section 6) plus the Hustle additions
 // (session.clock, roomPlayers, card, handoff, flights; docs/HUSTLE_PLAN.md 3.9).
-//   >= 900px: [ square board (control panel in its centre) | scoreboard column (money bar, chat) ]
-//   600-899:  board on top, scoreboard + chat underneath
-//   < 600px:  board at full width, a horizontally scrollable player strip, a fixed bottom action dock, chat below
+//   >= 960px: [ player pods | square board (control panel in its centre) | player pods + chat ]: players sit at the board's corners
+//   < 960px:  pods in a row above and a row below the board, chat under it
+//   < 600px:  the same at full width, plus a fixed bottom action dock
 // Overlays over the board: turn hand-off banner, card reveal; fixed overlays: speech bubbles, emote pops, coin flights.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { sfx } from '@/lib/sfx.js';
 import Board from './Board.jsx';
 import ControlPanel, { panelBadges } from './ControlPanel.jsx';
 import { useActionSpec } from './ActionBar.jsx';
-import MoneyBar from './MoneyBar.jsx';
+import PlayerPods, { usesMiddleEdges } from './PlayerPods.jsx';
 import PlayerSheet, { StatsSheet } from './PlayerSheet.jsx';
 import PropertySheet from './PropertySheet.jsx';
 import AuctionSheet from './AuctionSheet.jsx';
@@ -112,7 +112,6 @@ export default function GameView({ session, onExit }) {
   const openTile = useCallback((id) => setTileId(id), []);
   const closeTile = useCallback(() => setTileId(null), []);
   const openTrade = useCallback(() => setTrade(true), []);
-  const openStats = useCallback(() => setStats(true), []);
 
   /* WebAudio needs a user gesture */
   useEffect(() => {
@@ -138,6 +137,7 @@ export default function GameView({ session, onExit }) {
   }
 
   const badges = panelBadges(actions.spec, session);
+  const playerCount = (session.display?.players ?? session.view?.players ?? []).length;
 
   return (
     <div
@@ -149,7 +149,8 @@ export default function GameView({ session, onExit }) {
       <p className="hg-sr" aria-live="polite" aria-atomic="true" data-testid="table-live">{liveText}</p>
       <TopBar session={session} onBack={() => setConfirm(true)} onMenu={() => setMenu(true)} />
 
-      <main className="hg-table" aria-label="Game table">
+      <main className="hg-table" aria-label="Game table" data-n={playerCount} data-mid={usesMiddleEdges(playerCount) ? '' : undefined}>
+        <PlayerPods session={session} onSelect={setPlayerId} />
         <div className="hg-boardcol">
           <div className="hg-boardwrap">
             <Board
@@ -171,10 +172,7 @@ export default function GameView({ session, onExit }) {
             <CardReveal session={session} />
           </div>
         </div>
-        <aside className="hg-side" aria-label="Scoreboard">
-          <MoneyBar session={session} onSelect={setPlayerId} onOpenStats={openStats} compact={phone} />
-          <div className="hg-chatcard"><EmoteBar session={session} /></div>
-        </aside>
+        <div className="hg-chatcard"><EmoteBar session={session} /></div>
       </main>
 
       {phone ? (

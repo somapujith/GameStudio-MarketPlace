@@ -50,12 +50,12 @@ import { createGame, applyAction, getOptions, canUpgrade, previewRent, netWorth,
 - `createGame({ players:[{id,name,avatar}], settings?, seed? }) -> state` (2-6 players; settings are normalised, see `normalizeSettings`). `players[].isBot` / `bot` still exist in the engine for the simulator; the server never sets them.
 - `applyAction(state, action) -> { state, events, error? }`: pure, never mutates the input. An invalid action returns the SAME state, `events: []` and `error: 'message'`.
 - `getOptions(state, playerId)`: what that player may do right now (keys listed in `GAME_RULES.md` 8.4). The client computes it locally; it is not sent over the wire.
-- `canUpgrade`, `previewRent(state, tileId, diceSum=7)`, `netWorth`, `liquidationValue`, `standings(state) -> [{id, cash, worth, rank}]`.
+- `canUpgrade(state, playerId, tileId) -> { ok, reason?, cost }` (Hustle rule: you may only upgrade a district when you own every district of its collection; reason `Own all 3 districts of <collection> first (you have N)`), `previewRent(state, tileId, diceSum=7)`, `netWorth`, `liquidationValue`, `standings(state) -> [{id, cash, worth, rank}]`.
 - `chooseBotAction(state, playerId, rnd)`: the move chooser the server uses to auto-play an idle or disconnected seat (and the simulator uses for its bots). `nextBotMove` is the simulator's variant.
 - `DEFAULT_SETTINGS = { startCash:15000, goal:70000, passStart:2000, jailTurns:1, bailFine:500, maxRounds:50, dice:'lucky', auctionOnDecline:true, snatches:1, snatchMs:3000 }`; `PLAYER_COLORS`; `KISMET` (24 cards `{ id, kind, title, text, effect }`); `CITY_EVENTS`.
 
 State, phases, actions and events are specified in `GAME_RULES.md` (sections 3, 7, 8.4-8.6). In short: phases `roll buy snatch auction manage debt over`; **one die** (`state.dice = [d]`), a six rolls again;
-passing or landing on START pays `passStart`; a full colour set doubles unbuilt base rent and unlocks even building up to the Hotel; stations pay 250/500/1000/2000, utilities 40x / 100x the die;
+passing or landing on START pays `passStart`; owning a whole collection pays 1.5x on level-0 districts and is required before any district of it can be upgraded; stations pay 250/500/1000/2000, utilities 40x / 100x the die;
 a skipped tile goes to a sealed auction; cash shortfalls go to the debt phase, then bankruptcy; you win by net worth >= `goal`, as last player standing, or by being richest when `maxRounds` runs out.
 Test-only: if `state.cfg.debug === true`, `ROLL` honours `action.dice = [d]`. The server never sets `debug`.
 

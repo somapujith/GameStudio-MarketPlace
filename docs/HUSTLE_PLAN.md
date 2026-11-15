@@ -114,7 +114,7 @@ Tiles are **fictional commercial ventures** in the precincts (heritage rule), ea
 * Start cash 15,00,000 (`quick` mode 20,00,000). START pays **2,00,000** when passed or landed on (once per move; backwards never pays).
 * Buying: land on an unowned property -> buy at price, or skip -> sealed auction (City Takeover; `auctionOnDecline` default true). Unaffordable -> no buy offer, straight to auction.
 * **Levels:** a bought district is level 0 (its first business, `levelNames[0]`). `MAX_LEVEL = 2`. Upgrade cost = 50% of price (30,000 - 2,00,000).
-  Upgrading needs only ownership (no full set, no even-building rule), the tile unmortgaged, your turn in `roll`/`manage`, cash >= cost.
+  Upgrading needs the **whole collection** (you own every district of the tile's `group`; mortgaged siblings still count; levels already built stay if the set is later broken), no even-building rule, the tile unmortgaged, your turn in `roll`/`manage`, cash >= cost. Reason: `Own all 3 districts of <collection> first (you have N)`.
 * **Rent** = `rentTable(tile) = [base, round1000(base*1.9), round1000(base*3.5)]` with base = 10% of price (HITEC: 34,000 / 65,000 / 1,19,000->1,19,000).
   **Full set bonus: 1.5x on level-0 tiles only.** Mortgaged tiles collect nothing. City events multiply on top (3.6).
 * Selling an upgrade (`SELL_BUILDING`) refunds 50% of its cost. Mortgage = 50% of price, lifting costs +10%. Mortgage needs level 0.

@@ -1,5 +1,6 @@
 // Hyderabad Hustle rules (docs/HUSTLE_PLAN.md 3). Debug dice (`cfg.debug` + `ROLL {dice:[n]}`) make every move exact.
 import { describe, it, expect } from 'vitest';
+import { GROUP_TILES } from './board.js';
 import {
   createGame, applyAction, getOptions, netWorth, standings, previewRent, municipalDue, canUpgrade, normalizeSettings,
   liquidationValue, chooseBotAction, DEFAULT_SETTINGS, MODES, ROUND_CAP, TILES, PASS_START, TRAFFIC_FINE, PIECES,
@@ -169,9 +170,9 @@ describe('rent, levels and the set bonus', () => {
     expect(P(r.state, 'b').stats.rentEarned).toBe(7000);
   });
 
-  it('upgrades need only ownership, an unmortgaged tile, your turn and the cash; 50% of the price each, max level 2', () => {
+  it('upgrades need the whole collection, an unmortgaged tile, your turn and the cash; 50% of the price each, max level 2', () => {
     const s = game();
-    s.owners[31] = 'a';
+    for (const t of GROUP_TILES.cyber) s.owners[t] = 'a';
     expect(canUpgrade(s, 'a', 31)).toEqual({ ok: true, cost: 170000 });
     let r = act(s, { type: 'UPGRADE', playerId: 'a', tile: 31 });
     expect(r.events).toEqual([
@@ -218,6 +219,88 @@ describe('rent, levels and the set bonus', () => {
     r = act(r.state, { type: 'BUY', playerId: 'a' });
     expect(r.events.at(-1)).toEqual({ type: 'set_complete', player: 'a', group: 'bazaar' });
     expect(getOptions(r.state, 'a').sets.find((x) => x.group === 'bazaar')).toMatchObject({ owned: 3, size: 3, multiplier: 1.5 });
+  });
+});
+
+describe('upgrades need the whole collection', () => {
+  const CYBER = [28, 29, 31]; // Cyberabad: 3 districts
+  const reason = (have) => `Own all 3 districts of Cyberabad first (you have ${have})`;
+  const own = (s, tiles, who = 'a') => { for (const t of tiles) s.owners[t] = who; return s; };
+
+  it('refuses with a human-readable reason when 1 or 2 of 3 districts are owned (the rest free or held by others)', () => {
+    const one = own(game(), [31]);
+    expect(canUpgrade(one, 'a', 31)).toEqual({ ok: false, reason: reason(1), cost: 170000 });
+    expect(applyAction(one, { type: 'UPGRADE', playerId: 'a', tile: 31 }).error).toBe(reason(1));
+    expect(getOptions(one, 'a').upgrade).toEqual([]);
+
+    const two = own(game(), [28, 31]);
+    two.owners[29] = 'b'; // somebody else holds the third
+    expect(canUpgrade(two, 'a', 31).reason).toBe(reason(2));
+    expect(canUpgrade(two, 'a', 28).reason).toBe(reason(2));
+    const err = applyAction(two, { type: 'UPGRADE', playerId: 'a', tile: 28 });
+    expect(err.error).toBe(reason(2));
+    expect(err.state).toBe(two);
+    expect(getOptions(two, 'a').upgrade).toEqual([]);
+    expect(two.levels[28]).toBe(0);
+  });
+
+  it('allows every district of the collection once all 3 are owned; other collections stay locked', () => {
+    const s = own(game(), CYBER);
+    own(s, [1, 3], 'a'); // 2 of 3 Bazaar districts: still locked
+    for (const t of CYBER) expect(canUpgrade(s, 'a', t).ok).toBe(true);
+    expect(getOptions(s, 'a').upgrade.map((u) => u.tile)).toEqual(CYBER);
+    expect(canUpgrade(s, 'a', 1).reason).toBe('Own all 3 districts of Bazaar Beginnings first (you have 2)');
+    const r = act(s, { type: 'UPGRADE', playerId: 'a', tile: 28 });
+    expect(r.state.levels[28]).toBe(1);
+    // nobody else may use the set, and the rule sits before the cash check
+    expect(canUpgrade(s, 'b', 29)).toMatchObject({ ok: false, reason: 'You do not own this district' });
+    const broke = own(game(), [28, 29]);
+    broke.players[0].cash = 0;
+    expect(canUpgrade(broke, 'a', 28).reason).toBe(reason(2));
+    own(broke, [31]);
+    expect(canUpgrade(broke, 'a', 28).reason).toMatch(/^Need /);
+  });
+
+  it('a mortgaged sibling still counts as owned (ownership only)', () => {
+    const s = own(game(), CYBER);
+    s.mortgaged[28] = true;
+    expect(canUpgrade(s, 'a', 31).ok).toBe(true);
+    expect(canUpgrade(s, 'a', 28).reason).toMatch(/Unmortgage/);
+    expect(getOptions(s, 'a').upgrade.map((u) => u.tile)).toEqual([29, 31]);
+  });
+
+  it('breaking the set later blocks further upgrades only: levels stay, selling and rent work', () => {
+    const s = own(game(), CYBER);
+    let r = act(s, { type: 'UPGRADE', playerId: 'a', tile: 31 });
+    r = act(r.state, { type: 'TRADE_OFFER', playerId: 'a', to: 'b', give: { cash: 0, tiles: [28] }, get: { cash: 1000, tiles: [] } });
+    r = act(r.state, { type: 'TRADE_ACCEPT', playerId: 'b' });
+    expect(r.state.owners[28]).toBe('b');
+    expect(r.state.levels[31]).toBe(1); // the built level survives
+    expect(canUpgrade(r.state, 'a', 31).reason).toBe(reason(2));
+    expect(canUpgrade(r.state, 'a', 29).reason).toBe(reason(2));
+    expect(applyAction(r.state, { type: 'UPGRADE', playerId: 'a', tile: 31 }).error).toBe(reason(2));
+    expect(previewRent(r.state, 31)).toBe(65000); // level 1 rent unchanged
+    const sold = act(r.state, { type: 'SELL_BUILDING', playerId: 'a', tile: 31 });
+    expect(sold.state.levels[31]).toBe(0);
+    // win the district back and upgrading works again
+    const back = { ...structuredClone(r.state) };
+    back.owners[28] = 'a';
+    expect(canUpgrade(back, 'a', 31).ok).toBe(true);
+  });
+
+  it('is generic by collection size: a 2-district collection needs both', () => {
+    const saved = GROUP_TILES.bazaar;
+    GROUP_TILES.bazaar = [1, 3];
+    try {
+      const s = own(game(), [1]);
+      expect(canUpgrade(s, 'a', 1).reason).toBe('Own all 2 districts of Bazaar Beginnings first (you have 1)');
+      s.owners[3] = 'a';
+      expect(canUpgrade(s, 'a', 1)).toEqual({ ok: true, cost: 30000 });
+      expect(canUpgrade(s, 'a', 3).ok).toBe(true);
+      expect(applyAction(s, { type: 'UPGRADE', playerId: 'a', tile: 3 }).state.levels[3]).toBe(1);
+    } finally {
+      GROUP_TILES.bazaar = saved;
+    }
   });
 });
 

@@ -152,9 +152,13 @@ Seat order is shuffled with a CSPRNG when the host presses Start; seat 0 plays f
   tiles only**. A mortgaged district collects nothing. City events (9) and the owner's "rents x2" card boost
   (`player.rentBoost`, until that player's next turn) multiply on top. `previewRent(state, tile)` gives the exact
   figure the visitor would owe before chai.
-* **Upgrades**: `MAX_LEVEL` 2, each costs 50% of the price (30,000 - 2,00,000). Needs only ownership, an unmortgaged
-  tile, your turn in `roll`/`manage` and the cash: no full set, no even-building rule, no limit per turn.
-  `SELL_BUILDING` refunds 50% of one upgrade's cost (any order).
+* **Upgrades**: `MAX_LEVEL` 2, each costs 50% of the price (30,000 - 2,00,000). **You may only upgrade a district once you
+  own EVERY district of its collection** (all tiles of its `group`, `GROUP_TILES[group]`; today 3 per collection, the check
+  is by group size). Ownership is all that counts, so a mortgaged sibling still counts. Then it needs the tile
+  unmortgaged, your turn in `roll`/`manage` and the cash: no even-building rule, no limit per turn. Refusal reason:
+  `Own all 3 districts of Cyberabad first (you have 1)`. Levels already built stay if the set is later broken (a
+  trade, say): only further `UPGRADE` is blocked; `SELL_BUILDING`, mortgage and rent rules are
+  unchanged. `SELL_BUILDING` refunds 50% of one upgrade's cost (any order).
 * **Mortgage**: 50% of the price, only at level 0 (sell that tile's upgrades first); lifting costs +10%.
 * **Chai Adda (18)**: +1 chai (`player.chai`, cap 1; nothing happens at the cap). A chai is spent **automatically** on
   the next rent payment of at least 20,000 (halves it, `chai` event reason `rent` with `saved`, `stats.chaiSaved`), or
@@ -339,7 +343,7 @@ Tile fields are integers 0-35.
 | `BUY` | | your turn, phase `buy`, cash >= price | `Nothing to buy right now` · `Not enough cash` |
 | `SKIP_BUY` | | your turn, phase `buy` | `Nothing to skip right now` |
 | `RIDE` | | your turn, phase `manage`, `state.ride` is yours, cash >= fare | `There is no ride to take` · `The fare is ₹X` |
-| `UPGRADE` | `tile` | your turn, `roll`/`manage`, own district, level < 2, unmortgaged, cash >= cost | `Already a Tech Campus` · `Unmortgage this district first` · `Need ₹X more` |
+| `UPGRADE` | `tile` | your turn, `roll`/`manage`, own district, **own every district of its collection**, level < 2, unmortgaged, cash >= cost | `Own all 3 districts of Cyberabad first (you have 1)` · `Already a Tech Campus` · `Unmortgage this district first` · `Need ₹X more` |
 | `SELL_BUILDING` | `tile` | your district with an upgrade, `roll`/`manage` of your turn or your own debt | `Nothing to sell here` |
 | `MORTGAGE` | `tile` | your level-0 district, `roll`/`manage` of your turn or your own debt | `Sell its upgrades first` · `Already mortgaged` |
 | `UNMORTGAGE` | `tile` | your mortgaged district, `roll`/`manage` of your turn, cash >= cost | `This district is not mortgaged` · `Need ₹X more` |
@@ -494,19 +498,23 @@ first free one; `player.piece` is always set and unique. Player colours are unch
 
 `node scripts/simulate.js [--games N] [--players 2,4,6] [--modes standard,quick,classic] [--set k=v] [--bot k=v]`
 plays bot-only games, checks invariants after every action (cash, ownership, levels, mortgages, phases, debts, ride
-offers, unique pieces, winner = rank 1) and prints balance numbers. 300 games per row, default bots (2026-11-15):
+offers, unique pieces, winner = rank 1) and prints balance numbers. 300 games per row, default bots (2026-11-15, after
+the whole-collection upgrade rule of section 5):
 
 | mode, players | rounds / turns | districts owned after round 3 / 5 | ended by bankruptcy | final net-worth spread (richest - poorest) | upgrades / game |
 |---|---|---|---|---|---|
-| standard, 2 | 20 / 40 | 19% / 31% | 0% | ₹4.5L | 19 |
-| standard, 4 | 20 / 80 | 31% / 50% | 0% | ₹7.6L | 35 |
-| standard, 6 | 20 / 120 | 39% / 63% | 0% | ₹10.0L | 47 |
-| quick, 4 | 12 / 48 | 32% / 50% | 0% | ₹4.8L | 37 |
-| classic, 4 | 60 (cap) / 239 | 32% / 50% | 0% | ₹19.7L | 55 |
+| standard, 2 | 20 / 40 | 19% / 31% | 0% | ₹2.7L | 1.8 |
+| standard, 4 | 20 / 80 | 30% / 49% | 0% | ₹4.3L | 1.9 |
+| standard, 6 | 20 / 120 | 40% / 62% | 0% | ₹6.5L | 1.7 |
+| quick, 4 | 12 / 48 | 31% / 49% | 0% | ₹3.2L | 1.2 |
+| classic, 4 | 60 (cap) / 240 | 31% / 50% | 0% | ₹10.1L | 4.6 |
 
-The standard and quick economies behave as designed: districts sell steadily (about half by round 5 with 4 players),
-everybody can afford upgrades, rents average ₹55-65k a payment and the winner ends around ₹20-22L. No numbers were
-changed from the concept doc's recommended defaults. Known balance caveat: with ₹2L per lap and these rents nobody is
+The standard and quick economies behave as designed: districts sell steadily (about half by round 5 with 4 players)
+and the winner ends around ₹21-24L. Before the whole-collection upgrade rule the same bots built 19 / 35 / 47 / 37 / 55
+upgrades per game and rents averaged ₹55-65k a payment; now bots rarely complete a collection (they never trade with
+each other, only buy and bid), so they build 1-5 upgrades per game, rents average about ₹20k and the net-worth spread
+roughly halves. Human tables trade and complete collections far more often, so expect more building there. No numbers
+were changed from the concept doc's recommended defaults. Known balance caveat: with ₹2L per lap and these rents nobody is
 squeezed out, so **classic games run to the 60-round cap** (also with ₹1L laps or aggressive bots); the seat that
 moves first wins a little more often (about 30% in 4-player games).
 

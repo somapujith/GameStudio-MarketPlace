@@ -83,7 +83,7 @@
   border-radius: 16px;
   color: var(--g-on, var(--hub-text));
   background: linear-gradient(135deg, var(--g-accent, var(--hub-brand)), var(--g-accent-2, var(--hub-brand-2)));
-  box-shadow: 0 6px 16px var(--g-glow, var(--hub-brand-soft));
+  box-shadow: 0 10px 16px -8px var(--g-glow-strong, var(--g-glow, var(--hub-brand-soft)));
 }
 .xl-how__num {
   position: absolute;

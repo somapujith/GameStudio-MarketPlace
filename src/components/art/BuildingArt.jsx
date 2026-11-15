@@ -1,6 +1,7 @@
 // Property illustrations (isometric, tinted by group colour).
 //   <BuildingArt theme="bazaar|food|transit|venue|tech" level={0..2} />  Hyderabad Hustle businesses (HustleBuildings.jsx)
 //   <BuildingArt level={0..5} color="#..." />                          classic: plot -> Kirana -> Apartments -> Mall -> Tower -> Hotel
+// Optional `slab` (hex) recolours the diorama plinth; everything else keeps its props.
 // `group` (a GROUPS id) is accepted too and maps to its theme. Deliberately independent of @shared/board.js level constants.
 import { memo } from 'react';
 import { ThemeModel, THEME_LEVEL_NAMES, THEME_ACCENT, THEME_SCALE, THEMES } from './HustleBuildings.jsx';
@@ -383,6 +384,8 @@ function Tower({ c }) {
   );
 }
 
+/** Diorama plinth colour; the property sheet passes a collection-tinted one (`slab`), the board keeps this. */
+const SLAB_TOP = '#5f58a8';
 const MAX_LEVEL = 5; // classic ladder (Plot .. Hotel)
 const LEVEL_NAMES = ['Empty plot', 'Kirana shop', 'Apartments', 'Mall', 'Tower', 'Hotel'];
 
@@ -425,7 +428,7 @@ function BuildingModel({ level = 0, color = PAL.saffron }) {
   }
 }
 
-function BuildingArtBase({ theme, group, level = 0, color, size = 96, className, title }) {
+function BuildingArtBase({ theme, group, level = 0, color, size = 96, className, title, slab = SLAB_TOP }) {
   const th = THEMES.includes(theme) ? theme : GROUP_THEME[group] || null;
   const L = th ? Math.max(0, Math.min(2, level | 0)) : Math.max(0, Math.min(MAX_LEVEL, level | 0));
   const s = th ? THEME_SCALE[th][L] : [1, 1, 0.96, 0.92, 0.84, 0.8][L] ?? 0.8;
@@ -447,7 +450,7 @@ function BuildingArtBase({ theme, group, level = 0, color, size = 96, className,
       {label ? <title>{label}</title> : null}
       <g transform={`translate(80 112) scale(${s})`}>
         <g transform="translate(0 -39)">
-          <Slab w={78} d={78} t={6} r={7} top="#5f58a8" />
+          <Slab w={78} d={78} t={6} r={7} top={slab} />
         </g>
         {th ? <ThemeModel theme={th} level={L} color={c} /> : <BuildingModel level={L} color={c} />}
       </g>

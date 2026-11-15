@@ -1,3 +1,4 @@
+// (GameView now shows PlayerPods around the board; this list stays for its parts and its tests.)
 // The scoreboard: one row per player with a turn arrow on whoever is playing, the decision ring around the avatar,
 // cash, net worth, chai token, traffic and presence ("Reconnecting") tags, the equipped frame and title.
 // Click a row -> onSelect(playerId). Each avatar carries `data-fx-player` (coins fly to / from it, bubbles point at it).
@@ -5,13 +6,12 @@
 //   compact:  a horizontally scrollable strip of chips under the board (phones); the active chip scrolls into view
 // What is SHOWN (cash, chai, stuck) comes from the presenter's display; presence comes from the room.
 import { useEffect, useRef } from 'react';
-import { Avatar } from '@/components/art/index.js';
 import { formatINR, compactINR } from '@shared/format.js';
 import Icon from './ui/Icon.jsx';
 import Money from './ui/Money.jsx';
 import { activePlayer, useWorths } from './ui/helpers.js';
-import { TimerRing } from './turn/TurnTimer.jsx';
-import { AvatarFrame, TitleChip, cosmeticsOf, isConnected, tableSummary } from './turn/room.js';
+import AvatarToken from './ui/AvatarToken.jsx';
+import { TitleChip, cosmeticsOf, isConnected, tableSummary } from './turn/room.js';
 
 /** Chai glass + "Chai": the player holds a chai token (max 1). Dimmed (or hidden with `hideEmpty`) at 0. */
 export function ChaiToken({ count, hideEmpty = false, className = '' }) {
@@ -80,24 +80,17 @@ export function SnatchTokens({ count, className = '' }) {
 /** @deprecated */
 export const TrapReady = () => null;
 
-/** The avatar with frame, decision ring and presence dot; the fx anchor for this player. */
-function PlayerAvatar({ session, player, size = 34, offline }) {
+/** The player's avatar token (rim, timer arc, turn ripple, crown, reactions); the fx anchor for this player. */
+export function PlayerAvatar({ session, player, size = 34, offline, turn = false, leader = false, mood = '', live = false }) {
   const cos = cosmeticsOf(session, player.id);
   return (
     <span className="hg-mb-ava" data-fx-player={player.id}>
-      <TimerRing session={session} playerId={player.id} size={size + 8}>
-        <AvatarFrame frame={cos.frame} size={size}>
-          <span className="hg-mb-avatar" style={{ width: size, height: size }}>
-            <Avatar preset={player.avatar} size={size - 4} />
-          </span>
-        </AvatarFrame>
-      </TimerRing>
-      {offline ? <i className="hg-mb-offdot" aria-hidden="true" /> : null}
+      <AvatarToken session={session} player={player} size={size} offline={offline} turn={turn} leader={leader} mood={mood} live={live} frame={cos.frame} />
     </span>
   );
 }
 
-function rowLabel({ player, worth, isMe, isTurn, isLeader, offline }) {
+export function rowLabel({ player, worth, isMe, isTurn, isLeader, offline }) {
   return [
     `${player.name}${isMe ? ' (you)' : ''}`,
     player.bankrupt ? 'bankrupt' : `${formatINR(player.cash)} cash, ${formatINR(worth)} net worth`,

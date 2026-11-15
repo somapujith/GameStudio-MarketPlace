@@ -10,6 +10,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { neon } from '@neondatabase/serverless';
+import '../worker/neonLocal.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 

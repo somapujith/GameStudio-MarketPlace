@@ -1,0 +1,4 @@
+# Copy to .dev.vars.staging for the local Docker database (docker-compose.yml).
+DATABASE_URL=postgres://postgres:postgres@localhost:5433/gamehub
+JWT_SECRET=any-long-random-string
+GOOGLE_CLIENT_ID=

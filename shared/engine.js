@@ -224,6 +224,11 @@ export function canUpgrade(state, playerId, tileId) {
   if (state.owners[tileId] !== playerId) return no('You do not own this district');
   const level = state.levels[tileId] || 0;
   if (level >= MAX_LEVEL) return no(`Already a ${levelName(tile, MAX_LEVEL)}`);
+  // Hustle rule: you may only upgrade a district once you own EVERY district of its collection.
+  // Ownership only: a mortgaged sibling still counts. Levels already built stay if the set is later broken.
+  const need = GROUP_TILES[tile.group].length;
+  const have = ownedInGroup(state, playerId, tile.group);
+  if (have < need) return no(`Own all ${need} districts of ${GROUPS[tile.group].name} first (you have ${have})`);
   if (isMort(state, tileId)) return no('Unmortgage this district first');
   if (turnPlayer(state).id !== playerId) return no('Wait for your turn');
   if (state.trade) return no('Answer the trade offer first');

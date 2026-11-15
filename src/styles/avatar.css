@@ -1,0 +1,17 @@
+/* Avatar art: an idle blink for avatars that opt in with the `av-live` class (in-game player tokens, profile).
+   Eyes close for a split second every ~5 s; each avatar gets its own delay (--av-delay) so a table never blinks in unison. */
+.av-live .av-eyes {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: av-blink 5.4s infinite;
+  animation-delay: var(--av-delay, 0s);
+}
+@keyframes av-blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.08); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .av-live .av-eyes { animation: none; }
+}
+:root[data-motion='reduced'] .av-live .av-eyes,
+.hg-game[data-rm] .av-live .av-eyes { animation: none; }

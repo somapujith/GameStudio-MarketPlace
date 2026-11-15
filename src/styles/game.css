@@ -49,15 +49,23 @@
 .hg-goal-sep { opacity: 0.6; }
 .hg-goal .hg-pill { height: 18px; padding: 0 8px; font-size: 11px; }
 
-/* ------------------------------------------------------------ table: board + scoreboard */
+/* ------------------------------------------------------------ table: the board with the players around it */
+/* Narrow: a row of pods above the board (tl, tr) and below it (bl = you, br), chat under it. 5-6 players add a middle
+   pod to each row (data-mid). Wide (>= 960px): pods in a column left and right of the board, level with its corners. */
+.hg-game { --hg-rows: 236px; --hg-pod: clamp(196px, 17vw, 252px); }
 .hg-table {
-  flex: 1 0 auto; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px;
+  flex: 1 0 auto; width: 100%; display: grid; align-content: start; justify-content: stretch; gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-areas: "tl tr" "board board" "bl br" "chat chat";
   padding: 2px var(--hg-pad) max(14px, var(--safe-bottom));
 }
-.hg-boardcol { width: 100%; display: flex; justify-content: center; }
-.hg-boardwrap { position: relative; width: min(100%, max(320px, calc(100dvh - var(--hg-top) - 16px))); }
-.hg-side { width: min(100%, 560px); display: flex; flex-direction: column; gap: 10px; }
-.hg-chatcard { padding: 6px 12px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); }
+.hg-table[data-mid] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-areas: "tl ml tr" "board board board" "bl mr br" "chat chat chat";
+}
+.hg-boardcol { grid-area: board; width: 100%; display: flex; justify-content: center; }
+.hg-boardwrap { position: relative; width: min(100%, max(320px, calc(100dvh - var(--hg-top) - var(--hg-rows)))); }
+.hg-chatcard { grid-area: chat; align-self: end; padding: 6px 12px; border-radius: 18px; background: var(--surface); border: 1px solid var(--line); }
 .hg-chatcard .table-chat { margin: 0; }
 .hg-chatcard .table-chat__composer { border-top: 0; padding-top: 0; }
 
@@ -65,10 +73,19 @@
   .hg-game { --hg-top: calc(58px + var(--safe-top)); --hg-pad: 16px; }
   .hg-top-mid { flex-direction: row; justify-content: center; gap: 14px; }
   .hg-top-mid .hg-goal { padding-left: 14px; border-left: 1px solid #34414a; }
-  .hg-table { flex-direction: row; justify-content: center; align-items: flex-start; gap: var(--hg-pad); padding-top: 4px; padding-bottom: var(--hg-pad); }
-  .hg-boardcol { flex: none; width: auto; }
-  .hg-boardwrap { width: max(360px, min(calc(100dvh - var(--hg-top) - var(--hg-pad) - 4px), calc(100vw - var(--hg-side) - 3 * var(--hg-pad)))); }
-  .hg-side { flex: none; width: var(--hg-side); }
+}
+@media (min-width: 960px) {
+  .hg-table, .hg-table[data-mid] {
+    grid-template-columns: var(--hg-pod) auto var(--hg-pod); justify-content: center; align-content: start; column-gap: var(--hg-pad); row-gap: 10px;
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    grid-template-areas: "tl board tr" "ml board mr" ". board chat" "bl board br";
+    padding-top: 4px; padding-bottom: var(--hg-pad);
+  }
+  .hg-boardcol { width: auto; }
+  .hg-chatcard { padding: 6px 8px; }
+  .hg-chatcard .table-chat__reacts { gap: 2px; }
+  .hg-chatcard .table-chat__react { font-size: 17px; border-radius: 10px; }
+  .hg-boardwrap { width: max(360px, min(calc(100dvh - var(--hg-top) - var(--hg-pad) - 4px), calc(100vw - 2 * var(--hg-pod) - 4 * var(--hg-pad)))); }
 }
 
 /* ============================================================ buttons / pills / money */
@@ -794,6 +811,9 @@
 .hg-game--phone { --hg-pad: 6px; }
 .hg-game--phone .hg-table { gap: 8px; padding-bottom: calc(var(--hg-dock, 168px) + 14px); }
 .hg-game--phone .hg-boardwrap { width: 100%; }
-.hg-game--phone .hg-side { width: 100%; gap: 8px; }
 .hg-game--phone .hg-mb, .hg-game--phone .hg-chatcard { animation: none; }
+.hg-game--phone .hg-chatcard { padding: 4px 10px; }
+.hg-game--phone .table-chat__react { min-height: 38px; font-size: 20px; }
+.hg-game--phone .table-chat__reacts { padding-bottom: 4px; }
+.hg-game--phone .table-chat__composer input, .hg-game--phone .table-chat__composer button { min-height: 40px; }
 .hg-chip .tt-ring__track { stroke: rgba(255, 255, 255, 0.16); }

@@ -76,6 +76,12 @@ export default function MyProperties({ session, onOpenTile }) {
                         why = c && !c.ok && c.reason ? c.reason : off ? 'Wait…' : 'Upgrade on your turn';
                       }
                     }
+                    // Upgrading needs the whole collection: say so even while Mortgage / Sell are on offer.
+                    let setWhy = '';
+                    if (any && !b && !mortgaged && level < MAX_LEVEL && mine.length < set.tiles.length) {
+                      const c = canUpgradeSafe(session.view, me, id);
+                      setWhy = c && !c.ok && c.reason ? c.reason : '';
+                    }
                     return (
                       <li key={id} className={`hg-mp-prop${mortgaged ? ' is-mort' : ''}`}>
                         <button type="button" className="hg-mp-main" onClick={() => onOpenTile?.(id)}>
@@ -126,6 +132,7 @@ export default function MyProperties({ session, onOpenTile }) {
                         ) : why ? (
                           <p className="hg-mp-why">{why}</p>
                         ) : null}
+                        {setWhy ? <p className="hg-mp-why">{setWhy}</p> : null}
                       </li>
                     );
                   })}

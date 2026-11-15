@@ -8,6 +8,9 @@
 //   sock.send({ t: 'ready', ready: true });       // queued while the socket is not open
 //   sock.close();                                 // terminal: no more reconnects
 
+import { wsUrl as configWsUrl, isCrossOrigin } from './config.js';
+import { api } from './api.js';
+
 export const HEARTBEAT_MS = 20000;
 export const BACKOFF_BASE_MS = 500;
 export const BACKOFF_CAP_MS = 8000;
@@ -29,11 +32,18 @@ export function backoffDelay(attempt, { base = BACKOFF_BASE_MS, cap = BACKOFF_CA
   return Math.round(exp / 2 + (rnd() * exp) / 2);
 }
 
-/** ws(s) URL on the same host as the page, so the Vite `/ws` proxy and the Worker both just work. */
+/**
+ * ws(s) URL: on the same host as the page (so the Vite `/ws` proxy and the Worker both just work), or, in the
+ * optional cross-origin mode (VITE_API_ORIGIN), on the Worker's origin. See config.js.
+ */
 export function wsUrl(path, loc = globalThis.location) {
-  const p = String(path).startsWith('/') ? String(path) : `/${path}`;
-  if (!loc || !loc.host) return `ws://localhost:8787${p}`;
-  return `${loc.protocol === 'https:' ? 'wss:' : 'ws:'}//${loc.host}${p}`;
+  return configWsUrl(path, loc);
+}
+
+/** Cross-origin mode: trade the bearer session for a one-shot 60 s WebSocket ticket (POST /api/ws-ticket). */
+export async function fetchWsTicket() {
+  const r = await api.post('/api/ws-ticket');
+  return r && typeof r.ticket === 'string' ? r.ticket : '';
 }
 
 const hasWindow = () => typeof window !== 'undefined' && typeof window.addEventListener === 'function';
@@ -42,7 +52,8 @@ export class ReconnectingSocket {
   /**
    * @param {string} path  e.g. '/ws/room/ABC234'
    * @param {object} [opts] heartbeatMs, staleMs (0 = off), baseDelay, maxDelay, maxAttempts, noRetryCodes,
-   *                        WebSocketImpl, location, rnd, autoConnect
+   *                        WebSocketImpl, location, rnd, autoConnect,
+   *                        useTicket (default: cross-origin mode), fetchTicket (async () => ticket string)
    */
   constructor(path, opts = {}) {
     this.path = path;
@@ -57,12 +68,17 @@ export class ReconnectingSocket {
       location: undefined,
       rnd: Math.random,
       autoConnect: true,
+      fetchTicket: fetchWsTicket,
       ...opts,
     };
+    // Cross-origin mode: browsers cannot set headers on a WebSocket, so each (re)connect first fetches a fresh ticket.
+    if (this.opts.useTicket === undefined) this.opts.useTicket = isCrossOrigin(this.opts.location);
     this.status = 'idle';
     this.attempt = 0; // consecutive failed attempts (0 while healthy)
     this.everOpen = false;
     this._ws = null;
+    this._gen = 0; // bumped per connection attempt: a ticket answer for an older attempt is dropped
+    this._fetching = false; // a ticket request is in flight
     this._queue = [];
     this._closed = false;
     this._listeners = { message: new Set(), status: new Set(), open: new Set(), close: new Set() };
@@ -86,7 +102,7 @@ export class ReconnectingSocket {
 
   /** Start connecting (deferred one tick so a React StrictMode mount/unmount never opens a socket). */
   connect() {
-    if (this._closed || this._ws || this._start || this._retry) return this;
+    if (this._closed || this._ws || this._start || this._retry || this._fetching) return this;
     if (this.status === 'idle') this._setStatus('connecting');
     this._start = setTimeout(() => {
       this._start = null;
@@ -153,21 +169,58 @@ export class ReconnectingSocket {
     return !!this._ws && this._ws.readyState === 1;
   }
 
-  _url() {
-    return wsUrl(this.path, this.opts.location);
+  _url(ticket) {
+    const base = wsUrl(this.path, this.opts.location);
+    return ticket ? `${base}?ticket=${encodeURIComponent(ticket)}` : base;
   }
 
   _open() {
     if (this._closed) return;
     this._retry = null;
-    const Impl = this.opts.WebSocketImpl;
-    if (!Impl) {
+    if (!this.opts.WebSocketImpl) {
       this._terminate({ reason: 'unsupported' });
       return;
     }
+    if (!this.opts.useTicket) {
+      this._connect(this._url());
+      return;
+    }
+    // Never reuse a ticket: every attempt (including every reconnect) asks for a new one.
+    const gen = (this._gen += 1);
+    this._fetching = true;
+    let pending;
+    try {
+      pending = Promise.resolve(this.opts.fetchTicket());
+    } catch (err) {
+      pending = Promise.reject(err);
+    }
+    pending.then(
+      (ticket) => {
+        if (this._closed || gen !== this._gen) return;
+        this._fetching = false;
+        if (typeof ticket !== 'string' || !ticket) this._scheduleRetry();
+        else this._connect(this._url(ticket));
+      },
+      (err) => {
+        if (this._closed || gen !== this._gen) return;
+        this._fetching = false;
+        if (err && err.status === 401) {
+          // Signed out (or the stored token is stale): retrying cannot help, same as the server's close code 4001.
+          const info = { code: 4001, reason: 'Please sign in first.', clean: true };
+          this._emit('close', info);
+          this._terminate({ reason: 'fatal_close', code: 4001, closeReason: info.reason });
+        } else {
+          this._scheduleRetry(); // offline / server hiccup: back off and ask for a fresh ticket again
+        }
+      },
+    );
+  }
+
+  _connect(url) {
+    const Impl = this.opts.WebSocketImpl;
     let ws;
     try {
-      ws = new Impl(this._url());
+      ws = new Impl(url);
     } catch {
       this._scheduleRetry();
       return;

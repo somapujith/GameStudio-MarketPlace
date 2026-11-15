@@ -1,9 +1,10 @@
-// The current city event ("Hyderabad Rush Hour", docs/HUSTLE_PLAN.md 3.6), shown at the top of the control panel while
+// The current city event ("Hyderabad Rush Hour", docs/HUSTLE_PLAN.md 3.6), shown as a ribbon at the top of the board-centre panel while
 // `session.view.event` is set ({ id, title, text, kind, round, group?, groups?, mult?, amount? }).
 // Reads the LATEST state (session.view): the event is rules information, valid for the whole round.
 //   <EventBanner session />   -> a live region that is always mounted (so screen readers pick up insertions);
 //   the banner inside is keyed by event id + round, so a new event is announced once and re-renders are silent.
-// On the compact layout (< 420px container) the one-liner wraps under the title instead of disappearing.
+// It renders as a slim ribbon above the die. On the compact layout (< 420px container) the one-liner is visually hidden
+// (still read by screen readers) so the ribbon keeps to a single line: title + the affected-collection chips.
 import { GROUPS } from '@shared/board.js';
 import { formatINR } from '@shared/format.js';
 import '@/styles/controlpanel.css';

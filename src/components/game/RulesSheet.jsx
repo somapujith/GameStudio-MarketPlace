@@ -107,7 +107,7 @@ export default function RulesSheet({ open, onClose, session }) {
 
       <Rule icon={'🏗️'} title="Three businesses per district" wide>
         <p>
-          A district you buy opens its first business. Upgrade it twice (<b>half the price</b> each time, on your turn, no full set needed) and the rent climbs.
+          A district you buy opens its first business. Once you own <b>every district of its collection</b>, you can upgrade them, twice each (<b>half the price</b> each time, on your turn), and the rent climbs.
           {HITEC && hitecRent.length ? <> {HITEC.name}: {hitecRent.map(formatINR).join(' → ')}.</> : null}
         </p>
         <ol className="hg-rules-ladder">
