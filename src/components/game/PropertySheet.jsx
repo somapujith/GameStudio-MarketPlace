@@ -22,7 +22,7 @@ import { LevelPips } from './ui/TileChip.jsx';
 import {
   CHAI_CAP, CHAI_MIN_RENT, DEFAULT_CFG, MAX_LEVEL, MUNICIPAL_BASE, MUNICIPAL_PER_LEVEL, PASS_START_AMOUNT, SET_BONUS_MULT,
   TRAFFIC_FINE, canUpgradeSafe, collectionOf, deckOf, diceSum, eventModifier, fareOf, groupTiles, isBuyableTile,
-  landingOddsSafe, levelNameOf, mortgageOf, motionMs, nextStop, previewRentSafe, rentLadder, tileAccent, tileTypeLabel,
+  landingOddsSafe, levelNameOf, mortgageOf, motionMs, nextStop, previewRentSafe, rentLadder, scaleRent, tileAccent, tileTypeLabel,
   unmortgageOf, upgradeCostOf, useHeld, useReducedMotion, useStateLike,
 } from './ui/helpers.js';
 
@@ -284,7 +284,8 @@ export default function PropertySheet({ session, tileId, onClose }) {
     const setIds = district ? groupTiles(tile.group) : [];
     const ownedInSet = owner ? setIds.filter((t) => state.owners[t] === owner.id).length : 0;
     const fullSet = !!owner && setIds.length > 0 && ownedInSet === setIds.length;
-    const ladder = district ? rentLadder(tile) : [];
+    const baseLadder = district ? rentLadder(tile) : []; // the printed rents; every figure below is round(rent x multipliers x the table's rent level), like the engine
+    const ladder = district ? rentLadder(tile, state.cfg) : [];
     const ev = district ? eventModifier(state, tile) : null;
     const rentNow = buyable && ownerId && !mortgaged ? previewRentSafe(state, tile.id, diceSum(session)) : 0;
     const youOrName = owner ? (owner.id === me ? 'You' : owner.name) : '';
@@ -414,11 +415,11 @@ export default function PropertySheet({ session, tileId, onClose }) {
                 const built = !!owner && i < level;
                 const setLine = i === 0 ? (
                   fullSet
-                    ? `Full set: ${fmtMult(SET_BONUS_MULT)} = ${formatINR(Math.round(rent * SET_BONUS_MULT))}`
+                    ? `Full set: ${fmtMult(SET_BONUS_MULT)} = ${formatINR(scaleRent(baseLadder[i] * SET_BONUS_MULT, state.cfg))}`
                     : `${fmtMult(SET_BONUS_MULT)} with the full set`
                 ) : null;
                 const evLine = ev && (!ev.upgradedOnly || i > 0)
-                  ? `${ev.title}: ${formatINR(Math.round(rent * (i === 0 && fullSet ? SET_BONUS_MULT : 1) * ev.mult))}` : null;
+                  ? `${ev.title}: ${formatINR(scaleRent(baseLadder[i] * (i === 0 && fullSet ? SET_BONUS_MULT : 1) * ev.mult, state.cfg))}` : null;
                 return (
                   <tr key={i} className={current ? 'is-current' : built ? 'is-built' : owner ? 'is-next' : ''}>
                     <th scope="row" aria-current={current ? 'true' : undefined}>

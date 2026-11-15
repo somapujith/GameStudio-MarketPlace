@@ -267,10 +267,10 @@ describe('lobby', () => {
       await h.say(host, { t: 'settings', settings: bad });
       expect(host.of('error').length, JSON.stringify(bad)).toBe(before + 1);
     }
-    expect(h.room.room.settings).toEqual({ mode: 'standard', dice: 'lucky', auctionOnDecline: true, targetWorth: 5000000 });
+    expect(h.room.room.settings).toEqual({ mode: 'standard', ...engine.ruleDefaults('standard') });
 
-    // only mode / target / dice / auction reach the room: retired or engine-only keys are dropped
-    await h.say(host, { t: 'settings', settings: { mode: 'quick', dice: 'fair', auctionOnDecline: false, debug: true, goal: 100000, startCash: 1 } });
+    // only the mode and the host rules reach the room: retired or engine-only keys are dropped
+    await h.say(host, { t: 'settings', settings: { mode: 'quick', dice: 'fair', auctionOnDecline: false, debug: true, goal: 100000, seed: 1 } });
     const s = host.last('room').room.settings;
     expect(s).toMatchObject({ mode: 'quick', startCash: 2000000, maxRounds: 12, targetWorth: 5000000, dice: 'fair', auctionOnDecline: false });
     expect(s.debug).toBeUndefined();
@@ -846,15 +846,15 @@ describe('rules v2: trades and debts', () => {
       { type: 'PAY_TRAFFIC' }, { type: 'USE_CHAI' }, { type: 'SKIP_BUY' }, { type: 'RIDE' }, { type: 'END_TURN' },
       { type: 'UPGRADE', tile: 1 }, { type: 'MORTGAGE', tile: 1 }, { type: 'UNMORTGAGE', tile: 1 }, { type: 'SELL_BUILDING', tile: 1 },
       { type: 'PAY_DEBT' }, { type: 'BID', amount: 0 }, { type: 'TRADE_ACCEPT' }, { type: 'TRADE_REJECT' }, { type: 'TRADE_CANCEL' },
-      { type: 'TRADE_OFFER', to: 'x', give: { cash: 1, tiles: [] }, get: { cash: 0, tiles: [2] } },
+      { type: 'TRADE_OFFER', to: 'x', give: { cash: 1, tiles: [] }, get: { cash: 0, tiles: [2] } }, { type: 'SNATCH' },
     ]) {
       const before = h.host.of('error').length;
       await h.say(h.host, { t: 'action', action: a });
       // never "Invalid action" (that is the allow-list's message); the engine may refuse for its own reasons
       if (h.host.of('error').length > before) expect(h.host.last('error').message, a.type).not.toBe('Invalid action.');
     }
-    // Snatch, Shield, Traps and jail are gone from the Hustle rules
-    for (const type of ['SNATCH', 'SNATCH_CLOSE', 'PLACE_TRAP', 'PAY_BAIL', 'USE_JAIL_CARD']) {
+    // SNATCH_CLOSE is server-only; Shield, Traps and jail are gone from the Hustle rules
+    for (const type of ['SNATCH_CLOSE', 'PLACE_TRAP', 'PAY_BAIL', 'USE_JAIL_CARD']) {
       await h.say(h.host, { t: 'action', action: { type, tile: 1 } });
       expect(h.host.last('error').message, type).toBe('Invalid action.');
     }
@@ -980,5 +980,184 @@ describe('debt phase: the debtor acts even when it is not their turn', () => {
     }
     expect(h.state.phase).not.toBe('debt');
     expect(r.afk[U(1)]).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Host rules (shared/ruleSettings.js): the room stores them, shows them to everyone, locks them at the start and runs
+// the game, the decision timer and the trade timer with them.
+// ---------------------------------------------------------------------------------------------------------------
+describe('host rules in a room', () => {
+  const RULES = engine.RULE_KEYS;
+
+  it('every rule is part of the room view for the host AND the guests, with the defaults filled in', async () => {
+    const h = new Harness();
+    await h.init();
+    const host = await h.connect(user(1));
+    const guest = await h.connect(user(2));
+    for (const ws of [host, guest]) {
+      const s = ws.last('room').room.settings;
+      expect(Object.keys(s).sort()).toEqual(['mode', ...RULES].sort());
+      expect(s).toEqual({ mode: 'standard', ...engine.ruleDefaults('standard') });
+    }
+    const custom = { startCash: 3000000, passStart: 0, rentPercent: 150, trafficFine: 0, turnSeconds: 25, tradeSeconds: 30, requireFullSet: false, eventEvery: 0, chaiCap: 3, snatches: 0 };
+    await h.say(host, { t: 'settings', settings: custom });
+    expect(host.of('error')).toHaveLength(0);
+    for (const ws of [host, guest]) expect(ws.last('room').room.settings).toEqual({ mode: 'standard', ...engine.ruleDefaults('standard'), ...custom });
+    expect(h.room.room.settings).toEqual({ mode: 'standard', ...engine.ruleDefaults('standard'), ...custom });
+  });
+
+  it('a bad rule value is refused with the rule named, and nothing changes', async () => {
+    const h = new Harness();
+    await h.init();
+    const host = await h.connect(user(1));
+    const before = structuredClone(h.room.room.settings);
+    for (const [bad, text] of [
+      [{ startCash: 1 }, /Starting cash must be/], [{ passStart: 123 }, /Salary for passing START must be/], [{ rentPercent: 80 }, /Rent level must be one of/],
+      [{ trafficFine: -1 }, /Traffic Jam fine must be/], [{ turnSeconds: 10 }, /Decision timer must be/], [{ tradeSeconds: 500 }, /Trade offer timer must be/],
+      [{ maxRounds: 7 }, /Round limit must be one of/], [{ requireFullSet: 'no' }, /Full set needed to upgrade must be true or false/],
+      [{ eventEvery: 1 }, /City events must be one of/], [{ chaiCap: 9 }, /Chai tokens a player can hold must be/], [{ snatchMs: 100 }, /Snatch timer must be/],
+      [{ startCash: 3000000, rentPercent: 80 }, /Rent level/],
+    ]) {
+      const n = host.of('error').length;
+      await h.say(host, { t: 'settings', settings: bad });
+      expect(host.of('error').length, JSON.stringify(bad)).toBe(n + 1);
+      expect(host.last('error').message).toMatch(text);
+      expect(h.room.room.settings, JSON.stringify(bad)).toEqual(before);
+    }
+  });
+
+  it('only the host can change them, and only in the lobby', async () => {
+    const h = await startedGame({ turnSeconds: 30 });
+    const guest = h.p2;
+    await h.say(guest, { t: 'settings', settings: { rentPercent: 200 } });
+    expect(guest.last('error').message).toBe('Only the host can change settings.');
+    await h.say(h.host, { t: 'settings', settings: { rentPercent: 200 } });
+    expect(h.host.last('error').message).toBe('Settings are locked once the game starts.');
+    expect(h.room.room.settings.rentPercent).toBe(100);
+    expect(h.state.cfg.rentPercent).toBe(100);
+  });
+
+  it('another mode resets only startCash / maxRounds / targetWorth; every other customised rule is kept', async () => {
+    const h = new Harness();
+    await h.init();
+    const host = await h.connect(user(1));
+    const custom = { startCash: 3000000, maxRounds: 30, targetWorth: 4000000, passStart: 100000, rentPercent: 200, turnSeconds: 20, requireFullSet: false, chaiCap: 2, dice: 'fair', snatches: 2 };
+    await h.say(host, { t: 'settings', settings: custom });
+    expect(host.last('room').room.settings).toMatchObject(custom);
+    await h.say(host, { t: 'settings', settings: { mode: 'quick' } });
+    expect(host.last('room').room.settings).toMatchObject({ mode: 'quick', startCash: 2000000, maxRounds: 12, targetWorth: 5000000 });
+    expect(host.last('room').room.settings).toMatchObject({ passStart: 100000, rentPercent: 200, turnSeconds: 20, requireFullSet: false, chaiCap: 2, dice: 'fair', snatches: 2 });
+    // the lobby echoes everything with the new mode: the three mode rules are not "changed" by an echo
+    await h.say(host, { t: 'settings', settings: { ...host.last('room').room.settings, mode: 'classic' } });
+    expect(host.last('room').room.settings).toMatchObject({ mode: 'classic', startCash: 1500000, maxRounds: null, targetWorth: 3000000, rentPercent: 200 });
+    // classic is never without a target, even when asked
+    await h.say(host, { t: 'settings', settings: { targetWorth: null } });
+    expect(host.last('room').room.settings.targetWorth).toBe(3000000);
+    // a custom win target of any legal amount
+    await h.say(host, { t: 'settings', settings: { targetWorth: 12500000 } });
+    expect(host.last('room').room.settings.targetWorth).toBe(12500000);
+  });
+
+  it('a room stored before the rules existed shows the defaults of its mode and starts a game with them', async () => {
+    const h = new Harness();
+    await h.init();
+    const host = await h.connect(user(1));
+    await h.connect(user(2));
+    h.room.room.settings = { mode: 'quick', dice: 'fair', auctionOnDecline: false, targetWorth: 4000000 }; // what an older room has stored
+    expect(h.room.roomView().settings).toEqual({ ...engine.ruleDefaults('quick'), mode: 'quick', dice: 'fair', auctionOnDecline: false, targetWorth: 4000000 });
+    await h.say(host, { t: 'start' });
+    expect(h.state.cfg).toMatchObject({ mode: 'quick', startCash: 2000000, maxRounds: 12, turnSeconds: 60, tradeSeconds: 45, rentPercent: 100, requireFullSet: true, eventEvery: 3, dice: 'fair', targetWorth: 4000000 });
+    expect(h.state.players.every((p) => p.cash === 2000000)).toBe(true);
+  });
+
+  it('the game runs with the rules the host set: cash, salary, rent level, upgrades, events', async () => {
+    const h = await startedGame({ startCash: 3000000, passStart: 50000, rentPercent: 150, requireFullSet: false, eventEvery: 2, chaiCap: 2, trafficFine: 40000, targetWorth: null, snatches: 0 });
+    expect(h.state.cfg).toMatchObject({ startCash: 3000000, passStart: 50000, rentPercent: 150, requireFullSet: false, eventEvery: 2, chaiCap: 2, trafficFine: 40000, targetWorth: null, snatches: 0 });
+    expect(h.state.players.map((p) => p.cash)).toEqual([3000000, 3000000]);
+    // every client gets the config in its (redacted) view of the state
+    for (const ws of [h.host, h.p2]) expect(ws.last('state').state.cfg).toMatchObject({ startCash: 3000000, rentPercent: 150, requireFullSet: false });
+    expect(engine.previewRent({ ...h.state, owners: h.state.owners.map((o, i) => (i === 3 ? U(2) : o)) }, 3)).toBe(10500); // 7,000 at 150%
+  });
+});
+
+describe('the decision and trade timers follow the room', () => {
+  async function withTrade(settings) {
+    const h = await startedGame(settings);
+    h.room.room.state.trade = { id: 'trade-1', from: U(2), to: U(1), give: { cash: 100, tiles: [] }, get: { cash: 0, tiles: [1] } };
+    h.room.room.lastApplyAt = Date.now();
+    h.room.room.animMs = 0;
+    return h;
+  }
+
+  it('a 15 s decision timer: nothing before 15 s, then the server plays the idle move for the human', async () => {
+    const h = await startedGame({ turnSeconds: 15 });
+    expect(h.state.cfg.turnSeconds).toBe(15);
+    await toHumanTurn(h, h.host);
+    const r = h.room.room;
+    const seq = r.seq;
+    const plan = h.room.plan();
+    expect(plan.timeout).toBe(true);
+    expect(plan.at - r.lastApplyAt).toBe(r.animMs + 15_000);
+    expect(h.room.turnMs()).toBe(15_000);
+    // the clock every client sees is the same deadline
+    expect(h.host.last('state').clock).toMatchObject({ deadline: plan.at, waitingFor: [U(1)] });
+    vi.setSystemTime(r.lastApplyAt + r.animMs + 14_000);
+    await h.room.alarm();
+    expect(r.seq).toBe(seq); // 14 s: still the human's turn
+    await h.tick();
+    expect(r.seq).toBeGreaterThan(seq); // 15 s: the idle roll was played
+    expect(r.afk[U(1)]).toBe(true);
+  });
+
+  it('a 120 s decision timer waits two minutes; the default room still waits 60 s (TURN_MS)', async () => {
+    const slow = await startedGame({ turnSeconds: 120 });
+    await toHumanTurn(slow, slow.host);
+    expect(slow.room.plan().at - slow.room.room.lastApplyAt).toBe(slow.room.room.animMs + 120_000);
+    const stock = await startedGame();
+    await toHumanTurn(stock, stock.host);
+    expect(TURN_MS).toBe(60_000);
+    expect(stock.room.plan().at - stock.room.room.lastApplyAt).toBe(stock.room.room.animMs + TURN_MS);
+  });
+
+  it('a game stored without turnSeconds (before the rule existed) keeps the old 60 s', async () => {
+    const h = await startedGame({ turnSeconds: 15 });
+    await toHumanTurn(h, h.host);
+    delete h.room.room.state.cfg.turnSeconds;
+    expect(h.room.turnMs()).toBe(TURN_MS);
+    expect(h.room.plan().at - h.room.room.lastApplyAt).toBe(h.room.room.animMs + TURN_MS);
+  });
+
+  it('an adapter without a turnMs hook gets TURN_MS', async () => {
+    const h = await startedGame({ turnSeconds: 15 });
+    const real = h.room.adapter;
+    h.room.adapter = { ...real, turnMs: undefined };
+    expect(h.room.turnMs()).toBe(TURN_MS);
+    h.room.adapter = { ...real, turnMs: () => NaN };
+    expect(h.room.turnMs()).toBe(TURN_MS);
+  });
+
+  it('the trade offer is auto-rejected after the room tradeSeconds, not a fixed 45 s', async () => {
+    for (const tradeSeconds of [15, 45, 120]) {
+      const h = await withTrade({ tradeSeconds });
+      const r = h.room.room;
+      const tradeAt = Date.now();
+      r.deadlines = { 'trade:trade-1': tradeAt };
+      const plan = h.room.plan();
+      expect(plan.action).toEqual({ type: 'TRADE_REJECT', playerId: U(1) });
+      expect(plan.at, `${tradeSeconds} s`).toBe(tradeAt + tradeSeconds * 1000);
+      expect(plan.timeout).toBe(false);
+    }
+  });
+
+  it('the trade timer plays out: at tradeSeconds the offer is rejected for the human', async () => {
+    const h = await withTrade({ tradeSeconds: 20 });
+    const r = h.room.room;
+    r.deadlines = { 'trade:trade-1': Date.now() };
+    vi.setSystemTime(Date.now() + 19_000);
+    await h.room.alarm();
+    expect(h.state.trade).not.toBeNull();
+    await h.tick();
+    expect(h.state.trade).toBeNull();
   });
 });

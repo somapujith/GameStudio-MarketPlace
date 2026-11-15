@@ -319,6 +319,12 @@ function LobbyInner({ code, user }) {
         </div>
       )}
 
+      {choices.length > 0 && (
+        <div className="sr-o-pieces">
+          <PiecePicker choices={choices} color={myColor} onPick={choosePiece} disabled={!open} pending={!!pending} me={{ name: user.name, avatar: (players[myIndex] || user).avatar }} />
+        </div>
+      )}
+
       <div className="sr-lobby__cols">
         <div className="sr-lobby__main">
           <section className="sr-card sr-seatscard sr-o-seats" aria-label="Players">
@@ -343,6 +349,7 @@ function LobbyInner({ code, user }) {
                     key={key}
                     player={p}
                     piece={pieceOf(me ? { ...p, piece: myPiece } : p, pieces)}
+                    piecesOn={choices.length > 0}
                     color={seatColor(game, i < 0 ? 0 : i)}
                     isMe={me}
                     isHost={sameId(p.id, room.hostId)}
@@ -358,14 +365,8 @@ function LobbyInner({ code, user }) {
             </ul>
           </section>
 
-          {choices.length > 0 && (
-            <div className="sr-o-pieces">
-              <PiecePicker choices={choices} color={myColor} onPick={choosePiece} disabled={!open} pending={!!pending} />
-            </div>
-          )}
-
           <div className="sr-o-settings">
-            <SettingsPanel game={game} settings={room.settings} isHost={isHost} disabled={!open} errorId={errorId} onSend={(msg) => send(msg, { queue: false })} />
+            <SettingsPanel game={game} settings={room.settings} isHost={isHost} disabled={!open || starting} errorId={errorId} error={error} onSend={(msg) => send(msg, { queue: false })} />
           </div>
 
           <section className={`sr-card sr-start sr-o-start${isHost && canStart ? ' is-ready' : ''}${full ? ' is-full' : ''}${starting ? ' is-starting' : ''}`} aria-label="Start">

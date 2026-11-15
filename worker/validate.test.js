@@ -75,9 +75,16 @@ describe('sanitizeAction forces the player id and drops everything unexpected', 
   });
 
   it('the retired actions are refused', () => {
-    for (const type of ['PAY_BAIL', 'USE_JAIL_CARD', 'SNATCH', 'SNATCH_CLOSE', 'PLACE_TRAP']) {
+    for (const type of ['PAY_BAIL', 'USE_JAIL_CARD', 'PLACE_TRAP']) {
       expect(sanitizeAction({ type, tile: 3 }, 'me'), type).toBeNull();
     }
+  });
+
+  it('SNATCH is a plain client action; SNATCH_CLOSE is server-only and never accepted from a client', () => {
+    expect(sanitizeAction({ type: 'SNATCH' }, 'me')).toEqual({ type: 'SNATCH', playerId: 'me' });
+    expect(sanitizeAction({ type: 'SNATCH', playerId: 'someone-else', tile: 3 }, 'me')).toEqual({ type: 'SNATCH', playerId: 'me' });
+    expect(sanitizeAction({ type: 'SNATCH_CLOSE' }, 'me')).toBeNull();
+    expect(sanitizeAction({ type: 'SNATCH_CLOSE', playerId: 'me' }, 'me')).toBeNull();
   });
 
   it('tile actions need a valid tile', () => {

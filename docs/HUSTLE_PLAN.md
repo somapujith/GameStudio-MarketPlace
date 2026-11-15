@@ -141,7 +141,7 @@ Tiles are **fictional commercial ventures** in the precincts (heritage rule), ea
 
 Win: last player standing, or highest **net worth** when the last round ends (tie: more cash, then seat order; `standings()` must agree with the winner).
 `winReason: 'last_standing' | 'target' | 'rounds'`. **Win target (added 2026-11-15):** host setting `targetWorth` (`null` | ₹25L | ₹30L | ₹40L | ₹50L | ₹75L | ₹1Cr; default ₹50L for standard and quick, ₹30L for classic, which cannot be switched off): the first player whose net worth reaches it wins at once (only when no debt, auction or trade is pending); `state.cfg.targetWorth`, `win` event `reason: 'target'`. See `GAME_RULES.md` 7.4.
-Host settings: `mode` and `targetWorth` (the two the lobby shows; another mode resets the target), `dice: 'lucky'|'fair'` (default lucky), `auctionOnDecline` (default true), `maxPlayers` 2-6.
+Host settings: `mode` and `targetWorth` (another mode resets the target), `dice: 'lucky'|'fair'` (default lucky), `auctionOnDecline` (default true), `maxPlayers` 2-6. **Host rules (added 2026-11-15): the host customises every rule** (`startCash passStart targetWorth rentPercent trafficFine turnSeconds tradeSeconds maxRounds dice auctionOnDecline requireFullSet eventEvery chaiCap` + the three Snatch keys): one source of truth `shared/ruleSettings.js`, read from `state.cfg`; table in `GAME_RULES.md` section 2, wire in `CONTRACT.md` 3e; a mode change resets only `startCash`, `maxRounds`, `targetWorth`.
 
 ### 3.5 Pieces
 `PIECES = [{id:'pearl',name:'Pearl'},{id:'auto',name:'Auto-rickshaw'},{id:'handi',name:'Biryani handi'},{id:'chai',name:'Irani chai glass'},{id:'bat',name:'Cricket bat'},{id:'camera',name:'Film camera'}]` (in `shared/board.js`).

@@ -189,6 +189,7 @@ const CORNER_SUB = {
  *  active: the mover stands here (festival-lantern glow). highlight: a sheet is open for it.
  *  stuck: players stuck on this traffic tile. chai: chai tokens in play (Chai Adda puffs steam when it rises).
  *  drawing: a card is being drawn from this tile (shimmer). salary: START's pay.
+ *  snatch: false | 'open' (contested in the snatch window: pulsing ring + bolt) | 'won' (just snatched: a gold flash).
  */
 function TileImpl({
   tile,
@@ -205,7 +206,9 @@ function TileImpl({
   stuck = 0,
   chai = 0,
   drawing = false,
+  snatch = false,
   salary = DEFAULT_SALARY,
+  rentPct = 100,
   onSelect,
 }) {
   const corner = cornerOf(tile.id);
@@ -237,10 +240,12 @@ function TileImpl({
   if (active) cls.push('is-active');
   if (stuck > 0) cls.push('has-stuck');
   if (drawing) cls.push('is-drawing');
+  if (snatch === 'open') cls.push('is-snatch');
+  if (snatch === 'won') cls.push('is-snatched');
   if (phone) cls.push('hb-tile--phone');
 
   const levelName = group && Array.isArray(group.levelNames) ? group.levelNames[lvl] : null;
-  const rent = isProperty && owned ? tileRent(tile, lvl) : 0;
+  const rent = isProperty && owned ? Math.round((tileRent(tile, lvl) * rentPct) / 100) : 0; // at the table's rent level (cfg.rentPercent)
 
   // ---- accessible name
   const label = [tile.name];
@@ -258,6 +263,8 @@ function TileImpl({
   if (tile.type === 'auction') label.push('a city property goes to auction');
   if (full) label.push('full collection');
   if (event) label.push(event.note);
+  if (snatch === 'open') label.push('snatch window open');
+  if (snatch === 'won') label.push('just snatched');
 
   const name = softName(tile.short || tile.name);
   const mBadge = (
@@ -400,6 +407,16 @@ function TileImpl({
       )}
       <OwnerStamp color={ownerColor} owner={ownerId || ownerColor} side={side} />
       {mortgaged && !isProperty && mBadge}
+      {snatch ? (
+        <>
+          <i className="hb-tile__sn-ring" aria-hidden="true" />
+          <span className="hb-tile__sn-badge" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <path d="M13.5 2 5 13.5h5.6L9.6 22 19 9.8h-5.7z" fill="currentColor" />
+            </svg>
+          </span>
+        </>
+      ) : null}
     </button>
   );
 }

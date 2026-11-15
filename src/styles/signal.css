@@ -138,9 +138,9 @@
   white-space: nowrap;
   text-transform: none;
 }
-/* phone table: the pill sits in the slot under the avatar, where the "Turn" pill sits, at the same size */
+/* phone table: the pill sits in the slot under the avatar, where the "Turn" pill sits, at the same size (it hangs from the slot's bottom edge) */
 .pp__slot .sg__pill { font-size: 12px; line-height: 17px; padding: 0 8px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45); }
-.pp--compact .pp__slot .sg__pill { font-size: 11px; line-height: 15px; padding: 0 7px; transform: translateY(-6px); } /* 5-6 players: the slot is only 9px tall, lift the pill off the name */
+.pp--compact .pp__slot .sg__pill { font-size: 11px; line-height: 15px; padding: 0 7px; }
 .sg__pill--offline { color: var(--sg-off-fg); background: var(--sg-off-bg); }
 .sg__pill--reconnecting { color: var(--sg-re-fg); background: var(--sg-re-bg); animation: sg-breathe 1.6s ease-in-out infinite; }
 @keyframes sg-breathe { 50% { opacity: 0.55; } }

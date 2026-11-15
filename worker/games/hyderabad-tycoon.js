@@ -3,13 +3,14 @@
 // engine (shared/index.js) and the Tycoon-only helpers worker/{mask,settings,validate}.js.
 import * as engine from '../../shared/index.js';
 import { MAX_LEVEL, BOARD_SIZE, PIECES } from '../../shared/board.js';
-import { ANIM_MS, LONG_TRIP, MAX_ANIM_MS, TRADE_MS, AUTO_MOVE_MS, BID_MOVE_MS, START_ANIM_MS, cardMs, eventMs } from '../../shared/timing.js';
+import { ANIM_MS, LONG_TRIP, MAX_ANIM_MS, TRADE_MS, SNATCH_GRACE_MS, AUTO_MOVE_MS, BID_MOVE_MS, START_ANIM_MS, cardMs, eventMs, turnMsOf, tradeMsOf } from '../../shared/timing.js';
 import { maskStateFor } from '../mask.js';
 import { sanitizeSettings, normalizeSettings, mergeSettingsPatch, ROOM_DEFAULTS, MAX_PLAYERS_MIN, MAX_PLAYERS_MAX } from '../settings.js';
 import { sanitizeAction, EMOTES } from '../validate.js';
 
 export const ID = 'hyderabad-tycoon';
-export { TRADE_MS }; // an unanswered trade offer is auto-rejected after this (shared/timing.js)
+export { TRADE_MS, SNATCH_GRACE_MS }; // an unanswered trade offer is auto-rejected after this; the Snatch window closes this much after its countdown (shared/timing.js)
+const SNATCH_FALLBACK_MS = 5000; // used only if a state somehow lacks `pending.ms`
 const TRADE_VOID_MS = 900; // an offer to a player who is out of the game is cancelled right away
 
 // ------------------------------------------------------------------ pure helpers (also used by tests)
@@ -49,7 +50,16 @@ export function estimateAnimMs(events, state = null) {
         else ms += A.quiet;
         break;
       case 'own':
-        ms += ev.reason === 'buy' || ev.reason === 'auction' ? A.own : A.quiet;
+        ms += ev.reason === 'buy' || ev.reason === 'auction' || ev.reason === 'snatch' ? A.own : A.quiet;
+        break;
+      case 'snatch_open':
+        ms += A.snatchOpen; // short: the window itself is the phase (real time), not an animation
+        break;
+      case 'snatch_end':
+        ms += A.snatchEnd; // time to read who snatched it (or that nobody did)
+        break;
+      case 'token_earned':
+        ms += A.token;
         break;
       case 'level':
         if (ev.reason === 'upgrade') ms += ev.level >= MAX_LEVEL ? A.level * 1.5 : A.level;
@@ -119,10 +129,15 @@ export function estimateAnimMs(events, state = null) {
  * - pending trade: the player who must answer it (`trade.to`);
  * - debt phase: the debtor (even when it is not their turn);
  * - auction: everyone who has not bid yet;
+ * - Snatch window: the eligible players who have not pressed yet (nobody is auto-played in it);
  * - otherwise the turn player.
  */
 export function pendingActors(state) {
   if (!state || state.phase === 'over') return [];
+  if (state.phase === 'snatch' && state.pending && state.pending.type === 'snatch') {
+    const claims = state.pending.claims || [];
+    return state.players.filter((p) => !p.bankrupt && state.pending.eligible.includes(p.id) && !claims.includes(p.id)).map((p) => p.id);
+  }
   if (state.trade) {
     const to = state.players.find((p) => p.id === state.trade.to);
     return to && !to.bankrupt ? [to.id] : [];
@@ -203,6 +218,12 @@ const adapter = {
     return MODE_SUMMARY(normalizeSettings(settings));
   },
 
+  /** How many host rules differ from the stock rules of the room's mode (open-table cards say "Custom rules" above 0). */
+  customRules(settings) {
+    const s = normalizeSettings(settings);
+    return engine.customRuleCount(s, s.mode);
+  },
+
   createGame({ players, settings, seed }) {
     return engine.createGame({
       players: players.map((p) => ({
@@ -221,8 +242,12 @@ const adapter = {
 
   applyAction: (state, action) => engine.applyAction(state, action),
 
+  /** How long a connected human has per decision, in ms: the room's host rule `turnSeconds` (state.cfg), else the 60 s default. */
+  turnMs: (state) => turnMsOf(state && state.cfg),
+
   /** The player the idle timer waits for (the debtor during the debt phase). */
   turnPlayerId(state) {
+    if (state && state.phase === 'snatch' && state.pending && state.pending.type === 'snatch') return state.pending.buyer ?? null;
     return pendingActors(state)[0] ?? null;
   },
 
@@ -239,8 +264,23 @@ const adapter = {
     return ids;
   },
 
-  /** Timers besides the turn timer: an unanswered trade offer is auto-rejected after 30 s. */
+  /**
+   * Timers besides the turn timer: an unanswered trade offer is auto-rejected, and the Snatch window is closed by the
+   * room itself (SNATCH_CLOSE has no player and clients cannot send it; docs/GAME_RULES.md 9.7).
+   */
   deadlines(state) {
+    // The key carries the turn count and the tile, so two windows in a row are two timers. `anchor: 'apply'`: the
+    // window counts from the moment the state is sent (not after the animation), the clients count down from then too.
+    if (state && state.phase === 'snatch' && state.pending && state.pending.type === 'snatch') {
+      const pend = state.pending;
+      return [{
+        key: `snatch:${state.turnCount ?? 0}:${pend.tile}`,
+        afterMs: (Number.isFinite(pend.ms) ? pend.ms : SNATCH_FALLBACK_MS) + SNATCH_GRACE_MS,
+        playerId: pend.buyer,
+        action: { type: 'SNATCH_CLOSE' },
+        anchor: 'apply',
+      }];
+    }
     const t = state && state.phase !== 'over' ? state.trade : null;
     if (!t) return [];
     const to = state.players.find((p) => p.id === t.to);
@@ -248,11 +288,12 @@ const adapter = {
       // The recipient is out of the game: the offerer takes the offer back.
       return [{ key: `trade:${t.id}:void`, afterMs: TRADE_VOID_MS, playerId: t.from, action: { type: 'TRADE_CANCEL', playerId: t.from } }];
     }
-    return [{ key: `trade:${t.id}`, afterMs: TRADE_MS, playerId: to.id, action: { type: 'TRADE_REJECT', playerId: to.id } }];
+    return [{ key: `trade:${t.id}`, afterMs: tradeMsOf(state.cfg), playerId: to.id, action: { type: 'TRADE_REJECT', playerId: to.id } }];
   },
 
   /** Auto-play for an AFK / disconnected player. Ignoring a trade offer means rejecting it. */
   idleAction(state, playerId) {
+    if (state && state.phase === 'snatch') return null; // auto-play never snatches and never acts during the window
     const t = state && state.trade;
     if (t) {
       if (t.to === playerId) return { type: 'TRADE_REJECT', playerId };
@@ -285,10 +326,11 @@ const adapter = {
     delete r.hotels;
     delete r.tradeId;
     delete r.tradeAt;
-    // A game stored with the old rules (28 or 40 squares, jail, snatch) cannot be resumed on the Hustle board:
-    // drop it and call the room off, unrecorded. Snatch timers of such a room are dropped too.
-    if (r.deadlines) for (const k of Object.keys(r.deadlines)) if (k.startsWith('snatch:')) delete r.deadlines[k];
+    // A game stored with the old rules (28 or 40 squares, jail, old snatch) cannot be resumed on the Hustle board:
+    // drop it and call the room off, unrecorded. Snatch timers of such a room are dropped too (a window of the
+    // current rules keeps its timer across a Durable Object restart).
     if (r.state && !isCurrentBoard(r.state)) {
+      if (r.deadlines) for (const k of Object.keys(r.deadlines)) if (k.startsWith('snatch:')) delete r.deadlines[k];
       r.state = null;
       if (r.status !== 'lobby') {
         r.status = 'finished';

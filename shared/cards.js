@@ -11,6 +11,8 @@
 //   { type:'stuck' }                     stuck in traffic where you stand (like the Traffic Jam corner)
 //   { type:'rentBoost', mult }           your rents x mult until your next turn begins
 //   { type:'chai' }                      gain a chai token (nothing at the cap)
+//   { type:'snatch', amount }            gain `amount` Snatch buttons, at most cfg.snatchCardCap from cards per game
+//                                        (at the cap the card pays SNATCH_CAP_PAYOUT and shows its `capText`)
 //   { type:'collectFromAll', amount }    every other active player pays you `amount`
 //   { type:'payAll', amount }            you pay `amount` to every other active player
 //   { type:'perLevel', amount }          pay `amount` for every upgrade level you own
@@ -53,7 +55,21 @@ export const LUCK_CARDS = [
     text: 'Your old regulars send the whole colony to your shop. Collect ₹25,000.', effect: { type: 'cash', amount: 25000 } },
   { id: 'mall_draw', kind: 'good', title: 'Lucky draw winner!',
     text: 'Your mall coupon finally won something. Collect ₹45,000.', effect: { type: 'cash', amount: 45000 } },
+  // Snatch cards (docs/GAME_RULES.md section 9): +1 Snatch button, at most cfg.snatchCardCap per player per game. A
+  // player at the cap (or a game without Snatch) collects SNATCH_CAP_PAYOUT instead and the card shows `capText`.
+  { id: 'snatch_tip', kind: 'good', title: 'Auction-house tip-off',
+    text: 'A Begum Bazaar insider whispers a hot lead. Gain +1 Snatch button.', effect: { type: 'snatch', amount: 1 },
+    capText: 'The insider has nothing new, so he sends ₹50,000 as thanks. No extra Snatch button.' },
+  { id: 'snatch_haggle', kind: 'good', title: 'Haggle like a Laad Bazaar pro',
+    text: 'Your bargaining is legendary. Gain +1 Snatch button.', effect: { type: 'snatch', amount: 1 },
+    capText: 'Your bargaining is legendary, but your Snatch buttons are full. Collect ₹50,000 instead.' },
+  { id: 'snatch_broker', kind: 'good', title: 'The broker saves your number',
+    text: 'He promises you first call on the next hot deal. Gain +1 Snatch button.', effect: { type: 'snatch', amount: 1 },
+    capText: 'The broker would help, but your Snatch buttons are full. Collect ₹50,000 instead.' },
 ];
+
+/** What a Snatch card pays instead of a button when the player is at the card cap (or the game has no Snatch). */
+export const SNATCH_CAP_PAYOUT = 50000;
 
 export const DRAMA_CARDS = [
   { id: 'shaadi_season', kind: 'bad', title: 'Shaadi ka season!',

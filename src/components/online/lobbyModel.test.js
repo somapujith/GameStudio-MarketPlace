@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanPieces, joinedLabel, joinedPercent, pieceChoices, pieceOf, rosterChanges, seatColor, startState, waitingText } from './lobbyModel.js';
+import { cleanPieces, customRulesSpoken, joinedLabel, joinedPercent, pieceChoices, pieceOf, rosterChanges, seatColor, startState, waitingText } from './lobbyModel.js';
 
 describe('startState', () => {
   const base = { maxPlayers: 4, minToStart: 2 };
@@ -110,5 +110,15 @@ describe('seatColor', () => {
     expect(seatColor(null, 0)).toBe('#ff4d6d');
     expect(seatColor(null, 6)).toBe('#ff4d6d');
     expect(seatColor({ playerColors: ['#111', '#222'] }, 3)).toBe('#222');
+  });
+});
+
+describe('customRulesSpoken', () => {
+  it('says how many rules the host changed, in the singular too, and nothing for none', () => {
+    expect(customRulesSpoken(1)).toBe('1 custom rule');
+    expect(customRulesSpoken(4)).toBe('4 custom rules');
+    expect(customRulesSpoken(0)).toBe('');
+    expect(customRulesSpoken(-1)).toBe('');
+    expect(customRulesSpoken(undefined)).toBe('');
   });
 });

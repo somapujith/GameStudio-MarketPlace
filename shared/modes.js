@@ -6,8 +6,9 @@
 //   targetWorth  default WIN TARGET: the first player whose net worth reaches this wins at once (null = no target)
 
 /**
- * The win targets a host may pick (host setting `targetWorth`, rupees of NET WORTH = cash + districts + half the
- * upgrades - debts). `null` = no target. Anything else from a client falls back to the mode default.
+ * The preset win targets the lobby offers (host setting `targetWorth`, rupees of NET WORTH = cash + districts + half the
+ * upgrades - debts). `null` = no target. A host may also type a custom amount within TARGET_RANGE (see below); anything
+ * else from a client falls back to the mode default.
  */
 export const TARGET_OPTIONS = Object.freeze([null, 2500000, 3000000, 4000000, 5000000, 7500000, 10000000]);
 
@@ -45,12 +46,23 @@ export function modeSummary(mode, targetWorth) {
 export const isTargetOption = (v) => TARGET_OPTIONS.includes(v);
 
 /**
- * The win target a mode ends up with for a requested value: a listed option stays; anything else (unknown number,
- * string, `undefined`) becomes the mode default. A mode without a round limit never runs without a target, so `null`
- * is also replaced by its default there (the ROUND_CAP safety net stays, but a target is what ends the game).
+ * Custom win targets: any whole amount in this range on this step (host rule `targetWorth`, see ruleSettings.js; every
+ * TARGET_OPTIONS value is on the grid). Rupees of NET WORTH.
+ */
+export const TARGET_RANGE = Object.freeze({ min: 1000000, max: 500000000, step: 500000 });
+
+/** Is `v` a legal custom win target amount (not `null`)? */
+export const isTargetAmount = (v) =>
+  Number.isInteger(v) && v >= TARGET_RANGE.min && v <= TARGET_RANGE.max && (v - TARGET_RANGE.min) % TARGET_RANGE.step === 0;
+
+/**
+ * The win target a mode ends up with for a requested value: a legal amount (a listed option or any custom amount in
+ * TARGET_RANGE) stays; anything else (unknown number, string, `undefined`) becomes the mode default. A mode without a
+ * round limit never runs without a target, so `null` is also replaced by its default there (the ROUND_CAP safety net
+ * stays, but a target is what ends the game).
  */
 export function resolveTarget(mode, v) {
   const m = MODES[mode] || MODES[DEFAULT_MODE];
   if (v === null) return m.rounds == null ? m.targetWorth : null;
-  return isTargetOption(v) ? v : m.targetWorth;
+  return isTargetAmount(v) ? v : m.targetWorth;
 }

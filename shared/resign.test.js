@@ -26,3 +26,12 @@ describe('RESIGN', () => {
     expect(r.state.winner).toBe(s.players[0].id);
   });
 });
+
+describe('resigned flag', () => {
+  it('marks only a player who resigned (not one who went bankrupt) so the UI can say "Forfeit"', () => {
+    const s = createGame({ players, seed: 11 });
+    const r = applyAction(s, { type: 'RESIGN', playerId: 'c' });
+    expect(r.state.players.find((p) => p.id === 'c')).toMatchObject({ bankrupt: true, resigned: true });
+    expect(r.state.players.find((p) => p.id === 'a').resigned).toBeUndefined();
+  });
+});

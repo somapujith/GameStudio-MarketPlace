@@ -24,6 +24,7 @@ vi.mock('./hub.js', async (importOriginal) => ({
 }));
 
 const { default: worker } = await import('./index.js');
+const { ruleDefaults } = await import('../shared/index.js');
 const { signSession } = await import('./auth.js');
 const { _resetForTests } = await import('./ratelimit.js');
 const roomsdb = await import('./roomsdb.js');
@@ -146,6 +147,7 @@ describe('GET /api/rooms/open', () => {
           players: 2,
           maxPlayers: 4,
           summary: 'Standard City Hustle · 20 rounds · richest wins · ₹50L target',
+          customRules: 0,
           createdAt: '2026-10-16T10:00:00.000Z',
         },
       ],
@@ -231,7 +233,7 @@ describe('POST /api/rooms', () => {
       maxPlayers: 4,
       host: { id: ME, name: 'Me', avatar: 3, guest: false },
     });
-    expect(payload.settings).toEqual({ mode: 'standard', dice: 'lucky', auctionOnDecline: true, targetWorth: 5000000 }); // the Hustle defaults, nothing else
+    expect(payload.settings).toEqual({ mode: 'standard', ...ruleDefaults('standard') }); // the Hustle defaults: mode + every host rule, nothing else
     expect(code).toBe(res.json.code);
   });
 
@@ -245,7 +247,29 @@ describe('POST /api/rooms', () => {
     expect(res.status).toBe(201);
     expect(roomCallMock.mock.calls[0][3]).toMatchObject({ visibility: 'public', maxPlayers: 3 });
     // validated and normalised: unknown / retired keys never reach the room
-    expect(roomCallMock.mock.calls[0][3].settings).toEqual({ mode: 'classic', dice: 'fair', auctionOnDecline: true, targetWorth: 3000000 });
+    expect(roomCallMock.mock.calls[0][3].settings).toEqual({ mode: 'classic', ...ruleDefaults('classic'), dice: 'fair' });
+  });
+
+  it('refuses a host rule outside its legal values with 400 and a message naming it', async () => {
+    const cookie = await cookieFor(ME);
+    for (const [settings, text] of [
+      [{ rentPercent: 33 }, /Rent level must be one of/],
+      [{ startCash: 1 }, /Starting cash must be a whole amount/],
+      [{ turnSeconds: 5 }, /Decision timer must be a whole number from 15 to 180 seconds/],
+    ]) {
+      const r = await call('/api/rooms', { method: 'POST', cookie, body: { settings } });
+      expect(r.status, JSON.stringify(settings)).toBe(400);
+      expect(r.json.error).toMatch(text);
+    }
+    expect(roomCallMock).not.toHaveBeenCalled();
+  });
+
+  it('stores every legal host rule it is given, with the defaults filling the rest', async () => {
+    roomCallMock.mockResolvedValue({ status: 201, data: {} });
+    const settings = { startCash: 3000000, passStart: 0, rentPercent: 150, turnSeconds: 15, maxRounds: null, requireFullSet: false, eventEvery: 0, chaiCap: 3, trafficFine: 0 };
+    const res = await call('/api/rooms', { method: 'POST', cookie: await cookieFor(ME), body: { settings } });
+    expect(res.status).toBe(201);
+    expect(roomCallMock.mock.calls[0][3].settings).toEqual({ mode: 'standard', ...ruleDefaults('standard'), ...settings });
   });
 
   it('refuses unknown games and bad input with 400 (the room is never created)', async () => {

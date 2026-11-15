@@ -10,6 +10,7 @@ import {
 } from './roomrules.js';
 import { getAdapter } from './games/index.js';
 import { ROOM_DEFAULTS } from './settings.js';
+import { ruleDefaults } from '../shared/index.js';
 
 const tycoon = getAdapter('hyderabad-tycoon');
 
@@ -55,9 +56,14 @@ describe('parseRoomInit (POST /api/rooms and the room /init)', () => {
   });
 
   it('settings go through the adapter; seats may ride along in settings or in the body', () => {
-    expect(parseRoomInit({ settings: { mode: 'classic', dice: 'fair' } })).toMatchObject({ ok: true, settings: { ...ROOM_DEFAULTS, mode: 'classic', dice: 'fair', targetWorth: 3000000 } });
-    // the retired keys (end-cash goal, round limit, snatch) are dropped, never stored
-    expect(parseRoomInit({ settings: { goal: 40000, maxRounds: null, snatches: 2 } }).settings).toEqual(ROOM_DEFAULTS);
+    expect(parseRoomInit({ settings: { mode: 'classic', dice: 'fair' } })).toMatchObject({ ok: true, settings: { ...ROOM_DEFAULTS, ...ruleDefaults('classic'), mode: 'classic', dice: 'fair', targetWorth: 3000000 } });
+    // the retired keys (end-cash goal, hotels) are dropped, never stored
+    expect(parseRoomInit({ settings: { goal: 40000, hotels: 2, seed: 9 } }).settings).toEqual(ROOM_DEFAULTS);
+    // every host rule is accepted and stored, the full set of keys always present
+    const custom = { startCash: 3000000, passStart: 0, rentPercent: 150, trafficFine: 0, turnSeconds: 15, tradeSeconds: 90, maxRounds: null, requireFullSet: false, eventEvery: 0, chaiCap: 3, snatches: 2 };
+    expect(parseRoomInit({ settings: custom }).settings).toEqual({ ...ROOM_DEFAULTS, ...custom });
+    expect(parseRoomInit({ settings: { turnSeconds: 7 } })).toMatchObject({ ok: false, error: expect.stringMatching(/Decision timer must be/) });
+    expect(parseRoomInit({ settings: { startCash: 1 } })).toMatchObject({ ok: false, error: expect.stringMatching(/Starting cash must be/) });
     expect(parseRoomInit({ settings: { maxPlayers: 5 } })).toMatchObject({ ok: true, maxPlayers: 5 });
     expect(parseRoomInit({ maxPlayers: 3, settings: { maxPlayers: 5 } })).toMatchObject({ maxPlayers: 3 });
     expect(parseRoomInit({ maxPlayers: 3 })).toMatchObject({ maxPlayers: 3 });
@@ -86,16 +92,16 @@ describe('parseSettingsPatch (host settings message)', () => {
   const current = { ...ROOM_DEFAULTS };
 
   it('merges a partial patch over the current settings', () => {
-    expect(parseSettingsPatch(tycoon, current, { mode: 'quick' })).toEqual({ ok: true, settings: { ...ROOM_DEFAULTS, mode: 'quick' } });
-    const quick = { ...ROOM_DEFAULTS, mode: 'quick' };
+    const quick = { ...ROOM_DEFAULTS, ...ruleDefaults('quick'), mode: 'quick' };
+    expect(parseSettingsPatch(tycoon, current, { mode: 'quick' })).toEqual({ ok: true, settings: quick });
     expect(parseSettingsPatch(tycoon, quick, { dice: 'fair' }).settings).toEqual({ ...quick, dice: 'fair' }); // earlier choices are kept
     expect(parseSettingsPatch(tycoon, current, undefined)).toEqual({ ok: true, settings: ROOM_DEFAULTS });
   });
 
   it('a mode change resets the win target (the client echoes the old one), a deliberate target is kept', () => {
     const picked = { ...ROOM_DEFAULTS, targetWorth: 4000000 };
-    expect(parseSettingsPatch(tycoon, picked, { mode: 'classic', targetWorth: 4000000 }).settings).toEqual({ ...ROOM_DEFAULTS, mode: 'classic', targetWorth: 3000000 });
-    expect(parseSettingsPatch(tycoon, picked, { mode: 'quick' }).settings).toEqual({ ...ROOM_DEFAULTS, mode: 'quick', targetWorth: 5000000 });
+    expect(parseSettingsPatch(tycoon, picked, { mode: 'classic', targetWorth: 4000000 }).settings).toEqual({ ...ROOM_DEFAULTS, ...ruleDefaults('classic'), mode: 'classic', targetWorth: 3000000 });
+    expect(parseSettingsPatch(tycoon, picked, { mode: 'quick' }).settings).toEqual({ ...ROOM_DEFAULTS, ...ruleDefaults('quick'), mode: 'quick', targetWorth: 5000000 });
     expect(parseSettingsPatch(tycoon, picked, { mode: 'classic', targetWorth: 7500000 }).settings.targetWorth).toBe(7500000);
     expect(parseSettingsPatch(tycoon, picked, { dice: 'fair' }).settings.targetWorth).toBe(4000000);
     expect(parseSettingsPatch(tycoon, picked, { targetWorth: null }).settings.targetWorth).toBeNull();
@@ -103,6 +109,24 @@ describe('parseSettingsPatch (host settings message)', () => {
     // an adapter without mergeSettings keeps the plain merge
     const plain = { ...tycoon, mergeSettings: undefined };
     expect(parseSettingsPatch(plain, picked, { mode: 'classic', targetWorth: 4000000 }).settings.targetWorth).toBe(4000000);
+  });
+
+  it('a mode change resets only startCash / maxRounds / targetWorth; every other customised rule survives it', () => {
+    const custom = { ...ROOM_DEFAULTS, startCash: 3000000, maxRounds: 30, targetWorth: 4000000, passStart: 0, rentPercent: 200, turnSeconds: 20, requireFullSet: false, chaiCap: 3 };
+    const r = parseSettingsPatch(tycoon, custom, { mode: 'quick' });
+    expect(r.settings).toEqual({ ...custom, mode: 'quick', startCash: 2000000, maxRounds: 12, targetWorth: 5000000 });
+    // the same message may also set them: that wins
+    expect(parseSettingsPatch(tycoon, custom, { mode: 'quick', startCash: 2500000, maxRounds: 15 }).settings).toMatchObject({ startCash: 2500000, maxRounds: 15, targetWorth: 5000000, rentPercent: 200 });
+  });
+
+  it('every rule can be patched on its own, validated like a new room', () => {
+    expect(parseSettingsPatch(tycoon, current, { startCash: 4000000, turnSeconds: 90 }).settings).toEqual({ ...ROOM_DEFAULTS, startCash: 4000000, turnSeconds: 90 });
+    expect(parseSettingsPatch(tycoon, current, { rentPercent: 33 })).toMatchObject({ ok: false, error: expect.stringMatching(/Rent level must be one of/) });
+    expect(parseSettingsPatch(tycoon, current, { eventEvery: 0, requireFullSet: false }).settings).toMatchObject({ eventEvery: 0, requireFullSet: false });
+    // a stored room that predates the rules is completed with the defaults the moment the host changes something
+    expect(parseSettingsPatch(tycoon, { mode: 'quick', dice: 'fair', auctionOnDecline: true }, { rentPercent: 125 }).settings).toEqual({
+      ...ruleDefaults('quick'), mode: 'quick', dice: 'fair', rentPercent: 125,
+    });
   });
 
   it('maxPlayers is a shared setting handled outside the adapter', () => {
@@ -118,7 +142,8 @@ describe('parseSettingsPatch (host settings message)', () => {
     expect(parseSettingsPatch(tycoon, current, { targetWorth: 42 })).toEqual({ ok: true, settings: ROOM_DEFAULTS });
     for (const bad of ['x', 5, [1], true]) expect(parseSettingsPatch(tycoon, current, bad)).toEqual({ ok: false, error: 'Settings must be an object.' });
     expect(parseSettingsPatch(tycoon, current, { debug: true })).toEqual({ ok: true, settings: ROOM_DEFAULTS });
-    expect(parseSettingsPatch(tycoon, current, { goal: 5, maxRounds: 120 })).toEqual({ ok: true, settings: ROOM_DEFAULTS }); // retired keys
+    expect(parseSettingsPatch(tycoon, current, { goal: 5, hotels: 3 })).toEqual({ ok: true, settings: ROOM_DEFAULTS }); // retired keys
+    expect(parseSettingsPatch(tycoon, current, { maxRounds: 120 }).ok).toBe(false); // a limit that is not on the list
   });
 });
 

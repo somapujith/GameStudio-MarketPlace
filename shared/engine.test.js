@@ -10,7 +10,7 @@ import {
 
 const ids = ['a', 'b', 'c'];
 function game(settings = {}, { n = 3, seed = 7 } = {}) {
-  const s = createGame({ players: ids.slice(0, n).concat(n > 3 ? ['d', 'e', 'f'].slice(0, n - 3) : []).map((id) => ({ id, name: id.toUpperCase() })), settings: { debug: true, ...settings }, seed });
+  const s = createGame({ players: ids.slice(0, n).concat(n > 3 ? ['d', 'e', 'f'].slice(0, n - 3) : []).map((id) => ({ id, name: id.toUpperCase() })), settings: { debug: true, snatches: 0, ...settings }, seed }); // Snatch is off here: shared/snatch.test.js covers it
   return s;
 }
 const P = (s, id) => s.players.find((p) => p.id === id);
@@ -32,7 +32,11 @@ function stackCard(s, deck, cardId) {
 describe('createGame and settings', () => {
   it('standard mode: 15 lakh each, 20 rounds, lucky dice, auction on decline', () => {
     const s = createGame({ players: [{ id: 'a' }, { id: 'b' }], seed: 1 });
-    expect(s.cfg).toEqual({ mode: 'standard', startCash: 1500000, passStart: 200000, maxRounds: 20, targetWorth: 5000000, dice: 'lucky', auctionOnDecline: true, trafficFine: 25000, chaiCap: 1 });
+    expect(s.cfg).toEqual({
+      mode: 'standard', startCash: 1500000, passStart: 200000, maxRounds: 20, targetWorth: 5000000, dice: 'lucky', auctionOnDecline: true,
+      trafficFine: 25000, chaiCap: 1, rentPercent: 100, requireFullSet: true, eventEvery: 3, turnSeconds: 60, tradeSeconds: 45,
+      snatches: 1, snatchMs: 5000, snatchCardCap: 2,
+    });
     expect(s.owners).toHaveLength(36);
     expect(s.levels).toHaveLength(36);
     expect(s.players[0]).toMatchObject({ cash: 1500000, pos: 0, stuck: false, chai: 0, laps: 0, bankrupt: false, piece: 'pearl' });
@@ -40,7 +44,7 @@ describe('createGame and settings', () => {
     expect(s.players[0]).not.toHaveProperty('jailTurns');
     expect(s).not.toHaveProperty('traps');
     expect(s.ride).toBeNull();
-    expect(DEFAULT_SETTINGS).toEqual({ mode: 'standard', dice: 'lucky', auctionOnDecline: true, targetWorth: 5000000 });
+    expect(DEFAULT_SETTINGS).toEqual(s.cfg);
   });
 
   it('modes: quick = 12 rounds and 20 lakh, classic = no round limit', () => {
@@ -373,7 +377,7 @@ describe('traffic jam and chai', () => {
     const r = act(s, { type: 'PAY_TRAFFIC', playerId: 'a' });
     expect(r.events).toEqual([
       { type: 'cash', player: 'a', delta: -25000, reason: 'traffic' },
-      { type: 'traffic', player: 'a', stuck: false, reason: 'paid' },
+      { type: 'traffic', player: 'a', stuck: false, reason: 'paid', amount: 25000 },
     ]);
     expect(r.state.phase).toBe('roll');
     expect(roll(r.state, 'a', 1).state.players[0].pos).toBe(10);
@@ -547,7 +551,7 @@ describe('cards', () => {
   });
 
   it('a deck reshuffles when it runs out', () => {
-    let s = game();
+    let s = game({ snatches: 1 }); // with Snatch on the Snatch cards are part of the deck
     s.deckPos.luck = s.deck.luck.length; // exhausted
     const r = roll(s, 'a', 2);
     expect(r.state.deckPos.luck).toBe(1);
@@ -956,7 +960,7 @@ describe('win target (net worth)', () => {
       for (let seed = 1; seed <= 4; seed++) {
         const run = (settings) => {
           const players = [0, 1, 2].map((i) => ({ id: `p${i}`, name: `P${i}`, isBot: true }));
-          let s = createGame({ players, settings: { mode, ...settings }, seed });
+          let s = createGame({ players, settings: { mode, snatches: 0, ...settings }, seed });
           const rnd = mulberry32(seed * 13);
           const log = [];
           for (let i = 0; i < 20000 && s.phase !== 'over'; i++) {

@@ -1,8 +1,11 @@
-// Players under the board, as in a simple two-player table: each player is an avatar (with the decision timer on the one
-// who is playing), their piece beside it, a name with a presence mark, and one line "cash (net worth)". A "Your turn" pill
-// sits under the avatar of whoever is playing. 1-2 players side by side, 3-4 in a two-column grid, 5-6 in a compact
-// three-column grid; the others in turn order, you last (bottom right, next to your thumb).
-// Every avatar carries `data-fx-player` (coins fly to it), a tap opens the player sheet.
+// Players under the board, as plain as a two-player board game: no boxes, no borders. Each player is a COLUMN on the dark
+// table: the avatar (the decision timer is an arc around the one who is playing) with their piece token on its OUTER side
+// (white-rimmed disc; left column: token left of the avatar, right column: token right of it), under it a name row (the
+// connection bars, then the name), under that one line "cash (net worth)" (cash white, net worth green; you: gold cash), or a
+// red "Forfeit" / "Bankrupt" for a player who is out. A small "Your turn" / "Turn" pill hangs under the avatar of whoever
+// is playing; a very thin line under the money shows how far the net worth is towards the target (only when the table has one).
+// 1-2 players side by side, 3-4 in a two-column grid, 5-6 in a compact three-column grid; the others in turn order, you last
+// (bottom right, next to your thumb). Every avatar carries `data-fx-player` (coins fly to it), a tap opens the player sheet.
 import { useEffect, useRef, useState } from 'react';
 import { compactINR, formatINR } from '@shared/format.js';
 import Money from '../ui/Money.jsx';
@@ -12,16 +15,12 @@ import { PieceToken } from '../Pawn.jsx';
 import { bestInk } from '../PropertySheet.jsx';
 import { roomPlayer } from '../turn/room.js';
 import SignalBars, { SignalPill } from '../ui/SignalBars.jsx';
+import SnatchChip from '../ui/SnatchChip.jsx';
+import { snatchChipsOn, snatchCount } from '../snatch.js';
 import { pillText, signalOf, signalWords } from '../ui/signalModel.js';
 import { useNetStats } from '@/lib/netStats.js';
 import { podTarget, targetOf } from '../turn/target.js';
-import { cashChars, cellSpans, gridFor, orderPlayers } from './phoneModel.js';
-
-const AVATAR = { roomy: 46, row: 40, compact: 32 };
-const PIECE = { roomy: 34, row: 30, compact: 26 };
-// short screens (iPhone SE and smaller): everything a little tighter so the board keeps its size
-const AVATAR_SHORT = { roomy: 40, row: 36, compact: 30 };
-const PIECE_SHORT = { roomy: 30, row: 26, compact: 24 };
+import { cashChars, cellSides, cellSpans, gridFor, orderPlayers, outWord, playerSizes, resignedOf } from './phoneModel.js';
 
 /** 'up' | 'down' for a second after the player's cash changes (drives the avatar's reaction), else ''. */
 function useCashMood(cash) {
@@ -38,7 +37,7 @@ function useCashMood(cash) {
   return mood;
 }
 
-function Cell({ session, player, span, density, short, worth, isMe, isTurn, isLeader, target, local, onSelect }) {
+function Cell({ session, player, span, side, density, sizes, avaH, worth, isMe, isTurn, isLeader, target, local, snatchOn, onSelect }) {
   // Presence is the connection-strength indicator (ui/SignalBars): bars beside the name, the "Offline" / "Reconnecting…"
   // pill in the slot under the avatar (where the turn pill sits; a player who is away is not "on turn" anyway).
   const sig = player.bankrupt ? { kind: 'none' } : signalOf(roomPlayer(session, player.id), { isMe, local });
@@ -47,32 +46,49 @@ function Cell({ session, player, span, density, short, worth, isMe, isTurn, isLe
   const mood = useCashMood(player.cash);
   const goal = podTarget({ worth, target, isMe, isLeader, bankrupt: player.bankrupt });
   const out = !!player.bankrupt;
-  const size = (short ? AVATAR_SHORT : AVATAR)[density];
-  const pieceSize = (short ? PIECE_SHORT : PIECE)[density];
-  const label = [rowLabel({ player, worth, isMe, isTurn, isLeader, offline: false }), signalWords(sig), goal?.sr].filter(Boolean).join(', ');
-  const cls = ['pp', `pp--${density}`, isMe && 'is-me', isTurn && 'is-turn', isLeader && !out && 'is-leader', out && 'is-out', offline && 'is-offline', goal && 'has-goal', goal?.hot && 'is-hot']
+  const forfeit = out && resignedOf(session, player, isMe);
+  const size = isMe ? sizes.me : sizes.avatar;
+  const tokens = snatchOn && !player.bankrupt ? snatchCount(player) : null; // Snatch buttons: a bolt chip on the piece token
+  const worthText = `(${compactINR(worth)})`;
+  const label = [
+    out ? `${player.name}${isMe ? ' (you)' : ''}, ${forfeit ? 'forfeited' : 'bankrupt'}` : rowLabel({ player, worth, isMe, isTurn, isLeader, offline: false }),
+    signalWords(sig), goal?.sr, tokens !== null ? `${tokens} Snatch ${tokens === 1 ? 'button' : 'buttons'}` : '',
+  ].filter(Boolean).join(', ');
+  const cls = ['pp', `pp--${density}`, `pp--${side}`, tokens !== null && 'has-sn', isMe && 'is-me', isTurn && 'is-turn', isLeader && !out && 'is-leader', out && 'is-out', offline && 'is-offline', goal && 'has-goal', goal?.hot && 'is-hot']
     .filter(Boolean).join(' ');
+  // The avatar is the anchor of the column: a left cell hangs its token on the avatar's left, the others on its right; the
+  // empty track on the other side keeps the avatar (and the name and money under it) centred in the column. Chai / traffic
+  // badges live in that empty track.
+  const tokenEl = (
+    <span className="pp__piece">
+      <span className="pp__disc"><PieceToken piece={player.piece} color="#ffffff" size={sizes.piece} base={false} className="pp__glyph" /></span>
+      {tokens !== null ? <SnatchChip count={tokens} className="pp__sn" /> : null}
+    </span>
+  );
+  const avaEl = (
+    <span className="pp__ava">
+      <PlayerAvatar session={session} player={player} size={size} offline={offline} turn={isTurn && !offline} leader={isLeader} mood={mood} live />
+    </span>
+  );
+  const badgeEl = !out && (player.stuck || player.chai > 0) ? (
+    <span className="pp__badges" aria-hidden="true">
+      {player.stuck ? <TrafficTag /> : null}
+      <ChaiToken count={player.chai} hideEmpty />
+    </span>
+  ) : null;
   return (
     <li
       className={cls}
-      style={{ '--pc': player.color, '--span': span, '--chars': cashChars(player.cash), '--pill-ink': bestInk(player.color), '--idw': `${size + 8}px` }}
+      style={{
+        '--pc': player.color, '--span': span, '--ava': `${size}px`, '--ava-h': `${avaH}px`, '--chars': cashChars(player.cash), '--wchars': worthText.length, '--pill-ink': bestInk(player.color),
+      }}
       data-turn={isTurn ? '' : undefined}
       data-span={span}
+      data-side={side}
     >
       <button type="button" className="pp__btn" onClick={() => onSelect?.(player.id)} aria-label={label}>
         <span className="pp__id">
-          <span className="pp__row">
-            <span className="pp__ava">
-              <PlayerAvatar session={session} player={player} size={size} offline={offline} turn={isTurn && !offline} leader={isLeader} mood={mood} live />
-            </span>
-            <span className="pp__piece"><PieceToken piece={player.piece} color={player.color} size={pieceSize} /></span>
-            {!out && (player.stuck || player.chai > 0) ? (
-              <span className="pp__badges" aria-hidden="true">
-                {player.stuck ? <TrafficTag /> : null}
-                <ChaiToken count={player.chai} hideEmpty />
-              </span>
-            ) : null}
-          </span>
+          {side === 'left' ? <>{tokenEl}{avaEl}{badgeEl}</> : <>{badgeEl}{avaEl}{tokenEl}</>}
           <span className="pp__slot">
             {pill ? <SignalPill kind={sig.kind} /> : isTurn && !offline && !out ? <span className="pp__turn" aria-hidden="true">{isMe && (density === 'roomy' || span === 6) ? 'Your turn' : 'Turn'}</span> : null}
           </span>
@@ -82,11 +98,11 @@ function Cell({ session, player, span, density, short, worth, isMe, isTurn, isLe
           <b title={player.name}>{player.name}</b>
         </span>
         {out ? (
-          <span className="pp__out">{isMe && session.resigned ? 'Resigned' : 'Bankrupt'}</span>
+          <span className="pp__out">{outWord(forfeit)}</span>
         ) : (
           <span className="pp__cash" title={`Net worth ${formatINR(worth)}`}>
             <Money value={player.cash} flash className="pp__amt" />
-            <small className="pp__worth">({compactINR(worth)})</small>
+            <small className="pp__worth">{worthText}</small>
           </span>
         )}
         {goal ? (
@@ -106,25 +122,35 @@ export default function PhonePlayers({ session, onSelect }) {
   const active = (session.display?.phase ?? session.view?.phase) === 'over' ? null : activePlayer(session);
   const short = useMedia('(max-height: 700px)');
   const local = useNetStats(); // your own measured connection (live), for your own cell
+  const snatchOn = snatchChipsOn(session); // draw the Snatch chips at all?
   const list = orderPlayers(state.players, session.me);
   const grid = gridFor(list.length);
   const spans = cellSpans(list.length);
+  const sides = cellSides(list.length);
+  const sizes = playerSizes(grid.density, short);
+  // The avatar row of the row you are in is as tall as your (bigger) avatar in every column, so the names and money line up
+  // across it; the other rows only need the plain avatar size.
+  const meRow = Math.floor(list.findIndex((p) => p.id === session.me) / grid.cols);
+  const rowStyle = { '--pw': `${sizes.piece}px` };
   return (
-    <ul className="pp-list" role="list" aria-label="Players" data-n={list.length} data-density={grid.density} data-cols={grid.cols}>
+    <ul className="pp-list" role="list" aria-label="Players" data-n={list.length} data-density={grid.density} data-cols={grid.cols} style={rowStyle}>
       {list.map((player, i) => (
         <Cell
           key={player.id}
           session={session}
           player={player}
           span={spans[i]}
+          side={sides[i]}
           density={grid.density}
-          short={short}
+          sizes={sizes}
+          avaH={Math.floor(i / grid.cols) === meRow ? sizes.me : sizes.avatar}
           worth={worths[player.id] ?? player.cash}
           isMe={player.id === session.me}
           isTurn={!!active && active.id === player.id && !player.bankrupt}
           isLeader={leaderId === player.id}
           target={target}
           local={local}
+          snatchOn={snatchOn}
           onSelect={onSelect}
         />
       ))}

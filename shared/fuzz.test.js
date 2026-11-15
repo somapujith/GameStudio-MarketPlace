@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   createGame, applyAction, getOptions, netWorth, standings, liquidationValue, mulberry32,
-  BOARD_SIZE, MAX_LEVEL, TILES, GROUP_TILES, isBuyable, canUpgrade, nextBotMove, chooseBotAction,
+  BOARD_SIZE, MAX_LEVEL, TILES, GROUP_TILES, isBuyable, canUpgrade, nextBotMove, chooseBotAction, botSnatchAction,
 } from './index.js';
 
 /** The Hustle upgrade rule, restated independently of canUpgrade: the actor owns EVERY district of the tile's collection. */
@@ -17,10 +17,28 @@ const actorOf = (s) => {
   return s.players[s.turn].id;
 };
 
+/** The next move while a Snatch window is open: a random eligible player presses, or the room's timer closes it. */
+function snatchMove(s, rnd) {
+  const open = s.pending.eligible.filter((id) => !s.pending.claims.includes(id) && !s.players.find((p) => p.id === id).bankrupt);
+  if (open.length && rnd() < 0.55) return { type: 'SNATCH', playerId: open[Math.floor(rnd() * open.length)] };
+  return { type: 'SNATCH_CLOSE' };
+}
+
+/** The same for bots: those whose policy says so press, then the timer closes the window. */
+function botSnatchMove(s) {
+  for (const id of s.pending.eligible) {
+    if (s.pending.claims.includes(id)) continue;
+    const press = botSnatchAction(s, id);
+    if (press) return press;
+  }
+  return { type: 'SNATCH_CLOSE' };
+}
+
 function randomAction(s, rnd) {
   const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
   const active = s.players.filter((p) => !p.bankrupt);
   if (rnd() < 0.003 && active.length > 2) return { type: 'RESIGN', playerId: pick(active).id };
+  if (s.phase === 'snatch') return snatchMove(s, rnd);
   const who = actorOf(s);
   const o = getOptions(s, who);
   const c = [];
@@ -75,7 +93,13 @@ function invariants(s) {
     expect(Number.isInteger(p.cash) && p.cash >= 0).toBe(true);
     expect(p.pos >= 0 && p.pos < BOARD_SIZE).toBe(true);
     expect(p.chai >= 0 && p.chai <= s.cfg.chaiCap).toBe(true);
+    // Snatch buttons: never negative, never more than the start plus what cards may add; none at all when Snatch is off
+    expect(Number.isInteger(p.snatches) && p.snatches >= 0).toBe(true);
+    expect(p.snatches).toBeLessThanOrEqual(s.cfg.snatches + s.cfg.snatchCardCap);
+    expect(p.snatchCards >= 0 && p.snatchCards <= s.cfg.snatchCardCap).toBe(true);
+    if (s.cfg.snatches === 0) expect(p.snatches).toBe(0);
     if (p.bankrupt) {
+      expect(p.snatches).toBe(0);
       expect(p.cash).toBe(0);
       expect(s.owners.includes(p.id)).toBe(false);
       expect(p.stuck).toBe(false);
@@ -94,7 +118,15 @@ function invariants(s) {
   }
   if (s.phase === 'debt') expect(s.debt.amount).toBeLessThanOrEqual(s.players.find((p) => p.id === s.debt.player).cash + liquidationValue(s, s.debt.player));
   else expect(s.debt).toBeNull();
-  if (s.phase !== 'buy' && s.phase !== 'auction') expect(s.pending).toBeNull();
+  if (s.phase !== 'buy' && s.phase !== 'auction' && s.phase !== 'snatch') expect(s.pending).toBeNull();
+  if (s.phase === 'snatch') {
+    expect(s.pending.type).toBe('snatch');
+    expect([s.pending.buyer, null]).toContain(s.owners[s.pending.tile]); // the buyer's (or the bank's, after a resignation)
+    expect(s.pending.eligible.length).toBeGreaterThan(0);
+    expect(s.pending.eligible).not.toContain(s.pending.buyer);
+    expect(s.pending.claims.every((id) => s.pending.eligible.includes(id))).toBe(true);
+    expect(new Set(s.pending.claims).size).toBe(s.pending.claims.length);
+  }
   if (s.ride) expect(s.ride.player).toBe(s.players[s.turn].id);
   const target = s.cfg.targetWorth;
   if (s.phase === 'over') {
@@ -165,7 +197,8 @@ describe('fuzz: random legal actions', () => {
         s.owners[33] = 'p1'; s.owners[34] = 'p1'; s.owners[35] = 'p1'; // and the whole New City
         for (let step = 0; step < 1500 && s.phase !== 'over'; step++) {
           let a;
-          if (asBots) a = nextBotMove(s, rnd);
+          if (s.phase === 'snatch') a = botSnatchMove(s);
+          else if (asBots) a = nextBotMove(s, rnd);
           else {
             const who = actorOf(s);
             a = chooseBotAction(s, who, rnd); // what the server auto-plays for an idle human seat
@@ -197,7 +230,7 @@ describe('fuzz: random legal actions', () => {
           let s = createGame({ players: Array.from({ length: n }, (_, i) => ({ id: `p${i}`, name: `P${i}`, isBot: true })), settings: { mode, targetWorth }, seed });
           let steps = 0;
           while (s.phase !== 'over') {
-            const a = nextBotMove(s, rnd);
+            const a = s.phase === 'snatch' ? botSnatchMove(s) : nextBotMove(s, rnd);
             expect(a, `${mode} ${targetWorth} n=${n} step ${steps}: no move in phase ${s.phase}`).toBeTruthy();
             const r = applyAction(s, a);
             if (r.error) throw new Error(`${mode} ${targetWorth}: ${JSON.stringify(a)} -> ${r.error}`);

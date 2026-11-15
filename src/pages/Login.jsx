@@ -235,6 +235,22 @@ export default function Login() {
 
             <form className="sa-guest" onSubmit={submitGuest} noValidate>
               <h3 className="sa-guest__title">Continue as guest</h3>
+              <fieldset className="ho-avatars" aria-describedby="sa-avatar-hint">
+                <legend className="ho-field__label">Pick your character</legend>
+                <p id="sa-avatar-hint" className="sa-hint sa-hint--top">
+                  Choose your character &mdash; you can change it later
+                </p>
+                <div className="ho-avatars__grid">
+                  {AVATAR_PRESETS.map((p) => (
+                    <label key={p.id} className={`ho-avatar-opt${avatar === p.id ? ' is-on' : ''}`} title={p.label}>
+                      <input type="radio" name="avatar" value={p.id} checked={avatar === p.id} onChange={() => setAvatar(p.id)} className="ho-sr" />
+                      <Avatar preset={p.id} size={48} />
+                      <span className="ho-sr">{p.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
               <div>
                 <label className="ho-field__label" htmlFor="sa-guest-name">
                   Your name
@@ -254,19 +270,6 @@ export default function Login() {
                   Friends see this at the table. Leave it empty and you are &ldquo;Guest&rdquo;.
                 </p>
               </div>
-
-              <fieldset className="ho-avatars">
-                <legend className="ho-field__label">Pick your character</legend>
-                <div className="ho-avatars__grid">
-                  {AVATAR_PRESETS.map((p) => (
-                    <label key={p.id} className={`ho-avatar-opt${avatar === p.id ? ' is-on' : ''}`} title={p.label}>
-                      <input type="radio" name="avatar" value={p.id} checked={avatar === p.id} onChange={() => setAvatar(p.id)} className="ho-sr" />
-                      <Avatar preset={p.id} size={48} />
-                      <span className="ho-sr">{p.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
 
               {error && (
                 <p className="ho-inline-error" role="alert">

@@ -24,6 +24,24 @@ describe('gateOptions', () => {
     }
   });
 
+  it('the Snatch buttons are the one exception: the window is real time, so the press never waits for an animation', () => {
+    const snatchReal = { ...real, roll: false, snatch: { tile: 29, ms: 5000 } };
+    for (const flags of [{ busy: true }, { awaiting: true }, { busy: true, awaiting: true }]) {
+      const out = gateOptions(snatchReal, { phase: 'snatch' }, flags);
+      expect(out.snatch).toEqual({ tile: 29, ms: 5000 });
+      expect(out.roll).toBe(false);
+      expect(out.endTurn).toBe(false); // everything else stays blank
+      expect(out.upgrade).toEqual([]);
+    }
+    // after pressing, the "locked in" mark gets through too
+    expect(gateOptions({ ...real, snatch: null, snatched: true }, { phase: 'snatch' }, { busy: true }).snatched).toBe(true);
+    // outside a snatch window the Snatch options are blanked like everything else
+    expect(gateOptions(snatchReal, { phase: 'manage' }, { busy: true }).snatch).toBeNull();
+    expect(gateOptions(snatchReal, null, { busy: true }).snatch).toBeNull();
+    // and nothing gets through offline
+    expect(gateOptions(snatchReal, { phase: 'snatch' }, { busy: true, connection: 'closed' }).snatch).toBeNull();
+  });
+
   it('blanks everything when the connection is not open', () => {
     const out = gateOptions(real, { phase: 'roll' }, { connection: 'connecting' });
     expect(out.roll).toBe(false);

@@ -77,6 +77,8 @@ export function useOnlineGame(code, { getOptions = tycoonGetOptions, standings =
   const awaitTimer = useRef(null);
   const busyRef = useRef(false);
   const awaitingRef = useRef(false);
+  const viewRef = useRef(null);
+  const snatchSent = useRef(null); // key of the snatch window I already pressed in (the press is sealed: no event comes back)
   const [clock, setClock] = useState(null);
 
   useEffect(() => {
@@ -119,9 +121,23 @@ export function useOnlineGame(code, { getOptions = tycoonGetOptions, standings =
     if (connection !== 'open') clearAwaiting();
   }, [connection, clearAwaiting]);
 
+  useEffect(() => {
+    viewRef.current = view;
+    if (!view || view.phase !== 'snatch') snatchSent.current = null; // the window is over: the next one starts fresh
+  }, [view]);
+
   const dispatch = useCallback(
     (action) => {
       if (!action || typeof action !== 'object' || !me) return;
+      if (action.type === 'SNATCH') {
+        // Real-time window, sealed press: ignore animations and pending requests (the window must never wait behind the
+        // presenter's queue), but never press twice in one window.
+        const v = viewRef.current;
+        const key = v && v.pending ? `${v.pending.tile}:${v.pending.buyer}:${v.turnCount ?? v.round}` : 'snatch';
+        if (snatchSent.current === key) return;
+        if (send({ t: 'action', action: { ...action, playerId: me } }, { queue: false })) snatchSent.current = key;
+        return;
+      }
       if (busyRef.current || awaitingRef.current) return;
       const ok = send({ t: 'action', action: { ...action, playerId: me } }, { queue: false });
       if (!ok) return;

@@ -4,8 +4,8 @@ import { TILES, GROUPS } from '@shared/board.js';
 import { buildActionSpec } from '../ActionBar.jsx';
 import { contrastRatio } from '../PropertySheet.jsx';
 import {
-  attentionOf, buyActions, buyCardData, captionFor, captionFromBubble, captionFromStatus, cashChars, cellSpans, chipFor, eventChipOf, faceKind,
-  faceLabel, faceName, faceTones, gridFor, objectiveFor, orderPlayers, pillFor, primaryFor, roundPhrase, stopKind,
+  attentionOf, buyActions, buyCardData, captionFor, captionFromBubble, captionFromStatus, cashChars, cellSides, cellSpans, chipFor, eventChipOf, faceKind,
+  faceLabel, faceName, faceTones, gridFor, objectiveFor, orderPlayers, outWord, pillFor, playerSizes, primaryFor, resignedOf, roundPhrase, stopKind,
 } from './phoneModel.js';
 
 const P = (id, name, extra = {}) => ({ id, name, color: '#ff4d6d', avatar: 0, cash: 1500000, pos: 0, stuck: false, chai: 0, bankrupt: false, ...extra });
@@ -114,6 +114,56 @@ describe('players grid', () => {
   it('counts the characters of a cash figure (the font shrinks with it)', () => {
     expect(cashChars(820000)).toBe('₹8,20,000'.length);
     expect(cashChars(11150000)).toBe('₹1,11,50,000'.length);
+  });
+
+  it('mirrors the columns: the piece token hangs on the OUTER side of the avatar', () => {
+    expect(cellSides(1)).toEqual(['right']);
+    expect(cellSides(2)).toEqual(['left', 'right']);
+    expect(cellSides(3)).toEqual(['left', 'right', 'right']); // the odd last cell (you) is alone in its row
+    expect(cellSides(4)).toEqual(['left', 'right', 'left', 'right']);
+    expect(cellSides(5)).toEqual(['left', 'mid', 'right', 'left', 'right']);
+    expect(cellSides(6)).toEqual(['left', 'mid', 'right', 'left', 'mid', 'right']);
+    expect(cellSides(9)).toHaveLength(6);
+    // every row with company starts on the left and ends on the right
+    for (const n of [2, 3, 4, 5, 6]) {
+      const { cols } = gridFor(n);
+      const sides = cellSides(n);
+      for (let r = 0; r * cols < n; r += 1) {
+        const row = sides.slice(r * cols, r * cols + cols);
+        if (row.length > 1) {
+          expect(row[0], `n=${n} row ${r}`).toBe('left');
+          expect(row[row.length - 1], `n=${n} row ${r}`).toBe('right');
+        }
+      }
+    }
+  });
+
+  it('avatar and piece sizes: yours is a little bigger, short screens a size down, every density has the same shape', () => {
+    for (const density of ['roomy', 'row', 'compact']) {
+      const tall = playerSizes(density, false);
+      const short = playerSizes(density, true);
+      expect(tall.me).toBeGreaterThan(tall.avatar);
+      expect(short.me).toBeGreaterThan(short.avatar);
+      expect(short.avatar).toBeLessThanOrEqual(tall.avatar);
+      expect(tall.piece).toBeLessThan(tall.avatar);
+    }
+    expect(playerSizes('roomy').avatar).toBeGreaterThan(playerSizes('row').avatar);
+    expect(playerSizes('row').avatar).toBeGreaterThanOrEqual(playerSizes('compact').avatar);
+    expect(playerSizes('nope')).toEqual(playerSizes('roomy'));
+  });
+
+  it('who forfeited: the player flag, my own resign, or the log line of the resignation; everybody else out is bankrupt', () => {
+    const base = { me: 'me', log: [] };
+    expect(resignedOf(base, P('rav', 'Ravi', { bankrupt: true }))).toBe(false);
+    expect(resignedOf(base, P('rav', 'Ravi', { bankrupt: true, resigned: true }))).toBe(true);
+    expect(resignedOf({ ...base, resigned: true }, P('me', 'Nithin'), true)).toBe(true);
+    expect(resignedOf({ ...base, resigned: true }, P('rav', 'Ravi'), false)).toBe(false);
+    const log = [{ id: 1, text: 'Ravi resigned', player: 'rav' }, { id: 2, text: 'Sana bought Tolichowki', player: 'sana' }, { id: 3, text: 'You owe ₹1,40,000 to Ravi. Raise cash or resign!', player: 'sana' }];
+    expect(resignedOf({ ...base, log }, P('rav', 'Ravi', { bankrupt: true }))).toBe(true);
+    expect(resignedOf({ ...base, log }, P('sana', 'Sana', { bankrupt: true }))).toBe(false); // a debt warning is not a resignation
+    expect(resignedOf(null, null)).toBe(false);
+    expect(outWord(true)).toBe('Forfeit');
+    expect(outWord(false)).toBe('Bankrupt');
   });
 });
 

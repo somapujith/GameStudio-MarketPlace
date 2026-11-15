@@ -11,6 +11,7 @@ import { sfx } from '@/lib/sfx.js';
 import Icon from './ui/Icon.jsx';
 import { hasOpenSheet } from './ui/Sheet.jsx';
 import { watchingLine } from './turn/resign.js';
+import { snatchBannerText, snatchInfo } from './snatch.js';
 import '@/styles/controlpanel.css';
 
 const TRAFFIC_FINE = 25000;
@@ -54,6 +55,13 @@ export function buildActionSpec(session) {
   }
   if (session.resigning) {
     return { ...spec, label: 'Resigning…', sr: 'Resigning from the game', upgrades: 0 };
+  }
+  // The Snatch window is real time and read from the latest state: it wins over `busy` (the presenter may still be playing
+  // the purchase). The button itself is the pop-up's (SnatchPopup); the row just says what is going on.
+  const sn = snatchInfo(session);
+  if (sn) {
+    const label = sn.pressed ? 'Snatch locked in…' : sn.canPress ? 'Snatch it now!' : 'Snatch window open…';
+    return { ...spec, label, sr: `${label} ${snatchBannerText(sn)}`, upgrades: 0 };
   }
   if (busy) {
     return { ...spec, kind: 'busy', label: '', sr: 'Please wait', upgrades: 0 };

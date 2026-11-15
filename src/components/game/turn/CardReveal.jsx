@@ -39,6 +39,7 @@ export function cardOf(session) {
     text: c.text || '',
     kind,
     cardId: c.cardId || c.id || null,
+    capped: !!c.capped, // a Snatch card drawn at the card cap: it pays money instead of a button (its text says so)
     player: c.player ?? null,
   };
 }
@@ -130,7 +131,7 @@ export default function CardReveal({ session }) {
             <span className="cr-face cr-front">
               <span className="cr-front__deck">{c.deckName}</span>
               <span className="cr-front__who" style={drawer ? { '--pc': drawer.color } : undefined}>{who}</span>
-              <span className="cr-front__art"><EventCardArt cardId={c.cardId} kind={c.kind} deck={c.deck} animated={!reduced} /></span>
+              <span className="cr-front__art"><EventCardArt cardId={c.cardId} kind={c.kind} deck={c.deck} animated={!reduced} capped={c.capped} /></span>
               <b className="cr-front__title">{c.title}</b>
               {c.text ? <span className="cr-front__text">{c.text}</span> : null}
               <span className="cr-front__tone">

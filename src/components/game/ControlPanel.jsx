@@ -19,6 +19,7 @@ import ActionBar, { PanelButton, rideVehicle, useActionSpec } from './ActionBar.
 import { LogList } from './LogPanel.jsx';
 import MyProperties from './MyProperties.jsx';
 import { oddsSupported, useOddsPref } from './oddsPref.js';
+import { snatchInfo } from './snatch.js';
 import Icon from './ui/Icon.jsx';
 import SceneStage from './SceneStage.jsx';
 import { sceneOf } from './sceneModel.js';
@@ -114,6 +115,10 @@ export function statusLine(session, spec = null) {
   const isMe = player.id === me;
   const name = isMe ? 'You' : player.name;
   if (player.bankrupt) return { tone: 'other', text: `${name} ${isMe ? 'are' : 'is'} out of the game`, name };
+
+  // the Snatch window is read from the latest state (real time), whatever the animated display still shows
+  const sn = snatchInfo(session);
+  if (sn) return { tone: sn.canPress ? 'mine' : 'other', text: sn.canPress ? 'Snatch it now!' : 'Snatch window open…', name };
 
   if (phase === 'auction') {
     return { tone: 'other', text: session?.options?.bid ? 'Auction — place your bid' : 'Auction in progress…', name };

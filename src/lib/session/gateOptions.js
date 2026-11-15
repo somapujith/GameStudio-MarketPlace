@@ -6,13 +6,15 @@ import { blankOptions } from '@/components/online/gameHelpers.js';
  * presenter's delayed `display`.
  *
  *  - offline or no options: everything blank
- *  - while the presenter animates or a request is in flight: everything blank (nothing in the Hustle rules runs on a
- *    real-time window any more, so no action is exempt)
+ *  - while the presenter animates or a request is in flight: everything blank, EXCEPT the Snatch buttons. The snatch
+ *    window (view.phase === 'snatch') runs in real time, so the press must never wait for an animation.
  *  - otherwise the real options
  */
-// eslint-disable-next-line no-unused-vars
 export function gateOptions(real, view, { busy = false, awaiting = false, connection = 'open' } = {}) {
   if (!real || connection !== 'open') return blankOptions(real);
-  if (busy || awaiting) return blankOptions(real);
+  if (busy || awaiting) {
+    if (!view || view.phase !== 'snatch') return blankOptions(real);
+    return { ...blankOptions(real), snatch: real.snatch ?? null, snatched: real.snatched };
+  }
   return real;
 }

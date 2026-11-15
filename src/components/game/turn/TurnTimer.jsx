@@ -50,6 +50,8 @@ export const TIMER_LABEL = 'Decision timer';
 export function TimerBar({ session, className = '' }) {
   const info = useClock(session);
   if (!info) return null;
+  // the Snatch window is its own countdown (the pop-up's ring and seconds); a second "Your move 6s" bar would only disagree with it
+  if (session?.view?.phase === 'snatch' && session.view.pending?.type === 'snatch') return null;
   const label = waitLabel(session, info);
   return (
     <div

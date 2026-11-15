@@ -339,7 +339,7 @@ describe('small components', () => {
     ];
     const { choices } = pieceChoices(pieces, players, 'me');
     const html = renderToString(h(PiecePicker, { choices, color: '#3ddc97', onPick() {} }));
-    expect(html).toContain('Your piece');
+    expect(html).toContain('Choose your piece');
     expect(html).toContain('role="radiogroup"');
     expect((html.match(/aria-checked="true"/g) || []).length).toBe(1);
     expect(html).toContain('Auto-rickshaw, taken by Bela');

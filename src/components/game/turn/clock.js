@@ -2,20 +2,29 @@
 //   clockInfo(clock, me, now)   pure: what the timer shows right now (exported for tests)
 //   useClock(session)           re-renders 4x a second while a deadline is running
 //   useTurnAlerts(session, onWarn)  one soft warning (sound + buzz + onWarn, e.g. a screen-reader line) per deadline
-//                                   when MY time drops to 10 s
+//                                   when MY time drops to the warning point (15 s, or half of a shorter room timer)
+// The bar's full length follows the host rules in `session.view.cfg` (`turnSeconds`, `tradeSeconds`): see timerMs().
 import { useEffect, useRef, useState } from 'react';
 import { sfx } from '@/lib/sfx.js';
 import { buzz } from '@/lib/haptics.js';
-import { DECISION_MS, WARN_MS } from '@shared/timing.js';
+import { DECISION_MS, WARN_MS, turnMsOf, tradeMsOf, warnMsFor } from '@shared/timing.js';
 
 export { DECISION_MS, WARN_MS }; // the server's decision timer (after the animation) and the "running out" warning (shared/timing.js)
 
-// deadline -> the full length the bar drains over (the first remaining time we saw, at least DECISION_MS)
+/**
+ * The length of the timer being counted, in ms: the room's host rule `turnSeconds` (`cfg`), or `tradeSeconds` while a trade
+ * offer waits for its answer (`state.trade`). Without a config (an older game) the 60 s / 45 s defaults.
+ */
+export function timerMs(cfg, state = null) {
+  return state && state.trade && state.phase !== 'over' ? tradeMsOf(cfg) : turnMsOf(cfg);
+}
+
+// deadline -> the full length the bar drains over (the first remaining time we saw, at least the timer's own length)
 const totals = new Map();
-function totalFor(deadline, now) {
+function totalFor(deadline, now, minMs = DECISION_MS) {
   let t = totals.get(deadline);
   if (t == null) {
-    t = Math.max(DECISION_MS, deadline - now);
+    t = Math.max(minMs, deadline - now);
     totals.set(deadline, t);
     if (totals.size > 24) totals.delete(totals.keys().next().value);
   }
@@ -26,11 +35,29 @@ function totalFor(deadline, now) {
  * -> null (no running clock) | { deadline, leftMs, secs, frac (1 -> 0), waitingFor, mine, warn }
  * `warn` is only ever true for the local player (nobody else needs to be hurried).
  */
-export function clockInfo(clock, me, now = Date.now()) {
+/**
+ * The server's `deadline` is in SERVER time. A phone whose own clock is minutes off would show a wrong countdown
+ * (or "time's up" at once), so shift the deadline into local time using the server's `now` that came with it.
+ * The one-way delay (tens of ms) is ignored. Pure; no-op without a usable `serverNow`.
+ */
+export function localClock(clock, serverNow, localNow = Date.now()) {
+  if (!clock || !Number.isFinite(Number(clock.deadline)) || Number(clock.deadline) <= 0) return clock ?? null;
+  const skew = Number(serverNow) - localNow;
+  if (!Number.isFinite(skew) || Math.abs(skew) < 1500) return clock; // ordinary drift: leave it alone
+  return { ...clock, deadline: Number(clock.deadline) - skew };
+}
+
+/**
+ * `cfg` (the game's `state.cfg`) and `state` are optional: with them the bar's full length is the room's own timer
+ * (`turnSeconds`, or `tradeSeconds` for a pending trade) and the warning starts at `warnMsFor(that)`, never more than
+ * half of it. Without them the 60 s default and the 15 s warning apply.
+ */
+export function clockInfo(clock, me, now = Date.now(), cfg = null, state = null) {
   const deadline = Number(clock?.deadline);
   if (!Number.isFinite(deadline) || deadline <= 0) return null;
   const waitingFor = Array.isArray(clock?.waitingFor) ? clock.waitingFor.map(String) : [];
-  const total = totalFor(deadline, now);
+  const timer = timerMs(cfg, state);
+  const total = totalFor(deadline, now, timer);
   const leftMs = Math.max(0, deadline - now);
   const mine = !!me && waitingFor.includes(String(me));
   return {
@@ -40,7 +67,7 @@ export function clockInfo(clock, me, now = Date.now()) {
     frac: Math.max(0, Math.min(1, leftMs / total)),
     waitingFor,
     mine,
-    warn: mine && leftMs <= WARN_MS,
+    warn: mine && leftMs <= warnMsFor(timer),
   };
 }
 
@@ -62,11 +89,15 @@ export function useClock(session) {
   const clock = session?.clock;
   const running = Number(clock?.deadline) > 0 && !isOver(session);
   const now = useNow(running);
-  return running ? clockInfo(clock, session.me, now) : null;
+  const state = session?.view ?? session?.display ?? null;
+  return running ? clockInfo(clock, session.me, now, state?.cfg ?? null, state) : null;
 }
 
-/** The screen-reader line for the warning. */
+/** The screen-reader line for the warning (at the default 60 s timer; see `warnTextFor` for a room's own). */
 export const WARN_TEXT = `${Math.round(WARN_MS / 1000)} seconds left`;
+
+/** The same line for a room's own timer: the warning starts at `warnMsFor`, never more than half of the time. */
+export const warnTextFor = (cfg, state = null) => `${Math.round(warnMsFor(timerMs(cfg, state)) / 1000)} seconds left`;
 
 /** One `warn` sound + buzz (+ `onWarn()`) per deadline, when the clock waits for ME and 10 s are left. */
 export function useTurnAlerts(session, onWarn) {
@@ -75,13 +106,16 @@ export function useTurnAlerts(session, onWarn) {
   const cb = useRef(onWarn);
   cb.current = onWarn;
   const deadline = info?.deadline || 0;
-  const warn = !!info?.warn && info.leftMs > 0;
+  // never during a Snatch window: its 5 seconds are the pop-up's own countdown, not a decision running out
+  const snatching = session?.view?.phase === 'snatch';
+  const warn = !!info?.warn && info.leftMs > 0 && !snatching;
   useEffect(() => {
     if (!warn || warned.current === deadline) return;
     warned.current = deadline;
     try { sfx.play('warn'); } catch { /* optional */ }
     buzz('warn');
-    try { cb.current?.(WARN_TEXT); } catch { /* optional */ }
+    const state = session?.view ?? session?.display ?? null;
+    try { cb.current?.(warnTextFor(state?.cfg ?? null, state)); } catch { /* optional */ }
   }, [warn, deadline]);
   return info;
 }

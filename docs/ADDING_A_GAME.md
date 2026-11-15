@@ -69,6 +69,13 @@ options?, min?, max?, step?, default, format?: 'inr'|'number'|'text', help? }`. 
 beside the +/- buttons. Defaults and limits **must equal** the adapter's `validateSettings`: copy
 `src/games/hyderabad-tycoon/settings.test.js`, which fails when schema and server drift apart.
 
+**Rules editor** (optional, the host's full "Game rules" section; Hyderabad Tycoon builds it from `shared/ruleSettings.js`): list `settingsGroups: [{ id, label, note? }]`
+in the manifest and give fields a `group`. Fields without a group (the mode) become preset cards; the others render in collapsible groups (an accordion on a
+phone, two columns on a wide card) with a reset per rule, "Reset all to defaults", a "Custom rules" badge and a read-only copy of the same list for everyone else. Extra field
+keys: `slider: true` (a stepper with a slider; `scale: 'curve'` bends a wide range), `nullable: true` (an explicit "Off" chip), `format: 'seconds' | 'ms'`, `dependsOn: { key, defaults }`
+(the preset that resets it). `note` is a string or `(settings) => string` shown under the group title. The edit logic (optimistic draft, debounce, the server's `room.settings`
+as truth, an inline error for a refused patch) is `src/components/online/editSession.js`. The `summarize` line should end in `Custom rules (N)` when a rule differs from its default.
+
 The only screen a game provides is `onlineGame`. A host creates a *private* table from the game page with the number of seats
 picked from `players.min`..`players.max` and the schema defaults (`POST /api/rooms { gameId, maxPlayers, visibility: 'private', settings }`).
 Online games use `useOnlineGame(code)` (`src/lib/session/useOnlineGame.js`) and the Tycoon `GameView` as a model: one `session`
@@ -80,7 +87,7 @@ Start from `worker/games/hyderabad-tycoon.js`; the interface is documented at th
 (`missingFromAdapter(adapter)` lists what is absent). Required: `id, name, minPlayers, maxPlayers, defaultSettings,
 validateSettings(raw)`, `createGame({ players, settings, seed })`, `applyAction(state, action)` (**pure**; invalid -> same
 state + `error`), `turnPlayerId(state)`, `deadlines(state)`, `idleAction(state, playerId)`,
-`isOver(state)`, `result(state, meta)` -> `{ winnerId, reason, standings: [{ id, rank, score }] }`, `redact(state, viewerId)`. Optional hooks (`pendingPlayerIds`, `sanitizeAction`, `lobbySettings`, `summarize`, `animationMs`, `resignAction`, `track`, `emotes`, ...) are listed in the header of `worker/games/index.js`; `GameRoom` runs the 45 s decision timer, the 15 s disconnect grace and the `deadlines` for you.
+`isOver(state)`, `result(state, meta)` -> `{ winnerId, reason, standings: [{ id, rank, score }] }`, `redact(state, viewerId)`. Optional hooks (`pendingPlayerIds`, `sanitizeAction`, `lobbySettings`, `summarize`, `customRules`, `turnMs`, `animationMs`, `resignAction`, `track`, `emotes`, ...) are listed in the header of `worker/games/index.js`; `GameRoom` runs the decision timer (60 s, or the adapter's `turnMs(state)`, e.g. a host-chosen time), the 15 s disconnect grace and the `deadlines` for you.
 Treat every client value as hostile: `validateSettings` and `sanitizeAction` are allow-lists, never trust ids,
 amounts or `playerId` from a message. State must be JSON-serialisable (no Infinity, Map or Set); randomness only via `seed`/`rnd`.
 

@@ -3,6 +3,7 @@
 //   board              full width; its centre is the calm PhoneCentre (caption, tile chip, hero art, the die)
 //   buy popup          a card over the board while I decide on a district
 //   players            avatar + piece + name + "cash (net worth)" for everyone, "Your turn" under whoever plays
+//   snatch pop-up      a floating panel just above the action row while a Snatch window is open (zero-height slot: nothing moves)
 //   action row         ONE big button (Roll / Buy / End turn ...), Manage and Trade beside it
 //   chat bar           "Say hello…", emoji, send
 // Everything else (rules, log, stats, sound, resign) is behind the "..." menu. GameView renders this instead of its pods,
@@ -18,6 +19,7 @@ import PhonePlayers from './PhonePlayers.jsx';
 import PhoneActions from './PhoneActions.jsx';
 import PhoneChatBar from './PhoneChatBar.jsx';
 import BuyCard from './BuyCard.jsx';
+import SnatchPopup from '../SnatchPopup.jsx';
 import { buyActions, buyCardData } from './phoneModel.js';
 import '../../../styles/phone.css';
 import '../../../styles/phoneboard.css';
@@ -46,9 +48,10 @@ export default function PhoneTable({
       price: decision.pend.price,
       auction: session.view?.cfg?.auctionOnDecline !== false,
       canBuy: !!session.options?.buy,
+      cfg: session.view?.cfg,
     }) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [key, me?.cash, session.options?.buy, session.view?.cfg?.auctionOnDecline],
+    [key, me?.cash, session.options?.buy, session.view?.cfg?.auctionOnDecline, session.view?.cfg?.rentPercent],
   );
   const doors = buyActions(spec);
   const n = (session.display?.players ?? session.view?.players ?? []).length;
@@ -85,6 +88,7 @@ export default function PhoneTable({
         </main>
 
         <PhonePlayers session={session} onSelect={onSelectPlayer} />
+        <div className="sn-slot"><SnatchPopup session={session} placement="phone" /></div>
         <PhoneActions
           session={session}
           spec={spec}

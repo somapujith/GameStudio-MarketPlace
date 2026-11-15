@@ -135,11 +135,21 @@ describe('row mapping', () => {
       players: 2,
       maxPlayers: 4,
       summary: 'Quick Chai Break · 12 rounds · richest wins · ₹50L target',
+      customRules: 0,
       createdAt: '2026-10-16T10:00:00.000Z',
     });
+    // a table with host rules says how many differ from the stock rules of its mode; a room stored before the rules is stock
+    const custom = (settings) => rowToOpenRoom({ code: 'ABCD23', game_id: 'hyderabad-tycoon', host_name: 'H', player_count: 1, max_players: 4, settings, created_at: '2026-10-16T10:00:00Z' });
+    expect(custom({ mode: 'standard', rentPercent: 150, turnSeconds: 30, requireFullSet: false }).customRules).toBe(3);
+    expect(custom({ mode: 'quick', startCash: 2000000, maxRounds: 12 }).customRules).toBe(0);
+    expect(custom({ mode: 'standard', startCash: 2000000 }).customRules).toBe(1);
+    expect(custom({}).customRules).toBe(0);
+    expect(custom(null).customRules).toBe(0);
+    expect(custom({ mode: 'standard', startCash: 'lots', rentPercent: 33 }).customRules).toBe(0); // illegal values count as the default
     // an unknown game still lists (without a summary)
     const other = rowToOpenRoom({ code: 'ZZZZ22', game_id: 'ludo', host_name: null, player_count: 1, max_players: 2, settings: {}, created_at: '2026-10-16T10:00:00Z' });
     expect(other.summary).toBeUndefined();
+    expect(other.customRules).toBe(0);
     expect(other.hostName).toBeNull();
   });
 

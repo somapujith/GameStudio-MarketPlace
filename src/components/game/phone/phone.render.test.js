@@ -30,6 +30,9 @@ function sess({ n = 2, turn = 0, options = { roll: true }, extra = {}, view = {}
   return { me: 'me', view: v, display: { ...v }, options, busy: false, rolling: false, log: [], chat: [], connection: 'open', sendChat() {}, dispatch() {}, ...extra };
 }
 const actionsOf = (s) => ({ spec: buildActionSpec(s), fire: () => () => {} });
+/** The `<li>` cells of a rendered players list, in order; cellOf(out, id) the one whose avatar is `id`'s. */
+const cellsOf = (out) => out.split('<li ').slice(1);
+const cellOf = (out, id) => cellsOf(out).find((c) => c.includes(`data-fx-player="${id}"`));
 
 describe('PhoneTopBar', () => {
   it('prints the objective with the target in its own element and a leave / menu button', () => {
@@ -94,9 +97,23 @@ describe('PhonePlayers', () => {
     expect(html(h(PhonePlayers, { session: sess({ n: 4 }) }))).toContain('pp__turn" aria-hidden="true">Turn<');
   });
 
-  it('a net worth target gives every live player a slim progress bar', () => {
-    expect((html(h(PhonePlayers, { session: sess({ n: 3 }) })).match(/class="pp__goal/g) || []).length).toBe(3);
-    expect(html(h(PhonePlayers, { session: sess({ n: 3, cfg: { targetWorth: null } }) }))).not.toContain('pp__goal');
+  it('a net worth target gives every live player a very thin progress line under the money, and only then', () => {
+    const out = html(h(PhonePlayers, { session: sess({ n: 3 }) }));
+    expect((out.match(/class="pp__goal/g) || []).length).toBe(3);
+    // decoration only (the numbers are in the button's label), after the money line, inside the same button
+    expect(out).toMatch(/<span class="pp__goal[^"]*" style="--tp:[0-9.]+" aria-hidden="true" data-pct="\d+"><i><\/i><\/span>/);
+    for (const cell of cellsOf(out)) expect(cell.indexOf('pp__cash')).toBeLessThan(cell.indexOf('pp__goal'));
+    expect(out).toContain('% of the ₹50L net worth target'); // the spoken form of the line stays in the label
+    const none = html(h(PhonePlayers, { session: sess({ n: 3, cfg: { targetWorth: null } }) }));
+    expect(none).not.toContain('pp__goal');
+    expect(none).not.toContain('net worth target');
+    expect(none).not.toContain('has-goal');
+  });
+
+  it('the line is not drawn for a player who is out', () => {
+    const s = sess({ n: 3 });
+    s.display.players = s.display.players.map((p) => (p.id === 'rav' ? { ...p, bankrupt: true } : p));
+    expect((html(h(PhonePlayers, { session: s })).match(/class="pp__goal/g) || []).length).toBe(2);
   });
 
   it('out and reconnecting states', () => {
@@ -109,16 +126,111 @@ describe('PhonePlayers', () => {
     expect(out).toContain('sg--offline'); // the connection indicator: grey bars beside the name ...
     expect(out).toContain('>Offline<'); // ... and the red pill under the avatar
     expect(out).toContain('is-offline');
-    const resigned = sess({ n: 2 });
-    resigned.display.players = resigned.display.players.map((p) => (p.id === 'me' ? { ...p, bankrupt: true } : p));
-    resigned.resigned = true;
-    expect(html(h(PhonePlayers, { session: resigned }))).toContain('Resigned');
+  });
+
+  it('a player who is out shows a bold red word in place of the money: Forfeit after resigning, Bankrupt otherwise', () => {
+    const outOf = (n, patch) => {
+      const s = sess({ n });
+      s.display.players = s.display.players.map((p) => (patch[p.id] ? { ...p, bankrupt: true, ...patch[p.id] } : p));
+      return s;
+    };
+    // resigned: the player's own flag
+    const flag = html(h(PhonePlayers, { session: outOf(2, { rav: { resigned: true } }) }));
+    expect(flag).toContain('<span class="pp__out">Forfeit</span>');
+    expect(flag).not.toContain('Bankrupt');
+    expect(cellOf(flag, 'rav')).not.toContain('pp__cash'); // the money line is replaced, not shown beside it
+    expect(cellOf(flag, 'rav')).not.toContain('pp__goal');
+    expect(cellOf(flag, 'rav')).toMatch(/aria-label="Ravi, forfeited"/);
+    expect(cellOf(flag, 'me')).toContain('pp__cash'); // the player who is still in keeps the money line
+    // resigned: my own resignation of this visit
+    const mine = outOf(2, { me: {} });
+    mine.resigned = true;
+    expect(cellOf(html(h(PhonePlayers, { session: mine })), 'me')).toContain('>Forfeit<');
+    // resigned: the log line of somebody else's resignation (the engine event is not kept on the player)
+    const logged = outOf(3, { sana: {} });
+    logged.log = [{ id: 1, text: 'Sana resigned', player: 'sana' }];
+    expect(cellOf(html(h(PhonePlayers, { session: logged })), 'sana')).toContain('>Forfeit<');
+    // out of money: Bankrupt, in red
+    const broke = html(h(PhonePlayers, { session: outOf(2, { rav: {} }) }));
+    expect(cellOf(broke, 'rav')).toContain('<span class="pp__out">Bankrupt</span>');
+    expect(cellOf(broke, 'rav')).toMatch(/aria-label="Ravi, bankrupt"/);
+    expect(broke).not.toContain('Forfeit');
+    // the out word carries no presence bars, no pill and no goal
+    for (const cell of [cellOf(flag, 'rav'), cellOf(broke, 'rav')]) {
+      expect(cell).not.toContain('sg__bars');
+      expect(cell).not.toContain('pp__turn');
+    }
   });
 
   it('a spectator sees everybody', () => {
     const s = sess({ n: 3 });
     s.me = 'ghost';
     expect((html(h(PhonePlayers, { session: s })).match(/data-fx-player=/g) || []).length).toBe(3);
+  });
+
+  it('columns: 1 and 2 players side by side, 3-4 in two columns, 5-6 in three (the grid tokens the CSS reads)', () => {
+    const want = { 1: [1, 'roomy'], 2: [2, 'roomy'], 3: [2, 'row'], 4: [2, 'row'], 5: [3, 'compact'], 6: [3, 'compact'] };
+    for (const [n, [cols, density]] of Object.entries(want)) {
+      const out = html(h(PhonePlayers, { session: sess({ n: Number(n) }) }));
+      expect(out, `n=${n}`).toContain(`data-cols="${cols}"`);
+      expect(out, `n=${n}`).toContain(`data-density="${density}"`);
+      expect(cellsOf(out), `n=${n}`).toHaveLength(Number(n));
+      for (const c of cellsOf(out)) expect(c).toContain(`pp--${density}`);
+    }
+    // the spans the three-column grid gives an incomplete last row: two equal cells
+    expect(cellsOf(html(h(PhonePlayers, { session: sess({ n: 5 }) }))).map((c) => c.match(/data-span="(\d)"/)[1])).toEqual(['2', '2', '2', '3', '3']);
+  });
+
+  it('mirrors by slot: the piece token is on the OUTER side of the avatar (left column: before it; right column: after it)', () => {
+    const order = (cell) => cell.indexOf('pp__piece') - cell.indexOf('data-fx-player=');
+    const sidesOf = (n) => cellsOf(html(h(PhonePlayers, { session: sess({ n }) }))).map((c) => [c.match(/data-side="(\w+)"/)[1], order(c)]);
+    // two players: the other on the left, you on the right
+    expect(sidesOf(2)).toEqual([['left', expect.any(Number)], ['right', expect.any(Number)]]);
+    const two = sidesOf(2);
+    expect(two[0][1]).toBeLessThan(0); // piece first
+    expect(two[1][1]).toBeGreaterThan(0); // avatar first
+    // four players: left, right, left, right
+    expect(sidesOf(4).map(([s]) => s)).toEqual(['left', 'right', 'left', 'right']);
+    for (const [side, d] of sidesOf(4)) expect(side === 'left' ? d < 0 : d > 0).toBe(true);
+    // three players: you are alone in the last row
+    expect(sidesOf(3).map(([s]) => s)).toEqual(['left', 'right', 'right']);
+    // five and six: three columns, the middle one hangs its token on the right
+    expect(sidesOf(5).map(([s]) => s)).toEqual(['left', 'mid', 'right', 'left', 'right']);
+    expect(sidesOf(6).map(([s]) => s)).toEqual(['left', 'mid', 'right', 'left', 'mid', 'right']);
+    for (const [side, d] of sidesOf(6)) expect(side === 'left' ? d < 0 : d > 0).toBe(true);
+    // the class the CSS keys the track on
+    expect(html(h(PhonePlayers, { session: sess({ n: 2 }) }))).toMatch(/class="pp pp--roomy pp--left[^"]*"[\s\S]*class="pp pp--roomy pp--right is-me/);
+  });
+
+  it('the piece is a round disc with the piece art; the name row has the bars, then the name; the money has the net worth in brackets', () => {
+    const s = sess({ n: 2 });
+    s.roomPlayers = [{ id: 'me', connected: true, net: { q: 4, rtt: 40 } }, { id: 'rav', connected: true, net: { q: 4, rtt: 40 } }];
+    const out = html(h(PhonePlayers, { session: s }));
+    const rav = cellOf(out, 'rav');
+    expect(rav).toMatch(/<span class="pp__piece"><span class="pp__disc"><span class="hb-piece/);
+    expect(rav).toMatch(/<span class="pp__name"><span class="sg [^"]*pp__sig"[^>]*>[\s\S]*<\/span><b title="Ravi">Ravi<\/b><\/span>/);
+    expect(rav).toMatch(/<span class="pp__cash" title="Net worth ₹[\d,]+"><span class="hg-money pp__amt">₹8,20,000<\/span><small class="pp__worth">\(₹[\d.]+L\)<\/small><\/span>/);
+    // no box: the button is the only wrapper, and it carries no background class of its own
+    expect(rav).not.toMatch(/pp__card|pp__box/);
+  });
+
+  it('the cash font follows its length (so ₹1,11,50,000 fits a 320px phone) and yours is gold', () => {
+    const out = html(h(PhonePlayers, { session: sess({ n: 2 }) }));
+    expect(cellOf(out, 'me')).toContain('--chars:12');
+    expect(cellOf(out, 'rav')).toContain('--chars:9');
+    expect(cellOf(out, 'me')).toContain('is-me');
+    expect(cellOf(out, 'rav')).not.toContain('is-me');
+    // yours has the bigger avatar, the others share the plain size
+    const size = (cell) => Number(cell.match(/--sz:(\d+)px/)[1]);
+    expect(size(cellOf(out, 'me'))).toBeGreaterThan(size(cellOf(out, 'rav')));
+  });
+
+  it('every avatar is the coin anchor and the whole column opens the player sheet', () => {
+    const picks = [];
+    const out = html(h(PhonePlayers, { session: sess({ n: 4 }), onSelect: (id) => picks.push(id) }));
+    for (const id of ['me', 'rav', 'sana', 'arj']) expect(cellOf(out, id)).toContain(`data-fx-player="${id}"`);
+    // the avatar sits inside the button (the tap target is the whole column)
+    for (const c of cellsOf(out)) expect(c.indexOf('<button')).toBeLessThan(c.indexOf('data-fx-player='));
   });
 });
 

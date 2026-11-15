@@ -11,6 +11,9 @@
 //
 // Priority inside nextBotMove: a debt to settle, then a trade offer waiting for a bot, then a sealed auction, then
 // the turn player.
+//
+// Snatch: auto-play and the bots' normal chooser NEVER press Snatch (a Snatch window needs a human decision; the room
+// server closes it with its own timer). Only the simulator, to exercise the rule, asks `botSnatchAction`.
 
 import { TILES, GROUP_TILES, GROUPS, BOARD_SIZE, rentFor, mortgageValue, MAX_LEVEL } from './board.js';
 import { DEFAULT_BOT, getOptions, previewRent, canUpgrade } from './engine.js';
@@ -183,6 +186,7 @@ export function chooseBotAction(state, playerId, rnd = Math.random) {
   if (!player || player.bankrupt) return null;
   const { reserve } = botParams(player);
 
+  if (state.phase === 'snatch') return null; // auto-play never snatches (see botSnatchAction for the simulator)
   if (state.phase === 'debt') return debtAction(state, player);
 
   if (state.trade) {
@@ -243,8 +247,23 @@ export function chooseBotAction(state, playerId, rnd = Math.random) {
   return null;
 }
 
+/** Price from which the simulator's bots press Snatch even when the district does not help a collection. */
+export const SNATCH_MIN_PRICE = 200000;
+
+/**
+ * The simulator's trivial Snatch policy: press when the district would complete or extend the player's collection, or
+ * costs at least SNATCH_MIN_PRICE. Not used by the server's auto-play, which never snatches.
+ */
+export function botSnatchAction(state, playerId) {
+  const pend = state && state.phase === 'snatch' && state.pending;
+  if (!pend || pend.type !== 'snatch') return null;
+  if (!getOptions(state, playerId).snatch) return null;
+  if (!(completesSet(state, playerId, pend.tile) || extendsSet(state, playerId, pend.tile) || pend.price >= SNATCH_MIN_PRICE)) return null;
+  return { type: 'SNATCH', playerId };
+}
+
 export function nextBotMove(state, rnd = Math.random) {
-  if (!state || state.phase === 'over') return null;
+  if (!state || state.phase === 'over' || state.phase === 'snatch') return null; // a Snatch window is closed by the room's timer
   const bot = (id) => {
     const p = state.players.find((x) => x.id === id);
     return p && p.isBot && !p.bankrupt ? p : null;

@@ -195,3 +195,25 @@ export function fatalView(fatal, { paths, gameId } = {}) {
   }
   return { icon, tone: 'bad', eyebrow: 'Could not join', title, body: message || 'You cannot join this room.', actions: [another, home] };
 }
+
+/**
+ * "3 custom rules" / "1 custom rule": what a screen reader hears for the lobby's "Custom rules" badge ('' for none).
+ * (The table summary line carries its own "Custom rules (3)" tag: the game's `summarize`, see games/*\/settings.js.)
+ */
+export const customRulesSpoken = (n) => (n > 0 ? `${n} custom ${n === 1 ? 'rule' : 'rules'}` : '');
+
+/**
+ * What the piece picker tells its player, from `pieceChoices().choices`:
+ * -> { mine: choice|null, free: number, taken: number, status: 'You are the Auto-rickshaw' | 'Pick a piece to play with' }
+ */
+export function pieceStatus(choices) {
+  const list = Array.isArray(choices) ? choices : [];
+  const mine = list.find((c) => c.mine) || null;
+  const taken = list.filter((c) => c.takenBy).length;
+  return {
+    mine,
+    free: list.length - taken,
+    taken,
+    status: mine ? `You are the ${mine.name}` : 'Pick a piece to play with',
+  };
+}

@@ -73,6 +73,7 @@ const SIMPLE_ACTIONS = new Set([
   'TRADE_ACCEPT',
   'TRADE_REJECT',
   'TRADE_CANCEL',
+  'SNATCH', // sealed press during a Snatch window (SNATCH_CLOSE is server-only and never allowed from a client)
 ]);
 // Actions that carry a single tile id.
 const TILE_ACTIONS = new Set(['UPGRADE', 'MORTGAGE', 'UNMORTGAGE', 'SELL_BUILDING']);

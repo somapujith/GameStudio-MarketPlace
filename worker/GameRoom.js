@@ -11,7 +11,7 @@
 // A listing row in the `rooms` table is kept in step on a best-effort basis (never breaks a room).
 //
 // Wire additions (docs/HUSTLE_PLAN.md 3.9):
-//   {t:'state', state, events, seq, clock}  clock = { deadline: epochMs|null, waitingFor: playerId[] }
+//   {t:'state', state, events, seq, clock, now}  clock = { deadline: epochMs|null, waitingFor: playerId[] }; now = server epoch ms
 //       deadline = when the server will next act on its own (the 45 s decision timer counted after the
 //       animation, the faster pace for idle / disconnected players, or an adapter timer); null when nothing is due.
 //   {t:'room', room}  room.players[i] = { id, name, avatar, ready, connected, piece, cosmetics, net }
@@ -176,7 +176,27 @@ export class GameRoom extends DurableObject {
   /** What the state looks like to one viewer (the adapter hides secrets; same object = nothing hidden). */
   viewOf(userId) {
     const a = this.adapter;
-    return a && typeof a.redact === 'function' ? a.redact(this.room.state, userId) : this.room.state;
+    return this.withWindowClock(a && typeof a.redact === 'function' ? a.redact(this.room.state, userId) : this.room.state);
+  }
+
+  /**
+   * An open Snatch window tells each client how much of it is left (`pending.remainingMs`, of `pending.ms`), so a page
+   * that reloads or reconnects mid-window resumes the countdown instead of restarting it. Display only: the server
+   * timer (adapter.deadlines) decides when the window really closes.
+   */
+  withWindowClock(view) {
+    const r = this.room;
+    const p = view && view.pending;
+    if (!view || view.phase !== 'snatch' || !p || p.type !== 'snatch' || !Number.isFinite(p.ms)) return view;
+    const d = (typeof this.adapter.deadlines === 'function' ? this.adapter.deadlines(r.state) : [])[0];
+    const startedAt = d ? this.deadlineStart(d) : Date.now();
+    return { ...view, pending: { ...p, remainingMs: Math.max(0, Math.min(p.ms, startedAt + p.ms - Date.now())) } };
+  }
+
+  /** When an adapter timer started counting: when it first appeared (after the animation, or at once for `anchor: 'apply'`). */
+  deadlineStart(d) {
+    const r = this.room;
+    return r.deadlines?.[d.key] ?? (d.anchor === 'apply' ? r.lastApplyAt : r.lastApplyAt + r.animMs);
   }
 
   /** Seated players the game is waiting for (adapter.pendingPlayerIds, default the turn player). */
@@ -202,7 +222,8 @@ export class GameRoom extends DurableObject {
 
   /** One `state` message (the clock is the same for every viewer). */
   stateMessage(state, events, clock = this.clockView()) {
-    return { t: 'state', state, events, seq: this.room.seq, clock };
+    // `now` = the server's clock at sending: clients correct their countdowns for a wrong device clock (see localClock)
+    return { t: 'state', state, events, seq: this.room.seq, clock, now: Date.now() };
   }
 
   /** Pieces nobody (except `exceptId`) holds, in the adapter's order. */
@@ -232,6 +253,16 @@ export class GameRoom extends DurableObject {
     const a = this.adapter;
     const s = this.room.settings;
     return a && typeof a.lobbySettings === 'function' ? a.lobbySettings(s) : s;
+  }
+
+  /**
+   * How long a connected human has to act on this room's game, in ms: the adapter's `turnMs(state)` (host rule
+   * `turnSeconds`, kept by the running game in its own config), else the old constant TURN_MS.
+   */
+  turnMs() {
+    const a = this.adapter;
+    const ms = a && typeof a.turnMs === 'function' ? Number(a.turnMs(this.room && this.room.state)) : NaN;
+    return Number.isFinite(ms) && ms >= 1000 ? Math.round(ms) : TURN_MS;
   }
 
   roomView() {
@@ -877,6 +908,20 @@ export class GameRoom extends DurableObject {
     const res = a.applyAction(r.state, action);
     if (res.error) return res;
     r.state = res.state;
+    if (action.type === 'SNATCH' && r.state.phase === 'snatch') {
+      // A sealed press (docs/GAME_RULES.md 9.4): nobody else may learn that it happened, or when. No seq bump, no
+      // broadcast; only the presser gets a snapshot so their own button locks. The window's timer is unchanged.
+      this.touch();
+      const clock = this.clockView();
+      for (const ws of this.liveSockets()) {
+        if (ws.deserializeAttachment()?.userId === action.playerId) {
+          this.send(ws, this.stateMessage(this.viewOf(action.playerId), [], clock));
+        }
+      }
+      await this.save();
+      await this.scheduleAlarm();
+      return res;
+    }
     r.seq += 1;
     r.lastApplyAt = Date.now();
     r.animMs = typeof a.animationMs === 'function' ? a.animationMs(res.events, res.state) : 0;
@@ -903,7 +948,7 @@ export class GameRoom extends DurableObject {
     const r = this.room;
     const list = typeof this.adapter.deadlines === 'function' ? this.adapter.deadlines(r.state) || [] : [];
     const next = {};
-    for (const d of list) next[d.key] = r.deadlines?.[d.key] ?? r.lastApplyAt + r.animMs;
+    for (const d of list) next[d.key] = this.deadlineStart(d);
     r.deadlines = next;
   }
 
@@ -930,7 +975,7 @@ export class GameRoom extends DurableObject {
    * - the adapter's own timers (`deadlines`, e.g. an unanswered offer is auto-rejected);
    * - every human the game waits for (`pendingPlayerIds`): idle (afk) and disconnected-past-grace
    *   humans are auto-played (`idleAction`) after the same short pause; a connected human gets
-   *   TURN_MS (counted from when the last animation ends), then is flagged idle.
+   *   this room's decision time (`turnMs()`, counted from when the last animation ends), then is flagged idle.
    * The earliest one wins.
    */
   plan() {
@@ -945,11 +990,12 @@ export class GameRoom extends DurableObject {
 
     const deadlines = typeof a.deadlines === 'function' ? a.deadlines(r.state) || [] : [];
     for (const d of deadlines) {
-      const startedAt = r.deadlines?.[d.key] ?? r.lastApplyAt + r.animMs;
+      const startedAt = this.deadlineStart(d);
       candidates.push({ at: startedAt + d.afterMs, id: d.playerId, action: d.action, timeout: false });
     }
+    const adapterAt = candidates.length ? Math.min(...candidates.map((c) => c.at)) : 0; // when the first adapter timer is due
 
-    const waiting = typeof a.pendingPlayerIds === 'function' ? a.pendingPlayerIds(r.state) : [a.turnPlayerId(r.state)];
+    const waiting =typeof a.pendingPlayerIds === 'function' ? a.pendingPlayerIds(r.state) : [a.turnPlayerId(r.state)];
     for (const id of waiting) {
       const seat = id == null ? null : r.players.find((p) => p.id === id);
       if (!seat) continue;
@@ -960,7 +1006,9 @@ export class GameRoom extends DurableObject {
       if (r.afk[id]) at = pace(action);
       else if (r.disc[id] != null) at = Math.max(pace(action), r.disc[id] + GRACE_MS);
       else {
-        at = r.lastApplyAt + r.animMs + TURN_MS;
+        // A running adapter timer (an unanswered trade offer) is the timer for what it waits on: the idle move never
+        // comes before it, so a trade timer longer than the decision timer is not cut short (and nobody is flagged idle).
+        at = Math.max(r.lastApplyAt + r.animMs + this.turnMs(), adapterAt);
         timeout = true;
       }
       candidates.push({ at, id, action, timeout });

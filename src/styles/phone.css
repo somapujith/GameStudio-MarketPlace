@@ -71,89 +71,102 @@
 .ph-board > .hb-board { max-width: none; }
 
 /* ============================================================ players */
+/* No boxes, no borders: every player is a column on the plain table. PhonePlayers sets --ava-h (the tallest avatar: yours) and
+   --pw (the piece token) on the list and --ava (this avatar) on every cell; the density tokens below set the type and the gaps. */
 .pp-list {
-  flex: none; list-style: none; margin: 0; padding: 6px 10px 2px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px 8px;
+  --pw: 34px; --gap: 6px; --slot: 14px; --pill-h: 20px; --nfs: 16px; --nlh: 20px; --afs: 19px; --afs-me: 26px; --wfs: 14px; --row-gap: 6px;
+  flex: none; list-style: none; margin: 0; padding: 8px 10px 2px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--row-gap) 8px; align-items: stretch;
 }
-.pp { grid-column: span var(--span, 6); min-width: 0; container-type: inline-size; }
+.pp-list[data-density='row'] { --gap: 5px; --slot: 8px; --pill-h: 16px; --nfs: 15px; --nlh: 16px; --afs: 17px; --afs-me: 22px; --wfs: 13px; --row-gap: 5px; padding-top: 6px; }
+.pp-list[data-density='compact'] { --gap: 4px; --slot: 8px; --pill-h: 16px; --nfs: 14px; --nlh: 17px; --afs: 16px; --afs-me: 22px; --wfs: 13px; --row-gap: 8px; }
+.pp {
+  grid-column: span var(--span, 6); min-width: 0; container-type: inline-size; display: flex;
+  --amt-max: var(--afs); --worth-w: calc(var(--wchars, 8) * var(--wfs) * 0.58 + 6px); --cash-h: calc(var(--amt-max) * 1.08);
+}
+.pp.is-me { --amt-max: var(--afs-me); }
+.pp--compact { --worth-w: 0px; --cash-h: calc(var(--amt-max) * 1.08 + var(--wfs) * 1.15); } /* 5-6 players: the net worth gets its own line under the cash */
 .pp__btn {
-  position: relative; width: 100%; min-height: 44px; padding: 2px 2px 0; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  position: relative; flex: 1 1 auto; width: 100%; min-height: 44px; padding: 0 2px; display: flex; flex-direction: column; align-items: center; gap: 0;
   background: none; border: 0; border-radius: 14px; cursor: pointer; text-align: center; color: inherit;
 }
-.pp .hg-mb-ava { display: grid; width: auto; height: auto; }
-.pp__id { position: relative; display: flex; flex-direction: column; align-items: center; }
-.pp__row { position: relative; display: flex; align-items: flex-end; justify-content: center; gap: 4px; }
-.pp__ava { position: relative; display: grid; place-items: center; }
-.pp__piece { display: grid; place-items: center; flex: none; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.4)); margin-bottom: 2px; }
-.pp:not(.is-me) .pp__piece { order: -1; }
-.pp__slot { position: relative; z-index: 3; height: 20px; margin-top: -5px; display: grid; place-items: start center; }
+.pp .hg-mb-ava { display: grid; width: auto; height: auto; margin: -4px; } /* the timer arc's 4px halo stays out of the layout */
+
+/* the top row: [token] [avatar] [empty] for a left column, [empty] [avatar] [token] for the others: the avatar is always
+   the middle track, so the name and the money under it are centred under the avatar */
+.pp__id { position: relative; display: grid; grid-template-columns: var(--pw) auto var(--pw); grid-template-rows: var(--ava-h) var(--slot); column-gap: var(--gap); justify-content: center; align-items: end; }
+.pp__ava { grid-column: 2; grid-row: 1; position: relative; display: grid; place-items: center; }
+.pp__piece { grid-row: 1; position: relative; width: var(--pw); height: var(--pw); margin-bottom: calc((var(--ava, 40px) - var(--pw)) / 2); }
+.pp--left .pp__piece { grid-column: 1; }
+.pp--right .pp__piece, .pp--mid .pp__piece { grid-column: 3; }
+/* the piece: the board's pawn, a round disc in the player's colour with a white rim and the piece in white */
+.pp__disc {
+  position: absolute; inset: 0; display: grid; place-items: center; border-radius: 50%;
+  background: radial-gradient(circle at 34% 26%, color-mix(in srgb, var(--pc) 52%, #fff) 0, var(--pc) 56%, color-mix(in srgb, var(--pc) 72%, #000) 100%);
+  box-shadow: 0 0 0 2px #fff, 0 2px 5px rgba(0, 0, 0, 0.5);
+}
+/* Snatch on (the bolt chip hangs under the token, see snatch.css): the token rides at the top of the avatar so the chip sits in the
+   rest of the avatar's height instead of on the token */
+.pp.has-sn .pp__piece { align-self: start; margin: calc(var(--ava-h) - var(--ava)) 0 0; }
+.pp-list .pp.has-sn .pp__piece > .pp__sn { top: 100%; bottom: auto; margin-top: 1px; }
+.pp__glyph { display: block; width: 74%; height: 74%; }
+.pp__glyph svg { display: block; width: 100% !important; height: 100% !important; overflow: visible; }
+.pp__badges { grid-row: 1; align-self: start; position: relative; z-index: 3; display: flex; flex-direction: column; gap: 2px; }
+.pp--left .pp__badges { grid-column: 3; justify-self: start; }
+.pp--right .pp__badges, .pp--mid .pp__badges { grid-column: 1; justify-self: end; }
+.pp__badges .hg-chai, .pp__badges .hg-traffic { width: 20px; height: 20px; padding: 0; justify-content: center; border-radius: 50%; box-shadow: 0 0 0 2px #10171e; }
+.pp__badges .hg-chai > span, .pp__badges .hg-traffic > span { display: none; }
+/* the pill ("Your turn" / "Turn", "Offline", "Reconnecting…") hangs under the avatar: the slot is short, the pill taller, it overlaps the avatar's foot */
+.pp__slot { grid-column: 2; grid-row: 2; position: relative; z-index: 3; justify-self: center; align-self: start; height: var(--slot); display: flex; align-items: flex-end; justify-content: center; }
 .pp__turn {
-  white-space: nowrap; height: 20px; padding: 0 10px; border-radius: 999px; display: grid; place-items: center; font-size: 13px; font-weight: 800; line-height: 1; letter-spacing: 0.01em;
+  white-space: nowrap; height: var(--pill-h); padding: 0 10px; border-radius: 999px; display: grid; place-items: center; font-size: 13px; font-weight: 800; line-height: 1; letter-spacing: 0.01em;
   background: var(--pc); color: var(--pill-ink, #fff); box-shadow: 0 0 0 2px #10171e, 0 3px 8px rgba(0, 0, 0, 0.45);
   animation: ph-pop var(--dur-3) var(--ease-spring) both;
 }
-.pp__badges { position: absolute; z-index: 3; left: -6px; top: 0; display: flex; flex-direction: column; gap: 2px; }
-.pp__badges .hg-chai, .pp__badges .hg-traffic { width: 20px; height: 20px; padding: 0; justify-content: center; border-radius: 50%; box-shadow: 0 0 0 2px #10171e; }
-.pp__badges .hg-chai > span, .pp__badges .hg-traffic > span { display: none; }
-.pp__name { max-width: 100%; display: flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; font-size: 14px; line-height: 18px; font-weight: 700; }
+
+/* the name row: connection bars, then the name */
+.pp__name { max-width: 100%; margin-top: 2px; display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; font-size: var(--nfs); line-height: var(--nlh); font-weight: 700; }
 .pp__name b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
-.pp__dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 2px rgba(61, 220, 151, 0.2); }
-.pp__off { flex: none; font-size: 13px; font-weight: 700; color: #ffd061; animation: ph-fade 1.6s ease-in-out infinite alternate; }
-.pp__cash {
-  --amt-max: 18px;
-  max-width: 100%; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; column-gap: 5px; line-height: 1.15;
-}
+.pp.is-turn .pp__name b { color: var(--pc); filter: brightness(1.25); }
+/* the money: cash in bold white (yours: gold), the net worth in brackets in green. The cash shrinks to fit its cell; when cash
+   and net worth do not fit one line even then, the net worth drops under the cash instead of the cash being cut. */
+.pp__cash, .pp__out { max-width: 100%; min-height: var(--cash-h); display: flex; flex-wrap: wrap; align-items: baseline; align-content: flex-start; justify-content: center; column-gap: 5px; line-height: 1.08; }
 .pp__amt {
-  font-size: clamp(14px, min(var(--amt-max), calc(var(--avail, 100cqw) / (var(--chars, 9) * 0.52))), var(--amt-max));
+  --fit-all: calc((100cqw - 4px - var(--worth-w)) / (var(--chars, 9) * 0.57));  /* the size at which cash and net worth share a line */
+  --fit-cash: calc((100cqw - 4px) / (var(--chars, 9) * 0.57));                  /* the size at which the cash alone fills the cell */
+  /* --wrap-at: the smallest size we shrink to before the net worth is let drop to its own line instead */
+  font-size: clamp(12px, min(var(--amt-max), max(var(--fit-all), min(var(--fit-cash), var(--wrap-at, 16px)))), var(--amt-max));
   font-weight: 800; letter-spacing: -0.01em; color: var(--text); white-space: nowrap; font-variant-numeric: tabular-nums;
 }
-.pp__worth { font-size: 13px; font-weight: 700; color: var(--good); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.pp__out { font-size: 15px; font-weight: 800; color: var(--text-faint); }
-.pp.is-me .pp__cash { --amt-max: 24px; }
+.pp.is-me { --wrap-at: 18px; }
+.pp--roomy.is-me { --wrap-at: 24px; }
 .pp.is-me .pp__amt { color: var(--gold); text-shadow: 0 0 16px rgba(255, 202, 122, 0.35); }
-.pp.is-out .pp__btn { opacity: 0.55; }
-.pp.is-out .pp__name b { text-decoration: line-through; }
-.pp.is-offline .hg-mb-ava { filter: grayscale(0.6); opacity: 0.75; }
-.pp.is-turn .pp__name b { color: var(--pc); filter: brightness(1.25); }
+.pp__worth { font-size: var(--wfs); font-weight: 700; color: var(--good); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pp__out { font-size: var(--afs); font-weight: 800; color: var(--bad); letter-spacing: 0.01em; }
+.pp.is-me .pp__out { font-size: var(--afs-me); }
 .pp .hg-money.is-up { text-shadow: none; }
 .pp .hg-delta { right: 0; left: auto; bottom: 90%; font-size: 14px; translate: 0 0; }
-.pp__goal { align-self: stretch; margin: 3px 6px 0; height: 4px; border-radius: 99px; overflow: hidden; background: rgba(255, 255, 255, 0.14); }
+/* a player who is out: the avatar greys out (AvatarToken), the piece and name dim, the red word stays loud */
+.pp.is-out .pp__piece, .pp.is-out .pp__name { opacity: 0.6; }
+.pp.is-out .pp__piece { filter: grayscale(0.7); }
+.pp.has-goal .pp__cash, .pp.has-goal .pp__out { margin-bottom: 3px; }
+.pp.is-offline .hg-mb-ava { filter: grayscale(0.6); opacity: 0.75; }
+/* the way to the net worth target: a very thin line under the money, only when the table has a target */
+.pp__goal { flex: none; align-self: center; width: 72%; max-width: 160px; margin-top: auto; height: 2px; border-radius: 99px; overflow: hidden; background: rgba(255, 255, 255, 0.14); }
 .pp__goal i { display: block; height: 100%; width: 100%; border-radius: inherit; transform-origin: left; transform: scaleX(var(--tp, 0)); background: var(--good); transition: transform var(--dur-4) var(--ease-out); }
 .pp__goal.is-hot i { background: var(--gold); }
-.pp__goal.is-lead { height: 5px; }
 
-/* 3-4 players: avatar left, text right, two columns */
-.pp--row .pp__btn { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: 'id name' 'id cash' 'goal goal'; align-items: center; justify-items: start; column-gap: 12px; row-gap: 0; text-align: left; padding: 2px 4px; }
-.pp--row { --avail: calc(100cqw - var(--idw, 48px) - 12px); }
-.pp--row[data-span='6'] { --avail: 100cqw; }
-.pp--row .pp__id { grid-area: id; width: var(--idw, 48px); }
-.pp--row .pp__piece { position: absolute; right: -9px; bottom: 6px; order: 0; margin: 0; }
-.pp--row .pp__name { grid-area: name; justify-content: flex-start; align-self: end; }
-.pp--row .pp__cash { grid-area: cash; --amt-max: 17px; justify-content: flex-start; align-self: start; }
-.pp--row .pp__out { grid-area: cash; }
-.pp--row .pp__goal { grid-area: goal; width: 100%; margin: 2px 0 0; }
-.pp--row.is-me .pp__cash { --amt-max: 22px; }
-/* the last odd cell (3 players: you) spans the row: stack it like a roomy cell */
-.pp--row[data-span='6'] .pp__id { width: auto; }
-.pp--row[data-span='6'] .pp__btn { display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 2px; }
-.pp--row[data-span='6'] .pp__piece { position: static; margin-bottom: 2px; }
-.pp--row[data-span='6'] .pp__name { justify-content: center; align-self: center; }
-.pp--row[data-span='6'] .pp__cash { justify-content: center; align-self: center; --amt-max: 22px; }
+/* 3-4 players: the same column, a size down, two columns */
+.pp--row .pp__turn, .pp--compact .pp__turn { padding: 0 8px; font-size: 12px; }
+/* 5-6 players: three columns; the net worth sits under the cash (a third of the width cannot hold both on a line) */
+.pp--compact .pp__cash { flex-direction: column; flex-wrap: nowrap; align-items: center; }
+.pp--compact .pp__worth { line-height: 1.15; }
 
-/* 5-6 players: three columns of small stacks (the pill overlaps the foot of the avatar to save a row) */
-.pp--compact .pp__btn { gap: 1px; }
-.pp--compact .pp__slot { height: 9px; margin-top: -2px; }
-.pp--compact .pp__turn { height: 17px; padding: 0 8px; margin-top: -3px; font-size: 13px; }
-.pp--row .pp__turn { padding: 0 8px; }
-.pp--compact .pp__piece { position: absolute; right: -7px; bottom: 3px; order: 0; margin: 0; }
-.pp--compact .pp__name { font-size: 14px; }
-.pp--compact .pp__cash { --amt-max: 16px; row-gap: 0; }
-.pp--compact.is-me .pp__cash { --amt-max: 22px; }
-.pp--compact .pp__goal { height: 3px; margin-top: 1px; }
-
+/* short screens (iPhone SE and smaller): a size down again so the board keeps its size; the compact grid drops the net worth and the goal line */
 @media (max-height: 700px) {
-  .pp-list { padding-top: 0; gap: 2px 6px; }
-  .pp__goal { margin-top: 1px; height: 3px; }
-  .pp__cash { line-height: 1.05; }
+  .pp-list { --slot: 10px; --pill-h: 18px; --nlh: 18px; --row-gap: 4px; padding-top: 6px; }
+  .pp-list[data-density='row'] { --slot: 7px; --pill-h: 15px; --nlh: 15px; --row-gap: 4px; padding-top: 4px; }
+  .pp-list[data-density='compact'] { --slot: 7px; --pill-h: 15px; --nlh: 16px; --row-gap: 6px; }
+  .pp--compact { --cash-h: calc(var(--amt-max) * 1.08); }
   .pp--compact .pp__worth, .pp--compact .pp__goal { display: none; }
 }
 

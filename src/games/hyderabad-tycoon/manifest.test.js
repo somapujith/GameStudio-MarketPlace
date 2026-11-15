@@ -1,5 +1,6 @@
 // The manifest is read eagerly by src/games/registry.js, so it has to stay small and well-formed.
 import { describe, expect, it, vi } from 'vitest';
+import { RULE_KEYS } from '@shared/ruleSettings.js';
 
 // The art lives in other files (JSX); the manifest only needs something to point at.
 vi.mock('@/components/art/hub/index.js', () => ({ TycoonCover: () => null, TycoonIcon: () => null }));
@@ -47,8 +48,11 @@ describe('hyderabad-tycoon manifest', () => {
     expect(Object.keys(manifest.loaders)).toEqual(['onlineGame']);
   });
 
-  it('shows the mode and the win target in the lobby, with the table rules and a one-line summary', () => {
-    expect(manifest.lobbySettings).toEqual(['mode', 'targetWorth']);
+  it('shows the mode and every host rule in the lobby, in groups, with the table rules and a one-line summary', () => {
+    expect(manifest.lobbySettings).toEqual(['mode', ...RULE_KEYS]);
+    expect(manifest.settingsGroups.map((g) => g.id)).toEqual(['money', 'timers', 'rules', 'snatch']);
+    for (const g of manifest.settingsGroups) expect(manifest.settings.some((f) => f.group === g.id), g.id).toBe(true);
+    expect(manifest.summarize({ mode: 'standard', dice: 'lucky', turnSeconds: 90 })).toContain('Custom rules (1)');
     expect(manifest.tableRules).toBe('One die · 3 business levels per district · Chai, Auto shortcuts and city rush hours');
     for (const k of manifest.lobbySettings) expect(manifest.settings.some((f) => f.key === k)).toBe(true);
     expect(manifest.summarize({ mode: 'standard', dice: 'lucky' })).toBe('Standard City Hustle · 20 rounds · richest wins · ₹50L target');

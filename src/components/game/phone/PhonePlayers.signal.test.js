@@ -62,6 +62,28 @@ describe('PhonePlayers: connection strength', () => {
     expect(me).toMatch(/aria-label="Nithin \(you\)[^"]*reconnecting/);
   });
 
+  it('in every grid the bars sit in the name row under the avatar and the pill in the slot between them; a live player has no pill', () => {
+    for (const n of [3, 4]) { // 3-4 players: the two-column grid (roomy and compact stacks share the same markup)
+      const gone = room.map((r) => (r.id === 'sana' ? { ...r, connected: false } : r));
+      const out = html(h(PhonePlayers, { session: sess(n, gone) }));
+      const sana = cellOf(out, 'sana');
+      expect(sana.indexOf('data-fx-player="sana"'), `n=${n}`).toBeLessThan(sana.indexOf('pp__slot'));
+      expect(sana.indexOf('pp__slot'), `n=${n}`).toBeLessThan(sana.indexOf('pp__name'));
+      expect(sana).toContain('sg--offline');
+      expect(sana).toContain('>Offline<');
+      expect(cellOf(out, 'rav')).not.toContain('sg__pill'); // a live player: bars only, no pill
+      expect(cellOf(out, 'rav')).toContain('sg--ok');
+    }
+  });
+
+  it('measuring (no report yet) is a dim set of bars, not a pill; a server without the report shows nothing at all', () => {
+    const out = html(h(PhonePlayers, { session: sess(3, room) }));
+    expect(cellOf(out, 'sana')).toContain('sg--measuring');
+    expect(cellOf(out, 'sana')).not.toContain('sg__pill');
+    const old = html(h(PhonePlayers, { session: sess(3, [{ id: 'me', connected: true }, { id: 'rav', connected: true }, { id: 'sana', connected: true }]) }));
+    expect(cellOf(old, 'rav')).not.toContain('sg__bars');
+  });
+
   it('nothing for a player who is out', () => {
     const s = sess(2, room.slice(0, 2));
     s.display.players = s.display.players.map((p) => (p.id === 'rav' ? { ...p, bankrupt: true } : p));

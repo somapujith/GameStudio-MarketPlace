@@ -7,14 +7,15 @@
 // The rules, state shape, actions and events are described in docs/GAME_RULES.md (contract: docs/HUSTLE_PLAN.md 3).
 
 import {
-  BOARD_SIZE, START_TILE, MAX_LEVEL, SELL_RATIO, PASS_START, TRAFFIC_FINE, CHAI_CAP, CHAI_MIN_RENT,
+  BOARD_SIZE, START_TILE, MAX_LEVEL, SELL_RATIO, PASS_START, CHAI_MIN_RENT,
   GROUPS, GROUP_TILES, TILES, PIECE_IDS, isBuyable, rentFor, upgradeCost, sellRefund, setMultiplier,
   mortgageValue, unmortgageCost, nextTransport, municipalFor, auctionMinBid, levelName,
 } from './board.js';
-import { DECKS } from './cards.js';
+import { DECKS, SNATCH_CAP_PAYOUT } from './cards.js';
 import { shuffle, seedToUint32, randInt } from './rng.js';
 import { CITY_EVENTS, EVENT_EVERY, RUSH_FLAVOUR, MONSOON_TEXT, FESTIVALS } from './events.js';
-import { MODES, MODE_IDS, DEFAULT_MODE, ROUND_CAP, TARGET_OPTIONS, isTargetOption } from './modes.js';
+import { MODES, MODE_IDS, DEFAULT_MODE, ROUND_CAP, TARGET_OPTIONS, isTargetAmount } from './modes.js';
+import { ruleDefaults } from './ruleSettings.js';
 import { formatINR } from './format.js';
 import { rollDice, DICE_RULES } from './dice.js';
 
@@ -24,20 +25,29 @@ export { MODES, MODE_IDS, DEFAULT_MODE, ROUND_CAP, TARGET_OPTIONS };
 // Constants and settings
 // ---------------------------------------------------------------------------------------------
 
-/** The host settings and their defaults. Everything else in `cfg` follows from the mode. */
-export const DEFAULT_SETTINGS = Object.freeze({
-  mode: DEFAULT_MODE, // 'standard' | 'quick' | 'classic' (see MODES)
-  dice: 'lucky', // 'lucky' | 'fair' (see shared/dice.js). There is always exactly ONE die.
-  auctionOnDecline: true, // a skipped or unaffordable district goes to a sealed auction
-  targetWorth: MODES[DEFAULT_MODE].targetWorth, // win target (net worth), null = off; one of TARGET_OPTIONS, the default follows the mode
-});
+/**
+ * The host settings and their defaults for the standard mode: `mode` plus every host rule of shared/ruleSettings.js
+ * (money, timers, board rules, Snatch). The mode-bound ones (startCash, maxRounds, targetWorth) follow the chosen mode.
+ */
+export const DEFAULT_SETTINGS = Object.freeze({ mode: DEFAULT_MODE, ...ruleDefaults(DEFAULT_MODE) });
 
-/** Ranges of the engine-only overrides `normalizeSettings` accepts (tests and the simulator; the server never sends them). */
+/**
+ * Ranges `normalizeSettings` clamps the numeric overrides to. They are deliberately wider than the host-facing bounds of
+ * ruleSettings.js (the room server enforces those): tests and the simulator may use small or extreme values.
+ */
 export const SETTING_LIMITS = Object.freeze({
   startCash: Object.freeze({ min: 100000, max: 100000000 }),
   passStart: Object.freeze({ min: 0, max: 10000000 }),
   maxRounds: Object.freeze({ min: 1, max: 500 }),
   trafficFine: Object.freeze({ min: 0, max: 10000000 }),
+  rentPercent: Object.freeze({ min: 10, max: 500 }),
+  chaiCap: Object.freeze({ min: 1, max: 3 }),
+  eventEvery: Object.freeze({ min: 0, max: 60 }), // 0 = no city events
+  turnSeconds: Object.freeze({ min: 5, max: 600 }),
+  tradeSeconds: Object.freeze({ min: 5, max: 600 }),
+  snatches: Object.freeze({ min: 0, max: 3 }), // 0 = Snatch is off
+  snatchMs: Object.freeze({ min: 500, max: 60000 }),
+  snatchCardCap: Object.freeze({ min: 0, max: 2 }),
 });
 
 const toInt = (v) => {
@@ -47,37 +57,29 @@ const toInt = (v) => {
 };
 
 /**
- * Turns whatever the UI / server hands us into the engine config:
- *   `{ mode, startCash, passStart, maxRounds|null, targetWorth|null, dice, auctionOnDecline, trafficFine, chaiCap }`.
- * `targetWorth` is the win target (net worth): `null` or one of TARGET_OPTIONS, anything else (or missing) becomes the
- * mode default. The room server additionally refuses `null` for a mode without a round limit (worker/settings.js);
- * the engine itself accepts it (the ROUND_CAP safety net still ends such a game).
- * Unknown keys are dropped. `startCash`, `passStart`, `maxRounds` and `trafficFine` may be overridden by tests and the
- * simulator (the room server only ever forwards mode / dice / auctionOnDecline); `debug: true` is kept (tests only).
+ * Turns whatever the UI / server hands us into the engine config (`state.cfg`):
+ *   `{ mode, startCash, passStart, maxRounds|null, targetWorth|null, dice, auctionOnDecline, trafficFine, chaiCap,
+ *      rentPercent, requireFullSet, eventEvery, turnSeconds, tradeSeconds, snatches, snatchMs, snatchCardCap }`
+ * (the keys of shared/ruleSettings.js plus `mode`). `targetWorth` is the win target (net worth): `null` or any legal
+ * amount (see modes.js TARGET_RANGE), anything else (or missing) becomes the mode default. The room server additionally
+ * refuses `null` for a mode without a round limit (worker/settings.js); the engine itself accepts it (the ROUND_CAP
+ * safety net still ends such a game). Numbers are clamped to SETTING_LIMITS, unknown keys are dropped, a missing key
+ * is the mode default. `debug: true` is kept (tests only).
  */
 export function normalizeSettings(input) {
   const src = input && typeof input === 'object' ? input : {};
   const mode = typeof src.mode === 'string' && MODE_IDS.includes(src.mode) ? src.mode : DEFAULT_MODE;
-  const m = MODES[mode];
-  const cfg = {
-    mode,
-    startCash: m.startCash,
-    passStart: PASS_START,
-    maxRounds: m.rounds,
-    targetWorth: src.targetWorth === null || isTargetOption(src.targetWorth) ? src.targetWorth : m.targetWorth,
-    dice: src.dice === 'fair' || src.dice === 'lucky' ? src.dice : DEFAULT_SETTINGS.dice,
-    auctionOnDecline: typeof src.auctionOnDecline === 'boolean' ? src.auctionOnDecline : DEFAULT_SETTINGS.auctionOnDecline,
-    trafficFine: TRAFFIC_FINE,
-    chaiCap: CHAI_CAP,
-  };
+  const cfg = { mode, ...ruleDefaults(mode) };
+  if (src.targetWorth === null || isTargetAmount(src.targetWorth)) cfg.targetWorth = src.targetWorth;
+  if (src.dice === 'fair' || src.dice === 'lucky') cfg.dice = src.dice;
+  if (typeof src.auctionOnDecline === 'boolean') cfg.auctionOnDecline = src.auctionOnDecline;
+  if (typeof src.requireFullSet === 'boolean') cfg.requireFullSet = src.requireFullSet;
   const ranged = (key) => {
     if (!(key in src) || src[key] === undefined) return;
     const n = toInt(src[key]);
     if (!Number.isNaN(n)) cfg[key] = Math.min(SETTING_LIMITS[key].max, Math.max(SETTING_LIMITS[key].min, n));
   };
-  ranged('startCash');
-  ranged('passStart');
-  ranged('trafficFine');
+  for (const key of ['startCash', 'passStart', 'trafficFine', 'rentPercent', 'chaiCap', 'eventEvery', 'turnSeconds', 'tradeSeconds', 'snatches', 'snatchMs', 'snatchCardCap']) ranged(key);
   if ('maxRounds' in src && src.maxRounds !== undefined) {
     if (src.maxRounds === null) cfg.maxRounds = null;
     else ranged('maxRounds');
@@ -124,6 +126,17 @@ function levelsOwned(s, playerId) {
 
 const districtsOwned = (s, playerId) => s.owners.filter((o) => o === playerId).length;
 
+// Host rules read straight from `cfg` with the old behaviour as the fallback (a game stored before a rule existed).
+const passStartOf = (s) => (Number.isFinite(s.cfg.passStart) ? s.cfg.passStart : PASS_START);
+const eventEveryOf = (s) => (Number.isFinite(s.cfg.eventEvery) ? s.cfg.eventEvery : EVENT_EVERY);
+const needsFullSet = (s) => s.cfg.requireFullSet !== false;
+// Snatch rules read from cfg with the defaults as the fallback (cfg.snatches 1, cfg.snatchMs 5000, cfg.snatchCardCap 2).
+const snatchStart = (s) => (Number.isFinite(s.cfg.snatches) ? s.cfg.snatches : 1);
+const snatchCardCapOf = (s) => (Number.isFinite(s.cfg.snatchCardCap) ? s.cfg.snatchCardCap : 2);
+const snatchMsOf = (s) => (Number.isFinite(s.cfg.snatchMs) ? s.cfg.snatchMs : 5000);
+/** Snatch is on when players start with at least one button (`cfg.snatches` 0 turns it off entirely). */
+const snatchOn = (s) => snatchStart(s) > 0;
+
 /** Multiplier the current city event puts on `tileId`'s rent (1 when none applies). */
 function eventMult(s, tileId) {
   const e = s.event;
@@ -144,6 +157,8 @@ function rentOf(s, tileId, ownerId) {
   let rent = rentFor(tile, level, full) * eventMult(s, tileId);
   const owner = byId(s, ownerId);
   if (owner && owner.rentBoost > 1) rent *= owner.rentBoost;
+  const pct = s.cfg.rentPercent;
+  if (Number.isFinite(pct) && pct !== 100) rent = (rent * pct) / 100; // host rule "rent level": scales every rent
   return Math.round(rent);
 }
 
@@ -229,11 +244,12 @@ export function canUpgrade(state, playerId, tileId) {
   if (state.owners[tileId] !== playerId) return no('You do not own this district');
   const level = state.levels[tileId] || 0;
   if (level >= MAX_LEVEL) return no(`Already a ${levelName(tile, MAX_LEVEL)}`);
-  // Hustle rule: you may only upgrade a district once you own EVERY district of its collection.
+  // Hustle rule: you may only upgrade a district once you own EVERY district of its collection (host rule
+  // `requireFullSet`, on by default; off = owning the district is enough).
   // Ownership only: a mortgaged sibling still counts. Levels already built stay if the set is later broken.
   const need = GROUP_TILES[tile.group].length;
   const have = ownedInGroup(state, playerId, tile.group);
-  if (have < need) return no(`Own all ${need} districts of ${GROUPS[tile.group].name} first (you have ${have})`);
+  if (needsFullSet(state) && have < need) return no(`Own all ${need} districts of ${GROUPS[tile.group].name} first (you have ${have})`);
   if (isMort(state, tileId)) return no('Unmortgage this district first');
   if (turnPlayer(state).id !== playerId) return no('Wait for your turn');
   if (state.trade) return no('Answer the trade offer first');
@@ -319,7 +335,7 @@ export function getOptions(state, playerId) {
   const none = {
     roll: false, payTraffic: false, useChai: false, buy: false, skipBuy: false, ride: null, endTurn: false,
     upgrade: [], bid: null, mortgage: [], unmortgage: [], sellBuilding: [], debt: null, payDebt: false,
-    trade: { canOffer: false }, tradeOffer: null, tradeSent: null, sets: [], resign: false,
+    trade: { canOffer: false }, tradeOffer: null, tradeSent: null, sets: [], resign: false, snatch: null,
   };
   const p = byId(state, playerId);
   if (!p || p.bankrupt || state.phase === 'over') return none;
@@ -329,6 +345,17 @@ export function getOptions(state, playerId) {
     const t = state.trade;
     if (t.to === playerId) out.tradeOffer = { id: t.id, from: t.from, give: t.give, get: t.get };
     if (t.from === playerId) out.tradeSent = { id: t.id, to: t.to, give: t.give, get: t.get };
+    return out;
+  }
+
+  if (state.phase === 'snatch') {
+    // Snatch window: an eligible player who has not pressed gets `snatch`, one who has pressed gets `snatched`
+    // (their own press, from the authoritative state; other viewers' presses are redacted away by the server).
+    const pend = state.pending;
+    if (pend && pend.type === 'snatch' && pend.eligible.includes(playerId)) {
+      if (pend.claims.includes(playerId)) out.snatched = true;
+      else out.snatch = { tile: pend.tile, ms: pend.ms };
+    }
     return out;
   }
 
@@ -446,6 +473,8 @@ export function createGame({ players, settings = {}, seed } = {}) {
       pos: START_TILE,
       stuck: false, // stuck in traffic: next turn pay, spend chai, or wait
       chai: 0, // chai tokens (max cfg.chaiCap)
+      snatches: cfg.snatches, // Snatch buttons left (public): cfg.snatches at the start, +1 per Snatch card, -1 per snatch won
+      snatchCards: 0, // Snatch buttons gained from cards so far (public; at most cfg.snatchCardCap per game)
       laps: 0, // times START was passed or landed on
       bankrupt: false,
       outOrder: null, // 1 for the first player to go bankrupt, 2 for the next, ...
@@ -462,8 +491,8 @@ export function createGame({ players, settings = {}, seed } = {}) {
     winner: null,
     winReason: null,
   };
-  state.deck.luck = shuffle(state, DECKS.luck.map((_, i) => i));
-  state.deck.drama = shuffle(state, DECKS.drama.map((_, i) => i));
+  state.deck.luck = shuffle(state, deckOrder(state, 'luck'));
+  state.deck.drama = shuffle(state, deckOrder(state, 'drama'));
   return state;
 }
 
@@ -556,6 +585,7 @@ function bankruptPlayer(s, ev, p, creditorId, reason, how = null) {
   p.cash = 0;
   p.stuck = false;
   p.chai = 0;
+  p.snatches = 0;
   p.sixes = 0;
   p.rentBoost = 0;
   if (s.ride && s.ride.player === p.id) s.ride = null;
@@ -625,7 +655,7 @@ function moveForward(s, ev, p, steps, extra = null) {
   p.pos = path[path.length - 1];
   ev.push({ type: 'move', player: p.id, from, to: p.pos, path, passedStart, ...(extra || {}) });
   if (passedStart) {
-    gain(s, ev, p, s.cfg.passStart, 'salary');
+    gain(s, ev, p, passStartOf(s), 'salary');
     p.laps = (p.laps || 0) + 1;
   }
 }
@@ -702,17 +732,38 @@ function land(s, ev, p, depth = 0) {
   }
 }
 
+/**
+ * Card indices a deck is shuffled from. The Snatch cards are only in the Nawabi Luck deck while they can do something:
+ * the game has Snatch (`cfg.snatches` > 0) and lets players win buttons from cards (`cfg.snatchCardCap` > 0).
+ */
+function deckOrder(s, deckId) {
+  const canSnatch = snatchOn(s) && snatchCardCapOf(s) > 0;
+  const order = [];
+  DECKS[deckId].forEach((c, i) => {
+    if (c.effect.type !== 'snatch' || canSnatch) order.push(i);
+  });
+  return order;
+}
+
+/** Can `p` gain a Snatch button from a card right now (Snatch on, and fewer than cfg.snatchCardCap won from cards)? */
+const canWinSnatchCard = (s, p) => snatchOn(s) && (p.snatchCards || 0) < snatchCardCapOf(s);
+
 function drawCard(s, ev, p, depth, deckId) {
   const cards = DECKS[deckId];
   if (!s.deck || typeof s.deck !== 'object' || Array.isArray(s.deck)) s.deck = { luck: [], drama: [] };
   if (!s.deckPos || typeof s.deckPos !== 'object') s.deckPos = { luck: 0, drama: 0 };
   if (!Array.isArray(s.deck[deckId]) || (s.deckPos[deckId] || 0) >= s.deck[deckId].length) {
-    s.deck[deckId] = shuffle(s, cards.map((_, i) => i)); // exhausted: reshuffle the whole deck
+    s.deck[deckId] = shuffle(s, deckOrder(s, deckId)); // exhausted: reshuffle the whole deck
     s.deckPos[deckId] = 0;
   }
   const card = cards[s.deck[deckId][s.deckPos[deckId]]];
   s.deckPos[deckId] += 1;
-  ev.push({ type: 'card', player: p.id, cardId: card.id, kind: card.kind, deck: deckId, title: card.title, text: card.text });
+  // A Snatch card for a player who cannot win another button pays SNATCH_CAP_PAYOUT instead, and says so.
+  const capped = card.effect.type === 'snatch' && !canWinSnatchCard(s, p);
+  ev.push({
+    type: 'card', player: p.id, cardId: card.id, kind: card.kind, deck: deckId, title: card.title,
+    text: capped && card.capText ? card.capText : card.text, ...(capped ? { capped: true } : null),
+  });
   const fx = card.effect;
   const others = () => activePlayers(s).filter((q) => q.id !== p.id);
   switch (fx.type) {
@@ -746,6 +797,16 @@ function drawCard(s, ev, p, depth, deckId) {
       break;
     case 'chai':
       gainChai(s, ev, p, 'card');
+      break;
+    case 'snatch':
+      if (capped) {
+        gain(s, ev, p, SNATCH_CAP_PAYOUT, 'card');
+      } else {
+        const add = Math.min(Math.max(1, fx.amount | 0), snatchCardCapOf(s) - (p.snatchCards || 0));
+        p.snatches = (p.snatches || 0) + add;
+        p.snatchCards = (p.snatchCards || 0) + add;
+        ev.push({ type: 'token_earned', player: p.id, reason: 'card', snatches: p.snatches });
+      }
       break;
     case 'collectFromAll':
       runPayments(s, ev, others().map((q) => ({ from: q.id, to: p.id, amount: fx.amount, reason: 'card' })));
@@ -794,7 +855,9 @@ function maybeResolveAuction(s, ev) {
   }
   const bids = {};
   for (const p of s.players) bids[p.id] = pend.bids[p.id] || 0;
-  ev.push({ type: 'auction_end', tile: pend.tile, winner: winner ? winner.id : null, amount: winner ? best : 0, bids, reason: pend.reason });
+  const end = { type: 'auction_end', tile: pend.tile, winner: winner ? winner.id : null, amount: winner ? best : 0, bids, reason: pend.reason };
+  if (pend.snatch) end.buyer = pend.buyer; // the bidding that follows two or more Snatch presses
+  ev.push(end);
   s.pending = null;
   s.phase = pend.returnPhase || 'manage';
   if (winner) {
@@ -803,19 +866,101 @@ function maybeResolveAuction(s, ev) {
     s.owners[pend.tile] = winner.id;
     ev.push({ type: 'own', tile: pend.tile, owner: winner.id, reason: 'auction' });
     winner.stats.propertiesBought += 1;
+    if (pend.snatch) spendToken(s, ev, winner); // only whoever ends up with the tile spends the button
     emitSets(s, ev, winner.id, [pend.tile]);
+  } else if (pend.snatch) {
+    keepWithBuyer(s, ev, pend.tile, pend.buyer);
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Snatch (docs/GAME_RULES.md section 9): after a successful BUY of a free district on landing, every OTHER player who
+// still holds a Snatch button gets a short real-time window (`cfg.snatchMs`) to press it. Nobody pressing: the buyer
+// keeps the district. One presser: the district is theirs for free (the buyer is NOT refunded) and they spend one
+// button. Several pressers: sealed bidding among them (the auction machinery above). Presses are sealed: no event.
+// ---------------------------------------------------------------------------------------------
+
+function spendToken(s, ev, p) {
+  p.snatches = Math.max(0, (p.snatches || 0) - 1);
+  ev.push({ type: 'snatch_token', player: p.id, snatches: p.snatches });
+}
+
+/** The set celebration the buyer was denied while the district was contested. */
+function keepWithBuyer(s, ev, tile, buyerId) {
+  const buyer = byId(s, buyerId);
+  if (buyer && !buyer.bankrupt && s.owners[tile] === buyerId) emitSets(s, ev, buyerId, [tile]);
+}
+
+/** Players who can still act in the open window: eligible and not bankrupt. */
+const snatchVoters = (s) => s.pending.eligible.filter((id) => !byId(s, id)?.bankrupt);
+
+/** Opens the window after `buyer` paid `price` for `tile`; false (and nothing changes) when nobody else holds a button. */
+function openSnatch(s, ev, buyer, tile, price) {
+  const eligible = activePlayers(s).filter((q) => q.id !== buyer.id && (q.snatches || 0) > 0).map((q) => q.id);
+  if (!eligible.length) return false;
+  const ms = snatchMsOf(s);
+  s.pending = { type: 'snatch', tile, buyer: buyer.id, price, eligible, claims: [], ms, returnPhase: 'manage' };
+  s.phase = 'snatch';
+  ev.push({ type: 'snatch_open', tile, buyer: buyer.id, price, eligible: [...eligible], ms });
+  return true;
+}
+
+/** Close the window: nothing, a free transfer to the single presser, or sealed bidding among two or more pressers. */
+function resolveSnatch(s, ev) {
+  const pend = s.pending;
+  const { tile, buyer, price } = pend;
+  // A buyer who resigned mid-window already handed the district to the bank: a district that is still the buyer's, or
+  // free, can be snatched; one that somebody else holds now (never happens today) cannot.
+  const holder = s.owners[tile];
+  const contestable = holder === buyer || holder === null || holder === undefined;
+  const claimants = contestable ? pend.claims.filter((id) => !byId(s, id)?.bankrupt) : [];
+  s.pending = null;
+  s.phase = pend.returnPhase || 'manage';
+  if (claimants.length === 0) {
+    ev.push({ type: 'snatch_end', tile, buyer, outcome: 'none' });
+    keepWithBuyer(s, ev, tile, buyer);
+    return;
+  }
+  if (claimants.length === 1) {
+    const taker = byId(s, claimants[0]);
+    s.owners[tile] = taker.id;
+    taker.stats.propertiesBought += 1;
+    ev.push({ type: 'snatch_end', tile, buyer, outcome: 'snatched', winner: taker.id, claimants: [taker.id] });
+    ev.push({ type: 'own', tile, owner: taker.id, reason: 'snatch' });
+    spendToken(s, ev, taker);
+    emitSets(s, ev, taker.id, [tile]);
+    return;
+  }
+  const minBid = auctionMinBid(tile, 'snatch');
+  ev.push({ type: 'snatch_end', tile, buyer, outcome: 'bidding', claimants: [...claimants] });
+  s.pending = {
+    type: 'auction', tile, minBid, bids: {}, reason: 'snatch', snatch: true, buyer, claimants: [...claimants],
+    returnPhase: pend.returnPhase || 'manage',
+  };
+  s.phase = 'auction';
+  ev.push({ type: 'auction_start', tile, minBid, reason: 'snatch', eligible: [...claimants] });
+  for (const q of activePlayers(s)) {
+    if (!claimants.includes(q.id) || q.cash < minBid) s.pending.bids[q.id] = 0; // non-claimants (and the broke) auto-pass
+  }
+  maybeResolveAuction(s, ev);
+}
+
+/** Resolve at once when every player who could still press has pressed. */
+function maybeCloseSnatch(s, ev) {
+  if (s.phase !== 'snatch' || !s.pending) return;
+  if (snatchVoters(s).every((id) => s.pending.claims.includes(id))) resolveSnatch(s, ev);
 }
 
 // ---------------------------------------------------------------------------------------------
 // Turn flow, city events and the win check
 // ---------------------------------------------------------------------------------------------
 
-/** A new round begins: last round's city event ends, and every EVENT_EVERY-th round draws a new one (seeded rng). */
+/** A new round begins: last round's city event ends, and every `cfg.eventEvery`-th round (default 3) draws a new one (seeded rng). */
 function startRound(s, ev) {
   s.event = null;
   if (s.round > roundLimit(s)) return; // the round limit just ended the game: no event
-  if (s.round % EVENT_EVERY !== 0) return;
+  const every = eventEveryOf(s);
+  if (every <= 0 || s.round % every !== 0) return; // host rule `eventEvery`: 0 = no city events
   const def = CITY_EVENTS[randInt(s, CITY_EVENTS.length)];
   const event = { id: def.id, title: def.title, text: def.text, kind: def.kind, round: s.round };
   if (def.pick === 'owned') {
@@ -873,6 +1018,12 @@ function endTurn(s, ev) {
   }
   // past the round limit the game is over (checkWin runs next): no turn hand-off for a round that never starts
   if (s.round <= roundLimit(s)) ev.push({ type: 'turn', player: s.players[next].id, round: s.round });
+  // Host rule `trafficFine` 0: leaving the jam is free, so a jammed player is simply let out when their turn comes
+  // (otherwise they would be offered a "pay nothing" button; `payTraffic: 0` is falsy for every client and bot).
+  if (s.players[next].stuck && s.cfg.trafficFine === 0 && !s.players[next].bankrupt) {
+    s.players[next].stuck = false;
+    ev.push({ type: 'traffic', player: s.players[next].id, stuck: false, reason: 'free' });
+  }
 }
 
 /** The richest active player: highest net worth, then most cash, then the earliest seat (same order as standings). */
@@ -887,13 +1038,13 @@ function richest(s) {
 
 /**
  * The win target: the player whose net worth has reached `cfg.targetWorth` (richest first, then most cash, then the
- * earliest seat), or null. It is only looked at once nothing is in flight: no debt, auction or open trade, so a worth
+ * earliest seat), or null. It is only looked at once nothing is in flight: no debt, auction, Snatch window or open trade, so a worth
  * that is only high in the middle of a payment or a deal never decides the game.
  */
 function targetWinner(s) {
   const target = s.cfg.targetWorth;
   if (target == null) return null;
-  if (s.phase === 'debt' || s.phase === 'auction' || s.debt || s.trade) return null;
+  if (s.phase === 'debt' || s.phase === 'auction' || s.phase === 'snatch' || s.debt || s.trade) return null;
   let best = null;
   for (const p of activePlayers(s)) {
     const w = netWorth(s, p.id);
@@ -933,7 +1084,7 @@ function checkWin(s, ev) {
 function settle(s, ev) {
   if (s.phase !== 'over' && activePlayers(s).length >= 2) {
     const tp = turnPlayer(s);
-    if (tp.bankrupt && s.phase !== 'auction' && s.phase !== 'debt') endTurn(s, ev);
+    if (tp.bankrupt && s.phase !== 'auction' && s.phase !== 'debt' && s.phase !== 'snatch') endTurn(s, ev);
   }
   checkWin(s, ev);
 }
@@ -1056,7 +1207,8 @@ function doBuy(s, ev) {
   p.stats.propertiesBought += 1;
   s.pending = null;
   s.phase = 'manage';
-  emitSets(s, ev, p.id, [tile]);
+  // The set celebration waits for the Snatch window, when there is one: the district may still change hands.
+  if (!openSnatch(s, ev, p, tile, price)) emitSets(s, ev, p.id, [tile]);
 }
 
 function doSkipBuy(s, ev) {
@@ -1077,6 +1229,7 @@ function doUpgrade(s, ev, tile) {
 }
 
 function doResign(s, ev, p) {
+  p.resigned = true; // left by choice (public): the UI says "Forfeit" instead of "Bankrupt"
   const debt = s.debt && s.debt.player === p.id ? s.debt : null;
   bankruptPlayer(s, ev, p, debt ? debt.creditor : null, debt ? debt.reason : 'rent', 'resign');
   if (debt) {
@@ -1087,6 +1240,12 @@ function doResign(s, ev, p) {
   if (s.phase === 'auction' && s.pending) {
     s.pending.bids[p.id] = 0;
     maybeResolveAuction(s, ev);
+  }
+  if (s.phase === 'snatch' && s.pending) {
+    // A resigning presser drops out; the window itself keeps running (a resigning buyer's district went back to the
+    // bank, so it can still be snatched for free when the window closes).
+    s.pending.claims = s.pending.claims.filter((id) => id !== p.id);
+    maybeCloseSnatch(s, ev);
   }
 }
 
@@ -1110,6 +1269,8 @@ const DEBT_ACTIONS = ['MORTGAGE', 'SELL_BUILDING', 'PAY_DEBT'];
 function validate(prev, action) {
   if (!action || typeof action.type !== 'string') return 'Invalid action';
   if (prev.phase === 'over') return 'The game is over';
+  // Server-only: the room fires it when the Snatch timer ends. It carries no player (the buyer may have resigned).
+  if (action.type === 'SNATCH_CLOSE') return prev.phase === 'snatch' && prev.pending?.type === 'snatch' ? null : 'There is nothing to snatch';
   const p = byId(prev, action.playerId);
   if (!p) return 'Unknown player';
   if (p.bankrupt) return 'You are out of the game';
@@ -1118,6 +1279,7 @@ function validate(prev, action) {
 
   if (prev.trade && !TRADE_ANSWERS.includes(type) && type !== 'RESIGN') return 'A trade offer is waiting for an answer';
   if (prev.phase === 'debt' && !DEBT_ACTIONS.includes(type) && type !== 'RESIGN') return 'Raise cash and settle the debt first';
+  if (prev.phase === 'snatch' && type !== 'SNATCH' && type !== 'RESIGN') return 'Wait for the snatch window';
 
   switch (type) {
     case 'ROLL': {
@@ -1210,6 +1372,13 @@ function validate(prev, action) {
       if (!prev.trade) return 'There is no trade offer';
       if (prev.trade.from !== p.id) return 'Only the player who made the offer can cancel it';
       return null;
+    case 'SNATCH': {
+      const pend = prev.pending;
+      if (prev.phase !== 'snatch' || !pend || pend.type !== 'snatch') return 'There is nothing to snatch';
+      if (!pend.eligible.includes(p.id)) return 'You cannot snatch this one';
+      if (pend.claims.includes(p.id)) return 'You already pressed Snatch';
+      return null;
+    }
     case 'RESIGN':
       return null;
     default:
@@ -1223,7 +1392,7 @@ export function applyAction(prev, action) {
 
   const s = structuredClone(prev);
   const ev = [];
-  const p = byId(s, action.playerId);
+  const p = byId(s, action.playerId); // undefined for the server-only SNATCH_CLOSE
 
   switch (action.type) {
     case 'ROLL':
@@ -1233,7 +1402,7 @@ export function applyAction(prev, action) {
       p.cash -= s.cfg.trafficFine;
       p.stuck = false;
       ev.push({ type: 'cash', player: p.id, delta: -s.cfg.trafficFine, reason: 'traffic' });
-      ev.push({ type: 'traffic', player: p.id, stuck: false, reason: 'paid' });
+      ev.push({ type: 'traffic', player: p.id, stuck: false, reason: 'paid', amount: s.cfg.trafficFine }); // the log says what was paid
       break;
     case 'USE_CHAI':
       p.chai -= 1;
@@ -1312,6 +1481,13 @@ export function applyAction(prev, action) {
       s.trade = null;
       break;
     }
+    case 'SNATCH':
+      s.pending.claims.push(p.id); // sealed: no event
+      maybeCloseSnatch(s, ev);
+      break;
+    case 'SNATCH_CLOSE':
+      resolveSnatch(s, ev);
+      break;
     case 'RESIGN':
       doResign(s, ev, p);
       break;

@@ -6,7 +6,8 @@
 //             (it replaces the pods / control panel / dock below; everything else on this screen is shared)
 //   short landscape (phones on their side): [opponents | board | wallet bar + dock]
 //   (phones: the chat lives in a tray that the dock's Chat button opens; see turn/ChatTray.jsx and styles/gamemobile.css)
-// Overlays over the board: turn hand-off banner, card reveal; fixed overlays: speech bubbles, emote pops, coin flights.
+// Overlays over the board: turn hand-off banner, card reveal, the Snatch pop-up (phones: a floating panel above the action
+// row, inside PhoneTable); fixed overlays: speech bubbles, emote pops, coin flights.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { sfx } from '@/lib/sfx.js';
 import Board from './Board.jsx';
@@ -34,6 +35,7 @@ import { RESIGN_CONFIRM, RESIGN_KEEP, RESIGN_TEXT, RESIGN_TITLE, canResign, leav
 import { targetOf } from './turn/target.js';
 import TurnBanner from './turn/TurnBanner.jsx';
 import CardReveal, { useCardAnnouncer } from './turn/CardReveal.jsx';
+import SnatchPopup, { useSnatchAnnouncer } from './SnatchPopup.jsx';
 import SpeechBubble, { EmoteFloats } from './turn/SpeechBubble.jsx';
 import ActionDock from './turn/ActionDock.jsx';
 import ChatTray from './turn/ChatTray.jsx';
@@ -154,6 +156,7 @@ export default function GameView({ session: rawSession, onExit }) {
   const [liveText, say] = useLiveRegion();
   useTurnAlerts(base, say);
   useCardAnnouncer(base, say);
+  useSnatchAnnouncer(base, say);
   const { toasts: targetToasts, notes: targetNotes } = useTargetWatch(base, say);
   const session = useMemo(() => withNotes(base, targetNotes), [base, targetNotes]);
   useEffect(() => {
@@ -248,6 +251,7 @@ export default function GameView({ session: rawSession, onExit }) {
             <TargetToasts toasts={targetToasts} />
             <TurnBanner session={session} />
             <CardReveal session={session} />
+            <SnatchPopup session={session} placement="board" />
           </div>
         </div>
         {compact ? null : <div className="hg-chatcard"><EmoteBar session={session} /></div>}

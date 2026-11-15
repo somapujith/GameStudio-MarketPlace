@@ -179,8 +179,26 @@ export function levelNameOf(tile, level = 0) {
   return `Level ${level + 1}`;
 }
 
-/** Rent for every level [L0 .. MAX_LEVEL] (no set bonus, no events). */
-export function rentLadder(tile) {
+/** The host rule "rent level" (cfg.rentPercent, 10..500, default 100) as a percent; 100 when the game does not carry it. */
+export function rentPercentOf(cfg) {
+  const pct = Number(cfg && cfg.rentPercent);
+  return Number.isFinite(pct) && pct > 0 ? pct : 100;
+}
+
+/** A rent amount at this table's rent level, rounded like the engine (round(rent x percent / 100)). */
+export function scaleRent(amount, cfg) {
+  const pct = rentPercentOf(cfg);
+  const n = Number(amount) || 0;
+  return pct === 100 ? Math.round(n) : Math.round((n * pct) / 100);
+}
+
+/** Rent for every level [L0 .. MAX_LEVEL] (no set bonus, no events); with a `cfg`, at that table's rent level (cfg.rentPercent). */
+export function rentLadder(tile, cfg) {
+  const ladder = baseRentLadder(tile);
+  return cfg && rentPercentOf(cfg) !== 100 ? ladder.map((r) => scaleRent(r, cfg)) : ladder;
+}
+
+function baseRentLadder(tile) {
   if (!tile) return [];
   if (typeof Board.rentTable === 'function') {
     try {

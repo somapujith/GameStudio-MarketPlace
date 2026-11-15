@@ -39,6 +39,10 @@ export const CARD_ART = Object.freeze({
   property_notice: { scene: 'paperwork', prop: 'tax', accent: '#d19f95' },
   catering_order: { scene: 'food', prop: 'catering', accent: '#d7ba75' },
   festival_crowd: { scene: 'market', prop: 'festival', accent: '#d99fb9' },
+  // Snatch cards (+1 Snatch button): a market / paperwork scene with a lightning-bolt badge (`bolt`)
+  snatch_tip: { scene: 'market', prop: 'tip', accent: '#e9bf61', bolt: true },
+  snatch_haggle: { scene: 'market', prop: 'haggle', accent: '#e4a98a', bolt: true },
+  snatch_broker: { scene: 'paperwork', prop: 'broker', accent: '#e9bf61', bolt: true },
 });
 
 const INK = '#263d46';
@@ -199,7 +203,7 @@ function FilmScene({ accent }) {
 
 const SCENES = { food: FoodScene, office: OfficeScene, chai: ChaiScene, celebrate: CelebrateScene, paperwork: PaperScene, heritage: HeritageScene, travel: TravelScene, traffic: TrafficScene, weather: WeatherScene, phone: PhoneScene, lake: LakeScene, market: MarketScene, stadium: StadiumScene, film: FilmScene };
 
-function EventCardArtBase({ cardId, kind = 'neutral', deck = 'luck', className = '', animated = true }) {
+function EventCardArtBase({ cardId, kind = 'neutral', deck = 'luck', className = '', animated = true, capped = false }) {
   const id = `event-${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   const recipe = CARD_ART[cardId] || { scene: 'heritage', prop: 'home', accent: deck === 'drama' ? '#b1a0d0' : '#9ac5b4' };
   const Scene = SCENES[recipe.scene];
@@ -211,6 +215,7 @@ function EventCardArtBase({ cardId, kind = 'neutral', deck = 'luck', className =
       <path d="M0 151V96h22V82h27v69h213V87h28v14h30v91H0Z" fill="#8eafb0" opacity=".17" />
       <path d="M0 170h320v22H0Z" fill="#d8d6bb" />
       <Scene {...recipe} />
+      {recipe.bolt && !capped ? <g className="eca-prop" transform="translate(40 40)" stroke={INK} strokeWidth="2.5" strokeLinejoin="round"><circle r="22" fill="#ffca7a" /><path d="M3 -15 -10 3h8l-3 13 14-19h-8Z" fill={PAPER} /></g> : null}
     </g>
   </svg>;
 }

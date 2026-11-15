@@ -41,6 +41,9 @@ export const ANIM_MS = Object.freeze({
   ride: 1400, // transport shortcut (Auto / Metro / MMTS)
   chai: 1100, // chai token gained or spent
   turn: 1600, // turn hand-off banner
+  snatchOpen: 300, // the Snatch window opening: short on purpose, the window itself is the phase (real time), not an animation
+  snatchEnd: 1800, // the Snatch outcome (nobody / who snatched / who goes to the bidding) stays on screen long enough to read
+  token: 1100, // a Snatch button gained from a card
 });
 
 /** A pawn move longer than this many squares hops faster so the whole trip stays short. */
@@ -76,6 +79,18 @@ export function eventMs(ev) {
 export const DECISION_MS = 60_000; // a turn decision: roll, buy or auction, upgrade, end turn
 export const TRADE_MS = 45_000; // an unanswered trade offer is auto-rejected after this
 export const WARN_MS = 15_000; // the "time is running out" warning
+/** Snatch window: the server closes it this long after the on-screen countdown ends, so a press sent at the last moment still arrives. */
+export const SNATCH_GRACE_MS = 400;
+
+/**
+ * The room's decision / trade timers follow the host rules `turnSeconds` / `tradeSeconds` (state.cfg, see
+ * shared/ruleSettings.js); older games without them keep the defaults above. Always a finite number of ms >= 1 s.
+ */
+const secondsToMs = (v, fallback) => (Number.isFinite(Number(v)) && Number(v) >= 1 ? Math.round(Number(v) * 1000) : fallback);
+export const turnMsOf = (cfg) => secondsToMs(cfg && cfg.turnSeconds, DECISION_MS);
+export const tradeMsOf = (cfg) => secondsToMs(cfg && cfg.tradeSeconds, TRADE_MS);
+/** The "time is running out" warning point for a decision timer of `turnMs`: WARN_MS, but never more than half of it. */
+export const warnMsFor = (turnMs = DECISION_MS) => Math.min(WARN_MS, Math.max(1000, Math.floor(turnMs / 2)));
 export const AUTO_MOVE_MS = 1500; // pause before an idle / disconnected player's move is played for them
 export const BID_MOVE_MS = 800; // sealed bids are a little quicker
 export const START_ANIM_MS = 2500; // the "game start" intro

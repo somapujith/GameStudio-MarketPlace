@@ -15,10 +15,11 @@ export function CrownIcon({ size = 16 }) {
 
 /**
  * A taken seat at the table. `player` = { id, name, avatar, connected, piece?, cosmetics? { frame?, title? } }.
- * `piece` = the player's piece `{ id, name }` from the game's manifest (null = none picked / the game has none).
+ * `piece` = the player's piece `{ id, name }` from the game's manifest (null = none picked / the game has none);
+ * `piecesOn` = the game has pieces, so a seat without one says "No piece yet" instead of showing nothing.
  * `canRemove` shows the host's remove button; `leaving` plays the exit (the lobby keeps the seat for a beat).
  */
-export default function Seat({ player, piece = null, isHost, isMe, canRemove, onRemove, color, leaving = false }) {
+export default function Seat({ player, piece = null, piecesOn = false, isHost, isMe, canRemove, onRemove, color, leaving = false }) {
   const { name, avatar, connected } = player;
   const cos = (player.cosmetics && typeof player.cosmetics === 'object' && player.cosmetics) || {};
   const away = connected === false;
@@ -46,6 +47,12 @@ export default function Seat({ player, piece = null, isHost, isMe, canRemove, on
       <span className="sr-seat__name" title={name || 'Player'}>
         {name || 'Player'}
       </span>
+      {(piece || piecesOn) && (
+        <span className={`sr-seat__pieceline${piece ? '' : ' is-none'}`} aria-hidden="true" title={piece ? `Piece: ${piece.name}` : 'No piece picked yet'}>
+          {piece ? <PieceArt piece={piece.id} color={color} size={18} /> : null}
+          <span>{piece ? piece.name : 'No piece yet'}</span>
+        </span>
+      )}
       {cos.title && (
         <span className="sr-seat__title">
           <TitleChip title={cos.title} />

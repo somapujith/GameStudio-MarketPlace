@@ -120,6 +120,14 @@ export function rowToOpenRoom(r, lookup = getAdapter) {
   } catch {
     summary = undefined;
   }
+  // How many host rules differ from the game's stock rules (0 = a stock table; the home page says "Custom rules" above 0).
+  let customRules = 0;
+  try {
+    const n = adapter && adapter.customRules ? Number(adapter.customRules(r.settings || {})) : 0;
+    customRules = Number.isInteger(n) && n > 0 ? n : 0;
+  } catch {
+    customRules = 0;
+  }
   const out = {
     code: r.code,
     gameId: r.game_id,
@@ -127,6 +135,7 @@ export function rowToOpenRoom(r, lookup = getAdapter) {
     players: r.player_count,
     maxPlayers: r.max_players,
     createdAt: new Date(r.created_at).toISOString(),
+    customRules,
   };
   if (summary) out.summary = summary;
   return out;

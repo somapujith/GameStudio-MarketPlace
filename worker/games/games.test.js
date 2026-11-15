@@ -48,9 +48,32 @@ describe('Tycoon adapter: settings', () => {
     }
   });
 
-  it('fills defaults and drops unknown keys (the old goal / snatch keys too)', () => {
-    expect(tycoon.validateSettings({ goal: 50000, debug: true, snatches: 3 })).toEqual({ ok: true, settings: ROOM_DEFAULTS });
-    expect(tycoon.defaultSettings).toEqual({ mode: 'standard', dice: 'lucky', auctionOnDecline: true, targetWorth: 5000000 });
+  it('fills defaults and drops unknown keys (the old goal key too); every host rule is part of the defaults', () => {
+    expect(tycoon.validateSettings({ goal: 50000, debug: true, seed: 3 })).toEqual({ ok: true, settings: ROOM_DEFAULTS });
+    expect(tycoon.defaultSettings).toEqual(ROOM_DEFAULTS);
+    expect(tycoon.defaultSettings).toEqual({ mode: 'standard', ...engine.ruleDefaults('standard') });
+    expect(Object.keys(tycoon.defaultSettings)).toHaveLength(17); // mode + the 16 rules of shared/ruleSettings.js
+    expect(tycoon.validateSettings({ snatches: 3, rentPercent: 150 }).settings).toMatchObject({ snatches: 3, rentPercent: 150 });
+    expect(tycoon.validateSettings({ rentPercent: 7 })).toEqual({ ok: false, error: 'Rent level must be one of 50, 75, 100, 125, 150, 200.' });
+  });
+
+  it('the lobby shows every rule exactly as the game will run it (also for rooms stored before the rules existed)', () => {
+    const old = { mode: 'quick', dice: 'fair', auctionOnDecline: false, targetWorth: 4000000 };
+    expect(tycoon.lobbySettings(old)).toEqual({ ...engine.ruleDefaults('quick'), mode: 'quick', dice: 'fair', auctionOnDecline: false, targetWorth: 4000000 });
+    const custom = tycoon.validateSettings({ startCash: 3000000, turnSeconds: 15, requireFullSet: false, eventEvery: 0 }).settings;
+    const state = tycoon.createGame({ players: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }], settings: custom, seed: 2 });
+    expect(state.cfg).toMatchObject({ startCash: 3000000, turnSeconds: 15, requireFullSet: false, eventEvery: 0 });
+    expect(state.players[0].cash).toBe(3000000);
+  });
+
+  it('customRules counts the rules that differ from the stock rules of the mode (open tables say "Custom rules")', () => {
+    expect(tycoon.customRules(ROOM_DEFAULTS)).toBe(0);
+    expect(tycoon.customRules({})).toBe(0);
+    expect(tycoon.customRules({ mode: 'quick' })).toBe(0);
+    expect(tycoon.customRules({ mode: 'quick', startCash: 2000000, maxRounds: 12 })).toBe(0);
+    expect(tycoon.customRules({ mode: 'standard', startCash: 2000000 })).toBe(1);
+    expect(tycoon.customRules({ rentPercent: 150, turnSeconds: 30, requireFullSet: false, bogus: 1 })).toBe(3);
+    expect(tycoon.customRules(null)).toBe(0);
   });
 
   it('the win target: validated against the list, never off without a round limit, and part of the summary', () => {
@@ -114,6 +137,29 @@ describe('Tycoon adapter: turn, idle and deadlines', () => {
     expect(tycoon.pendingPlayerIds({ ...base, trade: { id: 7, from: 'a', to: 'b', give: { cash: 1, tiles: [] }, get: { cash: 0, tiles: [] } } })).toEqual(['b', 'a']);
     expect(tycoon.pendingPlayerIds({ ...base, phase: 'auction', pending: { type: 'auction', tile: 1, minBid: 6000, bids: { b: 0 } } })).toEqual(['a', 'c']);
     expect(tycoon.pendingPlayerIds({ ...base, phase: 'over' })).toEqual([]);
+  });
+
+  it('turnMs is the decision time of the room: turnSeconds of the game config, 60 s for a game without it', () => {
+    const base = three();
+    expect(tycoon.turnMs(base)).toBe(60_000);
+    expect(tycoon.turnMs({ ...base, cfg: { ...base.cfg, turnSeconds: 15 } })).toBe(15_000);
+    expect(tycoon.turnMs({ ...base, cfg: { ...base.cfg, turnSeconds: 180 } })).toBe(180_000);
+    const old = { ...base, cfg: { ...base.cfg } };
+    delete old.cfg.turnSeconds;
+    expect(tycoon.turnMs(old)).toBe(60_000);
+    expect(tycoon.turnMs(null)).toBe(60_000);
+    const custom = tycoon.createGame({ players: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }], settings: { turnSeconds: 25 }, seed: 1 });
+    expect(tycoon.turnMs(custom)).toBe(25_000);
+  });
+
+  it('the trade auto-reject follows tradeSeconds of the game config', () => {
+    const base = three();
+    const offer = (cfg) => ({ ...base, cfg: { ...base.cfg, ...cfg }, trade: { id: 4, from: 'a', to: 'b', give: { cash: 1, tiles: [] }, get: { cash: 0, tiles: [] } } });
+    expect(tycoon.deadlines(offer({ tradeSeconds: 15 }))[0]).toMatchObject({ key: 'trade:4', afterMs: 15_000, action: { type: 'TRADE_REJECT', playerId: 'b' } });
+    expect(tycoon.deadlines(offer({ tradeSeconds: 120 }))[0].afterMs).toBe(120_000);
+    const old = offer({});
+    delete old.cfg.tradeSeconds;
+    expect(tycoon.deadlines(old)[0].afterMs).toBe(TRADE_MS);
   });
 
   it('deadlines: only the 45 s trade auto-reject (no snatch timers any more)', () => {
@@ -261,6 +307,8 @@ describe('Tycoon adapter: redact, results, stored rooms', () => {
     expect(stale).toMatchObject({ status: 'finished', abandoned: true, state: null, deadlines: {} });
     const lobby = { status: 'lobby', state: null, meta: {}, deadlines: {}, settings: { goal: 70000, maxRounds: 50, dice: 'fair' } };
     tycoon.upgradeRecord(lobby);
-    expect(lobby).toMatchObject({ status: 'lobby', settings: { mode: 'standard', dice: 'fair', auctionOnDecline: true, targetWorth: 5000000 } });
+    // the retired goal is dropped, a round limit from the list survives, everything else is the standard default
+    expect(lobby).toMatchObject({ status: 'lobby', settings: { ...ROOM_DEFAULTS, maxRounds: 50, dice: 'fair' } });
+    expect(lobby.settings).not.toHaveProperty('goal');
   });
 });

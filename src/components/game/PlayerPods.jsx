@@ -20,6 +20,8 @@ import { useLayoutMode } from './ui/viewport.js';
 import { ChaiToken, PlayerAvatar, TrafficTag, rowLabel } from './MoneyBar.jsx';
 import { TitleChip, cosmeticsOf, roomPlayer } from './turn/room.js';
 import SignalBars from './ui/SignalBars.jsx';
+import SnatchChip from './ui/SnatchChip.jsx';
+import { snatchChipsOn, snatchCount } from './snatch.js';
 import { pillText, signalOf, signalWords } from './ui/signalModel.js';
 import { useNetStats } from '@/lib/netStats.js';
 import { podTarget, targetOf } from './turn/target.js';
@@ -109,7 +111,7 @@ export function GoalBar({ goal, isMe }) {
   );
 }
 
-function Pod({ session, player, slot, cell, worth, isMe, isTurn, isLeader, target, avatar, compact, local, onSelect }) {
+function Pod({ session, player, slot, cell, worth, isMe, isTurn, isLeader, target, avatar, compact, local, snatchOn, onSelect }) {
   // Connection strength: the room's `net` for everybody else, your own live measurement for you (never for a player who is out).
   const sig = player.bankrupt ? { kind: 'none' } : signalOf(roomPlayer(session, player.id), { isMe, local });
   const offline = sig.kind === 'offline' && !player.bankrupt;
@@ -117,7 +119,8 @@ function Pod({ session, player, slot, cell, worth, isMe, isTurn, isLeader, targe
   const title = cosmeticsOf(session, player.id).title;
   const goal = podTarget({ worth, target, isMe, isLeader, bankrupt: player.bankrupt });
   const cls = ['hg-pod', isMe && 'is-me', isTurn && 'is-turn', isLeader && !player.bankrupt && 'is-leader', player.bankrupt && 'is-out', offline && 'is-offline', pillText(sig) && 'has-pill', goal && 'has-goal', goal?.hot && 'is-hot'].filter(Boolean).join(' ');
-  const label = [rowLabel({ player, worth, isMe, isTurn, isLeader, offline: false }), signalWords(sig), goal?.sr].filter(Boolean).join(', ');
+  const label = [rowLabel({ player, worth, isMe, isTurn, isLeader, offline: false }), signalWords(sig), goal?.sr, snatchOn && !player.bankrupt && snatchCount(player) !== null ? `${snatchCount(player)} Snatch ${snatchCount(player) === 1 ? 'button' : 'buttons'}` : '']
+    .filter(Boolean).join(', ');
   const badges = compact && !player.bankrupt && (player.stuck || player.chai > 0);
   return (
     <li
@@ -141,6 +144,7 @@ function Pod({ session, player, slot, cell, worth, isMe, isTurn, isLeader, targe
           <span className="hg-pod__name">
             <b title={player.name}>{player.name}</b>
             {isMe ? <small className="hg-pod__you">YOU</small> : null}
+            {snatchOn && !player.bankrupt ? <SnatchChip count={snatchCount(player)} className="hg-pod__sn" /> : null}
             <SignalBars {...sig} size={compact ? 'sm' : 'md'} className="hg-pod__sig" />
           </span>
           <span className="hg-pod__sub">
@@ -183,6 +187,7 @@ export default function PlayerPods({ session, onSelect, mode = 'all', layout: la
   const all = podSlots(state.players, session.me);
   const shown = compact ? podsFor(all, session.me, mode) : all;
   const others = podsFor(all, session.me, 'others');
+  const snatchOn = snatchChipsOn(session);
   return (
     <ul className={`hg-pods${compact && mode === 'me' ? ' hg-pods--me' : ''}`} role="list" aria-label={compact && mode === 'me' ? 'Your wallet' : 'Players'}>
       {shown.map(({ player, slot }) => {
@@ -204,6 +209,7 @@ export default function PlayerPods({ session, onSelect, mode = 'all', layout: la
             avatar={!compact ? 42 : cell === 'wallet' ? 44 : 36}
             compact={compact}
             local={local}
+            snatchOn={snatchOn}
             onSelect={onSelect}
           />
         );

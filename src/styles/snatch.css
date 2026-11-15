@@ -1,0 +1,144 @@
+/* Snatch: the pop-up (components/game/SnatchPopup.jsx), the bolt chip next to a player's piece (ui/SnatchChip.jsx) and the
+   contested / snatched mark on the board tile (Tile.jsx). The game screen is always dark. Selectors: .sn-*  and  .hb-tile__sn-*
+   Motion = transform / opacity only; every animation is off under reduced motion (media query, :root[data-motion='reduced']
+   and .hg-game[data-rm]); the countdown itself keeps running (it is JS), only the spring and the pulses stop. */
+
+:root { --sn-hot: #ff4d6d; --sn-hot-2: #d6284a; --sn-gold: #ffca7a; --sn-track: rgba(255, 255, 255, 0.16); }
+
+/* ============================================================ token chip */
+.sn-chip {
+  position: relative; flex: none; display: inline-flex; align-items: center; gap: 2px; height: 20px; padding: 0 7px 0 5px; border-radius: 999px;
+  font-size: 13px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; white-space: nowrap;
+  color: #3b2300; background: var(--sn-gold); box-shadow: 0 0 0 2px #10171e;
+}
+.sn-chip.is-zero { color: #b9c7cf; background: #2a3944; opacity: 0.8; }
+.sn-chip b { font-weight: 800; }
+.sn-chip svg { flex: none; }
+.sn-chip__plus {
+  position: absolute; left: 50%; bottom: 100%; z-index: 4; margin-bottom: 2px; padding: 2px 8px; border-radius: 999px; pointer-events: none;
+  font-style: normal; font-size: 13px; font-weight: 900; line-height: 1.2; white-space: nowrap; color: #3b2300; background: #fff3c4;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); animation: sn-plus 1.6s var(--ease-out) both;
+}
+/* where the chip sits: under the phone table's piece token (centred, overlapping its foot), and by the name in a desktop pod */
+.pp__piece { position: relative; }
+.pp__piece > .pp__sn { position: absolute; left: 50%; bottom: -9px; z-index: 3; translate: -50% 0; }
+.hg-pod__sn { height: 18px; margin-left: 2px; font-size: 12px; }
+@keyframes sn-plus {
+  0% { opacity: 0; transform: translate(-50%, 6px) scale(0.8); }
+  15% { opacity: 1; transform: translate(-50%, 0) scale(1.08); }
+  25% { transform: translate(-50%, -2px) scale(1); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -14px) scale(1); }
+}
+
+/* ============================================================ the pop-up */
+.sn-pop {
+  z-index: 25; display: grid; gap: 6px; color: var(--text, #f3f7fa); font-family: var(--font-body);
+  transform-origin: 50% 100%; animation: sn-in 440ms var(--ease-spring) both;
+  -webkit-tap-highlight-color: transparent;
+}
+.sn-pop[data-state='leaving'] { pointer-events: none; animation: sn-out 180ms var(--ease-in) both; }
+
+/* phone: a zero-height slot right above the action row; the panel floats up from it (the board never moves) */
+.sn-slot { position: relative; z-index: 25; flex: none; height: 0; pointer-events: none; }
+.sn-pop[data-place='phone'] { position: absolute; left: 10px; right: 10px; bottom: 8px; pointer-events: auto; }
+/* tablets, landscape phones, desktop: centred near the bottom of the board, just above its bottom row of districts (so the contested one stays visible) */
+.sn-pop[data-place='board'] { position: absolute; left: 0; right: 0; bottom: calc(15.5% + 6px); width: min(92%, 400px); margin-inline: auto; pointer-events: auto; }
+
+/* the eligible player's panel: a dark card behind the line and the button, so whatever is under it never shows through */
+.sn-pop[data-mode='press'], .sn-pop[data-mode='locked'] {
+  padding: 6px 8px 8px; border-radius: 28px; background: #0a1016; box-shadow: 0 14px 34px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 202, 122, 0.3);
+}
+.sn-head {
+  margin: 0 auto; padding: 0 6px; max-width: 100%; text-align: center; font-size: 14px; line-height: 20px; font-weight: 600; color: #fff3c4;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sn-head b { font-weight: 800; color: var(--sn-gold); }
+
+/* the ring: the button's frame, drained clockwise from 12 o'clock as the window runs out (--f is 1 -> 0) */
+.sn-ring {
+  padding: 4px; border-radius: 24px; --ring: var(--sn-gold);
+  background: conic-gradient(var(--ring) calc(var(--f, 1) * 360deg), var(--sn-track) 0);
+}
+.sn-pop[data-mode='locked'] .sn-ring { --ring: #7ee2b0; }
+
+.sn-btn {
+  width: 100%; min-height: 64px; padding: 8px 14px 8px 12px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 10px;
+  border: 0; border-radius: 20px; cursor: pointer; text-align: left; font: inherit; color: #fff;
+  background: linear-gradient(180deg, var(--sn-hot) 0%, var(--sn-hot-2) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 -3px 0 rgba(0, 0, 0, 0.22);
+  transition: transform var(--dur-1) var(--ease-out), filter var(--dur-2);
+  touch-action: manipulation;
+}
+.sn-btn:active:not(:disabled) { transform: scale(0.97); }
+.sn-pop .sn-btn:focus-visible, .ph .sn-pop .sn-btn:focus-visible { outline: 3px solid #fff; outline-offset: 7px; }
+@media (hover: hover) { .sn-btn:hover:not(:disabled) { filter: brightness(1.08); } }
+.sn-btn:disabled { cursor: default; background: linear-gradient(180deg, #2f6a52, #245543); }
+.sn-pop[data-mode='press'] .sn-btn { animation: sn-pulse 0.9s ease-in-out infinite alternate; }
+.sn-btn__bolt { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; color: #3b2300; background: var(--sn-gold); box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25); }
+.sn-btn__bolt svg { width: 24px; height: 24px; }
+.sn-btn__txt { min-width: 0; display: grid; gap: 1px; }
+.sn-btn__title { font-family: var(--font-display); font-size: 24px; line-height: 1.05; font-weight: 900; letter-spacing: 0.03em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sn-pop[data-mode='locked'] .sn-btn__title { font-size: 19px; letter-spacing: 0; }
+.sn-btn__sub { font-size: 14px; line-height: 18px; font-weight: 700; color: #fff3c4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.sn-btn__side { display: grid; justify-items: center; gap: 3px; min-width: 44px; }
+.sn-secs { font-family: var(--font-display); font-size: 30px; line-height: 1; font-weight: 900; font-variant-numeric: tabular-nums; }
+.sn-tok { display: inline-flex; align-items: center; gap: 1px; padding: 0 6px 0 4px; height: 20px; border-radius: 999px; font-style: normal; font-size: 13px; font-weight: 800; line-height: 1; color: #3b2300; background: var(--sn-gold); }
+@keyframes sn-pulse { from { transform: scale(1); } to { transform: scale(1.018); } }
+
+/* everybody else: one calm line, the seconds and a thin bar that drains */
+.sn-watch {
+  position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 10px; min-height: 50px; padding: 8px 14px 10px 12px; overflow: hidden;
+  border-radius: 16px; background: #16212b; box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 202, 122, 0.4);
+}
+.sn-watch__bolt { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; color: #3b2300; background: var(--sn-gold); }
+.sn-watch__txt { margin: 0; font-size: 15px; line-height: 19px; font-weight: 700; color: var(--text, #f3f7fa); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.sn-watch .sn-secs { font-size: 26px; color: var(--sn-gold); min-width: 22px; text-align: center; }
+.sn-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--sn-track); }
+.sn-bar i { display: block; height: 100%; background: var(--sn-gold); transform-origin: left center; transform: scaleX(var(--f, 1)); }
+
+@keyframes sn-in { from { opacity: 0; transform: translateY(22px) scale(0.84); } to { opacity: 1; transform: none; } }
+@keyframes sn-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(8px) scale(0.92); } }
+
+@media (max-width: 340px) {
+  .sn-btn { grid-template-columns: minmax(0, 1fr) auto; }
+  .sn-btn__bolt { display: none; }
+  .sn-btn__title { font-size: 22px; }
+}
+@media (max-height: 620px) {
+  .sn-head { display: none; }
+}
+
+/* ============================================================ the contested / snatched district on the board */
+.hb-tile.is-snatch, .hb-tile.is-snatched { z-index: 7; }
+.hb-tile__sn-ring {
+  position: absolute; inset: 0; z-index: 5; border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 0 0 max(calc(var(--hb-u, 40px) * 0.12), 3px) var(--sn-hot), inset 0 0 0 max(calc(var(--hb-u, 40px) * 0.18), 4px) #fff;
+  animation: sn-tile 0.75s ease-in-out infinite alternate;
+}
+.hb-tile.is-snatched .hb-tile__sn-ring {
+  box-shadow: inset 0 0 0 max(calc(var(--hb-u, 40px) * 0.12), 3px) var(--sn-gold), inset 0 0 0 max(calc(var(--hb-u, 40px) * 0.18), 4px) #fff;
+  animation: sn-tile-won 1.6s var(--ease-out) both;
+}
+.hb-tile__sn-badge {
+  position: absolute; right: calc(var(--hb-u, 40px) * -0.1); top: calc(var(--hb-u, 40px) * -0.1); z-index: 6; display: grid; place-items: center; pointer-events: none;
+  width: max(calc(var(--hb-u, 40px) * 0.4), 14px); height: max(calc(var(--hb-u, 40px) * 0.4), 14px); border-radius: 50%; color: #3b2300; background: var(--sn-gold);
+  box-shadow: 0 0 0 1px #fff, 0 1px 3px rgba(0, 0, 0, 0.5); animation: sn-badge 0.75s ease-in-out infinite alternate;
+}
+.hb-tile.is-snatched .hb-tile__sn-badge { animation: sn-badge-won 1.6s var(--ease-spring) both; }
+.hb-tile__sn-badge svg { width: 70%; height: 70%; }
+@keyframes sn-tile { from { opacity: 0.55; } to { opacity: 1; } }
+@keyframes sn-tile-won { 0% { opacity: 0; } 15% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes sn-badge { from { transform: scale(1); } to { transform: scale(1.18); } }
+@keyframes sn-badge-won { 0% { opacity: 0; transform: scale(0.4); } 20% { opacity: 1; transform: scale(1.25); } 40% { transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: scale(1); } }
+
+/* ============================================================ motion off */
+@media (prefers-reduced-motion: reduce) {
+  .sn-pop, .sn-pop[data-state='leaving'], .sn-btn, .sn-chip__plus, .hb-tile__sn-ring, .hb-tile__sn-badge { animation: none !important; transition: none !important; }
+  .sn-pop[data-state='leaving'] { opacity: 0; }
+}
+:root[data-motion='reduced'] .sn-pop, :root[data-motion='reduced'] .sn-btn, :root[data-motion='reduced'] .sn-chip__plus,
+:root[data-motion='reduced'] .hb-tile__sn-ring, :root[data-motion='reduced'] .hb-tile__sn-badge,
+.hg-game[data-rm] .sn-pop, .hg-game[data-rm] .sn-btn, .hg-game[data-rm] .sn-chip__plus,
+.hg-game[data-rm] .hb-tile__sn-ring, .hg-game[data-rm] .hb-tile__sn-badge { animation: none !important; transition: none !important; }
+.sn-pop[data-rm] { animation: none !important; }

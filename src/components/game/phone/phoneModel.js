@@ -112,6 +112,48 @@ export function cellSpans(n) {
   return spans;
 }
 
+/**
+ * Which side of its avatar each cell hangs the piece token on (the token sits on the OUTER side, so the two columns mirror):
+ * 'left' (token left of the avatar) | 'right' (token right of it) | 'mid' (the middle column of a three-column row; the token
+ * goes right like a right one). A cell alone in its row (the odd last one: you) is 'right'.
+ */
+export function cellSides(n) {
+  const count = Math.max(1, Math.min(6, Number(n) || 1));
+  const { cols } = gridFor(count);
+  const sides = [];
+  for (let i = 0; i < count; i += 1) {
+    const rowStart = Math.floor(i / cols) * cols;
+    const inRow = Math.min(cols, count - rowStart);
+    const at = i - rowStart;
+    if (inRow === 1) sides.push('right');
+    else if (inRow === 2) sides.push(at === 0 ? 'left' : 'right');
+    else sides.push(at === 0 ? 'left' : at === 1 ? 'mid' : 'right');
+  }
+  return sides;
+}
+
+/**
+ * Avatar and piece-token sizes in px by density (the avatar timer arc adds 4px each side; the layout does not count it).
+ * `me` is the viewer's avatar: a little bigger than the others. Short screens (iPhone SE and smaller) are a little tighter.
+ */
+export function playerSizes(density, short = false) {
+  const tall = { roomy: { avatar: 52, me: 58, piece: 36 }, row: { avatar: 34, me: 38, piece: 26 }, compact: { avatar: 32, me: 36, piece: 22 } };
+  const tight = { roomy: { avatar: 44, me: 48, piece: 30 }, row: { avatar: 28, me: 32, piece: 22 }, compact: { avatar: 28, me: 32, piece: 20 } };
+  return (short ? tight : tall)[density] || tall.roomy;
+}
+
+/** Why a player who is out is out: resigned (left by choice) reads "Forfeit", anybody else "Bankrupt". */
+export function resignedOf(session, player, isMe = false) {
+  if (!player) return false;
+  if (player.resigned === true) return true;
+  if (isMe && session?.resigned) return true;
+  const log = Array.isArray(session?.log) ? session.log : [];
+  return log.some((e) => e && e.player === player.id && /\bresigned\b/i.test(String(e.text || '')));
+}
+
+/** The red word under the avatar of a player who is out. */
+export const outWord = (resigned) => (resigned ? 'Forfeit' : 'Bankrupt');
+
 /** The other players in turn order after me, then me last (a spectator sees everybody in seat order). */
 export function orderPlayers(players, meId) {
   const list = Array.isArray(players) ? players : [];
@@ -249,7 +291,7 @@ export function chipFor(session, tileId) {
   if (tile.type === 'property') {
     if (owner) {
       const lvl = Math.max(0, Math.min(MAX_LEVEL, d.levels?.[tile.id] || 0));
-      amount = rentLadder(tile)[lvl] ?? 0;
+      amount = rentLadder(tile, d.cfg || session?.view?.cfg)[lvl] ?? 0; // at the table's rent level
       amountLabel = `rent ${formatINR(amount)}`;
     } else {
       amount = tile.price ?? 0;
@@ -325,14 +367,14 @@ export function pillFor(sec, session) {
  * Everything the buy popup prints for `tile` (a district up for sale to me).
  * state = { cash, auction: boolean (passing sends it to a sealed auction), canBuy, price }.
  */
-export function buyCardData(tile, { cash = 0, price = null, auction = true, canBuy = null } = {}) {
+export function buyCardData(tile, { cash = 0, price = null, auction = true, canBuy = null, cfg = null } = {}) {
   if (!tile) return null;
   const coll = collectionOf(tile);
   const { color } = tileAccent(tile);
   const tones = bandTones(color);
   const cost = price ?? tile.price ?? 0;
   const afford = canBuy == null ? cash >= cost : !!canBuy;
-  const ladder = rentLadder(tile);
+  const ladder = rentLadder(tile, cfg); // at the table's rent level (cfg.rentPercent)
   return {
     id: tile.id,
     name: tile.name,

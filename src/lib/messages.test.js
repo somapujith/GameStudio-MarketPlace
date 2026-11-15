@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { describeEvent, tileName, playerName } from './messages.js';
+import { describeEvent, tileName, playerName, snatchCaption, joinNames, nameList } from './messages.js';
 import { createGame, applyAction, mulberry32, nextBotMove } from '@shared/index.js';
 
 const ctx = {
@@ -60,7 +60,12 @@ describe('describeEvent', () => {
   it('traffic: stuck, paid, chai, waited', () => {
     expect(describeEvent({ type: 'traffic', player: 'me', stuck: true, reason: 'tile' }, ctx)).toMatchObject({ text: 'Traffic Jam! You are stuck where you stand', tone: 'bad', tile: 9 });
     expect(text({ type: 'traffic', player: 'b1', stuck: true, reason: 'card' })).toBe('Chai Uncle is stuck in traffic. Baigan!');
-    expect(text({ type: 'traffic', player: 'me', stuck: false, reason: 'paid' })).toBe('You paid ₹25,000 and squeezed out of the jam');
+    // the fine is the host's setting: the event's own amount, else the cash event just before it, never a built-in number
+    expect(text({ type: 'traffic', player: 'me', stuck: false, reason: 'paid', amount: 30000 })).toBe('You paid ₹30,000 and squeezed out of the jam');
+    expect(text({ type: 'traffic', player: 'me', stuck: false, reason: 'paid' }, { ...ctx, lastCash: { player: 'me', delta: -45000, reason: 'traffic' } })).toBe('You paid ₹45,000 and squeezed out of the jam');
+    expect(text({ type: 'traffic', player: 'me', stuck: false, reason: 'paid' }, { ...ctx, lastCash: { player: 'b1', delta: -45000, reason: 'traffic' } })).toBe('You paid the fine and squeezed out of the jam');
+    expect(text({ type: 'traffic', player: 'me', stuck: false, reason: 'paid' })).toBe('You paid the fine and squeezed out of the jam');
+    expect(text({ type: 'traffic', player: 'me', stuck: false, reason: 'free' })).toBe('You are out of the traffic jam, free of charge');
     expect(text({ type: 'traffic', player: 'me', stuck: false, reason: 'chai' })).toBe('You sipped a chai and the traffic melted away');
     expect(text({ type: 'traffic', player: 'b1', stuck: false, reason: 'waited' })).toBe('Chai Uncle waited out the traffic jam');
   });
@@ -138,7 +143,8 @@ describe('describeEvent', () => {
     const rnd = mulberry32(4);
     const seen = new Set();
     for (let i = 0; i < 3000 && s.phase !== 'over'; i++) {
-      const r = applyAction(s, nextBotMove(s, rnd));
+      // auto-play never snatches: the room's timer closes a Snatch window (SNATCH_CLOSE), as here
+      const r = applyAction(s, s.phase === 'snatch' ? { type: 'SNATCH_CLOSE' } : nextBotMove(s, rnd));
       for (const e of r.events) {
         const d = describeEvent(e, { me: 'me', players: s.players, owners: s.owners, round: s.round, maxRounds: s.cfg.maxRounds });
         if (d) {
@@ -151,5 +157,57 @@ describe('describeEvent', () => {
     }
     expect(seen.has('dice')).toBe(true);
     expect(seen.has('win')).toBe(true);
+  });
+});
+
+describe('Snatch lines', () => {
+  const sctx = {
+    me: 'me',
+    players: [{ id: 'me', name: 'Nithin' }, { id: 'b1', name: 'Chai Uncle' }, { id: 'b2', name: 'Meera' }],
+    owners: Array(36).fill(null),
+    round: 3,
+    maxRounds: 20,
+  };
+
+  it('snatch_open names who may snatch, the window length, and tells an eligible player to go', () => {
+    const open = { type: 'snatch_open', tile: 29, buyer: 'b1', price: 320000, eligible: ['me', 'b2'], ms: 5000 };
+    expect(describeEvent(open, sctx)).toMatchObject({
+      text: 'Snatch window open (5s): You and Meera can snatch Madhapur', bubble: 'Snatch it!', tone: 'warn', tile: 29, icon: '⚡',
+    });
+    const watching = describeEvent({ ...open, eligible: ['b2'] }, sctx);
+    expect(watching).toMatchObject({ text: 'Snatch window open (5s): Meera can snatch Madhapur', bubble: 'Snatch window open', tone: 'info' });
+    expect(text({ ...open, ms: undefined, eligible: ['b2'] }, sctx)).toContain('(5s)');
+  });
+
+  it('snatch_end: who snatched it, the bidding, and silence when nobody did', () => {
+    expect(describeEvent({ type: 'snatch_end', tile: 1, buyer: 'b1', outcome: 'snatched', winner: 'b2', claimants: ['b2'] }, sctx)).toMatchObject({
+      text: 'Meera snatched Sultan Bazaar!', bubble: 'Meera snatched Sultan Bazaar!', tone: 'info', tile: 1,
+    });
+    expect(describeEvent({ type: 'snatch_end', tile: 1, buyer: 'me', outcome: 'snatched', winner: 'b2' }, sctx).tone).toBe('bad'); // my district was taken
+    expect(describeEvent({ type: 'snatch_end', tile: 1, buyer: 'b1', outcome: 'snatched', winner: 'me' }, sctx)).toMatchObject({ text: 'You snatched Sultan Bazaar!', tone: 'cheer' });
+    expect(text({ type: 'snatch_end', tile: 1, buyer: 'b1', outcome: 'bidding', claimants: ['b2', 'b1'] }, sctx)).toBe('Snatch bidding: Meera and Chai Uncle');
+    expect(describeEvent({ type: 'snatch_end', tile: 1, buyer: 'b1', outcome: 'bidding', claimants: ['b2', 'me'] }, sctx)).toMatchObject({ text: 'Snatch bidding: You and Meera', tone: 'warn' });
+    expect(describeEvent({ type: 'snatch_end', tile: 1, buyer: 'b1', outcome: 'none' }, sctx)).toBeNull();
+    expect(snatchCaption({ type: 'snatch_end', tile: 1, buyer: 'b1', outcome: 'none' }, sctx)).toBeNull();
+  });
+
+  it('a Snatch card, the token event and the snatch bidding result', () => {
+    expect(describeEvent({ type: 'token_earned', player: 'b2', reason: 'card', snatches: 2 }, sctx)).toMatchObject({ text: 'Meera won a Snatch button from a card', bubble: '+1 Snatch', tone: 'info' });
+    expect(describeEvent({ type: 'token_earned', player: 'me', reason: 'card', snatches: 2 }, sctx)).toMatchObject({ text: 'You won a Snatch button from a card', tone: 'good' });
+    expect(describeEvent({ type: 'snatch_token', player: 'b2', snatches: 0 }, sctx)).toBeNull();
+    expect(describeEvent({ type: 'auction_start', tile: 1, minBid: 10000, reason: 'snatch', eligible: ['b2'] }, sctx)).toBeNull();
+    expect(text({ type: 'auction_end', tile: 1, winner: 'b2', amount: 90000, reason: 'snatch', buyer: 'b1' }, sctx)).toBe('Meera won Sultan Bazaar in the snatch bidding for ₹90,000');
+    expect(text({ type: 'auction_end', tile: 1, winner: null, reason: 'snatch', buyer: 'b1' }, sctx)).toBe('Nobody bid. Sultan Bazaar stays with Chai Uncle');
+    expect(text({ type: 'auction_end', tile: 1, winner: null, reason: 'snatch', buyer: 'me' }, sctx)).toBe('Nobody bid. Sultan Bazaar stays with you');
+    expect(text({ type: 'auction_end', tile: 1, winner: 'b1', amount: 90000 }, sctx)).toBe('Chai Uncle won Sultan Bazaar at auction for ₹90,000');
+  });
+
+  it('joinNames / nameList read like a sentence, "You" first', () => {
+    expect(joinNames([])).toBe('Nobody');
+    expect(joinNames(['Meera'])).toBe('Meera');
+    expect(joinNames(['Meera', 'You'])).toBe('You and Meera');
+    expect(joinNames(['A', 'B', 'C'])).toBe('A, B and C');
+    expect(nameList(sctx, ['b2', 'me', 'b1'])).toBe('You, Meera and Chai Uncle');
+    expect(nameList(sctx, null)).toBe('Nobody');
   });
 });

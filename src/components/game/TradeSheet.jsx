@@ -14,7 +14,7 @@ import '@/styles/trade.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { TILES } from '@shared/board.js';
 import { compactINR, formatINR } from '@shared/format.js';
-import { TRADE_MS } from '@shared/timing.js';
+import { TRADE_MS, tradeMsOf } from '@shared/timing.js';
 import Sheet from './ui/Sheet.jsx';
 import Button from './ui/Button.jsx';
 import Icon from './ui/Icon.jsx';
@@ -33,7 +33,9 @@ import {
   offerProblem, parseCash, partnerHints, setImpact, sideBrief, sideParts, sideValue, tileHint,
 } from './ui/tradeModel.js';
 
-const OFFER_SECONDS = Math.round(TRADE_MS / 1000); // the server auto-rejects an unanswered offer after this
+const OFFER_SECONDS = Math.round(TRADE_MS / 1000); // the server auto-rejects an unanswered offer after this (default; host rule `tradeSeconds`)
+/** The room's own offer time in seconds (host rule `tradeSeconds` in the game config), the default for an older game. */
+const offerSeconds = (cfg) => Math.round(tradeMsOf(cfg) / 1000);
 const X = '×';
 const IN_NUM = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 
@@ -352,7 +354,8 @@ export function Countdown({ deadline = null, seconds = OFFER_SECONDS, resetKey, 
     return () => clearInterval(id);
   }, [key]);
   const end = deadline || start.current.at + seconds * 1000;
-  const left = secondsLeft(end, now);
+  // `now` is read once at mount, a hair BEFORE the start instant above: never count time that has not happened (a full 45 s must not show 46)
+  const left = secondsLeft(end, Math.max(now, start.current.at));
   const total = Math.max(1, start.current.total);
   const R = 18;
   const C = 2 * Math.PI * R;
@@ -584,7 +587,7 @@ function ComposerSheet({ session, open, onClose, deadline }) {
         session={session}
         player={waitPartner}
         kicker="Trade offer sent"
-        ring={timed ? <Countdown deadline={deadline} resetKey={tradeShown.id} size={52} /> : null}
+        ring={timed ? <Countdown deadline={deadline} seconds={offerSeconds(view.cfg)} resetKey={tradeShown.id} size={52} /> : null}
       >
         Waiting for {waitName}<span className="hg-dots" aria-hidden="true"><i /><i /><i /></span>
       </OfferBand>
@@ -755,7 +758,7 @@ function IncomingSheet({ session, deadline }) {
           session={session}
           player={from}
           kicker="Trade offer"
-          ring={timed ? <Countdown deadline={deadline} resetKey={sig} size={52} /> : null}
+          ring={timed ? <Countdown deadline={deadline} seconds={offerSeconds(view.cfg)} resetKey={sig} size={52} /> : null}
         >
           {from.name} wants to trade
         </OfferBand>

@@ -495,16 +495,134 @@ describe('reset and removed events', () => {
     core.dispose();
   });
 
-  it('ignores the removed snatch / shield / trap / jail events without delay', async () => {
+  it('ignores the removed shield / trap / jail events without delay', async () => {
     const { core, state } = setup();
     const ms = await timed(core, [
-      { type: 'snatch_open', tile: 6 },
       { type: 'shield', player: 'me', tile: 6 },
       { type: 'trap_sprung', tile: 6 },
       { type: 'jail', player: 'me', jailed: true },
-      { type: 'token_earned', player: 'me' },
     ], state);
     expect(ms).toBeLessThanOrEqual(10);
+    core.dispose();
+  });
+});
+
+describe('Snatch events', () => {
+  const withTokens = (extra = {}) => {
+    const s = makeState(extra);
+    s.players[0].snatches = 1;
+    s.players[1].snatches = 1;
+    s.owners[6] = 'other'; // Bala bought tile 6 and the window is open
+    return s;
+  };
+
+  it('carries the Snatch buttons into the display, and nothing for a game without the rule', () => {
+    expect(displayFromState(withTokens()).players.map((p) => p.snatches)).toEqual([1, 1]);
+    expect(displayFromState(makeState()).players[0]).not.toHaveProperty('snatches');
+  });
+
+  it('snatch_open only announces the window: a short beat (ANIM_MS.snatchOpen), a sound for the player who may press, a log line', async () => {
+    const { core, state, played } = setup({ describe: () => ({ text: 'Snatch window open', tone: 'info' }), state: withTokens() });
+    const ms = await timed(core, [{ type: 'snatch_open', tile: 6, buyer: 'other', price: 70000, eligible: ['me'], ms: 5000 }], state);
+    expect(ms).toBeGreaterThanOrEqual((ANIM_MS.snatchOpen ?? 300) * 0.9);
+    expect(ms).toBeLessThan(1000); // never the 5 seconds of the window itself
+    expect(played).toContain('lucky');
+    expect(core.getSnapshot().stageTile).toBe(6);
+    expect(core.getSnapshot().log.at(-1).text).toBe('Snatch window open');
+    core.dispose();
+    const spectator = setup({ state: withTokens() });
+    await timed(spectator.core, [{ type: 'snatch_open', tile: 6, buyer: 'other', price: 70000, eligible: ['x'], ms: 5000 }], spectator.state);
+    expect(spectator.played).toEqual(['click']);
+    spectator.core.dispose();
+  });
+
+  it('snatch_end snatched: the district changes hands on screen at once and is marked for the board; the own event clears the mark', async () => {
+    const { core, state, played } = setup({ describe: () => ({ text: 'Asha snatched Sultan Bazaar!', tone: 'cheer' }), state: withTokens() });
+    const final = withTokens();
+    final.owners[6] = 'me';
+    core.enqueue([
+      { type: 'snatch_end', tile: 6, buyer: 'other', outcome: 'snatched', winner: 'me', claimants: ['me'] },
+      { type: 'own', tile: 6, owner: 'me', reason: 'snatch' },
+      { type: 'snatch_token', player: 'me', snatches: 0 },
+    ], final);
+    await vi.advanceTimersByTimeAsync(5);
+    const mid = core.getSnapshot().display;
+    expect(mid.owners[6]).toBe('me');
+    expect(mid.snatchMark).toEqual({ tile: 6, winner: 'me' });
+    expect(played).toContain('cheer');
+    expect(core.getSnapshot().bubble).toMatchObject({ type: 'snatch_end' });
+    await vi.advanceTimersByTimeAsync((ANIM_MS.snatchEnd ?? 1800) + 10);
+    expect(core.getSnapshot().display.players[0].snatches).toBe(1); // the token is still there until snatch_token plays
+    while (core.isBusy()) await vi.advanceTimersByTimeAsync(50);
+    const done = core.getSnapshot().display;
+    expect(done.snatchMark ?? null).toBeNull();
+    expect(done.owners[6]).toBe('me');
+    core.dispose();
+  });
+
+  it('snatch_end plays the right sound: error for the buyer who lost the district, a click for a bystander', async () => {
+    const lost = setup({ describe: () => ({ text: 'x', tone: 'bad' }), state: withTokens() });
+    await timed(lost.core, [{ type: 'snatch_end', tile: 6, buyer: 'me', outcome: 'snatched', winner: 'other' }], withTokens());
+    expect(lost.played).toContain('error');
+    lost.core.dispose();
+    const by = setup({ describe: () => ({ text: 'x', tone: 'info' }), me: 'third', state: withTokens() });
+    await timed(by.core, [{ type: 'snatch_end', tile: 6, buyer: 'other', outcome: 'snatched', winner: 'me' }], withTokens());
+    expect(by.played).toContain('click');
+    by.core.dispose();
+  });
+
+  it('snatch_end with nobody: silent and quick; with bidding: announced and held long enough to read', async () => {
+    const quiet = setup({ state: withTokens() });
+    const none = await timed(quiet.core, [{ type: 'snatch_end', tile: 6, buyer: 'other', outcome: 'none' }], withTokens());
+    expect(none).toBeLessThan(500);
+    expect(quiet.played).toEqual([]);
+    expect(quiet.core.getSnapshot().log).toEqual([]);
+    quiet.core.dispose();
+    const bidding = setup({ describe: () => ({ text: 'Snatch bidding: Asha and Bala', tone: 'warn' }), state: withTokens() });
+    const ms = await timed(bidding.core, [{ type: 'snatch_end', tile: 6, buyer: 'other', outcome: 'bidding', claimants: ['me', 'x'] }], withTokens());
+    expect(ms).toBeGreaterThanOrEqual((ANIM_MS.snatchEnd ?? 1800) * 0.9);
+    expect(bidding.core.getSnapshot().log.at(-1).text).toBe('Snatch bidding: Asha and Bala');
+    bidding.core.dispose();
+  });
+
+  it('token_earned and snatch_token update the count on the display', async () => {
+    const { core, state } = setup({ describe: () => ({ text: 'Asha won a Snatch button from a card', tone: 'good' }), state: withTokens() });
+    const final = withTokens();
+    final.players[0].snatches = 2;
+    await timed(core, [{ type: 'token_earned', player: 'me', reason: 'card', snatches: 2 }], final);
+    expect(core.getSnapshot().display.players[0].snatches).toBe(2);
+    expect(core.getSnapshot().log.at(-1).text).toMatch(/Snatch button/);
+    final.players[1].snatches = 0;
+    await timed(core, [{ type: 'snatch_token', player: 'other', snatches: 0 }], final);
+    expect(core.getSnapshot().display.players[1].snatches).toBe(0);
+    core.dispose();
+  });
+
+  it('a Snatch card at the cap keeps its flag on the card the reveal shows; a normal card has none', async () => {
+    const a = setup({ state: withTokens() });
+    a.core.enqueue([{ type: 'card', player: 'me', deck: 'luck', title: 'Haggle', text: 'Collect ₹50,000 instead.', kind: 'good', cardId: 'snatch_haggle', capped: true }], withTokens());
+    await vi.advanceTimersByTimeAsync(5);
+    expect(a.core.getSnapshot().card).toMatchObject({ cardId: 'snatch_haggle', capped: true });
+    a.core.dispose();
+    const b = setup({ state: withTokens() });
+    b.core.enqueue([{ type: 'card', player: 'me', deck: 'luck', title: 'Tip', text: 'Gain +1 Snatch button.', kind: 'good', cardId: 'snatch_tip' }], withTokens());
+    await vi.advanceTimersByTimeAsync(5);
+    expect(b.core.getSnapshot().card).not.toHaveProperty('capped');
+    b.core.dispose();
+  });
+
+  it('a traffic fine line takes its amount from the cash event just before it', async () => {
+    const seen = [];
+    const { core, state } = setup({ describe: (ev, ctx) => { seen.push(ctx.lastCash ? { ...ctx.lastCash } : null); return null; } });
+    await timed(core, [{ type: 'cash', player: 'me', delta: -45000, reason: 'traffic' }, { type: 'traffic', player: 'me', stuck: false, reason: 'paid' }], state);
+    expect(seen[1]).toMatchObject({ player: 'me', delta: -45000, reason: 'traffic' });
+    core.dispose();
+  });
+
+  it('the Snatch events are never trimmed as background play', async () => {
+    const { core } = setup({ me: 'third', describe: () => ({ text: 'x', tone: 'info' }), state: withTokens() });
+    const ms = await timed(core, [{ type: 'snatch_end', tile: 6, buyer: 'other', outcome: 'bidding', claimants: ['a', 'b'] }], withTokens());
+    expect(ms).toBeGreaterThanOrEqual((ANIM_MS.snatchEnd ?? 1800) * 0.9);
     core.dispose();
   });
 });

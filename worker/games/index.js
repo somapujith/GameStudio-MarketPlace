@@ -22,12 +22,16 @@
 //
 //   optional (all have a harmless default):
 //              defaultMaxPlayers            seats of a new room (default min(4, maxPlayers))
+//              turnMs(state)                how long a connected human has per decision, in ms (default: GameRoom's
+//                                           TURN_MS, 60 s). Tycoon returns the host rule `turnSeconds` of the running game.
 //              pendingPlayerIds(state)      every player the game waits for (default [turnPlayerId])
 //              sanitizeAction(raw, playerId)  allow-list for client actions (default: any {type} object, playerId forced)
 //              mergeSettings(current, patch)  what a host's patch makes of the current settings before validateSettings
 //                                           (default: { ...current, ...patch })
 //              lobbySettings(settings)      settings as the lobby shows them (default: the settings)
 //              summarize(settings)          one-line summary for open-table cards
+//              customRules(settings)        how many host rules differ from the game's stock rules (open tables carry it as
+//                                           `customRules`, default 0)
 //              animationMs(events)          client animation time of an action (the next move waits for it)
 //              startAnimMs                  client animation time when the game starts
 //              resignAction(state, playerId)  what leaving a running game does (default: nothing)

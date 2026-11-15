@@ -57,8 +57,32 @@ describe('RulesSheet', () => {
   });
 
   it('has no trace of the removed rules', () => {
-    for (const gone of ['Snatch', 'Shield', 'trap', 'Trap', 'jail', 'Jail', 'hotel', 'Hotel', 'utility', 'Kismet', 'Rajiv Gandhi']) expect(out, gone).not.toContain(gone);
+    for (const gone of ['Shield', 'trap', 'Trap', 'jail', 'Jail', 'hotel', 'Hotel', 'utility', 'Kismet', 'Rajiv Gandhi']) expect(out, gone).not.toContain(gone);
     expect(out.toLowerCase()).not.toContain('two dice');
+  });
+
+  it('has a short Snatch section with the live numbers (buttons, seconds, card cap)', () => {
+    const sn = text(createElement(RulesSheet, { open: true, onClose() {}, session: { view: base({ settings: { snatches: 2, snatchMs: 7000, snatchCardCap: 1 } }) } }));
+    expect(sn).toContain('Snatch');
+    expect(sn).toContain('Everyone starts with 2 Snatch buttons');
+    expect(sn).toContain('7 seconds');
+    expect(sn).toContain('SNATCH!');
+    expect(sn).toContain('for free');
+    expect(sn).toContain('sealed bidding');
+    expect(sn).toContain('if nobody bids the buyer keeps it');
+    expect(sn).toContain('up to 1 per game');
+    // the default table: one button, five seconds
+    expect(out).toContain('Everyone starts with 1 Snatch button');
+    expect(out).toContain('5 seconds');
+  });
+
+  it('says so when the host switched Snatch off, and has no section for a game without the rule', () => {
+    const off = text(createElement(RulesSheet, { open: true, onClose() {}, session: { view: base({ settings: { snatches: 0 } }) } }));
+    expect(off).toContain('Snatch is switched off');
+    expect(off).not.toContain('SNATCH!');
+    const view = base();
+    delete view.cfg.snatches;
+    expect(text(createElement(RulesSheet, { open: true, onClose() {}, session: { view } }))).not.toContain('Snatch');
   });
 
   it('marks the current mode', () => {
@@ -122,6 +146,45 @@ describe('AuctionSheet', () => {
     expect(auctionReason(v, v.pending)).toBe('decline');
     v.players[v.turn].cash = 1000;
     expect(auctionReason(v, v.pending)).toBe('unaffordable');
+  });
+
+  describe('snatch bidding (pending.snatch: only the claimants bid)', () => {
+    const snatchView = (bids = { b1: 0 }) => {
+      const view = base();
+      view.phase = 'auction';
+      view.pending = { type: 'auction', tile: 31, minBid: 34000, bids, reason: 'snatch', snatch: true, buyer: 'c2', claimants: ['me', 'b1'], returnPhase: 'manage' };
+      return view;
+    };
+
+    it('a claimant gets the bid form, the Snatch label and who already paid', () => {
+      const out = render(snatchView({ c2: 0 }));
+      expect(auctionReason(snatchView(), snatchView().pending)).toBe('snatch');
+      expect(out).toContain('Snatch bidding');
+      expect(out).toContain('HITEC City');
+      expect(out).toContain('Zoya already paid and keeps it if nobody bids');
+      expect(out).toContain('spends a Snatch button');
+      expect(out).toContain('Place bid');
+      expect(out).toContain('Minimum bid');
+    });
+
+    it('only the claimants are listed, a claimant who bid waits for the other snatchers', () => {
+      const out = render(snatchView({ c2: 0, me: 60000 }), { bid: null });
+      expect(out).toContain('Sealed bid: ₹60,000');
+      expect(out).toContain('Waiting for others (1/2)'); // me + Ravi, not the buyer
+      expect(out).toContain('Ravi thinking');
+      expect(out).not.toMatch(/Zoya (thinking|has bid)/);
+    });
+
+    it('everybody else (the buyer included) just sees that snatchers are bidding', () => {
+      const view = snatchView({ me: 0 }); // the engine pre-fills a 0 bid for everyone who did not snatch
+      view.pending.buyer = 'me';
+      view.pending.claimants = ['b1', 'c2'];
+      const out = render(view, { bid: null });
+      expect(out).toContain('Snatchers are bidding for HITEC City');
+      expect(out).toContain('You already paid and keep it if nobody bids');
+      expect(out).not.toContain('Place bid');
+      expect(out).not.toContain('You passed');
+    });
   });
 
   it('auctionInstance differs per auction', () => {

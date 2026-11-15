@@ -11,6 +11,7 @@ import Icon from './ui/Icon.jsx';
 import Money from './ui/Money.jsx';
 import { activePlayer, useWorths } from './ui/helpers.js';
 import AvatarToken from './ui/AvatarToken.jsx';
+import SnatchChip from './ui/SnatchChip.jsx';
 import { TitleChip, cosmeticsOf, isConnected, tableSummary } from './turn/room.js';
 
 /** Chai glass + "Chai": the player holds a chai token (max 1). Dimmed (or hidden with `hideEmpty`) at 0. */
@@ -64,20 +65,19 @@ export function PawnDot({ color, size = 24 }) {
   );
 }
 
-/* ---- legacy (Snatch / Trap were removed by the Hustle rules). Kept so older imports keep rendering. ---- */
-/** @deprecated Hustle has no snatch window. Always null. */
-export const snatchWindow = () => null;
-/** @deprecated */
-export const liveSnatches = (session, player) => {
-  const v = session?.view?.players?.find((x) => x.id === player.id);
-  return Number.isFinite(v?.snatches) ? v.snatches : player.snatches;
+/* ---- Snatch (docs/GAME_RULES.md section 9). Traps are gone for good. ---- */
+/** The open snatch window (`pending`), read from the AUTHORITATIVE view, never the delayed display; else null. */
+export const snatchWindow = (session) => {
+  const v = session?.view;
+  return v?.phase === 'snatch' && v.pending?.type === 'snatch' ? v.pending : null;
 };
-/** @deprecated Renders the old token count only if a (pre-Hustle) state still carries one. */
+/** A player's Snatch button count (null when the game has no such rule). */
+export const liveSnatches = (session, player) => (Number.isFinite(player?.snatches) ? player.snatches : null);
+/** The bolt chip with a player's Snatch buttons (see ui/SnatchChip). */
 export function SnatchTokens({ count, className = '' }) {
-  if (!Number.isFinite(count)) return null;
-  return <span className={`hg-snatch${count > 0 ? '' : ' is-zero'} ${className}`} role="img" aria-label={`Snatch tokens: ${count}`}><span aria-hidden="true">x{count}</span></span>;
+  return <SnatchChip count={count} className={className} />;
 }
-/** @deprecated */
+/** @deprecated Traps were removed. */
 export const TrapReady = () => null;
 
 /** The player's avatar token (rim, timer arc, turn ripple, crown, reactions); the fx anchor for this player. */

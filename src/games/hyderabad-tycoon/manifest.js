@@ -4,7 +4,7 @@
 import { TycoonCover, TycoonIcon } from '@/components/art/hub/index.js';
 import { PIECES } from '@shared/pieces.js';
 import { GAME_ID } from './constants.js';
-import { LOBBY_SETTINGS, SETTINGS_SCHEMA, TABLE_RULES, settingsSummary } from './settings.js';
+import { LOBBY_SETTINGS, SETTINGS_GROUPS, SETTINGS_SCHEMA, TABLE_RULES, settingsSummary } from './settings.js';
 
 export default {
   id: GAME_ID,
@@ -55,7 +55,8 @@ export default {
     { id: 'tycoon-rated', label: 'Rising Tycoon', desc: 'Reach a rating of 1,100', stat: 'rating', target: 1100, icon: 'level' },
   ],
   settings: SETTINGS_SCHEMA,
-  lobbySettings: LOBBY_SETTINGS, // the lobby shows the mode and the win target
+  lobbySettings: LOBBY_SETTINGS, // the lobby shows the mode (a preset) and every host rule
+  settingsGroups: SETTINGS_GROUPS, // the rule groups of the host's "Game rules" editor (money, timers, board rules, snatch)
   tableRules: TABLE_RULES, // a read-only line under the lobby settings
   summarize: settingsSummary,
   loaders: {

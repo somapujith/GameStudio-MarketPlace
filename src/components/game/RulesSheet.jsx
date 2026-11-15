@@ -66,9 +66,17 @@ export default function RulesSheet({ open, onClose, session }) {
   const passStart = cfg.passStart ?? PASS_START_AMOUNT;
   const fine = cfg.trafficFine ?? TRAFFIC_FINE;
   const chaiCap = cfg.chaiCap ?? CHAI_CAP;
+  // Host rules that change the printed text (shared/ruleSettings.js): the defaults are the stock rules.
+  const eventEvery = Number.isFinite(Number(rawCfg.eventEvery)) && rawCfg.eventEvery !== null ? Math.max(0, Math.round(Number(rawCfg.eventEvery))) : EVENT_EVERY;
+  const fullSetNeeded = rawCfg.requireFullSet !== false;
+  const rentPercent = Number.isFinite(Number(rawCfg.rentPercent)) && rawCfg.rentPercent !== null ? Math.round(Number(rawCfg.rentPercent)) : 100;
   const BuildingArt = artPart('BuildingArt');
-  const hitecRent = HITEC ? rentLadder(HITEC) : [];
+  const hitecRent = HITEC ? rentLadder(HITEC, rawCfg) : [];
   const modeList = ['standard', 'quick', 'classic'].map((id) => MODES[id]).filter(Boolean);
+  // Snatch: the section only exists for a game that carries the rule (cfg.snatches is a number, 0 = switched off)
+  const snatchButtons = Number.isFinite(Number(rawCfg.snatches)) && rawCfg.snatches !== null && rawCfg.snatches !== '' ? Math.max(0, Math.round(Number(rawCfg.snatches))) : null;
+  const snatchSecs = Math.max(1, Math.round((Number(rawCfg.snatchMs) || 5000) / 1000));
+  const snatchCards = Math.max(0, Math.round(Number(rawCfg.snatchCardCap) || 0));
 
   return (
     <Sheet open={open} onClose={onClose} title="How to play" className="hg-rules" desktop="modal">
@@ -105,12 +113,15 @@ export default function RulesSheet({ open, onClose, session }) {
             : <>Skip it and it stays free. If you cannot afford it, a <b>City Takeover</b> auction starts.</>}
           {' '}Everyone places <b>one sealed bid</b> (from 10% of the price); the highest wins.
         </p>
-        <p>Land on someone else&rsquo;s district and you pay them rent.</p>
+        <p>Land on someone else&rsquo;s district and you pay them rent.{rentPercent !== 100 ? <> Rents at this table are <b>{rentPercent}%</b> of the usual amounts.</> : null}</p>
       </Rule>
 
       <Rule icon={'🏗️'} title="Three businesses per district" wide>
         <p>
-          A district you buy opens its first business. Once you own <b>every district of its collection</b>, you can upgrade them, twice each (<b>half the price</b> each time, on your turn), and the rent climbs.
+          A district you buy opens its first business. {fullSetNeeded
+            ? <>Once you own <b>every district of its collection</b>, you can upgrade them, twice each</>
+            : <>You can upgrade any district you own, twice each (this table does not ask for the full collection)</>}
+          {' '}(<b>half the price</b> each time, on your turn), and the rent climbs.
           {HITEC && hitecRent.length ? <> {HITEC.name}: {hitecRent.map(formatINR).join(' → ')}.</> : null}
         </p>
         <ol className="hg-rules-ladder">
@@ -168,6 +179,29 @@ export default function RulesSheet({ open, onClose, session }) {
         <p>A random unowned district goes under the hammer. Everyone, the lander too, bids sealed; the minimum is half its price. Nothing unowned? Nothing happens.</p>
       </Rule>
 
+      {snatchButtons !== null ? (
+        <Rule icon={'⚡'} title="Snatch" id="rules-snatch">
+          {snatchButtons > 0 ? (
+            <>
+              <p>
+                Everyone starts with <b>{snatchButtons} Snatch {snatchButtons === 1 ? 'button' : 'buttons'}</b>. When a player <b>buys</b> a district, everyone else who still
+                holds a button gets <b>{snatchSecs} seconds</b> to hit <b>SNATCH!</b> while it pops up on screen.
+              </p>
+              <p>
+                One snatcher takes the district <b>for free</b> and spends a button; the buyer still pays the bank.
+                Two or more snatchers bid for it in <b>sealed bidding</b> among themselves: only the winner pays and spends a button, and if nobody bids the buyer keeps it.
+              </p>
+              <p className="hg-rule-note">
+                Auctions, trades and cards never open a Snatch window.
+                {snatchCards > 0 ? <> A Nawabi Luck card can win you a button, up to {snatchCards} per game.</> : null}
+              </p>
+            </>
+          ) : (
+            <p>Snatch is switched off at this table: nobody can take a district the moment it is bought.</p>
+          )}
+        </Rule>
+      ) : null}
+
       <Rule icon={'🎴'} title={`${DECKS.luck.name} & ${DECKS.drama.name}`}>
         <p>
           <b>{DECKS.luck.name}</b> cards bring windfalls, free chai and lucky rides. <b>{DECKS.drama.name}</b> brings bills, traffic and surprises.
@@ -176,7 +210,9 @@ export default function RulesSheet({ open, onClose, session }) {
       </Rule>
 
       <Rule icon={'🌆'} title="Hyderabad Rush Hour">
-        <p>Every <b>{EVENT_EVERY} rounds</b> a city event hits for that round. Watch the banner and trade for the booming collection:</p>
+        {eventEvery > 0
+          ? <p>Every <b>{eventEvery} rounds</b> a city event hits for that round. Watch the banner and trade for the booming collection:</p>
+          : <p>City events are switched off at this table. These are the ones the full game has:</p>}
         <ul className="hg-rule-list">
           {CITY_EVENTS.map((e) => <li key={e.id}><b>{e.title}</b>{e.text ? <>: {e.text}</> : null}</li>)}
         </ul>

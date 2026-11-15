@@ -14,7 +14,7 @@
 // `extra` ({ text, tone, icon }) is a second, log-only line (lucky-dice help).
 // Events that need no line (plain moves, the receiving half of a rent payment, ...) return null.
 
-import { TILES, GROUPS, MAX_LEVEL, TRAFFIC_FINE, levelName } from '@shared/board.js';
+import { TILES, GROUPS, MAX_LEVEL, levelName } from '@shared/board.js';
 import { formatINR } from '@shared/format.js';
 
 const tileName = (id) => (TILES[id] ? TILES[id].name : `tile ${id}`);
@@ -46,6 +46,48 @@ const withArticle = (word) => `${/^[aeiou]/i.test(word) ? 'an' : 'a'} ${word}`;
 
 /** good/bad when it concerns the local player, otherwise neutral. */
 const toneFor = (ctx, id, mine, other = 'info') => (isMe(ctx, id) ? mine : other);
+
+/** "Meera", "Meera and Ravi", "Meera, Ravi and Asha" ("You" for the local player, listed first). */
+export function nameList(ctx, ids) {
+  const list = Array.isArray(ids) ? ids.filter((id) => id !== null && id !== undefined) : [];
+  return joinNames(list.map((id) => playerName(ctx, id)));
+}
+
+/** "Meera", "Meera and Ravi", "Meera, Ravi and Asha"; "You" always first; "Nobody" for an empty list. */
+export function joinNames(names) {
+  const list = Array.isArray(names) ? [...names] : [];
+  const at = list.indexOf('You');
+  if (at > 0) list.unshift(...list.splice(at, 1));
+  if (list.length <= 1) return list[0] || 'Nobody';
+  return `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`;
+}
+
+/**
+ * The short Snatch lines (Snatch window, docs/GAME_RULES.md section 9). One place for the words, used by the log, the
+ * board-centre caption and the pop-up: `snatchCaption(ev, ctx)` -> { text, tone, tile } | null.
+ *   snatch_end snatched   "Meera snatched Sultan Bazaar!"
+ *   snatch_end bidding    "Snatch bidding: Asha and Ravi"
+ *   snatch_end none       null (silence: nobody snatched, the buyer keeps it)
+ *   token_earned (card)   "Asha won a Snatch button from a card"
+ */
+export function snatchCaption(ev, ctx) {
+  if (!ev) return null;
+  const tile = Number.isInteger(ev.tile) ? ev.tile : undefined;
+  if (ev.type === 'snatch_end') {
+    if (ev.outcome === 'snatched' && ev.winner !== null && ev.winner !== undefined) {
+      return { text: `${playerName(ctx, ev.winner)} snatched ${tileName(ev.tile)}!`, tone: isMe(ctx, ev.winner) ? 'cheer' : toneFor(ctx, ev.buyer, 'bad'), tile };
+    }
+    if (ev.outcome === 'bidding') {
+      const claimants = Array.isArray(ev.claimants) ? ev.claimants : [];
+      return { text: `Snatch bidding: ${nameList(ctx, claimants)}`, tone: claimants.includes(ctx?.me) ? 'warn' : 'info', tile };
+    }
+    return null;
+  }
+  if (ev.type === 'token_earned') {
+    return { text: `${playerName(ctx, ev.player)} won a Snatch button from a card`, tone: toneFor(ctx, ev.player, 'good'), tile: undefined };
+  }
+  return null;
+}
 
 function describeCash(ev, ctx) {
   const who = playerName(ctx, ev.player);
@@ -112,6 +154,14 @@ function describeLand(ev, ctx) {
   }
 }
 
+/** What a Traffic Jam fine was: the event's own amount, else the cash event just before it (ctx.lastCash), else just "the fine" (no hard-coded number: the host sets it). */
+function fineText(ev, ctx) {
+  if (Number.isFinite(ev.amount)) return formatINR(ev.amount);
+  const c = ctx && ctx.lastCash;
+  if (c && c.reason === 'traffic' && c.player === ev.player && Number.isFinite(c.delta)) return formatINR(Math.abs(c.delta));
+  return 'the fine';
+}
+
 function describeTraffic(ev, ctx) {
   const who = playerName(ctx, ev.player);
   if (ev.stuck) {
@@ -125,7 +175,9 @@ function describeTraffic(ev, ctx) {
   }
   switch (ev.reason) {
     case 'paid':
-      return { text: `${who} paid ${formatINR(TRAFFIC_FINE)} and squeezed out of the jam`, tone: toneFor(ctx, ev.player, 'warn'), icon: '🚦' };
+      return { text: `${who} paid ${fineText(ev, ctx)} and squeezed out of the jam`, tone: toneFor(ctx, ev.player, 'warn'), icon: '🚦' };
+    case 'free':
+      return { text: `${who} ${be(ctx, ev.player)} out of the traffic jam, free of charge`, tone: toneFor(ctx, ev.player, 'good'), icon: '🚦' };
     case 'chai':
       return { text: `${who} sipped a chai and the traffic melted away`, tone: toneFor(ctx, ev.player, 'good'), icon: '☕' };
     default:
@@ -322,6 +374,7 @@ export function describeEvent(ev, ctx) {
         return describeChai(ev, ctx);
 
       case 'auction_start': {
+        if (ev.reason === 'snatch') return null; // snatch_end ("Snatch bidding: ...") tells it
         const min = formatINR(ev.minBid);
         if (ev.reason === 'bazaar') {
           return { text: `Bazaar Auction! ${tileName(ev.tile)} goes under the hammer (min ${min})`, bubble: 'Bazaar Auction!', tone: 'warn', tile: ev.tile, icon: '🔨' };
@@ -330,16 +383,49 @@ export function describeEvent(ev, ctx) {
         return { text: `${tileName(ev.tile)} ${why} it goes to a sealed auction (min ${min})`, bubble: 'Auction!', tone: 'info', tile: ev.tile, icon: '🔨' };
       }
 
-      case 'auction_end':
+      case 'auction_end': {
+        const snatch = ev.reason === 'snatch';
         if (ev.winner === null || ev.winner === undefined) {
+          if (snatch) {
+            const keeper = ev.buyer === null || ev.buyer === undefined ? 'its buyer' : whom(ctx, ev.buyer);
+            return { text: `Nobody bid. ${tileName(ev.tile)} stays with ${keeper}`, tone: 'info', tile: ev.tile, icon: '⚡' };
+          }
           return { text: `No bids. ${tileName(ev.tile)} stays with the city`, tone: 'info', tile: ev.tile, icon: '🔨' };
         }
         return {
-          text: `${playerName(ctx, ev.winner)} won ${tileName(ev.tile)} at auction for ${formatINR(ev.amount)}`,
+          text: `${playerName(ctx, ev.winner)} won ${tileName(ev.tile)} ${snatch ? 'in the snatch bidding' : 'at auction'} for ${formatINR(ev.amount)}`,
           tone: toneFor(ctx, ev.winner, 'good'),
           tile: ev.tile,
-          icon: '🔨',
+          icon: snatch ? '⚡' : '🔨',
         };
+      }
+
+      case 'snatch_open': {
+        const secs = Math.max(1, Math.round((Number(ev.ms) || 5000) / 1000));
+        const eligible = Array.isArray(ev.eligible) ? ev.eligible : [];
+        const mine = !!ctx && ctx.me !== undefined && eligible.includes(ctx.me);
+        return {
+          text: `Snatch window open (${secs}s): ${nameList(ctx, eligible)} can snatch ${tileName(ev.tile)}`,
+          bubble: mine ? 'Snatch it!' : 'Snatch window open',
+          tone: mine ? 'warn' : 'info',
+          tile: ev.tile,
+          icon: '⚡',
+        };
+      }
+
+      case 'snatch_end': {
+        const c = snatchCaption(ev, ctx);
+        if (!c) return null; // nobody snatched: silence
+        return { text: c.text, bubble: c.text, tone: c.tone, tile: c.tile, icon: '⚡' };
+      }
+
+      case 'token_earned': {
+        const c = snatchCaption(ev, ctx);
+        return { text: c.text, bubble: '+1 Snatch', tone: c.tone, icon: '⚡' };
+      }
+
+      case 'snatch_token':
+        return null; // the player's chip shows the count; snatch_end already told the story
 
       case 'city_event':
         return {

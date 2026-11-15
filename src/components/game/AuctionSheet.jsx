@@ -39,6 +39,8 @@ export const AUCTION_LABELS = {
   bazaar: { kicker: 'Bazaar Auction', line: () => 'The bazaar put this district under the hammer. Everyone bids, the lander too.' },
   decline: { kicker: 'City Takeover', line: (who) => `${who} passed on it, so the city auctions it off.` },
   unaffordable: { kicker: 'City Takeover', line: (who) => `${who} could not afford it, so the city auctions it off.` },
+  // Snatch bidding (two or more players pressed Snatch): only they bid; `who` is the buyer, who already paid
+  snatch: { kicker: 'Snatch bidding', line: (who) => `${who} already paid and ${who === 'You' ? 'keep' : 'keeps'} it if nobody bids. The winner pays their bid and spends a Snatch button.` },
 };
 
 export default function AuctionSheet({ session }) {
@@ -59,7 +61,15 @@ export default function AuctionSheet({ session }) {
   const hasBid = (id) => Object.prototype.hasOwnProperty.call(bids, id);
   const myRecorded = auction && hasBid(me) ? bids[me] : undefined;
   const waiting = !!auction && (myRecorded !== undefined || cur.sent !== null);
-  const open = !!auction && (!!bidOpt || waiting);
+
+  // Snatch bidding: the engine pre-fills a 0 bid for everyone who did not snatch, so "recorded 0" alone does not make a
+  // claimant. Use the public roster (`claimants`); without one: I can bid, I bid here, or I recorded a real bid.
+  const snatch = !!auction?.snatch;
+  const roster = Array.isArray(auction?.claimants) ? auction.claimants : null;
+  const claimant = !snatch || (roster ? roster.includes(me) : !!bidOpt || cur.sent !== null || myRecorded > 0);
+  const observer = snatch && !claimant;
+  const [hiddenKey, setHiddenKey] = useState(null); // an observer may close the snatch-bidding panel
+  const open = !!auction && (!!bidOpt || waiting) && !(observer && hiddenKey === instance);
 
   const heldTile = useHeld(auction ? auction.tile : null);
   const heldMin = useHeld(bidOpt?.min ?? auction?.minBid ?? null);
@@ -89,10 +99,10 @@ export default function AuctionSheet({ session }) {
 
   const { color, ink } = tile ? tileAccent(tile) : { color: '#3b2d8f', ink: '#fff' };
   const coll = tile ? collectionOf(tile) : null;
-  const bidders = (view?.players || []).filter((p) => !p.bankrupt);
+  const bidders = (view?.players || []).filter((p) => !p.bankrupt && (!snatch || !roster || roster.includes(p.id)));
   const others = bidders.filter((p) => p.id !== me);
-  const lander = view?.players?.[view?.turn];
-  const landerName = lander ? (lander.id === me ? 'You' : lander.name) : 'The lander';
+  const lander = snatch ? view?.players?.find((p) => p.id === auction?.buyer) : view?.players?.[view?.turn];
+  const landerName = lander ? (lander.id === me ? 'You' : lander.name) : snatch ? 'The buyer' : 'The lander';
   const label = AUCTION_LABELS[heldReason] || AUCTION_LABELS.decline;
   const pct = max > min ? ((value - min) / (max - min)) * 100 : 0;
   const bidCount = bidders.filter((p) => hasBid(p.id)).length;
@@ -117,8 +127,8 @@ export default function AuctionSheet({ session }) {
   return (
     <Sheet
       open={open}
-      onClose={() => {}}
-      dismissible={false}
+      onClose={() => { if (observer) setHiddenKey(instance); }}
+      dismissible={observer}
       ariaLabel={tile ? `${label.kicker} for ${tile.name}` : 'Auction'}
       className="hg-auction"
       desktop="modal"
@@ -139,7 +149,14 @@ export default function AuctionSheet({ session }) {
             <Icon name={heldReason === 'bazaar' ? 'ticket' : 'info'} size={16} />
             <span>{label.line(landerName)}</span>
           </p>
-          {waiting ? (
+          {observer ? (
+            <div className="hg-auction-wait" role="status">
+              <p className="hg-auction-waiting">
+                Snatchers are bidding for {tile.name}<span className="hg-dots" aria-hidden="true"><i /><i /><i /></span>
+              </p>
+              {ticks}
+            </div>
+          ) : waiting ? (
             <div className="hg-auction-wait" role="status">
               <div className="hg-auction-sealed">
                 <Icon name="lock" size={22} />
@@ -158,7 +175,7 @@ export default function AuctionSheet({ session }) {
               <div className="hg-auction-facts">
                 <div><span>Minimum bid</span><b>{formatINR(min)}</b></div>
                 <div><span>Your cash</span><b className="is-gold">{formatINR(max)}</b></div>
-                <div><span>Base rent</span><b>{formatINR(rentLadder(tile)[0] || 0)}</b><small>{levelNameOf(tile, 0)}</small></div>
+                <div><span>Base rent</span><b>{formatINR(rentLadder(tile, view?.cfg)[0] || 0)}</b><small>{levelNameOf(tile, 0)}</small></div>
               </div>
 
               {canBid ? (

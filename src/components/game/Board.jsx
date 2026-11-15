@@ -142,6 +142,11 @@ export function Board({ session, onTileClick, highlightTile = null, center = nul
   // the tile a card is being drawn from (while the presenter shows the card)
   const drawingTile = session?.card ? session?.stageTile : null;
 
+  // snatch window: the contested district pulses (read from the LATEST state, the window is real time); a snatched one flashes briefly
+  const snatchView = session?.view;
+  const snatchOpenTile = snatchView?.phase === 'snatch' && snatchView.pending?.type === 'snatch' ? snatchView.pending.tile : null;
+  const snatchWonTile = Number.isInteger(d.snatchMark?.tile) ? d.snatchMark.tile : null;
+
   // ---- odds: computed only while the toggle is on and it is my moment to roll
   const [oddsOn] = useOddsPref();
   const view = session?.view;
@@ -157,6 +162,7 @@ export function Board({ session, onTileClick, highlightTile = null, center = nul
   );
 
   const salary = Number(d.cfg?.passStart) > 0 ? Number(d.cfg.passStart) : undefined;
+  const rentPct = Number(d.cfg?.rentPercent) > 0 ? Number(d.cfg.rentPercent) : 100; // host rule "rent level": rents on the tiles follow it
 
   const tiles = TILES.map((tile) => {
     const ownerId = owners[tile.id];
@@ -183,7 +189,9 @@ export function Board({ session, onTileClick, highlightTile = null, center = nul
         stuck={tile.type === 'traffic' ? stuckAt.get(tile.id) || 0 : 0}
         chai={tile.type === 'chai' ? chaiTotal : 0}
         drawing={drawingTile === tile.id && tile.type === 'card'}
+        snatch={snatchOpenTile === tile.id ? 'open' : snatchWonTile === tile.id ? 'won' : false}
         salary={tile.type === 'start' ? salary : undefined}
+        rentPct={rentPct}
         onSelect={onSelect}
       />
     );

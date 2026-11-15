@@ -67,6 +67,7 @@ const NEEDS_ATTENTION = new Set([
   'win', 'bankrupt', 'debt', 'set_complete',
   'auction_start', 'auction_end',
   'trade_offer', 'trade_done', 'trade_rejected', 'city_event',
+  'snatch_open', 'snatch_end', 'token_earned',
 ]);
 
 let uid = 0;
@@ -118,6 +119,7 @@ export function displayFromState(state) {
       chai: Number(p.chai) || 0,
       bankrupt: !!p.bankrupt,
       laps: p.laps ?? 0,
+      ...(Number.isFinite(p.snatches) ? { snatches: p.snatches } : null), // Snatch buttons (public); absent in a game without the rule
       motion: null,
     })),
     owners: Array.isArray(state.owners) ? state.owners.slice() : [...EMPTY_OWNERS],
@@ -264,6 +266,8 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
   }
   /** Base delay for an ANIM_MS key, trimmed when the item being played is background activity. */
   const dl = (name) => (ANIM_MS[name] || 0) * (quickNow ? QUICK[name] ?? 1 : 1);
+  /** Like dl, with a fallback for a key the shared table may not carry yet (the Snatch pauses). */
+  const dlOr = (name, fallback) => (ANIM_MS[name] ?? fallback) * (quickNow ? QUICK[name] ?? 1 : 1);
   /** An item is "quick" when it does not involve the local player and nothing in it needs their eyes. */
   function computeQuick(events) {
     for (const ev of events) {
@@ -338,6 +342,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
         maxRounds: dsp.cfg ? dsp.cfg.maxRounds ?? null : null,
         targetWorth: dsp.cfg ? dsp.cfg.targetWorth ?? null : null,
         tile: S.stageTile, // the square being played (a tax payment follows its 'land' event)
+        lastCash: S.lastCash, // the cash event just before (a Traffic Jam fine's amount)
       });
     } catch (err) {
       devWarn('describe failed', ev, err);
@@ -492,6 +497,12 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
           fx('buy');
           return wait(dl('own'));
         }
+        if (ev.reason === 'snatch') {
+          // snatch_end made the sound and flashed the district; let the new owner's bar settle, then drop the flash
+          const ok = await wait(dl('own'));
+          if (ok) patchDisplay((d) => (d.snatchMark ? { ...d, snatchMark: null } : d));
+          return ok;
+        }
         if (ev.reason === 'liquidate') fx('coin');
         return wait(ev.reason === 'liquidate' ? dl('cash') : dl('quiet'));
       }
@@ -595,7 +606,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
 
       case 'card': {
         commit({
-          card: { player: ev.player, deck: ev.deck === 'drama' ? 'drama' : 'luck', title: ev.title, text: ev.text, kind: ev.kind, cardId: ev.cardId },
+          card: { player: ev.player, deck: ev.deck === 'drama' ? 'drama' : 'luck', title: ev.title, text: ev.text, kind: ev.kind, cardId: ev.cardId, ...(ev.capped ? { capped: true } : null) },
         });
         fx('card');
         announce(ev);
@@ -610,6 +621,44 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
         const ok = await wait(cardMs(ev) * (quickNow ? QUICK.card : 1));
         if (ok) commit({ card: null });
         return ok;
+      }
+
+      case 'snatch_open': {
+        // Only announces the window: it runs in REAL time from the state that opened it (the pop-up reads `session.view`),
+        // so this pause never delays or shortens it.
+        commit({ stageTile: ev.tile });
+        announce(ev);
+        fx(Array.isArray(ev.eligible) && ev.eligible.includes(me) ? 'lucky' : 'click');
+        return wait(dlOr('snatchOpen', 300));
+      }
+
+      case 'snatch_end': {
+        commit({ stageTile: ev.tile });
+        if (ev.outcome === 'snatched' && ev.winner !== null && ev.winner !== undefined) {
+          // the district changes hands on screen at once and flashes (the board reads `display.snatchMark`)
+          patchDisplay((d) => ({ ...d, owners: setAt(d.owners, ev.tile, ev.winner), snatchMark: { tile: ev.tile, winner: ev.winner } }));
+          announce(ev);
+          fx(ev.winner === me ? 'cheer' : ev.buyer === me ? 'error' : 'click');
+          return wait(dlOr('snatchEnd', 1800));
+        }
+        if (ev.outcome === 'bidding') {
+          announce(ev);
+          fx('click');
+          return wait(dlOr('snatchEnd', 1800));
+        }
+        return wait(dl('quiet')); // nobody snatched: silence (describeEvent has no line for it)
+      }
+
+      case 'snatch_token': {
+        patchPlayer(ev.player, () => ({ snatches: Math.max(0, Number(ev.snatches) || 0) }));
+        return wait(dl('quiet'));
+      }
+
+      case 'token_earned': {
+        patchPlayer(ev.player, () => ({ snatches: Math.max(0, Number(ev.snatches) || 0) }));
+        announce(ev);
+        fx(ev.player === me ? 'lucky' : 'click');
+        return wait(dlOr('token', 1100));
       }
 
       case 'city_event': {

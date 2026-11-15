@@ -1,5 +1,6 @@
 // City events, "Hyderabad Rush Hour" (docs/HUSTLE_PLAN.md 3.6). When the round number becomes a multiple of
-// EVENT_EVERY (3, 6, 9, ...; never round 1) one event is drawn with the game's seeded rng. It lasts that round and is
+// `cfg.eventEvery` (host rule, default EVENT_EVERY = 3: 3, 6, 9, ...; never round 1; 0 = no city events) one event is drawn
+// with the game's seeded rng. It lasts that round and is
 // public in `state.event`. Rent effects are applied by the engine's rent calculation, so previewRent and the UI agree.
 //
 //   kind     'rent' (changes what districts ask) or 'cash' (a one-off payment at the start of the round)

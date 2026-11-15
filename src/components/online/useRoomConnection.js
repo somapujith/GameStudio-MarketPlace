@@ -5,6 +5,7 @@ import { createNetReporter } from '@/lib/rtt.js';
 import { api } from '@/lib/api.js';
 import { useAuth } from '@/lib/auth.jsx';
 import { isFatalRoomError, toConnection } from './gameHelpers.js';
+import { localClock } from '@/components/game/turn/clock.js';
 
 // Socket + room state for ONE room code, with no game in it: the lobby, the generic online-game page and every
 // game plugin build on this. (It lives here, not in lib/session/useOnlineGame.js, so the lobby does not pull
@@ -127,7 +128,8 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
           break;
         }
         case 'state': {
-          const { state, events, seq, clock } = msg;
+          const { state, events, seq } = msg;
+          const clock = localClock(msg.clock, msg.now); // countdown in this device's time, whatever its clock says
           if (!state) break;
           const list = Array.isArray(events) ? events : [];
           // only the first state after (re)connect is a snapshot; an applied action without events (a sealed bid) is not
