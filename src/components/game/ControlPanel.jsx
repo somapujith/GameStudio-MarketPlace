@@ -227,7 +227,7 @@ export function TradePane({ session, onOpenTrade }) {
   return (
     <div className="cp-trade">
       {banner ? <p className={`cp-banner is-${banner.tone}`} role="status">{banner.text}</p> : null}
-      <p>Swap districts and cash with another player. Upgrades must be sold first. The other side can accept or reject.</p>
+      <p>Swap districts and cash with another player. Districts keep their upgrades. The other side can accept or reject.</p>
       <PanelButton tone="dark" size="lg" className="cp-trade__go" disabled={!canOffer || session.busy} onClick={onOpenTrade}>
         <Icon name="swap" size={20} />
         Propose a trade

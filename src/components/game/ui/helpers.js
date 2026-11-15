@@ -9,6 +9,7 @@ import * as Board from '@shared/board.js';
 import { formatINR } from '@shared/format.js';
 import * as Engine from '@shared/index.js'; // namespace import: engine additions are probed, never assumed
 import { useSettings } from '@/lib/storage.js';
+import { targetSummary } from '../turn/target.js';
 
 const TILES = Board.TILES || [];
 const GROUPS = Board.GROUPS || {};
@@ -519,7 +520,7 @@ export function roundInfo(session) {
   };
 }
 
-/** "Standard City Hustle · 20 rounds · Start ₹15,00,000 · 🍀 Lucky dice" (maxRounds null = until one is left). */
+/** "Standard City Hustle · 20 rounds · Start ₹15,00,000 · 🍀 Lucky dice" (maxRounds null = no round limit: the target or the last player standing ends it). */
 export function settingsSummary(cfg, goal) {
   const c = cfg || {};
   const target = goal ?? c.goal;
@@ -527,7 +528,9 @@ export function settingsSummary(cfg, goal) {
   const mode = modeOf(c);
   if (mode) parts.push(mode.label);
   if (target != null) parts.push(`Target ${formatINR(target)}`);
-  parts.push(Number.isFinite(c.maxRounds) ? `${c.maxRounds} rounds` : 'Until one player is left');
+  const worthGoal = targetSummary(c);
+  parts.push(Number.isFinite(c.maxRounds) ? `${c.maxRounds} rounds` : worthGoal ? 'No round limit' : 'Until one player is left');
+  if (worthGoal) parts.push(worthGoal);
   if (c.startCash != null) parts.push(`Start ${formatINR(c.startCash)}`);
   parts.push(diceLabel(c));
   return parts.join(' · ');

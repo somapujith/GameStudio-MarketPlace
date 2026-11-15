@@ -106,7 +106,8 @@ const OddsLayer = memo(function OddsLayer({ odds }) {
  * every tile `data-fx-tile`, every pawn `data-fx-pawn`.
  *
  * Reads from `session`: display (players with pos/piece/stuck/chai/motion, owners, levels, mortgaged, turn, stepMs,
- * landing), view.event (live city event), card + stageTile (card shimmer), busy (camera focus).
+ * landing), view.event (live city event), card + stageTile (card shimmer). The whole board sits inside the phone camera
+ * (fx/CameraFocus.jsx), which reads the session itself.
  */
 export function Board({ session, onTileClick, highlightTile = null, center = null, children }) {
   const d = session?.display || session?.view || NO_DISPLAY;
@@ -198,13 +199,11 @@ export function Board({ session, onTileClick, highlightTile = null, center = nul
   });
 
   const stepMs = Math.max(60, Math.round(session?.display?.stepMs ?? 260));
-  const landing = Number.isInteger(d.landing) ? d.landing : null;
-  const focus = !!session?.busy && landing !== null;
   const middle = children ?? center ?? <CenterBrand />;
 
   return (
     <div className={`hb-board${odds ? ' has-odds' : ''}`} style={{ '--hb-n': GRID - 2 }}>
-      <CameraFocus tile={landing} active={focus}>
+      <CameraFocus session={session}>
         <div className="hb-frame">
           <span className="hb-frame__lights" aria-hidden="true" />
           <div className="hb-grid">

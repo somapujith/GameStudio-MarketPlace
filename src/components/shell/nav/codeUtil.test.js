@@ -25,8 +25,20 @@ describe('code sheet input', () => {
 
 describe('hub navigation', () => {
   const by = (id) => NAV_ITEMS.find((i) => i.id === id);
-  it('has the four hub destinations in order', () => {
-    expect(NAV_ITEMS.map((i) => i.to)).toEqual(['/', '/friends', '/leaderboard', '/profile']);
+  it('has the five hub destinations in order', () => {
+    expect(NAV_ITEMS.map((i) => i.to)).toEqual(['/', '/games', '/friends', '/leaderboard', '/profile']);
+  });
+  it('lights Browse for the catalogue and search, never for a game page', () => {
+    expect(isActive(by('browse'), '/games')).toBe(true);
+    expect(isActive(by('browse'), '/search')).toBe(true);
+    expect(isActive(by('browse'), '/games/hyderabad-tycoon')).toBe(false);
+    expect(isActive(by('games'), '/games')).toBe(false);
+    expect(isActive(by('games'), '/games/hyderabad-tycoon')).toBe(true);
+  });
+  it('lights no tab on footer pages and unknown routes', () => {
+    for (const p of ['/about', '/help', '/privacy', '/terms', '/nope']) {
+      expect(NAV_ITEMS.some((i) => isActive(i, p))).toBe(false);
+    }
   });
   it('lights up the right tab for nested routes', () => {
     expect(isActive(by('games'), '/')).toBe(true);

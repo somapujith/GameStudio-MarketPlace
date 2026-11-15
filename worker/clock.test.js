@@ -329,7 +329,7 @@ describe('lobby pieces', () => {
       [U(1), 'red'],
       [U(2), 'blue'],
     ]);
-    expect(a.last('room').room.players[0]).toEqual({ id: U(1), name: 'P1', avatar: 1, ready: true, connected: true, piece: 'red', cosmetics: {} });
+    expect(a.last('room').room.players[0]).toEqual({ id: U(1), name: 'P1', avatar: 1, ready: true, connected: true, piece: 'red', cosmetics: {}, net: { q: null, rtt: null } });
   });
 
   it('{t:"piece"} picks a free piece; taken, unknown and malformed ones are refused', async () => {

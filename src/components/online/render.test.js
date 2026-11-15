@@ -64,32 +64,33 @@ const routed = (route, path, el, auth = {}) =>
 describe('Login', () => {
   it('signed out + Google configured: guest form, avatar picker, honest guest limits, GameHub copy', () => {
     const html = page('/login', h(Login), { configured: true, googleClientId: 'x.apps.googleusercontent.com' });
-    expect(html).toContain('Sign in to GameHub');
-    expect(html).toContain('Play as guest');
+    expect(html).toContain('Sign in or just jump in');
+    expect(html).toContain('Continue as guest');
     expect(html).toContain('Your name');
     expect((html.match(/name="avatar"/g) || []).length).toBe(12);
-    expect(html).toContain('Guests cannot add friends');
+    expect(html).toContain('What does a guest miss out on?');
+    expect(html).toContain('Add friends and get invites');
     expect(html).not.toContain('Hyderabad');
   });
   it('Google not configured: explains it, guest still offered', () => {
     const html = page('/login', h(Login), { configured: false });
-    expect(html).toContain('Google login is not configured yet');
-    expect(html).toContain('Play as guest');
+    expect(html).toContain('Continue as guest');
   });
   it('server unreachable: clear state with retry', () => {
     const html = page('/login', h(Login), { reachable: false });
-    expect(html).toContain('reach the game server');
+    expect(html).toContain('reach');
+    expect(html).toContain('right now');
     expect(html).toContain('Try again');
     expect(html).not.toContain('Play offline');
-    expect(html).not.toContain('Play as guest');
+    expect(html).not.toContain('Continue as guest');
   });
   it('loading shows a status instead of the form', () => {
     expect(page('/login', h(Login), { loading: true })).toContain('Checking your session');
   });
   it('guest visiting on purpose sees the upgrade path, not a redirect', () => {
     const html = page('/login?next=/friends', h(Login), { user: guest, configured: true, googleClientId: 'x' });
-    expect(html).toContain('Sign in with Google');
-    expect(html).toContain('Continue as guest');
+    expect(html).toContain('Upgrade to a full account');
+    expect(html).toContain('Keep playing as guest');
     expect(html).toContain('Sign out');
   });
 });
@@ -313,7 +314,8 @@ describe('small components', () => {
     expect(html).not.toContain('Remove');
     const other = renderToString(h(Seat, { player: { ...p, id: 'b', name: 'Bela', connected: false }, canRemove: true, onRemove() {} }));
     expect(other).toContain('Remove Bela from the room');
-    expect(other).toContain('Reconnecting');
+    expect(other).toContain('>Offline<'); // the red pill beside the grey bars (the signal indicator), not "Reconnecting..."
+    expect(other).toContain('sg--offline');
   });
   it('Seat: piece badge, equipped title and away state', () => {
     const p = { id: 'a', name: 'Anil', avatar: 1, connected: false, piece: 'auto', cosmetics: { title: 'title-chai', frame: 'frame-lake' } };

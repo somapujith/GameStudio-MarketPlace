@@ -65,6 +65,9 @@ jobs:
 
       - name: Build the web app
         run: npm run build
+        env:
+          # Optional: shown on the Privacy / Terms / Help pages as the contact address (see docs/DEPLOY.md)
+          VITE_CONTACT_EMAIL: ${{ vars.VITE_CONTACT_EMAIL }}
 
       # Additive, idempotent (CREATE ... IF NOT EXISTS / ADD COLUMN IF NOT EXISTS), so it is safe
       # to run before the new code goes live and safe to repeat. Prints table names + row counts only.

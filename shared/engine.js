@@ -14,11 +14,11 @@ import {
 import { DECKS } from './cards.js';
 import { shuffle, seedToUint32, randInt } from './rng.js';
 import { CITY_EVENTS, EVENT_EVERY, RUSH_FLAVOUR, MONSOON_TEXT, FESTIVALS } from './events.js';
-import { MODES, MODE_IDS, DEFAULT_MODE, ROUND_CAP } from './modes.js';
+import { MODES, MODE_IDS, DEFAULT_MODE, ROUND_CAP, TARGET_OPTIONS, isTargetOption } from './modes.js';
 import { formatINR } from './format.js';
 import { rollDice, DICE_RULES } from './dice.js';
 
-export { MODES, MODE_IDS, DEFAULT_MODE, ROUND_CAP };
+export { MODES, MODE_IDS, DEFAULT_MODE, ROUND_CAP, TARGET_OPTIONS };
 
 // ---------------------------------------------------------------------------------------------
 // Constants and settings
@@ -29,6 +29,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   mode: DEFAULT_MODE, // 'standard' | 'quick' | 'classic' (see MODES)
   dice: 'lucky', // 'lucky' | 'fair' (see shared/dice.js). There is always exactly ONE die.
   auctionOnDecline: true, // a skipped or unaffordable district goes to a sealed auction
+  targetWorth: MODES[DEFAULT_MODE].targetWorth, // win target (net worth), null = off; one of TARGET_OPTIONS, the default follows the mode
 });
 
 /** Ranges of the engine-only overrides `normalizeSettings` accepts (tests and the simulator; the server never sends them). */
@@ -47,7 +48,10 @@ const toInt = (v) => {
 
 /**
  * Turns whatever the UI / server hands us into the engine config:
- *   `{ mode, startCash, passStart, maxRounds|null, dice, auctionOnDecline, trafficFine, chaiCap }`.
+ *   `{ mode, startCash, passStart, maxRounds|null, targetWorth|null, dice, auctionOnDecline, trafficFine, chaiCap }`.
+ * `targetWorth` is the win target (net worth): `null` or one of TARGET_OPTIONS, anything else (or missing) becomes the
+ * mode default. The room server additionally refuses `null` for a mode without a round limit (worker/settings.js);
+ * the engine itself accepts it (the ROUND_CAP safety net still ends such a game).
  * Unknown keys are dropped. `startCash`, `passStart`, `maxRounds` and `trafficFine` may be overridden by tests and the
  * simulator (the room server only ever forwards mode / dice / auctionOnDecline); `debug: true` is kept (tests only).
  */
@@ -60,6 +64,7 @@ export function normalizeSettings(input) {
     startCash: m.startCash,
     passStart: PASS_START,
     maxRounds: m.rounds,
+    targetWorth: src.targetWorth === null || isTargetOption(src.targetWorth) ? src.targetWorth : m.targetWorth,
     dice: src.dice === 'fair' || src.dice === 'lucky' ? src.dice : DEFAULT_SETTINGS.dice,
     auctionOnDecline: typeof src.auctionOnDecline === 'boolean' ? src.auctionOnDecline : DEFAULT_SETTINGS.auctionOnDecline,
     trafficFine: TRAFFIC_FINE,
@@ -521,7 +526,7 @@ function cancelTradeOf(s, ev, playerId, reason) {
 }
 
 /** Bankruptcy: upgrades are sold to the bank, all cash + every district goes to the creditor (or back to the bank). */
-function bankruptPlayer(s, ev, p, creditorId, reason) {
+function bankruptPlayer(s, ev, p, creditorId, reason, how = null) {
   const creditor = creditorId ? byId(s, creditorId) : null;
   const heir = creditor && !creditor.bankrupt && creditor.id !== p.id ? creditor : null;
   for (let t = 0; t < BOARD_SIZE; t++) {
@@ -555,7 +560,7 @@ function bankruptPlayer(s, ev, p, creditorId, reason) {
   p.rentBoost = 0;
   if (s.ride && s.ride.player === p.id) s.ride = null;
   cancelTradeOf(s, ev, p.id, 'bankrupt');
-  ev.push({ type: 'bankrupt', player: p.id });
+  ev.push({ type: 'bankrupt', player: p.id, ...(how ? { reason: how } : null) }); // reason 'resign' = left by choice
 }
 
 /**
@@ -880,6 +885,24 @@ function richest(s) {
   return best ? best.p : null;
 }
 
+/**
+ * The win target: the player whose net worth has reached `cfg.targetWorth` (richest first, then most cash, then the
+ * earliest seat), or null. It is only looked at once nothing is in flight: no debt, auction or open trade, so a worth
+ * that is only high in the middle of a payment or a deal never decides the game.
+ */
+function targetWinner(s) {
+  const target = s.cfg.targetWorth;
+  if (target == null) return null;
+  if (s.phase === 'debt' || s.phase === 'auction' || s.debt || s.trade) return null;
+  let best = null;
+  for (const p of activePlayers(s)) {
+    const w = netWorth(s, p.id);
+    if (w < target) continue;
+    if (!best || w > best.w || (w === best.w && p.cash > best.p.cash)) best = { p, w };
+  }
+  return best ? best.p : null;
+}
+
 function checkWin(s, ev) {
   if (s.phase === 'over') return;
   const active = activePlayers(s);
@@ -888,6 +911,8 @@ function checkWin(s, ev) {
   if (active.length <= 1) {
     winner = active[0] || null;
     reason = 'last_standing';
+  } else if ((winner = targetWinner(s))) {
+    reason = 'target';
   } else if (s.round > roundLimit(s) && s.phase !== 'debt' && s.phase !== 'auction') {
     winner = richest(s);
     reason = 'rounds';
@@ -1053,7 +1078,7 @@ function doUpgrade(s, ev, tile) {
 
 function doResign(s, ev, p) {
   const debt = s.debt && s.debt.player === p.id ? s.debt : null;
-  bankruptPlayer(s, ev, p, debt ? debt.creditor : null, debt ? debt.reason : 'rent');
+  bankruptPlayer(s, ev, p, debt ? debt.creditor : null, debt ? debt.reason : 'rent', 'resign');
   if (debt) {
     s.debt = null;
     s.phase = debt.returnPhase || 'manage';

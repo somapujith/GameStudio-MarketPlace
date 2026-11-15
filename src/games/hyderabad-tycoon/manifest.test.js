@@ -47,10 +47,25 @@ describe('hyderabad-tycoon manifest', () => {
     expect(Object.keys(manifest.loaders)).toEqual(['onlineGame']);
   });
 
-  it('shows only the mode in the lobby, with the table rules and a one-line summary', () => {
-    expect(manifest.lobbySettings).toEqual(['mode']);
+  it('shows the mode and the win target in the lobby, with the table rules and a one-line summary', () => {
+    expect(manifest.lobbySettings).toEqual(['mode', 'targetWorth']);
     expect(manifest.tableRules).toBe('One die · 3 business levels per district · Chai, Auto shortcuts and city rush hours');
     for (const k of manifest.lobbySettings) expect(manifest.settings.some((f) => f.key === k)).toBe(true);
-    expect(manifest.summarize({ mode: 'standard', dice: 'lucky' })).toBe('Standard City Hustle · 20 rounds · richest wins');
+    expect(manifest.summarize({ mode: 'standard', dice: 'lucky' })).toBe('Standard City Hustle · 20 rounds · richest wins · ₹50L target');
+  });
+
+  it('carries honest store-listing metadata (no ratings, counts or invented dates)', () => {
+    expect(manifest.publisher).toBe('GameHub');
+    expect(manifest.version).toMatch(/^\d+\.\d+/);
+    expect(manifest.ageRating).toMatch(/\+$/);
+    expect(manifest.languages).toEqual(['English']);
+    expect(manifest.platforms).toEqual(['Phone', 'Tablet', 'Desktop']);
+    expect(manifest.tags.length).toBeGreaterThan(2);
+    expect(manifest.highlights.length).toBeGreaterThan(1);
+    for (const h of manifest.highlights) expect(Object.keys(h)).toEqual(['icon', 'title', 'text']);
+    for (const s of manifest.howToPlay) expect(typeof s.icon).toBe('string');
+    expect(manifest.gallery.map((g) => g.kind)).toEqual(['cover', 'scene', 'board']);
+    expect(manifest.released).toBeUndefined();
+    for (const k of ['rating', 'ratings', 'reviews', 'installs', 'downloads', 'playersOnline']) expect(manifest[k]).toBeUndefined();
   });
 });

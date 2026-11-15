@@ -125,7 +125,7 @@ describe('row mapping', () => {
       host_name: 'Host',
       player_count: 2,
       max_players: 4,
-      settings: { mode: 'quick', dice: 'lucky', auctionOnDecline: true },
+      settings: { mode: 'quick', dice: 'lucky', auctionOnDecline: true, targetWorth: 5000000 },
       created_at: new Date('2026-10-16T10:00:00Z'),
     });
     expect(out).toEqual({
@@ -134,7 +134,7 @@ describe('row mapping', () => {
       hostName: 'Host',
       players: 2,
       maxPlayers: 4,
-      summary: 'Quick Chai Break · 12 rounds · richest wins',
+      summary: 'Quick Chai Break · 12 rounds · richest wins · ₹50L target',
       createdAt: '2026-10-16T10:00:00.000Z',
     });
     // an unknown game still lists (without a summary)

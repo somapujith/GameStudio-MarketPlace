@@ -65,9 +65,9 @@ function Stepper({ label, valueText, onMinus, onPlus, minusOff, plusOff, disable
 const isCompact = (options) => options.length <= 3 && options.reduce((n, o) => n + String(o.label ?? '').length, 0) <= 26;
 
 /** One schema field, rendered by its `type`. `onChange(value)` / `onStep(dir)` are the host's edits. */
-export function SettingField({ field, value, onChange, onStep, disabled, hideHelp = false }) {
+export function SettingField({ field, value, values, onChange, onStep, disabled, hideHelp = false }) {
   const id = useId();
-  const options = fieldOptions(field);
+  const options = fieldOptions(field, values); // `values`: every setting right now (hidden / default-marked options)
   const helpId = field.help && !hideHelp ? `${id}-help` : undefined;
   const help = field.help && !hideHelp ? (
     <p className="ho-help" id={helpId}>
@@ -255,6 +255,7 @@ export default function SettingsPanel({ game, settings, isHost, disabled, onSend
           key={f.key}
           field={f}
           value={eff[f.key]}
+          values={eff}
           disabled={disabled}
           hideHelp={solo} // the summary line below already says it
           onChange={(v) => commit({ [f.key]: v })}

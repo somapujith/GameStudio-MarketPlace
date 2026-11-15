@@ -11,6 +11,8 @@ import {
   MUNICIPAL_BASE, MUNICIPAL_PER_LEVEL, PASS_START_AMOUNT, SET_BONUS_MULT, TRAFFIC_FINE, fareOf, levelNameOf, nextStop,
   rentLadder, settingsSummary, upgradeCostOf,
 } from './ui/helpers.js';
+import { compactTarget, targetOf, targetRuleText } from './turn/target.js';
+import { ROUND_CAP } from '@shared/modes.js';
 
 const X = '×';
 
@@ -57,6 +59,7 @@ function Rule({ icon, title, children, wide = false, id }) {
 export default function RulesSheet({ open, onClose, session }) {
   const rawCfg = session?.display?.cfg || session?.view?.cfg || {};
   const cfg = { ...DEFAULT_CFG, ...rawCfg };
+  const target = targetOf(rawCfg);
   const summary = settingsSummary(rawCfg, session?.display?.goal ?? rawCfg.goal);
   const fairDice = (cfg.dice ?? 'lucky') === 'fair';
   const declineAuction = cfg.auctionOnDecline !== false;
@@ -77,7 +80,7 @@ export default function RulesSheet({ open, onClose, session }) {
           {modeList.map((m) => (
             <li key={m.id} className={cfg.mode === m.id ? 'is-on' : ''}>
               <b>{m.label}</b>
-              <span>{m.rounds ? `${m.rounds} rounds` : 'Until one player is left'} · start {formatINR(m.startCash)}</span>
+              <span>{m.rounds ? `${m.rounds} rounds` : m.targetWorth ? `No round limit · first to ${compactTarget(m.targetWorth)}` : 'Until one player is left'} · start {formatINR(m.startCash)}</span>
             </li>
           ))}
         </ul>
@@ -195,6 +198,8 @@ export default function RulesSheet({ open, onClose, session }) {
           <b>Net worth</b> = cash + price of your districts (mortgaged: price minus the loan) + half of what you spent on upgrades &minus; unpaid debt.
         </p>
         <p>When the last round ends, the highest net worth wins (tie: more cash). The last player standing wins straight away.</p>
+        {target ? <p className="hg-rule-target">{targetRuleText(target)}</p> : null}
+        {target && rawCfg.maxRounds == null ? <p>Classic has no round limit: the first player to reach the target wins (safety cap: after {ROUND_CAP} rounds the richest wins).</p> : null}
       </Rule>
 
       <Rule icon={'💸'} title="Debt and bankruptcy">
@@ -202,6 +207,7 @@ export default function RulesSheet({ open, onClose, session }) {
           A bill bigger than your cash puts you in <b>debt</b>: sell upgrades or mortgage districts until you can pay.
           If that is not enough, or you give up, you are bankrupt and out.
         </p>
+        <p>You can also <b>resign</b> at any time from the menu: you lose, your districts return to the bank and you can watch the rest of the game.</p>
       </Rule>
 
       <Rule icon={fairDice ? '⚖️' : '🍀'} title={fairDice ? 'Fair dice' : 'Lucky dice'}>

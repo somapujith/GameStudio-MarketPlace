@@ -3,6 +3,7 @@ import { BRAND } from '@/platform/brand.js';
 import { paths } from '@/platform/paths.js';
 import { HubMark } from './hubArt.jsx';
 import HubIcon from './HubIcon.jsx';
+import { idToQuery } from './detailModel.js';
 import useDocTitle from './useDocTitle.js';
 
 const COPY = {
@@ -23,11 +24,13 @@ const COPY = {
 /**
  * Friendly stand-in for an unknown id, a coming-soon game, or a manifest without the requested loader.
  * `reason`: 'unknown' | 'soon' | 'missing'. `fullscreen` is for routes rendered without the hub chrome.
+ * `query` (the id from a bad link) pre-fills the search link, so "hyderbad-tycoon" still finds the game.
  */
-export default function Unavailable({ reason = 'unknown', game = null, fullscreen = false }) {
+export default function Unavailable({ reason = 'unknown', game = null, fullscreen = false, query = '' }) {
   const copy = COPY[reason] || COPY.unknown;
   const title = game && reason === 'soon' ? `${game.name} is coming soon` : copy.title;
-  useDocTitle(`${title} · ${BRAND.name}`);
+  useDocTitle(`${title} · ${BRAND.name}`, reason === 'unknown' ? { noindex: true } : undefined);
+  const q = idToQuery(query);
   return (
     <section className={`hub-unavail${fullscreen ? ' hub-unavail--full' : ''}`} aria-labelledby="hub-unavail-title">
       <div className="hub-unavail__card">
@@ -44,8 +47,11 @@ export default function Unavailable({ reason = 'unknown', game = null, fullscree
               {game.name}
             </Link>
           )}
-          <Link to={paths.hub()} className="hub-btn hub-btn--primary">
-            <HubIcon name="gamepad" size={18} /> Browse games
+          <Link to={paths.games()} className="hub-btn hub-btn--primary">
+            <HubIcon name="gamepad" size={18} /> Browse all games
+          </Link>
+          <Link to={paths.search(q)} className="hub-btn hub-btn--soft">
+            <HubIcon name="search" size={18} /> {q ? `Search for “${q}”` : 'Search games'}
           </Link>
         </div>
       </div>

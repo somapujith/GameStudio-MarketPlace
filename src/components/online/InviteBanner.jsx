@@ -5,9 +5,10 @@ import { Avatar } from '@/components/art/index.js';
 import { dismissInvite, getInvites } from '@/lib/api.js';
 import { useAuth } from '@/lib/auth.jsx';
 import { paths } from '@/platform/paths.js';
-import { dropInvite, mergeInvites, normalizeInvite, relativeTime, withLeaving } from './friendsModel.js';
+import { dropInvite, inviteExpiryLabel, mergeInvites, normalizeInvite, relativeTime, withLeaving } from './friendsModel.js';
 import '@/styles/online.css';
 import '@/styles/x-social.css';
+import '@/styles/store-social.css';
 
 // Floating notices for realtime user-socket events (game invites with Join / Dismiss, a heads-up for friend
 // requests / accepted requests) PLUS the invites inbox store: invites stored by the server while you were away
@@ -252,6 +253,7 @@ export function pendingSummary(invites, now = Date.now()) {
       body: [relativeTime(top.createdAt, now), top.code ? `Room ${top.code}` : ''].filter(Boolean).join(' · '),
       actionLabel: 'Join',
       target: top.code ? paths.join(top.code) : paths.friends(),
+      expiry: inviteExpiryLabel(top.createdAt, now),
     };
   }
   return {
@@ -279,41 +281,52 @@ function Notice({ item, leaving, onDismiss, go }) {
   const { title, body, actionLabel, target } = noticeContent(item);
   const isInvite = kind === 'invite';
 
+  const dismissThis = () => {
+    if (isInvite) dismissInviteEntry(normalizeInvite(item));
+    onDismiss(key);
+  };
+
   return (
-    <div className={`ho-notice ho-notice--${kind} xs-notice${leaving ? ' is-leaving' : ''}`} role={isInvite ? 'alert' : 'status'} aria-hidden={leaving || undefined}>
-      <Avatar preset={Number.isInteger(from?.avatar) ? from.avatar : 0} size={44} className="ho-notice__avatar" />
-      <div className="ho-notice__text">
-        <strong className="ho-notice__title">{title}</strong>
-        <span className="ho-notice__body">{body}</span>
+    <div
+      className={`sc-toast sc-toast--${kind}${leaving ? ' is-leaving' : ''}`}
+      role={isInvite ? 'alert' : 'status'}
+      aria-hidden={leaving || undefined}
+      style={{ '--ttl': `${TTL[kind] || 8000}ms` }}
+    >
+      <span className="sc-toast__ava">
+        <Avatar preset={Number.isInteger(from?.avatar) ? from.avatar : 0} size={46} />
+      </span>
+      <div className="sc-toast__text">
+        <strong>{title}</strong>
+        <span>{body}</span>
       </div>
-      <div className="ho-notice__actions">
+      <div className="sc-toast__actions">
         {target && (
           <button
             type="button"
-            className="ho-btn ho-btn--primary ho-btn--sm"
+            className="hub-btn hub-btn--primary hub-btn--sm"
             disabled={leaving}
             onClick={() => {
-              if (isInvite) dismissInviteEntry(normalizeInvite(item));
-              onDismiss(key);
+              dismissThis();
               go(target);
             }}
           >
             {actionLabel}
           </button>
         )}
-        <button
-          type="button"
-          className="ho-btn ho-btn--ghost ho-btn--sm"
-          disabled={leaving}
-          onClick={() => {
-            if (isInvite) dismissInviteEntry(normalizeInvite(item));
-            onDismiss(key);
-          }}
-          aria-label={`Dismiss: ${title}`}
-        >
-          {isInvite ? 'Dismiss' : '✕'}
-        </button>
+        {isInvite ? (
+          <button type="button" className="hub-btn hub-btn--ghost hub-btn--sm" disabled={leaving} onClick={dismissThis} aria-label={`Dismiss: ${title}`}>
+            Dismiss
+          </button>
+        ) : (
+          <button type="button" className="sc-toast__x" disabled={leaving} onClick={dismissThis} aria-label={`Dismiss: ${title}`}>
+            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" fill="none" />
+            </svg>
+          </button>
+        )}
       </div>
+      <span className="sc-toast__timer" aria-hidden="true" />
     </div>
   );
 }
@@ -345,20 +358,23 @@ function PendingBanner({ invites, go }) {
   if (!s) return null;
   const top = invites[0];
   return (
-    <div className="xs-pending" role="status">
-      <span className="xs-pending__avas" aria-hidden="true">
+    <div className="sc-toast sc-toast--pending" role="status">
+      <span className="sc-toast__avas" aria-hidden="true">
         {invites.slice(0, 3).map((i) => (
-          <Avatar key={i.key} preset={i.from.avatar} size={34} />
+          <Avatar key={i.key} preset={i.from.avatar} size={38} />
         ))}
       </span>
-      <span className="xs-pending__text">
+      <div className="sc-toast__text">
         <strong>{s.title}</strong>
-        <span>{s.body}</span>
-      </span>
-      <span className="xs-pending__actions">
+        <span>
+          {s.body}
+          {s.expiry ? ` · ${s.expiry}` : ''}
+        </span>
+      </div>
+      <div className="sc-toast__actions">
         <button
           type="button"
-          className="ho-btn ho-btn--primary ho-btn--sm"
+          className="hub-btn hub-btn--primary hub-btn--sm"
           onClick={() => {
             if (s.count === 1) dismissInviteEntry(top);
             go(s.target);
@@ -366,18 +382,18 @@ function PendingBanner({ invites, go }) {
         >
           {s.actionLabel}
         </button>
-        <button
-          type="button"
-          className="ho-iconbtn xs-pending__close"
-          onClick={() => (s.count === 1 ? dismissInviteEntry(top) : setHiddenFor(sig))}
-          aria-label={s.count === 1 ? `Dismiss invite from ${top.from.name}` : 'Hide for now'}
-          title={s.count === 1 ? 'Dismiss invite' : 'Hide for now'}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" fill="none" />
-          </svg>
-        </button>
-      </span>
+        {s.count === 1 ? (
+          <button type="button" className="hub-btn hub-btn--ghost hub-btn--sm" onClick={() => dismissInviteEntry(top)} aria-label={`Dismiss invite from ${top.from.name}`}>
+            Dismiss
+          </button>
+        ) : (
+          <button type="button" className="sc-toast__x" onClick={() => setHiddenFor(sig)} aria-label="Hide for now" title="Hide for now">
+            <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" fill="none" />
+            </svg>
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -454,7 +470,7 @@ function BannerView({ items, onDismiss, go }) {
   const pending = invites.filter((i) => !noticed.has(i.key));
   if (typeof document === 'undefined' || (shown.length === 0 && pending.length === 0)) return null;
   return createPortal(
-    <div className={`ho-notices xs-notices${slot ? ' is-inline' : ''}`} aria-label="Notifications" aria-live="polite">
+    <div className={`ho-notices xs-notices sc-toasts${slot ? ' is-inline' : ''}`} aria-label="Notifications" aria-live="polite">
       {shown.map(({ key, item, leaving }) => (
         <Notice key={key} item={item} leaving={leaving} onDismiss={onDismiss} go={go} />
       ))}

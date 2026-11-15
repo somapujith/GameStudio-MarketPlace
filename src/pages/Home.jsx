@@ -1,24 +1,30 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BRAND } from '@/platform/brand.js';
-import { homeCatalog, SOON_ID } from '@/platform/home/catalog.js';
+import { paths } from '@/platform/paths.js';
+import { liveList, soonList } from '@/platform/home/catalog.js';
 import Hero from '@/platform/home/Hero.jsx';
-import CategoryChips from '@/platform/home/CategoryChips.jsx';
-import CategoryRow from '@/platform/home/CategoryRow.jsx';
 import TopPlayers from '@/platform/home/TopPlayers.jsx';
+import Rail from '@/platform/home/store/Rail.jsx';
+import PlayCard from '@/platform/home/store/PlayCard.jsx';
+import LiveStrip from '@/platform/home/store/LiveStrip.jsx';
+import HowItWorks from '@/platform/home/store/HowItWorks.jsx';
+import CategoryTiles, { categoryTiles } from '@/platform/home/store/CategoryTiles.jsx';
+import { LiveProvider, useHomeLive } from '@/platform/home/store/live.js';
 import FriendsStrip from '@/components/shell/home/FriendsStrip.jsx';
 import DailyReward from '@/components/shell/home/DailyReward.jsx';
-import ResumeCard from '@/components/shell/home/ResumeCard.jsx';
 import OpenTables from '@/components/shell/home/OpenTables.jsx';
-import { useReducedMotion } from '@/components/shell/hooks.js';
+import { useAccount, useReducedMotion } from '@/components/shell/hooks.js';
 import '@/styles/hubhome.css';
 import '@/styles/x-home.css';
+import '@/styles/store-home.css';
 
 // The staggered entrance plays once per visit to the app, not on every return to Home.
 let enteredOnce = false;
 
 /**
- * `/` — the Games home: resume your game, featured hero (live table count), open tables, friends,
- * browse (live games by category + one "Coming soon" row), top players and the daily reward.
+ * `/` — the storefront: spotlight hero, a live strip (open tables, friends online, your running table), "Play now",
+ * open tables, friends, "By category", a "Coming soon" shelf, top players and the daily reward. A visitor with no
+ * session also gets a three-step "how it works" with Sign in / Play as guest.
  */
 export default function Home() {
   const reduced = useReducedMotion();
@@ -27,56 +33,99 @@ export default function Home() {
     enteredOnce = true;
   }, []);
 
-  const { cats, soon } = useMemo(homeCatalog, []);
-  const chips = useMemo(() => (soon ? [...cats, soon] : cats), [cats, soon]);
-  const [cat, setCat] = useState('all');
-  const active = chips.some((g) => g.id === cat) ? cat : 'all';
-  const showCats = active === 'all' ? cats : cats.filter((g) => g.id === active);
-  const showSoon = !!soon && (active === 'all' || active === SOON_ID);
-  const shownCount = showCats.length + (showSoon ? 1 : 0);
+  const live = useHomeLive();
+  const { user, loading } = useAccount();
+  const noSession = !loading && !user;
+
+  const games = useMemo(() => liveList(), []);
+  const soon = useMemo(() => soonList().filter((g) => !games.some((l) => l.id === g.id)), [games]);
+  const tiles = useMemo(() => categoryTiles(), []);
 
   let i = 0;
-  const rise = () => ({ className: 'xh-rise', style: { '--i': i++ } });
+  const rise = () => ({ className: enter ? 'st-reveal' : undefined, style: { '--i': i++ } });
 
   return (
-    <div className={`hub-page hh2 hh2-home xh-home ${enter ? 'xh-enter' : ''}`}>
-      <h1 className="hub-sr">{BRAND.name} games</h1>
-      <ResumeCard />
-      <div {...rise()}>
-        <Hero />
-      </div>
-      <div {...rise()}>
-        <OpenTables />
-      </div>
-      <div {...rise()}>
-        <FriendsStrip />
-      </div>
+    <LiveProvider value={live}>
+      <div className="hub-page hh2 hh2-home xh-home sh-home">
+        <h1 className="hub-sr">{BRAND.name} games</h1>
 
-      <section {...rise()} className="hub-section hh2-browse xh-rise" aria-labelledby="hh2-browse-h">
-        <div className="hub-section__head">
-          <h2 id="hh2-browse-h" className="hub-section__title">
-            Browse games
-          </h2>
+        <div {...rise()}>
+          <Hero />
         </div>
-        {chips.length > 1 && <CategoryChips cats={chips} value={active} onChange={setCat} />}
-        {chips.length === 0 ? (
-          <p className="hub-muted">New games are on the way. Check back soon.</p>
-        ) : (
-          <div className="hh2-cats" data-single={shownCount === 1 ? 'true' : 'false'}>
-            {showCats.map((g) => (
-              <CategoryRow key={g.id} cat={g} games={g.games} />
-            ))}
-            {showSoon && (
-              <CategoryRow cat={soon} games={soon.games} className="xh-soonrow" note="In the works. Tap Notify me and we will flag them for you here." />
-            )}
+        <div {...rise()}>
+          <LiveStrip live={live} />
+        </div>
+
+        {noSession && (
+          <div {...rise()}>
+            <HowItWorks />
           </div>
         )}
-      </section>
 
-      <div {...rise()} className="hh2-duo xh-duo xh-rise">
-        <TopPlayers />
-        <DailyReward />
+        {games.length > 0 && (
+          <div {...rise()}>
+            <Rail
+              eyebrow="Ready to play"
+              title="Play now"
+              sub="Pick a game and start a table in seconds."
+              moreTo={paths.games()}
+              moreLabel="All games"
+              count={games.length}
+              solo={games.length === 1}
+              label="Games you can play now"
+            >
+              {games.map((g) => (
+                <li key={g.id}>
+                  <PlayCard game={g} solo={games.length === 1} tables={live.perGame[g.id] || 0} />
+                </li>
+              ))}
+            </Rail>
+          </div>
+        )}
+
+        <div {...rise()}>
+          <OpenTables />
+        </div>
+
+        {(!noSession || loading) && (
+          <div {...rise()}>
+            <FriendsStrip />
+          </div>
+        )}
+
+        {tiles.length > 0 && (
+          <div {...rise()}>
+            <Rail eyebrow="Browse" title="By category" sub="Board, card, word and more." moreTo={paths.games()} moreLabel="All games" bare>
+              <CategoryTiles tiles={tiles} />
+            </Rail>
+          </div>
+        )}
+
+        {soon.length > 0 && (
+          <div {...rise()}>
+            <Rail
+              eyebrow="On the way"
+              title="Coming soon"
+              sub="Tap Notify me and we will flag it for you here."
+              count={soon.length}
+              label="Coming soon games"
+            >
+              {soon.map((g) => (
+                <li key={g.id}>
+                  <PlayCard game={g} />
+                </li>
+              ))}
+            </Rail>
+          </div>
+        )}
+
+        {games.length === 0 && soon.length === 0 && <p className="hub-muted">New games are on the way. Check back soon.</p>}
+
+        <div {...rise()} className={`${enter ? 'st-reveal ' : ''}hh2-duo xh-duo sh-duo`}>
+          <TopPlayers />
+          <DailyReward />
+        </div>
       </div>
-    </div>
+    </LiveProvider>
   );
 }

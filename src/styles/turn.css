@@ -236,3 +236,52 @@
   border-radius: 16px; overflow: hidden; color: var(--cp-ink); background: #fffcf3; border: 2px solid var(--cp-line);
   font-size: 14px; line-height: 1.35;
 }
+
+/* ============================================================ net worth target: chip in the top bar, heads-up toasts */
+.tb-target {
+  display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 0 9px 0 6px; border-radius: 999px; white-space: nowrap;
+  line-height: 20px; font-weight: 750; font-variant-numeric: tabular-nums; color: var(--text);
+  background: rgba(255, 255, 255, 0.07); border: 1px solid var(--line);
+}
+.tb-target .hg-icon { color: var(--gold); }
+.tb-target__short { display: none; }
+/* somebody is at 80% of the target: gold, the icon breathes (opacity only) */
+.tb-target.is-hot { color: var(--gold); border-color: rgba(255, 202, 122, 0.55); background: rgba(255, 200, 87, 0.14); }
+.tb-target.is-hot .hg-icon { animation: tb-target-pulse 1.4s var(--ease-std) infinite; }
+@keyframes tb-target-pulse { 50% { opacity: 0.45; } }
+@media (max-width: 380px) {
+  .tb-target__long { display: none; }
+  .tb-target__short { display: inline; }
+}
+.hg-game--land .tb-target__long { display: none; }
+.hg-game--land .tb-target__short { display: inline; }
+.hg-game--land .tb-target { padding-left: 8px; }
+.hg-game--land .tb-target .hg-icon { display: none; }
+/* portrait phones: the mode name makes room for "Round 7 / 20 · First to ₹50L" */
+.hg-game--phone .hg-top[data-goal] .hg-mode, .hg-game--phone .hg-top[data-goal] .hg-goal-sep { display: none; }
+
+.tw-toasts {
+  position: absolute; z-index: 7; left: 50%; bottom: 10px; translate: -50% 0; width: max-content; max-width: calc(100% - 16px);
+  margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; pointer-events: none;
+}
+.tw-toast {
+  display: flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 14px; border-radius: 999px; font-size: 13px; line-height: 18px; font-weight: 800;
+  color: var(--text); background: rgba(16, 23, 30, 0.95); border: 1px solid rgba(255, 202, 122, 0.55); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  animation: hg-toast 4.6s var(--ease-out) both;
+}
+.tw-toast .hg-icon { color: var(--gold); flex: none; }
+.tw-toast span { min-width: 0; text-align: center; }
+.tw-toast.is-near { border-color: var(--gold); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45), 0 0 18px -2px rgba(255, 202, 122, 0.55); }
+.tw-toast.is-me { border-color: var(--good); }
+
+@media (prefers-reduced-motion: reduce) {
+  .tb-target.is-hot .hg-icon, .tw-toast { animation: none !important; }
+}
+:root[data-motion='reduced'] .tb-target.is-hot .hg-icon, :root[data-motion='reduced'] .tw-toast,
+.hg-game[data-rm] .tb-target.is-hot .hg-icon, .hg-game[data-rm] .tw-toast { animation: none !important; }
+
+/* ============================================================ you are out (resigned or bankrupt): a calm line instead of an action */
+.cp-actions[data-kind='out'] .cp-primary.is-wait { flex-direction: column; justify-content: center; gap: 2px; padding: 6px 12px; text-align: center; }
+.cp-actions[data-kind='out'] .cp-primary.is-wait .cp-btn__label { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.2; }
+.cp-actions[data-kind='out'] .cp-primary.is-wait .cp-btn__sub { font-size: 12px; font-weight: 600; }
+.ad-tools .ad-tool.is-icon:only-child { flex: 1; }

@@ -21,11 +21,29 @@ export default {
   modes: { friends: true, open: false },
   features: ['Play with friends', '36-square Hyderabad board', 'Auto, Metro and MMTS shortcuts', 'City rush-hour events'],
   createHint: 'You pick the mode in the lobby. Share the code and roll when everyone is in.',
+  // Store-listing metadata (all optional; the game page hides what is missing).
+  publisher: 'GameHub',
+  version: '1.0',
+  ageRating: '12+',
+  languages: ['English'],
+  platforms: ['Phone', 'Tablet', 'Desktop'],
+  tags: ['Property trading', 'Hyderabad', 'Dice', 'Auctions', 'Play with friends', 'Online'],
+  highlights: [
+    { icon: 'users', title: 'Two to six players', text: 'Make a private table, share the code and play together in real time.' },
+    { icon: 'map', title: 'A Hyderabad board', text: 'Thirty-six squares from Sultan Bazaar to the Financial District.' },
+    { icon: 'bolt', title: 'City rush hours', text: 'Traffic jams, wedding season and chai breaks keep every round unpredictable.' },
+    { icon: 'door', title: 'No download', text: 'Play in the browser on a phone, tablet or computer. Guests are welcome.' },
+  ],
+  gallery: [
+    { kind: 'cover', caption: 'Cover art: the board, the dice and the city skyline' },
+    { kind: 'scene', focus: 'right', caption: 'The board, close up' },
+    { kind: 'board', caption: 'The Hyderabad Tycoon icon' },
+  ],
   howToPlay: [
-    { title: 'Roll', text: 'Roll one die and move round the city. A six rolls again; passing START pays ₹2 lakh.' },
-    { title: 'Buy or auction', text: 'Buy the district you land on, or skip it and everyone bids in a sealed auction.' },
-    { title: 'Upgrade', text: 'Own all the districts of a collection to start upgrading them, twice each, from a stall to a trading hub. Bigger businesses ask bigger rent.' },
-    { title: 'Richest wins', text: 'After the last round the highest net worth wins: cash, districts and half your upgrades.' },
+    { icon: 'dice', title: 'Roll', text: 'Roll one die and move round the city. A six rolls again; passing START pays ₹2 lakh.' },
+    { icon: 'rupee', title: 'Buy or auction', text: 'Buy the district you land on, or skip it and everyone bids in a sealed auction.' },
+    { icon: 'building', title: 'Upgrade', text: 'Own all the districts of a collection to start upgrading them, twice each, from a stall to a trading hub. Bigger businesses ask bigger rent.' },
+    { icon: 'trophy', title: 'Richest wins', text: 'Reach the net-worth target first, or be the richest after the last round: cash, districts and half your upgrades.' },
   ],
   pieces: PIECES,
   // Game badges read the per-game stats the client sees (games, wins, bestScore, rating).
@@ -37,7 +55,7 @@ export default {
     { id: 'tycoon-rated', label: 'Rising Tycoon', desc: 'Reach a rating of 1,100', stat: 'rating', target: 1100, icon: 'level' },
   ],
   settings: SETTINGS_SCHEMA,
-  lobbySettings: LOBBY_SETTINGS, // the lobby only shows the mode
+  lobbySettings: LOBBY_SETTINGS, // the lobby shows the mode and the win target
   tableRules: TABLE_RULES, // a read-only line under the lobby settings
   summarize: settingsSummary,
   loaders: {

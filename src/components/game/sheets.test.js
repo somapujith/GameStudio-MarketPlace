@@ -4,6 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { createGame } from '@shared/index.js';
+import { TRADE_MS } from '@shared/timing.js';
 
 vi.mock('./ui/Sheet.jsx', () => ({
   default: ({ header, children, footer, title }) => createElement('div', null, title ? createElement('h2', null, title) : null, header, children, footer),
@@ -24,7 +25,7 @@ const { default: DebtSheet, debtPlan } = await import('./DebtSheet.jsx');
 const { default: TradeSheet, Countdown, completedGroups, secondsLeft, sideValue } = await import('./TradeSheet.jsx');
 const { default: PlayerSheet, StatsSheet } = await import('./PlayerSheet.jsx');
 const { default: MyProperties } = await import('./MyProperties.jsx');
-const { default: GameOverModal, matchMoments, reasonLine } = await import('./GameOverModal.jsx');
+const { default: GameOverModal, matchMoments, outLine, reasonLine } = await import('./GameOverModal.jsx');
 const { fullSets } = await import('./SetCelebration.jsx');
 const { worthParts } = await import('./ui/helpers.js');
 
@@ -158,19 +159,51 @@ describe('TradeSheet', () => {
       session: sess(v, { options: { tradeOffer: { id: 4 } } }), open: false, onClose() {}, deadline: Date.now() + 20000,
     }));
     expect(out).toContain('Ravi wants to trade');
-    expect(out).toContain('Completes Cyberabad !');
+    expect(out).toContain('You complete Cyberabad');
+    expect(out).toContain('Completes set'); // the badge on the HITEC City card
     expect(out).toContain('CYBERABAD'.charAt(0)); // collection header present
     expect(out).toMatch(/Cyberabad\s+HITEC City/);
+    expect(out).toContain('You get');
+    expect(out).toContain('You give');
+    expect(out).toContain('₹50,000'); // the cash note on my side
+    expect(out).toContain('Your cash after');
+    expect(out).toContain('Accept');
+    expect(out).toContain('Reject');
     expect(out).toMatch(/\b(19|20) seconds left|>(19|20)</.source ? out : out);
   });
 
-  it('drives the countdown from the server deadline, else a local 30 s', () => {
+  it('warns when the other side would complete a set, or I would break mine', () => {
+    const v = base();
+    v.owners[28] = 'me'; v.owners[29] = 'me'; v.owners[31] = 'me'; // I own Cyberabad whole
+    v.owners[6] = 'me'; v.owners[7] = 'b1'; v.owners[8] = 'b1'; // Ravi needs Laad Bazaar for Old City Icons
+    v.trade = { id: 5, from: 'b1', to: 'me', give: { cash: 0, tiles: [] }, get: { cash: 0, tiles: [6, 31] } };
+    const out = text(createElement(TradeSheet, { session: sess(v, { options: { tradeOffer: { id: 5 } } }), open: false, onClose() {} }));
+    expect(out).toContain('Ravi completes Old City Icons');
+    expect(out).toContain('You break your Cyberabad set');
+    expect(out).toContain('Nothing'); // they give no district and no cash
+  });
+
+  it('shows my sent offer as waiting, with the countdown and a way to cancel it', () => {
+    const v = base();
+    v.owners[1] = 'me'; v.owners[31] = 'b1';
+    v.trade = { id: 6, from: 'me', to: 'b1', give: { cash: 20000, tiles: [1] }, get: { cash: 0, tiles: [31] } };
+    const out = text(createElement(TradeSheet, { session: sess(v), open: false, onClose() {}, deadline: Date.now() + 30000 }));
+    expect(out).toContain('Trade offer sent');
+    expect(out).toContain('Waiting for Ravi');
+    expect(out).toMatch(/\b(29|30)\b/); // the ring's seconds
+    expect(out).toContain('Cancel offer');
+    expect(out).toContain('Nobody can move until the offer is answered or cancelled.');
+    expect(out).toContain('₹20,000');
+    expect(out).not.toContain('Send offer');
+  });
+
+  it('drives the countdown from the server deadline, else the server trade limit', () => {
     expect(secondsLeft(10500, 0)).toBe(11);
     expect(secondsLeft(0, 5000)).toBe(0);
     const withDeadline = renderToStaticMarkup(createElement(Countdown, { deadline: Date.now() + 12000 }));
     expect(withDeadline).toMatch(/aria-label="1[12] seconds left to answer"/);
     const local = renderToStaticMarkup(createElement(Countdown, { resetKey: 1 }));
-    expect(local).toContain('aria-label="30 seconds left to answer"');
+    expect(local).toContain(`aria-label="${TRADE_MS / 1000} seconds left to answer"`);
   });
 
   it('groups the composer pickers by collection', () => {
@@ -180,7 +213,61 @@ describe('TradeSheet', () => {
     expect(out).toContain('Propose a trade');
     expect(out).toMatch(/Bazaar Beginnings 2\/3/);
     expect(out).toMatch(/Cyberabad 1\/3/);
-    expect(out).toContain('+10k');
+    expect(out).toContain('+₹50k');
+    const html = renderToStaticMarkup(createElement(TradeSheet, { session: sess(v, { options: { trade: { canOffer: true } } }), open: true, onClose() {} }));
+    for (const label of ['minus 10,000', 'plus 10,000', 'minus 50,000', 'plus 50,000']) {
+      expect(html, label).toContain(`aria-label="Cash you give: ${label}"`);
+    }
+  });
+
+  it('picks a partner from avatar cards: cash, worth, districts and the set they could complete', () => {
+    const v = base();
+    v.owners[28] = 'me'; v.owners[29] = 'me'; v.owners[31] = 'b1'; v.owners[1] = 'b1';
+    const session = sess(v, { options: { trade: { canOffer: true } } });
+    const html = renderToStaticMarkup(createElement(TradeSheet, { session, open: true, onClose() {} }));
+    const out = text(createElement(TradeSheet, { session, open: true, onClose() {} }));
+    expect(html).toContain('role="radiogroup"');
+    expect(html).toMatch(/role="radio"[^>]*aria-checked="true"/); // the first other player is picked
+    expect(out).toContain('Trade with');
+    expect(out).toContain('₹15L');
+    expect(out).toMatch(/Worth ₹[\d.]+L · 2 districts/);
+    expect(out).toContain('Completes Cyberabad'); // Ravi holds the district I need
+  });
+
+  it('keeps a player who is out in the list but not choosable', () => {
+    const v = base();
+    v.players[2].bankrupt = true;
+    const html = renderToStaticMarkup(createElement(TradeSheet, { session: sess(v, { options: { trade: { canOffer: true } } }), open: true, onClose() {} }));
+    const cards = html.match(/<button[^>]*role="radio"[\s\S]*?<\/button>/g) || [];
+    expect(cards).toHaveLength(2);
+    expect(cards[0]).toContain('aria-checked="true"');
+    expect(cards[0]).toContain('Ravi');
+    expect(cards[1]).toContain('disabled=""');
+    expect(cards[1]).toContain('aria-checked="false"');
+    expect(cards[1]).toContain('Out of the game');
+  });
+
+  it('says why an offer cannot be sent and keeps the old turn hint', () => {
+    const v = base();
+    const empty = text(createElement(TradeSheet, { session: sess(v, { options: { trade: { canOffer: true } } }), open: true, onClose() {} }));
+    expect(empty).toContain('The offer is empty');
+    const offTurn = text(createElement(TradeSheet, { session: sess(v, { options: { trade: { canOffer: false } } }), open: true, onClose() {} }));
+    expect(offTurn).toContain('You can only offer a trade on your own turn, before rolling or after.');
+    const alone = base();
+    alone.players[1].bankrupt = true; alone.players[2].bankrupt = true;
+    expect(text(createElement(TradeSheet, { session: sess(alone, { options: { trade: { canOffer: true } } }), open: true, onClose() {} })))
+      .toContain('No other active players to trade with.');
+  });
+
+  it('marks level pips, mortgages and set badges on the deed cards', () => {
+    const v = base();
+    v.owners[1] = 'me'; v.owners[3] = 'me'; v.owners[4] = 'me'; // Bazaar Beginnings whole
+    v.levels[1] = 1; v.mortgaged[3] = true;
+    const out = text(createElement(TradeSheet, { session: sess(v, { options: { trade: { canOffer: true } } }), open: true, onClose() {} }));
+    expect(out).toContain('Full set');
+    expect(out).toContain('Shop'); // Sultan Bazaar runs its second business
+    expect(out).toContain('No rent'); // the mortgaged district collects nothing
+    expect(out).toContain('Rent ₹11k');
   });
 });
 
@@ -347,7 +434,7 @@ describe('GameOverModal', () => {
     const out = text(createElement(GameOverModal, { session: { ...sess(v), result: resultOf(v), restart() {} }, onExit() {} }));
     expect(out).toContain('You finished 2nd');
     expect(out).toContain('Ravi wins with');
-    expect(out).toContain('After 20 rounds, the richest hustler wins');
+    expect(out).toContain('Round limit reached: richest wins');
     expect(out).toContain('Biggest rent');
     expect(out).toContain('Ravi · ₹1,19,000');
     expect(out).toContain('Most rides');
@@ -367,6 +454,13 @@ describe('GameOverModal', () => {
 
   it('reasonLine and matchMoments', () => {
     expect(reasonLine({ reason: 'last_standing' })).toBe('Last player standing');
+    expect(reasonLine({ reason: 'rounds', rounds: 20 })).toBe('Round limit reached: richest wins');
+    expect(reasonLine({ reason: 'target', target: 5000000 })).toBe('Reached the ₹50L net worth target');
+    expect(reasonLine({ reason: 'target' })).toBe('Reached the net worth target');
+    expect(reasonLine({ reason: 'whatever' })).toBe('');
+    expect(outLine(true, true)).toBe('You resigned before the end');
+    expect(outLine(true, false)).toBe('You went bankrupt before the end');
+    expect(outLine(false, true)).toBe('');
     expect(matchMoments([{ id: 'a', name: 'A', stats: { rides: 0 } }])).toEqual([]);
     expect(matchMoments([{ id: 'a', name: 'A', stats: { rides: 2 } }, { id: 'b', name: 'B', stats: { rides: 5 } }])[0]).toMatchObject({ key: 'rides', who: 'B' });
   });

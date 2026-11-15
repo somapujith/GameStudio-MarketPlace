@@ -13,7 +13,7 @@ import { useApi, useApiReady } from './useApi.js';
 export default function GameStatCards({ games, user }) {
   if (!games.length) return null;
   return (
-    <section className="hub-section" aria-labelledby="hh2-stats-h">
+    <section id="games" className="hub-section sa-anchor" aria-labelledby="hh2-stats-h">
       <div className="hub-section__head">
         <h2 id="hh2-stats-h" className="hub-section__title">
           Your games
@@ -198,7 +198,7 @@ export function RecentMatches({ signedIn, lead }) {
   }
 
   return (
-    <section className="hub-section" aria-labelledby="xp-matches-h" aria-busy={res.status === 'loading'}>
+    <section id="matches" className="hub-section sa-anchor" aria-labelledby="xp-matches-h" aria-busy={res.status === 'loading'}>
       <div className="hub-section__head">
         <h2 id="xp-matches-h" className="hub-section__title">
           Recent matches

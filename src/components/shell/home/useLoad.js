@@ -2,7 +2,7 @@
 // Never throws, never logs. Waits for the auth bootstrap and skips the request entirely when the Worker is
 // unreachable (static dev), so an offline page makes no failing requests. Keeps a short per-user cache so
 // coming back Home shows the last rows at once (revalidated in the background), and can poll while visible.
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/lib/auth.jsx';
 
 const cache = new Map(); // `${uid}|${key}` -> { at, data }
@@ -16,7 +16,7 @@ function kindOf(e) {
 }
 
 /**
- * `useLoad(key, fetcher, { enabled, pollMs })` -> { status: 'loading'|'ok'|'offline'|'auth'|'error'|'off', data }.
+ * `useLoad(key, fetcher, { enabled, pollMs })` -> { status: 'loading'|'ok'|'offline'|'auth'|'error'|'off', data, reload }.
  * 'off' = not enabled (e.g. signed out). `fetcher({ signal })` returns a promise (an api.js call).
  */
 export function useLoad(key, fetcher, { enabled = true, pollMs = 0 } = {}) {
@@ -30,6 +30,7 @@ export function useLoad(key, fetcher, { enabled = true, pollMs = 0 } = {}) {
   const fetchRef = useRef(fetcher);
   fetchRef.current = fetcher;
 
+  const [nonce, setNonce] = useState(0);
   const [state, setState] = useState(() => {
     const hit = cache.get(ck);
     return hit && Date.now() - hit.at < STALE_MS ? { ck, status: 'ok', data: hit.data } : { ck, status: 'loading', data: null };
@@ -88,13 +89,18 @@ export function useLoad(key, fetcher, { enabled = true, pollMs = 0 } = {}) {
       if (timer) clearInterval(timer);
       if (pollMs > 0 && typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVis);
     };
-  }, [run, ck, pollMs]);
+  }, [run, ck, pollMs, nonce]);
 
-  if (!enabled) return { status: 'off', data: null };
-  if (booting) return { status: 'loading', data: null };
-  if (!reachable) return { status: 'offline', data: null };
-  if (state.ck !== ck) return { status: 'loading', data: null };
-  return { status: state.status, data: state.data };
+  const reload = useCallback(() => {
+    cache.delete(ck);
+    setNonce((n) => n + 1);
+  }, [ck]);
+
+  if (!enabled) return { status: 'off', data: null, reload };
+  if (booting) return { status: 'loading', data: null, reload };
+  if (!reachable) return { status: 'offline', data: null, reload };
+  if (state.ck !== ck) return { status: 'loading', data: null, reload };
+  return { status: state.status, data: state.data, reload };
 }
 
 /** Drop cached rows (e.g. after joining / leaving a room). */

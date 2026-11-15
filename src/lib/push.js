@@ -53,7 +53,8 @@ const UPDATE_EVERY_MS = 30 * 60 * 1000;
 /**
  * An installed iOS / Android app is resumed from the background without a navigation, so the browser never gets the
  * chance to check for a new sw.js: ask when the app comes back to the foreground (at most every 30 minutes).
- * The worker has no fetch handler and no caches, so a new version takes over silently (skipWaiting + claim).
+ * The worker only serves the offline page when a navigation fails and caches nothing else, so a new version takes over
+ * silently (skipWaiting + claim).
  */
 function watchForUpdates(reg) {
   if (!reg || typeof document === 'undefined') return;

@@ -1,156 +1,201 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import CodeSheet from '@/components/shell/nav/CodeSheet.jsx';
-import { radioKeyNav } from '@/components/shell/ui.jsx';
-import { featuredGame, getGame } from '@/games/registry.js';
+import { getCategory, getGame } from '@/games/registry.js';
 import { useAuth } from '@/lib/auth.jsx';
 import { BRAND } from '@/platform/brand.js';
 import { paths } from '@/platform/paths.js';
-import { GameIcon } from '@/platform/home/GameArt.jsx';
-import GameHero, { Cover, playersLabel } from '@/platform/game/GameHero.jsx';
+import { LivePanel, MobileBar, SoonPanel } from '@/platform/game/ActionPanel.jsx';
+import { AboutSection, DetailsTable, GallerySection, HowToPlay, LeaderboardSection, OpenTables, RelatedGames, openTableList, useOpenRooms } from '@/platform/game/DetailSections.jsx';
+import { GameHead, HeroArt, categoryHref } from '@/platform/game/GameHero.jsx';
 import HubIcon from '@/platform/game/HubIcon.jsx';
 import Unavailable from '@/platform/game/Unavailable.jsx';
 import { themeVars } from '@/platform/game/color.js';
-import { useNotify } from '@/platform/game/notify.js';
+import { gameJsonLd, metaDescription, sectionList } from '@/platform/game/detailModel.js';
 import useDocTitle from '@/platform/game/useDocTitle.js';
 import { defaultSeats, seatOptions } from '@/platform/game/seats.js';
 import useHostRoom from '@/platform/game/useHostRoom.js';
-import { GameTopPlayers, HowToPlay, OpenTables, YourRecord } from '@/platform/game/DetailSections.jsx';
-import '@/styles/x-lobby.css';
+import '@/styles/store-detail.css';
 
-const DEFAULT_HINT = 'You get a code to share. Friends join, then you start.';
+/** Games › Category › Name. */
+function Crumbs({ game }) {
+  const cat = getCategory(game.category);
+  return (
+    <nav className="gd-crumbs" aria-label="Breadcrumb">
+      <ol>
+        <li>
+          <Link to={paths.games()}>
+            <HubIcon name="chevL" size={16} /> Games
+          </Link>
+        </li>
+        {cat && (
+          <li>
+            <Link to={categoryHref(cat)}>{cat.label}</Link>
+          </li>
+        )}
+        <li aria-current="page">
+          <span>{game.name}</span>
+        </li>
+      </ol>
+    </nav>
+  );
+}
 
-const Back = () => (
-  <Link to={paths.hub()} className="hub-back">
-    <HubIcon name="chevL" size={18} /> Games
-  </Link>
-);
+/** Anchor nav for the page's sections, with the section in view marked. */
+function SubNav({ items }) {
+  const [active, setActive] = useState(items[0]?.id || '');
+  const key = items.map((i) => i.id).join('|');
+  useEffect(() => {
+    if (typeof IntersectionObserver !== 'function') return undefined;
+    const ids = key ? key.split('|') : [];
+    const seen = new Map();
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => seen.set(e.target.id, e.isIntersecting));
+        const first = ids.find((id) => seen.get(id));
+        if (first) setActive(first);
+      },
+      { rootMargin: '-25% 0px -60% 0px' },
+    );
+    ids.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) io.observe(el);
+    });
+    return () => io.disconnect();
+  }, [key]);
+
+  if (items.length < 2) return null;
+  return (
+    <nav className="gd-subnav" aria-label="On this page">
+      <ul>
+        {items.map((it) => (
+          <li key={it.id}>
+            <a href={`#${it.id}`} className="gd-subnav__a" aria-current={active === it.id ? 'location' : undefined}>
+              {it.label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
+/** In-page `#gd-*` links scroll smoothly (instantly under reduced motion) and move focus to the section heading. */
+function useJumpLinks() {
+  return useCallback((e) => {
+    const a = e.target instanceof Element ? e.target.closest('a[href^="#gd-"]') : null;
+    if (!a) return;
+    const sec = document.getElementById(a.getAttribute('href').slice(1));
+    if (!sec) return;
+    e.preventDefault();
+    const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    sec.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+    sec.querySelector('h2')?.focus({ preventScroll: true });
+  }, []);
+}
+
+/** `<title>`, description, canonical + Open Graph tags and schema.org data for one game. */
+function useGameMeta(game, soon) {
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const path = paths.game(game.id);
+  useDocTitle(soon ? `${game.name} (coming soon) · ${BRAND.name}` : `Play ${game.name} online · ${BRAND.name}`, {
+    description: metaDescription(game),
+    path,
+    jsonLd: gameJsonLd(game, origin ? `${origin}${path}` : ''),
+  });
+}
 
 /**
- * Quick start: how many players -> Create table (a private room) -> the lobby, where friends are invited.
- * Below it: how to play, your record, top players and open tables for this game (all from the manifest / API).
+ * A playable game's store listing: shopfront art and title block, a sticky "Start a table" panel, then About,
+ * How to play, Gallery, Open tables, Leaderboard, Game details and More like this.
  */
 function LiveDetail({ game }) {
+  useGameMeta(game, false);
   const { host, busy } = useHostRoom(game);
-  const { user } = useAuth() || {};
+  const auth = useAuth() || {};
+  const { user, loading: authLoading, reachable } = auth;
   const [codeOpen, setCodeOpen] = useState(false);
   const options = seatOptions(game.players);
   const [seats, setSeats] = useState(() => defaultSeats(options));
+  const panelRef = useRef(null);
+  const rooms = useOpenRooms(game.id);
+  const tables = rooms.status === 'ok' ? openTableList(rooms.rooms, game.id).length : undefined;
+  const jump = useJumpLinks();
+  const create = () => host({ maxPlayers: seats });
+  const nav = sectionList(game, { live: true });
 
   return (
-    <div className="hub-page hub-detail hub-quick xl-detail" style={themeVars(game.theme)}>
-      <Back />
-      <div className="xl-detail__grid">
-        <section className="hub-quick__card xl-detail__main" aria-labelledby="hub-quick-title">
-          <div className="hub-quick__banner" aria-hidden="true">
-            <Cover game={game} />
-            <span className="hub-quick__facts">
-              <HubIcon name="users" size={14} /> {playersLabel(game.players)}
-              {game.duration && (
-                <>
-                  <i /> <HubIcon name="clock" size={14} /> {game.duration}
-                </>
-              )}
-            </span>
+    <div className="hub-page gd" style={themeVars(game.theme)} onClick={jump}>
+      <Crumbs game={game} />
+      <div className="gd-grid">
+        <HeroArt game={game} />
+        <aside className="gd-aside">
+          <div className="gd-aside__in">
+            <GameHead game={game} tables={tables} />
+            <LivePanel
+              game={game}
+              options={options}
+              seats={seats}
+              setSeats={setSeats}
+              host={host}
+              busy={busy}
+              user={user}
+              authLoading={authLoading}
+              reachable={reachable}
+              onJoinCode={() => setCodeOpen(true)}
+              panelRef={panelRef}
+            />
           </div>
-          <div className="hub-quick__body">
-            <header className="hub-quick__head">
-              <GameIcon game={game} size={56} />
-              <div className="hub-quick__titles">
-                <h1 id="hub-quick-title" className="hub-quick__title">
-                  {game.name}
-                </h1>
-                {game.tagline && <p className="hub-quick__tagline">{game.tagline}</p>}
-              </div>
-            </header>
-
-            <div className="hub-quick__step">
-              <h2 id="hub-seats-h" className="hub-quick__label">
-                How many players?
-              </h2>
-              <div className="hub-quick__seats" role="radiogroup" aria-labelledby="hub-seats-h" onKeyDown={radioKeyNav}>
-                {options.map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    role="radio"
-                    aria-checked={n === seats}
-                    className={`hub-quick__seat${n === seats ? ' is-on' : ''}`}
-                    onClick={() => setSeats(n)}
-                    disabled={busy}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
-              <p className="hub-quick__seatnote" aria-live="polite">
-                You + {seats - 1} {seats - 1 === 1 ? 'friend' : 'friends'}
-              </p>
-            </div>
-
-            <button type="button" className="hub-btn hub-btn--accent hub-btn--lg hub-btn--block hub-quick__create" onClick={() => host({ maxPlayers: seats })} disabled={busy} aria-busy={busy}>
-              {busy ? 'Creating table...' : 'Create table'}
-            </button>
-            <p className="hub-faint hub-quick__hint">{typeof game.createHint === 'string' && game.createHint ? game.createHint : DEFAULT_HINT}</p>
-
-            <div className="hub-quick__or" role="separator">
-              <span>Got a code?</span>
-            </div>
-            <button type="button" className="hub-quick__join" onClick={() => setCodeOpen(true)}>
-              <HubIcon name="hash" size={18} /> Join with a code
-            </button>
-          </div>
-        </section>
-
-        <div className="xl-detail__side">
-          <HowToPlay game={game} />
-          <YourRecord game={game} user={user} />
-          <GameTopPlayers game={game} />
-          <OpenTables game={game} onCreate={() => host({ maxPlayers: seats })} busy={busy} />
+        </aside>
+        <div className="gd-main">
+          <SubNav items={nav} />
+          <AboutSection game={game} index={0} />
+          <HowToPlay game={game} index={1} />
+          <GallerySection game={game} index={2} />
+          <OpenTables game={game} state={rooms} onCreate={create} busy={busy} index={3} />
+          <LeaderboardSection game={game} user={user} index={4} />
+          <DetailsTable game={game} index={5} />
         </div>
       </div>
-
+      <RelatedGames game={game} />
+      <MobileBar game={game} seats={seats} host={host} busy={busy} user={user} authLoading={authLoading} panelRef={panelRef} />
       <CodeSheet open={codeOpen} onClose={() => setCodeOpen(false)} />
     </div>
   );
 }
 
+/** A coming-soon teaser: the same shopfront, with What to expect, Notify me and a way to play something else. */
 function SoonDetail({ game }) {
-  const [notify, toggle] = useNotify(game.id);
-  const playable = featuredGame();
-  const meanwhile = playable && playable.status !== 'coming_soon' ? playable : null;
+  useGameMeta(game, true);
+  const jump = useJumpLinks();
+  const nav = sectionList(game, { live: false });
   return (
-    <div className="hub-page hub-detail" style={themeVars(game.theme)}>
-      <Back />
-      <GameHero game={game} soon />
-      <section className="hub-panel hub-soon" aria-labelledby="hub-soon-h">
-        <div className="hub-soon__text">
-          <h2 id="hub-soon-h" className="hub-section__title">
-            Coming soon
-          </h2>
-          <p className="hub-muted">{game.name} isn't open for play yet. Tap Notify me to mark it as one you're waiting for.</p>
+    <div className="hub-page gd gd--soon" style={themeVars(game.theme)} onClick={jump}>
+      <Crumbs game={game} />
+      <div className="gd-grid">
+        <HeroArt game={game} soon />
+        <aside className="gd-aside">
+          <div className="gd-aside__in">
+            <GameHead game={game} soon />
+            <SoonPanel game={game} />
+          </div>
+        </aside>
+        <div className="gd-main">
+          <SubNav items={nav} />
+          <AboutSection game={game} soon index={0} />
+          <GallerySection game={game} index={1} />
+          <DetailsTable game={game} index={2} />
         </div>
-        <div className="hub-soon__actions">
-          <button type="button" className={`hub-btn hub-btn--lg ${notify ? 'hub-btn--soft' : 'hub-btn--accent'}`} aria-pressed={notify} onClick={toggle}>
-            <HubIcon name={notify ? 'check' : 'bell'} size={20} /> {notify ? 'On the list' : 'Notify me'}
-          </button>
-          {meanwhile && (
-            <Link to={paths.game(meanwhile.id)} className="hub-btn hub-btn--ghost hub-btn--lg">
-              Play {meanwhile.name} meanwhile
-            </Link>
-          )}
-        </div>
-        <p className="hub-faint">Saved on this device only.</p>
-      </section>
+      </div>
+      <RelatedGames game={game} />
     </div>
   );
 }
 
-/** /games/:gameId: a live game is a quick-start card (players, create table); a coming-soon game a teaser. */
+/** /games/:gameId: a live game is a store listing (details + start a table), a coming-soon game a teaser. */
 export default function GameDetail() {
   const { gameId } = useParams();
   const game = getGame(gameId);
-  useDocTitle(game ? `${game.name} · ${BRAND.name}` : `Game not available · ${BRAND.name}`);
-  if (!game) return <Unavailable reason="unknown" />;
-  return game.status === 'coming_soon' ? <SoonDetail game={game} /> : <LiveDetail game={game} />;
+  if (!game) return <Unavailable reason="unknown" query={gameId} />;
+  return game.status === 'coming_soon' ? <SoonDetail key={game.id} game={game} /> : <LiveDetail key={game.id} game={game} />;
 }

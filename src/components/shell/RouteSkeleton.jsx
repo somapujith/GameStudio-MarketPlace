@@ -5,10 +5,12 @@ import '@/styles/x-shell.css';
  * swaps in without the layout jumping. Full-screen game routes keep PageLoading.
  */
 
-/** 'home' | 'list' | 'profile' | 'shop' | 'game' | 'page' for a hub pathname. */
+/** 'home' | 'browse' | 'legal' | 'list' | 'profile' | 'shop' | 'game' | 'page' for a hub pathname. */
 export function skeletonKind(pathname = '/') {
   const p = String(pathname || '/');
   if (p === '/' || p === '') return 'home';
+  if (p === '/games' || p.startsWith('/search')) return 'browse';
+  if (['/about', '/help', '/privacy', '/terms'].some((x) => p === x || p.startsWith(`${x}/`))) return 'legal';
   if (p.startsWith('/friends') || p.startsWith('/leaderboard')) return 'list';
   if (p.startsWith('/profile')) return 'profile';
   if (p.startsWith('/shop')) return 'shop';
@@ -68,6 +70,40 @@ function Home() {
         ))}
       </div>
     </>
+  );
+}
+
+function Browse() {
+  return (
+    <>
+      <Head />
+      <S className="xs-sk-search" />
+      <div className="xs-sk-chips">
+        {Array.from({ length: 5 }, (_, i) => (
+          <S key={i} className="xs-sk-chip" />
+        ))}
+      </div>
+      <div className="xs-sk-tiles">
+        {Array.from({ length: 6 }, (_, i) => (
+          <div className="xs-sk-card" key={i}>
+            <S className="xs-sk-cover" />
+            <S className="hub-skel--line xs-sk-w70" />
+            <S className="hub-skel--line xs-sk-w40" />
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function Legal() {
+  return (
+    <div className="xs-sk-legal">
+      <Head />
+      {[78, 92, 64, 88, 70, 84, 56].map((w, i) => (
+        <S key={i} className="hub-skel--line" style={{ width: `${w}%` }} />
+      ))}
+    </div>
   );
 }
 
@@ -133,6 +169,8 @@ export default function RouteSkeleton({ pathname = '/', label = 'Loading…' }) 
     <div className={`hub-page xs-sk xs-sk--${kind}`} role="status" aria-live="polite" aria-busy="true">
       <span className="hub-sr">{label}</span>
       {kind === 'home' && <Home />}
+      {kind === 'browse' && <Browse />}
+      {kind === 'legal' && <Legal />}
       {kind === 'list' && (
         <>
           <Head />

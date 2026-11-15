@@ -5,6 +5,8 @@ import HubIcon from '@/platform/game/HubIcon.jsx';
 import { featured, gameById } from '@/platform/home/catalog.js';
 import { GameIcon } from '@/platform/home/GameArt.jsx';
 import { themeVars } from '@/platform/home/gameTheme.js';
+import Rail from '@/platform/home/store/Rail.jsx';
+import { useLive } from '@/platform/home/store/live.js';
 import { joinableRooms } from './homeModel.js';
 import { useLoad } from './useLoad.js';
 
@@ -32,7 +34,7 @@ function TableCard({ room }) {
   const game = gameById(room.gameId);
   const host = String(room.hostName || '').trim() || 'A player';
   return (
-    <Link to={paths.join(room.code)} className="xh-table" style={themeVars(game)}>
+    <Link to={paths.join(room.code)} className="xh-table sh-ticket" style={themeVars(game)}>
       <span className="xh-table__top">
         <GameIcon game={game} size={44} />
         <span className="xh-table__who">
@@ -51,13 +53,32 @@ function TableCard({ room }) {
   );
 }
 
+function SkelTicket() {
+  return (
+    <li className="xh-table sh-ticket sh-ticket--skel" aria-hidden="true">
+      <span className="xh-table__top">
+        <span className="st-skel" style={{ width: 44, height: 44, borderRadius: 14 }} />
+        <span className="xh-table__who">
+          <span className="st-skel" style={{ width: 110, height: 14 }} />
+          <span className="st-skel" style={{ width: 70, height: 10 }} />
+        </span>
+      </span>
+      <span className="st-skel" style={{ width: '80%', height: 11 }} />
+      <span className="st-skel" style={{ width: '45%', height: 12 }} />
+    </li>
+  );
+}
+
 /**
- * "Join a table": public rooms waiting for players (polled while the tab is visible). Skeleton while loading,
- * an inviting empty state with a create CTA, and nothing at all when the server is unreachable.
+ * "Open tables": public rooms waiting for players, as a rail of ticket cards with a Join arrow. Skeleton while
+ * loading, an honest empty state with a create CTA, and a calm offline state with Retry. Uses the Home page's shared
+ * live numbers when mounted under <LiveProvider>, else its own (polled) request.
  */
 export default function OpenTables() {
-  const { status, data } = useLoad('rooms-open', fetchOpen, { pollMs: 30_000 });
-  if (status !== 'loading' && status !== 'ok') return null; // offline / error: silent
+  const shared = useLive();
+  const own = useLoad('rooms-open', fetchOpen, { enabled: !shared, pollMs: 30_000 });
+  const { status, data, reload } = shared ? shared.open : own;
+  const retry = shared ? shared.retry : reload;
 
   const rooms = status === 'ok' ? joinableRooms(data?.rooms) : [];
   const host = featured();
@@ -65,31 +86,36 @@ export default function OpenTables() {
   let body;
   if (status === 'loading') {
     body = (
-      <ul className="hub-row hub-row--tight xh-tables" aria-hidden="true">
+      <ul className="st-rail sh-rail" aria-hidden="true" data-solo="false">
         {[0, 1, 2, 3].map((i) => (
-          <li key={i} className="xh-table xh-table--skel">
-            <span className="xh-table__top">
-              <span className="hub-skel" style={{ width: 44, height: 44, borderRadius: 14 }} />
-              <span className="xh-table__who">
-                <span className="hub-skel hub-skel--line" style={{ width: 110 }} />
-                <span className="hub-skel hub-skel--line" style={{ width: 70, height: 10 }} />
-              </span>
-            </span>
-            <span className="hub-skel hub-skel--line" style={{ width: '80%', height: 11 }} />
-            <span className="hub-skel hub-skel--line" style={{ width: '45%', height: 12 }} />
-          </li>
+          <SkelTicket key={i} />
         ))}
       </ul>
     );
+  } else if (status === 'offline' || status === 'error' || status === 'auth') {
+    body = (
+      <div className="sh-state" role="status">
+        <span className="sh-state__icon" aria-hidden="true">
+          <HubIcon name="wifiOff" size={24} />
+        </span>
+        <p className="sh-state__text">
+          <b>Open tables are unavailable</b>
+          <span>We cannot reach the server right now. Games with a code still work.</span>
+        </p>
+        <button type="button" className="hub-btn hub-btn--soft hub-btn--sm" onClick={retry}>
+          <HubIcon name="refresh" size={16} /> Retry
+        </button>
+      </div>
+    );
   } else if (!rooms.length) {
     body = (
-      <div className="xh-empty">
-        <span className="xh-empty__icon" aria-hidden="true">
-          <HubIcon name="table" size={26} />
+      <div className="sh-state">
+        <span className="sh-state__icon" aria-hidden="true">
+          <HubIcon name="table" size={24} />
         </span>
-        <p className="xh-empty__text">
-          <b>No open tables right now — start one</b>
-          <span>Create a table and share the code, or wait here: new tables show up on their own.</span>
+        <p className="sh-state__text">
+          <b>No open tables right now</b>
+          <span>Start one and share the code, or wait here: new tables show up on their own.</span>
         </p>
         {host && (
           <Link to={paths.game(host.id)} className="hub-btn hub-btn--primary hub-btn--sm">
@@ -98,34 +124,39 @@ export default function OpenTables() {
         )}
       </div>
     );
-  } else {
-    body = (
-      <ul className="hub-row hub-row--tight xh-tables" aria-label="Open tables">
-        {rooms.map((r) => (
-          <li key={r.code}>
-            <TableCard room={r} />
-          </li>
-        ))}
-      </ul>
-    );
   }
 
+  const live = rooms.length > 0;
+  const badge = live ? (
+    <span className="sh-count">
+      <i className="st-live" aria-hidden="true" /> {rooms.length} open
+    </span>
+  ) : null;
+
+  const head = {
+    eyebrow: 'Happening now',
+    title: 'Open tables',
+    sub: 'Pick a seat at a table that is waiting for players.',
+    badge,
+    moreTo: paths.join(),
+    moreLabel: 'Have a code?',
+  };
+
   return (
-    <section className="hub-section xh-open" aria-labelledby="xh-open-h" aria-busy={status === 'loading' || undefined}>
-      <div className="hub-section__head">
-        <h2 id="xh-open-h" className="hub-section__title">
-          Join a table
-          {rooms.length > 0 && (
-            <span className="hub-pill hub-pill--live hh2-pill-gap">
-              <i className="xh-live-dot" aria-hidden="true" /> {rooms.length} open
-            </span>
-          )}
-        </h2>
-        <Link to={paths.join()} className="hub-section__more">
-          Have a code?
-        </Link>
-      </div>
-      {body}
-    </section>
+    <div id="sh-open" className="sh-anchor" aria-busy={status === 'loading' || undefined}>
+      {live ? (
+        <Rail {...head} count={rooms.length} label="Open tables">
+          {rooms.map((r) => (
+            <li key={r.code}>
+              <TableCard room={r} />
+            </li>
+          ))}
+        </Rail>
+      ) : (
+        <Rail {...head} bare>
+          {body}
+        </Rail>
+      )}
+    </div>
   );
 }

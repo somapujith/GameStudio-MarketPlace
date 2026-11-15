@@ -1,6 +1,7 @@
-import { memo, useRef, useState } from 'react';
+import { memo, useContext, useRef, useState } from 'react';
 import * as Art from '@/components/art/index.js';
 import { isCorner, pawnPlacement, sideOf } from './fx/geometry.js';
+import PhoneBoardContext from './phone/PhoneBoardContext.js';
 import '@/styles/board.css';
 
 export { pawnPlacement } from './fx/geometry.js';
@@ -53,6 +54,7 @@ function PawnImpl({
   bankrupt = false,
   tileName = '',
 }) {
+  const disc = useContext(PhoneBoardContext); // the simple phone table draws pawns as round discs with a white rim
   // Re-key the hop and shadow whenever the pawn moves, so the motion replays per step.
   const [seen, setSeen] = useState(pos);
   const [steps, setSteps] = useState(0);
@@ -92,7 +94,13 @@ function PawnImpl({
         <span className={`hb-pawn__shadow${moving}`} key={`s${steps}`} />
         {kind === 'ride' && steps ? <span className="hb-pawn__trail" key={`t${steps}`} /> : null}
         <span className={`hb-pawn__hop${moving}`} key={steps}>
-          <PieceToken piece={piece} color={color} size={48} className="hb-pawn__piece" />
+          {disc ? (
+            <span className="hb-pawn__disc">
+              <PieceToken piece={piece} color="#ffffff" size={48} base={false} className="hb-pawn__glyph" />
+            </span>
+          ) : (
+            <PieceToken piece={piece} color={color} size={48} className="hb-pawn__piece" />
+          )}
           {isTurn && <span className="hb-pawn__marker" />}
         </span>
         {stuck && (

@@ -67,7 +67,7 @@ export default function BadgeGrid({ games, user, level }) {
 
   const earned = all.filter((b) => b.earned).length;
   return (
-    <section className="hub-section" aria-labelledby="hh2-badges-h">
+    <section id="badges" className="hub-section sa-anchor" aria-labelledby="hh2-badges-h">
       <div className="hub-section__head">
         <h2 id="hh2-badges-h" className="hub-section__title">
           Badges
@@ -110,13 +110,21 @@ function BadgeArtwork({ badge, fresh }) {
 }
 
 function BadgeList({ badges, fresh }) {
+  // earned first, then the closest to unlocking; the catalogue order breaks ties
+  const sorted = badges
+    .map((b, i) => ({ b, i }))
+    .sort((x, y) => Number(y.b.earned) - Number(x.b.earned) || (x.b.earned ? 0 : y.b.pct - x.b.pct) || x.i - y.i)
+    .map((x) => x.b);
   return (
     <ul className="hh2-badges xp-badges">
-      {badges.map((b, i) => (
+      {sorted.map((b, i) => (
         <li key={b.id} className={`hh2-badge ${b.earned ? 'is-earned' : 'is-locked'}`} style={{ '--i': Math.min(i, 12) }}>
           <BadgeArtwork badge={b} fresh={fresh?.has(b.id)} />
           <b className="hh2-badge__name">{b.label}</b>
-          <small className="hh2-badge__desc">{b.desc}</small>
+          <small className="hh2-badge__desc">
+            {!b.earned && <span className="sa-how">How to earn</span>}
+            {b.desc}
+          </small>
           {b.earned ? (
             <span className="hh2-badge__state">Earned</span>
           ) : (

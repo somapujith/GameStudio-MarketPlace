@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { canShare, shareOrCopy, useCopied } from './clipboard.js';
 import { inviteMessage, joinLink, spacedCode, whatsappUrl } from './codes.js';
-import '@/styles/online.css';
+import '@/styles/store-rooms.css';
 
 function WhatsAppIcon() {
   return (
@@ -40,8 +40,8 @@ function ShareIcon() {
   );
 }
 
-/** Room code in big letters + copy, share link (`origin + paths.join(code)`), WhatsApp, native share and a QR code. */
-export default function ShareCard({ code, gameName, onNotify }) {
+/** The invite block: room code in signage letters + copy, share link (`origin + paths.join(code)`), WhatsApp, native share and a QR code. */
+export default function ShareCard({ code, gameName, onNotify, id }) {
   const [codeCopied, copyCode] = useCopied();
   const [linkCopied, copyLink] = useCopied();
   const [qrOpen, setQrOpen] = useState(false);
@@ -55,18 +55,23 @@ export default function ShareCard({ code, gameName, onNotify }) {
   };
 
   return (
-    <section className="ho-card ho-share" aria-label="Invite players">
-      <div className="ho-share__top">
-        <div className="ho-share__codeblock">
-          <span className="ho-eyebrow">Room code</span>
-          <div className="ho-share__coderow">
-            <div className="ho-bigcode" aria-label={`Room code ${String(code).split('').join(' ')}`}>
-              {spacedCode(code)}
-            </div>
+    <section className="sr-card sr-share" aria-label="Invite players" id={id} tabIndex={-1}>
+      <header className="sr-card__head">
+        <div>
+          <span className="st-eyebrow">Invite</span>
+          <h2 className="sr-card__title">Fill the table</h2>
+        </div>
+      </header>
+
+      <div className="sr-share__top">
+        <div className="sr-share__codeblock">
+          <span className="sr-share__label">Room code</span>
+          <div className="sr-share__code" aria-label={`Room code ${String(code).split('').join(' ')}`}>
+            {spacedCode(code)}
           </div>
           <button
             type="button"
-            className={`ho-btn ho-btn--ghost ho-btn--sm ho-copybtn${codeCopied ? ' is-done' : ''}`}
+            className={`ho-btn ho-btn--ghost ho-btn--sm${codeCopied ? ' is-done' : ''}`}
             onClick={async () => {
               if (!(await copyCode(code))) notify('Could not copy. Select the code and copy it manually.', 'bad');
             }}
@@ -76,19 +81,19 @@ export default function ShareCard({ code, gameName, onNotify }) {
           </button>
         </div>
 
-        <div className={`ho-qr${qrOpen ? ' is-open' : ''}`}>
-          <div className="ho-qr__tile">
+        <div className={`sr-qr${qrOpen ? ' is-open' : ''}`}>
+          <div className="sr-qr__tile">
             <QRCodeSVG value={link} size={132} level="M" marginSize={2} bgColor="#ffffff" fgColor="#1b1340" title={`QR code for ${link}`} />
           </div>
-          <span className="ho-muted ho-qr__hint">Scan to join</span>
+          <span className="sr-qr__hint">Scan to join</span>
         </div>
       </div>
 
-      <div className="ho-linkrow">
-        <input className="ho-input ho-linkrow__input" readOnly value={link} aria-label="Invite link" onFocus={(e) => e.target.select()} />
+      <div className="sr-linkrow">
+        <input className="sr-linkrow__input" readOnly value={link} aria-label="Invite link" onFocus={(e) => e.target.select()} />
         <button
           type="button"
-          className={`ho-btn ho-btn--ghost ho-copybtn${linkCopied ? ' is-done' : ''}`}
+          className={`ho-btn ho-btn--ghost${linkCopied ? ' is-done' : ''}`}
           onClick={async () => {
             if (!(await copyLink(link))) notify('Could not copy the link.', 'bad');
           }}
@@ -98,7 +103,7 @@ export default function ShareCard({ code, gameName, onNotify }) {
         </button>
       </div>
 
-      <div className="ho-share__actions">
+      <div className="sr-share__actions">
         <a className="ho-btn ho-btn--wa" href={whatsappUrl(code, gameName)} target="_blank" rel="noopener noreferrer">
           <WhatsAppIcon /> WhatsApp
         </a>
@@ -107,7 +112,7 @@ export default function ShareCard({ code, gameName, onNotify }) {
             <ShareIcon /> Share
           </button>
         )}
-        <button type="button" className="ho-btn ho-btn--ghost ho-qr__toggle" onClick={() => setQrOpen((v) => !v)} aria-expanded={qrOpen}>
+        <button type="button" className="ho-btn ho-btn--ghost sr-qr__toggle" onClick={() => setQrOpen((v) => !v)} aria-expanded={qrOpen}>
           <QrIcon /> {qrOpen ? 'Hide QR' : 'Show QR'}
         </button>
       </div>

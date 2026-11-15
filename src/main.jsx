@@ -1,3 +1,5 @@
+import '@fontsource-variable/bricolage-grotesque';
+import '@fontsource-variable/plus-jakarta-sans';
 import './styles/tokens.css';
 import './styles/global.css';
 

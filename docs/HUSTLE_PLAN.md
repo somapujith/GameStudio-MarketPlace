@@ -140,8 +140,8 @@ Tiles are **fictional commercial ventures** in the precincts (heritage rule), ea
 | `classic` | Classic Long Game | until one player is left (safety cap 60 rounds) | 15,00,000 |
 
 Win: last player standing, or highest **net worth** when the last round ends (tie: more cash, then seat order; `standings()` must agree with the winner).
-`winReason: 'last_standing' | 'rounds'`. No end-cash goal any more.
-Host settings: `mode` (the only one the lobby shows), `dice: 'lucky'|'fair'` (default lucky), `auctionOnDecline` (default true), `maxPlayers` 2-6.
+`winReason: 'last_standing' | 'target' | 'rounds'`. **Win target (added 2026-11-15):** host setting `targetWorth` (`null` | ₹25L | ₹30L | ₹40L | ₹50L | ₹75L | ₹1Cr; default ₹50L for standard and quick, ₹30L for classic, which cannot be switched off): the first player whose net worth reaches it wins at once (only when no debt, auction or trade is pending); `state.cfg.targetWorth`, `win` event `reason: 'target'`. See `GAME_RULES.md` 7.4.
+Host settings: `mode` and `targetWorth` (the two the lobby shows; another mode resets the target), `dice: 'lucky'|'fair'` (default lucky), `auctionOnDecline` (default true), `maxPlayers` 2-6.
 
 ### 3.5 Pieces
 `PIECES = [{id:'pearl',name:'Pearl'},{id:'auto',name:'Auto-rickshaw'},{id:'handi',name:'Biryani handi'},{id:'chai',name:'Irani chai glass'},{id:'bat',name:'Cricket bat'},{id:'camera',name:'Film camera'}]` (in `shared/board.js`).
@@ -200,7 +200,7 @@ The client `playbackSpeed` setting may only make playback faster (>= 1) or sligh
 ## 5. Manifest additions (`src/games/hyderabad-tycoon/manifest.js`)
 `tagline` "Own the city. Survive the madness." · `description` from the concept pitch · `duration` '35-60 min' · `features` · `createHint` (the line under Create table) ·
 `howToPlay: [{ title, text }]` (4 steps: Roll, Buy or auction, Upgrade, Richest after the last round wins) · `pieces: PIECES` · `badges: [{ id, label, desc, stat, target, icon }]`
-(game-specific badges such as "Landlord: collect ₹5,00,000 in rent") · `stats` adds `{ key: 'rating', label: 'Rating' }` · `lobbySettings: ['mode']` · `tableRules` · `summarize`.
+(game-specific badges such as "Landlord: collect ₹5,00,000 in rent") · `stats` adds `{ key: 'rating', label: 'Rating' }` · `lobbySettings: ['mode', 'targetWorth']` · `tableRules` · `summarize`.
 
 ## 6. Work packages (owner = only agent allowed to edit)
 | WP | Owns |

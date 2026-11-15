@@ -59,6 +59,8 @@ export default function CoinsChip() {
   const coins = user && Number.isFinite(serverCoins) ? serverCoins : profile.coins;
   const [shown, dir] = useCountUp(coins, reduced);
   const canClaim = !!user?.daily?.canClaim;
+  // A visitor has no coins yet: signing in is what starts the account. (After the hooks: their count must not change.)
+  if (!user) return null;
 
   return (
     <TransitionLink

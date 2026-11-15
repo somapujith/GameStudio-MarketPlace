@@ -24,6 +24,8 @@
 //              defaultMaxPlayers            seats of a new room (default min(4, maxPlayers))
 //              pendingPlayerIds(state)      every player the game waits for (default [turnPlayerId])
 //              sanitizeAction(raw, playerId)  allow-list for client actions (default: any {type} object, playerId forced)
+//              mergeSettings(current, patch)  what a host's patch makes of the current settings before validateSettings
+//                                           (default: { ...current, ...patch })
 //              lobbySettings(settings)      settings as the lobby shows them (default: the settings)
 //              summarize(settings)          one-line summary for open-table cards
 //              animationMs(events)          client animation time of an action (the next move waits for it)

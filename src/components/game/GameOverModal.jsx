@@ -12,16 +12,25 @@ import Confetti from './ui/Confetti.jsx';
 import PlayerToken, { cosmeticsOf } from './ui/PlayerToken.jsx';
 import { ordinal, useHeld, worthParts } from './ui/helpers.js';
 import AutoMascot from '@/components/art/AutoMascot.jsx';
+import { compactTarget, targetOf } from './turn/target.js';
 
 const same = (a, b) => a != null && b != null && String(a) === String(b);
 
+/** Why the game ended (result.reason = the engine's winReason; `result.target` = cfg.targetWorth when known). */
 export function reasonLine(result) {
   switch (result?.reason) {
-    case 'rounds': return result.rounds ? `After ${result.rounds} rounds, the richest hustler wins` : 'Last round played: the richest hustler wins';
+    case 'target':
+    case 'net_worth': return result.target ? `Reached the ${compactTarget(result.target)} net worth target` : 'Reached the net worth target';
+    case 'rounds': return 'Round limit reached: richest wins';
     case 'last_standing': return 'Last player standing';
-    case 'net_worth': return 'Net worth target reached';
     default: return '';
   }
+}
+
+/** For a viewer who was already out when the game ended: "You resigned before the end" / "You went bankrupt before the end". */
+export function outLine(meOut, resigned) {
+  if (!meOut) return '';
+  return resigned ? 'You resigned before the end' : 'You went bankrupt before the end';
 }
 
 /** Highlights of the match from players' stats: [{ key, icon, label, who, value }] (only stats somebody scored). */
@@ -71,7 +80,8 @@ export default function GameOverModal({ session, onExit }) {
     const winner = rows.find((r) => same(r.id, result.winner)) || rows[0];
     const podium = [rows[1], rows[0], rows[2]].filter(Boolean);
     const rest = rows.slice(3);
-    const reason = reasonLine({ ...result, rounds: result.rounds ?? view?.round });
+    const reason = reasonLine({ ...result, rounds: result.rounds ?? view?.round, target: targetOf(view?.cfg) });
+    const out = outLine(!!players.find((x) => same(x.id, session.me))?.bankrupt, !!session.resigned);
     const moments = matchMoments(players);
 
     content = (
@@ -81,6 +91,7 @@ export default function GameOverModal({ session, onExit }) {
           <h2 className="hg-over-title">{won ? 'You own the city!' : `You finished ${ordinal(rank)}`}</h2>
           {!won && winner ? <p className="hg-over-sub">{winner.name} wins with {formatINR(winner.worth)}</p> : null}
           {reason ? <p className="hg-over-reason">{reason}</p> : null}
+          {out ? <p className="hg-over-out">{out}</p> : null}
         </div>
 
         <ol className={`hg-podium n${podium.length}`} aria-label="Final standings by net worth">

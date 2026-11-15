@@ -33,6 +33,7 @@ describe('registry', () => {
 describe('Tycoon adapter: settings', () => {
   const inputs = [
     undefined, null, {}, { mode: 'quick', dice: 'fair', auctionOnDecline: false }, { mode: 'classic' }, { mode: 'turbo' },
+    { targetWorth: 3000000 }, { targetWorth: null }, { mode: 'classic', targetWorth: null }, { targetWorth: 'rich' }, { mode: 'quick', targetWorth: 10000000 },
     { mode: 5 }, { dice: 'loaded' }, { auctionOnDecline: 'yes' }, { goal: 70000, maxRounds: 50, snatches: 2 },
     { debug: true, seed: 5, startCash: 99999 }, { maxPlayers: 3, mode: 'quick' }, { maxPlayers: 9 }, [], 'mode', 42,
   ];
@@ -49,7 +50,29 @@ describe('Tycoon adapter: settings', () => {
 
   it('fills defaults and drops unknown keys (the old goal / snatch keys too)', () => {
     expect(tycoon.validateSettings({ goal: 50000, debug: true, snatches: 3 })).toEqual({ ok: true, settings: ROOM_DEFAULTS });
-    expect(tycoon.defaultSettings).toEqual({ mode: 'standard', dice: 'lucky', auctionOnDecline: true });
+    expect(tycoon.defaultSettings).toEqual({ mode: 'standard', dice: 'lucky', auctionOnDecline: true, targetWorth: 5000000 });
+  });
+
+  it('the win target: validated against the list, never off without a round limit, and part of the summary', () => {
+    const ok = (raw) => tycoon.validateSettings(raw).settings.targetWorth;
+    expect(ok({})).toBe(5000000);
+    expect(ok({ targetWorth: 2500000 })).toBe(2500000);
+    expect(ok({ targetWorth: null })).toBeNull();
+    expect(ok({ targetWorth: 99 })).toBe(5000000);
+    expect(ok({ mode: 'classic' })).toBe(3000000);
+    expect(ok({ mode: 'classic', targetWorth: null })).toBe(3000000);
+    expect(ok({ mode: 'classic', targetWorth: 'x' })).toBe(3000000);
+    expect(ok({ mode: 'classic', targetWorth: 7500000 })).toBe(7500000);
+    expect(tycoon.validateSettings({ targetWorth: 99 }).ok).toBe(true); // sanitised, not an error
+    // a patch: another mode resets the target unless the patch also changes it
+    const cur = { mode: 'standard', dice: 'lucky', auctionOnDecline: true, targetWorth: 4000000 };
+    expect(tycoon.mergeSettings(cur, { mode: 'classic', targetWorth: 4000000 }).targetWorth).toBeUndefined();
+    expect(tycoon.mergeSettings(cur, { mode: 'classic', targetWorth: 7500000 }).targetWorth).toBe(7500000);
+    expect(tycoon.mergeSettings(cur, { dice: 'fair' }).targetWorth).toBe(4000000);
+    expect(tycoon.mergeSettings(cur, { mode: 'standard', targetWorth: 4000000 }).targetWorth).toBe(4000000);
+    // the lobby shows what the engine runs with, including cfg.targetWorth
+    expect(tycoon.lobbySettings({ mode: 'classic' }).targetWorth).toBe(3000000);
+    expect(tycoon.lobbySettings({ targetWorth: null }).targetWorth).toBeNull();
   });
 
   it('lobbySettings is exactly what createGame runs with', () => {
@@ -61,9 +84,11 @@ describe('Tycoon adapter: settings', () => {
   });
 
   it('summarize is one short line per mode', () => {
-    expect(tycoon.summarize(ROOM_DEFAULTS)).toBe('Standard City Hustle · 20 rounds · richest wins');
-    expect(tycoon.summarize({ mode: 'quick' })).toBe('Quick Chai Break · 12 rounds · richest wins');
-    expect(tycoon.summarize({ mode: 'classic' })).toBe('Classic Long Game · last one standing wins');
+    expect(tycoon.summarize(ROOM_DEFAULTS)).toBe('Standard City Hustle · 20 rounds · richest wins · ₹50L target');
+    expect(tycoon.summarize({ mode: 'quick', targetWorth: null })).toBe('Quick Chai Break · 12 rounds · richest wins');
+    expect(tycoon.summarize({ mode: 'quick' })).toBe('Quick Chai Break · 12 rounds · richest wins · ₹50L target');
+    expect(tycoon.summarize({ mode: 'classic' })).toBe('Classic Long Game · first to ₹30L wins');
+    expect(tycoon.summarize({ mode: 'classic', targetWorth: 2500000 })).toBe('Classic Long Game · first to ₹25L wins');
   });
 
   it('createGame passes the chosen pieces through', () => {
@@ -201,6 +226,23 @@ describe('Tycoon adapter: redact, results, stored rooms', () => {
     expect(classic.rounds).toBe(engine.ROUND_CAP);
   });
 
+  it('result for a win by the net-worth target: reason target, the winner is rank 1, rounds are the round it ended in', () => {
+    const s = three();
+    s.cfg.targetWorth = 2500000;
+    s.players[1].cash = 2600000; // b crosses the target during round 7
+    s.round = 7;
+    const r = engine.applyAction({ ...s, phase: 'manage', turn: 1 }, { type: 'END_TURN', playerId: 'b' });
+    expect(r.state).toMatchObject({ phase: 'over', winner: 'b', winReason: 'target' });
+    const res = tycoon.result(r.state, {});
+    expect(res).toMatchObject({ winnerId: 'b', reason: 'target', rounds: 7 });
+    expect(res.standings[0]).toMatchObject({ id: 'b', rank: 1 });
+    expect(res.standings[0].score).toBeGreaterThanOrEqual(2500000);
+    expect(res.standings.map((x) => x.rank)).toEqual([1, 2, 3]);
+    expect(res.legacy).toMatchObject({ maxRounds: 20, mode: 'standard' });
+    expect(tycoon.isOver(r.state)).toBe(true);
+    expect(tycoon.animationMs([{ type: 'win', player: 'b', reason: 'target', worth: 2600000 }])).toBeGreaterThan(0);
+  });
+
   it('upgradeRecord moves old fields and calls off games stored with the old rules', () => {
     const old = { hotels: { a: 2 }, tradeId: 4, tradeAt: 12345, meta: {}, deadlines: {} };
     tycoon.upgradeRecord(old);
@@ -219,6 +261,6 @@ describe('Tycoon adapter: redact, results, stored rooms', () => {
     expect(stale).toMatchObject({ status: 'finished', abandoned: true, state: null, deadlines: {} });
     const lobby = { status: 'lobby', state: null, meta: {}, deadlines: {}, settings: { goal: 70000, maxRounds: 50, dice: 'fair' } };
     tycoon.upgradeRecord(lobby);
-    expect(lobby).toMatchObject({ status: 'lobby', settings: { mode: 'standard', dice: 'fair', auctionOnDecline: true } });
+    expect(lobby).toMatchObject({ status: 'lobby', settings: { mode: 'standard', dice: 'fair', auctionOnDecline: true, targetWorth: 5000000 } });
   });
 });

@@ -3,7 +3,7 @@ import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { DECISION_MS, WARN_MS, WARN_TEXT, clockInfo } from './clock.js';
 import { ANIM_MS } from '@shared/timing.js';
-import { roundBadgeInfo } from './RoundBadge.jsx';
+import RoundBadge, { TargetBadge, roundBadgeInfo } from './RoundBadge.jsx';
 import TurnBanner, { BANNER_INIT, bannerReducer, currentHandoff, handoffKey, handoffMs } from './TurnBanner.jsx';
 import CardReveal, { cardAnnouncement, cardOf } from './CardReveal.jsx';
 import { shouldRestoreFocus } from '../ui/Sheet.jsx';
@@ -167,6 +167,9 @@ describe('emotes + room', () => {
     expect(modeLabel({ mode: 'quick' })).toBe('Quick Chai Break');
     expect(tableSummary({ mode: 'standard', maxRounds: 20, dice: 'fair' })).toBe('Standard City Hustle · 20 rounds · Fair die');
     expect(tableSummary({ mode: 'classic', maxRounds: null })).toBe('Classic Long Game · Until one is left · Lucky die');
+    expect(tableSummary({ mode: 'classic', maxRounds: null, targetWorth: 3000000 })).toBe('Classic Long Game · No round limit · First to ₹30L · Lucky die');
+    expect(tableSummary({ mode: 'standard', maxRounds: 20, targetWorth: 5000000, dice: 'fair' })).toBe('Standard City Hustle · 20 rounds · First to ₹50L · Fair die');
+    expect(tableSummary({ mode: 'standard', maxRounds: 20, targetWorth: null })).toBe('Standard City Hustle · 20 rounds · Lucky die');
   });
 });
 
@@ -248,5 +251,26 @@ describe('screen-reader announcements', () => {
     expect(shouldRestoreFocus('touch')).toBe(true);
     expect(shouldRestoreFocus('pen')).toBe(true);
     expect(shouldRestoreFocus('mouse')).toBe(false);
+  });
+});
+
+describe('<TargetBadge>', () => {
+  const withCfg = (cfg, cash = 1500000) => sess({
+    view: { phase: 'roll', turn: 0, round: 4, players: players.map((p) => ({ ...p, cash })), cfg },
+    display: { phase: 'roll', turn: 0, round: 4, players: players.map((p) => ({ ...p, cash })), cfg },
+  });
+
+  it('says "First to ₹50L" next to the round badge, long and short, and renders nothing without a target', () => {
+    const out = html(createElement(TargetBadge, { session: withCfg({ maxRounds: 20, targetWorth: 5000000 }) }));
+    expect(out).toContain('First to ₹50L');
+    expect(out).toContain('tb-target__short');
+    expect(out).not.toContain('is-hot');
+    expect(html(createElement(TargetBadge, { session: withCfg({ maxRounds: 20 }) }))).toBe('');
+    expect(html(createElement(TargetBadge, { session: withCfg({ maxRounds: 20, targetWorth: null }) }))).toBe('');
+    expect(html(createElement(RoundBadge, { session: withCfg({ maxRounds: 20, targetWorth: 5000000 }) }))).not.toContain('First to');
+  });
+
+  it('turns gold once somebody is at 80% of the target', () => {
+    expect(html(createElement(TargetBadge, { session: withCfg({ maxRounds: 20, targetWorth: 5000000 }, 4200000) }))).toContain('tb-target is-hot');
   });
 });

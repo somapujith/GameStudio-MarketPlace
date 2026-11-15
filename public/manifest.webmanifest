@@ -1,7 +1,7 @@
 {
   "name": "GameHub: play together",
   "short_name": "GameHub",
-  "description": "A little marketplace of multiplayer games. Pick a game, grab your friends, and play in seconds.",
+  "description": "Play multiplayer games with friends in your browser. Create a table, share the room code and start in seconds.",
   "id": "./",
   "start_url": "./?source=pwa",
   "scope": "./",
@@ -23,10 +23,17 @@
   ],
   "shortcuts": [
     {
-      "name": "Play Hyderabad Tycoon",
-      "short_name": "Play",
-      "description": "Start a table and invite your friends",
-      "url": "./games/hyderabad-tycoon?source=shortcut",
+      "name": "Browse games",
+      "short_name": "Browse",
+      "description": "See every game and start a table",
+      "url": "./games?source=shortcut",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Join a table",
+      "short_name": "Join",
+      "description": "Enter a room code to join your friends",
+      "url": "./join?source=shortcut",
       "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {

@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from '
 import { AuthProvider, useAuth } from '@/lib/auth.jsx';
 import { AppShell, ErrorBoundary, ToastProvider } from '@/components/shell/index.js';
 import { CelebrationHost } from '@/components/shell/celebrate.js';
+import { ScrollManager } from '@/components/shell/scroll.js';
 import { useSettings } from '@/components/shell/stores.js';
 import { isGameRoute, ThemeSync } from '@/components/shell/theme.js';
 import { ViewTransitionBridge } from '@/components/shell/transitions.js';
@@ -11,6 +12,7 @@ import { LEGACY_REDIRECTS, paths } from '@/platform/paths.js';
 import PageLoading from '@/platform/game/PageLoading.jsx';
 import '@/styles/hub.css';
 import '@/styles/mobile.css';
+import '@/styles/store.css';
 
 /**
  * Lazy page loader that tolerates default OR named exports (several pages are written by other agents;
@@ -30,6 +32,12 @@ const Leaderboard = page(() => import('@/pages/Leaderboard.jsx'), 'Leaderboard')
 const Profile = page(() => import('@/pages/Profile.jsx'), 'Profile');
 const Shop = page(() => import('@/pages/Shop.jsx'), 'Shop');
 const GameDetail = page(() => import('@/pages/GameDetail.jsx'), 'GameDetail');
+const Games = page(() => import('@/pages/Games.jsx'), 'Games');
+const Search = page(() => import('@/pages/Search.jsx'), 'Search');
+const About = page(() => import('@/pages/About.jsx'), 'About');
+const Help = page(() => import('@/pages/Help.jsx'), 'Help');
+const Privacy = page(() => import('@/pages/Privacy.jsx'), 'Privacy');
+const Terms = page(() => import('@/pages/Terms.jsx'), 'Terms');
 const NotFound = page(() => import('@/pages/NotFound.jsx'), 'NotFound');
 
 // Rooms, friends, accounts
@@ -85,15 +93,6 @@ function UserRefresh() {
   return null;
 }
 
-/** Scroll to the top on navigation (not on hash changes). */
-function ScrollTop() {
-  const { pathname } = useLocation();
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [pathname]);
-  return null;
-}
-
 /**
  * Redirect that keeps what an old link carried: `location.state`, the query string and the hash.
  * If `to` has its own query, it wins over the same key from the old URL.
@@ -125,7 +124,7 @@ export default function App() {
       <BrowserRouter>
         <MotionSync />
         <ThemeSync />
-        <ScrollTop />
+        <ScrollManager />
         <ViewTransitionBridge />
         <UserRefresh />
         <ToastProvider>
@@ -154,7 +153,13 @@ export default function App() {
                 {/* Hub screens */}
                 <Route element={<AppShell />}>
                   <Route index element={<Home />} />
+                  <Route path="/games" element={<Games />} />
+                  <Route path="/search" element={<Search />} />
                   <Route path="/games/:gameId" element={<GameDetail />} />
+                  <Route path="/about" element={<About />} />
+                  <Route path="/help" element={<Help />} />
+                  <Route path="/privacy" element={<Privacy />} />
+                  <Route path="/terms" element={<Terms />} />
                   <Route path="/leaderboard" element={<Leaderboard />} />
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/shop" element={<Shop />} />

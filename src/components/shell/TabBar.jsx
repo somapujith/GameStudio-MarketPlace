@@ -4,6 +4,28 @@ import HubIcon from '@/platform/game/HubIcon.jsx';
 import { NAV_ITEMS, useIsActive } from './nav/navItems.js';
 import TransitionLink from './nav/TransitionLink.jsx';
 
+/** Visual badge on a nav icon: a count of things waiting, else a live dot (`badges` comes from useNavBadges in AppShell). */
+function NavBadge({ id, badges }) {
+  const b = badges && badges[id];
+  if (!b) return null;
+  if (b.count > 0) {
+    return (
+      <i className="hub-navbadge" aria-hidden="true">
+        {b.count > 9 ? '9+' : b.count}
+      </i>
+    );
+  }
+  return b.online > 0 ? <i className="hub-navbadge hub-navbadge--live st-live" aria-hidden="true" /> : null;
+}
+
+/** Screen-reader note for the same badge. */
+function NavNote({ id, badges }) {
+  const b = badges && badges[id];
+  if (!b) return null;
+  if (b.count > 0) return <span className="hub-sr">, {b.count} waiting</span>;
+  return b.online > 0 ? <span className="hub-sr">, {b.online} online</span> : null;
+}
+
 /** Kept for the barrel (`@/components/shell/index.js`): both lists are the same four hub destinations. */
 export const TABS = NAV_ITEMS;
 export const NAV = NAV_ITEMS;
@@ -78,7 +100,7 @@ function useNav() {
 }
 
 /** Bottom tab bar, shown on phones and tablets (hidden >= 900 px, where the left rail takes over). */
-export default function TabBar() {
+export default function TabBar({ badges }) {
   const { active, activeIndex, onTab } = useNav();
   const listRef = useRef(null);
   const ind = useIndicator(listRef, activeIndex, '.hub-tab__icon');
@@ -92,8 +114,9 @@ export default function TabBar() {
               <TransitionLink to={t.to} className={`hub-tab${on ? ' is-active' : ''}`} aria-current={on ? 'page' : undefined} onClick={onTab(on)}>
                 <span className="hub-tab__icon">
                   <HubIcon name={t.icon} size={22} strokeWidth={on ? 2.3 : 2} />
+                  <NavBadge id={t.id} badges={badges} />
                 </span>
-                <span className="hub-tab__label">{t.label}</span>
+                <span className="hub-tab__label">{t.label}<NavNote id={t.id} badges={badges} /></span>
               </TransitionLink>
             </li>
           );
@@ -105,7 +128,7 @@ export default function TabBar() {
 }
 
 /** Left rail for wide screens (>= 900 px; hidden below by CSS). Same destinations as the tab bar. */
-export function TopNav() {
+export function TopNav({ badges }) {
   const { active, activeIndex, onTab } = useNav();
   const listRef = useRef(null);
   const ind = useIndicator(listRef, activeIndex, '.hub-rail__link');
@@ -119,8 +142,9 @@ export function TopNav() {
               <TransitionLink to={t.to} className={`hub-rail__link${on ? ' is-active' : ''}`} aria-current={on ? 'page' : undefined} onClick={onTab(on)}>
                 <span className="hub-rail__icon">
                   <HubIcon name={t.icon} size={22} strokeWidth={on ? 2.3 : 2} />
+                  <NavBadge id={t.id} badges={badges} />
                 </span>
-                <span className="hub-rail__label">{t.label}</span>
+                <span className="hub-rail__label">{t.label}<NavNote id={t.id} badges={badges} /></span>
               </TransitionLink>
             </li>
           );

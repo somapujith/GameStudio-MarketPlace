@@ -129,6 +129,7 @@ export function displayFromState(state) {
     phase: state.phase || 'roll',
     cfg: state.cfg ? { ...state.cfg } : {},
     winner: state.winner ?? null,
+    winReason: state.winReason ?? null,
     lastCash: null,
     assist: null,
     assistPlayer: null,
@@ -335,6 +336,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
         owners: dsp.owners,
         round: dsp.round,
         maxRounds: dsp.cfg ? dsp.cfg.maxRounds ?? null : null,
+        targetWorth: dsp.cfg ? dsp.cfg.targetWorth ?? null : null,
         tile: S.stageTile, // the square being played (a tax payment follows its 'land' event)
       });
     } catch (err) {
@@ -668,7 +670,8 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
       }
 
       case 'win': {
-        patchDisplay((x) => ({ ...x, phase: 'over', winner: ev.player ?? null }));
+        // every win reason ('last_standing', 'rounds', 'target') gets the same full-pace fanfare; the reason rides along
+        patchDisplay((x) => ({ ...x, phase: 'over', winner: ev.player ?? null, winReason: ev.reason ?? null }));
         announce(ev);
         const mine = ev.player === me;
         try {

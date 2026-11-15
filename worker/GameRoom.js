@@ -14,8 +14,10 @@
 //   {t:'state', state, events, seq, clock}  clock = { deadline: epochMs|null, waitingFor: playerId[] }
 //       deadline = when the server will next act on its own (the 45 s decision timer counted after the
 //       animation, the faster pace for idle / disconnected players, or an adapter timer); null when nothing is due.
-//   {t:'room', room}  room.players[i] = { id, name, avatar, ready, connected, piece, cosmetics }
+//   {t:'room', room}  room.players[i] = { id, name, avatar, ready, connected, piece, cosmetics, net }
 //       connected stays true through the 15 s reconnect grace (a reload does not flap the seat).
+//       net = { q: 0..4|null, rtt, stale? }: connection strength (netpresence.js), presence data only: in memory, never saved.
+//   client -> {t:'net', rtt}  the member's own measured round-trip time in ms (0..20000); at most one per 2 s is used.
 //   client -> {t:'piece', piece}  lobby only; piece must be in adapter.pieces and not taken.
 import { DurableObject } from 'cloudflare:workers';
 import { getAdapter, DEFAULT_GAME_ID } from './games/index.js';
@@ -28,7 +30,8 @@ import {
   DEFAULT_VISIBILITY,
 } from './roomrules.js';
 import { roomRow, rowSignature, upsertRoomRow, deleteRoomRow, hasDb, loadEquipped, LISTING_HEARTBEAT_MS } from './roomsdb.js';
-import { sanitizeName, parseAvatar, sanitizeChat, sanitizeEmote, isUuid } from './validate.js';
+import { sanitizeName, parseAvatar, sanitizeChat, sanitizeEmote, isUuid, parseNetRtt } from './validate.js';
+import { NetPresence, NET_BROADCAST_GAP_MS } from './netpresence.js';
 import { cleanEquipped } from '../shared/cosmetics.js';
 import { DECISION_MS } from '../shared/timing.js';
 
@@ -92,6 +95,11 @@ export class GameRoom extends DurableObject {
     this.listedAt = 0;
     this.cosmeticsAt = new Map(); // userId -> when their equipped cosmetics were last read
     this.cosmeticsJob = Promise.resolve(); // the latest background cosmetics read (tests await it)
+    this.net = new NetPresence(); // connection strength per member: memory only, never stored (netpresence.js)
+    this.netSig = null; // what the last `room` broadcast said about it
+    this.netBroadcastAt = 0; // when the last `room` broadcast went out (net changes are coalesced to one per second)
+    this.netTimer = null;
+    this.netTimerAt = 0;
     // Answer heartbeats without waking a hibernating object.
     try {
       ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('{"t":"ping"}', '{"t":"pong"}'));
@@ -246,6 +254,7 @@ export class GameRoom extends DurableObject {
         connected: this.presenceOf(p, connected, now),
         piece: typeof p.piece === 'string' ? p.piece : null,
         cosmetics: cleanEquipped(p.cosmetics),
+        net: this.net.view(p.id, connected.has(p.id), now),
       })),
     };
   }
@@ -273,7 +282,52 @@ export class GameRoom extends DurableObject {
   broadcastRoom() {
     const room = this.roomView();
     this.room.presenceSig = this.presenceSignature(room); // kept in the record: survives hibernation
+    this.netSig = NetPresence.signature(room.players); // memory only: net never goes into the record
+    this.netBroadcastAt = Date.now();
     this.broadcast({ t: 'room', room });
+  }
+
+  /**
+   * A member reported their round-trip time. Everyone else sees it as `net` in the `room` message, but only when a
+   * member's bars (or their staleness) change, at most once per second; the rest is dropped on the floor.
+   */
+  onNet(att, msg) {
+    const r = this.room;
+    if (!r || !r.players.some((p) => p.id === att.userId)) return; // not seated: nothing to show
+    const rtt = parseNetRtt(msg.rtt);
+    if (rtt == null) return;
+    if (!this.net.report(att.userId, rtt, Date.now())) return; // faster than one report per 2 s: ignored
+    this.flushNet();
+  }
+
+  /** Broadcast `room` if the visible net state changed (coalesced), and arm the timer for the next change. */
+  flushNet() {
+    const r = this.room;
+    if (!r || !r.players.length) return;
+    const now = Date.now();
+    if (NetPresence.signature(this.roomView().players) !== this.netSig) {
+      const wait = this.netBroadcastAt + NET_BROADCAST_GAP_MS - now;
+      if (wait > 0) return this.armNetTimer(wait);
+      this.broadcastRoom();
+    }
+    const next = this.net.nextChangeAt(this.connectedIds(), now);
+    if (next != null) this.armNetTimer(next - now);
+  }
+
+  /** One short timer (never longer than NET_LOST_MS): the coalesced broadcast, or a report turning stale / its member lost. */
+  armNetTimer(delay) {
+    const at = Date.now() + delay;
+    if (this.netTimer && this.netTimerAt <= at) return; // an earlier wake-up is pending
+    if (this.netTimer) clearTimeout(this.netTimer);
+    this.netTimerAt = at;
+    this.netTimer = setTimeout(() => {
+      this.netTimer = null;
+      try {
+        this.flushNet();
+      } catch (err) {
+        console.error('net broadcast failed:', err && err.message);
+      }
+    }, Math.max(0, delay));
   }
 
   /** Re-broadcast `room` when somebody's `connected` flag changed without an event (their grace ran out). */
@@ -522,6 +576,7 @@ export class GameRoom extends DurableObject {
 
     // Keep a bounded number of sockets per user (stale ones from flaky networks pile up).
     const mine = this.ctx.getWebSockets(userId).filter((ws) => ws.readyState === 1);
+    if (!mine.length) this.net.forget(userId); // a fresh connection starts "measuring", not with the last session's number
     if (mine.length >= MAX_SOCKETS_PER_USER) {
       const oldest = mine.sort(
         (a, b) => (a.deserializeAttachment()?.at || 0) - (b.deserializeAttachment()?.at || 0),
@@ -572,6 +627,7 @@ export class GameRoom extends DurableObject {
     }
     if (!msg || typeof msg !== 'object' || typeof msg.t !== 'string') return this.sendError(ws, 'Invalid message.');
     if (msg.t === 'ping') return this.send(ws, { t: 'pong' });
+    if (msg.t === 'net') return this.onNet(att, msg); // own gentle limit (1 per 2 s); never an error, never counted as a game message
     if (!this.allowMessage(att.userId)) return this.sendError(ws, 'You are sending messages too fast.');
     if (!this.adapter) return this.sendError(ws, 'This game is no longer available.');
 
@@ -620,6 +676,7 @@ export class GameRoom extends DurableObject {
   async onDisconnect(ws) {
     const r = this.room;
     if (!r) return;
+    this.net.prune(this.connectedIds()); // whoever has no live socket left is no longer measured
     if (r.players.length && this.reconcileConnections(Date.now())) await this.save();
     this.broadcastRoom();
     await this.scheduleAlarm();

@@ -21,6 +21,9 @@ export function toastArgs(text, tone = 'info') {
   return [String(text), { tone: t, duration: TOAST_MS[t] }];
 }
 
+/** How long an identical push is ignored in the local fallback stack (the shell provider de-duplicates by itself). */
+const REPEAT_MS = 1500;
+
 const ICONS = { good: 'check', bad: 'close', info: 'info', gold: 'sparkle' };
 
 export function useToasts() {
@@ -28,6 +31,7 @@ export function useToasts() {
   const [items, setItems] = useState([]);
   const seq = useRef(0);
   const timers = useRef(new Set());
+  const recent = useRef(new Map()); // text -> time, fallback stack only
 
   useEffect(() => {
     const set = timers.current;
@@ -44,8 +48,11 @@ export function useToasts() {
       const args = toastArgs(text, tone);
       if (!args) return undefined;
       const id = shell(...args);
-      if (id !== undefined) return id; // the shell provider took it
+      if (id != null) return id; // the shell provider took it (outside a provider it answers null)
       // no <ToastProvider> above us: keep a local stack with the same look
+      const now = Date.now();
+      if (now - (recent.current.get(args[0]) || 0) < REPEAT_MS) return undefined;
+      recent.current.set(args[0], now);
       seq.current += 1;
       const localId = `l${seq.current}`;
       setItems((cur) => [...cur.slice(-2), { id: localId, text: args[0], tone: args[1].tone }]);

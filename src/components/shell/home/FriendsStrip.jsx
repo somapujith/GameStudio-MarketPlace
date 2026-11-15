@@ -4,6 +4,7 @@ import { paths } from '@/platform/paths.js';
 import HubIcon from '@/platform/game/HubIcon.jsx';
 import Ava from '@/platform/home/Ava.jsx';
 import { useApi, useApiGate } from '@/platform/home/useApi.js';
+import { useLive } from '@/platform/home/store/live.js';
 import { useAccount } from '../hooks.js';
 import FriendSheet from './FriendSheet.jsx';
 import Framed from './Framed.jsx';
@@ -32,7 +33,9 @@ export default function FriendsStrip() {
   const [picked, setPicked] = useState(null);
   const { account, guest, loading } = useAccount();
   const { ready } = useApiGate();
-  const remote = useApi('/api/friends', { enabled: ready && account });
+  const shared = useLive();
+  const own = useApi('/api/friends', { enabled: ready && account && !shared });
+  const remote = shared ? shared.friends : own;
   const { data, reload } = remote;
   // `ready` is false while auth boots and when the API is unreachable (static dev); treat the latter as offline.
   const status = account && !ready && !loading ? 'offline' : remote.status;
@@ -135,18 +138,27 @@ export default function FriendsStrip() {
 
   const showCount = account && status === 'ok' && friends.length > 0;
   return (
-    <section className="hub-section hh2-friends" aria-labelledby="hh2-friends-h">
-      <div className="hub-section__head">
-        <h2 id="hh2-friends-h" className="hub-section__title">
-          Friends online
-          {showCount && <span className="hub-pill hub-pill--good hh2-pill-gap">{online} online</span>}
-        </h2>
+    <section className="sh-shelf hh2-friends" aria-labelledby="hh2-friends-h">
+      <header className="st-head sh-head">
+        <div className="sh-head__text">
+          <div className="sh-kicker">
+            <span className="st-eyebrow">Your crew</span>
+            {showCount && online > 0 && (
+              <span className="sh-count">
+                <i className="st-live" aria-hidden="true" /> {online} online
+              </span>
+            )}
+          </div>
+          <h2 id="hh2-friends-h" className="st-head__title">
+            Friends online
+          </h2>
+        </div>
         {account && (
-          <Link to={paths.friends()} className="hub-section__more">
-            {incoming ? `${incoming} request${incoming > 1 ? 's' : ''}` : 'Manage'}
+          <Link to={paths.friends()} className="st-link sh-more">
+            {incoming ? `${incoming} request${incoming > 1 ? 's' : ''}` : 'Manage'} <HubIcon name="arrowR" size={14} strokeWidth={2.6} />
           </Link>
         )}
-      </div>
+      </header>
       {body}
       {picked && <FriendSheet friend={picked} onClose={() => setPicked(null)} />}
     </section>

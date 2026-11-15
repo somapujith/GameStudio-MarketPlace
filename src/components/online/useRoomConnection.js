@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { openRoomSocket } from '@/lib/socket.js';
+import { netStats } from '@/lib/netStats.js';
+import { createNetReporter } from '@/lib/rtt.js';
 import { api } from '@/lib/api.js';
 import { useAuth } from '@/lib/auth.jsx';
 import { isFatalRoomError, toConnection } from './gameHelpers.js';
@@ -9,16 +11,21 @@ import { isFatalRoomError, toConnection } from './gameHelpers.js';
 // the Tycoon engine and presenter into its chunk; useOnlineGame.js re-exports it for the plugins.)
 
 const ERROR_TTL = 6000;
+const LINK_IDLE = { attempt: 0, since: null, everOpen: false };
 
 /**
  * Socket + room state for ONE room code. No game presentation: the lobby uses this directly.
  *
- * Returns { room, view, chat, connection, error, errorId, fatal, send, pickPiece, leave }
+ * Returns { room, view, chat, connection, link, error, errorId, fatal, send, pickPiece, leave, retry }
  *  - room        the last `{t:'room'}` payload (null until it arrives)
  *  - view        the last `{t:'state'}` engine state (null until a game is running)
  *  - connection  'connecting' | 'open' | 'closed'   (reconnects show up as 'connecting')
  *  - error       transient server error text (auto-clears), `errorId` changes on every new one
- *  - fatal       null | { kind: 'kicked'|'join'|'auth'|'closed'|'left', message }  (the socket is closed)
+ *  - fatal       null | { kind: 'kicked'|'join'|'auth'|'closed'|'left', message, reason? }  (the socket is closed;
+ *                reason 'replaced' = the same account opened this room somewhere else)
+ *  - link        { attempt, since, everOpen }: failed reconnect attempts in a row, when the link dropped (ms), and whether
+ *                it was ever up (presentation only: see connection.js)
+ *  - retry()     reconnect now instead of waiting for the backoff timer
  *  - send(msg, {queue})  JSON to the room; queued while connecting unless queue:false
  *  - pickPiece(piece)    lobby only: asks for a free game piece (`{t:'piece', piece}`); false when not connected.
  *                        A taken / unknown piece comes back as a normal `error` (so the caller can roll back).
@@ -36,6 +43,7 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
   const [connection, setConnection] = useState('connecting');
   const [error, setError] = useState(null);
   const [fatal, setFatal] = useState(null);
+  const [link, setLink] = useState(LINK_IDLE);
   const sockRef = useRef(null);
   const handlers = useRef({});
   const errorSeq = useRef(0);
@@ -52,15 +60,20 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
     setError(null);
     setFatal(null);
     setConnection('connecting');
+    setLink(LINK_IDLE);
 
     let alive = true;
     const sock = openRoomSocket(code);
     sockRef.current = sock;
+    // Connection strength: the socket measures its round trips; the store feeds your own bars, the reporter tells the room.
+    netStats.reset();
+    netStats.setStatus(sock.status);
+    const reporter = createNetReporter({ send: (msg) => sock.send(msg, { queue: false }) });
     const st = { fresh: true, gotRoom: false, lastSeq: -1, diagnosing: false, seen: new Set() };
 
-    const fail = (kind, message) => {
+    const fail = (kind, message, reason) => {
       if (!alive) return;
-      setFatal((cur) => cur || { kind, message }); // keep the first (most specific) reason
+      setFatal((cur) => cur || (reason ? { kind, message, reason } : { kind, message })); // keep the first (most specific) reason
       setConnection('closed');
       sock.close();
     };
@@ -77,7 +90,7 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
         case 4004:
           return fail('join', reason || 'That room does not exist.');
         case 4009:
-          return fail('closed', 'This room was opened in another tab or device.');
+          return fail('closed', 'This room was opened in another tab or device.', 'replaced');
         default:
           return fail('closed', 'The connection to the room was closed.');
       }
@@ -162,10 +175,18 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
     const offs = [
       sock.on('open', () => {
         st.fresh = true; // the next state is a snapshot, not a live update
+        reporter.reset(); // a new connection reports as soon as it has measured something
         setConnection('open');
+        setLink({ attempt: 0, since: null, everOpen: true });
+      }),
+      sock.on('rtt', (rtt) => {
+        netStats.setRtt(rtt);
+        reporter.rtt(rtt);
       }),
       sock.on('status', (s, info) => {
+        netStats.setStatus(s);
         setConnection(toConnection(s));
+        if (s === 'reconnecting' && info) setLink((l) => ({ ...l, attempt: info.attempt || l.attempt + 1, since: l.since ?? Date.now() }));
         if (s === 'closed' && info && info.reason && info.reason !== 'client') {
           failFromClose(info);
         } else if (s === 'reconnecting' && !st.gotRoom && info && info.attempt % 3 === 0) {
@@ -178,6 +199,7 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
     return () => {
       alive = false;
       offs.forEach((off) => off());
+      netStats.reset();
       sock.close();
       if (sockRef.current === sock) sockRef.current = null;
     };
@@ -193,6 +215,12 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
   const send = useCallback((msg, opts) => (sockRef.current ? sockRef.current.send(msg, opts) : false), []);
 
   const pickPiece = useCallback((piece) => (typeof piece === 'string' && piece && sockRef.current ? sockRef.current.send({ t: 'piece', piece }, { queue: false }) : false), []);
+
+  // "Try now": skip the rest of the backoff wait (the socket also does this by itself when the network returns)
+  const retry = useCallback(() => {
+    const sock = sockRef.current;
+    if (sock && typeof sock._kick === 'function') sock._kick();
+  }, []);
 
   const leave = useCallback(() => {
     const sock = sockRef.current;
@@ -211,12 +239,14 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
     view,
     chat,
     connection: authFatal ? 'closed' : connection,
+    link,
     error: error ? error.message : null,
     errorId: error ? error.id : 0,
     fatal: fatal || authFatal,
     send,
     pickPiece,
     leave,
+    retry,
   };
 }
 

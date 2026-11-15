@@ -105,6 +105,9 @@ describe('describeEvent', () => {
     expect(text({ type: 'debt', player: 'me', amount: 140000, creditor: 'b1' })).toBe('You owe ₹1,40,000 to Chai Uncle. Raise cash or resign!');
     expect(text({ type: 'debt', player: 'b1', amount: 40000, creditor: null })).toBe('Chai Uncle is in debt: owes ₹40,000 to the city');
     expect(text({ type: 'bankrupt', player: 'b1' })).toBe('Chai Uncle went bankrupt');
+    expect(text({ type: 'bankrupt', player: 'b1', reason: 'resign' })).toBe('Chai Uncle resigned');
+    expect(text({ type: 'bankrupt', player: 'me', reason: 'resign' })).toMatch(/^You resigned/);
+    expect(describeEvent({ type: 'bankrupt', player: 'b1', reason: 'resign' }, ctx).tone).toBe('warn');
     expect(text({ type: 'trade_offer', from: 'b1', to: 'me', give: { cash: 50000, tiles: [1] }, get: { tiles: [31] } })).toBe(
       'Chai Uncle offered you a trade: Sultan Bazaar + ₹50,000 for HITEC City',
     );
@@ -119,6 +122,11 @@ describe('describeEvent', () => {
     expect(text({ type: 'win', player: 'b1', reason: 'rounds', worth: 2100000 })).toBe('The last round is over! Chai Uncle is the richest in Hyderabad with ₹21,00,000');
     expect(text({ type: 'win', player: 'me', reason: 'last_standing', worth: 1 })).toBe('You are the last one standing and own the city!');
     expect(text({ type: 'win', player: null, reason: 'last_standing' })).toMatch(/Nobody/);
+    expect(text({ type: 'win', player: 'b1', reason: 'target', worth: 5120000 }, { ...ctx, targetWorth: 5000000 })).toBe(
+      'Target reached! Chai Uncle is the first to hit ₹50,00,000 net worth (₹51,20,000) and owns the city!',
+    );
+    expect(text({ type: 'win', player: 'me', reason: 'target', worth: 5120000 })).toBe('Target reached! You are the first to hit the net worth target (₹51,20,000) and own the city!');
+    expect(describeEvent({ type: 'win', player: 'b1', reason: 'target', worth: 1 }, ctx)).toMatchObject({ tone: 'cheer', bubble: 'Chai Uncle wins!', icon: '🏆' });
   });
 
   it('never throws and covers a whole bot game', () => {

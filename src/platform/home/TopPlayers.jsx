@@ -31,9 +31,9 @@ export default function TopPlayers() {
       <ul className="hh2-top" aria-hidden="true">
         {[0, 1, 2].map((i) => (
           <li key={i} className="hh2-top__item">
-            <span className="hub-skel hub-skel--dot" style={{ width: 56, height: 56 }} />
-            <span className="hub-skel hub-skel--line" style={{ width: '64%', height: 12 }} />
-            <span className="hub-skel hub-skel--line" style={{ width: '40%', height: 10 }} />
+            <span className="st-skel" style={{ width: 56, height: 56, borderRadius: 999 }} />
+            <span className="st-skel" style={{ width: '64%', height: 12 }} />
+            <span className="st-skel" style={{ width: '40%', height: 10 }} />
           </li>
         ))}
       </ul>
@@ -98,15 +98,18 @@ export default function TopPlayers() {
   }
 
   return (
-    <section className="hub-panel hh2-topplayers" aria-labelledby="hh2-top-h" aria-busy={state === 'loading'}>
-      <div className="hub-panel__head">
-        <h2 id="hh2-top-h" className="hub-section__title">
-          Top players
-        </h2>
-        <Link to={paths.leaderboard()} className="hub-section__more">
-          Leaderboard
+    <section className="hub-panel hh2-topplayers sh-panel" aria-labelledby="hh2-top-h" aria-busy={state === 'loading'}>
+      <header className="st-head sh-head">
+        <div className="sh-head__text">
+          <span className="st-eyebrow">Leaderboard</span>
+          <h2 id="hh2-top-h" className="st-head__title">
+            Top players
+          </h2>
+        </div>
+        <Link to={paths.leaderboard()} className="st-link sh-more">
+          See all <HubIcon name="arrowR" size={14} strokeWidth={2.6} />
         </Link>
-      </div>
+      </header>
       {body}
     </section>
   );

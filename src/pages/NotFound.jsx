@@ -1,74 +1,114 @@
-import { Link, useLocation } from 'react-router-dom';
+import { useRef, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { liveGames } from '@/games/registry.js';
 import { BRAND } from '@/platform/brand.js';
 import { paths } from '@/platform/paths.js';
 import HubIcon from '@/platform/game/HubIcon.jsx';
 import useDocTitle from '@/platform/game/useDocTitle.js';
-import '@/styles/x-social.css';
+import { OPEN_CODE_EVENT } from '@/components/shell/nav/events.js';
 
-const PIPS = [
-  [-19, -19],
-  [19, -19],
-  [-19, 19],
-  [19, 19],
-];
-
-function Die({ x, y, rot }) {
+/** A hanging paper lantern: the "0" of the 404 sign. Colours come from the hub tokens. */
+function Lantern() {
   return (
-    <g transform={`translate(${x} ${y}) rotate(${rot})`}>
-      <rect x="-44" y="-44" width="88" height="88" rx="20" style={{ fill: 'var(--hub-bg)' }} opacity=".35" transform="translate(0 6)" />
-      <rect x="-44" y="-44" width="88" height="88" rx="20" fill="url(#nf404a)" />
-      <rect x="-43" y="-43" width="86" height="86" rx="19" fill="none" stroke="#fff" strokeOpacity=".35" />
-      {PIPS.map(([px, py]) => (
-        <circle key={`${px}${py}`} cx={px} cy={py} r="7.5" fill="#fff" />
-      ))}
-    </g>
+    <svg className="hub-nf__lantern" viewBox="0 0 100 150" focusable="false" aria-hidden="true">
+      <defs>
+        <radialGradient id="nfGlow" cx="50%" cy="48%" r="60%">
+          <stop offset="0" style={{ stopColor: 'rgb(var(--hub-gold-rgb))' }} stopOpacity="1" />
+          <stop offset="1" style={{ stopColor: 'rgb(var(--hub-gold-rgb))' }} stopOpacity=".72" />
+        </radialGradient>
+      </defs>
+      <path d="M50 0v18" style={{ stroke: 'var(--hub-faint)' }} strokeWidth="3" strokeLinecap="round" />
+      <rect x="32" y="18" width="36" height="11" rx="4" style={{ fill: 'var(--hub-faint)' }} />
+      <ellipse cx="50" cy="73" rx="42" ry="46" fill="url(#nfGlow)" />
+      <path d="M50 27c-14 14-14 78 0 92M50 27c14 14 14 78 0 92M14 56h72M12 90h76" fill="none" style={{ stroke: 'var(--hub-bg)' }} strokeOpacity=".28" strokeWidth="2.4" />
+      <rect x="32" y="116" width="36" height="11" rx="4" style={{ fill: 'var(--hub-faint)' }} />
+      <path d="M44 127v14M50 127v19M56 127v14" style={{ stroke: 'rgb(var(--hub-gold-rgb))' }} strokeWidth="3" strokeLinecap="round" />
+    </svg>
   );
 }
 
-/** Hub-themed 404: a "4 0 4" made of two dice and a token. */
+/**
+ * Hub 404: a shop sign ("4 lantern 4") over a search box, so a lost visitor can find the game they came for.
+ * Also the look the "unavailable" cards share (see .hub-unavail in x-shell.css).
+ */
 export default function NotFound() {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const [q, setQ] = useState('');
+  const inputRef = useRef(null);
   useDocTitle(`Page not found · ${BRAND.name}`);
+  const games = liveGames().slice(0, 3);
+
+  const submit = (e) => {
+    e.preventDefault();
+    const term = q.trim();
+    if (!term) {
+      inputRef.current?.focus();
+      return;
+    }
+    navigate(paths.search(term));
+  };
+
   return (
-    <section className="hub-404 xs-404" aria-labelledby="hub-404-h">
-      <div className="hub-404__art" aria-hidden="true">
-        <svg viewBox="0 0 320 170" focusable="false">
-          <defs>
-            <linearGradient id="nf404a" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" style={{ stopColor: 'var(--hub-brand)' }} />
-              <stop offset="1" style={{ stopColor: 'var(--hub-brand-2)' }} />
-            </linearGradient>
-            <linearGradient id="nf404b" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" style={{ stopColor: 'var(--hub-warn)' }} />
-              <stop offset="1" style={{ stopColor: 'var(--hub-bad)' }} />
-            </linearGradient>
-          </defs>
-          <ellipse cx="160" cy="150" rx="132" ry="9" style={{ fill: 'var(--hub-bg)' }} opacity=".5" />
-          <Die x={62} y={88} rot={-9} />
-          <circle cx="160" cy="88" r="40" fill="none" style={{ stroke: 'var(--hub-bg)' }} strokeOpacity=".35" strokeWidth="18" transform="translate(0 6)" />
-          <circle cx="160" cy="88" r="40" fill="none" stroke="url(#nf404b)" strokeWidth="18" />
-          <circle cx="160" cy="88" r="49" fill="none" stroke="#fff" strokeOpacity=".3" />
-          <Die x={258} y={88} rot={8} />
-        </svg>
+    <section className="hub-page hub-nf" aria-labelledby="hub-nf-h">
+      <div className="hub-nf__sign" aria-hidden="true">
+        <span className="hub-nf__digit">4</span>
+        <Lantern />
+        <span className="hub-nf__digit">4</span>
       </div>
-      <p className="hub-eyebrow">Error 404</p>
-      <h1 id="hub-404-h" className="hub-h1">
-        This table doesn't exist
+      <p className="st-eyebrow">Error 404</p>
+      <h1 id="hub-nf-h" className="hub-nf__title">
+        This stall is closed
       </h1>
-      <p className="hub-lead">
-        We couldn't find <code>{pathname}</code>. The link may be old, or the room may have closed.
+      <p className="hub-nf__lead">
+        We couldn't find <code>{pathname}</code>. The link may be old, or the room may have closed. Search for a game instead:
       </p>
-      <div className="hub-404__actions">
-        <Link to={paths.hub()} className="hub-btn hub-btn--primary hub-btn--lg">
-          <HubIcon name="gamepad" size={20} /> Browse games
+
+      <form className="hub-nf__search" role="search" onSubmit={submit}>
+        <label htmlFor="hub-nf-q" className="hub-sr">
+          Search games
+        </label>
+        <HubIcon name="search" size={20} className="hub-nf__mag" />
+        <input
+          id="hub-nf-q"
+          ref={inputRef}
+          className="hub-nf__input"
+          type="search"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search games"
+          enterKeyHint="search"
+          autoComplete="off"
+          autoCapitalize="off"
+          spellCheck={false}
+        />
+        <button type="submit" className="hub-btn hub-btn--primary hub-nf__go">
+          Search
+        </button>
+      </form>
+
+      <div className="hub-nf__actions">
+        <Link to={paths.games()} className="hub-btn hub-btn--primary hub-btn--lg">
+          <HubIcon name="compass" size={20} /> Browse all games
         </Link>
-        <button type="button" className="hub-btn hub-btn--ghost hub-btn--lg" onClick={() => window.dispatchEvent(new Event('hub:open-code'))}>
+        <Link to={paths.hub()} className="hub-btn hub-btn--ghost hub-btn--lg">
+          <HubIcon name="home" size={20} /> Back home
+        </Link>
+        <button type="button" className="hub-btn hub-btn--ghost hub-btn--lg" onClick={() => window.dispatchEvent(new Event(OPEN_CODE_EVENT))}>
           <HubIcon name="hash" size={20} /> Have a code?
         </button>
-        <Link to={paths.friends()} className="hub-btn hub-btn--ghost hub-btn--lg">
-          Friends &amp; invites
-        </Link>
       </div>
+
+      {games.length > 0 && (
+        <nav className="hub-nf__try" aria-label="Open a game">
+          <span className="hub-nf__try-label">Open a game</span>
+          {games.map((g) => (
+            <Link key={g.id} to={paths.game(g.id)} className="st-chip hub-nf__chip">
+              {g.name}
+            </Link>
+          ))}
+        </nav>
+      )}
     </section>
   );
 }

@@ -11,6 +11,9 @@ import {
   removeFriend,
   addIncoming,
   countOnline,
+  groupFriends,
+  inviteExpiryLabel,
+  inviteExpiresInMs,
 } from './friendsModel.js';
 
 const u = (id, name, extra = {}) => ({ id, name, avatar: 1, friendCode: `HYD-${id}`, online: false, level: 2, ...extra });
@@ -192,5 +195,23 @@ describe('withLeaving (list exit animation)', () => {
     expect(withLeaving(items, new Map(), k)).toHaveLength(1);
     expect(withLeaving(undefined, null, k)).toEqual([]);
     expect(withLeaving([], new Map([['z', { item: { id: 'z' }, index: 9 }]]), k).map((x) => x.key)).toEqual(['z']);
+  });
+});
+
+describe('groupFriends / invite expiry', () => {
+  it('splits online and offline, keeping order', () => {
+    const g = groupFriends([u('1', 'A', { online: true }), u('2', 'B'), u('3', 'C', { online: true })]);
+    expect(g.online.map((f) => f.id)).toEqual(['1', '3']);
+    expect(g.offline.map((f) => f.id)).toEqual(['2']);
+    expect(groupFriends(undefined)).toEqual({ online: [], offline: [] });
+  });
+  it('words the time an invite has left', () => {
+    const now = 1_700_000_000_000;
+    expect(inviteExpiryLabel(now - 5 * 60000, now)).toBe('expires in 1 h 55 min');
+    expect(inviteExpiryLabel(now - 60 * 60000, now)).toBe('expires in 1 h');
+    expect(inviteExpiryLabel(now - 100 * 60000, now)).toBe('expires in 20 min');
+    expect(inviteExpiryLabel(now - 2 * 3600000 + 20000, now)).toBe('expiring now');
+    expect(inviteExpiryLabel('nope', now)).toBe('');
+    expect(inviteExpiresInMs(now, now)).toBe(2 * 60 * 60 * 1000);
   });
 });

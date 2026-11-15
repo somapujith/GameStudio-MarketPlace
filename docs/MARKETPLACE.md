@@ -31,15 +31,26 @@ Stack is unchanged: React 19 + Vite 8 (plain JS/JSX, no TypeScript), Cloudflare 
 
 **Visual language (hub):** dark neutral navy hub, vivid per-game accent colours carried by cover art; generous rounded corners (18-24 px), soft shadows, big friendly type, snap-scrolling card rows, pill buttons, subtle motion. Game screens keep each game's own theme. Hub pages must not look like the Tycoon dashboard any more.
 
-## 2. Routes (owner: platform-core, in `src/App.jsx`)
-| Path | Screen |
-|---|---|
-| `/` | Games home (platform-home) |
-| `/games/:gameId` | Game detail (platform-core) |
-| `/play/:gameId/online/:code` | generic `OnlineGame` dispatcher (online) -> `manifest.loaders.onlineGame` |
-| `/lobby/:code`, `/join`, `/join/:code`, `/f/:code`, `/friends`, `/login` | online |
-| `/leaderboard`, `/profile` | platform-home |
-Unknown `:gameId` or `coming_soon` game -> friendly "not available" state, never a crash.
+## 2. Routes (owner: platform-core, in `src/App.jsx`; every URL is built by `paths` in `src/platform/paths.js`)
+Hub routes render inside `AppShell` (top bar, left rail / bottom tab bar, footer). `/play/**` and `/lobby/:code` are full screen with no hub chrome. Unknown paths show the hub 404.
+| Path | `paths` helper | Screen |
+|---|---|---|
+| `/` | `hub()` | Home storefront: hero, live strip, rails, top players, daily reward, resume |
+| `/games` | `games()` | Browse the catalogue (filters, sort) |
+| `/search?q=` | `search(q)` | Search the catalogue |
+| `/games/:gameId` | `game(id)` | Game detail (store listing, create a table); unknown or coming-soon ids show a friendly state, never a crash |
+| `/about` | `about()` | About GameHub: what it is, how it works, the catalogue |
+| `/help` | `help()` | Help centre: searchable FAQ (tables, codes, friends, reconnecting, install, coins, reporting) |
+| `/privacy` | `privacy()` | Privacy: what is stored, cookies and storage, processors, retention, rights |
+| `/terms` | `terms()` | Terms of use |
+| `/leaderboard?game=` | `leaderboard(id?)` | Rank: Overall + one tab per game |
+| `/profile`, `/shop`, `/login?next=` | `profile()`, `shop()`, `login(next)` | Account: profile + settings, cosmetics shop, sign-in |
+| `/friends`, `/f/:friendCode` | `friends()`, `friendLink(code)` | Friends and the add-a-friend link screen |
+| `/join`, `/join/:code` | `join(code?)` | Join a table by room code |
+| `/lobby/:code` | `lobby(code)` | Lobby (full screen) |
+| `/play/:gameId/online/:code` | `online(id, code)` | Generic `OnlineGame` dispatcher -> `manifest.loaders.onlineGame` (full screen) |
+
+The legal and help pages (`/about`, `/help`, `/privacy`, `/terms`) are static and indexable (`public/robots.txt`); per-user and per-room routes are disallowed for crawlers. Legacy URLs: see `LEGACY_REDIRECTS` in `paths.js` (`/play`, `/campaign`, `/story`, `/settings`) and section 1.
 
 ## 3. Frontend game plugin (`src/games/<id>/manifest.js`)
 `src/games/registry.js` (platform-core) imports each manifest eagerly and exports `GAMES` (ordered), `getGame(id) -> manifest|null`, `liveGames()`, `comingSoonGames()`, `CATEGORIES = [{id,label,icon}]` (board, card, arcade, social, word, sports), `featuredGame()`. **A manifest module must stay tiny (no engine, no React pages):** heavy code is behind `loaders`.
@@ -68,10 +79,24 @@ export default {
   stats: [{ key: 'wins', label: 'Wins' }],  // which user_game_stats fields to highlight
 };
 ```
+**Optional store-listing fields** (all optional; every reader tolerates their absence, nothing is shown that is missing):
+| Field | Type | Used for |
+|---|---|---|
+| `publisher` | string | "By ..." line on the game page (the teasers use `GameHub`) |
+| `version` | string | version shown in the game's facts (e.g. `'1.0'`) |
+| `released` | ISO date `'2026-11-15'` | "Released" fact; never invent a date |
+| `ageRating` | string, e.g. `'12+'` | age chip; must match your own assessment |
+| `languages` | string[] | e.g. `['English']` |
+| `platforms` | string[] | e.g. `['Phone','Tablet','Desktop']` |
+| `tags` | string[] | search and chips (e.g. `['Dice race','Classic']`) |
+| `highlights` | `[{ icon, title, text }]` | "Why you'll like it" tiles; `icon` is a `HubIcon` name |
+| `howToPlay` | `[{ icon?, title, text }]` | short numbered "How to play" steps |
+| `gallery` | `[{ kind: 'cover'|'scene'|'board', caption, focus? }]` | screenshot strip built from the game's own art |
+
 Coming-soon manifests only need `id,name,tagline,category,status,players,duration,theme,art` (no loaders). **Placeholder coming-soon games** (platform-core writes the manifests under `src/games/_soon/`): "Ludo Lanes" (board, 2-4), "Carrom Club" (sports, 2-4), "Tambola Night" (social, 2-20), "Word Rush" (word, 2-6). They are teasers the owner can rename or delete; their art comes from the art agent (`ComingSoonCover({ id })`).
 
 ## 4. Settings schema (host settings, lobby + server)
-Fields render in the lobby for the host (others see `summarize(settings)`); a manifest's optional `lobbySettings` lists the keys the lobby shows, the rest keep their defaults: `{ key, label, type: 'segmented'|'stepper'|'toggle', options?: [{value,label}], min?, max?, step?, default, format?: 'inr'|'number'|'text', help? }`. The same defaults/limits live server-side in the adapter's `validateSettings`, which is the source of truth. A shared `visibility` ('private'|'public') and `maxPlayers` exist for every game and are NOT in the schema.
+Fields render in the lobby for the host (others see `summarize(settings)`); a manifest's optional `lobbySettings` lists the keys the lobby shows, the rest keep their defaults: `{ key, label, type: 'segmented'|'stepper'|'toggle', options?: [{value,label,hideIf?}], min?, max?, step?, default, format?: 'inr'|'number'|'text', help?, dependsOn? }` (`option.hideIf: { otherKey: [values] }` hides an option while another setting has one of those values; `dependsOn: { key, defaults: { [value]: fieldValue } }` resets the field to the default for the new value when `key` changes, and marks that option "(default)"; Hyderabad Tycoon uses both for its win target). The same defaults/limits live server-side in the adapter's `validateSettings`, which is the source of truth. A shared `visibility` ('private'|'public') and `maxPlayers` exist for every game and are NOT in the schema.
 
 ## 5. Server game adapter (`worker/games/<id>.js`, registry `worker/games/index.js`)
 `GameRoom` must contain no Tycoon knowledge: it talks only to an adapter.
@@ -90,7 +115,7 @@ export default {
   redact(state, viewerId) -> state,               // hide secrets before sending (Tycoon: other players' sealed bids)
 };
 ```
-Optional hooks (all have harmless defaults; the authoritative list is the header of `worker/games/index.js`): `defaultMaxPlayers`, `pendingPlayerIds(state)` (every player the game waits for), `sanitizeAction(raw, playerId)` (client-action allow-list), `lobbySettings(settings)`, `summarize(settings)`, `animationMs(events)`, `startAnimMs`, `moveDelayMs(action)`, `resignAction(state, playerId)` (what leaving a running game does), `track(meta, events, state)`, `emotes`, `upgradeRecord(record)`.
+Optional hooks (all have harmless defaults; the authoritative list is the header of `worker/games/index.js`): `defaultMaxPlayers`, `pendingPlayerIds(state)` (every player the game waits for), `sanitizeAction(raw, playerId)` (client-action allow-list), `lobbySettings(settings)`, `mergeSettings(current, patch)` (what a host's patch makes of the current settings before `validateSettings`; Tycoon resets the win target when the mode changes), `summarize(settings)`, `animationMs(events)`, `startAnimMs`, `moveDelayMs(action)`, `resignAction(state, playerId)` (what leaving a running game does), `track(meta, events, state)`, `emotes`, `upgradeRecord(record)`.
 The Tycoon adapter wraps `shared/index.js` and `worker/mask.js`, `worker/settings.js`, `worker/validate.js`. `getAdapter(id)` returns null for unknown ids; the Worker answers 400 `unknown game`.
 
 ## 6. Database (additive only; `db/schema.sql`, applied by `scripts/migrate.js`)

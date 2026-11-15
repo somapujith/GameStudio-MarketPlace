@@ -47,6 +47,23 @@ export default {
 };
 ```
 
+**Optional store-listing fields.** The game page, the catalogue and search read these when present; leave out whatever you cannot state truthfully (no ratings, install counts or made-up dates, ever):
+
+```js
+  publisher: 'GameHub',                 // string
+  version: '1.0',                       // string
+  released: '2026-11-15',               // ISO date; omit until it is real
+  ageRating: '12+',                     // string
+  languages: ['English'],               // string[]
+  platforms: ['Phone', 'Tablet', 'Desktop'],
+  tags: ['Dice race', 'Classic'],       // search and chips
+  highlights: [{ icon: 'users', title: 'Two to four players', text: 'One sentence.' }],   // icon = a HubIcon name
+  howToPlay: [{ icon: 'dice', title: 'Roll', text: 'One sentence per step, 3-5 steps.' }],
+  gallery: [{ kind: 'cover', caption: 'Cover art' }, { kind: 'scene', caption: 'A closer look' }],   // 'cover' | 'scene' | 'board'
+```
+
+Everything above is also listed, with where each field is used, in `docs/MARKETPLACE.md` section 3. The game page, About page and search read the registry, so a new game appears everywhere (including `/about`) without touching them.
+
 **Settings schema** (rendered by the lobby for the host, a read-only summary for everyone else; only the keys in `lobbySettings` when it is set): `{ key, label, type: 'segmented'|'stepper'|'toggle',
 options?, min?, max?, step?, default, format?: 'inr'|'number'|'text', help? }`. A `stepper` with `options` shows quick-pick chips
 beside the +/- buttons. Defaults and limits **must equal** the adapter's `validateSettings`: copy

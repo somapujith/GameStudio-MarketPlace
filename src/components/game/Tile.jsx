@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useContext } from 'react';
 import * as B from '@shared/board.js';
 import { compactINR, formatINR } from '@shared/format.js';
 import { BuildingArt, TileIcon } from '@/components/art/index.js';
@@ -6,6 +6,8 @@ import { cornerOf, sideOf } from './fx/geometry.js';
 import { BuildPop, CardShimmer, ChaiSteam, OwnerChip, OwnerStamp } from './fx/TileFx.jsx';
 import { PieceToken } from './Pawn.jsx';
 import { labelLines } from './tileLabel.js';
+import PhoneBoardContext from './phone/PhoneBoardContext.js';
+import PhoneTileFace from './phone/PhoneTileFace.jsx';
 import '@/styles/board.css';
 
 const { GROUPS, MAX_LEVEL } = B;
@@ -214,6 +216,7 @@ function TileImpl({
   const lvl = Math.max(0, Math.min(MAX_LEVEL, level | 0));
   const full = owned && !mortgaged && setState === 'full';
   const kind = tile.type === 'transport' ? transportKind(tile) : null;
+  const phone = useContext(PhoneBoardContext); // the simple portrait-phone table prints its own tile faces
 
   const { col, row } = B.tilePosition(tile.id);
   const style = { gridColumn: col + 1, gridRow: row + 1 };
@@ -234,6 +237,7 @@ function TileImpl({
   if (active) cls.push('is-active');
   if (stuck > 0) cls.push('has-stuck');
   if (drawing) cls.push('is-drawing');
+  if (phone) cls.push('hb-tile--phone');
 
   const levelName = group && Array.isArray(group.levelNames) ? group.levelNames[lvl] : null;
   const rent = isProperty && owned ? tileRent(tile, lvl) : 0;
@@ -353,6 +357,23 @@ function TileImpl({
           </span>
         </span>
       </>
+    );
+  }
+
+  if (phone) {
+    inner = (
+      <PhoneTileFace
+        tile={tile}
+        group={group}
+        owned={owned}
+        ownerColor={ownerColor}
+        level={lvl}
+        rent={rent}
+        mortgaged={mortgaged}
+        stuck={stuck}
+        chai={chai}
+        drawing={drawing}
+      />
     );
   }
 

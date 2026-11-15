@@ -255,7 +255,7 @@ describe('lobby', () => {
     const h = new Harness();
     await h.init();
     const host = await h.connect(user(1));
-    expect(host.last('room').room.settings).toMatchObject({ mode: 'standard', startCash: 1500000, maxRounds: 20, dice: 'lucky', auctionOnDecline: true });
+    expect(host.last('room').room.settings).toMatchObject({ mode: 'standard', startCash: 1500000, maxRounds: 20, targetWorth: 5000000, dice: 'lucky', auctionOnDecline: true });
     expect(host.last('room').room.settings).not.toHaveProperty('goal');
     const guest = await h.connect(user(2));
 
@@ -267,17 +267,47 @@ describe('lobby', () => {
       await h.say(host, { t: 'settings', settings: bad });
       expect(host.of('error').length, JSON.stringify(bad)).toBe(before + 1);
     }
-    expect(h.room.room.settings).toEqual({ mode: 'standard', dice: 'lucky', auctionOnDecline: true });
+    expect(h.room.room.settings).toEqual({ mode: 'standard', dice: 'lucky', auctionOnDecline: true, targetWorth: 5000000 });
 
-    // only mode / dice / auction reach the room: retired or engine-only keys are dropped
+    // only mode / target / dice / auction reach the room: retired or engine-only keys are dropped
     await h.say(host, { t: 'settings', settings: { mode: 'quick', dice: 'fair', auctionOnDecline: false, debug: true, goal: 100000, startCash: 1 } });
     const s = host.last('room').room.settings;
-    expect(s).toMatchObject({ mode: 'quick', startCash: 2000000, maxRounds: 12, dice: 'fair', auctionOnDecline: false });
+    expect(s).toMatchObject({ mode: 'quick', startCash: 2000000, maxRounds: 12, targetWorth: 5000000, dice: 'fair', auctionOnDecline: false });
     expect(s.debug).toBeUndefined();
     expect(s.goal).toBeUndefined();
     expect(guest.last('room').room.settings.mode).toBe('quick');
     await h.say(host, { t: 'settings', settings: { mode: 'classic' } });
-    expect(guest.last('room').room.settings).toMatchObject({ mode: 'classic', maxRounds: null, dice: 'fair' }); // earlier picks kept
+    // switching the mode resets the win target to that mode's default (classic: 30 lakh); the other picks are kept
+    expect(guest.last('room').room.settings).toMatchObject({ mode: 'classic', maxRounds: null, targetWorth: 3000000, dice: 'fair' });
+  });
+
+  it('the win target: only the listed values, a mode switch resets it, classic can never be "off"', async () => {
+    const h = new Harness();
+    await h.init();
+    const host = await h.connect(user(1));
+    const target = () => host.last('room').room.settings.targetWorth;
+    expect(target()).toBe(5000000);
+    await h.say(host, { t: 'settings', settings: { targetWorth: 3000000 } });
+    expect(target()).toBe(3000000);
+    await h.say(host, { t: 'settings', settings: { targetWorth: null } }); // off is fine with a round limit
+    expect(target()).toBeNull();
+    await h.say(host, { t: 'settings', settings: { targetWorth: 123456 } }); // not on the list: the mode default, no error
+    expect(target()).toBe(5000000);
+    expect(host.of('error')).toHaveLength(0);
+    // the lobby sends every setting: a mode change arrives with the old target and still resets it
+    await h.say(host, { t: 'settings', settings: { mode: 'standard', dice: 'lucky', auctionOnDecline: true, targetWorth: 7500000 } });
+    expect(target()).toBe(7500000);
+    await h.say(host, { t: 'settings', settings: { mode: 'classic', dice: 'lucky', auctionOnDecline: true, targetWorth: 7500000 } });
+    expect(host.last('room').room.settings).toMatchObject({ mode: 'classic', targetWorth: 3000000 });
+    await h.say(host, { t: 'settings', settings: { mode: 'classic', dice: 'lucky', auctionOnDecline: true, targetWorth: null } });
+    expect(target()).toBe(3000000); // no round limit: never without a target
+    await h.say(host, { t: 'settings', settings: { targetWorth: 4000000 } });
+    expect(target()).toBe(4000000);
+    await h.say(host, { t: 'settings', settings: { mode: 'quick', dice: 'lucky', auctionOnDecline: true, targetWorth: 4000000 } });
+    expect(host.last('room').room.settings).toMatchObject({ mode: 'quick', targetWorth: 5000000 });
+    // a mode change together with a deliberate new target keeps that target
+    await h.say(host, { t: 'settings', settings: { mode: 'classic', dice: 'lucky', auctionOnDecline: true, targetWorth: 2500000 } });
+    expect(host.last('room').room.settings).toMatchObject({ mode: 'classic', targetWorth: 2500000 });
   });
 
   it('kick, ready, capacity and start rules', async () => {
@@ -431,9 +461,9 @@ describe('game start', () => {
 
 
   it('passes the normalised settings to the engine (state.cfg matches room.settings)', async () => {
-    const h = await startedGame({ mode: 'quick', dice: 'fair', auctionOnDecline: false });
+    const h = await startedGame({ mode: 'quick', dice: 'fair', auctionOnDecline: false, targetWorth: 4000000 });
     const cfg = h.state.cfg;
-    expect(cfg).toMatchObject({ mode: 'quick', startCash: 2000000, maxRounds: 12, dice: 'fair', auctionOnDecline: false });
+    expect(cfg).toMatchObject({ mode: 'quick', startCash: 2000000, maxRounds: 12, targetWorth: 4000000, dice: 'fair', auctionOnDecline: false });
     expect(h.state.players.every((p) => p.cash === 2000000)).toBe(true);
     // the pieces picked in the lobby are the pieces the engine plays with
     const seats = h.host.last('room').room.players;
@@ -515,7 +545,7 @@ describe('game flow', () => {
     expect(rec.players.map((p) => p.rank).sort()).toEqual([1, 2]);
     expect(rec.players.every((p) => p.is_bot === false)).toBe(true);
     expect(rec.users.map((u) => u.user_id).sort()).toEqual([U(1), U(2)]); // every seat is a real user with stats / xp
-    expect(['last_standing', 'rounds']).toContain(rec.winReason);
+    expect(['last_standing', 'target', 'rounds']).toContain(rec.winReason);
     expect(rec.rounds).toBeLessThanOrEqual(12);
     expect(rec.winnerId).toBe(rec.players.find((p) => p.rank === 1).user_id); // standings agree with the winner
     // seq only ever went up, and the room told everyone it finished
@@ -525,6 +555,28 @@ describe('game flow', () => {
     // a further alarm must not persist again
     await h.tick();
     expect(persistMatch).toHaveBeenCalledTimes(1);
+  });
+
+  it('ends on the net-worth target: the win event says target, the room finishes and the match is stored with that reason', async () => {
+    const h = await startedGame({ mode: 'quick', targetWorth: 2500000 });
+    expect(h.state.cfg.targetWorth).toBe(2500000);
+    await toHumanTurn(h, h.host);
+    h.state.players.find((p) => p.id === U(1)).cash = 9000000; // a fortune: over the 25 lakh target
+    await h.say(h.host, { t: 'action', action: { type: 'ROLL' } });
+    expect(h.state).toMatchObject({ phase: 'over', winner: U(1), winReason: 'target' });
+    expect(h.room.room.status).toBe('finished');
+    const win = h.host.last('state').events.find((e) => e.type === 'win');
+    expect(win).toMatchObject({ player: U(1), reason: 'target' });
+    expect(win.worth).toBeGreaterThanOrEqual(2500000);
+    for (let i = 0; i < 5 && !h.room.room.persisted; i += 1) await h.tick();
+    expect(persistMatch).toHaveBeenCalledTimes(1);
+    const rec = persisted[0];
+    expect(rec).toMatchObject({ winReason: 'target', winnerId: U(1), maxRounds: 12, playerCount: 2 });
+    expect(rec.players.find((p) => p.user_id === U(1)).rank).toBe(1);
+    expect(rec.players.find((p) => p.user_id === U(1)).final_worth).toBeGreaterThanOrEqual(2500000);
+    expect(rec.users.find((u) => u.user_id === U(1))).toMatchObject({ won: 1 });
+    expect(rec.users.find((u) => u.user_id === U(2))).toMatchObject({ won: 0 });
+    expect(h.host.last('room').room.status).toBe('finished');
   });
 
   it('retries a failed persist with backoff and still writes once', async () => {

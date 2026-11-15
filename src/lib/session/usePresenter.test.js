@@ -30,6 +30,26 @@ describe('scene playback metadata', () => {
   });
 });
 
+describe('the win', () => {
+  it.each(['last_standing', 'rounds', 'target'])('plays a %s win at full pace: game over, the winner and the reason on the display', async (reason) => {
+    const { core, state } = setup({ describe: () => ({ text: 'Won', tone: 'cheer' }) });
+    const final = structuredClone(state);
+    final.phase = 'over';
+    final.winner = 'other';
+    final.winReason = reason;
+    const ms = await timed(core, [{ type: 'win', player: 'other', reason, worth: 5100000 }], final);
+    expect(ms).toBeGreaterThanOrEqual(ANIM_MS.win * 0.9);
+    expect(core.getSnapshot().display).toMatchObject({ phase: 'over', winner: 'other', winReason: reason });
+    expect(core.getSnapshot().bubble).toMatchObject({ type: 'win', reason });
+    core.dispose();
+  });
+
+  it('carries the win reason from a state that is already over (reload)', () => {
+    expect(displayFromState(makeState({ phase: 'over', winner: 'me', winReason: 'target' }))).toMatchObject({ phase: 'over', winReason: 'target' });
+    expect(displayFromState(makeState()).winReason).toBeNull();
+  });
+});
+
 // A minimal Hustle-shaped state (independent of the engine build, the presenter only reads these fields).
 const N = 36;
 function makeState(overrides = {}) {

@@ -34,8 +34,8 @@ export default function ActionDock({ session, spec, fire, badges = {}, onManage,
         <ActionBar spec={spec} fire={fire} session={session} className="is-dock" />
       </div>
       <div className="ad-tools">
-        <Tool icon="home" label="Manage" badge={badges.manage} onClick={onManage} />
-        <Tool icon="swap" label="Trade" badge={badges.trade} onClick={onTrade} />
+        {spec?.kind === 'out' ? null : <Tool icon="home" label="Manage" badge={badges.manage} onClick={onManage} />}
+        {spec?.kind === 'out' ? null : <Tool icon="swap" label="Trade" badge={badges.trade} onClick={onTrade} />}
         {onChat ? <Tool icon="chat" label="Chat and reactions" iconOnly onClick={onChat} expanded={!!chatOpen} /> : null}
       </div>
     </div>

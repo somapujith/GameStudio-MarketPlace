@@ -145,7 +145,7 @@ describe('GET /api/rooms/open', () => {
           hostName: 'Host',
           players: 2,
           maxPlayers: 4,
-          summary: 'Standard City Hustle · 20 rounds · richest wins',
+          summary: 'Standard City Hustle · 20 rounds · richest wins · ₹50L target',
           createdAt: '2026-10-16T10:00:00.000Z',
         },
       ],
@@ -231,7 +231,7 @@ describe('POST /api/rooms', () => {
       maxPlayers: 4,
       host: { id: ME, name: 'Me', avatar: 3, guest: false },
     });
-    expect(payload.settings).toEqual({ mode: 'standard', dice: 'lucky', auctionOnDecline: true }); // the Hustle defaults, nothing else
+    expect(payload.settings).toEqual({ mode: 'standard', dice: 'lucky', auctionOnDecline: true, targetWorth: 5000000 }); // the Hustle defaults, nothing else
     expect(code).toBe(res.json.code);
   });
 
@@ -245,7 +245,7 @@ describe('POST /api/rooms', () => {
     expect(res.status).toBe(201);
     expect(roomCallMock.mock.calls[0][3]).toMatchObject({ visibility: 'public', maxPlayers: 3 });
     // validated and normalised: unknown / retired keys never reach the room
-    expect(roomCallMock.mock.calls[0][3].settings).toEqual({ mode: 'classic', dice: 'fair', auctionOnDecline: true });
+    expect(roomCallMock.mock.calls[0][3].settings).toEqual({ mode: 'classic', dice: 'fair', auctionOnDecline: true, targetWorth: 3000000 });
   });
 
   it('refuses unknown games and bad input with 400 (the room is never created)', async () => {

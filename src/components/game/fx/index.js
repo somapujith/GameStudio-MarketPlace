@@ -1,5 +1,8 @@
 export { default as FxLayer } from './FxLayer.jsx';
-export { default as CameraFocus } from './CameraFocus.jsx';
+export { default as CameraFocus, BoardCamera } from './CameraFocus.jsx';
+export { default as CameraHud } from './CameraHud.jsx';
+export * from './cameraMath.js';
+export { CAMERA, CAMERA_MODES, cameraDirective, cameraModeOf, createDirector, situationOf } from './cameraPolicy.js';
 export { BuildPop, OwnerStamp, OwnerChip, ChaiSteam, CardShimmer } from './TileFx.jsx';
 export { useBump } from './useBump.js';
 export { coinCount, arcPoints } from './coins.js';

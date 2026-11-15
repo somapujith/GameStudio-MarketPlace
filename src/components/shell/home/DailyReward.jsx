@@ -40,7 +40,8 @@ function Head({ sub, streak, ready }) {
         <Icon name="gift" size={26} />
       </span>
       <div className="hh2-daily__titles">
-        <h2 id="hh2-daily-h" className="hub-section__title">
+        <span className="st-eyebrow">Streak</span>
+        <h2 id="hh2-daily-h" className="st-head__title">
           Daily reward
         </h2>
         <p className="hh2-daily__sub">{sub}</p>

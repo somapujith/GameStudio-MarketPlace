@@ -5,6 +5,14 @@ const enc = encodeURIComponent;
 
 export const paths = {
   hub: () => '/',
+  /** Browse every game (filters, sort). */
+  games: () => '/games',
+  /** Search the catalogue; `q` pre-fills the query. */
+  search: (q) => (q ? `/search?q=${enc(q)}` : '/search'),
+  about: () => '/about',
+  help: () => '/help',
+  privacy: () => '/privacy',
+  terms: () => '/terms',
   /** Game detail page. */
   game: (gameId) => `/games/${enc(gameId)}`,
   /** Full-screen online game for a room code. */

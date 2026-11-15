@@ -96,11 +96,20 @@ function invariants(s) {
   else expect(s.debt).toBeNull();
   if (s.phase !== 'buy' && s.phase !== 'auction') expect(s.pending).toBeNull();
   if (s.ride) expect(s.ride.player).toBe(s.players[s.turn].id);
+  const target = s.cfg.targetWorth;
   if (s.phase === 'over') {
-    expect(['last_standing', 'rounds']).toContain(s.winReason);
+    expect(['last_standing', 'target', 'rounds']).toContain(s.winReason);
     if (s.winner) expect(standings(s)[0].id).toBe(s.winner);
+    if (s.winReason === 'target') expect(netWorth(s, s.winner)).toBeGreaterThanOrEqual(target);
+    if (s.winReason === 'rounds' && target != null) {
+      for (const p of s.players) if (!p.bankrupt) expect(netWorth(s, p.id)).toBeLessThan(target);
+    }
   } else {
     expect(s.players.filter((p) => !p.bankrupt).length).toBeGreaterThanOrEqual(2);
+    // nothing in flight and somebody at the target: the game must already be over
+    if (target != null && s.phase !== 'debt' && s.phase !== 'auction' && !s.trade) {
+      for (const p of s.players) if (!p.bankrupt) expect(netWorth(s, p.id)).toBeLessThan(target);
+    }
   }
 }
 
@@ -176,6 +185,35 @@ describe('fuzz: random legal actions', () => {
     }
     expect(upgrades).toBeGreaterThan(0); // the bots do build once they own a collection
   });
+
+  it('every mode and every win target always terminates, with a valid reason and the winner at rank 1', () => {
+    const cap = { standard: 20, quick: 12, classic: 60 };
+    const seen = new Set();
+    for (const mode of ['standard', 'quick', 'classic']) {
+      for (const targetWorth of [null, 2500000, 5000000]) {
+        for (const n of [2, 5]) {
+          const seed = n * 31 + mode.length + (targetWorth ? targetWorth / 100000 : 0);
+          const rnd = mulberry32(seed);
+          let s = createGame({ players: Array.from({ length: n }, (_, i) => ({ id: `p${i}`, name: `P${i}`, isBot: true })), settings: { mode, targetWorth }, seed });
+          let steps = 0;
+          while (s.phase !== 'over') {
+            const a = nextBotMove(s, rnd);
+            expect(a, `${mode} ${targetWorth} n=${n} step ${steps}: no move in phase ${s.phase}`).toBeTruthy();
+            const r = applyAction(s, a);
+            if (r.error) throw new Error(`${mode} ${targetWorth}: ${JSON.stringify(a)} -> ${r.error}`);
+            s = r.state;
+            invariants(s);
+            if (++steps > 60000) throw new Error(`${mode} ${targetWorth} n=${n}: did not terminate`);
+          }
+          expect(s.round, `${mode} ${targetWorth} n=${n}`).toBeLessThanOrEqual(cap[mode] + 1);
+          if (targetWorth == null && mode !== 'classic') expect(s.winReason).toBe('rounds');
+          seen.add(s.winReason);
+        }
+      }
+    }
+    expect(seen.has('target')).toBe(true); // the small targets are reached by the bots
+    expect(seen.has('rounds')).toBe(true);
+  }, 60000);
 
   it('never mutates the input state and refuses junk without throwing', () => {
     const s = createGame({ players: [{ id: 'a' }, { id: 'b' }], seed: 3 });

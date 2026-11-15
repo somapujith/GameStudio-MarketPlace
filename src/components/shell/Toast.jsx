@@ -16,6 +16,7 @@
  *   duration  ms before it leaves (default 3400; errors 5200; with an action 6000; 0 = sticky)
  *   action    { label, onClick }  a button inside the toast; clicking it runs onClick then dismisses
  *   id        reuse an id to replace an existing toast in place (e.g. 'net' for a connection notice)
+ * The same message and tone shown again while it is still on screen refreshes that toast instead of stacking a copy.
  * Returns the toast id. `toast` is a stable function (safe in effect deps). Without a provider it is a no-op.
  * At most 3 are stacked (the oldest leaves first); tap a toast to dismiss it. The auto-dismiss countdown pauses
  * while the pointer is over a toast or focus is inside it (so its action is reachable by keyboard) and resumes on leave. Enter/exit animate with
@@ -49,6 +50,8 @@ noopToast.gold = noopToast;
 export function ToastProvider({ children }) {
   const [items, setItems] = useState([]);
   const seq = useRef(0);
+  const itemsRef = useRef([]); // latest list, so `show` can spot a repeat without re-creating itself
+  itemsRef.current = items;
   const timers = useRef(new Map());
   // auto-dismiss bookkeeping per live toast: { due, left } (left = ms remaining while paused)
   const clocks = useRef(new Map());
@@ -80,7 +83,9 @@ export function ToastProvider({ children }) {
       if (message === undefined || message === null || message === '') return null;
       const o = typeof opts === 'string' ? { tone: opts } : opts || {};
       const tone = toneOf(o.tone || o.variant);
-      const id = o.id ?? `t${++seq.current}`;
+      // the same words shown again while the first is still up (a double tap, two events at once) refresh it in place
+      const again = o.id === undefined ? itemsRef.current.find((t) => !t.leaving && t.message === String(message) && t.tone === tone && !t.action) : null;
+      const id = o.id ?? (again ? again.id : `t${++seq.current}`);
       const action = o.action && typeof o.action.onClick === 'function' && o.action.label ? { label: String(o.action.label), onClick: o.action.onClick } : null;
       const duration = Number.isFinite(Number(o.duration)) ? Number(o.duration) : action ? 6000 : tone === 'bad' ? 5200 : 3400;
       const item = { id, message: typeof message === 'string' ? message : String(message), tone, icon: o.icon, action };

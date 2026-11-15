@@ -115,6 +115,8 @@ function createStore(key, normalize) {
 
 export const THEMES = Object.freeze(['system', 'dark', 'light']);
 export const PLAYBACK_SPEEDS = Object.freeze([0.75, 1, 1.5, 2]);
+/** Phone board camera: 'auto' (moves by itself + pinch) | 'manual' (pinch only) | 'off' (no camera, no gestures). */
+export const BOARD_CAMERAS = Object.freeze(['auto', 'manual', 'off']);
 
 export const DEFAULT_APP_SETTINGS = Object.freeze({
   sfx: true,
@@ -126,6 +128,8 @@ export const DEFAULT_APP_SETTINGS = Object.freeze({
   playbackSpeed: 1,
   /** Short vibrations on your turn, rent paid, etc. (phones that support navigator.vibrate). */
   haptics: true,
+  /** Zoom of the board on phone-sized screens (see BOARD_CAMERAS). Wide boards never zoom. */
+  boardCamera: 'auto',
 });
 
 /** Unknown keys (e.g. the voice/subtitle settings of older builds) are ignored, never an error. */
@@ -138,6 +142,7 @@ function normalizeSettings(p) {
     theme: THEMES.includes(src.theme) ? src.theme : DEFAULT_APP_SETTINGS.theme,
     playbackSpeed: PLAYBACK_SPEEDS.includes(Number(src.playbackSpeed)) ? Number(src.playbackSpeed) : DEFAULT_APP_SETTINGS.playbackSpeed,
     haptics: src.haptics === undefined ? DEFAULT_APP_SETTINGS.haptics : !!src.haptics,
+    boardCamera: BOARD_CAMERAS.includes(src.boardCamera) ? src.boardCamera : DEFAULT_APP_SETTINGS.boardCamera,
   };
 }
 

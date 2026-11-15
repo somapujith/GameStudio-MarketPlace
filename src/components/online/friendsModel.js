@@ -177,6 +177,30 @@ export function inviteFeedback(res, name) {
   return { text: `Invite sent to ${who}`, tone: 'good', state: 'sent' };
 }
 
+/** Online friends first (already sorted), then offline: `{ online, offline }`. */
+export function groupFriends(friends) {
+  const list = Array.isArray(friends) ? friends : [];
+  return { online: list.filter((f) => f.online), offline: list.filter((f) => !f.online) };
+}
+
+/** Milliseconds an invite stays valid from `createdAt` (negative = already gone). */
+export function inviteExpiresInMs(createdAt, now = Date.now()) {
+  const t = toMs(createdAt);
+  return t == null ? null : INVITE_TTL_MS - (now - t);
+}
+
+/** "expires in 1 h 40 min", "expires in 12 min", "expiring now"; '' when the time is unknown. */
+export function inviteExpiryLabel(createdAt, now = Date.now()) {
+  const left = inviteExpiresInMs(createdAt, now);
+  if (left == null) return '';
+  const min = Math.floor(left / 60000);
+  if (min < 1) return 'expiring now';
+  if (min < 60) return `expires in ${min} min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m ? `expires in ${h} h ${m} min` : `expires in ${h} h`;
+}
+
 // ---------------------------------------------------------------- enter / exit lists
 
 /**

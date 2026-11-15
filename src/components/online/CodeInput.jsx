@@ -1,14 +1,14 @@
 import { useId, useRef, useState } from 'react';
-import { ROOM_CODE_LENGTH, normalizeRoomCode } from './codes.js';
+import { ROOM_CODE_LENGTH, normalizeRoomCode, rejectedChars } from './codes.js';
 import '@/styles/online.css';
 
 /**
  * Six-box room-code entry. One real <input> sits over the boxes, so typing, backspace, paste, autofill and
  * screen readers all behave natively. Everything is normalised (uppercase, unambiguous alphabet, links pasted
  * whole are reduced to their code).
- * `state`: 'idle' | 'checking' | 'ok' | 'error'
+ * `state`: 'idle' | 'checking' | 'ok' | 'error'. `onInvalid(chars)` hears the look-alike characters (O I 0 1) that were dropped.
  */
-export default function CodeInput({ value, onChange, state = 'idle', disabled = false, autoFocus = false, label = 'Room code', describedBy }) {
+export default function CodeInput({ value, onChange, onInvalid, state = 'idle', disabled = false, autoFocus = false, label = 'Room code', describedBy }) {
   const id = useId();
   const ref = useRef(null);
   const [focused, setFocused] = useState(false);
@@ -23,7 +23,7 @@ export default function CodeInput({ value, onChange, state = 'idle', disabled = 
 
   return (
     <div
-      className={`ho-code ho-code--${state}${focused ? ' is-focused' : ''}${disabled ? ' is-disabled' : ''}`}
+      className={`ho-code sr-code ho-code--${state}${focused ? ' is-focused' : ''}${disabled ? ' is-disabled' : ''}`}
       onClick={() => {
         ref.current?.focus();
         if (ref.current) toEnd(ref.current);
@@ -48,10 +48,17 @@ export default function CodeInput({ value, onChange, state = 'idle', disabled = 
         value={value}
         aria-invalid={state === 'error' || undefined}
         aria-describedby={describedBy}
-        onChange={(e) => onChange(normalizeRoomCode(e.target.value))}
+        onChange={(e) => {
+          const bad = rejectedChars(e.target.value);
+          if (bad.length && onInvalid) onInvalid(bad);
+          onChange(normalizeRoomCode(e.target.value));
+        }}
         onPaste={(e) => {
           e.preventDefault();
-          onChange(normalizeRoomCode(e.clipboardData.getData('text')));
+          const text = e.clipboardData.getData('text');
+          const bad = rejectedChars(text);
+          if (bad.length && onInvalid) onInvalid(bad);
+          onChange(normalizeRoomCode(text));
         }}
         onFocus={(e) => {
           setFocused(true);

@@ -3,7 +3,8 @@ import { describe, it, expect } from 'vitest';
 import { GROUP_TILES } from './board.js';
 import {
   createGame, applyAction, getOptions, netWorth, standings, previewRent, municipalDue, canUpgrade, normalizeSettings,
-  liquidationValue, chooseBotAction, DEFAULT_SETTINGS, MODES, ROUND_CAP, TILES, PASS_START, TRAFFIC_FINE, PIECES,
+  liquidationValue, chooseBotAction, DEFAULT_SETTINGS, MODES, ROUND_CAP, TARGET_OPTIONS, TILES, PASS_START, TRAFFIC_FINE, PIECES,
+  nextBotMove, mulberry32, resolveTarget, targetLabel, modeSummary,
   LUCK_CARDS, DRAMA_CARDS, CITY_EVENTS, EVENT_EVERY, BOARD_SIZE, upgradeCost, mortgageValue, unmortgageCost, rentFor,
 } from './index.js';
 
@@ -31,7 +32,7 @@ function stackCard(s, deck, cardId) {
 describe('createGame and settings', () => {
   it('standard mode: 15 lakh each, 20 rounds, lucky dice, auction on decline', () => {
     const s = createGame({ players: [{ id: 'a' }, { id: 'b' }], seed: 1 });
-    expect(s.cfg).toEqual({ mode: 'standard', startCash: 1500000, passStart: 200000, maxRounds: 20, dice: 'lucky', auctionOnDecline: true, trafficFine: 25000, chaiCap: 1 });
+    expect(s.cfg).toEqual({ mode: 'standard', startCash: 1500000, passStart: 200000, maxRounds: 20, targetWorth: 5000000, dice: 'lucky', auctionOnDecline: true, trafficFine: 25000, chaiCap: 1 });
     expect(s.owners).toHaveLength(36);
     expect(s.levels).toHaveLength(36);
     expect(s.players[0]).toMatchObject({ cash: 1500000, pos: 0, stuck: false, chai: 0, laps: 0, bankrupt: false, piece: 'pearl' });
@@ -39,7 +40,7 @@ describe('createGame and settings', () => {
     expect(s.players[0]).not.toHaveProperty('jailTurns');
     expect(s).not.toHaveProperty('traps');
     expect(s.ride).toBeNull();
-    expect(DEFAULT_SETTINGS).toEqual({ mode: 'standard', dice: 'lucky', auctionOnDecline: true });
+    expect(DEFAULT_SETTINGS).toEqual({ mode: 'standard', dice: 'lucky', auctionOnDecline: true, targetWorth: 5000000 });
   });
 
   it('modes: quick = 12 rounds and 20 lakh, classic = no round limit', () => {
@@ -440,7 +441,7 @@ describe('municipal charges and bazaar auction', () => {
   });
 
   it('Bazaar Auction: a random unowned district, min bid 50% of its price; the lander bids too', () => {
-    const s = game();
+    const s = game({ targetWorth: null }); // c owns the rest of the city: no win target here
     s.players[0].pos = 29;
     for (let i = 0; i < BOARD_SIZE; i++) if (TILES[i].type === 'property' && i !== 22) s.owners[i] = 'c';
     const r = roll(s, 'a', 3);
@@ -456,7 +457,7 @@ describe('municipal charges and bazaar auction', () => {
   });
 
   it('Bazaar Auction does nothing when every district is owned', () => {
-    const s = game();
+    const s = game({ targetWorth: null });
     s.players[0].pos = 29;
     for (let i = 0; i < BOARD_SIZE; i++) if (TILES[i].type === 'property') s.owners[i] = 'c';
     const r = roll(s, 'a', 3);
@@ -731,5 +732,247 @@ describe('modes and the round-limit win', () => {
     r = act(r.state, { type: 'RESIGN', playerId: 'c' });
     const st = standings(r.state);
     expect(st.map((x) => x.id)).toEqual(['a', 'd', 'c', 'b']);
+  });
+});
+
+describe('win target (net worth)', () => {
+  const TARGET = 2500000; // 25 lakh: reachable in a test with a little setup
+  const tgame = (extra = {}, opts = { n: 2 }) => game({ targetWorth: TARGET, ...extra }, opts);
+  /** `id` sits above the target before anyone acts (the setup bypasses the check that runs after every action) */
+  const above = (s, id, cash = TARGET + 100000) => { P(s, id).cash = cash; return s; };
+
+  it('defaults: standard and quick 50 lakh (a safety valve), classic 30 lakh; the list of options', () => {
+    expect(TARGET_OPTIONS).toEqual([null, 2500000, 3000000, 4000000, 5000000, 7500000, 10000000]);
+    expect(MODES.standard.targetWorth).toBe(5000000);
+    expect(MODES.quick.targetWorth).toBe(5000000);
+    expect(MODES.classic.targetWorth).toBe(3000000);
+    expect(normalizeSettings({}).targetWorth).toBe(5000000);
+    expect(normalizeSettings({ mode: 'quick' }).targetWorth).toBe(5000000);
+    expect(normalizeSettings({ mode: 'classic' }).targetWorth).toBe(3000000);
+    expect(createGame({ players: [{ id: 'a' }, { id: 'b' }], settings: { mode: 'classic' }, seed: 1 }).cfg.targetWorth).toBe(3000000);
+  });
+
+  it('only a listed target or null gets through; anything else is the mode default', () => {
+    for (const t of TARGET_OPTIONS) expect(normalizeSettings({ targetWorth: t }).targetWorth).toBe(t);
+    for (const bad of [123, -5, 2500001, '5000000', true, NaN, Infinity, [], {}, undefined]) {
+      expect(normalizeSettings({ targetWorth: bad }).targetWorth, String(bad)).toBe(5000000);
+      expect(normalizeSettings({ mode: 'classic', targetWorth: bad }).targetWorth, String(bad)).toBe(3000000);
+    }
+    // the engine accepts "off" for every mode (tests, the simulator): the ROUND_CAP safety net still ends a classic game
+    expect(normalizeSettings({ mode: 'classic', targetWorth: null })).toMatchObject({ maxRounds: null, targetWorth: null });
+    // the rules the lobby uses: no "off" without a round limit
+    expect(resolveTarget('standard', null)).toBeNull();
+    expect(resolveTarget('classic', null)).toBe(3000000);
+    expect(resolveTarget('classic', 4000000)).toBe(4000000);
+    expect(resolveTarget('nope', 77)).toBe(5000000);
+    expect(targetLabel(null)).toBe('Off');
+    expect([2500000, 7500000, 10000000].map(targetLabel)).toEqual(['₹25L', '₹75L', '₹1Cr']);
+    expect(modeSummary('standard')).toBe('Standard City Hustle · 20 rounds · richest wins · ₹50L target');
+    expect(modeSummary('quick', null)).toBe('Quick Chai Break · 12 rounds · richest wins');
+    expect(modeSummary('classic', 4000000)).toBe('Classic Long Game · first to ₹40L wins');
+  });
+
+  it('crossing the target ends the game at once: phase over, winner, winReason target, win event with the worth', () => {
+    const s = tgame();
+    P(s, 'a').cash = 2400000;
+    P(s, 'a').pos = 34;
+    const r = roll(s, 'a', 3); // passes START: +2 lakh salary -> 26 lakh
+    expect(r.state.phase).toBe('over');
+    expect(r.state).toMatchObject({ winner: 'a', winReason: 'target', pending: null, debt: null, trade: null });
+    expect(r.state.round).toBe(1);
+    expect(r.events.at(-1)).toEqual({ type: 'win', player: 'a', reason: 'target', worth: netWorth(r.state, 'a') });
+    expect(r.events.at(-1).worth).toBeGreaterThanOrEqual(TARGET);
+    expect(r.events.filter((e) => e.type === 'win')).toHaveLength(1);
+    expect(standings(r.state)[0].id).toBe('a');
+    expect(applyAction(r.state, { type: 'ROLL', playerId: 'b' }).error).toBe('The game is over');
+  });
+
+  it('exactly the target counts (>=), one rupee short does not', () => {
+    const at = above(tgame(), 'a', TARGET);
+    at.phase = 'manage';
+    expect(act(at, { type: 'END_TURN', playerId: 'a' }).state).toMatchObject({ phase: 'over', winner: 'a', winReason: 'target' });
+    const short = above(tgame(), 'a', TARGET - 1);
+    short.phase = 'manage';
+    expect(act(short, { type: 'END_TURN', playerId: 'a' }).state.phase).toBe('roll');
+  });
+
+  it('net worth counts districts at their printed value and half the upgrades, not just cash', () => {
+    const s = tgame();
+    s.phase = 'manage';
+    s.owners[1] = 'a'; s.owners[3] = 'a';
+    P(s, 'a').cash = 100000;
+    expect(netWorth(s, 'a')).toBe(100000 + TILES[1].price + TILES[3].price);
+    for (const t of [28, 29, 31]) s.owners[t] = 'a'; // a whole collection, one district upgraded
+    s.levels[28] = 2;
+    P(s, 'a').cash += TARGET - netWorth(s, 'a'); // exactly at the target
+    expect(netWorth(s, 'a')).toBe(TARGET);
+    expect(act(s, { type: 'END_TURN', playerId: 'a' }).state).toMatchObject({ phase: 'over', winner: 'a', winReason: 'target' });
+  });
+
+  it('mortgaging never moves net worth, so it cannot trigger (or dodge) the target', () => {
+    const s = tgame();
+    s.phase = 'manage';
+    s.owners[1] = 'a';
+    P(s, 'a').cash = TARGET - TILES[1].price - 1; // one rupee short
+    expect(netWorth(s, 'a')).toBe(TARGET - 1);
+    const r = act(s, { type: 'MORTGAGE', playerId: 'a', tile: 1 });
+    expect(netWorth(r.state, 'a')).toBe(TARGET - 1);
+    expect(r.state.phase).toBe('manage');
+  });
+
+  it('targetWorth null: nobody wins on wealth (the old behaviour)', () => {
+    const s = game({ targetWorth: null }, { n: 2 });
+    above(s, 'a', 90000000);
+    s.phase = 'manage';
+    const r = act(s, { type: 'END_TURN', playerId: 'a' });
+    expect(r.state.phase).toBe('roll');
+    expect(r.state.winner).toBeNull();
+    expect(r.events.some((e) => e.type === 'win')).toBe(false);
+  });
+
+  it('is not decided while a debt is open; it is once the debt is settled', () => {
+    const s = tgame();
+    s.owners[35] = 'b'; s.levels[35] = 2; // 1,40,000 rent
+    s.owners[1] = 'a';
+    P(s, 'a').cash = 120000;
+    P(s, 'a').pos = 33;
+    above(s, 'b'); // b is over the target before the rent lands
+    const r = roll(s, 'a', 2);
+    expect(r.state.phase).toBe('debt');
+    expect(r.state.winner).toBeNull();
+    let x = act(r.state, { type: 'MORTGAGE', playerId: 'a', tile: 1 });
+    expect(x.state.phase).toBe('debt'); // still open: no win in the middle of a debt
+    x = act(x.state, { type: 'PAY_DEBT', playerId: 'a' });
+    expect(x.state).toMatchObject({ phase: 'over', winner: 'b', winReason: 'target' });
+    expect(x.events.at(-1)).toMatchObject({ type: 'win', player: 'b', reason: 'target' });
+  });
+
+  it('rent paid on the way to the target settles first: the payee wins with the rent included', () => {
+    const s = tgame();
+    s.owners[35] = 'b'; s.levels[35] = 2; // 1,40,000 rent
+    P(s, 'a').pos = 33;
+    const before = netWorth(s, 'b');
+    P(s, 'b').cash += TARGET - before - 100000; // 1,00,000 short: the 1,40,000 rent lifts b over the line
+    const r = roll(s, 'a', 2);
+    expect(P(r.state, 'a').cash).toBe(1500000 - 140000);
+    expect(r.state).toMatchObject({ phase: 'over', winner: 'b', winReason: 'target' });
+    expect(r.events.at(-1).worth).toBe(netWorth(r.state, 'b'));
+  });
+
+  it('is not decided during a sealed auction; it is once the auction is resolved', () => {
+    const s = tgame({}, { n: 3 });
+    P(s, 'a').pos = 29;
+    for (let i = 0; i < BOARD_SIZE; i++) if (TILES[i].type === 'property' && i !== 22) s.owners[i] = 'c';
+    const r = roll(s, 'a', 3); // lands on the Bazaar: a random free district goes to auction
+    expect(r.state.phase).toBe('auction');
+    expect(netWorth(r.state, 'c')).toBeGreaterThanOrEqual(TARGET); // c is far over the line, yet the game waits
+    expect(r.state.winner).toBeNull();
+    let x = act(r.state, { type: 'BID', playerId: 'a', amount: 130000 });
+    x = act(x.state, { type: 'BID', playerId: 'b', amount: 0 });
+    expect(x.state.phase).toBe('auction');
+    x = act(x.state, { type: 'BID', playerId: 'c', amount: 0 });
+    expect(x.state.owners[22]).toBe('a');
+    expect(x.state).toMatchObject({ phase: 'over', winner: 'c', winReason: 'target' });
+  });
+
+  it('is not decided while a trade offer is open; it is once the offer is answered', () => {
+    const s = tgame();
+    above(s, 'b');
+    const r = act(s, { type: 'TRADE_OFFER', playerId: 'a', to: 'b', give: { cash: 1000, tiles: [] }, get: { cash: 0, tiles: [] } });
+    expect(r.state.trade).not.toBeNull();
+    expect(r.state.phase).not.toBe('over');
+    const x = act(r.state, { type: 'TRADE_REJECT', playerId: 'b' });
+    expect(x.state).toMatchObject({ phase: 'over', winner: 'b', winReason: 'target', trade: null });
+    // accepting counts too: the traded worth is what is measured afterwards
+    const y = act(r.state, { type: 'TRADE_ACCEPT', playerId: 'b' });
+    expect(y.state).toMatchObject({ phase: 'over', winner: 'b', winReason: 'target' });
+  });
+
+  it('several players over the line: the richest wins, then more cash, then the lower seat', () => {
+    // richest
+    let s = tgame({}, { n: 3 });
+    above(s, 'a', TARGET + 10); above(s, 'b', TARGET + 500000); above(s, 'c', TARGET + 20);
+    s.phase = 'manage';
+    let r = act(s, { type: 'END_TURN', playerId: 'a' });
+    expect(r.state).toMatchObject({ winner: 'b', winReason: 'target' });
+    expect(standings(r.state)[0].id).toBe('b');
+    // equal worth: more cash wins (b holds a district instead of cash); a and c tie on worth and cash: the lower seat
+    s = tgame({}, { n: 3 });
+    above(s, 'a', TARGET + 100000); above(s, 'c', TARGET + 100000);
+    s.owners[1] = 'b';
+    P(s, 'b').cash = TARGET + 100000 - TILES[1].price;
+    expect(netWorth(s, 'b')).toBe(netWorth(s, 'a'));
+    s.phase = 'manage';
+    r = act(s, { type: 'END_TURN', playerId: 'a' });
+    expect(r.state.winner).toBe('a');
+    expect(standings(r.state).map((x) => x.id)).toEqual(['a', 'c', 'b']);
+    // equal worth, the later seat holds more cash
+    s = tgame({}, { n: 3 });
+    above(s, 'c', TARGET + 100000);
+    s.owners[1] = 'a';
+    P(s, 'a').cash = TARGET + 100000 - TILES[1].price;
+    above(s, 'b', TARGET - 1);
+    s.phase = 'manage';
+    r = act(s, { type: 'END_TURN', playerId: 'a' });
+    expect(r.state).toMatchObject({ winner: 'c', winReason: 'target' });
+    expect(standings(r.state)[0].id).toBe('c');
+  });
+
+  it('a bankrupt player cannot win; the last one standing wins as last_standing, which is checked first', () => {
+    const s = tgame({}, { n: 3 });
+    above(s, 'c');
+    let r = act(s, { type: 'RESIGN', playerId: 'c' }); // c is out although it was over the line
+    expect(r.state.phase).not.toBe('over');
+    expect(P(r.state, 'c').bankrupt).toBe(true);
+    r = act(r.state, { type: 'RESIGN', playerId: r.state.players[r.state.turn].id });
+    expect(r.state).toMatchObject({ phase: 'over', winReason: 'last_standing' });
+    const two = above(tgame(), 'a'); // both reasons apply at once
+    const x = act(two, { type: 'RESIGN', playerId: 'b' });
+    expect(x.state).toMatchObject({ winner: 'a', winReason: 'last_standing' });
+  });
+
+  it('the last round: when the target and the round limit both apply, the target is the reason', () => {
+    const s = tgame();
+    s.round = 20;
+    s.turn = 1;
+    s.phase = 'manage';
+    above(s, 'b');
+    const r = act(s, { type: 'END_TURN', playerId: 'b' }); // round 21 would begin: over by rounds AND target
+    expect(r.state).toMatchObject({ phase: 'over', winner: 'b', winReason: 'target' });
+    expect(r.state.round).toBe(21);
+  });
+
+  it('a classic game with the target off still ends at the safety cap (never runs forever)', () => {
+    const s = game({ mode: 'classic', targetWorth: null }, { n: 2 });
+    s.round = ROUND_CAP;
+    s.turn = 1;
+    s.phase = 'manage';
+    above(s, 'a', 90000000);
+    expect(act(s, { type: 'END_TURN', playerId: 'b' }).state).toMatchObject({ phase: 'over', winner: 'a', winReason: 'rounds' });
+  });
+
+  it('with the target never reached, a game plays out exactly as with the target off (same dice, same events)', () => {
+    for (const mode of ['standard', 'quick']) {
+      for (let seed = 1; seed <= 4; seed++) {
+        const run = (settings) => {
+          const players = [0, 1, 2].map((i) => ({ id: `p${i}`, name: `P${i}`, isBot: true }));
+          let s = createGame({ players, settings: { mode, ...settings }, seed });
+          const rnd = mulberry32(seed * 13);
+          const log = [];
+          for (let i = 0; i < 20000 && s.phase !== 'over'; i++) {
+            const r = applyAction(s, nextBotMove(s, rnd));
+            if (r.error) throw new Error(r.error);
+            s = r.state;
+            log.push(JSON.stringify(r.events));
+          }
+          return { s, log };
+        };
+        const on = run({});
+        const off = run({ targetWorth: null });
+        expect(on.s.winReason, `${mode} #${seed}`).toBe('rounds'); // the 50 lakh valve is not reached by these games
+        expect(on.log).toEqual(off.log);
+        expect({ ...on.s, cfg: { ...on.s.cfg, targetWorth: null } }).toEqual(off.s);
+      }
+    }
   });
 });

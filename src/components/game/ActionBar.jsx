@@ -10,6 +10,7 @@ import { formatINR } from '@shared/format.js';
 import { sfx } from '@/lib/sfx.js';
 import Icon from './ui/Icon.jsx';
 import { hasOpenSheet } from './ui/Sheet.jsx';
+import { watchingLine } from './turn/resign.js';
 import '@/styles/controlpanel.css';
 
 const TRAFFIC_FINE = 25000;
@@ -47,7 +48,12 @@ export function buildActionSpec(session) {
     return { ...spec, label: 'Game over', sr: 'Game over', upgrades: 0 };
   }
   if (mine?.bankrupt) {
-    return { ...spec, label: 'You are out – spectating', sr: 'You are bankrupt and out of the game', upgrades: 0 };
+    // resigned or bankrupt: a calm line instead of an action (the back button still leaves the table)
+    const label = watchingLine(session);
+    return { ...spec, kind: 'out', label, sub: 'Use the back arrow to leave', sr: `${label}. You are out of the game and can watch the rest of it`, upgrades: 0 };
+  }
+  if (session.resigning) {
+    return { ...spec, label: 'Resigning…', sr: 'Resigning from the game', upgrades: 0 };
   }
   if (busy) {
     return { ...spec, kind: 'busy', label: '', sr: 'Please wait', upgrades: 0 };
@@ -158,7 +164,7 @@ export function useActionSpec(session, { keys = true } = {}) {
   const spec = useMemo(
     () => buildActionSpec(session),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [session.options, session.view, session.busy, session.me, session.result],
+    [session.options, session.view, session.busy, session.me, session.result, session.resigning, session.resigned],
   );
   const specRef = useRef(spec);
   const dispatchRef = useRef(session.dispatch);

@@ -44,28 +44,7 @@
 .hg-auction-ostate small { font-size: 11.5px; font-weight: 700; }
 .hg-auction-others li.is-done .hg-icon { animation: hg-pop var(--dur-2) var(--ease-spring) both; }
 
-/* ---------------------------------------------------------------- trade */
-.hg-trade-cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
-@media (min-width: 560px) { .hg-trade-cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; } }
-.hg-trade-wait .hg-trade-cols, .hg-trade--incoming .hg-trade-cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-.hg-trade-cols .hg-trade-panel { margin-top: 0; }
-.hg-trade-coll { margin: 0 0 8px; }
-.hg-trade-collname {
-  display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
-  font-size: 11px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-dim);
-}
-.hg-trade-collname i { width: 10px; height: 10px; border-radius: 3px; background: var(--sc); flex: none; }
-.hg-trade-collname small { margin-left: auto; font-weight: 700; color: var(--text-faint); letter-spacing: 0; }
-.hg-trade-cash { display: flex; align-items: center; gap: 6px; color: var(--gold); }
-.hg-trade-set {
-  display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; padding: 8px 10px; border-radius: 12px; font-size: 13px; line-height: 1.35;
-  animation: hg-pop var(--dur-2) var(--ease-spring) both;
-}
-.hg-trade-set .hg-icon { flex: none; margin-top: 1px; }
-.hg-trade-set.is-mine { background: rgba(61, 220, 151, 0.14); color: var(--good); }
-.hg-trade-set.is-mine b { color: var(--text); }
-.hg-trade-set.is-theirs { background: rgba(255, 176, 32, 0.12); color: var(--warn); }
-.hg-trade-band .hg-token { padding: 3px; }
+/* ---------------------------------------------------------------- trade: see trade.css (TradeSheet) */
 
 /* ---------------------------------------------------------------- debt */
 .hg-debt-short { display: inline-flex; align-items: center; gap: 4px; }
@@ -220,13 +199,13 @@
 /* ---------------------------------------------------------------- reduced motion (OS, in-game switch, hub switch) */
 @media (prefers-reduced-motion: reduce) {
   .hg-sheet-root[data-variant][data-desktop] > .hg-sheet, .hg-sheet-root > .hg-backdrop, .hg-bidchip, .hg-setdots i { transition: none !important; }
-  .hg-trade-set, .hg-mp-tag.is-full, .hg-moment, .hg-over .hg-pod, .hg-worth-bar i, .hg-setwin, .hg-settoast,
+  .hg-mp-tag.is-full, .hg-moment, .hg-over .hg-pod, .hg-worth-bar i, .hg-setwin, .hg-settoast,
   .hg-auction-others li.is-done .hg-icon { animation: none !important; }
   .hg-coinshower { display: none; }
 }
 :root[data-motion='reduced'] .hg-sheet-root[data-variant][data-desktop] > .hg-sheet, :root[data-motion='reduced'] .hg-sheet-root > .hg-backdrop,
 :root[data-motion='reduced'] .hg-bidchip, :root[data-motion='reduced'] .hg-setdots i { transition: none !important; }
-:root[data-motion='reduced'] .hg-trade-set, :root[data-motion='reduced'] .hg-mp-tag.is-full, :root[data-motion='reduced'] .hg-moment,
+:root[data-motion='reduced'] .hg-mp-tag.is-full, :root[data-motion='reduced'] .hg-moment,
 :root[data-motion='reduced'] .hg-over .hg-pod, :root[data-motion='reduced'] .hg-worth-bar i, :root[data-motion='reduced'] .hg-setwin,
 :root[data-motion='reduced'] .hg-settoast, :root[data-motion='reduced'] .hg-celebrate-in,
 :root[data-motion='reduced'] .hg-auction-others li.is-done .hg-icon { animation: none !important; }

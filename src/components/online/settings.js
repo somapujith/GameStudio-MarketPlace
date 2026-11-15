@@ -1,8 +1,13 @@
 // Host-settings model for the lobby, driven ENTIRELY by the game's `manifest.settings` schema
 // (docs/MARKETPLACE.md section 4). Nothing here knows about a particular game. Pure and unit-tested.
 //
-// Field: { key, label, type: 'segmented'|'stepper'|'toggle', options?: [{value,label}], min?, max?, step?,
-//          default, format?: 'inr'|'number'|'text', help? }
+// Field: { key, label, type: 'segmented'|'stepper'|'toggle', options?: [{value,label,hideIf?}], min?, max?, step?,
+//          default, format?: 'inr'|'number'|'text', help?, dependsOn? }
+//   - option.hideIf: `{ [otherKey]: [values] }` hides the option while that other setting has one of the values
+//     (the Tycoon lobby hides "Off" for a win target while the mode is classic)
+//   - dependsOn: `{ key, defaults: { [otherValue]: value } }`: when the host changes `key` the field jumps to the
+//     default for the new value (unless the same change sets the field itself); the option equal to that default is
+//     labelled "(default)". The server applies the same rule (adapter.mergeSettings), this keeps the UI in step.
 // A game may list the keys its lobby shows in `manifest.lobbySettings` (the others keep their defaults and are
 // never rendered); without that field the lobby shows every setting.
 //   - segmented: pick one of `options` (a value may be null, e.g. "unlimited")
@@ -27,8 +32,18 @@ export function lobbyFields(game) {
   return Array.isArray(keys) ? fields.filter((f) => keys.includes(f.key)) : fields;
 }
 
-export function fieldOptions(field) {
-  return Array.isArray(field && field.options) ? field.options.filter((o) => o && 'value' in o) : [];
+/**
+ * The usable options of a field. With `values` (the settings as they are right now) options hidden by `hideIf` are
+ * dropped and the option that is the default for the current `dependsOn` value gets " (default)" in its label.
+ */
+export function fieldOptions(field, values) {
+  const all = Array.isArray(field && field.options) ? field.options.filter((o) => o && 'value' in o) : [];
+  if (!values || typeof values !== 'object') return all;
+  const dep = field.dependsOn;
+  const def = dep && dep.defaults ? dep.defaults[values[dep.key]] : undefined;
+  return all
+    .filter((o) => !(o.hideIf && Object.entries(o.hideIf).some(([k, list]) => Array.isArray(list) && list.includes(values[k]))))
+    .map((o) => (def !== undefined && Object.is(o.value, def) && typeof o.label === 'string' ? { ...o, label: `${o.label} (default)` } : o));
 }
 
 export function clampField(field, v) {
@@ -66,7 +81,18 @@ export function resolveSettings(schema, raw) {
 
 /** The exact message for a host change: always the full set with explicit values (`null` stays `null`). */
 export function settingsMessage(schema, current, patch) {
-  return { t: 'settings', settings: resolveSettings(schema, { ...(current || {}), ...(patch || {}) }) };
+  const cur = current || {};
+  const p = patch || {};
+  const merged = { ...cur, ...p };
+  // a field that `dependsOn` another resets to that value's default when the other one changes (and it did not change itself)
+  for (const f of schemaFields(schema)) {
+    const dep = f.dependsOn;
+    if (!dep || !(dep.key in p) || p[dep.key] === cur[dep.key]) continue;
+    if (f.key in p && p[f.key] !== cur[f.key]) continue;
+    const def = dep.defaults ? dep.defaults[p[dep.key]] : undefined;
+    if (def !== undefined) merged[f.key] = def;
+  }
+  return { t: 'settings', settings: resolveSettings(schema, merged) };
 }
 
 /** A stable string of the resolved values (cheap change detection for effects). */

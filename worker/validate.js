@@ -43,6 +43,8 @@ export function parseAvatar(v) {
 
 // Room/engine settings live in ./settings.js (strict, shared by the routes and GameRoom).
 export { sanitizeSettings, parseMaxPlayers, MAX_PLAYERS_MIN, MAX_PLAYERS_MAX } from './settings.js';
+// `{t:'net', rtt}` (connection strength report): rtt must be a finite number 0..20000 (see netpresence.js).
+export { parseNetRtt } from './netpresence.js';
 
 export const EMOTES = ['emote_mass', 'emote_cheer', 'emote_shock', 'emote_laugh', 'emote_thanks', 'emote_hurry', 'emote_taunt'];
 

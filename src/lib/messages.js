@@ -7,6 +7,7 @@
 //   owners?: (id|null)[],     // owners BEFORE this event (lets `own` / `level` lines name the owner)
 //   round?: number,           // round shown BEFORE this event (turn events log only when it increases)
 //   maxRounds?: number|null,  // flags the final round
+//   targetWorth?: number|null, // the net worth target: a `win` with reason 'target' names it
 // }
 //
 // tone: 'info' | 'good' | 'bad' | 'warn' | 'cheer'. Optional extras: `bubble` is a shorter text for the bubble;
@@ -211,6 +212,16 @@ function describeWin(ev, ctx) {
   if (ev.reason === 'last_standing') {
     return { text: `${who} ${me ? 'are' : 'is'} the last one standing and ${me ? 'own' : 'owns'} the city!`, bubble: `${who} ${me ? 'win' : 'wins'}!`, tone: 'cheer', icon: '🏆' };
   }
+  if (ev.reason === 'target') {
+    // the net worth target (ctx.targetWorth, when the caller knows it) was reached before the last round
+    const goal = Number(ctx && ctx.targetWorth) > 0 ? `${formatINR(Number(ctx.targetWorth))} net worth` : 'the net worth target';
+    return {
+      text: `Target reached! ${who} ${be(ctx, ev.player)} the first to hit ${goal} (${worth}) and ${me ? 'own' : 'owns'} the city!`,
+      bubble: `${who} ${me ? 'win' : 'wins'}!`,
+      tone: 'cheer',
+      icon: '🏆',
+    };
+  }
   return { text: `The last round is over! ${who} ${be(ctx, ev.player)} the richest in Hyderabad with ${worth}`, bubble: `${who} ${me ? 'win' : 'wins'}!`, tone: 'cheer', icon: '🏆' };
 }
 
@@ -340,6 +351,14 @@ export function describeEvent(ev, ctx) {
         };
 
       case 'bankrupt':
+        // `reason: 'resign'` (the player gave up; the engine may mark it) reads as a choice, not a collapse
+        if (ev.reason === 'resign' || ev.resigned === true) {
+          return {
+            text: isMe(ctx, ev.player) ? 'You resigned. You can keep watching the rest of the game' : `${playerName(ctx, ev.player)} resigned`,
+            tone: toneFor(ctx, ev.player, 'warn', 'warn'),
+            icon: '🏳️',
+          };
+        }
         return {
           text: isMe(ctx, ev.player) ? 'You went bankrupt! The city wins this time' : `${playerName(ctx, ev.player)} went bankrupt`,
           tone: toneFor(ctx, ev.player, 'bad', 'warn'),

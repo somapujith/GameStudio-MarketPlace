@@ -109,3 +109,89 @@ export function seatColor(game, i) {
   const list = game && Array.isArray(game.playerColors) && game.playerColors.length ? game.playerColors : DEFAULT_SEAT_COLORS;
   return list[((i % list.length) + list.length) % list.length];
 }
+
+/**
+ * Why the host cannot press Start yet, in one sentence ('' when they can). Never the button label: the label stays
+ * "Start game", this sits next to it so a disabled button always says why.
+ */
+export function startReason({ enough, open = true, starting = false, players = 0, minToStart = 2 } = {}) {
+  if (starting) return '';
+  if (!open) return 'Reconnecting to the room. You can start as soon as you are back in.';
+  if (!enough) {
+    const need = Math.max(0, minToStart - players);
+    return `Need at least ${minToStart} players to start. ${need === 1 ? 'One more to go' : `${need} more to go`}.`;
+  }
+  return '';
+}
+
+/**
+ * The full-screen card for a room we can no longer be in (`fatal` from useRoomConnection) -> { icon, tone, eyebrow,
+ * title, body, actions: [{ label, to? | act?: 'reload', primary? }] }, or null when it needs no card (signed out / left:
+ * the page navigates instead). `to` values come from `paths`, passed in so this file stays dependency-free.
+ */
+export function fatalView(fatal, { paths, gameId } = {}) {
+  if (!fatal || fatal.kind === 'auth' || fatal.kind === 'left') return null;
+  const message = String(fatal.message || '');
+  const home = { label: 'Home', to: paths.hub() };
+  const another = { label: 'Enter another code', to: paths.join(), primary: true };
+  if (fatal.kind === 'kicked') {
+    return {
+      icon: 'door',
+      tone: 'bad',
+      eyebrow: 'Removed',
+      title: 'You were removed from the room',
+      body: 'The host took you out of this lobby. You can join another room, or ask for the code again later.',
+      actions: [{ ...another, label: 'Join another room' }, home],
+    };
+  }
+  if (fatal.kind === 'closed') {
+    if (fatal.reason === 'replaced') {
+      return {
+        icon: 'users',
+        tone: 'info',
+        eyebrow: 'Another tab',
+        title: 'You are in this room somewhere else',
+        body: 'This room was opened in another tab or on another device, so this one stepped aside. Only one screen can be live at a time.',
+        actions: [{ label: 'Use this screen instead', act: 'reload', primary: true }, home],
+      };
+    }
+    if (/expired/i.test(message)) {
+      return {
+        icon: 'clock',
+        tone: 'bad',
+        eyebrow: 'Room closed',
+        title: 'This room has expired',
+        body: 'Rooms close after a day without activity. Start a new table and send your friends the new code.',
+        actions: [{ label: 'Start a new table', to: gameId ? paths.game(gameId) : paths.hub(), primary: true }, { label: 'Enter a code', to: paths.join() }],
+      };
+    }
+    return {
+      icon: 'wifiOff',
+      tone: 'bad',
+      eyebrow: 'Connection',
+      title: 'Lost the connection',
+      body: message || 'The connection to the room was closed.',
+      actions: [{ label: 'Try again', act: 'reload', primary: true }, home],
+    };
+  }
+  // 'join': the server refused the seat
+  let title = "Can't join this room";
+  let icon = 'lock';
+  if (/already started/i.test(message)) {
+    title = 'This game has already started';
+    icon = 'clock';
+  } else if (/full/i.test(message)) {
+    title = 'This table is full';
+    icon = 'users';
+  } else if (/does not exist|no longer exists/i.test(message)) {
+    title = 'Room not found';
+    icon = 'search';
+  } else if (/removed from this room/i.test(message)) {
+    title = 'You were removed from this room';
+    icon = 'door';
+  } else if (/no longer available/i.test(message)) {
+    title = 'This game is no longer available';
+    icon = 'info';
+  }
+  return { icon, tone: 'bad', eyebrow: 'Could not join', title, body: message || 'You cannot join this room.', actions: [another, home] };
+}

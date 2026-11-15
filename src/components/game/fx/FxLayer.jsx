@@ -33,6 +33,23 @@ const esc = (v) => {
   }
 };
 
+/**
+ * An endpoint that lives inside the zoomed board (the bank in the middle, a pawn) is only visible where the board
+ * camera's viewport shows it: clip its box to that, or put it on the nearest visible spot, so coins never fly to a point
+ * outside the board. Elements outside the camera (the pods) come back unchanged.
+ */
+export function visibleRect(r, view) {
+  if (!view) return r;
+  const left = Math.max(r.left, view.left);
+  const top = Math.max(r.top, view.top);
+  const right = Math.min(r.right ?? r.left + r.width, view.right ?? view.left + view.width);
+  const bottom = Math.min(r.bottom ?? r.top + r.height, view.bottom ?? view.top + view.height);
+  if (right - left >= 1 && bottom - top >= 1) return { left, top, width: right - left, height: bottom - top };
+  const cx = Math.min(Math.max(r.left + r.width / 2, view.left + 4), (view.right ?? view.left + view.width) - 4);
+  const cy = Math.min(Math.max(r.top + r.height / 2, view.top + 4), (view.bottom ?? view.top + view.height) - 4);
+  return { left: cx - 4, top: cy - 4, width: 8, height: 8 };
+}
+
 /** The first visible element for an endpoint, or null. */
 function findEndpoint(who) {
   if (typeof document === 'undefined' || who === undefined || who === null) return null;
@@ -40,7 +57,10 @@ function findEndpoint(who) {
   for (const sel of sels) {
     for (const el of document.querySelectorAll(sel)) {
       const r = el.getBoundingClientRect();
-      if (r.width > 0 && r.height > 0) return r;
+      if (r.width > 0 && r.height > 0) {
+        const cam = el.closest('[data-bc-viewport][data-lens]');
+        return cam ? visibleRect(r, cam.getBoundingClientRect()) : r;
+      }
     }
   }
   return null;

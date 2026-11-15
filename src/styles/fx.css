@@ -151,17 +151,7 @@
   to { transform: translateX(120%); }
 }
 
-/* ---- camera: on phone-sized boards, lean towards the landing tile and back ------ */
-
-.fx-cam {
-  position: absolute;
-  inset: 0;
-  transform-origin: var(--cam-x, 50%) var(--cam-y, 50%);
-  transition: transform var(--dur-4, 600ms) var(--ease-std, cubic-bezier(0.4, 0, 0.2, 1));
-}
-@container (max-width: 560px) {
-  .fx-cam.is-focus { transform: scale(1.07); }
-}
+/* ---- camera: lives in camera.css (the board camera, src/components/game/fx/CameraFocus.jsx) -- */
 
 /* ---- reduced motion: no effects at all ----------------------------------------- */
 
@@ -172,7 +162,6 @@
 :root[data-motion='reduced'] .fx-build,
 :root[data-motion='reduced'] .fx-stamp,
 :root[data-motion='reduced'] .fx-stamp-chip { animation: none; }
-:root[data-motion='reduced'] .fx-cam { transform: none !important; transition: none; }
 @media (prefers-reduced-motion: reduce) {
   .fx-layer,
   .fx-steam,
@@ -181,5 +170,4 @@
   .fx-build,
   .fx-stamp,
   .fx-stamp-chip { animation: none; }
-  .fx-cam { transform: none !important; transition: none; }
 }

@@ -91,7 +91,7 @@ function StatGrid({ stats, laps }) {
   );
 }
 
-export default function PlayerSheet({ session, playerId, onClose, onOpenTile }) {
+export default function PlayerSheet({ session, playerId, onClose, onOpenTile, onResign }) {
   const id = useHeld(playerId);
   const state = useStateLike(session);
   const p = id != null ? state.players.find((x) => x.id === id) : null;
@@ -132,6 +132,12 @@ export default function PlayerSheet({ session, playerId, onClose, onOpenTile }) 
           ) : (
             <SetCards rows={rows} state={state} onOpenTile={onOpenTile} />
           )}
+
+          {onResign && p.id === session.me && !p.bankrupt ? (
+            <p className="hg-ps-resign">
+              <button type="button" className="hg-linkdanger" onClick={onResign}>Resign from this game…</button>
+            </p>
+          ) : null}
         </>
       ) : null}
     </Sheet>

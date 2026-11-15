@@ -6,4 +6,5 @@ export * from './cards.js';
 export * from './events.js';
 export * from './dice.js';
 export * from './engine.js';
+export { isTargetOption, resolveTarget, targetLabel, modeSummary } from './modes.js';
 export * from './bots.js';

@@ -15,6 +15,11 @@ import * as PUSH from '@/lib/push.js';
 
 const THEME_OPTS = THEMES.map((t) => ({ value: t, label: t === 'system' ? 'System' : t === 'dark' ? 'Dark' : 'Light' }));
 const SPEED_OPTS = PLAYBACK_SPEEDS.map((v) => ({ value: v, label: `${v}x` }));
+const CAMERA_OPTS = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'manual', label: 'Pinch only' },
+  { value: 'off', label: 'Off' },
+];
 
 function pushIsSupported() {
   try {
@@ -55,10 +60,11 @@ function pushFailureState(reason, perm = 'default') {
 function PushToggle() {
   const toast = useToast();
   const { signedIn } = useAccount();
-  const [state, setState] = useState(() => (permission() === 'denied' ? 'denied' : 'off'));
+  const [state, setState] = useState(() => (!pushIsSupported() ? 'unsupported' : permission() === 'denied' ? 'denied' : 'off'));
 
   useEffect(() => {
     let alive = true;
+    if (!pushIsSupported()) return undefined;
     try {
       Promise.resolve(typeof PUSH.pushEnabled === 'function' ? PUSH.pushEnabled() : false).then(
         (on) => alive && setState(on ? 'on' : permission() === 'denied' ? 'denied' : 'off'),
@@ -125,6 +131,7 @@ export default function SettingsSection() {
   const toast = useToast();
   const [settings, update] = useSettings();
   const [, updateProfile] = useProfile();
+  const { signedIn } = useAccount();
   const [confirmReset, setConfirmReset] = useState(false);
   const volume = Math.round(settings.volume * 100);
 
@@ -144,7 +151,7 @@ export default function SettingsSection() {
   };
 
   return (
-    <section id="settings" className="hub-section" aria-labelledby="hh2-settings-h">
+    <section id="settings" className="hub-section sa-anchor" aria-labelledby="hh2-settings-h">
       <div className="hub-section__head">
         <h2 id="hh2-settings-h" className="hub-section__title">
           Settings
@@ -222,6 +229,20 @@ export default function SettingsSection() {
               className="xp-seg"
             />
           </div>
+          <div className="xp-set">
+            <span className="xp-set__label">
+              <b>Board camera on phones</b>
+              <small>Auto follows the pawn and zooms in on the tile you land on. Pinch only never moves by itself. Off turns zoom off.</small>
+            </span>
+            <Segmented
+              label="Board camera on phones"
+              value={settings.boardCamera || 'auto'}
+              onChange={(v) => update({ boardCamera: v })}
+              options={CAMERA_OPTS}
+              size="sm"
+              className="xp-seg"
+            />
+          </div>
         </section>
 
         <section className="hub-panel" aria-labelledby="xp-look-h">
@@ -237,16 +258,15 @@ export default function SettingsSection() {
           </div>
         </section>
 
-        {pushIsSupported() && (
-          <section className="hub-panel" aria-labelledby="xp-push-h">
-            <h3 id="xp-push-h" className="hub-section__title">
-              <HubIcon name="bell" size={18} /> Notifications
-            </h3>
-            <PushToggle />
-          </section>
-        )}
+        <section className="hub-panel" aria-labelledby="xp-push-h">
+          <h3 id="xp-push-h" className="hub-section__title">
+            <HubIcon name="bell" size={18} /> Notifications
+          </h3>
+          <PushToggle />
+        </section>
       </div>
 
+      {!signedIn && (
       <section className="hub-panel hh2-danger" aria-labelledby="hh2-reset-h">
         <div>
           <h3 id="hh2-reset-h" className="hub-section__title">
@@ -258,6 +278,7 @@ export default function SettingsSection() {
           <Icon name="trash" size={18} /> Reset progress
         </button>
       </section>
+      )}
 
       <Modal
         open={confirmReset}

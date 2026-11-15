@@ -5,7 +5,7 @@ import * as engine from '../../shared/index.js';
 import { MAX_LEVEL, BOARD_SIZE, PIECES } from '../../shared/board.js';
 import { ANIM_MS, LONG_TRIP, MAX_ANIM_MS, TRADE_MS, AUTO_MOVE_MS, BID_MOVE_MS, START_ANIM_MS, cardMs, eventMs } from '../../shared/timing.js';
 import { maskStateFor } from '../mask.js';
-import { sanitizeSettings, normalizeSettings, ROOM_DEFAULTS, MAX_PLAYERS_MIN, MAX_PLAYERS_MAX } from '../settings.js';
+import { sanitizeSettings, normalizeSettings, mergeSettingsPatch, ROOM_DEFAULTS, MAX_PLAYERS_MIN, MAX_PLAYERS_MAX } from '../settings.js';
 import { sanitizeAction, EMOTES } from '../validate.js';
 
 export const ID = 'hyderabad-tycoon';
@@ -165,10 +165,7 @@ const topLevels = (p, meta) => {
   return Number.isFinite(n) && n > 0 ? Math.min(Math.round(n), 100) : 0;
 };
 
-const MODE_SUMMARY = (s) => {
-  const m = engine.MODES[s.mode] || engine.MODES.standard;
-  return m.rounds ? `${m.label} · ${m.rounds} rounds · richest wins` : `${m.label} · last one standing wins`;
-};
+const MODE_SUMMARY = (s) => engine.modeSummary(s.mode, s.targetWorth);
 
 // ------------------------------------------------------------------ the adapter
 
@@ -193,12 +190,15 @@ const adapter = {
     return { ok: true, settings: normalizeSettings(settings) };
   },
 
+  /** What a host's patch makes of the current settings before validation (picking another mode resets the win target). */
+  mergeSettings: mergeSettingsPatch,
+
   /** Settings as the lobby shows them: exactly what createGame runs with (state.cfg). */
   lobbySettings(settings) {
     return engine.normalizeSettings(normalizeSettings(settings));
   },
 
-  /** One line for open-table cards, e.g. "Standard City Hustle · 20 rounds · richest wins". */
+  /** One line for open-table cards, e.g. "Standard City Hustle · 20 rounds · richest wins · ₹50L target". */
   summarize(settings) {
     return MODE_SUMMARY(normalizeSettings(settings));
   },
@@ -211,7 +211,7 @@ const adapter = {
         avatar: p.avatar,
         ...(typeof p.piece === 'string' ? { piece: p.piece } : {}),
       })),
-      settings: normalizeSettings(settings), // mode, dice, auctionOnDecline
+      settings: normalizeSettings(settings), // mode, targetWorth, dice, auctionOnDecline
       seed,
     });
   },

@@ -6,8 +6,11 @@ import { paths } from '@/platform/paths.js';
 import { isRoomCode, normalizeRoomCode } from '@/components/online/codes.js';
 import { gameOf, gameName, loadOnlineGame, loadedOnlineGame } from '@/components/online/games.js';
 import { knownRoomGame, lookupResult, resolveOnlineRoute } from '@/components/online/gameRoute.js';
+import GameLoadScreen from '@/components/online/GameLoadScreen.jsx';
 import StatusPanel from '@/components/online/StatusPanel.jsx';
+import HubIcon from '@/platform/game/HubIcon.jsx';
 import '@/styles/online.css';
+import '@/styles/store-rooms.css';
 
 function Screen({ children }) {
   return <div className="ho-screen">{children}</div>;
@@ -27,8 +30,9 @@ export default function OnlineGame() {
     return (
       <Screen>
         <StatusPanel
-          icon="?"
+          icon={<HubIcon name="hash" size={30} />}
           tone="bad"
+          eyebrow="Room link"
           title="That is not a room code"
           body="Room codes are 6 letters or numbers, like ABC234."
           actions={[
@@ -119,8 +123,9 @@ function Dispatch({ gameId, code }) {
     return (
       <Screen>
         <StatusPanel
-          icon="?"
+          icon={<HubIcon name="search" size={30} />}
           tone="bad"
+          eyebrow={`Room ${code}`}
           title="That room no longer exists"
           body="Rooms close a little while after everyone leaves. Ask the host for a new code, or start a new table."
           actions={[
@@ -132,21 +137,42 @@ function Dispatch({ gameId, code }) {
     );
   }
 
-  if (!game && !route) {
-    // the room may belong to a game we do know: wait for the lookup before giving up
+  if (route && (route.kind === 'ended' || route.kind === 'started')) {
+    const ended = route.kind === 'ended';
+    const g = gameOf(route.gameId) || game;
     return (
       <Screen>
-        <StatusPanel busy title="Joining the match..." />
+        <StatusPanel
+          icon={<HubIcon name={ended ? 'trophy' : 'clock'} size={30} />}
+          eyebrow={`Room ${code}`}
+          title={ended ? 'This game has already ended' : 'This game has already started'}
+          body={
+            ended
+              ? 'The match in this room is over, so there is nothing to join. See the game, or check how you did on your profile.'
+              : 'Players who were not seated cannot join a match in progress. Ask the host for the code of their next table.'
+          }
+          actions={[
+            ...(g ? [{ label: `About ${gameName(g.id, g)}`, to: paths.game(g.id), primary: true }] : []),
+            { label: 'Your profile', to: paths.profile(), primary: !g },
+            { label: 'Enter a code', to: paths.join() },
+          ]}
+        />
       </Screen>
     );
+  }
+
+  if (!game && !route) {
+    // the room may belong to a game we do know: wait for the lookup before giving up
+    return <GameLoadScreen game={null} code={code} title="Joining the match..." body="Looking up the room." />;
   }
 
   if (!game) {
     return (
       <Screen>
         <StatusPanel
-          icon="?"
+          icon={<HubIcon name="gamepad" size={30} />}
           tone="bad"
+          eyebrow="Unknown game"
           title="We do not have that game"
           body={`There is no game called "${gameId}" here. The link may be old, or from a newer version of the app.`}
           actions={[
@@ -162,7 +188,8 @@ function Dispatch({ gameId, code }) {
     return (
       <Screen>
         <StatusPanel
-          icon="🔜"
+          icon={<HubIcon name="spark" size={30} />}
+          eyebrow="Coming soon"
           title={`${gameName(game.id, game)} is not playable online yet`}
           body="This game is still being built. Check back soon."
           actions={[
@@ -178,8 +205,9 @@ function Dispatch({ gameId, code }) {
     return (
       <Screen>
         <StatusPanel
-          icon="!"
+          icon={<HubIcon name="wifiOff" size={30} />}
           tone="bad"
+          eyebrow="Load failed"
           title={`Could not load ${gameName(game.id, game)}`}
           body="The game files did not load. Check your connection and try again."
           actions={[
@@ -194,9 +222,15 @@ function Dispatch({ gameId, code }) {
 
   if (!route || !page.Comp) {
     return (
-      <Screen>
-        <StatusPanel busy title="Joining the match..." body={`Getting ${gameName(game.id, game)} ready.`} />
-      </Screen>
+      <GameLoadScreen
+        game={game}
+        code={code}
+        title="Joining the match..."
+        body={`Getting ${gameName(game.id, game)} ready.`}
+        roomChecked={!!route}
+        pageReady={!!page.Comp}
+        onRetry={page.retry}
+      />
     );
   }
 

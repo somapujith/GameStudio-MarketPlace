@@ -47,6 +47,24 @@ Notes
   valid bearer token (or the rate-limited public sign-in endpoints). WebSocket upgrades with an `Origin` header must be
   the Worker's own origin or allowlisted.
 
+## Build-time variables (the SPA bundle)
+
+Vite bakes these in when `npm run build` runs (locally, in GitHub Actions or on Vercel), so change one and rebuild.
+
+| Variable | Purpose |
+|---|---|
+| `VITE_API_ORIGIN` | split mode only: the Worker origin (see above). Unset = same origin |
+| `VITE_SITE_URL` | optional: the public origin (no trailing slash) used for the canonical URL, `og:url`, share images and `sitemap.xml`. Default: `https://gamestudio-marketplace.somapujith.workers.dev` |
+| `VITE_CONTACT_EMAIL` | the support / privacy contact address shown on **Help, Privacy and Terms** ("Contact us about your data", "Send it to"). Unset or not an email address = no contact line is rendered anywhere. Set it to a mailbox someone reads before launch. In GitHub Actions put it in the *Build* step's `env` (`${{ vars.VITE_CONTACT_EMAIL }}`) |
+
+## Public origin, SEO and sharing
+
+The public origin comes from `VITE_SITE_URL` (default: the single-Worker URL above). At build time `vite.config.js` fills the canonical link, `og:url`, the absolute `og:image` / `twitter:image` and the JSON-LD `url` in `index.html`, writes `sitemap.xml` and appends the `Sitemap:` line to `robots.txt`; see `docs/LAUNCH_CHECKLIST.md` section 2. Crawler rules live in `public/robots.txt` (public pages allowed; `/api/`, `/ws/`, `/play/`, `/lobby/`, `/join/`, `/f/`, `/profile`, `/friends`, `/shop`, `/login` disallowed).
+
+## Static headers and caching
+
+`public/_headers` (copied to `dist/`) sets the security headers on every path: an enforced Content-Security-Policy (self + Google Identity Services + `wss:`; no inline scripts), `nosniff`, referrer and permissions policies, `X-Frame-Options: DENY`, HSTS. `worker/security.test.js` checks it against what Google sign-in needs, and `vercel.json` mirrors it (`worker/deploy.test.js`). Caching: hashed `/assets/*` immutable; HTML, `sw.js`, `offline.html`, `offline.js` and the manifest `no-cache`; icons, `og-image.png` one day; sounds one week; `robots.txt` one hour. If you change the policy, change both files.
+
 ## Deploy order
 
 1. **Migration first**: `npm run migrate` (additive SQL against the production DB).

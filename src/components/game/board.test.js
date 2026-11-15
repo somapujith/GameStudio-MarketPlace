@@ -279,13 +279,20 @@ describe('board', () => {
     expect(out.match(/fx-shimmer/g)).toHaveLength(1);
   });
 
-  it('leans the camera towards the landing tile only while busy', () => {
+  it('wraps the board in the phone camera, which adds nothing to the markup until a phone-sized board measures narrow', () => {
+    // the old `fx-cam is-focus` lean is gone: the camera is imperative (fx/CameraFocus.jsx) and is off on the server render
     const landing = { ...session, busy: true, display: { ...session.display, landing: 22 } };
-    const out = renderToString(createElement(Board, { session: landing }));
-    expect(out).toContain('fx-cam is-focus');
-    expect(out).toContain(`--cam-x:${(tileCenter(22).x * 100).toFixed(2)}%`);
-    expect(renderToString(createElement(Board, { session: { ...landing, busy: false } }))).not.toContain('is-focus');
-    expect(renderToString(createElement(Board, { session }))).not.toContain('is-focus');
+    for (const s of [landing, session]) {
+      const out = renderToString(createElement(Board, { session: s }));
+      expect(out).toContain('class="bc"');
+      expect(out).toContain('class="bc-layer"');
+      expect(out).toContain('data-camera="off"');
+      expect(out).not.toContain('fx-cam');
+      expect(out).not.toContain('is-focus');
+      expect(out).not.toContain('--cam-x');
+      expect(out).not.toContain('bc-hud');
+      expect(out).toContain('class="hb-frame"'); // the board itself sits inside the layer
+    }
   });
 
   it('falls back to the brand without a control panel', () => {

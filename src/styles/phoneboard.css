@@ -1,0 +1,180 @@
+/* The board on a portrait phone (inside `.ph` only, so the regular board of tablets, landscape and desktop is untouched):
+   a light frame round the ring, flat colour tiles with a lighter price band, light corner / stop / card tiles with a
+   capital label, disc pawns with a white rim, and a calm light panel in the middle (PhoneCentre). Tile faces are drawn by
+   phone/PhoneTileFace.jsx; sizes come from board.css's --hb-u (one edge tile = 1u wide, 1.5u deep; side tiles 1.5u x 1u). */
+
+.ph {
+  --board-mat-light: #d3dfe4;
+  --board-frame-light: #f3efe6;
+  --pt-paper: #f6f3ec;
+  --pt-ink: #243447;
+  --pt-pill: #5f7081;
+}
+
+/* ---- frame, ring, gaps ------------------------------------------------------ */
+.ph .hb-board { overflow-clip-margin: 2cqw; }
+.ph .hb-frame {
+  --hb-pad: 1.5cqw;
+  border-radius: 3cqw;
+  background: var(--board-frame-light);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4), 0 1.4cqw 3.4cqw rgba(0, 0, 0, 0.5);
+}
+.ph .hb-frame__lights { display: none; }
+.ph .hb-grid { --hb-gap: 0.5cqw; --hb-r: max(0.8cqw, 3px); }
+.ph .hb-tile__own { display: none; }
+
+/* ---- the tile shell --------------------------------------------------------- */
+.ph .hb-tile--phone {
+  overflow: hidden; background: transparent; color: var(--pt-ink); border-radius: var(--hb-r);
+  display: block; /* the sides' flex-direction tricks of board.css are for the regular faces */
+}
+.ph .hb-tile--phone:not(.is-set):not(.is-max) { box-shadow: none; }
+.ph .hb-tile--phone.hb-tile--bl { border-bottom-left-radius: calc(var(--hb-r) * 3); }
+.ph .hb-tile--phone.hb-tile--tl { border-top-left-radius: calc(var(--hb-r) * 3); }
+.ph .hb-tile--phone.hb-tile--tr { border-top-right-radius: calc(var(--hb-r) * 3); }
+.ph .hb-tile--phone.hb-tile--br { border-bottom-right-radius: calc(var(--hb-r) * 3); }
+.ph .hb-tile--phone.is-set { box-shadow: inset 0 0 0 max(0.55cqw, 2px) var(--o); }
+.ph .hb-tile--phone.is-max { box-shadow: inset 0 0 0 max(0.55cqw, 2px) var(--o), inset 0 0 0 max(0.95cqw, 3px) rgba(255, 211, 77, 0.9); }
+.ph .hb-tile--phone.is-hl { outline: max(0.6cqw, 2px) solid #fff; outline-offset: max(-0.6cqw, -2px); box-shadow: inset 0 0 0 max(1.1cqw, 3px) var(--hb-gold); z-index: 6; }
+@media (hover: hover) { .ph .hb-tile--phone:hover { transform: none; } }
+.pt { position: absolute; inset: 0; display: flex; flex-direction: column; min-width: 0; min-height: 0; text-align: center; pointer-events: none; }
+.hb-side--left .pt, .hb-side--right .pt { --tw: calc(var(--hb-u) * 1.5 - 3px); }
+.hb-side--top .pt, .hb-side--bottom .pt { --tw: calc(var(--hb-u) - 3px); }
+.hb-tile--corner .pt { --tw: calc(var(--hb-u) * 1.5 - 5px); }
+
+/* ---- districts: flat colour + lighter price band + capitals ----------------- */
+.pt--prop { background: var(--pt-body); color: var(--pt-ink); }
+.pt__band { flex: 0 0 36%; min-height: 0; display: grid; place-items: center; background: var(--pt-band); }
+.pt__price, .pt__tag {
+  max-width: 100%; font-size: clamp(7px, calc(var(--hb-u) * 0.27), 10.5px); font-weight: 800; line-height: 1; letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.pt__tag {
+  padding: 0.14em 0.34em 0.1em; border-radius: 2px; background: var(--tag); color: var(--tag-ink);
+  box-shadow: 0 0 0 max(0.25cqw, 1px) rgba(255, 255, 255, 0.92), 0 1px 2px rgba(0, 0, 0, 0.3);
+  animation: pt-tag var(--dur-3) var(--ease-spring) both;
+}
+.pt__name {
+  flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 1px 1px;
+  font-size: clamp(5.8px, min(10px, calc(var(--tw) / (var(--chars, 6) * 0.72))), 10px); font-weight: 800; line-height: 1.04; letter-spacing: -0.02em;
+}
+.pt__name > span { display: block; max-width: 100%; white-space: nowrap; }
+.pt__pips { position: absolute; left: 0; right: 0; bottom: max(0.5cqw, 2px); display: flex; justify-content: center; gap: max(0.5cqw, 2px); }
+.hb-side--left .pt__pips, .hb-side--right .pt__pips { top: 0; bottom: auto; left: auto; right: max(0.6cqw, 2px); height: 36%; align-items: center; justify-content: flex-end; }
+.pt__pips i {
+  display: block; width: max(1.2cqw, 4px); height: max(1.2cqw, 4px); border-radius: 1px; background: color-mix(in srgb, var(--pt-ink) 28%, transparent);
+  box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--pt-ink) 45%, transparent);
+}
+.pt__pips i.is-on { background: var(--pt-ink); box-shadow: none; }
+.pt__m {
+  position: absolute; right: 1px; bottom: 1px; z-index: 2; width: max(2.6cqw, 9px); height: max(2.6cqw, 9px); display: grid; place-items: center; border-radius: 50%;
+  background: #2b2f38; color: #fff; font-size: max(1.8cqw, 6px); font-weight: 800; line-height: 1; box-shadow: 0 0 0 1px #fff;
+}
+/* mortgaged: grey with the diagonal hatch of board.css (::before) */
+.ph .hb-tile--phone.is-mortgaged .pt--prop { --pt-body: #8d949b; --pt-band: #a3a9af; --pt-ink: #1d2128; }
+.ph .hb-tile--phone.is-mortgaged .pt__name { opacity: 0.85; }
+
+/* ---- light tiles: stops, cards, corners ------------------------------------- */
+.pt--light { background: var(--pt-paper); color: var(--pt-ink); align-items: center; padding: 1px 1px 0; }
+.pt__cap {
+  max-width: 100%; margin-top: max(0.5cqw, 2px); font-size: clamp(5.8px, min(8.6px, calc(var(--tw) / (var(--chars, 5) * 0.7))), 8.6px); font-weight: 800;
+  letter-spacing: 0.01em; line-height: 1.1; white-space: nowrap; color: var(--cap, #4a5568);
+}
+.hb-mode--auto { --cap: #8a5a00; }
+.hb-mode--metro { --cap: #b8223f; }
+.hb-mode--mmts { --cap: #1f5cb5; }
+.hb-deck--luck .pt__cap { --cap: #8a5a00; }
+.hb-deck--drama .pt__cap { --cap: #8a2fb0; }
+.pt__icon { position: relative; flex: 1 1 0; min-height: 0; width: 100%; display: grid; place-items: center; }
+.pt__icon > svg { display: block; width: auto !important; height: 100% !important; max-width: 100%; aspect-ratio: 1; }
+.pt--stop .pt__icon { padding: 1px 2px 2px; }
+.pt--card { background: linear-gradient(180deg, var(--pt-paper), #ece5d6); }
+.pt--card .pt__icon { padding: 3px 3px 0; }
+.pt--card .pt__cap { margin: 0 0 max(0.6cqw, 2px); }
+.pt--corner .pt__icon { padding: max(0.9cqw, 3px) 3px 1px; }
+.pt__arrow { fill: #17995b; stroke: #0b5a35; stroke-width: 1.2; stroke-linejoin: round; width: auto; height: 100%; max-width: 100%; }
+.pt__pill {
+  flex: none; max-width: calc(100% - 4px); margin-bottom: max(0.7cqw, 3px); padding: 0.18em 0.45em 0.14em; border-radius: 999px; background: var(--pt-pill); color: #fff;
+  font-size: clamp(5px, min(8.4px, calc(var(--tw) / (var(--chars, 5) * 0.68 + 0.9))), 8.4px); font-weight: 800; line-height: 1.15; letter-spacing: -0.01em; white-space: nowrap;
+}
+.hb-tile--start .pt--corner { background: linear-gradient(180deg, #f4f1e8, #e1efe3); }
+.hb-tile--traffic .pt--corner { background: linear-gradient(180deg, #f4f1e8, #efe2df); }
+.hb-tile--chai .pt--corner { background: linear-gradient(180deg, #f4f1e8, #efe4d2); }
+.hb-tile--municipal .pt--corner { background: linear-gradient(180deg, #f4f1e8, #dfe6ef); }
+.hb-tile--auction .pt--corner { background: linear-gradient(180deg, #f4f1e8, #efe0dc); }
+.ph .hb-tile--phone .hb-tile__stuck { top: 2px; right: 2px; }
+
+/* ---- pawns: round discs with a white rim, a touch bigger -------------------- */
+.ph .hb-pawn { --d: calc(var(--pd, 0.5) * var(--hb-u) * 1.3); }
+.ph .hb-pawn__body { transform: translate(-50%, -52%); }
+.ph .hb-pawn__disc {
+  position: absolute; inset: 0; display: grid; place-items: center; border-radius: 50%;
+  background: radial-gradient(circle at 34% 26%, color-mix(in srgb, var(--c) 52%, #fff) 0, var(--c) 56%, color-mix(in srgb, var(--c) 72%, #000) 100%);
+  box-shadow: 0 0 0 max(0.5cqw, 1.5px) #fff, 0 max(0.5cqw, 2px) max(1cqw, 3px) rgba(0, 0, 0, 0.5);
+}
+.ph .hb-pawn__glyph { display: block; width: 74%; height: 74%; }
+.ph .hb-pawn__glyph svg { display: block; width: 100% !important; height: 100% !important; overflow: visible; }
+.ph .hb-pawn__shadow { display: none; }
+.ph .hb-pawn.is-turn .hb-pawn__disc { box-shadow: 0 0 0 max(0.5cqw, 1.5px) #fff, 0 0 0 max(0.95cqw, 3px) var(--c), 0 max(0.5cqw, 2px) max(1.2cqw, 4px) rgba(0, 0, 0, 0.5); }
+
+/* ---- the middle: a calm light panel ----------------------------------------- */
+.ph .hb-center {
+  margin: 1.1cqw; border-radius: 2.2cqw; overflow: hidden;
+  background: var(--board-mat-light); box-shadow: inset 0 0 0 1px rgba(36, 52, 71, 0.1);
+}
+.pc {
+  position: absolute; inset: 0; container-type: size; display: flex; flex-direction: column; align-items: center; padding: 2.5cqh 4cqw 0;
+  color: #1f2c3a; --cp-die: clamp(36px, 19cqmin, 60px); --cp-ink: #1f2c3a;
+}
+.pc-cap { position: relative; flex: none; width: 100%; height: 17cqh; display: grid; place-items: center; }
+.pc-cap__l {
+  grid-area: 1 / 1; margin: 0; max-width: 100%; text-align: center; font-size: clamp(14px, 6.4cqw, 19px); font-weight: 700; line-height: 1.16; letter-spacing: -0.005em;
+  color: #243447; text-wrap: balance; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
+.pc-cap__l.is-in { animation: pc-in var(--dur-3) var(--ease-out) 90ms both; }
+.pc-cap__l.is-out { animation: pc-out 120ms var(--ease-in) both; }
+.pc-cap__l.is-bad { color: #a3211b; }
+.pc-cap__l.is-good { color: #0f6b44; }
+.pc-cap__l.is-cheer { color: #7d4f00; }
+.pc-cap__l.is-warn { color: #8a4b00; }
+.pc-chipslot { flex: none; width: 100%; height: 14cqh; display: grid; place-items: center; }
+.pc-chip {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 0; border: 0; background: none; cursor: pointer; pointer-events: auto;
+  animation: pc-in var(--dur-3) var(--ease-spring) both;
+}
+.pc-chip__who { display: grid; place-items: center; width: 30px; height: 30px; flex: none; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35)); }
+.pc-chip__tile {
+  min-width: 78px; max-width: 150px; display: grid; overflow: hidden; border-radius: 5px; background: var(--tc); color: var(--tink);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85), 0 2px 5px rgba(36, 52, 71, 0.25);
+}
+.pc-chip__tile em {
+  padding: 2px 8px 1px; font-style: normal; font-size: 13px; font-weight: 800; line-height: 1.2; font-variant-numeric: tabular-nums;
+  background: var(--oc, rgba(255, 255, 255, 0.34)); color: #fff; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
+.pc-chip.is-owned .pc-chip__tile em { color: #fff; }
+.pc-chip__tile b { padding: 2px 8px 3px; font-size: 13px; font-weight: 800; line-height: 1.2; text-transform: uppercase; letter-spacing: 0.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-hero { flex: 1 1 0; min-height: 0; width: 100%; position: relative; display: grid; place-items: center; padding-bottom: 5cqh; }
+.pc-hero .city-story { width: 100%; height: 100%; }
+.pc-hero .city-story__picture { background: none; border-radius: 8px; }
+.pc-hero .city-story__caption { display: none; }
+.pc-hero .city-story__location { width: 100%; height: 100%; }
+.pc-hero .city-story__mascot { max-height: 52cqmin; }
+.pc-die { position: absolute; left: 50%; bottom: 0.5cqh; translate: -50% 0; z-index: 2; pointer-events: none; }
+.pc-die .cp-dice { color: #1f2c3a; }
+
+/* small boards (320px phones, a squeezed 375x667): the names cannot be read, so the tile keeps its price big and the icons */
+@container (max-width: 299px) {
+  .pt__name { display: none; }
+  .pt--prop .pt__band { flex: 1 1 0; }
+  .pt__price, .pt__tag { font-size: clamp(7px, calc(var(--hb-u) * 0.3), 9px); }
+  .pt--stop .pt__cap, .pt--card .pt__cap, .hb-tile--corner:not(.hb-tile--start) .pt__pill { display: none; }
+  .pt__pips { bottom: 1px; }
+}
+
+@keyframes pt-tag { from { opacity: 0; transform: translateY(-40%) scale(0.7); } to { opacity: 1; transform: none; } }
+@keyframes pc-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+@keyframes pc-out { from { opacity: 1; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .pt__tag, .pc-cap__l, .pc-chip { animation: none !important; }
+}
+:root[data-motion='reduced'] :is(.pt__tag, .pc-cap__l, .pc-chip), .hg-game[data-rm] :is(.pt__tag, .pc-cap__l, .pc-chip) { animation: none !important; }

@@ -1,4 +1,4 @@
-// "..." menu: table summary, playback speed, sound toggle + volume, haptics, reduce motion, player stats, log, rules, quit.
+// "..." menu: table summary, playback speed, sound toggle + volume, haptics, reduce motion, player stats, log, rules, resign, quit.
 import { PLAYBACK_SPEEDS, useSettings } from '@/lib/storage.js';
 import { buzz } from '@/lib/haptics.js';
 import Sheet from './ui/Sheet.jsx';
@@ -6,7 +6,8 @@ import Button from './ui/Button.jsx';
 import Icon from './ui/Icon.jsx';
 import { Segmented, Switch } from './ui/Controls.jsx';
 import { FAIR_DICE_TEXT, LUCKY_DICE_TEXT, diceLabel } from './ui/helpers.js';
-import { WIN_RULE_TEXT, tableSummary } from './turn/room.js';
+import { tableSummary, winRuleText } from './turn/room.js';
+import { canResign } from './turn/resign.js';
 
 const SPEEDS = (PLAYBACK_SPEEDS?.length ? PLAYBACK_SPEEDS : [0.75, 1, 1.5, 2]).map((v) => ({
   value: v,
@@ -15,7 +16,7 @@ const SPEEDS = (PLAYBACK_SPEEDS?.length ? PLAYBACK_SPEEDS : [0.75, 1, 1.5, 2]).m
 
 const canVibrate = () => typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function';
 
-export default function MenuSheet({ open, onClose, onRules, onQuit, onStats, onLog, session }) {
+export default function MenuSheet({ open, onClose, onRules, onQuit, onStats, onLog, onManage, onTrade, onResign, session }) {
   const [s, update] = useSettings();
   const cfg = session?.display?.cfg || session?.view?.cfg;
   const summary = tableSummary(cfg);
@@ -26,7 +27,7 @@ export default function MenuSheet({ open, onClose, onRules, onQuit, onStats, onL
     <Sheet open={open} onClose={onClose} title="Menu" className="hg-menu" desktop="modal">
       <div className="hg-menu-rules">
         <p className="hg-summary is-strong">{summary}</p>
-        <p className="hg-menu-note">{WIN_RULE_TEXT}</p>
+        <p className="hg-menu-note">{winRuleText(cfg)}</p>
         <div className="hg-menu-dice">
           <b>{diceLabel(cfg)}</b>
           <p>{fairDice ? FAIR_DICE_TEXT : LUCKY_DICE_TEXT}</p>
@@ -42,6 +43,13 @@ export default function MenuSheet({ open, onClose, onRules, onQuit, onStats, onL
           onChange={(v) => update({ playbackSpeed: v })}
         />
         <p className="hg-menu-hint">Faster playback skips through moves, cards and payments. The turn timer never runs shorter.</p>
+        <Segmented
+          icon="target"
+          label="Board zoom (phones)"
+          value={s.boardCamera || 'auto'}
+          options={[{ value: 'auto', label: 'Auto' }, { value: 'manual', label: 'Pinch only' }, { value: 'off', label: 'Off' }]}
+          onChange={(v) => update({ boardCamera: v })}
+        />
       </div>
 
       <div className="hg-group" role="group" aria-label="Sound">
@@ -79,6 +87,12 @@ export default function MenuSheet({ open, onClose, onRules, onQuit, onStats, onL
       </div>
 
       <div className="hg-menu-actions">
+        {onManage ? (
+          <Button variant="dark" block icon={<Icon name="home" size={20} />} onClick={onManage}>Manage districts</Button>
+        ) : null}
+        {onTrade ? (
+          <Button variant="dark" block icon={<Icon name="swap" size={20} />} onClick={onTrade}>Trade</Button>
+        ) : null}
         {onStats ? (
           <Button variant="dark" block icon={<Icon name="trophy" size={20} />} onClick={onStats}>Player stats</Button>
         ) : null}
@@ -88,6 +102,18 @@ export default function MenuSheet({ open, onClose, onRules, onQuit, onStats, onL
         <Button variant="dark" block icon={<Icon name="book" size={20} />} onClick={onRules}>How to play</Button>
         <Button variant="rose" block icon={<Icon name="exit" size={20} />} onClick={onQuit}>Quit to home</Button>
       </div>
+
+      {onResign && canResign(session) ? (
+        <div className="hg-menu-danger">
+          <button type="button" className="hg-resign" onClick={onResign}>
+            <span className="hg-resign__ico"><Icon name="flag" size={20} /></span>
+            <span className="hg-resign__txt">
+              <b>Resign</b>
+              <small>Give up this game: you lose and your districts return to the bank. You can stay and watch.</small>
+            </span>
+          </button>
+        </div>
+      ) : null}
     </Sheet>
   );
 }

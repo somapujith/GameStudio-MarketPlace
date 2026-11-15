@@ -34,24 +34,30 @@ Host settings (validated by `worker/settings.js`, mirrored in `src/games/hyderab
 
 | Key | Accepted | Default | Notes |
 |---|---|---|---|
-| `mode` | `'standard'` \| `'quick'` \| `'classic'` | `'standard'` | The only setting the lobby shows (`lobbySettings: ['mode']`). |
+| `mode` | `'standard'` \| `'quick'` \| `'classic'` | `'standard'` | Shown in the lobby (`lobbySettings: ['mode', 'targetWorth']`). Picking another mode resets `targetWorth` to that mode's default. |
+| `targetWorth` | `null` (off) \| 2500000 \| 3000000 \| 4000000 \| 5000000 \| 7500000 \| 10000000 (`TARGET_OPTIONS`, ₹25L, ₹30L, ₹40L, ₹50L, ₹75L, ₹1Cr) | the mode's default (table below) | **Win target** (net worth): the first player to reach it wins at once (7.4). Anything else from a client is silently replaced by the mode default; `null` is also replaced for a mode without a round limit (classic can never be "off"). The lobby labels it "Win target (net worth)": "First player to reach this net worth wins. Net worth = cash + districts + half the upgrades." |
 | `dice` | `'lucky'` \| `'fair'` | `'lucky'` | not shown in the lobby |
 | `auctionOnDecline` | boolean | `true` | a skipped (or unaffordable) district goes to a sealed auction |
 | `maxPlayers` | integer 2 - 6 (room setting, also accepted inside `settings`) | 4 | seats |
 
 Modes (`shared/modes.js` `MODES`, re-exported by the engine):
 
-| mode | label | rounds | start cash |
-|---|---|---|---|
-| `standard` | Standard City Hustle | 20 | ₹15,00,000 |
-| `quick` | Quick Chai Break | 12 | ₹20,00,000 |
-| `classic` | Classic Long Game | until one player is left (`maxRounds: null`; safety cap `ROUND_CAP` = 60) | ₹15,00,000 |
+| mode | label | rounds | start cash | default win target |
+|---|---|---|---|---|
+| `standard` | Standard City Hustle | 20 | ₹15,00,000 | ₹50,00,000 (a safety valve: games almost always end by rounds) |
+| `quick` | Quick Chai Break | 12 | ₹20,00,000 | ₹50,00,000 (same) |
+| `classic` | Classic Long Game | none (`maxRounds: null`; safety cap `ROUND_CAP` = 60) | ₹15,00,000 | ₹30,00,000 (what ends the game, section 12) |
 
-`state.cfg` = `{ mode, startCash, passStart, maxRounds|null, dice, auctionOnDecline, trafficFine, chaiCap }`
+`state.cfg` = `{ mode, startCash, passStart, maxRounds|null, targetWorth|null, dice, auctionOnDecline, trafficFine, chaiCap }`
 (`passStart` 2,00,000, `trafficFine` 25,000, `chaiCap` 1). Unknown keys (`debug`, `seed`, the retired `goal`,
 `startCash`, `maxRounds`, `snatches`, `snatchMs`) are ignored by the server. The engine's `normalizeSettings` also
 accepts `startCash`, `passStart`, `maxRounds` and `trafficFine` overrides (`SETTING_LIMITS`), for tests and the
-simulator only. The room stores the 3 host keys; `room.settings` (what the lobby shows) is the engine's full `cfg`.
+simulator only, and `targetWorth: null` for every mode (the server refuses that for classic). The room stores the 4
+host keys (`mode dice auctionOnDecline targetWorth`); `room.settings` (what the lobby shows) is the engine's full `cfg`.
+A host message always carries every setting, so the server treats a changed `mode` that arrives with the unchanged old
+`targetWorth` as "reset the target to the new mode's default" (`mergeSettingsPatch` in `worker/settings.js`, adapter
+hook `mergeSettings`); a message that also changes the target keeps it. A room saved before the target existed gets the
+default of its mode. Old finished games without `cfg.targetWorth` simply have no target.
 
 Constants (`shared/board.js`): `BOARD_SIZE` 36, `GRID` 10, `START_TILE` 0, `TRAFFIC_TILE` 9, `CHAI_TILE` 18,
 `MUNICIPAL_TILE` 27, `AUCTION_TILE` 32, `TRANSPORT_TILES` [5, 14, 23], `CORNER_TILES`, `MAX_LEVEL` 2, `SET_BONUS.full`
@@ -211,11 +217,26 @@ them is cancelled. `{t:'leave'}` from a running game resigns the player and mark
 
 ### 7.4 Winning (`checkWin`, after **every** applied action)
 1. **Last standing** (`winReason 'last_standing'`): at most one non-bankrupt player is left.
-2. **Rounds** (`'rounds'`): `state.round > maxRounds` (classic: `> ROUND_CAP` 60), i.e. the moment the last player of
+2. **Win target** (`'target'`, setting `targetWorth`, `state.cfg.targetWorth` number or `null`): a non-bankrupt
+   player's net worth (`netWorth`: cash + printed price of districts (a mortgaged district counts the price minus
+   its mortgage value) + 50% of the upgrade cost - unpaid debt) is **at least** the target. It is looked at after every
+   applied action, but only when nothing is in flight: no `debt` phase, no `auction` phase and no open `trade`, so
+   rent that was just paid has settled (a payee over the line wins with the rent included), and a worth that is only
+   high in the middle of a debt, an auction or a trade offer never decides the game; the check runs again as soon as
+   that is resolved. Mortgaging a district or selling an upgrade does not change net worth (cash gained = value lost),
+   so neither triggers nor dodges the target. If several players are at or over the target at the same moment, the
+   **richest** wins (then more cash, then the lower seat), which is always `standings()` rank 1.
+3. **Rounds** (`'rounds'`): `state.round > maxRounds` (classic: `> ROUND_CAP` 60), i.e. the moment the last player of
    the final round ends their turn. The **richest** active player wins: highest net worth, then most cash, then seat
    order.
 
-There is no end-cash goal. Ending sets `phase 'over'`, clears `pending`, `trade`, `debt`, `ride`, `extraRoll`, fills
+The checks run in that order, so when two apply at once the earlier reason is reported (the winner is the same richest
+player for 2 and 3). `targetWorth: null` (only for modes with a round limit) switches 2 off and plays exactly as
+before the target existed. A classic game with the target off (engine / simulator only) still stops at the 60-round
+cap, so no game can run forever.
+
+There is no end-cash goal any more (the old `goal` setting is retired; the win target replaces it as a net-worth
+target). Ending sets `phase 'over'`, clears `pending`, `trade`, `debt`, `ride`, `extraRoll`, fills
 `winner` and `winReason`, and emits `{type:'win', player, reason, worth}`. Every later action fails with
 `The game is over`. A room nobody is connected to for 5 minutes is **abandoned** (finished, not recorded).
 
@@ -263,7 +284,7 @@ diceMode, mode } }`. The legacy users columns get best_worth = final net worth a
 | `t` | Fields | Who / when | Errors (`{t:'error', message}`) |
 |---|---|---|---|
 | `ping` | | anyone | none (reply `pong`) |
-| `settings` | `settings`: object with any of `mode dice auctionOnDecline maxPlayers` | host, lobby only. The patch is merged over the current settings and re-validated. | `Only the host can change settings.` · `Settings are locked once the game starts.` · `Settings must be an object.` · `Mode must be one of 'standard', 'quick', 'classic'.` · `Dice must be 'lucky' or 'fair'.` · `Auction on decline must be true or false.` · `Players must be between 2 and 6.` · `There are already more players than that.` |
+| `settings` | `settings`: object with any of `mode targetWorth dice auctionOnDecline maxPlayers` | host, lobby only. The patch is merged over the current settings and re-validated (a `targetWorth` that is not on the list becomes the mode default, no error; a changed `mode` resets the target, section 2). | `Only the host can change settings.` · `Settings are locked once the game starts.` · `Settings must be an object.` · `Mode must be one of 'standard', 'quick', 'classic'.` · `Dice must be 'lucky' or 'fair'.` · `Auction on decline must be true or false.` · `Players must be between 2 and 6.` · `There are already more players than that.` |
 | `piece` | `piece`: one of the adapter's `pieces` (`pearl auto handi chai bat camera`) | any member, lobby only; picks a free piece | an `error` when the piece is taken or unknown |
 | `kick` | `id`: user id | host, lobby only. Removes the player and bans them for 10 minutes. | `Only the host can remove players.` · `Players can only be removed in the lobby.` · `That player is not in the room.` · `You cannot remove yourself.` |
 | `start` | | host, lobby, at least `minPlayers` (2) seated | `Only the host can start the game.` · `The game has already started.` · `You need at least 2 players to start.` · `Too many players for this room.` · `Could not start the game.` |
@@ -302,7 +323,7 @@ and gives everyone else the first free one (11).
 
 ```
 state = {
-  cfg: { mode, startCash, passStart, maxRounds: number|null, dice, auctionOnDecline, trafficFine, chaiCap },
+  cfg: { mode, startCash, passStart, maxRounds: number|null, targetWorth: number|null, dice, auctionOnDecline, trafficFine, chaiCap },
   rng: 0, deck: [], deckPos: { luck, drama },     // rng and deck are server secrets: always sent as 0 / [] (8.7)
   round, turn /*index into players*/, turnCount,
   phase: 'roll'|'buy'|'auction'|'manage'|'debt'|'over',
@@ -314,7 +335,7 @@ state = {
   debt:  null | { player, amount, creditor: playerId|null, reason, returnPhase, rest: [{from,to,amount,reason}] },
   tradeSeq, outCount,
   event: null | { id, title, text, kind, round, group?, groups?, mult?, upgradedOnly?, amount?, bonus? },   // 9
-  winner: playerId|null, winReason: 'last_standing'|'rounds'|null,
+  winner: playerId|null, winReason: 'last_standing'|'target'|'rounds'|null,
   players: [{ id, name, avatar, color, piece, cash, pos, stuck, chai, laps, bankrupt, outOrder,
               sixes, rollsSinceSix, rentStreak, rentThisTurn, rentBoost, lastOfferTurn, isBot /*false online*/, bot /*null*/,
               stats: { rentPaid, rentEarned, taxPaid, propertiesBought, upgrades, biggestRent, rides, chaiSaved } }]
@@ -382,7 +403,7 @@ answer`); while the phase is `debt` see 7.1. After the game ends: `The game is o
 | `trade_offer` / `trade_done` | `id, from, to, give, get` |
 | `trade_rejected` | `id, from, to, reason: 'rejected'\|'cancelled'\|'bankrupt'\|'invalid'` |
 | `turn` | `player, round` |
-| `win` | `player (id\|null), reason, worth` |
+| `win` | `player (id\|null), reason: 'last_standing'\|'target'\|'rounds', worth` (the winner's net worth; for `'target'` it is at least `cfg.targetWorth`) |
 
 Order of a typical roll: `dice, move, (cash salary), land, ...effect`. A stuck turn that waits: `traffic (waited), turn`.
 
@@ -496,9 +517,11 @@ first free one; `player.piece` is always set and unique. Player colours are unch
 
 ## 12. Balance and simulation
 
-`node scripts/simulate.js [--games N] [--players 2,4,6] [--modes standard,quick,classic] [--set k=v] [--bot k=v]`
+`node scripts/simulate.js [--games N] [--players 2,4,6] [--modes standard,quick,classic] [--set k=v] [--bot k=v] [--targets off,2500000,...]`
 plays bot-only games, checks invariants after every action (cash, ownership, levels, mortgages, phases, debts, ride
-offers, unique pieces, winner = rank 1) and prints balance numbers. 300 games per row, default bots (2026-11-15, after
+offers, unique pieces, winner = rank 1, nobody sits at the win target while the game goes on, a `'target'` win really
+is at or above it) and prints balance numbers, including how the games end (win target / round limit / last
+standing). `--set targetWorth=null` plays the old rules (target off); `--targets` sweeps a list of targets per mode and player count. 300 games per row, default bots (2026-11-15, after
 the whole-collection upgrade rule of section 5):
 
 | mode, players | rounds / turns | districts owned after round 3 / 5 | ended by bankruptcy | final net-worth spread (richest - poorest) | upgrades / game |
@@ -509,18 +532,45 @@ the whole-collection upgrade rule of section 5):
 | quick, 4 | 12 / 48 | 31% / 49% | 0% | ₹3.2L | 1.2 |
 | classic, 4 | 60 (cap) / 240 | 31% / 50% | 0% | ₹10.1L | 4.6 |
 
+The table above was measured before the win target existed. With it (section 12.1) the standard and quick numbers are unchanged
+(the ₹50L target is never reached), only classic changes.
+
 The standard and quick economies behave as designed: districts sell steadily (about half by round 5 with 4 players)
 and the winner ends around ₹21-24L. Before the whole-collection upgrade rule the same bots built 19 / 35 / 47 / 37 / 55
 upgrades per game and rents averaged ₹55-65k a payment; now bots rarely complete a collection (they never trade with
 each other, only buy and bid), so they build 1-5 upgrades per game, rents average about ₹20k and the net-worth spread
 roughly halves. Human tables trade and complete collections far more often, so expect more building there. No numbers
 were changed from the concept doc's recommended defaults. Known balance caveat: with ₹2L per lap and these rents nobody is
-squeezed out, so **classic games run to the 60-round cap** (also with ₹1L laps or aggressive bots); the seat that
-moves first wins a little more often (about 30% in 4-player games).
+squeezed out, so **classic games used to run to the 60-round cap** (also with ₹1L laps or aggressive bots), which is why
+classic now has a net-worth win target (12.1); the seat that moves first wins a little more often (about 30% in 4-player games).
+
+### 12.1 Win target: how the default was chosen (2026-11-15)
+
+Default bots, 200 games per cell (seeds fixed by the script), classic mode, share of games ending by the win target
+(the rest ends at the 60-round cap; nobody ever goes bankrupt, so "last standing" is 0% everywhere), and the average length:
+
+| classic, players | target off (before): by target / avg rounds | ₹25L | **₹30L (default)** | ₹40L | ₹50L | ₹75L |
+|---|---|---|---|---|---|---|
+| 2 | 0% / 60.0 | 100% / 25.9 | **98.5% / 40.7** | 3.0% / 59.9 | 0% / 60.0 | 0% / 60.0 |
+| 3 | 0% / 60.0 | 100% / 33.2 | **87.0% / 50.2** | 1.0% / 60.0 | 0% / 60.0 | 0% / 60.0 |
+| 4 | 0% / 60.0 | 100% / 32.5 | **96.5% / 47.7** | 3.0% / 59.9 | 0% / 60.0 | 0% / 60.0 |
+| 5 | 0% / 60.0 | 100% / 28.7 | **99.5% / 42.1** | 24.0% / 58.8 | 1.5% / 60.0 | 0% / 60.0 |
+| 6 | 0% / 60.0 | 100% / 26.2 | **100% / 39.6** | 35.0% / 57.6 | 5.0% / 59.8 | 0% / 60.0 |
+
+Before the target, 100% of classic games hit the 60-round cap. **Classic defaults to ₹30L**: the largest listed target
+that ends at least 87% of the simulated games by target at every player count (₹40L and above mostly run into the cap).
+₹25L would end every game and about 13-17 rounds sooner (26-33 rounds) if a shorter classic game is wanted. Winners finish
+at about ₹30.4-30.6L (they cross the line by one lap's salary or one rent at most).
+
+Standard and quick keep **₹50L as a safety valve**: in 1,000 simulated games each the target was reached 0 times (winners
+end at ₹21-25L after 20 / 12 rounds), so rounds still decide those games. A table can pick a lower target in the lobby to
+end earlier, or Off (round-limited modes only; classic can never be Off). Human tables that trade and build will reach
+the targets sooner than the bots do, so treat these as upper bounds for game length.
 
 ## 13. Known discrepancies (open items, not hidden)
 
-1. **Classic mode does not end by bankruptcy in simulation** (12): it effectively plays as "60 rounds, richest wins".
+1. **Classic mode does not end by bankruptcy in simulation** (12): nobody goes bust. It now ends by the net-worth win target
+   (12.1, about 40-50 rounds with the ₹30L default); only 0-13% of the simulated games still hit the 60-round cap.
    A harsher economy for classic only (higher rents, smaller laps) would be a product decision.
 2. **`ready` and `visibility` messages are still live on the server although the product has neither** (`worker/GameRoom.js`).
 3. **Kick wording.** The kick dialog says the player "can rejoin with the code", but the server bans a removed player for 10 minutes.

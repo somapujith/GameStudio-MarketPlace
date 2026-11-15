@@ -1,7 +1,9 @@
 // "Round 7 / 20" with a progress underline; classic mode (no round limit) shows just "Round 7".
 // The last rounds get a "2 rounds left" pill and the final round a pulsing "Final round!".
 import Pill from '../ui/Pill.jsx';
-import { roundInfo } from '../ui/helpers.js';
+import Icon from '../ui/Icon.jsx';
+import { roundInfo, useWorths } from '../ui/helpers.js';
+import { anyoneHot, targetBadge } from './target.js';
 import '@/styles/turn.css';
 
 /** Pure: what the badge says. -> { text, sr, pct|null, final, left|null } */
@@ -30,6 +32,26 @@ export default function RoundBadge({ session, showPills = true }) {
       {showPills && !b.final && b.left != null ? (
         <Pill tone="warn" aria-hidden="true">{b.left} {b.left === 1 ? 'round' : 'rounds'} left</Pill>
       ) : null}
+    </span>
+  );
+}
+
+/**
+ * "First to ₹50L": the net worth target, next to the round badge. Goes gold once somebody is at 80% of it.
+ * Renders nothing when the table has no target (old rooms). The words shrink to the icon + amount on narrow bars (CSS).
+ */
+export function TargetBadge({ session }) {
+  const { worths, state } = useWorths(session);
+  const b = targetBadge(session?.display?.cfg || session?.view?.cfg);
+  if (!b) return null;
+  const hot = anyoneHot(state.players, worths, b.target);
+  return (
+    <span className={`tb-target${hot ? ' is-hot' : ''}`} title={b.sr} aria-label={b.sr + (hot ? '. Somebody is close' : '')}>
+      <Icon name="target" size={14} />
+      <span className="tb-target__txt" aria-hidden="true">
+        <span className="tb-target__long">{b.text}</span>
+        <span className="tb-target__short">{b.short}</span>
+      </span>
     </span>
   );
 }

@@ -156,12 +156,74 @@ describe('<PlayerPods>', () => {
     expect(pods.find((x) => x.includes('data-slot="tl"'))).toContain('Stuck in traffic');
     expect(out).toContain('hg-pod is-turn');
     expect(out).toContain('hg-chai is-on');
-    expect(out).toContain('Reconnecting');
+    // a seat the room marks disconnected: grey bars + the "Offline" pill beside them (replaces the old "Reconnecting" tag), in the card's words too
+    const sana = pods.find((x) => x.includes('data-fx-player="sana"'));
+    expect(sana).toContain('sg--offline');
+    expect(sana).toContain('>Offline<');
+    expect(sana).toMatch(/aria-label="Sana, [^"]*offline/);
+    expect(out).not.toContain('hg-offline');
   });
 
   it('shows a bankrupt player as out, without cash', () => {
     const out = html(createElement(PlayerPods, { session: mkSession([P('me', 'Nithin'), P('rav', 'Ravi', { bankrupt: true, cash: 0 })], { me: 'me' }) }));
     expect(out).toContain('is-out');
     expect(out).toContain('Bankrupt');
+  });
+});
+
+describe('net worth target bars', () => {
+  const withTarget = (players, opts = {}, target = 5000000) => {
+    const s = mkSession(players, opts);
+    s.view.cfg = { ...s.view.cfg, targetWorth: target };
+    s.display.cfg = s.view.cfg;
+    return s;
+  };
+  const who = [P('me', 'Nithin', { cash: 1260000 }), P('rav', 'Ravi', { cash: 4300000 }), P('sana', 'Sana', { cash: 500000 })];
+
+  it('shows a bar and a percentage under every live player, "Worth ₹12.6L of ₹50L" on yours', () => {
+    const out = html(createElement(PlayerPods, { session: withTarget(who, { me: 'me' }) }));
+    expect(out.match(/class="hg-pod__goal[ "]/g)).toHaveLength(3);
+    expect(out).toContain('Worth ₹12.6L of ₹50L');
+    expect(out).toContain('data-pct="25"');
+    expect(out).toContain('data-pct="86"');
+    expect(out.match(/has-goal/g)).toHaveLength(3);
+  });
+
+  it('highlights the leader and turns a bar hot from 80% of the target', () => {
+    const out = html(createElement(PlayerPods, { session: withTarget(who, { me: 'me' }) }));
+    const pods = out.split('<li ').slice(1);
+    const ravi = pods.find((x) => x.includes('data-fx-player="rav"'));
+    expect(ravi).toContain('is-hot');
+    expect(ravi).toContain('is-lead');
+    const sana = pods.find((x) => x.includes('data-fx-player="sana"'));
+    expect(sana).not.toContain('is-hot');
+    expect(sana).not.toContain('is-lead');
+  });
+
+  it('says the progress in the button label for screen readers', () => {
+    const out = html(createElement(PlayerPods, { session: withTarget(who, { me: 'me' }) }));
+    expect(out).toContain('25% of the ₹50L net worth target');
+  });
+
+  it('works in the phone layouts too', () => {
+    const phone = (mode) => html(createElement(PlayerPods, { session: withTarget(who, { me: 'me' }), layout: 'phone', mode }));
+    expect(phone('me')).toContain('Worth ₹12.6L of ₹50L');
+    expect(phone('others').match(/hg-pod__goalpct/g)).toHaveLength(2);
+  });
+
+  it('shows nothing extra without a target (old rooms) and nothing for a player who is out', () => {
+    const off = html(createElement(PlayerPods, { session: mkSession(who, { me: 'me' }) }));
+    expect(off).not.toContain('hg-pod__goal');
+    expect(off).not.toContain('has-goal');
+    const nul = html(createElement(PlayerPods, { session: withTarget(who, { me: 'me' }, null) }));
+    expect(nul).not.toContain('hg-pod__goal');
+    const out = html(createElement(PlayerPods, { session: withTarget([P('me', 'Nithin'), P('rav', 'Ravi', { bankrupt: true, cash: 0 })], { me: 'me' }) }));
+    expect(out.match(/class="hg-pod__goal[ "]/g)).toHaveLength(1);
+  });
+
+  it('calls a bankrupt you "Resigned" once you resigned', () => {
+    const s = withTarget([P('me', 'Nithin', { bankrupt: true, cash: 0 }), P('rav', 'Ravi')], { me: 'me' });
+    expect(html(createElement(PlayerPods, { session: s }))).toContain('Bankrupt');
+    expect(html(createElement(PlayerPods, { session: { ...s, resigned: true } }))).toContain('Resigned');
   });
 });

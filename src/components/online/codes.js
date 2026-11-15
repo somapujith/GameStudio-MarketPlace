@@ -30,6 +30,18 @@ export function normalizeRoomCode(raw) {
   return out;
 }
 
+/**
+ * The look-alike characters (O, I, 0, 1) found in what was typed or pasted, so the join screen can say why they
+ * disappeared. Links and other text with a slash are not checked. -> unique, in the order typed.
+ */
+export function rejectedChars(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s || s.includes('/')) return [];
+  const out = [];
+  for (const ch of s.toUpperCase()) if (/[A-Z0-9]/.test(ch) && !ALLOWED.has(ch) && !out.includes(ch)) out.push(ch);
+  return out;
+}
+
 export function isRoomCode(code) {
   return typeof code === 'string' && code.length === ROOM_CODE_LENGTH && [...code].every((c) => ALLOWED.has(c));
 }

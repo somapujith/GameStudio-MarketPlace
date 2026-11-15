@@ -263,7 +263,8 @@
 }
 .hub-main {
   min-width: 0;
-  padding: 16px 0 calc(var(--tabbar-h, 64px) + var(--safe-bottom, 0px) + 28px);
+  /* the tab-bar clearance moved to .hub-footslot (below the footer) so the footer is never hidden behind it */
+  padding: 16px 0 28px;
 }
 .hub-main:focus {
   outline: none;
@@ -877,7 +878,7 @@
   flex: none;
   min-height: 44px;
   min-width: 44px; /* mark-only logo on the narrowest phones */
-  margin-right: auto;
+  margin-right: auto; /* from 720 px the search field sits beside it instead (x-shell.css) */
   border-radius: 12px;
   color: var(--hub-text);
 }
@@ -1055,8 +1056,9 @@
 }
 .hub-tabbar ul {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  max-width: 560px;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr); /* one column per destination (five with Browse) */
+  max-width: 600px;
   margin: 0 auto;
 }
 .hub-tab {

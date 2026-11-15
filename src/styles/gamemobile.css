@@ -152,6 +152,10 @@ html.hg-playing { height: 100%; }
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
 }
 .hg-game--compact .hg-pod.is-out .hg-pod__btn { opacity: 0.55; }
+/* connection strength: the bars stay in the name row; their "Offline" / "Reconnecting…" pill moves onto the card's top-left edge
+   (the "Turn" pill owns the right edge and is hidden while a player is offline), so no card gets wider or taller */
+.hg-game--compact .hg-pod .sg__pill { position: absolute; z-index: 2; top: -8px; left: 10px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45); }
+.hg-game--compact .hg-pod.has-pill .hg-pod__name { flex-wrap: nowrap; }
 
 /* chai / traffic: round badges on the avatar (the button's label says it in words) */
 .hg-pod__badges { position: absolute; left: -3px; bottom: -3px; z-index: 3; display: flex; gap: 2px; }
@@ -240,3 +244,38 @@ html.hg-playing { height: 100%; }
 .hg-game--land .cp-actions.is-dock .cp-btn__label { white-space: normal; text-align: center; line-height: 1.1; }
 .hg-game--land .cp-actions.is-dock .cp-btn--lg { font-size: 16px; min-height: 48px; padding: 4px 8px; }
 .hg-game--land .cp-actions.is-dock .cp-btn__main { flex-wrap: wrap; row-gap: 2px; }
+
+/* ============================================================ net worth target on phones */
+/* No extra row where it can be avoided (the board's height budget is tight on small phones):
+   - wide cards / side column / wallet bar: the bar + percentage sit in the second column UNDER the cash, the avatar spans all rows
+   - narrow cards (3 per row): the percentage fills the free line under the name, the bar is a slim line along the card's bottom edge */
+.hg-game--compact .hg-pod.has-goal .hg-pod__btn { grid-template-areas: 'ava name' 'ava cash' 'ava goal'; }
+.hg-game--compact .hg-pod__goal { margin-top: 2px; gap: 6px; }
+.hg-game--compact .hg-pod__goalbar { height: 5px; }
+.hg-game--compact .hg-pod__goal.is-lead .hg-pod__goalbar { height: 6px; }
+.hg-game--compact .hg-pod__goalpct { font-size: 11px; line-height: 12px; }
+.hg-game--phone .hg-pod[data-cell='narrow'].has-goal .hg-pod__btn { grid-template-areas: 'ava name' 'ava pct' 'cash cash'; padding-bottom: 10px; }
+.hg-game--phone .hg-pod[data-cell='narrow'] .hg-pod__goal { display: contents; }
+.hg-game--phone .hg-pod[data-cell='narrow'] .hg-pod__goalpct { grid-area: pct; align-self: start; }
+.hg-game--phone .hg-pod[data-cell='narrow'] .hg-pod__goalbar {
+  position: absolute; z-index: 1; left: 10px; right: 10px; bottom: 4px; height: 3px;
+}
+.hg-game--phone .hg-pod[data-cell='narrow'] .hg-pod__goal.is-lead .hg-pod__goalbar { height: 4px; }
+.hg-game--phone .hg-table[data-goal] { --hg-oppH: 64px; }
+.hg-game--phone .hg-table[data-goal][data-opp='3'] { --hg-oppH: 74px; }
+.hg-game--phone .hg-table[data-goal][data-opp='4'] { --hg-oppH: 134px; }
+.hg-game--phone .hg-table[data-goal][data-opp='5'] { --hg-oppH: 143px; }
+.hg-game--phone .hg-table[data-goal][data-opp='0'] { --hg-oppH: 0px; }
+/* your wallet bar: "Worth ₹11L of ₹50L" over a clearer bar, under the name, beside the big cash figure. The "your turn" pill moves up
+   onto the card's top edge (like the opponents' cards) so the bar does not make the wallet taller. */
+.hg-pod[data-cell='wallet'].has-goal .hg-pod__btn { grid-template-areas: 'ava name cash' 'ava goal cash'; row-gap: 0; }
+.hg-pod[data-cell='wallet'] .hg-pod__goal { margin-top: 4px; gap: 3px; }
+.hg-pod[data-cell='wallet'] .hg-pod__goalbar { height: 7px; }
+.hg-pod[data-cell='wallet'] .hg-pod__goal.is-lead .hg-pod__goalbar { height: 8px; }
+.hg-pod[data-cell='wallet'] .hg-pod__goalpct, .hg-pod[data-cell='wallet'] .hg-pod__goalhead b { font-size: 12px; line-height: 14px; }
+.hg-pod[data-cell='wallet'].has-goal .hg-pod__worth { display: none; }
+.hg-game--phone .hg-pod[data-cell='wallet'].has-goal .hg-pod__sub { display: contents; }
+.hg-game--phone .hg-pod[data-cell='wallet'].has-goal .hg-pod__turn { position: absolute; top: -9px; left: 64px; right: auto; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45); }
+.hg-game--phone .hg-pod[data-cell='wallet'] .hg-pod__goalhead b { display: none; }
+.hg-game--land .hg-pod[data-cell='wallet'].has-goal .hg-pod__btn { grid-template-areas: 'ava name' 'ava cash' 'ava goal'; }
+.hg-game--land .hg-pod[data-cell='wallet'] .hg-pod__goallbl { font-size: 11px; }

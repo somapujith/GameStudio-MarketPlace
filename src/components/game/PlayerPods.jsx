@@ -10,13 +10,19 @@
 //              your own pod as a full-width "wallet bar" in the bottom stack, right above the action dock (`mode="me"`)
 //   landscape: the opponents stacked in a column left of the board, your wallet bar above the actions on the right
 // Compact pods keep the avatar, name and cash only; chai / traffic become small badges on the avatar.
+// With a net worth target (cfg.targetWorth) every pod of a live player gets a slim progress bar + percentage under the cash
+// (yours says "Worth ₹12.6L of ₹50L"); the leader's bar glows and from 80% of the target a bar turns gold and pulses.
 import { useEffect, useRef, useState } from 'react';
 import { compactINR, formatINR } from '@shared/format.js';
 import Money from './ui/Money.jsx';
 import { activePlayer, useWorths } from './ui/helpers.js';
 import { useLayoutMode } from './ui/viewport.js';
-import { ChaiToken, PlayerAvatar, TrafficTag, OfflineTag, rowLabel } from './MoneyBar.jsx';
-import { TitleChip, cosmeticsOf, isConnected } from './turn/room.js';
+import { ChaiToken, PlayerAvatar, TrafficTag, rowLabel } from './MoneyBar.jsx';
+import { TitleChip, cosmeticsOf, roomPlayer } from './turn/room.js';
+import SignalBars from './ui/SignalBars.jsx';
+import { pillText, signalOf, signalWords } from './ui/signalModel.js';
+import { useNetStats } from '@/lib/netStats.js';
+import { podTarget, targetOf } from './turn/target.js';
 import '../../styles/pods.css';
 
 /** Slot names by player count, clockwise from the bottom-left corner (bl = you). */
@@ -92,12 +98,26 @@ export function useCashMood(cash) {
   return mood;
 }
 
-function Pod({ session, player, slot, cell, worth, isMe, isTurn, isLeader, avatar, compact, onSelect }) {
-  const offline = !isConnected(session, player.id) && !player.bankrupt;
+/** The progress bar under the cash. `goal` = podTarget(...). Decorative: the pod's button label says the same in words. */
+export function GoalBar({ goal, isMe }) {
+  return (
+    <span className={`hg-pod__goal${goal.hot ? ' is-hot' : ''}${goal.lead ? ' is-lead' : ''}`} style={{ '--tp': goal.frac.toFixed(3) }} aria-hidden="true" data-pct={goal.pct}>
+      {isMe ? <span className="hg-pod__goalhead"><span className="hg-pod__goallbl">{goal.label}</span><b>{goal.text}</b></span> : null}
+      <span className="hg-pod__goalbar"><i /></span>
+      {isMe ? null : <b className="hg-pod__goalpct">{goal.text}</b>}
+    </span>
+  );
+}
+
+function Pod({ session, player, slot, cell, worth, isMe, isTurn, isLeader, target, avatar, compact, local, onSelect }) {
+  // Connection strength: the room's `net` for everybody else, your own live measurement for you (never for a player who is out).
+  const sig = player.bankrupt ? { kind: 'none' } : signalOf(roomPlayer(session, player.id), { isMe, local });
+  const offline = sig.kind === 'offline' && !player.bankrupt;
   const mood = useCashMood(player.cash);
   const title = cosmeticsOf(session, player.id).title;
-  const cls = ['hg-pod', isMe && 'is-me', isTurn && 'is-turn', isLeader && !player.bankrupt && 'is-leader', player.bankrupt && 'is-out', offline && 'is-offline'].filter(Boolean).join(' ');
-  const label = rowLabel({ player, worth, isMe, isTurn, isLeader, offline });
+  const goal = podTarget({ worth, target, isMe, isLeader, bankrupt: player.bankrupt });
+  const cls = ['hg-pod', isMe && 'is-me', isTurn && 'is-turn', isLeader && !player.bankrupt && 'is-leader', player.bankrupt && 'is-out', offline && 'is-offline', pillText(sig) && 'has-pill', goal && 'has-goal', goal?.hot && 'is-hot'].filter(Boolean).join(' ');
+  const label = [rowLabel({ player, worth, isMe, isTurn, isLeader, offline: false }), signalWords(sig), goal?.sr].filter(Boolean).join(', ');
   const badges = compact && !player.bankrupt && (player.stuck || player.chai > 0);
   return (
     <li
@@ -121,14 +141,14 @@ function Pod({ session, player, slot, cell, worth, isMe, isTurn, isLeader, avata
           <span className="hg-pod__name">
             <b title={player.name}>{player.name}</b>
             {isMe ? <small className="hg-pod__you">YOU</small> : null}
+            <SignalBars {...sig} size={compact ? 'sm' : 'md'} className="hg-pod__sig" />
           </span>
           <span className="hg-pod__sub">
             {player.bankrupt ? (
-              <span className="hg-pod__out">Bankrupt</span>
+              <span className="hg-pod__out">{isMe && session.resigned ? 'Resigned' : 'Bankrupt'}</span>
             ) : (
               <>
                 {isTurn && !offline ? <span className="hg-pod__turn">{isMe && compact ? 'Your turn' : 'Turn'}</span> : null}
-                {offline && !compact ? <OfflineTag /> : null}
                 {player.stuck && !compact ? <TrafficTag /> : null}
                 {compact ? null : <ChaiToken count={player.chai} hideEmpty />}
                 <span className="hg-pod__worth" title={`Net worth ${formatINR(worth)}`}>Worth {compactINR(worth)}</span>
@@ -141,6 +161,7 @@ function Pod({ session, player, slot, cell, worth, isMe, isTurn, isLeader, avata
           {isMe && !player.bankrupt ? <small className="hg-pod__lbl">Your cash</small> : null}
           {player.bankrupt ? <span className="hg-pod__amt is-out">Out</span> : <Money value={player.cash} flash className="hg-pod__amt" />}
         </span>
+        {goal ? <GoalBar goal={goal} isMe={isMe} /> : null}
       </button>
     </li>
   );
@@ -153,8 +174,10 @@ function Pod({ session, player, slot, cell, worth, isMe, isTurn, isLeader, avata
  */
 export default function PlayerPods({ session, onSelect, mode = 'all', layout: layoutProp }) {
   const { worths, leaderId, state } = useWorths(session);
+  const target = targetOf(session.display?.cfg || session.view?.cfg);
   const active = (session.display?.phase ?? session.view?.phase) === 'over' ? null : activePlayer(session);
   const own = useLayoutMode();
+  const local = useNetStats(); // your own measured connection (live), for your own pod
   const layout = layoutProp || own;
   const compact = layout !== 'wide';
   const all = podSlots(state.players, session.me);
@@ -177,8 +200,10 @@ export default function PlayerPods({ session, onSelect, mode = 'all', layout: la
             isMe={isMe}
             isTurn={!!active && active.id === player.id && !player.bankrupt}
             isLeader={leaderId === player.id}
+            target={target}
             avatar={!compact ? 42 : cell === 'wallet' ? 44 : 36}
             compact={compact}
+            local={local}
             onSelect={onSelect}
           />
         );

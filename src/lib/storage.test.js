@@ -20,11 +20,22 @@ beforeEach(async () => {
 
 describe('settings', () => {
   it('has sound and motion defaults and merges patches', () => {
-    expect(S.loadSettings()).toEqual({ sfx: true, volume: 0.8, reducedMotion: false, theme: 'system', playbackSpeed: 1, haptics: true });
+    expect(S.loadSettings()).toEqual({ sfx: true, volume: 0.8, reducedMotion: false, theme: 'system', playbackSpeed: 1, haptics: true, boardCamera: 'auto' });
     S.saveSettings({ volume: 5, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true });
-    expect(S.loadSettings()).toEqual({ sfx: true, volume: 1, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true });
+    expect(S.loadSettings()).toEqual({ sfx: true, volume: 1, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true, boardCamera: 'auto' });
     S.saveSettings({ sfx: false, voice: true, subtitles: 'te', actors: { ntr: false } }); // unknown keys are dropped
-    expect(S.loadSettings()).toEqual({ sfx: false, volume: 1, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true });
+    expect(S.loadSettings()).toEqual({ sfx: false, volume: 1, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true, boardCamera: 'auto' });
+  });
+
+  it('keeps the board camera mode (auto | manual | off) and falls back to auto for anything else', () => {
+    expect(S.BOARD_CAMERAS).toEqual(['auto', 'manual', 'off']);
+    expect(S.loadSettings().boardCamera).toBe('auto');
+    expect(S.saveSettings({ boardCamera: 'manual' }).boardCamera).toBe('manual');
+    expect(S.saveSettings({ boardCamera: 'off' }).boardCamera).toBe('off');
+    expect(S.loadSettings().boardCamera).toBe('off');
+    expect(S.saveSettings({ sfx: false }).boardCamera).toBe('off'); // other patches leave it alone
+    expect(S.saveSettings({ boardCamera: 'zoomy' }).boardCamera).toBe('auto');
+    expect(S.saveSettings({ boardCamera: 7 }).boardCamera).toBe('auto');
   });
 
   it('loads settings saved by older builds (with voice, subtitle and actor keys) and ignores those keys', async () => {
@@ -32,7 +43,7 @@ describe('settings', () => {
     const m = stubLocalStorage();
     m.set('hyd.settings.v1', JSON.stringify({ sfx: false, voice: true, tts: false, volume: 0.3, subtitles: 'tn', reducedMotion: true, actors: { ntr: false } }));
     const O = await import('./storage.js');
-    expect(O.loadSettings()).toEqual({ sfx: false, volume: 0.3, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true });
+    expect(O.loadSettings()).toEqual({ sfx: false, volume: 0.3, reducedMotion: true, theme: 'system', playbackSpeed: 1, haptics: true, boardCamera: 'auto' });
   });
 
   it('notifies subscribers and keeps a stable snapshot between changes', () => {

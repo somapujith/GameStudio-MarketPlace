@@ -4,29 +4,44 @@ import { createRoom, errorMessage } from '@/lib/api.js';
 import { useAuth } from '@/lib/auth.jsx';
 import { paths } from '@/platform/paths.js';
 import { useRoomConnection } from '@/components/online/useRoomConnection.js';
-import { joinedLabel, joinedPercent, pieceChoices, pieceOf, rosterChanges, seatColor, startState, waitingText } from '@/components/online/lobbyModel.js';
+import {
+  fatalView,
+  joinedLabel,
+  joinedPercent,
+  pieceChoices,
+  pieceOf,
+  rosterChanges,
+  seatColor,
+  startReason,
+  startState,
+  waitingText,
+} from '@/components/online/lobbyModel.js';
 import { resolveSettings } from '@/components/online/settings.js';
 import { sameId } from '@/components/online/gameHelpers.js';
-import { isRoomCode, normalizeRoomCode } from '@/components/online/codes.js';
+import { inviteMessage, isRoomCode, normalizeRoomCode } from '@/components/online/codes.js';
+import { shareOrCopy } from '@/components/online/clipboard.js';
 import { gameName, gameOf, warmOnlineGame } from '@/components/online/games.js';
 import { rememberRoomGame, roomGameId } from '@/components/online/gameRoute.js';
+import { useRoster } from '@/components/online/roster.js';
 import ConfirmDialog from '@/components/online/ConfirmDialog.jsx';
-import GameIcon from '@/components/online/GameIcon.jsx';
+import ConnectionChip from '@/components/online/ConnectionChip.jsx';
 import InviteFriends from '@/components/online/InviteFriends.jsx';
 import Seat, { EmptySeat } from '@/components/online/Seat.jsx';
 import SettingsPanel from '@/components/online/SettingsPanel.jsx';
 import ShareCard from '@/components/online/ShareCard.jsx';
-import StatusPanel, { Loading } from '@/components/online/StatusPanel.jsx';
+import StatusPanel from '@/components/online/StatusPanel.jsx';
+import TableHeader from '@/components/online/TableHeader.jsx';
 import { useToasts } from '@/components/online/Toasts.jsx';
 import HubIcon from '@/platform/game/HubIcon.jsx';
 import PiecePicker from '@/platform/game/PiecePicker.jsx';
 import AutoMascot from '@/components/art/AutoMascot.jsx';
 import '@/styles/online.css';
 import '@/styles/x-lobby.css';
+import '@/styles/store-rooms.css';
 
 const PIECE_SETTLE = 4000; // ms: no answer to a piece pick -> show what the server says again
 
-/** CSS variables that tint the lobby with the game's own colours. */
+/** CSS variables that tint the lobby's controls with the game's own colours (the lit header uses color.js on its own). */
 function themeVars(game) {
   const t = (game && game.theme) || {};
   const v = {};
@@ -34,16 +49,6 @@ function themeVars(game) {
   if (t.accent2 || t.accent) v['--ho-accent-2'] = t.accent2 || t.accent;
   if (t.bg) v['--ho-game-bg'] = t.bg;
   return v;
-}
-
-function ConnectionBanner({ connection }) {
-  if (connection === 'open') return null;
-  return (
-    <div className="ho-banner ho-banner--warn" role="status" aria-live="polite">
-      <span className="ho-spinner" aria-hidden="true" />
-      <span>{connection === 'closed' ? 'Disconnected from the room.' : 'Reconnecting to the room... your seat is kept.'}</span>
-    </div>
-  );
 }
 
 /** /lobby/:code */
@@ -55,10 +60,11 @@ export default function Lobby() {
 
   if (!valid) {
     return (
-      <div className="ho-page xl-page">
+      <div className="hub-page st-scope sr-solo">
         <StatusPanel
           icon={<HubIcon name="hash" size={30} />}
           tone="bad"
+          eyebrow="Room link"
           title="That is not a room code"
           body="Room codes are 6 letters or numbers, like ABC234."
           actions={[
@@ -71,8 +77,8 @@ export default function Lobby() {
   }
   if (loading) {
     return (
-      <div className="ho-page xl-page">
-        <Loading text="Opening the lobby..." />
+      <div className="hub-page st-scope sr-solo">
+        <StatusPanel busy eyebrow={`Room ${code}`} title="Opening the lobby..." />
       </div>
     );
   }
@@ -80,26 +86,35 @@ export default function Lobby() {
   return <LobbyInner code={code} user={user} />;
 }
 
-/** Compact header of its own (the lobby sits outside the hub chrome): back to the game page, game + room code, leave. */
-function LobbyHeader({ game, gName, code, backTo, onLeave }) {
+/** Back to the game page (left) and leave the table (right). The lobby sits outside the hub chrome, so it brings its own bar. */
+function TopBar({ game, gName, backTo, onLeave, isHost, alone }) {
   return (
-    <header className="ho-qhead xl-head">
-      <Link to={backTo} className="xl-head__back" aria-label={game ? `Back to ${gName}` : 'Back to games'}>
-        <HubIcon name="chevL" size={22} />
+    <nav className="sr-topbar" aria-label="Lobby">
+      <Link to={backTo} className="sr-topbar__back">
+        <HubIcon name="chevL" size={20} />
+        <span>{game ? gName : 'Games'}</span>
       </Link>
-      <GameIcon game={game} name={gName} size={44} className="ho-qhead__icon" />
-      <div className="ho-qhead__main">
-        <h1 className="ho-h1">{gName}</h1>
-        <p className="ho-muted">
-          Room <b className="ho-qhead__code">{code}</b>
-        </p>
-      </div>
       {onLeave && (
-        <button type="button" className="ho-btn ho-btn--ghost ho-btn--sm xl-head__leave" onClick={onLeave}>
-          <HubIcon name="door" size={18} /> <span>Leave</span>
+        <button type="button" className="ho-btn ho-btn--ghost ho-btn--sm sr-topbar__leave" onClick={onLeave}>
+          <HubIcon name="door" size={18} /> <span>{isHost && alone ? 'Close table' : 'Leave table'}</span>
         </button>
       )}
-    </header>
+    </nav>
+  );
+}
+
+/** Shapes of the seats while the room payload is on its way. */
+function SeatsSkeleton({ n = 4 }) {
+  return (
+    <ul className="sr-seats" aria-hidden="true">
+      {Array.from({ length: n }, (_, i) => (
+        <li key={i} className="sr-seat sr-seat--skel" style={{ '--i': i }}>
+          <span className="st-skel sr-skel-avatar" />
+          <span className="st-skel sr-skel-line sr-skel-line--m" />
+          <span className="st-skel sr-skel-line sr-skel-line--s" />
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -107,18 +122,21 @@ function LobbyInner({ code, user }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { push, node } = useToasts();
-  const { room, connection, fatal, error, errorId, send, pickPiece, leave } = useRoomConnection(code);
+  const { room, connection, link, fatal, error, errorId, send, pickPiece, leave, retry } = useRoomConnection(code);
   const [confirm, setConfirm] = useState(null); // {kind:'leave'} | {kind:'kick', player}
   const [starting, setStarting] = useState(false);
   const [pending, setPending] = useState(null); // piece id asked for, not yet confirmed by the server
   const startTimer = useRef(null);
   const pieceTimer = useRef(null);
   const roster = useRef(null);
+  const hostSeen = useRef(null);
+  const sawLobby = useRef(false);
 
   const gameId = room ? roomGameId(room) : null;
   const game = useMemo(() => (gameId ? gameOf(gameId) : null), [gameId]);
   const gName = gameName(gameId, game);
-  const players = room && Array.isArray(room.players) ? room.players : [];
+  const players = useMemo(() => (room && Array.isArray(room.players) ? room.players : []), [room]);
+  const seats = useRoster(players);
 
   // a message handed over by whoever sent us here ("Invite sent to Ravi")
   useEffect(() => {
@@ -157,6 +175,19 @@ function LobbyInner({ code, user }) {
     left.forEach((p) => push(`${p.name || 'A player'} left`, 'info'));
   }, [room, user.id, push]);
 
+  // the host role moved (the host left): say who has it now
+  useEffect(() => {
+    if (!room || room.hostId == null) return;
+    const prev = hostSeen.current;
+    hostSeen.current = room.hostId;
+    if (prev == null || sameId(prev, room.hostId)) return;
+    if (sameId(room.hostId, user.id)) push('You are the host now', 'gold');
+    else {
+      const h = (room.players || []).find((p) => sameId(p.id, room.hostId));
+      push(`${(h && h.name) || 'Someone'} is the host now`, 'info');
+    }
+  }, [room, user.id, push]);
+
   // the server confirmed the pick: stop showing the optimistic one
   const myServerPiece = (players.find((p) => sameId(p.id, user.id)) || {}).piece || null;
   useEffect(() => {
@@ -173,20 +204,37 @@ function LobbyInner({ code, user }) {
 
   // game started: head for the board
   useEffect(() => {
+    if (room && room.status === 'lobby') sawLobby.current = true;
     if (room && room.status === 'playing' && !fatal) {
       rememberRoomGame(code, gameId);
+      if (sawLobby.current) push('Game on! Taking you to the table.', 'good'); // not when we only came back to a running match
       navigate(paths.online(gameId, code), { replace: true });
     }
-  }, [room, fatal, code, gameId, navigate]);
+  }, [room, fatal, code, gameId, navigate, push]);
 
-  if (fatal) return <Fatal fatal={fatal} code={code} />;
+  const chip = <ConnectionChip connection={connection} link={link} fatal={fatal} onRetry={retry} />;
+
+  if (fatal) return <Fatal fatal={fatal} code={code} gameId={gameId} />;
 
   if (!room) {
     return (
-      <div className="ho-page ho-lobby ho-lobby--quick xl-lobby">
-        <LobbyHeader game={null} gName="Lobby" code={code} backTo={paths.hub()} />
-        <Loading text="Joining the room..." />
-        <button type="button" className="ho-btn ho-btn--ghost ho-lobby__cancel" onClick={() => navigate(paths.hub())}>
+      <div className="hub-page st-scope ho-lobby sr-lobby">
+        <TopBar game={null} gName="Lobby" backTo={paths.hub()} />
+        <TableHeader game={null} gName="Lobby" code={code} chip={chip} onNotify={push} />
+        <div className="sr-lobby__cols">
+          <section className="sr-card sr-seatscard" aria-busy="true">
+            <header className="sr-card__head">
+              <div>
+                <span className="st-eyebrow">Players</span>
+                <h2 className="sr-card__title" role="status" aria-live="polite">
+                  Joining the room...
+                </h2>
+              </div>
+            </header>
+            <SeatsSkeleton />
+          </section>
+        </div>
+        <button type="button" className="ho-btn ho-btn--ghost sr-cancel" onClick={() => navigate(paths.hub())}>
           Cancel
         </button>
         {node}
@@ -203,8 +251,9 @@ function LobbyInner({ code, user }) {
   const minToStart = Number.isFinite(bounds.min) ? bounds.min : 2;
   const open = connection === 'open';
   const joined = players.length;
-  const { enough, full, emptySeats, need, label: startLabel, help: startHelp } = startState({ players: joined, joined, maxPlayers, minToStart, starting, open });
+  const { enough, full, emptySeats, need, help: startHelp } = startState({ players: joined, joined, maxPlayers, minToStart, starting, open });
   const canStart = isHost && enough && open && !starting;
+  const reason = startReason({ enough, open, starting, players: joined, minToStart });
   const myIndex = players.findIndex((p) => sameId(p.id, user.id));
   const myColor = seatColor(game, Math.max(0, myIndex));
   const pieces = game && game.pieces;
@@ -236,18 +285,33 @@ function LobbyInner({ code, user }) {
   };
 
   const askLeave = () => {
-    if (isHost && players.length > 1) setConfirm({ kind: 'leave' });
+    if (isHost) setConfirm({ kind: 'leave' });
     else doLeave();
   };
 
-  return (
-    <div className="ho-page ho-lobby ho-lobby--quick xl-lobby" style={themeVars(game)}>
-      <LobbyHeader game={game} gName={gName} code={code} backTo={game ? paths.game(gameId) : paths.hub()} onLeave={askLeave} />
+  // an empty seat is an invitation: the share sheet on phones, else copy the link; bring the invite block into view
+  const inviteSomeone = async () => {
+    const el = typeof document !== 'undefined' ? document.getElementById('sr-invite') : null;
+    if (el && el.scrollIntoView) {
+      const calm = document.documentElement.dataset.motion === 'reduced' || (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
+      el.scrollIntoView({ block: 'nearest', behavior: calm ? 'auto' : 'smooth' });
+    }
+    const res = await shareOrCopy(inviteMessage(code, gName));
+    if (res === 'copied') push('Invite link copied. Send it to a friend.', 'good');
+    else if (res === 'failed') push('Could not share. Use the link below.', 'bad');
+  };
 
-      <ConnectionBanner connection={connection} />
+  const alone = joined <= 1;
+  const vars = { ...themeVars(game) };
+
+  return (
+    <div className="hub-page st-scope ho-lobby sr-lobby" style={vars}>
+      <TopBar game={game} gName={gName} backTo={game ? paths.game(gameId) : paths.hub()} onLeave={askLeave} isHost={isHost} alone={alone} />
+
+      <TableHeader game={game} gName={gName} code={code} hostName={host && host.name} chip={chip} onNotify={push} />
 
       {!game && (
-        <div className="ho-banner ho-banner--warn" role="status">
+        <div className="sr-note sr-note--warn" role="status">
           <span>This game is not available in this version of the app. Reload to update, or leave the room.</span>
           <button type="button" className="ho-btn ho-btn--ghost ho-btn--sm" onClick={() => window.location.reload()}>
             Reload
@@ -255,95 +319,105 @@ function LobbyInner({ code, user }) {
         </div>
       )}
 
-      <div className="ho-lobby__cols">
-        <div className="ho-lobby__col ho-lobby__col--invite">
-          <div className="xl-o-invite">
-            <ShareCard code={code} gameName={gName} onNotify={push} />
-          </div>
-          {user.isGuest && (
-            <p className="ho-help ho-qguest xl-o-guest">
-              Share the code, link or QR above. <Link to={paths.login(paths.lobby(code))}>Sign in with Google</Link> to invite friends in one tap.
-            </p>
-          )}
-          {!user.isGuest && (
-            <div className="xl-o-friends">
-              <InviteFriends code={code} gameName={gName} onNotify={push} />
-            </div>
-          )}
-        </div>
-
-        <div className="ho-lobby__col ho-lobby__col--table">
-          <section className="ho-card ho-seats xl-o-seats" aria-label="Players">
-            <div className="ho-card__head">
-              <h2 className="ho-h2">Players</h2>
-              <span className={`ho-count${full ? ' is-full' : ''}`} aria-live="polite">
+      <div className="sr-lobby__cols">
+        <div className="sr-lobby__main">
+          <section className="sr-card sr-seatscard sr-o-seats" aria-label="Players">
+            <header className="sr-card__head">
+              <div>
+                <span className="st-eyebrow">Players</span>
+                <h2 className="sr-card__title">Around the table</h2>
+              </div>
+              <span className={`sr-count${full ? ' is-full' : ''}`} aria-live="polite">
                 {joinedLabel(joined, maxPlayers)}
               </span>
-            </div>
-            <div className="ho-progress" role="progressbar" aria-label="Seats taken" aria-valuemin={0} aria-valuemax={maxPlayers} aria-valuenow={Math.min(joined, maxPlayers)}>
+            </header>
+            <div className="sr-meter" role="progressbar" aria-label="Seats taken" aria-valuemin={0} aria-valuemax={maxPlayers} aria-valuenow={Math.min(joined, maxPlayers)}>
               <span style={{ transform: `scaleX(${joinedPercent(joined, maxPlayers) / 100})` }} />
             </div>
-            <ul className="ho-seatgrid" data-seats={players.length + emptySeats}>
-              {players.map((p, i) => {
+            <ul className="sr-seats" data-seats={joined + emptySeats}>
+              {seats.map(({ key, player: p, leaving }) => {
                 const me = sameId(p.id, user.id);
+                const i = players.findIndex((q) => sameId(q.id, p.id));
                 return (
                   <Seat
-                    key={p.id}
+                    key={key}
                     player={p}
                     piece={pieceOf(me ? { ...p, piece: myPiece } : p, pieces)}
-                    color={seatColor(game, i)}
+                    color={seatColor(game, i < 0 ? 0 : i)}
                     isMe={me}
                     isHost={sameId(p.id, room.hostId)}
-                    canRemove={isHost && !me && open}
+                    canRemove={isHost && !me && open && !leaving}
+                    leaving={leaving}
                     onRemove={() => setConfirm({ kind: 'kick', player: p })}
                   />
                 );
               })}
               {Array.from({ length: emptySeats }, (_, i) => (
-                <EmptySeat key={`empty-${i}`} />
+                <EmptySeat key={`empty-${i}`} onInvite={inviteSomeone} />
               ))}
             </ul>
           </section>
 
           {choices.length > 0 && (
-            <div className="xl-o-pieces">
+            <div className="sr-o-pieces">
               <PiecePicker choices={choices} color={myColor} onPick={choosePiece} disabled={!open} pending={!!pending} />
             </div>
           )}
 
-          <div className="xl-o-settings">
+          <div className="sr-o-settings">
             <SettingsPanel game={game} settings={room.settings} isHost={isHost} disabled={!open} errorId={errorId} onSend={(msg) => send(msg, { queue: false })} />
           </div>
 
-          <section
-            className={`ho-card ho-startcard xl-o-start${isHost && canStart ? ' is-ready' : ''}${full ? ' is-full' : ''}${starting ? ' is-starting' : ''}`}
-            aria-label="Start"
-          >
-            {gameId === 'hyderabad-tycoon' && <AutoMascot key={canStart ? 'ready' : 'waiting'} mood={canStart ? 'roll' : 'waiting'} />}
+          <section className={`sr-card sr-start sr-o-start${isHost && canStart ? ' is-ready' : ''}${full ? ' is-full' : ''}${starting ? ' is-starting' : ''}`} aria-label="Start">
+            {gameId === 'hyderabad-tycoon' && (
+              <div className="sr-start__mascot" aria-hidden="true">
+                <AutoMascot key={canStart ? 'ready' : 'waiting'} mood={canStart ? 'roll' : 'waiting'} />
+              </div>
+            )}
             {isHost ? (
               <>
-                <button type="button" className={`ho-btn ho-btn--primary ho-btn--lg ho-btn--block${full && canStart ? ' ho-btn--full' : ''}`} onClick={start} disabled={!canStart}>
-                  {canStart && <HubIcon name="play" size={18} />} {startLabel}
+                <button
+                  type="button"
+                  className={`ho-btn ho-btn--primary ho-btn--lg ho-btn--block sr-start__btn${full && canStart ? ' ho-btn--full' : ''}`}
+                  onClick={start}
+                  disabled={!canStart}
+                  aria-describedby="sr-start-note"
+                >
+                  {starting ? <span className="ho-spinner" aria-hidden="true" /> : <HubIcon name="play" size={18} />} {starting ? 'Starting...' : 'Start game'}
                 </button>
-                <p className="ho-help" aria-live="polite">
-                  {startHelp}
+                <p id="sr-start-note" className={`sr-start__note${reason ? ' is-reason' : ''}`} aria-live="polite">
+                  {reason || startHelp}
                 </p>
               </>
             ) : (
-              <p className="ho-waiting" role="status" aria-live="polite">
-                <span className="ho-spinner" aria-hidden="true" /> {waitingText({ need, hostName: host && host.name })}
+              <p className="sr-start__wait" role="status" aria-live="polite">
+                <span className="ho-spinner" aria-hidden="true" /> {open ? waitingText({ need, hostName: host && host.name }) : 'Reconnecting to the room...'}
               </p>
             )}
           </section>
+        </div>
 
+        <div className="sr-lobby__side">
+          <div className="sr-o-invite">
+            <ShareCard code={code} gameName={gName} onNotify={push} id="sr-invite" />
+          </div>
+          {user.isGuest ? (
+            <p className="sr-guest sr-o-guest">
+              Share the code, link or QR above. <Link to={paths.login(paths.lobby(code))}>Sign in with Google</Link> to invite friends in one tap.
+            </p>
+          ) : (
+            <div className="sr-o-friends">
+              <InviteFriends code={code} gameName={gName} onNotify={push} />
+            </div>
+          )}
         </div>
       </div>
 
       <ConfirmDialog
         open={confirm?.kind === 'leave'}
-        title="Leave this room?"
-        body="Other players stay in the lobby and the host role passes on."
-        confirmLabel="Leave room"
+        title={alone ? 'Close this table?' : 'Leave this table?'}
+        body={alone ? 'Nobody else is here, so the table closes. You can always start a new one.' : 'Other players stay in the lobby and the host role passes on.'}
+        confirmLabel={alone ? 'Close table' : 'Leave table'}
         danger
         onCancel={() => setConfirm(null)}
         onConfirm={() => {
@@ -391,13 +465,15 @@ function Rematch({ room, game, gameId, gameLabel }) {
   };
 
   return (
-    <div className="ho-page xl-page">
+    <div className="hub-page st-scope sr-solo">
       <StatusPanel
         icon={<HubIcon name="trophy" size={30} />}
+        eyebrow="Match over"
         title="This game has finished"
         body={`The ${gameLabel} match in this room is over. Start a new private room with the same settings and send your friends the new code.`}
         actions={[
           { label: busy ? 'Creating...' : 'New room, same settings', onClick: create, primary: true },
+          { label: 'Your profile', to: paths.profile() },
           { label: 'Home', to: paths.hub() },
         ]}
       >
@@ -411,40 +487,20 @@ function Rematch({ room, game, gameId, gameLabel }) {
   );
 }
 
-function Fatal({ fatal, code }) {
-  if (fatal.kind === 'kicked') {
-    return (
-      <div className="ho-page xl-page">
-        <StatusPanel
-          icon={<HubIcon name="door" size={30} />}
-          tone="bad"
-          title="You were removed from the room"
-          body="The host took you out of this lobby. You can join another room, or ask for the code again."
-          actions={[
-            { label: 'Home', to: paths.hub(), primary: true },
-            { label: 'Join another room', to: paths.join() },
-          ]}
-        />
-      </div>
-    );
-  }
-  if (fatal.kind === 'auth') {
-    return <Navigate to={paths.login(paths.lobby(code))} replace />;
-  }
-  if (fatal.kind === 'left') {
-    return <Navigate to={paths.hub()} replace />;
-  }
+function Fatal({ fatal, code, gameId }) {
+  if (fatal.kind === 'auth') return <Navigate to={paths.login(paths.lobby(code))} replace />;
+  if (fatal.kind === 'left') return <Navigate to={paths.hub()} replace />;
+  const v = fatalView(fatal, { paths, gameId: gameId && gameOf(gameId) ? gameId : null });
+  if (!v) return <Navigate to={paths.hub()} replace />;
   return (
-    <div className="ho-page xl-page">
+    <div className="hub-page st-scope sr-solo">
       <StatusPanel
-        icon={<HubIcon name={fatal.kind === 'join' ? 'lock' : 'wifiOff'} size={30} />}
-        tone="bad"
-        title={fatal.kind === 'join' ? "Can't join this room" : 'Lost the connection'}
-        body={fatal.message}
-        actions={[
-          ...(fatal.kind === 'closed' ? [{ label: 'Try again', onClick: () => window.location.reload(), primary: true }] : [{ label: 'Enter another code', to: paths.join(), primary: true }]),
-          { label: 'Home', to: paths.hub() },
-        ]}
+        icon={<HubIcon name={v.icon} size={30} />}
+        tone={v.tone}
+        eyebrow={v.eyebrow}
+        title={v.title}
+        body={v.body}
+        actions={v.actions.map((a) => (a.act === 'reload' ? { label: a.label, onClick: () => window.location.reload(), primary: a.primary } : a))}
       />
     </div>
   );

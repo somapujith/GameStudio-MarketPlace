@@ -97,6 +97,14 @@ const PATHS = {
       <path d="M12 11v5M12 7.7v.1" />
     </>
   ),
+  flag: <path d="M6 20.5V4M6 5.5h11.5l-2.4 4 2.4 4H6" />,
+  target: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <circle cx="12" cy="12" r="4.2" />
+      <path d="M12 12v.01" />
+    </>
+  ),
 };
 
 export default function Icon({ name, size = 22, strokeWidth = 2, className = '', style }) {

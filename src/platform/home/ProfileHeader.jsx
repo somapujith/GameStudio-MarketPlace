@@ -7,11 +7,12 @@ import { errorMessage } from '@/lib/api.js';
 import { CoinIcon } from '@/components/shell/icons.jsx';
 import { fmtNum, radioKeyNav } from '@/components/shell/ui.jsx';
 import { useToast } from '@/components/shell/Toast.jsx';
-import { useAccount, useProgress } from '@/components/shell/hooks.js';
-import { pctOf, useProfile } from '@/components/shell/stores.js';
+import { useAccount, useDaily } from '@/components/shell/hooks.js';
+import { useProfile } from '@/components/shell/stores.js';
 import { cleanEquipped } from '@shared/cosmetics.js';
 import Ava, { Title } from './Ava.jsx';
 import { useCountUp } from './useApi.js';
+import { useAccountProgress } from './accountProgress.js';
 
 const MAX_NAME = 20;
 const RING = 2 * Math.PI * 47; // circumference of the r=47 level ring (viewBox 100)
@@ -20,7 +21,7 @@ const RING = 2 * Math.PI * 47; // circumference of the r=47 level ring (viewBox 
 function LevelRing({ pct, level, children }) {
   const p = Math.max(0, Math.min(100, Number(pct) || 0));
   return (
-    <span className="xp-ring" style={{ '--off': `${RING * (1 - p / 100)}` }}>
+    <span className="xp-ring" style={{ '--off': `${RING * (1 - p / 100)}` }} data-level={level}>
       <svg className="xp-ring__svg" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
         <circle cx="50" cy="50" r="47" className="xp-ring__track" />
         <circle cx="50" cy="50" r="47" className="xp-ring__fill" strokeDasharray={RING} />
@@ -30,6 +31,54 @@ function LevelRing({ pct, level, children }) {
         Lv {level}
       </span>
     </span>
+  );
+}
+
+/** Today's reward at a glance. The claim button itself lives on Home; this says whether it is waiting. */
+function DailyStatus({ daily, signedIn }) {
+  const reward = Number(daily.nextReward) || 0;
+  const ready = !!daily.canClaim;
+  return (
+    <div className={`sa-daily ${ready ? 'is-ready' : ''}`.trim()}>
+      <span className="sa-daily__icon" aria-hidden="true">
+        <HubIcon name="gift" size={20} />
+      </span>
+      <span className="sa-daily__text">
+        <b>{ready ? 'Daily reward is ready' : 'Daily reward claimed'}</b>
+        <small>
+          {ready
+            ? `Claim +${fmtNum(reward)} coins${daily.streak ? ` and keep your ${daily.streak}-day streak` : ''}.`
+            : `Come back tomorrow for +${fmtNum(reward)} coins${signedIn ? '' : ' (this device)'}.`}
+        </small>
+      </span>
+      {ready && (
+        <Link to={paths.hub()} className="hub-btn hub-btn--primary hub-btn--sm">
+          Claim on Home
+        </Link>
+      )}
+    </div>
+  );
+}
+
+/** Visitors and guests: why signing in matters, one clear action. */
+function SaveProgress({ guest }) {
+  return (
+    <div className="sa-save" role="note">
+      <span className="sa-save__icon" aria-hidden="true">
+        <HubIcon name="lock" size={20} />
+      </span>
+      <span className="sa-save__text">
+        <b>Save your progress: sign in</b>
+        <small>
+          {guest
+            ? 'A guest keeps level, coins and badges in this browser only. Sign in with Google to keep them on every device, add friends and join the leaderboard.'
+            : 'Sign in with Google to keep your level, coins and badges on every device, add friends and join the leaderboard.'}
+        </small>
+      </span>
+      <Link to={paths.login(paths.profile())} className="hub-btn hub-btn--primary hub-btn--sm">
+        Sign in
+      </Link>
+    </div>
   );
 }
 
@@ -46,10 +95,12 @@ export default function ProfileHeader() {
   const [draft, setDraft] = useState(name);
   useEffect(() => setDraft(name), [name]);
 
-  const { info: li, coins } = useProgress();
-  const pct = pctOf(li);
+  // One level for the whole app: the server's when signed in (same number as the top bar), derived only for visitors.
+  const li = useAccountProgress();
+  const { coins, pct } = li;
   const shownCoins = useCountUp(coins);
   const equipped = cleanEquipped(signedIn ? user?.equipped : null);
+  const daily = useDaily();
   const streak = Number(signedIn ? user?.daily?.streak : profile.dailyStreak) || 0;
 
   // The local profile is the source of truth offline; signed-in players also get it saved on the server.
@@ -78,7 +129,7 @@ export default function ProfileHeader() {
   };
 
   const current = (AVATAR_PRESETS || []).find((a) => a.id === avatar);
-  const status = account ? { text: 'Signed in', tone: 'good' } : guest ? { text: 'Guest account', tone: '' } : { text: 'Not signed in', tone: '' };
+  const status = account ? { text: 'Signed in with Google', tone: 'good', icon: 'check' } : guest ? { text: 'Guest', tone: 'warn', icon: 'user' } : { text: 'Not signed in', tone: '', icon: 'lock' };
 
   return (
     <section className="hub-panel hh2-pro" aria-labelledby="hh2-pro-h">
@@ -92,10 +143,24 @@ export default function ProfileHeader() {
           </h2>
           {equipped.title && <Title title={equipped.title} size="md" className="xp-pro__title" />}
           <p className="xp-pro__xp">
-            <b>{fmtNum(li.into)}</b> / {fmtNum(li.need)} XP to level {li.level + 1}
+            {li.into >= li.need ? (
+              <>
+                Ready for <b>level {li.level + 1}</b>
+              </>
+            ) : (
+              <>
+                <b>{fmtNum(li.into)}</b> / {fmtNum(li.need)} XP to level {li.level + 1}
+              </>
+            )}
           </p>
+          <div className="sa-xpbar" aria-hidden="true">
+            <i style={{ '--k': Math.max(0.02, pct / 100) }} />
+          </div>
           <div className="hh2-pro__pills">
-            <span className={`hub-pill${status.tone === 'good' ? ' hub-pill--good' : ''}`}>{status.text}</span>
+            <span className={`hub-pill sa-status sa-status--${status.tone || 'none'}${status.tone === 'good' ? ' hub-pill--good' : ''}`}>
+              <HubIcon name={status.icon} size={13} strokeWidth={2.6} />
+              {status.text}
+            </span>
           </div>
         </div>
         <button
@@ -136,6 +201,9 @@ export default function ProfileHeader() {
           <HubIcon name="gift" size={18} /> Shop
         </Link>
       </div>
+
+      <DailyStatus daily={daily} signedIn={signedIn} />
+      {!account && <SaveProgress guest={guest} />}
 
       <div id={`${inputId}-edit`} className={`hh2-collapse ${open ? 'is-open' : ''}`}>
         <div className="hh2-collapse__inner" inert={!open}>
@@ -190,15 +258,7 @@ export default function ProfileHeader() {
                 })}
               </div>
             </div>
-            {!signedIn && (
-              <p className="hub-muted">
-                Saved on this device.{' '}
-                <Link to={paths.login(paths.profile())} className="hh2-textlink">
-                  Sign in
-                </Link>{' '}
-                to keep your progress and play with friends.
-              </p>
-            )}
+            {!signedIn && <p className="hub-muted">Your name and character are saved on this device.</p>}
           </div>
         </div>
       </div>

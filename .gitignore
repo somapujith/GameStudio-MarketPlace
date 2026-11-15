@@ -15,3 +15,6 @@ output/playwright/
 client_secret*.json
 
 .vitest/
+
+# Reference screenshots dropped into the project folder (never commit)
+WhatsApp Image*
