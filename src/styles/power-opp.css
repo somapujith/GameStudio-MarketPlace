@@ -49,11 +49,11 @@
 .pwo-chip__t b { flex: none; font-weight: 800; }
 .pwo-chip__t small { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .pwo-chips--sm, .pwo-chips--md { max-width: 100%; }
-.pwo-chips--sm .pwo-chip { flex: 0 1 auto; min-width: 0; }
+.pwo-chips--sm .pwo-chip { flex: 0 1 auto; min-width: 30px; }
 .pwo-chip__t { min-width: 0; }
 /* two armed effects at once: both chips share a row as icon + rounds left (the words stay in the tooltip / label) (a pod must not grow taller and push the board's corners off screen) */
 .pwo-chip__n--alt { display: none; }
-.pwo-chips--sm:has(.pwo-chip + .pwo-chip) { flex-wrap: nowrap; }
+.pwo-chips--sm:has(.pwo-chip + .pwo-chip) .pwo-chip { flex: none; }
 .pwo-chips--sm:has(.pwo-chip + .pwo-chip) .pwo-chip__t { display: none; }
 .pwo-chips--sm:has(.pwo-chip + .pwo-chip) .pwo-chip__n--alt { display: inline; }
 .pwo-chip__t small { font-size: 9.5px; font-weight: 700; opacity: 0.85; }
