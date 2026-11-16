@@ -62,9 +62,13 @@ button.pw-card { cursor: pointer; color: #1b1340; } /* element-qualified: beats 
 .pw-pips.is-last i.is-on, .pw-card.is-last .pw-pips i.is-on { border-color: #ffb100; background: #ffb100; }
 .pw-card.is-last .pw-card__left { color: #ffcf7a; }
 
-/* narrow cards (64px phone hand): the name fits, the one-liner moves to the panel, the meter drops its words but keeps the pips */
+/* narrow cards (64px phone hand): the name shortens to its first word, the one-liner moves to the panel, the meter drops its words but keeps the pips */
+@container (max-width: 112px) { .pw-card__name { font-size: max(9.5px, 10.4cqw); } }
+.pw-name-short { display: none; }
 @container (max-width: 80px) {
-  .pw-card__ico, .pw-card__short { display: none; }
+  .pw-name-long { display: none; }
+  .pw-name-short { display: inline; }
+  .pw-card__short { display: none; }
   .pw-card__left { display: none; }
   .pw-card.is-last .pw-card__left { display: inline; }
   .pw-last-long { display: none; }
@@ -80,7 +84,7 @@ button.pw-card { cursor: pointer; color: #1b1340; } /* element-qualified: beats 
   transform: translateX(0) skewX(-12deg);
 }
 .pw-card__sheen::after { content: ''; position: absolute; inset: 0; background: rgba(20, 14, 50, 0); transition: background var(--dur-2) var(--ease-out); }
-.pw-card.is-dimmed .pw-card__sheen::after { background: rgba(20, 14, 50, 0.42); }
+.pw-card.is-dimmed .pw-card__sheen::after { background: rgba(20, 14, 50, 0.34); }
 button.pw-card:focus-visible .pw-card__sheen::before { opacity: 1; transform: translateX(380%) skewX(-12deg); transition: transform var(--dur-4) var(--ease-out), opacity var(--dur-2); }
 @media (hover: hover) {
   button.pw-card:hover .pw-card__sheen::before { opacity: 1; transform: translateX(380%) skewX(-12deg); transition: transform var(--dur-4) var(--ease-out), opacity var(--dur-2); }

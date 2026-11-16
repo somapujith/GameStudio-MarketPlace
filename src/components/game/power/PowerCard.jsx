@@ -22,13 +22,16 @@ function PowerCard({
 }) {
   const meta = powerCardById(id) || powerCardById('shield');
   const ex = expiryInfo(left, meta.name);
+  const short = meta.name.split(' ')[0]; // "Double Rent" -> "Double": what a 64px card can show
   const cls = `pw-card pw-tone-${meta.tone}${selected ? ' is-selected' : ''}${dimmed ? ' is-dimmed' : ''}${ex.last ? ' is-last' : ''} ${className}`.trim();
   const st = width ? { '--pw-w': width, ...style } : style;
   const body = (
     <>
       <span className="pw-card__band">
         <Icon name={ICON[meta.id] || 'spark'} size={13} className="pw-card__ico" />
-        <span className="pw-card__name">{meta.name}</span>
+        <span className="pw-card__name">
+          {short === meta.name ? meta.name : (<><span className="pw-name-long">{meta.name}</span><span className="pw-name-short" aria-hidden="true">{short}</span></>)}
+        </span>
       </span>
       <span className="pw-card__art"><PowerCardArt id={meta.id} size={96} /></span>
       <span className="pw-card__short">{meta.short}</span>
