@@ -40,13 +40,14 @@ export function Title({ title, size = 'sm', className = '' }) {
 }
 
 /** A die face in a skin's colours (cosmetic id). */
-export function Dice({ skin, size = 40 }) {
-  return <DiceSwatch skin={known(skin, 'dice')?.id || 'dice-ivory'} size={size} />;
+export function Dice({ skin, size = 40, shine }) {
+  return <DiceSwatch skin={known(skin, 'dice')?.id || 'dice-ivory'} size={size} shine={shine} />;
 }
 
-/** Shop tile art for any cosmetic item. Frames show the player's own avatar. */
-export function Preview({ item, size = 72, avatar }) {
+/** Shop tile art for any cosmetic item. Frames show the player's own avatar; `shine` makes a dice swatch glint (legendary). */
+export function Preview({ item, size = 72, avatar, shine }) {
   if (!item) return null;
+  if (item.kind === 'dice' && shine) return <DiceSwatch skin={item.id} size={size} shine />;
   if (item.kind === 'frame' && avatar != null) {
     return (
       <AvatarFrame frame={item.id} size={size}>

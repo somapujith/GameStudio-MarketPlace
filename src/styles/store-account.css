@@ -803,18 +803,19 @@
     position: sticky;
     top: calc(var(--topbar-h, 68px) + 16px);
   }
-  .sa-look .xp-look__stage {
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    gap: 14px;
-    padding-block: 6px;
+  /* the 300px sidebar: the avatar is the hero row, the other four slots pair up under it */
+  .sa-look .xp-slot--frame {
+    grid-column: 1 / -1;
   }
-  .sa-look .xp-look__id {
-    align-items: center;
+  .sa-look .xp-slot--board {
+    grid-column: auto;
   }
   .sa-shop__bar {
     grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+  .sa-shop .xp-filterbar {
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
   }
   .sa-shop .xp-items {

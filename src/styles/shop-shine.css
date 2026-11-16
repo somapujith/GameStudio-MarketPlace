@@ -1,0 +1,331 @@
+/* Shop shine (`xz-`): the legendary treatment of /shop.
+   Static first: a legendary card already reads as premium with no motion at all (gold-foil ring, gold tint, gold Buy
+   button, fixed glints). The loops (sheen sweep, glint twinkle) and the one-shot purchase burst are only switched on
+   inside the single block at the bottom that needs motion allowed AND not [data-motion='reduced'] AND not
+   [data-perf='low']; that block is the only place an `infinite` animation may appear (shopShine.test.js pins it).
+   transform + opacity only; tokens only (--hub-*, --rarity-*). */
+
+.xp-page {
+  --xz-foil-hi: color-mix(in srgb, var(--hub-gold) 45%, #fff);
+  --xz-glint: color-mix(in srgb, var(--hub-gold) 55%, #fff);
+  --xz-sheen: rgba(255, 244, 205, 0.34);
+}
+:root[data-theme='light'] .xp-page {
+  --xz-foil-hi: var(--hub-gold-2);
+  --xz-glint: var(--hub-gold-2);
+  --xz-sheen: rgba(var(--hub-gold-rgb), 0.22);
+}
+
+/* ---------- epic: a softer, still glow (no motion) ---------- */
+.xp-page .xp-item.xp-item--epic {
+  box-shadow: 0 12px 28px -20px var(--rarity-epic);
+}
+
+/* ---------- legendary card ---------- */
+.xp-page .xp-item.xp-item--legendary {
+  overflow: hidden;
+  border-color: var(--hub-gold);
+  box-shadow:
+    0 14px 34px -18px rgba(var(--hub-gold-rgb), 0.75),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.xp-page .xp-item--legendary.is-sel {
+  outline: 2px solid var(--hub-brand);
+  outline-offset: 2px;
+}
+.xp-page .xp-item--legendary.is-equipped {
+  outline: 2px solid var(--hub-good);
+  outline-offset: 2px;
+}
+/* the foil: a conic-gradient ring painted only where the border is (mask-composite punches out the middle) */
+@supports ((-webkit-mask-composite: xor) or (mask-composite: exclude)) {
+  .xp-page .xp-item.xp-item--legendary {
+    border-color: transparent;
+  }
+  .xp-page .xp-item--legendary::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    padding: 1.5px;
+    border-radius: inherit;
+    background: conic-gradient(from 200deg, var(--hub-gold), var(--xz-foil-hi), var(--hub-gold-2), var(--hub-gold), var(--xz-foil-hi), var(--hub-gold-2), var(--hub-gold));
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000 0 0) content-box exclude,
+      linear-gradient(#000 0 0);
+    pointer-events: none;
+  }
+}
+/* the sheen: a skewed light band; parked off the card (and invisible) until the motion block below sweeps it across */
+.xp-page .xp-item--legendary::after {
+  content: '';
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  z-index: 3;
+  width: 55%;
+  background: linear-gradient(100deg, transparent 20%, var(--xz-sheen) 50%, transparent 80%);
+  transform: translateX(-140%) skewX(-12deg);
+  opacity: 0;
+  pointer-events: none;
+}
+.xp-page .xp-item--legendary .xp-price {
+  color: var(--hub-gold);
+}
+.xp-page .xp-item--legendary .hub-btn--primary {
+  --b-bg: var(--hub-gold-fill);
+  --b-fg: var(--hub-on-gold);
+  box-shadow:
+    0 8px 22px -8px rgba(var(--hub-gold-rgb), 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+/* glints: three small four-point stars, fixed in place (visible, still, when motion is off) */
+.xz-glints {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+.xz-glints i {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: var(--xz-glint);
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+  opacity: 0.85;
+  transform: scale(0.9);
+}
+.xz-glints i:nth-child(1) {
+  top: 14px;
+  left: 16px;
+}
+.xz-glints i:nth-child(2) {
+  top: 34%;
+  right: 14px;
+  width: 9px;
+  height: 9px;
+}
+.xz-glints i:nth-child(3) {
+  top: 46%;
+  left: 24%;
+  width: 8px;
+  height: 8px;
+}
+
+/* a legendary preview elsewhere (try-on slot, buy dialog) */
+.xp-page .xz-shiny {
+  border-color: var(--hub-gold);
+  box-shadow:
+    0 0 0 1px rgba(var(--hub-gold-rgb), 0.4),
+    0 10px 26px -14px rgba(var(--hub-gold-rgb), 0.8);
+}
+
+/* ---------- the Legendary vault ---------- */
+.xz-vault {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin-block-end: 6px;
+  padding: 14px 14px 4px;
+  overflow: hidden;
+  border-radius: 20px;
+  border: 1px solid rgba(var(--hub-gold-rgb), 0.4);
+  background:
+    radial-gradient(80% 120% at 0 0, rgba(var(--hub-gold-rgb), 0.16), transparent 70%),
+    var(--hub-surface-2, var(--hub-surface));
+}
+.xz-vault__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+}
+.xz-vault__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--st-t-l, 18px);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--hub-gold);
+}
+.xz-vault__count {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: var(--st-t-xs, 12px);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--hub-gold);
+  background: rgba(var(--hub-gold-rgb), 0.12);
+  border: 1px solid rgba(var(--hub-gold-rgb), 0.3);
+}
+.xz-vault__sub {
+  margin: 0;
+  font-size: var(--st-t-s, 14px);
+  color: var(--hub-dim);
+}
+.xp-page .xz-vault .xz-vault__rail {
+  display: flex;
+  gap: 12px;
+  padding: 6px 2px 14px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+}
+.xz-vault__rail > .xp-item {
+  flex: 0 0 clamp(158px, 44vw, 196px);
+  scroll-snap-align: start;
+}
+.xz-vault__rail:focus-visible {
+  outline: 3px solid var(--hub-focus);
+  outline-offset: 2px;
+  border-radius: 14px;
+}
+
+/* ---------- purchase burst (one-shot; absent unless motion is allowed) ---------- */
+.xz-burst {
+  display: none;
+}
+.xz-burst i,
+.xz-burst__ring {
+  position: absolute;
+  top: 42%;
+  left: 50%;
+}
+.xz-burst i {
+  width: 12px;
+  height: 12px;
+  background: var(--xz-glint);
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+}
+.xz-burst__ring {
+  width: 120px;
+  height: 120px;
+  margin: -60px 0 0 -60px;
+  border-radius: 50%;
+  border: 3px solid var(--hub-gold);
+}
+
+@keyframes xz-sheen {
+  0%,
+  58% {
+    transform: translateX(-140%) skewX(-12deg);
+    opacity: 0;
+  }
+  64% {
+    opacity: 1;
+  }
+  92% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(260%) skewX(-12deg);
+    opacity: 0;
+  }
+}
+@keyframes xz-twinkle {
+  0%,
+  100% {
+    transform: scale(0.3) rotate(0deg);
+    opacity: 0;
+  }
+  45%,
+  55% {
+    transform: scale(1) rotate(45deg);
+    opacity: 1;
+  }
+}
+@keyframes xz-fly {
+  from {
+    transform: translate(-50%, -50%) rotate(var(--a)) translateX(0) scale(0.4);
+    opacity: 1;
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(var(--a)) translateX(var(--d)) scale(1);
+    opacity: 0;
+  }
+}
+@keyframes xz-ring {
+  from {
+    transform: scale(0.2);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+/* ---------- everything decorative stops: reduced motion, the OS setting, low-end devices ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .xp-item--legendary::after,
+  .xz-glints i,
+  .xz-burst,
+  .xz-burst i,
+  .xz-burst__ring {
+    animation: none !important;
+  }
+  .xz-burst {
+    display: none !important;
+  }
+}
+:root[data-motion='reduced'] .xp-item--legendary::after,
+:root[data-motion='reduced'] .xz-glints i,
+:root[data-motion='reduced'] .xz-burst,
+:root[data-motion='reduced'] .xz-burst i,
+:root[data-motion='reduced'] .xz-burst__ring {
+  animation: none !important;
+}
+:root[data-motion='reduced'] .xz-burst {
+  display: none !important;
+}
+:root[data-perf='low'] .xp-item--legendary::after,
+:root[data-perf='low'] .xz-glints i,
+:root[data-perf='low'] .xz-burst,
+:root[data-perf='low'] .xz-burst i,
+:root[data-perf='low'] .xz-burst__ring {
+  animation: none !important;
+}
+:root[data-perf='low'] .xz-burst {
+  display: none !important;
+}
+
+/* ---------- the loops and the burst: only here, only when motion is allowed ---------- */
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-motion='reduced']):not([data-perf='low']) .xp-item--legendary::after {
+    animation: xz-sheen 6.5s cubic-bezier(0.77, 0, 0.175, 1) infinite;
+    animation-delay: calc(var(--i, 0) * -0.9s);
+  }
+  :root:not([data-motion='reduced']):not([data-perf='low']) .xz-glints i {
+    animation: xz-twinkle 3.4s var(--ease-out) infinite;
+  }
+  :root:not([data-motion='reduced']):not([data-perf='low']) .xz-glints i:nth-child(2) {
+    animation-delay: -1.1s;
+  }
+  :root:not([data-motion='reduced']):not([data-perf='low']) .xz-glints i:nth-child(3) {
+    animation-delay: -2.2s;
+  }
+  :root:not([data-motion='reduced']):not([data-perf='low']) .xz-burst {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-toast, 50);
+    pointer-events: none;
+  }
+  :root:not([data-motion='reduced']):not([data-perf='low']) .xz-burst i {
+    animation: xz-fly 1.1s var(--ease-out) both;
+  }
+  :root:not([data-motion='reduced']):not([data-perf='low']) .xz-burst__ring {
+    animation: xz-ring 0.9s var(--ease-out) both;
+  }
+}
