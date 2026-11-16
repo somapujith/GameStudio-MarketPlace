@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { createRoom, errorMessage } from '@/lib/api.js';
 import { useAuth } from '@/lib/auth.jsx';
 import { paths } from '@/platform/paths.js';
 import { BRAND } from '@/platform/brand.js';
@@ -13,7 +12,7 @@ import {
   startReason,
   startState,
 } from '@/components/online/lobbyModel.js';
-import { resolveSettings } from '@/components/online/settings.js';
+import { readRematchFrom } from '@/components/online/playAgainModel.js';
 import { sameId } from '@/components/online/gameHelpers.js';
 import { inviteMessage, isRoomCode, normalizeRoomCode } from '@/components/online/codes.js';
 import { shareOrCopy } from '@/components/online/clipboard.js';
@@ -25,6 +24,7 @@ import { useRoster } from '@/components/online/roster.js';
 import ConfirmDialog from '@/components/online/ConfirmDialog.jsx';
 import ConnectionChip from '@/components/online/ConnectionChip.jsx';
 import InvitePanel from '@/components/online/InvitePanel.jsx';
+import PlayAgain, { RematchBanner } from '@/components/online/PlayAgain.jsx';
 import SeatsCard from '@/components/online/SeatsCard.jsx';
 import SettingsPanel from '@/components/online/SettingsPanel.jsx';
 import StartBar from '@/components/online/StartBar.jsx';
@@ -166,6 +166,7 @@ function LobbyInner({ code, user }) {
   const roster = useRef(null);
   const hostSeen = useRef(null);
   const sawLobby = useRef(false);
+  const [rematch] = useState(() => readRematchFrom(location.state && location.state.rematchFrom)); // "play again": who we wait for (the toast effect below clears the history state)
 
   const gameId = room ? roomGameId(room) : null;
   const game = useMemo(() => (gameId ? gameOf(gameId) : null), [gameId]);
@@ -380,6 +381,8 @@ function LobbyInner({ code, user }) {
           </div>
         )}
 
+        <RematchBanner from={rematch} players={players} meId={user.id} />
+
         {/* Three zones in reading order (also the phone order): the table (who is here + Start), fill the table (invite), your setup (piece + rules). */}
         <div className="ls-grid">
           <div className="ls-table">
@@ -470,45 +473,21 @@ function LobbyInner({ code, user }) {
   );
 }
 
-/** The match in this room is over: offer a fresh private room for the same game with the same settings. */
+/** The match in this room is over: one tap opens a private table with the same game and settings and invites the same group (see PlayAgain). */
 function Rematch({ room, game, gameId, gameLabel }) {
-  const navigate = useNavigate();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-
-  const create = async () => {
-    if (busy) return;
-    setBusy(true);
-    setError('');
-    try {
-      // only the keys the game's schema knows: the server validates strictly
-      const settings = game && game.settings ? resolveSettings(game.settings, room.settings) : undefined;
-      const res = await createRoom({ gameId, settings, maxPlayers: room.maxPlayers, visibility: 'private' });
-      navigate(paths.lobby(res.code), { replace: true });
-    } catch (e) {
-      setError(errorMessage(e, 'Could not create a new room'));
-      setBusy(false);
-    }
-  };
-
   return (
     <div className="hub-page st-scope sr-solo">
       <StatusPanel
         icon={<HubIcon name="trophy" size={30} />}
         eyebrow="Match over"
         title="This game has finished"
-        body={`The ${gameLabel} match in this room is over. Start a new private room with the same settings and send your friends the new code.`}
+        body={`The ${gameLabel} match in this room is over. Bring the same group to a new private table with the same settings.`}
         actions={[
-          { label: busy ? 'Creating...' : 'New room, same settings', onClick: create, primary: true },
           { label: 'Your profile', to: paths.profile() },
           { label: 'Home', to: paths.hub() },
         ]}
       >
-        {error && (
-          <p className="ho-inline-error" role="alert">
-            {error}
-          </p>
-        )}
+        <PlayAgain room={room} gameId={gameId} game={game} gameLabel={gameLabel} />
       </StatusPanel>
     </div>
   );
