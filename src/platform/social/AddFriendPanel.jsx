@@ -257,7 +257,7 @@ export default function AddFriendPanel({ onDone, compact = false, onNotify }) {
 
       <div className="af-sec">
         <h3 className="af-h3">Have a friend code?</h3>
-        <AddByCode embedded myCode={user.friendCode} onNotify={tell} onSent={sent} />
+        <AddByCode embedded myCode={user.friendCode} myHandle={user.handle} onNotify={tell} onSent={sent} />
         {notice && (
           <p className="af-note" role="status">
             <SIcon name="check" size={15} /> {notice}

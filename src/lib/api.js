@@ -130,6 +130,9 @@ export const getRecentPlayers = (opts) => api.get('/api/friends/recent', opts);
 /** POST /api/friends/request { userId } -> { ok, status: 'pending'|'accepted', friend } (same answer as adding by friend code). */
 export const requestFriendById = (userId, opts) => api.post('/api/friends/request', { userId }, opts);
 
+/** POST /api/friends/request { friendCode } -> same answer as by id / handle. */
+export const requestFriendByCode = (friendCode, opts) => api.post('/api/friends/request', { friendCode }, opts);
+
 /** POST /api/friends/request { handle } -> same answer as by id / code. The leading "@" is optional. 404 unknown username, 400 yourself. */
 export const requestFriendByHandle = (handle, opts) => api.post('/api/friends/request', { handle: String(handle ?? '').replace(/^@/, '') }, opts);
 

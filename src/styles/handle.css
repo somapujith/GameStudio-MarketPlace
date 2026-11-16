@@ -183,3 +183,9 @@
 :root[data-motion='reduced'] .hd-status--checking .hd-status__dot {
   animation: none;
 }
+
+/* "Add by code" accepts @usernames: undo the code field's uppercase / wide tracking while one is typed. */
+.sc-add__input.hd-lower {
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
