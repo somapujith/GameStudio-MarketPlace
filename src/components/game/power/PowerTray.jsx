@@ -255,6 +255,9 @@ function Tray({ session, model, placement, panelHost, onInfo }) {
             </p>
           ) : null}
         </div>
+        <button type="button" className="pw-panel__help" onClick={info} aria-label="How power cards work" title="How power cards work">
+          <Icon name="info" size={18} />
+        </button>
       </div>
 
       {showTargets ? (
@@ -271,8 +274,10 @@ function Tray({ session, model, placement, panelHost, onInfo }) {
         />
       ) : (
         <>
-          <p className="pw-panel__long">{selCard.long}</p>
-          {!selCard.ok ? <p className="pw-why" id={whyId}><Icon name="info" size={15} /><span>{selCard.reason}</span></p> : null}
+          <div className="pw-panel__body">
+            <p className="pw-panel__long">{selCard.long}</p>
+            {!selCard.ok ? <p className="pw-why" id={whyId}><Icon name="info" size={15} /><span>{selCard.reason}</span></p> : null}
+          </div>
           <div className="pw-acts">
             <button type="button" className="pw-btn" onClick={cancel} disabled={nowPlaying}>Cancel</button>
             <button
@@ -287,7 +292,6 @@ function Tray({ session, model, placement, panelHost, onInfo }) {
               {nowPlaying ? (<><i className="pw-spin" aria-hidden="true" />Playing…</>) : 'Play card'}
             </button>
           </div>
-          <button type="button" className="pw-link" onClick={info}>How power cards work</button>
         </>
       )}
     </div>
