@@ -282,6 +282,16 @@ describe('Lobby page: three zones, the icon choice sits in "Your setup"', () => 
     }
   });
 
+  it('invites from three places that share one sheet: the ticket, the Start bar and an empty seat; the code is big only once', () => {
+    const html = lobbyHtml();
+    expect(html).toContain('ls-start__invite');
+    expect(html).toContain('Share invite');
+    expect(html).toContain('lp-ticket__code');
+    expect(html).not.toContain('Tap to copy</span>');
+    expect((html.match(/ABC 234/g) || []).length).toBe(2); // the code chip in the header + the ticket
+    expect(html).not.toContain('role="tablist"');
+  });
+
   it('shows my character, the taken pieces and each seat\'s piece', () => {
     const html = lobbyHtml();
     expect(html).toContain('Auto-rickshaw, taken by Bela');

@@ -110,3 +110,23 @@ describe('ShareSheet', () => {
     expect(renderToString(h(ShareSheet, { ...props, hostName: undefined, open: true }))).toContain('Invite to your table · Kingpin');
   });
 });
+
+describe('StartBar invite button', () => {
+  const base = { isHost: true, canStart: false, starting: false, full: false, open: true, reason: 'Waiting for 1 more player', help: '', need: 1, hostName: 'Ravi', onStart() {} };
+  it('host: a secondary Invite button beside Start when onInvite is given, none otherwise', async () => {
+    const { default: StartBar } = await import('./StartBar.jsx');
+    const html = renderToString(h(StartBar, { ...base, onInvite() {} }));
+    expect(html).toContain('ls-start__invite');
+    expect(html).toContain('aria-label="Invite players"');
+    expect(html).toContain('Start game');
+    expect(html.indexOf('ls-start__invite')).toBeLessThan(html.indexOf('ls-start__btn'));
+    expect(renderToString(h(StartBar, base))).not.toContain('ls-start__invite');
+  });
+  it('guests get the Invite button too, next to the waiting status', async () => {
+    const { default: StartBar } = await import('./StartBar.jsx');
+    const html = renderToString(h(StartBar, { ...base, isHost: false, onInvite() {} }));
+    expect(html).toContain('ls-start__invite');
+    expect(html).toContain('ls-start__wait');
+    expect(html).not.toContain('Start game');
+  });
+});

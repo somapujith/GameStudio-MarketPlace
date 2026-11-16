@@ -15,8 +15,7 @@ import {
 } from '@/components/online/lobbyModel.js';
 import { resolveSettings } from '@/components/online/settings.js';
 import { sameId } from '@/components/online/gameHelpers.js';
-import { inviteMessage, isRoomCode, normalizeRoomCode } from '@/components/online/codes.js';
-import { shareOrCopy } from '@/components/online/clipboard.js';
+import { isRoomCode, normalizeRoomCode } from '@/components/online/codes.js';
 import { gameName, gameOf, warmOnlineGame } from '@/components/online/games.js';
 import { rememberRoomGame, roomGameId } from '@/components/online/gameRoute.js';
 import { mapFieldOf, skinPieces } from '@/components/online/mapModel.js';
@@ -26,6 +25,7 @@ import ConfirmDialog from '@/components/online/ConfirmDialog.jsx';
 import ConnectionChip from '@/components/online/ConnectionChip.jsx';
 import InvitePanel from '@/components/online/InvitePanel.jsx';
 import SeatsCard from '@/components/online/SeatsCard.jsx';
+import ShareSheet from '@/components/online/ShareSheet.jsx';
 import SettingsPanel from '@/components/online/SettingsPanel.jsx';
 import StartBar from '@/components/online/StartBar.jsx';
 import StatusPanel from '@/components/online/StatusPanel.jsx';
@@ -161,6 +161,8 @@ function LobbyInner({ code, user }) {
   const [confirm, setConfirm] = useState(null); // {kind:'leave'} | {kind:'kick', player}
   const [starting, setStarting] = useState(false);
   const [pending, setPending] = useState(null); // piece id asked for, not yet confirmed by the server
+  const [shareOpen, setShareOpen] = useState(false); // the share-link sheet
+  const [inviteLit, setInviteLit] = useState(0); // bumped to play the invite ticket's calm outline pulse
   const startTimer = useRef(null);
   const pieceTimer = useRef(null);
   const roster = useRef(null);
@@ -337,16 +339,19 @@ function LobbyInner({ code, user }) {
     else doLeave();
   };
 
-  // an empty seat is an invitation: the share sheet on phones, else copy the link; bring the invite block into view
-  const inviteSomeone = async () => {
+  // One handler for every "invite someone" button (an empty seat, the Invite button in the Start bar, the ticket's Share invite):
+  // it opens the share-link sheet, which leads with the link. When the sheet closes after something was copied or shared,
+  // the invite ticket is brought into view (nearest, so no big jump) and plays one calm pulse so the player sees where the code lives.
+  const inviteSomeone = () => setShareOpen(true);
+  const closeShare = (acted) => {
+    setShareOpen(false);
+    if (!acted) return;
     const el = typeof document !== 'undefined' ? document.getElementById('sr-invite') : null;
     if (el && el.scrollIntoView) {
       const calm = document.documentElement.dataset.motion === 'reduced' || (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
       el.scrollIntoView({ block: 'nearest', behavior: calm ? 'auto' : 'smooth' });
     }
-    const res = await shareOrCopy(inviteMessage(code, gName));
-    if (res === 'copied') push('Invite link copied. Send it to a friend.', 'good');
-    else if (res === 'failed') push('Could not share. Use the link below.', 'bad');
+    setInviteLit((n) => n + 1);
   };
 
   const alone = joined <= 1;
@@ -414,11 +419,12 @@ function LobbyInner({ code, user }) {
               need={need}
               hostName={host && host.name}
               onStart={start}
+              onInvite={inviteSomeone}
             />
           </div>
 
           <div className="ls-side ls-rise" style={{ '--i': 2 }}>
-            <InvitePanel code={code} gameName={gName} isGuest={!!user.isGuest} onNotify={push} />
+            <InvitePanel code={code} gameName={gName} isGuest={!!user.isGuest} onNotify={push} openSeats={emptySeats} onShare={inviteSomeone} highlight={inviteLit} />
           </div>
 
           <section className="ls-setup ls-rise" style={{ '--i': 3 }} aria-labelledby="ls-setup-h">
@@ -440,6 +446,7 @@ function LobbyInner({ code, user }) {
         </div>
       </main>
 
+      <ShareSheet open={shareOpen} onClose={closeShare} code={code} gameName={gName} hostName={host && host.name} onNotify={push} />
       <ConfirmDialog
         open={confirm?.kind === 'leave'}
         title={alone ? 'Close this table?' : 'Leave this table?'}
