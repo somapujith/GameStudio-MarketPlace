@@ -288,7 +288,7 @@
 .trp[data-finish='petals'] .trp-p { animation-name: trp-fall; }
 .trp[data-finish='sparks'] .trp-p { animation-name: trp-fly; }
 .trp[data-finish='coins'] .trp-p { animation-name: trp-drop; animation-timing-function: linear; }
-.trp[data-finish='flame'] .trp-p { animation-name: trp-lick; }
+.trp[data-finish='flame'] .trp-p { animation-name: trp-lick; transform-origin: 50% 100%; }
 .trp[data-finish='stardust'] .trp-p { animation-name: trp-twinkle; }
 .trp[data-finish='comet'] .trp-p { animation-name: trp-puff; }
 
