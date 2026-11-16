@@ -21,7 +21,7 @@ import { GOLD_PALETTE } from '../moments/particles.js';
 import { findEndpoint, tileBox } from '../fx/fxDom.js';
 import { pulseTile } from '../fx/pulse.js';
 import PowerCardArt from './PowerCardArt.jsx';
-import { flightVars, momentView, originFrac, particleBudget, rectCenter } from './powerMomentModel.js';
+import { drawTargetSelectors, flightVars, momentView, originFrac, particleBudget, rectCenter } from './powerMomentModel.js';
 import '@/styles/power-moments.css';
 
 const part = (name) => {
@@ -31,6 +31,24 @@ const part = (name) => {
     return null; // a strict test mock throws on unknown exports
   }
 };
+
+/** The first visible element for a list of selectors -> its box, or null (no tray in this layout: the caller falls back to the pod). */
+function firstVisibleRect(selectors) {
+  if (typeof document === 'undefined') return null;
+  for (const sel of selectors) {
+    let nodes = [];
+    try {
+      nodes = document.querySelectorAll(sel);
+    } catch {
+      nodes = [];
+    }
+    for (const el of nodes) {
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) return r;
+    }
+  }
+  return null;
+}
 
 const viewport = () => (typeof window === 'undefined' ? { w: 390, h: 760 } : { w: window.innerWidth || 390, h: window.innerHeight || 760 });
 const ringPx = (el) => (el ? Math.round(Math.max(56, Math.min(132, Math.max(el.width || 0, el.height || 0) * 1.5))) : 88);
@@ -61,9 +79,10 @@ function Draw({ v, perfLow, reduced }) {
   useEffect(() => {
     const { w, h } = viewport();
     const t = v.from !== null ? tileBox(v.from) : null;
-    const pod = findEndpoint(v.player);
-    setGeo(flightVars(t ? rectCenter(t.box) : null, pod ? rectCenter(pod.rect) : null, w, h));
-  }, [v.id, v.from, v.player]);
+    // my own card lands in the hand tray (that card, else the tray); a rival's, and anything the tray cannot answer, in the pod
+    const rect = firstVisibleRect(drawTargetSelectors(v)) || (findEndpoint(v.player) || {}).rect || null;
+    setGeo(flightVars(t ? rectCenter(t.box) : null, rect ? rectCenter(rect) : null, w, h));
+  }, [v.id, v.from, v.player, v.uid, v.faceUp]); // eslint-disable-line react-hooks/exhaustive-deps
   const { w, h } = viewport();
   const n = particleBudget('draw', { reduced, perfLow });
   const Back = part('CardBack');

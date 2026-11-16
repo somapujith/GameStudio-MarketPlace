@@ -5,7 +5,7 @@ import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { POWER_CARDS } from '@shared/powerCards.js';
-import { flightVars, momentView, originFrac, particleBudget, rectCenter } from './powerMomentModel.js';
+import { drawTargetSelectors, flightVars, momentView, originFrac, particleBudget, rectCenter } from './powerMomentModel.js';
 
 vi.mock('@/components/art/index.js', () => ({ CardBack: () => h('i', { className: 'test-cardback' }), Avatar: () => null }));
 const { default: PowerMoments } = await import('./PowerMoments.jsx');
@@ -76,6 +76,21 @@ describe('momentView', () => {
     expect(momentView({ id: 'e', kind: 'expire', player: 'rav', count: 1 }, ctx).text).toBe('A power card expired');
     expect(momentView({ id: 'e', kind: 'expire', player: 'rav', count: 2 }, ctx).text).toBe('2 power cards expired');
     expect(momentView({ id: 'e', kind: 'expire', player: 'rav' }, ctx).text).toBe('A power card expired');
+  });
+});
+
+describe('drawTargetSelectors', () => {
+  it('my own card: the card, then the tray; a rival or an unknown card: nothing (the pod)', () => {
+    const mine = momentView({ id: 'a', kind: 'draw', player: 'me', source: 'turn', card: { uid: 'u-1', id: 'swap', exp: 5 } }, ctx);
+    expect(drawTargetSelectors(mine)).toEqual(['[data-fx-power-card="u-1"]', '[data-fx-power-tray]']);
+    expect(drawTargetSelectors(momentView({ id: 'b', kind: 'draw', player: 'rav', source: 'turn' }, ctx))).toEqual([]);
+    expect(drawTargetSelectors(momentView({ id: 'c', kind: 'draw', player: 'me', source: 'turn' }, ctx))).toEqual([]);
+    expect(drawTargetSelectors(momentView({ id: 'd', kind: 'play', player: 'me', card: 'shield' }, ctx))).toEqual([]);
+    expect(drawTargetSelectors(null)).toEqual([]);
+  });
+  it('a uid can never break out of the attribute selector', () => {
+    const v = momentView({ id: 'a', kind: 'draw', player: 'me', source: 'turn', card: { uid: 'x"] , body [y="', id: 'swap' } }, ctx);
+    expect(drawTargetSelectors(v)[0].match(/"/g)).toHaveLength(2);
   });
 });
 

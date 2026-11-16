@@ -44,6 +44,7 @@ export function momentView(m, ctx = {}) {
       ...base,
       faceUp,
       card: faceUp ? meta : null,
+      uid: faceUp && typeof m.card.uid === 'string' ? m.card.uid : null,
       from: Number.isInteger(m.tile) && m.source === 'tile' ? m.tile : null,
       label: faceUp ? meta.name : null,
       kicker: `${who} drew`,
@@ -85,6 +86,16 @@ export function momentView(m, ctx = {}) {
   const n = Math.max(1, Math.floor(Number(m.count)) || 1);
   const text = n === 1 ? 'A power card expired' : `${n} power cards expired`;
   return { ...base, count: n, text, sr: text };
+}
+
+/**
+ * Where my own drawn card lands, most specific first (the hand tray's hooks): the card itself, the tray, then the pod
+ * (`[data-fx-player]`, which the caller always falls back to). A rival's card only ever goes to the pod: [].
+ */
+export function drawTargetSelectors(v) {
+  if (!v || v.kind !== 'draw' || !v.faceUp) return [];
+  const uid = typeof v.uid === 'string' ? v.uid.replace(/["\\]/g, '') : '';
+  return [...(uid ? [`[data-fx-power-card="${uid}"]`] : []), '[data-fx-power-tray]'];
 }
 
 // ---- geometry --------------------------------------------------------------------------------------------------------
