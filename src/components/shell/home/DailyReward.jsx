@@ -15,7 +15,8 @@ import { useCountUp } from './useCountUp.js';
 
 const CELEBRATE_MS = 2600;
 
-function Track({ days, label = '7-day streak' }) {
+/** The 7-day track (amounts per day; done / current pips). Shared with the daily-reward popup. */
+export function Track({ days, label = '7-day streak' }) {
   return (
     <ol className="hh2-daily__days" aria-label={label}>
       {days.map((d) => (
@@ -33,6 +34,17 @@ function Track({ days, label = '7-day streak' }) {
   );
 }
 
+/** The flame + day count chip. */
+export function StreakBadge({ streak }) {
+  return (
+    <span className="hh2-daily__streak" title="Day streak">
+      <Icon name="flame" size={18} />
+      <b>{streak}</b>
+      <small>day{streak === 1 ? '' : 's'}</small>
+    </span>
+  );
+}
+
 function Head({ sub, streak, ready }) {
   return (
     <div className="hh2-daily__head">
@@ -46,19 +58,13 @@ function Head({ sub, streak, ready }) {
         </h2>
         <p className="hh2-daily__sub">{sub}</p>
       </div>
-      {streak != null && (
-        <span className="hh2-daily__streak" title="Day streak">
-          <Icon name="flame" size={18} />
-          <b>{streak}</b>
-          <small>day{streak === 1 ? '' : 's'}</small>
-        </span>
-      )}
+      {streak != null && <StreakBadge streak={streak} />}
     </div>
   );
 }
 
 /** "+250" that rolls up from 0 and floats off. */
-function GainPop({ amount, reduced }) {
+export function GainPop({ amount, reduced }) {
   const [t, setT] = useState(0);
   useEffect(() => setT(amount), [amount]);
   const v = useCountUp(t, { ms: 750, instant: reduced });

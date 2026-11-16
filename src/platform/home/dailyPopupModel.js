@@ -93,3 +93,13 @@ export function anotherLayerOpen(doc) {
 export function popupShouldArm({ user, pathname, now = Date.now(), dismissed = false } = {}) {
   return !dismissed && popupRouteAllowed(pathname) && popupEligibility(user, now).eligible;
 }
+
+/** The one-line status under the title, from a `dailyView(...)` result (same wording family as the Home card). */
+export function popupSubline(view) {
+  if (!view) return '';
+  if (view.claimed) return 'Claimed. Your next reward unlocks at midnight.';
+  if (view.lost) return 'Streak lost. Start a new one today.';
+  if (view.streak === 0) return 'Your coins are waiting. Come back daily to grow them.';
+  const pos = view.days?.find((d) => d.current)?.n;
+  return pos ? `Day ${pos} of 7. Keep the streak alive.` : 'Keep the streak alive.';
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { istDayKey } from '@/components/shell/home/homeModel.js';
+import { dailyView, istDayKey } from '@/components/shell/home/homeModel.js';
 import {
   DAILY_POPUP_AUTOCLOSE_MS,
   DAILY_POPUP_DELAY_MS,
@@ -11,6 +11,7 @@ import {
   popupKeys,
   popupRouteAllowed,
   popupShouldArm,
+  popupSubline,
 } from './dailyPopupModel.js';
 
 const NOW = Date.UTC(2026, 10, 17, 6, 0, 0);
@@ -142,5 +143,15 @@ describe('popupShouldArm', () => {
     expect(popupShouldArm({ ...base, user: { id: 'g', isGuest: true, daily: READY } })).toBe(false);
     expect(popupShouldArm({ ...base, user: null })).toBe(false);
     expect(popupShouldArm()).toBe(false);
+  });
+});
+
+describe('popupSubline', () => {
+  it('describes the state in a sentence', () => {
+    expect(popupSubline(dailyView(READY, NOW))).toBe('Day 3 of 7. Keep the streak alive.');
+    expect(popupSubline(dailyView(DONE, NOW))).toMatch(/^Claimed/);
+    expect(popupSubline(dailyView({ streak: 0, canClaim: true }, NOW))).toMatch(/waiting/);
+    expect(popupSubline(dailyView({ streak: 5, lastClaim: '2020-01-01', canClaim: true }, NOW))).toMatch(/lost/);
+    expect(popupSubline(null)).toBe('');
   });
 });
