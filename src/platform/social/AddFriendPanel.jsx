@@ -2,13 +2,14 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { errorMessage, getRecentPlayers, searchPlayers } from '@/lib/api.js';
 import { useAuth } from '@/lib/auth.jsx';
 import { FriendAvatar, FriendTitle } from '@/components/online/InviteFriends.jsx';
-import { mergeRelations } from '@/components/online/friendsModel.js';
+import { handleLabel, mergeRelations } from '@/components/online/friendsModel.js';
 import AddByCode from './AddByCode.jsx';
 import AddFriendButton from './AddFriendButton.jsx';
 import { loadFriends, useFriendStore } from './friendStore.js';
 import { RowSkeleton } from './Rows.jsx';
 import SIcon from './SIcon.jsx';
 import '@/styles/social-add.css';
+import '@/styles/handle.css';
 
 const MIN_CHARS = 2;
 const DEBOUNCE_MS = 300;
@@ -23,6 +24,7 @@ function PersonRow({ p, onSent }) {
       </span>
       <span className="af-row__main">
         <span className="af-row__name">{p.name}</span>
+        {handleLabel(p) && <span className="hd-handle">{handleLabel(p)}</span>}
         <span className="af-row__sub">
           <span>Lv {p.level}</span>
           <FriendTitle person={p} />
@@ -160,12 +162,12 @@ export default function AddFriendPanel({ onDone, compact = false, onNotify }) {
         <h2 id={`${uid}-h`} className="af-title">
           Add a friend
         </h2>
-        {!compact && <p className="af-lede">Search by name, pick someone you just played with, or use a code.</p>}
+        {!compact && <p className="af-lede">Search by name or @username, pick someone you just played with, or use a code.</p>}
       </div>
 
       <div className="af-sec">
         <h3 className="af-h3">
-          <label htmlFor={searchId}>Find by name</label>
+          <label htmlFor={searchId}>Find by name or @username</label>
         </h3>
         <div className="af-search">
           <SIcon name="users" size={18} className="af-search__icon" />
@@ -176,7 +178,7 @@ export default function AddFriendPanel({ onDone, compact = false, onNotify }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKey}
-            placeholder="Type a player's name"
+            placeholder="Name or @username"
             autoComplete="off"
             autoCorrect="off"
             autoCapitalize="none"

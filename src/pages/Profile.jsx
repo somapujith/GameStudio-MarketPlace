@@ -7,6 +7,7 @@ import BadgeGrid from '@/platform/home/BadgeGrid.jsx';
 import SettingsSection from '@/platform/home/SettingsSection.jsx';
 import AccountSection from '@/platform/home/AccountSection.jsx';
 import AboutSection from '@/platform/home/AboutSection.jsx';
+import HandleField from '@/platform/social/HandleField.jsx';
 import ProfileTour from '@/components/tour/ProfileTour.jsx';
 import { useAccountProgress } from '@/platform/home/accountProgress.js';
 import { useAccount, useReducedMotion } from '@/components/shell/hooks.js';
@@ -89,6 +90,7 @@ export default function Profile() {
       </div>
       <BadgeGrid games={games} user={user} level={level} />
       <SettingsSection />
+      <HandleField />
       <div className="hh2-duo">
         <AccountSection />
         <AboutSection />

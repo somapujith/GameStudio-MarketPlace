@@ -18,6 +18,11 @@ import {
   addOutgoing,
   relationOf,
   mergeRelations,
+  parseHandle,
+  parseFriendInput,
+  handleLabel,
+  handleCooldownLeft,
+  handleStatus,
 } from './friendsModel.js';
 
 const u = (id, name, extra = {}) => ({ id, name, avatar: 1, friendCode: `HYD-${id}`, online: false, level: 2, ...extra });
@@ -281,5 +286,62 @@ describe('mergeRelations', () => {
   });
   it('tolerates a non-array', () => {
     expect(mergeRelations(undefined, null, 'me')).toEqual([]);
+  });
+});
+
+describe('usernames (@handles)', () => {
+  it('parseHandle accepts the handle shape (any case, optional @) and nothing else', () => {
+    expect(parseHandle('@Chai_Uncle')).toBe('chai_uncle');
+    expect(parseHandle(' teja99 ')).toBe('teja99');
+    for (const bad of ['', 'ab', 'a'.repeat(21), '1abc', '_abc', 'a__b', 'a-b', 'a b', 'HYD-7K2Q', '@@abc', null, undefined, 5]) expect(parseHandle(bad), String(bad)).toBe('');
+  });
+
+  it('parseFriendInput: friend codes, friend links and @usernames', () => {
+    expect(parseFriendInput('HYD-7K2Q')).toEqual({ kind: 'code', value: 'HYD-7K2Q' });
+    expect(parseFriendInput('hyd 7k2q')).toEqual({ kind: 'code', value: 'HYD-7K2Q' });
+    expect(parseFriendInput('https://example.com/f/HYD-7K2Q')).toEqual({ kind: 'code', value: 'HYD-7K2Q' });
+    expect(parseFriendInput('@Chai_Uncle')).toEqual({ kind: 'handle', value: 'chai_uncle' });
+    expect(parseFriendInput('  @teja99  ')).toEqual({ kind: 'handle', value: 'teja99' });
+  });
+
+  it('parseFriendInput rejects junk, bare words (a username needs its @) and bad handles', () => {
+    for (const bad of ['', '   ', 'teja99', '@', '@ab', '@1abc', '@a__b', '@a b', 'HYD-', 'HYD-7K2', null, undefined]) {
+      expect(parseFriendInput(bad), String(bad)).toEqual({ kind: 'invalid', value: '' });
+    }
+  });
+
+  it('handleLabel prints @handle or nothing', () => {
+    expect(handleLabel({ handle: 'Teja' })).toBe('@teja');
+    expect(handleLabel({ handle: null })).toBe('');
+    expect(handleLabel({})).toBe('');
+    expect(handleLabel(null)).toBe('');
+  });
+
+  it('normalizeFriends keeps a valid handle and nulls anything else', () => {
+    const d = normalizeFriends({ friends: [u('1', 'A', { handle: 'amy_k' }), u('2', 'B'), u('3', 'C', { handle: 'x' })] });
+    expect(d.friends.map((f) => f.handle)).toEqual(['amy_k', null, null]);
+  });
+
+  it('handleCooldownLeft counts whole days left of the weekly change limit', () => {
+    const now = Date.parse('2026-11-17T12:00:00Z');
+    const ago = (days) => new Date(now - days * 86_400_000).toISOString();
+    expect(handleCooldownLeft({ handle: 'a_b', handleChangedAt: ago(2) }, now)).toBe(5);
+    expect(handleCooldownLeft({ handle: 'a_b', handleChangedAt: ago(6.5) }, now)).toBe(1);
+    expect(handleCooldownLeft({ handle: 'a_b', handleChangedAt: ago(7) }, now)).toBe(0);
+    expect(handleCooldownLeft({ handle: null, handleChangedAt: ago(1) }, now)).toBe(0);
+    expect(handleCooldownLeft({ handle: 'a_b' }, now)).toBe(0);
+    expect(handleCooldownLeft(null, now)).toBe(0);
+  });
+
+  it('handleStatus: idle / invalid / checking / available / taken', () => {
+    expect(handleStatus('', 'mine', null)).toBe('idle');
+    expect(handleStatus('Mine', 'mine', null)).toBe('idle'); // unchanged
+    expect(handleStatus('ab', '', null)).toBe('invalid');
+    expect(handleStatus('1abc', '', null)).toBe('invalid');
+    expect(handleStatus('new_one', '', null)).toBe('checking');
+    expect(handleStatus('new_one', '', { value: 'other', available: true })).toBe('checking'); // stale answer
+    expect(handleStatus('new_one', '', { value: 'new_one', available: true })).toBe('available');
+    expect(handleStatus('@New_One', '', { value: 'new_one', available: false, reason: 'taken' })).toBe('taken');
+    expect(handleStatus('new_one', '', { value: 'new_one', available: false, reason: 'reserved' })).toBe('invalid');
   });
 });

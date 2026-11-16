@@ -4,10 +4,11 @@ import { api, errorMessage, sendInvite } from '@/lib/api.js';
 import { useUserEvents } from '@/lib/auth.jsx';
 import AddFriendPanel from '@/platform/social/AddFriendPanel.jsx';
 import Sheet from './Sheet.jsx';
-import { applyPresence, cosmeticsOf, inviteFeedback, normalizeFriends, removeFriend } from './friendsModel.js';
+import { applyPresence, cosmeticsOf, handleLabel, inviteFeedback, normalizeFriends, removeFriend } from './friendsModel.js';
 import '@/styles/online.css';
 import '@/styles/x-social.css';
 import '@/styles/lobby-invite.css';
+import '@/styles/handle.css';
 
 const RESEND_AFTER = 30000;
 
@@ -128,6 +129,7 @@ function FriendRow({ friend, state, onInvite, index }) {
       </span>
       <span className="lp-row__main">
         <span className="lp-row__name">{friend.name}</span>
+        {handleLabel(friend) && <span className="hd-handle">{handleLabel(friend)}</span>}
         <span className="lp-row__sub">{friend.online ? 'Online now' : 'Offline · sees it later'}</span>
       </span>
       <InviteButton state={state} name={friend.name} online={friend.online} onClick={() => onInvite(friend)} />

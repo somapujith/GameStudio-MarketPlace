@@ -1,7 +1,9 @@
 import { FriendAvatar, FriendTitle } from '@/components/online/InviteFriends.jsx';
 import AutoMascot from '@/components/art/AutoMascot.jsx';
 import { canShare } from '@/components/online/clipboard.js';
+import { handleLabel } from '@/components/online/friendsModel.js';
 import SIcon from './SIcon.jsx';
+import '@/styles/handle.css';
 
 /** Skeleton rows shaped like the people rows (avatar + two lines). `ho-skel-list` is only a marker class. */
 export function RowSkeleton({ n = 3 }) {
@@ -31,6 +33,7 @@ export function IncomingRequests({ shown, busy, onAccept, onDecline }) {
           </span>
           <span className="sc-row__main">
             <span className="sc-row__name">{u.name}</span>
+            {handleLabel(u) && <span className="hd-handle">{handleLabel(u)}</span>}
             <span className="sc-row__sub">
               <span>wants to be friends</span>
               <span aria-hidden="true">·</span>
@@ -63,6 +66,7 @@ export function SentRequests({ list, busy, onCancel }) {
           </span>
           <span className="sc-row__main">
             <span className="sc-row__name">{u.name}</span>
+            {handleLabel(u) && <span className="hd-handle">{handleLabel(u)}</span>}
             <span className="sc-row__sub">
               <SIcon name="clock" size={13} /> Waiting for reply
             </span>
@@ -96,6 +100,7 @@ function FriendRow({ f, leaving, index, room, roomState, busy, onOpen, onInviteR
         </span>
         <span className="sc-row__main">
           <span className="sc-row__name">{f.name}</span>
+          {handleLabel(f) && <span className="hd-handle">{handleLabel(f)}</span>}
           <span className="sc-row__sub">
             <span className={f.online ? 'sc-on' : undefined}>{f.online ? 'Online' : 'Offline'}</span>
             <span aria-hidden="true">·</span>
