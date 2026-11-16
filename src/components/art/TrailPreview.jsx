@@ -41,32 +41,32 @@ function particles(finish, a, b, id) {
   const out = [];
   const add = (i, n, el) => {
     const { u, t } = along(i, n);
-    out.push({ key: `${finish}${i}`, t, o: r1(0.4 + 0.55 * u), ...el });
+    out.push({ key: `${finish}${i}`, t, o: r1(0.62 + 0.38 * u), ...el });
   };
   const alt = (i) => (i % 2 ? b : a);
   switch (finish) {
     case 'dust':
       for (let i = 0; i < 6; i += 1) {
         const { x } = along(i, 6);
-        add(i, 6, { tag: 'circle', props: { cx: r1(x), cy: r1(FEET - 1 - (i % 2) * 2), r: 3 + (i % 3) * 0.8, fill: `url(#${id}p)` } });
+        add(i, 6, { tag: 'circle', props: { cx: r1(x), cy: r1(FEET - 1 - (i % 2) * 2), r: 4.2 + (i % 3) * 1, fill: `url(#${id}p)` } });
       }
       break;
     case 'steam':
       for (let i = 0; i < 5; i += 1) {
         const { x } = along(i, 5);
-        add(i, 5, { tag: 'ellipse', props: { cx: r1(x), cy: r1(FEET - 6 - (i % 2) * 4), rx: 2.1, ry: 3.6, fill: `url(#${id}s)` } });
+        add(i, 5, { tag: 'ellipse', props: { cx: r1(x), cy: r1(FEET - 6 - (i % 2) * 4), rx: 2.8, ry: 4.6, fill: `url(#${id}s)` } });
       }
       break;
     case 'petals':
       for (let i = 0; i < 6; i += 1) {
         const { x } = along(i, 6);
-        add(i, 6, { tag: 'path', props: { d: `M${r1(x)} ${r1(FEET - 9 + (i % 3) * 3)}c2.4-1 3.6 1.2 3.2 3.2c-2.4 1-3.6-1.2-3.2-3.2z`, fill: alt(i) }, rot: Math.round(wob(i, 1) * 200) });
+        add(i, 6, { tag: 'path', props: { d: `M${r1(x)} ${r1(FEET - 9 + (i % 3) * 3)}c3.4-1.4 5 1.7 4.5 4.5c-3.4 1.4-5-1.7-4.5-4.5z`, fill: alt(i) }, rot: Math.round(wob(i, 1) * 200) });
       }
       break;
     case 'sparks':
       for (let i = 0; i < 7; i += 1) {
         const { x } = along(i, 7);
-        add(i, 7, { tag: 'rect', cls: ' trp-spark', props: { x: r1(x), y: FEET - 5.6, width: 5, height: 1.3, rx: 0.65, fill: i % 2 ? `url(#${id}k)` : a }, rot: -20 - Math.round(wob(i, 2) * 140) });
+        add(i, 7, { tag: 'rect', cls: ' trp-spark', props: { x: r1(x), y: FEET - 5.6, width: 6.5, height: 1.8, rx: 0.9, fill: i % 2 ? `url(#${id}k)` : a }, rot: -20 - Math.round(wob(i, 2) * 140) });
       }
       break;
     case 'coins':
@@ -78,7 +78,7 @@ function particles(finish, a, b, id) {
     case 'comet':
       for (let i = 0; i < 3; i += 1) {
         const { x } = along(i + 0.4, 3);
-        add(i, 3, { tag: 'circle', props: { cx: r1(x), cy: r1(FEET - 4 - i * 2.5), r: 1.2, fill: i % 2 ? b : a } });
+        add(i, 3, { tag: 'circle', props: { cx: r1(x), cy: r1(FEET - 4 - i * 2.5), r: 1.7, fill: i % 2 ? b : a } });
       }
       break;
     case 'flame':
@@ -135,7 +135,7 @@ function TrailPreview({ item, size = 64 }) {
       data-finish={finish}
       width={size}
       height={size}
-      viewBox="0 0 64 64"
+      viewBox="5 13 46 46"
       role="img"
       aria-label={item ? item.name : 'Trail'}
     >

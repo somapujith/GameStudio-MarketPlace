@@ -17,7 +17,7 @@ describe('TrailPreview', () => {
   it.each(trails.map((t) => [t.finish, t]))('renders an svg scene for %s in the item colours', (_f, item) => {
     const html = renderToString(h(TrailPreview, { item, size: 72 }));
     expect(html).toMatch(/^<svg/);
-    expect(html).toContain('viewBox="0 0 64 64"');
+    expect(html).toContain('viewBox="5 13 46 46"');
     expect(html).toContain('width="72"');
     expect(html).toContain(`data-finish="${item.finish}"`);
     expect(html).toContain(`aria-label="${item.name}"`);
