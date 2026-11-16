@@ -14,6 +14,10 @@ import {
   groupFriends,
   inviteExpiryLabel,
   inviteExpiresInMs,
+  applyRemoved,
+  addOutgoing,
+  relationOf,
+  mergeRelations,
 } from './friendsModel.js';
 
 const u = (id, name, extra = {}) => ({ id, name, avatar: 1, friendCode: `HYD-${id}`, online: false, level: 2, ...extra });
@@ -213,5 +217,69 @@ describe('groupFriends / invite expiry', () => {
     expect(inviteExpiryLabel(now - 2 * 3600000 + 20000, now)).toBe('expiring now');
     expect(inviteExpiryLabel('nope', now)).toBe('');
     expect(inviteExpiresInMs(now, now)).toBe(2 * 60 * 60 * 1000);
+  });
+});
+
+describe('friend_removed (applyRemoved)', () => {
+  const base = () => normalizeFriends({ friends: [u('1', 'Amy'), u('2', 'Bob')], incoming: [u('3', 'Cy')], outgoing: [u('4', 'Di')] });
+  it('drops a friend by id or by { id }, keeping the rest', () => {
+    expect(applyRemoved(base(), '1').friends.map((f) => f.id)).toEqual(['2']);
+    expect(applyRemoved(base(), { id: '2', name: 'Bob' }).friends.map((f) => f.id)).toEqual(['1']);
+  });
+  it('also clears a pending request either way', () => {
+    expect(applyRemoved(base(), '3').incoming).toEqual([]);
+    expect(applyRemoved(base(), '4').outgoing).toEqual([]);
+  });
+  it('is a no-op (same object) for strangers and junk', () => {
+    const d = base();
+    expect(applyRemoved(d, '99')).toBe(d);
+    expect(applyRemoved(d, null)).toBe(d);
+    expect(applyRemoved(d, '')).toBe(d);
+  });
+});
+
+describe('relationOf / addOutgoing', () => {
+  const d = normalizeFriends({ friends: [u('1', 'Amy')], incoming: [u('3', 'Cy')], outgoing: [u('4', 'Di')] });
+  it('reads how a person is known', () => {
+    expect(relationOf(d, '1')).toBe('friends');
+    expect(relationOf(d, 4)).toBe('outgoing');
+    expect(relationOf(d, '3')).toBe('incoming');
+    expect(relationOf(d, '9')).toBe('none');
+    expect(relationOf(null, '1')).toBe('none');
+    expect(relationOf(d, undefined)).toBe('none');
+  });
+  it('adds an outgoing request once, never for friends', () => {
+    const n = addOutgoing(d, { id: '7', name: 'Eve' });
+    expect(relationOf(n, '7')).toBe('outgoing');
+    expect(addOutgoing(n, { id: '7', name: 'Eve' }).outgoing).toHaveLength(2);
+    expect(addOutgoing(d, { id: '1', name: 'Amy' })).toBe(d);
+    expect(addOutgoing(d, null)).toBe(d);
+  });
+});
+
+describe('mergeRelations', () => {
+  const served = [
+    { id: 'a', name: 'Ann', avatar: 2, level: 4, relation: 'none' },
+    { id: 'b', name: 'Bo', relation: 'friends' },
+    { id: 'me', name: 'Me', relation: 'none' },
+    { id: 'a', name: 'Ann again', relation: 'none' },
+    null,
+    { name: 'no id' },
+  ];
+  it('drops self, duplicates and junk; fills defaults', () => {
+    const out = mergeRelations(served, null, 'me');
+    expect(out.map((p) => p.id)).toEqual(['a', 'b']);
+    expect(out[0]).toMatchObject({ name: 'Ann', avatar: 2, level: 4 });
+    expect(out[1]).toMatchObject({ level: 1, avatar: 0 });
+  });
+  it('trusts the server relation until local friend data is loaded', () => {
+    expect(mergeRelations(served, null, 'me').map((p) => p.relation)).toEqual(['none', 'friends']);
+  });
+  it('local data wins once loaded (fresher than the server answer)', () => {
+    const local = normalizeFriends({ outgoing: [u('a', 'Ann')] }); // b was removed meanwhile
+    expect(mergeRelations(served, local, 'me').map((p) => p.relation)).toEqual(['outgoing', 'none']);
+  });
+  it('tolerates a non-array', () => {
+    expect(mergeRelations(undefined, null, 'me')).toEqual([]);
   });
 });

@@ -82,6 +82,49 @@ export function addIncoming(data, from) {
   return { ...data, incoming: [...data.incoming, clean({ ...from, online: true })] };
 }
 
+/** A live `friend_removed` event (`by` is an id or `{ id }`): they are no longer a friend, nor pending either way. */
+export function applyRemoved(data, by) {
+  const id = by && typeof by === 'object' ? by.id : by;
+  if (id == null || id === '') return data;
+  if (!data.friends.some((f) => same(f.id, id)) && !data.incoming.some((f) => same(f.id, id)) && !data.outgoing.some((f) => same(f.id, id))) return data;
+  return { friends: without(data.friends, id), incoming: without(data.incoming, id), outgoing: without(data.outgoing, id) };
+}
+
+/** Optimistic "I sent a request to `user`": add to outgoing unless we already know them. */
+export function addOutgoing(data, user) {
+  if (!user || user.id == null) return data;
+  if ([...data.friends, ...data.outgoing].some((f) => same(f.id, user.id))) return data;
+  return { ...data, outgoing: [...data.outgoing, clean(user)] };
+}
+
+/** How `data` knows `userId`: 'friends' | 'outgoing' | 'incoming' | 'none'. */
+export function relationOf(data, userId) {
+  if (!data || userId == null) return 'none';
+  if (data.friends.some((f) => same(f.id, userId))) return 'friends';
+  if (data.outgoing.some((f) => same(f.id, userId))) return 'outgoing';
+  if (data.incoming.some((f) => same(f.id, userId))) return 'incoming';
+  return 'none';
+}
+
+const RELATIONS = ['none', 'friends', 'outgoing', 'incoming'];
+
+/**
+ * Search / recent rows from the server -> well-formed people with a `relation`. Local friend data (when loaded) wins over the
+ * server's relation because it is fresher (a request sent a second ago, a friend just removed). `selfId` and junk are dropped.
+ */
+export function mergeRelations(players, local, selfId) {
+  const out = [];
+  const seen = new Set();
+  for (const p of Array.isArray(players) ? players : []) {
+    if (!p || p.id == null || same(p.id, selfId) || seen.has(String(p.id))) continue;
+    seen.add(String(p.id));
+    const served = RELATIONS.includes(p.relation) ? p.relation : 'none';
+    const mine = local ? relationOf(local, p.id) : 'none';
+    out.push({ ...clean(p), relation: mine !== 'none' || local ? mine : served });
+  }
+  return out;
+}
+
 export const countOnline = (data) => data.friends.filter((f) => f.online).length;
 export const isEmpty = (data) => !data.friends.length && !data.incoming.length && !data.outgoing.length;
 

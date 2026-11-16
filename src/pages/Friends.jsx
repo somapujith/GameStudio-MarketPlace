@@ -10,7 +10,7 @@ import InviteToGameSheet from '@/components/online/InviteToGameSheet.jsx';
 import { Loading } from '@/components/online/StatusPanel.jsx';
 import { useToasts } from '@/components/online/Toasts.jsx';
 import { countOnline, emptyFriends } from '@/components/online/friendsModel.js';
-import AddByCode from '@/platform/social/AddByCode.jsx';
+import AddFriendPanel from '@/platform/social/AddFriendPanel.jsx';
 import FriendActionsSheet from '@/platform/social/FriendActionsSheet.jsx';
 import FriendCodeCard from '@/platform/social/FriendCodeCard.jsx';
 import FriendsGate from '@/platform/social/FriendsGate.jsx';
@@ -201,7 +201,7 @@ function FriendsInner({ user }) {
             <FriendCodeCard code={user.friendCode} onNotify={push} />
           </div>
           <div className={o.add}>
-            <AddByCode myCode={user.friendCode} onSent={() => load({ silent: true })} onNotify={push} />
+            <AddFriendPanel onDone={() => load({ silent: true })} onNotify={push} />
           </div>
         </div>
       </div>

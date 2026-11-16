@@ -4,11 +4,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, errorMessage, sendInvite } from '@/lib/api.js';
 import { useUserEvents } from '@/lib/auth.jsx';
+import { publishFriends } from './friendStore.js';
 import {
   acceptLocal,
   addFriend,
   addIncoming,
   applyPresence,
+  applyRemoved,
   emptyFriends,
   inviteFeedback,
   normalizeFriends,
@@ -30,6 +32,9 @@ export default function useFriends({ push }) {
   useEffect(() => {
     dataRef.current = data;
   });
+  useEffect(() => {
+    publishFriends(data); // the shared store (add-friend buttons, panel) reads the same truth
+  }, [data]);
 
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoadError(null);
@@ -67,9 +72,11 @@ export default function useFriends({ push }) {
         setData((d) => addFriend(d || emptyFriends(), { ...msg.by, online: true }));
         if (msg.by && msg.by.name) push(`${msg.by.name} accepted your request`, 'good');
         load({ silent: true });
+      } else if (msg.t === 'friend_removed') {
+        setData((d) => (d ? applyRemoved(d, msg.by) : d));
       }
     },
-    ['presence', 'friend_request', 'friend_accepted'],
+    ['presence', 'friend_request', 'friend_accepted', 'friend_removed'],
   );
 
   /** Optimistic update + request; rolls back and resyncs on failure. */
