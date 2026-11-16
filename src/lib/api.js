@@ -130,6 +130,15 @@ export const getRecentPlayers = (opts) => api.get('/api/friends/recent', opts);
 /** POST /api/friends/request { userId } -> { ok, status: 'pending'|'accepted', friend } (same answer as adding by friend code). */
 export const requestFriendById = (userId, opts) => api.post('/api/friends/request', { userId }, opts);
 
+/** GET /api/blocks -> { blocked: [{ id, name, avatar }] } (members only). */
+export const getBlocks = (opts) => api.get('/api/blocks', opts);
+
+/** POST /api/blocks { userId } -> { ok, blocked: { id, name, avatar } } (idempotent; also ends any friendship with them). */
+export const blockUser = (userId, opts) => api.post('/api/blocks', { userId }, opts);
+
+/** DELETE /api/blocks/:userId -> { ok } (idempotent). */
+export const unblockUser = (userId, opts) => api.del(`/api/blocks/${enc(userId)}`, opts);
+
 /** POST /api/invites: push an invite to room `code` to a friend (the server adds the game's id and name). */
 export const sendInvite = (code, userId, opts) => api.post('/api/invites', { code, userId }, opts);
 
