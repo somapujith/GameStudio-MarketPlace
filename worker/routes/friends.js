@@ -7,8 +7,43 @@ import { isUuid } from '../validate.js';
 import { limit } from '../ratelimit.js';
 import { readJson } from '../http.js';
 import { isUserOnline, pushToUser, background } from '../hub.js';
+import { sendPushToUser, pushConfigured } from '../push.js';
 
 const friends = new Hono();
+
+/** The Web Push for a new friend request (the service worker reads title / body / url / tag). */
+export function friendRequestNotification({ fromName, fromId }) {
+  return {
+    title: `${fromName || 'Someone'} sent you a friend request`,
+    body: 'Tap to accept or decline.',
+    url: '/friends#requests',
+    tag: `friend-request-${fromId}`,
+  };
+}
+
+/** The Web Push for an accepted request. */
+export function friendAcceptedNotification({ byName, byId }) {
+  return {
+    title: `${byName || 'Someone'} accepted your friend request`,
+    body: 'You are friends now. Tap to invite them to a game.',
+    url: '/friends',
+    tag: `friend-accepted-${byId}`,
+  };
+}
+
+/**
+ * Tell `userId` live over their socket; when no socket took it (they are offline or the app is closed) and Web Push
+ * is configured, send a Web Push instead. Best effort: nothing here can fail the request.
+ */
+export function notifyFriend(c, userId, message, notification) {
+  background(
+    c,
+    (async () => {
+      const delivered = await pushToUser(c.env, userId, message);
+      if (delivered === 0 && pushConfigured(c.env)) await sendPushToUser(c.env, userId, notification);
+    })(),
+  );
+}
 friends.use('*', requireMember); // guests cannot use friends
 
 // GET /api/friends -> { friends, incoming, outgoing }
@@ -146,7 +181,7 @@ friends.post('/request', limit('friend-request', 20, 60), async (c) => {
     [target.id, me.id],
   );
   if (accepted.length) {
-    background(c, pushToUser(c.env, target.id, { t: 'friend_accepted', by: identity(me) }));
+    notifyFriend(c, target.id, { t: 'friend_accepted', by: identity(me) }, friendAcceptedNotification({ byName: me.name, byId: me.id }));
     return c.json({ ok: true, status: 'accepted', friend: rowToFriend(target) });
   }
   // 2) New pending request; the pair-unique index makes a repeat (or a race) a no-op.
@@ -157,7 +192,7 @@ friends.post('/request', limit('friend-request', 20, 60), async (c) => {
     [me.id, target.id],
   );
   if (inserted.length) {
-    background(c, pushToUser(c.env, target.id, { t: 'friend_request', from: identity(me) }));
+    notifyFriend(c, target.id, { t: 'friend_request', from: identity(me) }, friendRequestNotification({ fromName: me.name, fromId: me.id }));
     return c.json({ ok: true, status: 'pending', friend: rowToFriend(target) });
   }
   // 3) Already existed: report its current state.
@@ -192,7 +227,7 @@ friends.post('/accept', async (c) => {
     if (!existing.length) throw new HttpError(404, 'No pending request from that player.');
     return c.json({ ok: true, status: 'accepted' }); // already friends: idempotent
   }
-  background(c, pushToUser(c.env, userId, { t: 'friend_accepted', by: identity(me) }));
+  notifyFriend(c, userId, { t: 'friend_accepted', by: identity(me) }, friendAcceptedNotification({ byName: me.name, byId: me.id }));
   const other = await getUserById(c.env, userId);
   return c.json({ ok: true, status: 'accepted', friend: other ? rowToFriend(other) : undefined });
 });
