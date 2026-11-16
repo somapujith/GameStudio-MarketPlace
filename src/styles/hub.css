@@ -23,7 +23,7 @@
                 --hub-gold-fill (coin gradient) --hub-on-gold (text on gold fills) --hub-gold-sheen (big gold display text,
                 e.g. room codes, via background-clip:text). Gold is ONLY for money, codes and "your turn".
      Status     --hub-good --hub-warn --hub-bad --hub-info (+ -rgb triplets) --hub-bad-ink (error text)
-     Rarity     --rarity-common --rarity-rare --rarity-epic: title-chip ink (TitleChip in art/cosmetics.jsx)
+     Rarity     --rarity-common --rarity-rare --rarity-epic --rarity-legendary: title-chip ink (TitleChip in art/cosmetics.jsx)
      Game tint  --hub-ink-mix: how much of a game accent survives when used as TEXT:
                 color-mix(in srgb, var(--g-accent) var(--hub-ink-mix), var(--hub-text))  (100% dark, ~42% light)
      Focus      --hub-focus: outline colour; use `outline: 3px solid var(--hub-focus); outline-offset: 2px`
@@ -101,6 +101,7 @@
   --rarity-common: #9fb0d8;
   --rarity-rare: #4cc9f0;
   --rarity-epic: #c58cff;
+  --rarity-legendary: #ffcf5a;
   --hub-ink-mix: 100%;
   --hub-focus: #b9b0ff;
   --hub-shadow-rgb: 3, 6, 20;
@@ -169,6 +170,7 @@
   --rarity-common: #4f5463;
   --rarity-rare: #08597c;
   --rarity-epic: #63339f;
+  --rarity-legendary: #7a4d00;
   --hub-ink-mix: 42%;
   --hub-focus: #4a3bd8;
   --hub-shadow-rgb: 92, 70, 40;

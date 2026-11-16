@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  COSMETICS, COSMETIC_KINDS, EQUIPPABLE_KINDS, FREE_COSMETICS, VOICE_LIMITS, VOICE_COOLDOWN_MS, VOICE_BURST,
+  COSMETICS, COSMETIC_KINDS, EQUIPPABLE_KINDS, FREE_COSMETICS, RARITIES, FINISHES, rarityRank, VOICE_LIMITS, VOICE_COOLDOWN_MS, VOICE_BURST,
   cosmeticById, cleanEquipped, voiceLines, isVoiceId, voiceSrc,
 } from './cosmetics.js';
 
@@ -17,13 +17,46 @@ describe('catalogue', () => {
     for (const c of COSMETICS) {
       expect(COSMETIC_KINDS).toContain(c.kind);
       expect(Number.isInteger(c.price) && c.price >= 0).toBe(true);
-      expect(['common', 'rare', 'epic']).toContain(c.rarity);
+      expect(RARITIES).toContain(c.rarity);
     }
+  });
+
+  it('every `finish` is one the art knows for that kind, and colours are well formed', () => {
+    for (const c of COSMETICS) {
+      if (c.finish !== undefined) expect(FINISHES[c.kind] || []).toContain(c.finish);
+      if (c.colors) {
+        expect(c.colors.length).toBe(c.kind === 'dice' || c.kind === 'board' ? 3 : 2);
+        for (const col of c.colors) expect(col).toMatch(/^#[0-9a-f]{6}$/i);
+      }
+      if (c.glow !== undefined) expect(c.glow).toMatch(/^#[0-9a-f]{6}$/i);
+    }
+  });
+
+  it('every finish key is used by at least one item (no dead art)', () => {
+    for (const [kind, keys] of Object.entries(FINISHES)) {
+      for (const k of keys) expect(COSMETICS.some((c) => c.kind === kind && c.finish === k)).toBe(true);
+    }
+  });
+
+  it('legendary items are the expensive ones; rarityRank orders the tiers', () => {
+    expect(RARITIES).toEqual(['common', 'rare', 'epic', 'legendary']);
+    expect(rarityRank('legendary')).toBeGreaterThan(rarityRank('epic'));
+    expect(rarityRank('nope')).toBe(0);
+    const cheapestLegendary = Math.min(...COSMETICS.filter((c) => c.rarity === 'legendary').map((c) => c.price));
+    const priciestEpic = Math.max(...COSMETICS.filter((c) => c.rarity === 'epic').map((c) => c.price));
+    expect(cheapestLegendary).toBeGreaterThan(priciestEpic);
+  });
+
+  it('has the metal, gem and glass dice a player expects', () => {
+    const dice = COSMETICS.filter((c) => c.kind === 'dice').map((c) => c.id);
+    for (const id of ['dice-gold', 'dice-silver', 'dice-chrome', 'dice-rosegold', 'dice-bronze', 'dice-ruby', 'dice-emerald', 'dice-crystal', 'dice-obsidian', 'dice-holo', 'dice-jade']) expect(dice).toContain(id);
+    expect(COSMETICS.filter((c) => c.kind === 'trail').length).toBeGreaterThanOrEqual(8);
+    expect(COSMETICS.filter((c) => c.kind === 'board').length).toBeGreaterThanOrEqual(6);
   });
 
   it('voice is an owned-only kind: listed, but not equippable', () => {
     expect(COSMETIC_KINDS).toContain('voice');
-    expect(EQUIPPABLE_KINDS).toEqual(['frame', 'dice', 'title']);
+    expect(EQUIPPABLE_KINDS).toEqual(['frame', 'dice', 'trail', 'board', 'title']);
     expect(cleanEquipped({ voice: 'voice-sheru-bhai', frame: 'frame-lake' })).toEqual({ frame: 'frame-lake' });
   });
 });

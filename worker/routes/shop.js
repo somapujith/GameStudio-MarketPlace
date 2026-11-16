@@ -28,6 +28,8 @@ export function shopItems(owned, equipped) {
   return COSMETICS.map((c) => {
     const item = { id: c.id, kind: c.kind, name: c.name, price: c.price, rarity: c.rarity };
     if (c.colors) item.colors = [...c.colors];
+    // material / effect key and the dice halo colour (the art switches on these; see shared/cosmetics.js FINISHES)
+    for (const k of ['finish', 'glow']) if (c[k] !== undefined) item[k] = c[k];
     // Voice lines (owned-only, played at the table): symbol, clip, length and speech-bubble caption.
     for (const k of ['icon', 'emoji', 'src', 'durationMs', 'caption']) if (c[k] !== undefined) item[k] = c[k];
     item.owned = own.has(c.id);
