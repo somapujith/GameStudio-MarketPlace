@@ -1,6 +1,6 @@
 /* ==========================================================================
    LOBBY INVITE PANEL ("Fill the table")  ·  prefix lp-
-   InvitePanel.jsx (tabs), InviteFriends.jsx (friends list + invite buttons), ShareCard.jsx (share tools).
+   InvitePanel.jsx (ticket + friends), ShareCard.jsx (the invite ticket), ShareSheet.jsx (share-link sheet), InviteFriends.jsx (friends list).
    Colours only from tokens (--hub-*, --g-*, --ho-accent). Motion = transform + opacity, --dur-1..3, --ease-out / --ease-spring.
    ========================================================================== */
 
@@ -64,82 +64,29 @@
   border: 1px solid color-mix(in srgb, var(--lp-accent) 30%, var(--hub-line));
 }
 
-/* ---------- segmented tabs ---------- */
-.lp-tabs {
-  position: relative;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  padding: 4px;
-  border-radius: 999px;
-  background: var(--hub-surface-3);
-  border: 1px solid var(--hub-line);
-}
-.lp-tabs__thumb {
-  position: absolute;
-  top: 4px;
-  bottom: 4px;
-  left: 4px;
-  width: calc(50% - 4px);
-  border-radius: 999px;
-  background: linear-gradient(135deg, var(--lp-accent), var(--g-accent-2, var(--hub-brand-2, var(--lp-accent))));
-  box-shadow: 0 6px 18px -8px var(--g-glow-strong, var(--g-glow, var(--hub-brand-glow)));
-  transition: transform var(--dur-2) var(--ease-out);
-  pointer-events: none;
-}
-.lp[data-tab='share'] .lp-tabs__thumb {
-  transform: translateX(100%);
-}
-.lp-tab {
-  position: relative;
-  z-index: 1;
-  min-height: 44px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  font: inherit;
+.lp-sub {
+  margin: 0;
+  font-size: var(--st-t-xs, 0.75rem);
   font-weight: 800;
-  font-size: 0.95rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   color: var(--hub-dim);
-  cursor: pointer;
-  transition: color var(--dur-2) var(--ease-out);
 }
-.lp-tab.is-on {
-  color: var(--g-on, var(--hub-on-brand));
+.lp-friendsec {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
 }
-.lp-tab:focus-visible,
+.lp-btn:focus-visible,
 .lp-ibtn:focus-visible,
 .lp-addbtn:focus-visible,
 .lp-search__input:focus-visible,
-.lp-link__input:focus-visible,
-.lp-btn:focus-visible {
+.lp-link__input:focus-visible {
   outline: 3px solid var(--hub-focus);
   outline-offset: 2px;
 }
-@media (hover: hover) and (pointer: fine) {
-  .lp-tab:not(.is-on):hover {
-    color: var(--hub-text);
-  }
-}
 
-/* ---------- tab panels: the incoming panel slides in a few px from the side it is on, and fades ---------- */
-.lp-panel {
-  min-width: 0;
-  animation: lp-panel-in var(--dur-2) var(--ease-out) both;
-}
-.lp-panel[hidden] {
-  display: none;
-}
-@keyframes lp-panel-in {
-  from {
-    opacity: 0;
-    transform: translateX(var(--lp-dx, 10px));
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
 @keyframes lp-fade-in {
   from {
     opacity: 0;
@@ -492,13 +439,7 @@
   border: 0;
 }
 
-/* ---------- share tools ---------- */
-.lp-share {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  min-width: 0;
-}
+/* ---------- shared bits ---------- */
 .lp-btn {
   min-height: var(--hub-tap, 44px);
 }
@@ -509,62 +450,191 @@
   text-transform: uppercase;
   color: var(--hub-dim);
 }
-.lp-code {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 10px 12px;
-  padding: 14px;
-  border-radius: 16px;
-  border: 1px solid var(--hub-line);
-  background: rgba(var(--hub-tint), 0.04);
+.lp-btn.is-done {
+  color: var(--hub-good);
+  border-color: rgba(var(--hub-good-rgb), 0.5);
 }
-.lp-code__main {
+.lp-btn.ho-btn--primary.is-done {
+  background: rgba(var(--hub-good-rgb), 0.16);
+  box-shadow: none;
+}
+/* the label/icon of a copy button replays a short enter when it flips to "Copied" (only then, never on first paint) */
+.lp-ticket__swap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.lp-btn.is-done .lp-ticket__swap {
+  animation: lp-btn-in var(--dur-2) var(--ease-out) both;
+}
+.lp-pop {
+  animation: lp-pop var(--dur-2) var(--ease-out) both;
+}
+@keyframes lp-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------- the invite ticket: the one place the code lives ---------- */
+.lp-ticket {
+  position: relative;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 6px;
   min-width: 0;
+  border-radius: 20px;
+  border: 1px solid var(--g-line, var(--hub-line-2));
+  background: linear-gradient(160deg, color-mix(in srgb, var(--lp-accent, var(--hub-brand)) 16%, var(--hub-surface-3)), var(--hub-surface-3) 75%);
+  box-shadow: 0 14px 26px -18px var(--g-glow-strong, transparent);
+  outline: 3px solid transparent;
+  outline-offset: 0;
 }
-.lp-code__value {
+.lp-ticket__top {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 16px 14px;
+  text-align: center;
+}
+.lp-ticket__code {
+  max-width: 100%;
   font-family: var(--font-hub-display);
-  font-size: clamp(1.7rem, 8vw, 2.2rem);
+  font-size: clamp(2.1rem, 10.5vw, 2.9rem);
   font-weight: 800;
   line-height: 1;
   letter-spacing: 0.12em;
   white-space: nowrap;
-  color: var(--hub-text);
+  color: color-mix(in srgb, var(--lp-accent, var(--hub-brand)) var(--hub-ink-mix, 60%), var(--hub-text));
+  text-shadow:
+    0 0 14px var(--g-glow-strong, transparent),
+    0 0 32px var(--g-glow, transparent);
   user-select: all;
 }
-.lp-link {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.lp-link__input {
-  flex: 1 1 150px;
-  font-size: 0.9rem;
-  text-overflow: ellipsis;
+.lp-ticket__hint {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.35;
   color: var(--hub-dim);
 }
-.lp-actions {
+/* the perforation: a dashed line with a notch bitten out of each edge */
+.lp-ticket__tear {
+  position: relative;
+  height: 0;
+  margin-inline: 14px;
+  border-top: 2px dashed var(--hub-line-2);
+}
+.lp-ticket__tear::before,
+.lp-ticket__tear::after {
+  content: '';
+  position: absolute;
+  top: -9px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--hub-surface);
+  border: 1px solid var(--g-line, var(--hub-line-2));
+}
+.lp-ticket__tear::before {
+  left: -23px;
+}
+.lp-ticket__tear::after {
+  right: -23px;
+}
+.lp-ticket__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 14px;
+}
+.lp-ticket__main {
+  grid-column: 1 / -1;
+  min-height: 48px;
+}
+.lp-ticket__actions .lp-btn {
+  min-width: 0;
+  padding-inline: 10px;
+}
+
+/* the lobby points at the ticket after an invite went out: one calm outline pulse (outline only, replays via two names) */
+.lp-ticket.is-lit-0 {
+  animation: lp-lit-0 1s var(--ease-out);
+}
+.lp-ticket.is-lit-1 {
+  animation: lp-lit-1 1s var(--ease-out);
+}
+@keyframes lp-lit-0 {
+  from {
+    outline-color: var(--lp-accent, var(--hub-brand));
+    outline-offset: 0;
+  }
+  to {
+    outline-color: transparent;
+    outline-offset: 7px;
+  }
+}
+@keyframes lp-lit-1 {
+  from {
+    outline-color: var(--lp-accent, var(--hub-brand));
+    outline-offset: 0;
+  }
+  to {
+    outline-color: transparent;
+    outline-offset: 7px;
+  }
+}
+@keyframes lp-lit-calm {
+  from {
+    outline-color: var(--lp-accent, var(--hub-brand));
+  }
+  to {
+    outline-color: transparent;
+  }
+}
+
+/* ---------- share-link sheet ---------- */
+.lp-sheet {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.lp-sheet__link {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.lp-sheet__input {
+  font-size: 1rem;
+  text-overflow: ellipsis;
+  color: var(--hub-text);
+}
+.lp-sheet__copy {
+  width: 100%;
+  min-height: 56px;
+}
+.lp-sheet__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
   gap: 8px;
 }
-.lp-actions .lp-btn {
-  flex: 1 1 auto;
-}
-.lp-btn.is-done {
-  color: var(--hub-good);
-  border-color: rgba(var(--hub-good-rgb), 0.5);
+.lp-sheet__row .lp-btn {
+  min-width: 0;
+  padding-inline: 10px;
 }
 .lp-qr {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  animation: lp-btn-in var(--dur-3) var(--ease-out) both;
 }
 .lp-qr__tile {
   padding: 6px;
@@ -579,13 +649,13 @@
   color: var(--hub-dim);
 }
 
-/* ---------- reduced motion: no travel, no spin, no spring; opacity fades only ---------- */
+/* ---------- reduced motion: no travel, no spin, no spring, no pulse growth; opacity / colour fades only ---------- */
 @media (prefers-reduced-motion: reduce) {
-  .lp-panel,
-  .lp-qr,
-  .lp-ibtn__in {
+  .lp-ibtn__in,
+  .lp-btn.is-done .lp-ticket__swap {
     animation: lp-fade-in var(--dur-1) linear both;
   }
+  .lp-pop,
   .lp-ibtn__check,
   .lp-ibtn__spin,
   .lp-skel {
@@ -594,7 +664,10 @@
   .lp-ibtn__spin {
     border-style: dotted;
   }
-  .lp-tabs__thumb,
+  .lp-ticket.is-lit-0,
+  .lp-ticket.is-lit-1 {
+    animation: lp-lit-calm 1s linear;
+  }
   .lp-ibtn,
   .lp-addbtn {
     transition: none;
@@ -604,16 +677,19 @@
     transform: none;
   }
 }
-:root[data-motion='reduced'] :is(.lp-panel, .lp-qr, .lp-ibtn__in) {
+:root[data-motion='reduced'] :is(.lp-ibtn__in, .lp-btn.is-done .lp-ticket__swap) {
   animation: lp-fade-in var(--dur-1) linear both;
 }
-:root[data-motion='reduced'] :is(.lp-ibtn__check, .lp-ibtn__spin, .lp-skel) {
+:root[data-motion='reduced'] :is(.lp-pop, .lp-ibtn__check, .lp-ibtn__spin, .lp-skel) {
   animation: none;
 }
 :root[data-motion='reduced'] .lp-ibtn__spin {
   border-style: dotted;
 }
-:root[data-motion='reduced'] :is(.lp-tabs__thumb, .lp-ibtn, .lp-addbtn) {
+:root[data-motion='reduced'] :is(.lp-ticket.is-lit-0, .lp-ticket.is-lit-1) {
+  animation: lp-lit-calm 1s linear;
+}
+:root[data-motion='reduced'] :is(.lp-ibtn, .lp-addbtn) {
   transition: none;
 }
 :root[data-motion='reduced'] :is(.lp-ibtn, .lp-addbtn):active:not(:disabled) {

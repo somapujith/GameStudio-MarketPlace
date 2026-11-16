@@ -156,7 +156,7 @@ describe('JoinRoom', () => {
   it('shows the six boxes for a signed-in user', () => {
     const html = page('/join', h(JoinRoom), { user: guest });
     expect(html).toContain('Enter the 6-character code');
-    expect((html.match(/ho-code__box/g) || []).length).toBeGreaterThanOrEqual(6);
+    expect((html.match(/jc__box/g) || []).length).toBeGreaterThanOrEqual(6);
     expect(html).not.toContain('Hyderabad');
   });
   it('prefills from /join/:code', () => {
@@ -352,18 +352,17 @@ describe('small components', () => {
     expect(html).toContain('Waiting for player...');
     expect(html).toContain('Open seat');
   });
-  it('ShareCard: big code, join link, WhatsApp text naming the game, QR svg', () => {
+  it('ShareCard: the invite ticket with the code, Share invite, Copy code and a WhatsApp text naming the game', () => {
     const html = renderToString(h(ShareCard, { code: 'ABC234', gameName: 'Ludo Lanes' }));
     expect(html).toContain('ABC 234');
-    expect(html).toContain('/join/ABC234');
+    expect(html).toContain('Share invite');
+    expect(html).toContain('Copy code');
     expect(html).toContain('wa.me/?text=');
     expect(html).toContain(encodeURIComponent('Ludo Lanes'));
-    expect(html).toContain('<svg');
-    expect(html).toContain('Copy link');
   });
   it('CodeInput renders six boxes with the typed characters', () => {
     const html = renderToString(h(CodeInput, { value: 'AB2', onChange() {} }));
-    expect((html.match(/ho-code__box/g) || []).length).toBeGreaterThanOrEqual(6);
+    expect((html.match(/jc__box/g) || []).length).toBeGreaterThanOrEqual(6);
     expect(html).toContain('>A<');
     expect(html).toContain('autoCapitalize="characters"');
     expect(html).toContain('value="AB2"');

@@ -37,7 +37,7 @@ export const lobbyHostSteps = [
     target: t('lobby-code'),
     placement: 'bottom',
     title: 'The room code',
-    body: 'Friends type this code to join your table. Tap it to copy.',
+    body: 'Friends type this code to join your table. Tap the code chip to copy it. The invite card has everything else.',
   },
   {
     id: 'seats',
@@ -52,7 +52,7 @@ export const lobbyHostSteps = [
     target: t('lobby-invite'),
     placement: 'left',
     title: 'Fill the table',
-    body: 'Copy the code or link, send it on WhatsApp, share it, or show the QR code to someone next to you.',
+    body: 'This is your invite ticket. Share the link, copy the code or send it on WhatsApp. The share sheet also has a QR code to scan.',
     phone: { placement: 'top' },
   },
   {
@@ -60,7 +60,7 @@ export const lobbyHostSteps = [
     target: t('lobby-friends'),
     placement: 'left',
     title: 'Invite friends in one tap',
-    body: 'Signed-in players can invite their friends straight from here. Guests share the code or link instead.',
+    body: 'Signed-in players can invite their friends straight from here. Guests share the code or link instead. On a phone, the Invite button next to Start does the same.',
     phone: { placement: 'top' },
   },
   {
@@ -170,7 +170,7 @@ export const lobbyGuestSteps = [
     target: t('lobby-code'),
     placement: 'bottom',
     title: 'The room code',
-    body: 'Know someone who should join? Give them this code. Tap it to copy.',
+    body: 'Know someone who should join? Give them this code. Tap the chip to copy it.',
   },
   {
     id: 'pieces',
@@ -209,7 +209,7 @@ export const lobbyGuestSteps = [
     target: t('lobby-invite'),
     placement: 'left',
     title: 'Bring more friends',
-    body: 'You can share the code, link or QR code too.',
+    body: 'You can share the invite link, the code or a QR code too.',
     phone: { placement: 'top' },
   },
   {
