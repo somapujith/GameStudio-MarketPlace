@@ -4,7 +4,8 @@ import { api, errorMessage, sendInvite } from '@/lib/api.js';
 import { useUserEvents } from '@/lib/auth.jsx';
 import AddFriendPanel from '@/platform/social/AddFriendPanel.jsx';
 import Sheet from './Sheet.jsx';
-import { applyPresence, cosmeticsOf, inviteFeedback, normalizeFriends, removeFriend } from './friendsModel.js';
+import { applyPresence, cosmeticsOf, inviteEventResult, inviteFeedback, normalizeFriends, removeFriend } from './friendsModel.js';
+import { JoinButton, StatusText, canJoin } from '@/platform/social/PresenceBits.jsx';
 import '@/styles/online.css';
 import '@/styles/x-social.css';
 import '@/styles/lobby-invite.css';
@@ -74,8 +75,8 @@ export function filterByName(list, query) {
   return list.filter((f) => String(f.name).toLowerCase().includes(q));
 }
 
-/** Label for the invite button in each state (idle | sending | sent | saved | again | error). */
-export const INVITE_LABEL = { idle: 'Invite', sending: 'Sending', sent: 'Invited', saved: 'Saved', again: 'Invite again', error: 'Retry' };
+/** Label for the invite button in each state (idle | sending | sent | saved | joined | declined | again | error). */
+export const INVITE_LABEL = { idle: 'Invite', sending: 'Sending', sent: 'Invited', saved: 'Saved', joined: 'Joined', declined: 'Invite again', again: 'Invite again', error: 'Retry' };
 
 function PlusIcon() {
   return (
@@ -95,7 +96,7 @@ function CheckIcon() {
 
 /** One-tap invite button. The inner span is keyed by state so each change plays a short enter (transform + opacity). */
 function InviteButton({ state = 'idle', name, online, onClick }) {
-  const done = state === 'sent' || state === 'saved';
+  const done = state === 'sent' || state === 'saved' || state === 'joined';
   const label = INVITE_LABEL[state] || INVITE_LABEL.idle;
   return (
     <button
@@ -108,7 +109,7 @@ function InviteButton({ state = 'idle', name, online, onClick }) {
           ? `Sending invite to ${name}`
           : done
             ? `${label}: ${name}`
-            : `${state === 'error' ? 'Retry invite to' : state === 'again' ? 'Invite again' : 'Invite'} ${name}${online ? '' : ' (offline: they will see it when they are back)'}`
+            : `${state === 'error' ? 'Retry invite to' : state === 'again' || state === 'declined' ? 'Invite again' : 'Invite'} ${name}${online ? '' : ' (offline: they will see it when they are back)'}`
       }
     >
       <span className="lp-ibtn__in" key={state}>
@@ -120,7 +121,16 @@ function InviteButton({ state = 'idle', name, online, onClick }) {
   );
 }
 
-function FriendRow({ friend, state, onInvite, index }) {
+/** The row's second line: the answer to my invite when there is one, else the friend's status. */
+function RowSub({ friend, state }) {
+  if (state === 'joined') return <span className="pr-result pr-result--joined">Joined your table</span>;
+  if (state === 'declined') return <span className="pr-result pr-result--declined">Declined your invite</span>;
+  if (!friend.online) return <>Offline · sees it later</>;
+  return <StatusText friend={friend} />;
+}
+
+export function FriendRow({ friend, state, onInvite, index }) {
+  const joinable = canJoin(friend) && state !== 'joined';
   return (
     <li className={`lp-row${friend.online ? '' : ' is-off'}`} style={{ '--lp-i': index }}>
       <span className="lp-row__ava">
@@ -128,9 +138,14 @@ function FriendRow({ friend, state, onInvite, index }) {
       </span>
       <span className="lp-row__main">
         <span className="lp-row__name">{friend.name}</span>
-        <span className="lp-row__sub">{friend.online ? 'Online now' : 'Offline · sees it later'}</span>
+        <span className="lp-row__sub">
+          <RowSub friend={friend} state={state} />
+        </span>
       </span>
-      <InviteButton state={state} name={friend.name} online={friend.online} onClick={() => onInvite(friend)} />
+      <span className="pr-rowacts">
+        {joinable && <JoinButton friend={friend} className="lp-ibtn is-again" />}
+        <InviteButton state={state} name={friend.name} online={friend.online} onClick={() => onInvite(friend)} />
+      </span>
     </li>
   );
 }
@@ -182,13 +197,21 @@ export default function InviteFriends({ code, gameName, onNotify, onCount }) {
   }, [data, onCount]);
 
   useUserEvents((msg) => {
-    if (msg.t === 'presence') setData((d) => (d ? applyPresence(d, msg.userId, msg.online) : d));
-    else if (msg.t === 'friend_accepted') load({ silent: true });
+    if (msg.t === 'presence') setData((d) => (d ? applyPresence(d, msg.userId, msg.online, msg) : d));
+    else if (msg.t === 'invite_joined' || msg.t === 'invite_declined') {
+      // a friend answered an invite to THIS room: the row says so and the host gets a toast
+      const res = inviteEventResult(msg, code);
+      if (res && alive.current) {
+        setSent((s) => ({ ...s, [res.id]: res.state }));
+        setStatus(res.text);
+        onNotify?.(res.text, res.tone);
+      }
+    } else if (msg.t === 'friend_accepted') load({ silent: true });
     else if (msg.t === 'friend_removed') {
       const gone = msg.by ?? msg.userId ?? msg.id;
       if (gone != null) setData((d) => (d ? removeFriend(d, gone) : d));
     }
-  }, ['presence', 'friend_accepted', 'friend_removed']);
+  }, ['presence', 'friend_accepted', 'friend_removed', 'invite_joined', 'invite_declined']);
 
   const mark = (id, state) => setSent((s) => ({ ...s, [id]: state }));
 
@@ -205,7 +228,7 @@ export default function InviteFriends({ code, gameName, onNotify, onCount }) {
       // After 30 s the button is live again, so a lost invite can be re-sent.
       const t = setTimeout(() => {
         timers.current.delete(t);
-        if (alive.current) mark(friend.id, 'again');
+        if (alive.current) setSent((s) => (s[friend.id] === 'sent' || s[friend.id] === 'saved' ? { ...s, [friend.id]: 'again' } : s)); // never overwrite Joined / Declined
       }, RESEND_AFTER);
       timers.current.add(t);
     } catch (e) {

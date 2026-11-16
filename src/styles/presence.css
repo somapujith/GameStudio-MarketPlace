@@ -1,0 +1,102 @@
+/* Rich friend presence (status line + "Join their table"). Prefix `pr-`; colours come from the hub tokens only. */
+.pr-status {
+  font-weight: 700;
+  color: var(--hub-dim);
+}
+.pr-status--on {
+  color: var(--hub-good);
+  font-weight: 800;
+}
+.pr-status--lobby {
+  color: var(--hub-warn);
+  font-weight: 800;
+}
+.pr-status--play {
+  color: var(--hub-info);
+  font-weight: 800;
+}
+.pr-status--off {
+  color: var(--hub-faint);
+}
+
+/* Join sits next to Invite / Remove and must not shrink away on narrow rows. */
+.pr-join {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* A tiny caption under a friend on the home rail. */
+.pr-cap {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--st-t-xs, 0.6875rem);
+  line-height: 1.2;
+}
+
+/* Invite result chips in the lobby list ("Joined" / "Declined"). */
+.pr-result {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--st-t-xs, 0.75rem);
+  font-weight: 800;
+}
+.pr-result--joined {
+  color: var(--hub-good);
+}
+.pr-result--declined {
+  color: var(--hub-faint);
+}
+
+/* Lobby invite list: the Join + Invite pair, and the two answer states of the invite button. */
+.pr-rowacts {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.lp-ibtn.is-joined {
+  color: var(--hub-good);
+  background: color-mix(in srgb, var(--hub-good) 14%, transparent);
+  border-color: color-mix(in srgb, var(--hub-good) 45%, var(--hub-line));
+  box-shadow: none;
+}
+.lp-ibtn.is-declined {
+  color: var(--hub-text);
+  background: transparent;
+  border-color: var(--hub-line-2);
+  box-shadow: none;
+}
+
+/* The join prompt inside the friend sheet. */
+.pr-sheetjoin {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--hub-warn) 40%, var(--hub-line));
+  border-radius: var(--st-radius-card, 18px);
+  background: color-mix(in srgb, var(--hub-warn) 10%, var(--hub-surface));
+}
+.pr-sheetjoin__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.pr-sheetjoin__text small {
+  color: var(--hub-dim);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pr-status,
+  .pr-result {
+    transition: color var(--dur-2, 160ms) var(--ease-out, ease-out);
+  }
+}
+:root[data-motion='reduced'] .pr-status,
+:root[data-motion='reduced'] .pr-result {
+  transition: none;
+}
