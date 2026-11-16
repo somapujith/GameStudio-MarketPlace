@@ -289,3 +289,105 @@ describe('log', () => {
     core.dispose();
   });
 });
+
+describe('display players carry the hand and the armed rounds (the pods read them)', () => {
+  const stateWith = (myHand, extra = {}) => {
+    const st = makeState(myHand);
+    st.players[0].shield = 0;
+    st.players[0].doubleRent = 0;
+    st.players[1].shield = 0;
+    st.players[1].doubleRent = 0;
+    return Object.assign(st, extra);
+  };
+  const dp = (core, id) => core.getSnapshot().display.players.find((p) => p.id === id);
+
+  it('copies hand, shield and doubleRent exactly as the masked state gives them', () => {
+    const st = stateWith(hand('shield', 'swap'));
+    st.players[0].shield = 5;
+    const { core } = rig({ initial: st });
+    expect(dp(core, 'me').hand).toEqual(hand('shield', 'swap'));
+    expect(dp(core, 'me').shield).toBe(5);
+    expect(dp(core, 'other').hand).toEqual([{ hidden: true }]);
+    expect(dp(core, 'other').doubleRent).toBe(0);
+    core.dispose();
+  });
+
+  it('a game without the rule is unchanged: none of the keys exist', () => {
+    const plain = makeState();
+    for (const p of plain.players) { delete p.hand; }
+    const { core } = rig({ initial: plain });
+    for (const p of core.getSnapshot().display.players) {
+      expect('hand' in p || 'shield' in p || 'doubleRent' in p).toBe(false);
+    }
+    core.enqueue([{ type: 'power_draw', player: 'other', source: 'turn' }], plain);
+    expect('hand' in dp(core, 'other')).toBe(false);
+    core.dispose();
+  });
+
+  it('a draw adds the card to my display hand (named) or a hidden one to a rival, when the moment starts', async () => {
+    const { core } = rig({ initial: stateWith([]) });
+    const final = stateWith([{ uid: 'n1', id: 'steal', exp: 4 }]);
+    core.enqueue([{ type: 'power_draw', player: 'me', source: 'turn' }, { type: 'power_draw', player: 'other', source: 'tile', tile: 2 }], final);
+    await vi.advanceTimersByTimeAsync(5);
+    expect(dp(core, 'me').hand).toEqual([{ uid: 'n1', id: 'steal', exp: 4 }]);
+    expect(dp(core, 'other').hand).toEqual([{ hidden: true }]); // not yet: the rival's draw is the second beat
+    await vi.advanceTimersByTimeAsync(ANIM_MS.powerDraw ?? 900);
+    expect(dp(core, 'other').hand).toEqual([{ hidden: true }, { hidden: true }]);
+    await settle(core);
+    core.dispose();
+  });
+
+  it('a play removes the card and arms the shield / double rent for ARMED_ROUNDS rounds; a trigger consumes it', async () => {
+    const start = stateWith(hand('shield', 'double'));
+    const { core } = rig({ initial: start });
+    const done = stateWith([]);
+    core.enqueue([{ type: 'power_play', player: 'me', card: 'shield' }], done);
+    await vi.advanceTimersByTimeAsync(5);
+    expect(dp(core, 'me').hand.map((c) => c.id)).toEqual(['double']);
+    expect(dp(core, 'me').shield).toBe(1 + 3);
+    await vi.advanceTimersByTimeAsync(ANIM_MS.powerPlay ?? 1500);
+    core.enqueue([{ type: 'power_trigger', player: 'me', card: 'shield', amount: 10, other: 'other' }], done);
+    await vi.advanceTimersByTimeAsync(5);
+    expect(dp(core, 'me').shield).toBe(0);
+    await settle(core);
+    core.dispose();
+  });
+
+  it("a rival's play drops one hidden card", async () => {
+    const st = stateWith([]);
+    st.players[1].hand = [{ hidden: true }, { hidden: true }];
+    const { core } = rig({ initial: st });
+    core.enqueue([{ type: 'power_play', player: 'other', card: 'double' }], st);
+    await vi.advanceTimersByTimeAsync(5);
+    expect(dp(core, 'other').hand).toEqual([{ hidden: true }]);
+    expect(dp(core, 'other').doubleRent).toBe(4);
+    await settle(core);
+    core.dispose();
+  });
+
+  it('an expiry removes my cards that are gone from the final state, or that many hidden ones of a rival', async () => {
+    const st = stateWith(hand('shield', 'swap'));
+    st.players[1].hand = [{ hidden: true }, { hidden: true }];
+    const { core } = rig({ initial: st });
+    const final = stateWith([hand('shield', 'swap')[1]]);
+    final.players[1].hand = [{ hidden: true }];
+    core.enqueue([{ type: 'power_expire', player: 'me', count: 1 }, { type: 'power_expire', player: 'other', count: 1 }], final);
+    await vi.advanceTimersByTimeAsync(5);
+    expect(dp(core, 'me').hand.map((c) => c.id)).toEqual(['swap']);
+    await vi.advanceTimersByTimeAsync(ANIM_MS.powerExpire ?? 700);
+    expect(dp(core, 'other').hand).toEqual([{ hidden: true }]);
+    await settle(core);
+    core.dispose();
+  });
+
+  it('after the item the display snaps to the authoritative state', async () => {
+    const { core } = rig({ initial: stateWith(hand('shield')) });
+    const final = stateWith([]);
+    final.players[0].shield = 4;
+    core.enqueue([{ type: 'power_play', player: 'me', card: 'shield' }], final);
+    await settle(core);
+    expect(dp(core, 'me').hand).toEqual([]);
+    expect(dp(core, 'me').shield).toBe(4);
+    core.dispose();
+  });
+});

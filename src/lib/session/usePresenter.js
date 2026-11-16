@@ -19,7 +19,9 @@
 //            Pushed on cash transfers (rent pair -> player->player, gains -> bank->player, payments ->
 //            player->bank) and dropped again once their animation is over (`ms`). FxLayer flies them.
 //   display  also carries `landing` (the tile just landed on, until the next move / turn: the phone camera)
-//            and per player `piece stuck chai motion` (motion: null | 'ride' | 'teleport' during a move).
+//            and per player `piece stuck chai motion` (motion: null | 'ride' | 'teleport' during a move). With the power-cards
+//            rule on, each player also has `hand` (as the masked state gives it), `shield` and `doubleRent` (armed-until rounds),
+//            kept in step with the power beats; a game without the rule has none of the three keys.
 //
 // `speed` is the playback RATE (settings.playbackSpeed, 0.75..2): 2 plays twice as fast. On top of it playback
 // trims itself for background activity (nothing the local player needs to see), when the queue backs up, and
@@ -32,6 +34,7 @@
 import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { ANIM_MS, LONG_TRIP, cardMs, eventMs } from '@shared/timing.js';
 import { BOARD_SIZE, MAX_LEVEL, TILES } from '@shared/board.js';
+import { POWER } from '@shared/powerCards.js';
 import * as SFX from '../sfx.js';
 import { buzz } from '../haptics.js';
 import { DICE_BOUNCES } from '../soundscape/recipes.js';
@@ -139,6 +142,11 @@ export function displayFromState(state) {
       bankrupt: !!p.bankrupt,
       laps: p.laps ?? 0,
       ...(Number.isFinite(p.snatches) ? { snatches: p.snatches } : null), // Snatch buttons (public); absent in a game without the rule
+      // Power cards (only when the state has them, so a game without the rule is unchanged): the hand exactly as the masked state
+      // gives it (rivals' cards are { hidden: true }), the armed Shield / Double Rent rounds. The beats below keep them in step.
+      ...(Array.isArray(p.hand) ? { hand: p.hand.map((c) => ({ ...c })) } : null),
+      ...(Number.isFinite(p.shield) ? { shield: p.shield } : null),
+      ...(Number.isFinite(p.doubleRent) ? { doubleRent: p.doubleRent } : null),
       motion: null,
     })),
     owners: Array.isArray(state.owners) ? state.owners.slice() : [...EMPTY_OWNERS],
@@ -237,6 +245,9 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
   const patchPlayer = (id, fn) =>
     patchDisplay((d) => ({ ...d, players: d.players.map((p) => (p.id === id ? { ...p, ...fn(p) } : p)) }));
   const setPos = (id, pos) => patchPlayer(id, () => ({ pos }));
+  /** Change a player's displayed hand (only in a game that has power cards: a display player without `hand` is left alone). */
+  const patchHand = (id, fn) => patchPlayer(id, (p) => (Array.isArray(p.hand) ? { hand: fn(p.hand) } : null));
+  const hasHand = (id) => { const p = S.display.players.find((x) => x.id === id); return !!p && Array.isArray(p.hand); };
   const playerById = (id) => S.display.players.find((p) => p.id === id);
 
   // ---- timing ----
@@ -418,7 +429,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
 
   // ---- event playback ----
   /** Plays one event. Resolves to false when playback was cancelled (reset/unmount). */
-  async function playEvent(ev, wait, drawn = []) {
+  async function playEvent(ev, wait, item = { drawn: [], keep: null }) {
     const dsp = S.display;
     const byMe = ev.player === me;
 
@@ -784,7 +795,8 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
 
       case 'power_draw': {
         // the event never names the card: my own draw carries the card found in my hand diff, a rival's is a card back
-        const mine = byMe ? drawn.shift() || null : null;
+        const mine = byMe ? item.drawn.shift() || null : null;
+        patchHand(ev.player, (h) => [...h, mine ? { uid: mine.uid, id: mine.id, exp: mine.exp } : { hidden: true }]); // the count ticks with the moment
         announce(ev, { bubble: false });
         fx('powerDraw', 'card', { vol: byMe ? 1 : 0.6 });
         if (byMe) hp('powerDraw');
@@ -798,6 +810,15 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
       }
 
       case 'power_play': {
+        patchHand(ev.player, (h) => {
+          const i = h.findIndex((c) => c && c.id === ev.card); // my own card is named; a rival's is hidden: drop one of them
+          const at = i >= 0 ? i : h.findIndex((c) => c && c.hidden);
+          return at >= 0 ? h.filter((_, j) => j !== at) : h;
+        });
+        if (hasHand(ev.player) && (ev.card === 'shield' || ev.card === 'double')) {
+          const until = (Number(S.display.round) || 1) + POWER.ARMED_ROUNDS;
+          patchPlayer(ev.player, () => (ev.card === 'shield' ? { shield: until } : { doubleRent: until })); // the chip appears with the reveal
+        }
         announce(ev, { bubble: false });
         fx('powerPlay', 'card', { vol: byMe ? 1 : 0.8 });
         if (ev.card === 'swap' || ev.card === 'steal') {
@@ -821,6 +842,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
 
       case 'power_trigger': {
         const kind = ev.card === 'double' ? 'double' : 'shield';
+        if (hasHand(ev.player)) patchPlayer(ev.player, () => (kind === 'double' ? { doubleRent: 0 } : { shield: 0 })); // consumed: the chip flashes away
         announce(ev, { bubble: false });
         fx(kind === 'double' ? 'powerDouble' : 'powerShield', 'coin', { vol: byMe || ev.other === me ? 1 : 0.8 });
         if (byMe) hp(kind === 'double' ? 'powerDouble' : 'powerShield');
@@ -834,6 +856,16 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
       }
 
       case 'power_expire': {
+        patchHand(ev.player, (h) => {
+          let left = Math.max(1, Math.floor(Number(ev.count)) || 1);
+          // mine: the cards the final state no longer holds; a rival's: that many hidden ones
+          return h.filter((c) => {
+            if (left <= 0 || !c) return true;
+            const gone = c.hidden ? !byMe : !!item.keep && !item.keep.has(c.uid);
+            if (gone) left -= 1;
+            return !gone;
+          });
+        });
         announce(ev, { bubble: false });
         fx('powerExpire', 'click', { vol: byMe ? 1 : 0.6 });
         if (byMe) hp('powerExpire');
@@ -886,7 +918,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
     }
   }
 
-  async function playItem(events, myEpoch, drawn = []) {
+  async function playItem(events, myEpoch, item = { drawn: [], keep: null }) {
     reducedNow = reducedMotion();
     swapQuiet = 0;
     quickNow = computeQuick(events);
@@ -900,7 +932,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
       if (!alive()) return false;
       if (!ev || typeof ev.type !== 'string') continue;
       try {
-        if (!(await playEvent(ev, wait, drawn))) return false;
+        if (!(await playEvent(ev, wait, item))) return false;
       } catch (err) {
         devWarn('event failed', ev, err);
       }
@@ -937,13 +969,14 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
     // my new cards since the last state, in the order drawn: my power_draw events take them one by one
     const nowHand = myHandOf(newState, me);
     const drawn = nowHand.filter((c) => !knownHand.has(c.uid));
+    const item = { drawn, keep: new Set(nowHand.map((c) => c.uid)) }; // keep: the cards of mine that survive this item (an expiry removes the rest)
     knownHand = new Set(nowHand.map((c) => c.uid));
     pending += 1;
     if (!S.busy) commit({ busy: true });
     chain = chain.then(async () => {
       if (myEpoch !== epoch || disposed) return;
       try {
-        await playItem(list, myEpoch, drawn);
+        await playItem(list, myEpoch, item);
       } catch (err) {
         devWarn('playback failed', err);
       }
