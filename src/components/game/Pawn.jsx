@@ -4,6 +4,7 @@ import { isCorner, pawnPlacement, sideOf } from './fx/geometry.js';
 import PhoneBoardContext from './phone/PhoneBoardContext.js';
 import { PawnBeacon, PawnTag } from './board/PawnBeacon.jsx';
 import { pawnZ } from './board/beaconModel.js';
+import TrailFx, { trailItem } from './TrailFx.jsx';
 import '@/styles/board.css';
 
 export { pawnPlacement } from './fx/geometry.js';
@@ -46,6 +47,8 @@ export function PieceToken({ piece, color = '#ffd23f', size = 24, base = true, c
  *  motion: null (walk) | 'ride' (fast hop with a little vehicle trail) | 'teleport' (one arc over the board)
  *  stuck:  stuck in traffic: a small cone with a brake light
  *  bankrupt: fades and shrinks out (hidden straight away if it already was when the pawn mounted)
+ *  trail:  the equipped pawn-trail id (a catalogue item of kind 'trail'): a TrailFx particle group is left behind every
+ *          step, whatever the motion (a ride streams along the skim, a teleport bursts at arrival). No / unknown id = nothing.
  */
 function PawnImpl({
   id = '',
@@ -62,6 +65,7 @@ function PawnImpl({
   motion = null,
   bankrupt = false,
   tileName = '',
+  trail = null,
 }) {
   const disc = useContext(PhoneBoardContext); // the simple phone table draws pawns as round discs with a white rim
   // Re-key the hop and shadow whenever the pawn moves, so the motion replays per step.
@@ -98,6 +102,7 @@ function PawnImpl({
   if (stuck) cls.push('is-stuck');
   if (bankrupt) cls.push('is-out');
   const moving = steps ? ' is-step' : '';
+  const trailFor = steps ? trailItem(trail) : null;
 
   return (
     <div
@@ -112,6 +117,7 @@ function PawnImpl({
         {/* The shadow stays on the board while the pawn is lifted, then tightens as it is set down. */}
         <span className={`hb-pawn__shadow${moving}`} key={`s${steps}`} />
         {isTurn ? <PawnBeacon /> : null}
+        {trailFor ? <TrailFx finish={trailFor.finish} colors={trailFor.colors} steps={steps} motion={kind} gx={gx} gy={gy} compact={!!disc} /> : null}
         {kind === 'ride' && steps ? <span className="hb-pawn__trail" key={`t${steps}`} /> : null}
         {kind !== 'ride' && steps && !disc ? (
           <span className="hb-pawn__ghost" key={`g${steps}`} aria-hidden="true">

@@ -1,0 +1,378 @@
+/* ============================================================================================================
+   Pawn trails (kind 'trail'): the particles a piece leaves behind as it walks, and their shop / lobby preview.
+
+   tr-   live effect. Game/TrailFx.jsx renders `.tr-fx` (one group per hop, inside .hb-pawn__body) holding `.tr-p`
+         particles (4-10, CSS only). The group is anchored on the tile the pawn left (the same counter-move as the
+         footprint ghost), so particles stay put in the world while the pawn walks away. The group carries --ca/--cb
+         (the item's two colours), --gx/--gy (vector from the previous tile, fractions of --ring), --ang/--len (that
+         vector as an angle and a length), --hx/--hy (where a head rides to) and --g0/--gd (when a line / head moves,
+         in hop lengths). Each particle carries --f (how far along the path), --t (start, in hop lengths), --ox/--oy
+         (scatter), --s (size), --r (rotation) and data-k (colour / layer).
+         One hop = --step (the presenter's step, set on the pawn layer); a particle lives ~2.2 of them.
+   trp-  the animated SVG preview (art/TrailPreview.jsx): a ~3s loop of a puck gliding left to right.
+
+   Only transform and opacity animate; glows are static gradients. Gates (reduced motion, light graphics, the phone
+   disc board) are all at the bottom of this file.
+   ============================================================================================================ */
+
+/* ---- live: the group and the shared particle ------------------------------------------------------ */
+
+.tr-fx {
+  --life: calc(var(--step, 260ms) * 2.2);
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+/* Same keyframes as the footprint ghost (boardart.css hb-ghost), so the group stays on the tile the pawn left
+   while the pawn glides (board.css: after 22% of the hop, over 56%). A ride glides for the whole hop, linearly. */
+.tr-fx.is-walk { animation: tr-anchor-walk var(--step, 260ms) both; }
+.tr-fx.is-ride { animation: tr-anchor-ride var(--step, 260ms) linear both; }
+
+.tr-p {
+  --pc: var(--ca);
+  --pc2: var(--cb);
+  --sz: calc(var(--d) * var(--s) * 0.2);
+  --h: 1;
+  --w: calc(var(--ox) * var(--d) * 0.1);
+  /* where it was dropped, in the group's frame (the tile left): along the path toward the new tile, plus a scatter */
+  --bx: calc(var(--gx, 0) * var(--ring, 0px) * var(--f) * -1 + var(--ox) * var(--d) * 0.1);
+  --by: calc(var(--gy, 0) * var(--ring, 0px) * var(--f) * -1 + var(--oy) * var(--d) * 0.06);
+  position: absolute;
+  left: 50%;
+  top: 88%; /* the pawn's feet */
+  width: var(--sz);
+  height: calc(var(--sz) * var(--h));
+  margin: calc(var(--sz) * var(--h) * -0.5) 0 0 calc(var(--sz) * -0.5);
+  border-radius: 50%;
+  opacity: 0;
+  animation-duration: var(--life);
+  animation-delay: calc(var(--step, 260ms) * var(--t));
+  animation-fill-mode: both;
+  animation-timing-function: var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+}
+.tr-p[data-k='1'] { --pc: var(--cb); --pc2: var(--ca); }
+
+/* ---- dust: tan puffs that swell and thin out ------------------------------------------------------- */
+.tr-fx[data-finish='dust'] .tr-p {
+  --sz: calc(var(--d) * var(--s) * 0.26);
+  background: radial-gradient(circle at 40% 40%, color-mix(in srgb, var(--pc) 88%, transparent) 0, color-mix(in srgb, var(--pc2) 62%, transparent) 58%, transparent 74%);
+  animation-name: tr-dust;
+}
+@keyframes tr-dust {
+  0% { transform: translate(var(--bx), var(--by)) scale(0.3); opacity: 0; }
+  12% { opacity: 0.8; }
+  100% { transform: translate(calc(var(--bx) + var(--w)), calc(var(--by) - var(--d) * 0.14)) scale(1.9); opacity: 0; }
+}
+
+/* ---- steam: pale wisps rise with a wobble ---------------------------------------------------------- */
+.tr-fx[data-finish='steam'] .tr-p {
+  --sz: calc(var(--d) * var(--s) * 0.17);
+  --h: 1.7;
+  background: radial-gradient(ellipse at 50% 55%, color-mix(in srgb, var(--pc) 90%, transparent) 0, color-mix(in srgb, var(--pc2) 45%, transparent) 55%, transparent 75%);
+  animation-name: tr-steam;
+}
+@keyframes tr-steam {
+  0% { transform: translate(var(--bx), var(--by)) scale(0.5); opacity: 0; }
+  16% { opacity: 0.7; }
+  40% { transform: translate(calc(var(--bx) + var(--w)), calc(var(--by) - var(--d) * 0.3)) scale(0.85); }
+  70% { transform: translate(calc(var(--bx) - var(--w)), calc(var(--by) - var(--d) * 0.62)) scale(1.1); }
+  100% { transform: translate(calc(var(--bx) + var(--w) * 0.5), calc(var(--by) - var(--d) * 0.9)) scale(1.35); opacity: 0; }
+}
+
+/* ---- petals: pink petals drift down, turning as they go ------------------------------------------- */
+.tr-fx[data-finish='petals'] .tr-p {
+  --sz: calc(var(--d) * var(--s) * 0.14);
+  --h: 1.35;
+  border-radius: 100% 0 100% 0;
+  background: linear-gradient(135deg, var(--pc), var(--pc2));
+  animation-name: tr-petal;
+}
+@keyframes tr-petal {
+  0% { transform: translate(var(--bx), calc(var(--by) - var(--d) * 0.5)) rotate(var(--r)) scale(0.6); opacity: 0; }
+  14% { opacity: 0.95; transform: translate(var(--bx), calc(var(--by) - var(--d) * 0.42)) rotate(calc(var(--r) + 40deg)) scale(1); }
+  50% { transform: translate(calc(var(--bx) + var(--w)), calc(var(--by) - var(--d) * 0.12)) rotate(calc(var(--r) + 150deg)); }
+  100% { transform: translate(calc(var(--bx) - var(--w) * 0.6), calc(var(--by) + var(--d) * 0.1)) rotate(calc(var(--r) + 290deg)); opacity: 0; }
+}
+
+/* ---- sparks: bright dots fly out with a short streak ---------------------------------------------- */
+.tr-fx[data-finish='sparks'] .tr-p {
+  --sz: calc(var(--d) * var(--s) * 0.22);
+  height: max(1.5px, calc(var(--d) * 0.04));
+  margin-top: calc(max(1.5px, calc(var(--d) * 0.04)) * -0.5);
+  border-radius: 99px;
+  background: linear-gradient(90deg, transparent 0, var(--pc) 40%, #fff 100%);
+  animation-name: tr-spark;
+}
+@keyframes tr-spark {
+  0% { transform: translate(var(--bx), calc(var(--by) - var(--d) * 0.2)) rotate(var(--r)) translateX(calc(var(--d) * 0.06)) scaleX(1.5); opacity: 0; }
+  5% { opacity: 1; }
+  100% { transform: translate(var(--bx), calc(var(--by) - var(--d) * 0.2)) rotate(var(--r)) translateX(calc(var(--d) * (0.34 + var(--s) * 0.2))) scaleX(0.3); opacity: 0; }
+}
+
+/* ---- streak: a tapered neon line along the path (thin at the tile left, wide at the pawn), glowing at the edge -- */
+.tr-fx[data-finish='streak'] .tr-p,
+.tr-fx[data-finish='comet'] .tr-p:nth-child(-n + 2) {
+  --po: 0px;
+  left: 50%;
+  top: 88%;
+  width: calc(var(--len) * var(--ring, 0px));
+  height: calc(var(--d) * 0.1);
+  margin: calc(var(--d) * -0.05) 0 0;
+  border-radius: 0;
+  rotate: var(--ang);
+  transform-origin: 0 50%;
+  transform: translateY(var(--po)) scaleX(0);
+  clip-path: polygon(0 50%, 100% 0, 100% 100%);
+  animation-duration: calc(var(--step, 260ms) * var(--gd)), var(--life);
+  animation-delay: calc(var(--step, 260ms) * var(--g0)), 0s;
+  animation-name: tr-grow, tr-fade;
+  animation-timing-function: cubic-bezier(0.45, 0.05, 0.4, 1), linear;
+}
+.tr-fx.is-ride[data-finish='streak'] .tr-p,
+.tr-fx.is-ride[data-finish='comet'] .tr-p:nth-child(-n + 2) { animation-timing-function: linear, linear; }
+.tr-fx.is-teleport[data-finish='streak'] .tr-p,
+.tr-fx.is-teleport[data-finish='comet'] .tr-p:nth-child(-n + 2) { animation-timing-function: var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), linear; }
+.tr-fx[data-finish='streak'] .tr-p:nth-child(1) { background: linear-gradient(90deg, var(--cb), var(--ca) 70%, #fff); }
+/* the glow edge: the same wedge, wider and soft */
+.tr-fx[data-finish='streak'] .tr-p:nth-child(2) { height: calc(var(--d) * 0.3); margin-top: calc(var(--d) * -0.15); background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--ca) 55%, transparent)); }
+/* two thin echo lines either side */
+.tr-fx[data-finish='streak'] .tr-p:nth-child(n + 3) { height: max(1px, calc(var(--d) * 0.035)); margin-top: max(-0.5px, calc(var(--d) * -0.0175)); background: linear-gradient(90deg, transparent, var(--cb)); }
+.tr-fx[data-finish='streak'] .tr-p:nth-child(3) { --po: calc(var(--d) * -0.13); }
+.tr-fx[data-finish='streak'] .tr-p:nth-child(4) { --po: calc(var(--d) * 0.13); }
+@keyframes tr-grow {
+  from { transform: translateY(var(--po)) scaleX(0); }
+  to { transform: translateY(var(--po)) scaleX(1); }
+}
+@keyframes tr-fade {
+  0% { opacity: 0; }
+  4% { opacity: 1; }
+  38% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ---- coins: small gold discs drop, bounce once and fade; the squash fakes the spin --------------- */
+.tr-fx[data-finish='coins'] .tr-p {
+  --sz: calc(var(--d) * var(--s) * 0.15);
+  background: radial-gradient(circle at 34% 30%, #fff 0, var(--pc) 34%, var(--pc2) 100%);
+  box-shadow: inset 0 0 0 max(1px, calc(var(--d) * 0.02)) var(--pc2);
+  animation-name: tr-coin;
+  animation-timing-function: linear;
+}
+@keyframes tr-coin {
+  0% { transform: translate(var(--bx), calc(var(--by) - var(--d) * 0.8)) scale(1, 1); opacity: 0; animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45); }
+  8% { opacity: 1; transform: translate(var(--bx), calc(var(--by) - var(--d) * 0.72)) scale(0.7, 1); animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45); }
+  38% { transform: translate(var(--bx), var(--by)) scale(0.22, 1); animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1); }
+  52% { transform: translate(var(--bx), calc(var(--by) - var(--d) * 0.15)) scale(1, 1); animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45); }
+  64% { transform: translate(var(--bx), var(--by)) scale(0.45, 1); }
+  80% { transform: translate(var(--bx), var(--by)) scale(1, 1); opacity: 1; }
+  100% { transform: translate(var(--bx), var(--by)) scale(1, 1); opacity: 0; }
+}
+
+/* ---- comet: a soft gradient tail (1, 2), a bright head riding to the new tile (3), two specks (4, 5) -- */
+.tr-fx[data-finish='comet'] .tr-p:nth-child(1) { height: calc(var(--d) * 0.3); margin-top: calc(var(--d) * -0.15); background: linear-gradient(90deg, transparent 0, color-mix(in srgb, var(--cb) 80%, transparent) 55%, var(--ca)); }
+.tr-fx[data-finish='comet'] .tr-p:nth-child(2) { height: calc(var(--d) * 0.5); margin-top: calc(var(--d) * -0.25); background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--cb) 38%, transparent)); }
+.tr-fx[data-finish='comet'] .tr-p:nth-child(3) {
+  --sz: calc(var(--d) * 0.2);
+  background: radial-gradient(circle, #fff 0, #fff 24%, var(--ca) 48%, transparent 72%);
+  animation-name: tr-head, tr-head-fade;
+  animation-duration: calc(var(--step, 260ms) * var(--gd)), var(--life);
+  animation-delay: calc(var(--step, 260ms) * var(--g0)), 0s;
+  animation-timing-function: cubic-bezier(0.45, 0.05, 0.4, 1), linear;
+}
+.tr-fx.is-ride[data-finish='comet'] .tr-p:nth-child(3) { animation-timing-function: linear, linear; }
+.tr-fx.is-teleport[data-finish='comet'] .tr-p:nth-child(3) { animation-timing-function: var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), linear; }
+.tr-fx[data-finish='comet'] .tr-p:nth-child(n + 4) {
+  --sz: calc(var(--d) * var(--s) * 0.08);
+  background: var(--pc);
+  animation-name: tr-dust;
+}
+@keyframes tr-head {
+  from { transform: translate(0, 0); }
+  to { transform: translate(calc(var(--hx) * var(--ring, 0px)), calc(var(--hy) * var(--ring, 0px))); }
+}
+@keyframes tr-head-fade {
+  0% { opacity: 0; }
+  4% { opacity: 1; }
+  36% { opacity: 1; }
+  52% { opacity: 0; }
+  100% { opacity: 0; }
+}
+
+/* ---- flame (legendary): layered tongues of red, orange and yellow flicker upward around a hot core -- */
+.tr-fx[data-finish='flame'] .tr-p {
+  --sz: calc(var(--d) * var(--s) * 0.2 * var(--lk, 1));
+  margin: calc(var(--sz) * -1) 0 0 calc(var(--sz) * -0.5);
+  height: var(--sz);
+  border-radius: 0;
+  transform-origin: 50% 100%;
+  animation-name: tr-flame;
+}
+/* the teardrop is a rotated pseudo-element, so the rise below stays straight up */
+.tr-fx[data-finish='flame'] .tr-p::before {
+  content: '';
+  position: absolute;
+  inset: 8% 0 0;
+  border-radius: 50% 0 50% 50%;
+  rotate: -45deg;
+  background: var(--flame, var(--cb));
+}
+.tr-fx[data-finish='flame'] .tr-p[data-k='0'] { --lk: 1.15; --flame: var(--cb); }
+.tr-fx[data-finish='flame'] .tr-p[data-k='1'] { --lk: 0.82; --flame: color-mix(in srgb, var(--ca) 52%, var(--cb)); }
+.tr-fx[data-finish='flame'] .tr-p[data-k='2'] { --lk: 0.52; --flame: var(--ca); }
+.tr-fx[data-finish='flame'] .tr-p[data-k='3'] { --lk: 0.5; --flame: color-mix(in srgb, var(--ca) 45%, #fff); }
+.tr-fx[data-finish='flame'] .tr-p[data-k='3']::before { box-shadow: 0 0 calc(var(--d) * 0.12) color-mix(in srgb, var(--ca) 70%, transparent); }
+@keyframes tr-flame {
+  0% { transform: translate(var(--bx), var(--by)) scale(0.3, 0.3); opacity: 0; }
+  14% { transform: translate(var(--bx), calc(var(--by) - var(--d) * 0.06)) scale(1, 1.1); opacity: 0.95; }
+  34% { transform: translate(calc(var(--bx) + var(--w) * 0.5), calc(var(--by) - var(--d) * 0.18)) scale(0.8, 1.3); }
+  58% { transform: translate(calc(var(--bx) - var(--w) * 0.5), calc(var(--by) - var(--d) * 0.32)) scale(0.95, 1.15); opacity: 0.8; }
+  100% { transform: translate(calc(var(--bx) + var(--w) * 0.3), calc(var(--by) - var(--d) * 0.6)) scale(0.12, 0.3); opacity: 0; }
+}
+
+/* ---- stardust (legendary): tiny stars twinkle and drift ----------------------------------------- */
+.tr-fx[data-finish='stardust'] .tr-p {
+  --sz: calc(var(--d) * var(--s) * 0.15);
+  border-radius: 0;
+  clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
+  background: var(--pc);
+  animation-name: tr-star;
+}
+@keyframes tr-star {
+  0% { transform: translate(var(--bx), calc(var(--by) - var(--d) * 0.2)) rotate(var(--r)) scale(0); opacity: 0; }
+  18% { opacity: 1; transform: translate(var(--bx), calc(var(--by) - var(--d) * 0.24)) rotate(calc(var(--r) + 20deg)) scale(1); }
+  38% { opacity: 0.55; transform: translate(calc(var(--bx) + var(--w) * 0.5), calc(var(--by) - var(--d) * 0.3)) rotate(calc(var(--r) + 40deg)) scale(0.55); }
+  58% { opacity: 1; transform: translate(calc(var(--bx) + var(--w) * 0.8), calc(var(--by) - var(--d) * 0.36)) rotate(calc(var(--r) + 60deg)) scale(1.15); }
+  100% { transform: translate(calc(var(--bx) + var(--w)), calc(var(--by) - var(--d) * 0.5)) rotate(calc(var(--r) + 90deg)) scale(0); opacity: 0; }
+}
+
+@keyframes tr-anchor-walk {
+  0%, 22% { transform: translate(0, 0); animation-timing-function: cubic-bezier(0.45, 0.05, 0.4, 1); }
+  78%, 100% { transform: translate(calc(var(--gx, 0) * var(--ring, 0px)), calc(var(--gy, 0) * var(--ring, 0px))); }
+}
+@keyframes tr-anchor-ride {
+  from { transform: translate(0, 0); }
+  to { transform: translate(calc(var(--gx, 0) * var(--ring, 0px)), calc(var(--gy, 0) * var(--ring, 0px))); }
+}
+
+/* ---- preview (art/TrailPreview.jsx): a puck glides left to right, the effect trails behind it ------------
+   Default (no animation) = a still, mid-flight frame: the puck at the end of its lane, the particles frozen where
+   they were dropped. Particles are placed by x/y attributes and only nudged by transform; each one starts when the
+   puck passes (--t seconds into the 3s loop). */
+.trp { display: block; overflow: visible; }
+.trp-puck { transform: translateX(28px); }
+.trp-p,
+.trp-line {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.trp-line { transform-origin: 0 50%; transform: scaleX(0.9); }
+.trp-spark { transform-origin: 0 50%; }
+
+.trp-puck { animation: trp-glide 3s linear infinite; }
+@keyframes trp-glide {
+  0% { transform: translateX(0); opacity: 0; }
+  8% { transform: translateX(0); opacity: 1; }
+  62% { transform: translateX(28px); opacity: 1; }
+  84% { transform: translateX(28px); opacity: 1; }
+  92% { transform: translateX(28px); opacity: 0; }
+  100% { transform: translateX(0); opacity: 0; }
+}
+.trp-p {
+  animation: 3s var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) calc(var(--t, 0) * 1s) infinite both;
+  animation-name: trp-puff;
+}
+.trp-line { animation: trp-draw 3s linear infinite both; }
+
+.trp[data-finish='dust'] .trp-p { animation-name: trp-puff; }
+.trp[data-finish='steam'] .trp-p { animation-name: trp-rise; }
+.trp[data-finish='petals'] .trp-p { animation-name: trp-fall; }
+.trp[data-finish='sparks'] .trp-p { animation-name: trp-fly; }
+.trp[data-finish='coins'] .trp-p { animation-name: trp-drop; animation-timing-function: linear; }
+.trp[data-finish='flame'] .trp-p { animation-name: trp-lick; }
+.trp[data-finish='stardust'] .trp-p { animation-name: trp-twinkle; }
+.trp[data-finish='comet'] .trp-p { animation-name: trp-puff; }
+
+@keyframes trp-puff {
+  0% { transform: scale(0.3); opacity: 0; }
+  8% { opacity: var(--o, 0.8); }
+  45%, 100% { transform: scale(1.5); opacity: 0; }
+}
+@keyframes trp-rise {
+  0% { transform: translate(0, 0) scale(0.6); opacity: 0; }
+  10% { opacity: var(--o, 0.7); }
+  25% { transform: translate(2px, -3px) scale(0.9); }
+  42% { transform: translate(-2px, -7px) scale(1.15); }
+  58%, 100% { transform: translate(1px, -11px) scale(1.3); opacity: 0; }
+}
+@keyframes trp-fall {
+  0% { transform: translate(0, -7px) rotate(0deg); opacity: 0; }
+  8% { opacity: var(--o, 0.95); }
+  30% { transform: translate(3px, -2px) rotate(120deg); }
+  50%, 100% { transform: translate(-2px, 4px) rotate(260deg); opacity: 0; }
+}
+@keyframes trp-fly {
+  0% { transform: translateX(1px) scaleX(1.4); opacity: 0; }
+  4% { opacity: var(--o, 1); }
+  26%, 100% { transform: translateX(7px) scaleX(0.3); opacity: 0; }
+}
+@keyframes trp-drop {
+  0% { transform: translateY(-14px) scaleX(1); opacity: 0; animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45); }
+  6% { opacity: var(--o, 1); }
+  18% { transform: translateY(0) scaleX(0.25); animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1); }
+  25% { transform: translateY(-3px) scaleX(1); animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45); }
+  31% { transform: translateY(0) scaleX(0.5); }
+  46%, 100% { transform: translateY(0) scaleX(1); opacity: 0; }
+}
+@keyframes trp-lick {
+  0% { transform: translateY(0) scale(0.3); opacity: 0; }
+  10% { transform: translateY(-1px) scale(1, 1.1); opacity: var(--o, 0.95); }
+  26% { transform: translate(1px, -4px) scale(0.8, 1.3); }
+  46%, 100% { transform: translate(0, -10px) scale(0.12, 0.3); opacity: 0; }
+}
+@keyframes trp-twinkle {
+  0% { transform: translateY(0) scale(0); opacity: 0; }
+  10% { transform: translateY(-1px) scale(1); opacity: var(--o, 1); }
+  22% { transform: translateY(-3px) scale(0.5); opacity: 0.5; }
+  34% { transform: translateY(-4px) scale(1.15); opacity: var(--o, 1); }
+  50%, 100% { transform: translateY(-8px) scale(0); opacity: 0; }
+}
+/* the lines / tails (streak, comet) grow with the puck, hold, then fade */
+@keyframes trp-draw {
+  0%, 8% { transform: scaleX(0); opacity: 0; }
+  10% { opacity: 1; }
+  62% { transform: scaleX(1); opacity: 1; }
+  74% { opacity: 1; }
+  96%, 100% { transform: scaleX(1); opacity: 0; }
+}
+
+/* ============================================================================================================
+   Gates. Reduced motion: the live trail draws nothing and the preview is a still frame. Light graphics
+   (data-perf='low'): three particles a hop, no glow; the preview is still. The phone's simple disc board
+   (TrailFx `compact` = .is-disc): three particles. Every animated class above is named in each gate.
+   ============================================================================================================ */
+
+:root[data-motion='reduced'] .tr-fx,
+.hg-game[data-rm] .tr-fx { display: none; }
+:root[data-motion='reduced'] .tr-p,
+:root[data-motion='reduced'] .trp-p,
+:root[data-motion='reduced'] .trp-line,
+:root[data-motion='reduced'] .trp-puck { animation: none !important; }
+.hg-game[data-rm] .tr-p { animation: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .tr-fx { display: none; }
+  .tr-p,
+  .trp-p,
+  .trp-line,
+  .trp-puck { animation: none !important; }
+}
+
+:root[data-perf='low'] .tr-p:nth-child(n + 4) { display: none; }
+:root[data-perf='low'] .tr-p,
+:root[data-perf='low'] .tr-p::before { box-shadow: none !important; }
+:root[data-perf='low'] .tr-fx[data-finish='streak'] .tr-p:nth-child(2),
+:root[data-perf='low'] .tr-fx[data-finish='comet'] .tr-p:nth-child(2) { display: none; }
+:root[data-perf='low'] .trp-p,
+:root[data-perf='low'] .trp-line,
+:root[data-perf='low'] .trp-puck { animation: none !important; }
+
+.tr-fx.is-disc .tr-p:nth-child(n + 4) { display: none; }

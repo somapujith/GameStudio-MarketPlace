@@ -6,6 +6,7 @@ import Pawn from './Pawn.jsx';
 import CameraFocus from './fx/CameraFocus.jsx';
 import { oddsSupported, useOddsPref } from './oddsPref.js';
 import { TileTipLayer } from './board/TileTip.jsx';
+import { cosmeticsOf } from './turn/room.js';
 import { eventFlagFor } from './board/eventFlag.js';
 import { ANDHRA, useArtMap } from '@/components/art/andhra/artMap.js';
 import AndhraCentre from '@/components/art/andhra/center.jsx';
@@ -249,6 +250,7 @@ export function Board({ session, onTileClick, highlightTile = null, center = nul
                     motion={p.motion || null}
                     bankrupt={!!p.bankrupt}
                     tileName={TILES[p.pos]?.name}
+                    trail={cosmeticsOf(session, p.id).trail || null}
                   />
                 );
               })}
