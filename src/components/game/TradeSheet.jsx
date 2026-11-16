@@ -31,7 +31,7 @@ import {
 } from './ui/helpers.js';
 import {
   CASH_CHIPS, CASH_STEP, balanceSplit, byCollection, cashAfter, clampCash, counterDiff, deedFacts, fairness, fullSets, impactRows,
-  offerProblem, parseCash, partnerHints, setImpact, sideBrief, sideChanged, sideParts, sideValue, tileHint, tradeStatus,
+  canPick, limitHint, offerProblem, parseCash, partnerHints, setImpact, sideBrief, sideChanged, sideParts, sideValue, tileHint, tradeLimit, tradeStatus,
 } from './ui/tradeModel.js';
 
 const OFFER_SECONDS = Math.round(TRADE_MS / 1000); // the server auto-rejects an unanswered offer after this (default; host rule `tradeSeconds`)
@@ -80,7 +80,7 @@ function hintSay(h, themName) {
  * One district as a small title deed: collection-coloured band, the business as it stands (art + level pips), price and
  * rent, a set badge. With `onToggle` it is a toggle button (aria-pressed); without it a read-only card.
  */
-function Deed({ state, id, selected = false, hint = null, onToggle = null, locked = false, themName = 'them', mark = null }) {
+function Deed({ state, id, selected = false, hint = null, onToggle = null, locked = false, capped = null, themName = 'them', mark = null }) {
   const f = deedFacts(state, id);
   const { tile } = f;
   if (!tile) return null;
@@ -96,14 +96,14 @@ function Deed({ state, id, selected = false, hint = null, onToggle = null, locke
   const label = `${tile.name}, ${coll?.name || 'district'}, ${levelName}${f.mortgaged ? ', mortgaged' : ''}, price ${formatINR(f.price)}${say ? `, ${say}` : ''}`;
   const Tag = interactive ? 'button' : 'div';
   const tagProps = interactive
-    ? { type: 'button', onClick: () => onToggle(id), disabled: locked, 'aria-pressed': !!selected }
+    ? { type: 'button', onClick: () => onToggle(id), disabled: locked || !!capped, 'aria-pressed': !!selected, ...(capped ? { 'aria-describedby': capped.describedBy } : {}) }
     : { role: 'group' };
   return (
     <Tag
       {...tagProps}
       className={`tx-deed${interactive ? ' is-btn' : ''}${selected ? ' is-on' : ''}${f.mortgaged ? ' is-mort' : ''}${showTag && hint ? ` has-${hint.kind}` : ''}${mark ? ` is-${mark}` : ''}`}
       style={{ '--band': color, '--ink': tones.ink, '--b1': tones.from, '--b2': tones.to }}
-      title={f.mortgaged ? `${tile.name} (mortgaged)` : `${tile.name}: ${levelName}`}
+      title={capped ? `${tile.name}: ${capped.text}` : f.mortgaged ? `${tile.name} (mortgaged)` : `${tile.name}: ${levelName}`}
       aria-label={label}
     >
       <span className="tx-deed__band">
@@ -136,7 +136,7 @@ function Deed({ state, id, selected = false, hint = null, onToggle = null, locke
 }
 
 /** Districts grouped by collection: a header (name, the owner's progress, "Full set") and a row of deed cards. */
-function DeedGroups({ state, options = null, owner = null, ids, selected = [], onToggle = null, hintFor = null, themName, added = [] }) {
+function DeedGroups({ state, options = null, owner = null, ids, selected = [], onToggle = null, hintFor = null, themName, added = [], cap = null }) {
   const owned = fullSets(state.owners, owner?.id);
   return byCollection(ids).map(({ coll, ids: row }) => {
     const total = coll.tiles.length;
@@ -163,6 +163,7 @@ function DeedGroups({ state, options = null, owner = null, ids, selected = [], o
               hint={hintFor ? hintFor(id) : null}
               onToggle={onToggle}
               locked={isLocked(options, id)}
+              capped={cap && !canPick(selected, id, cap.max) ? cap : null}
               themName={themName}
               mark={added.includes(id) ? 'added' : null}
             />
@@ -451,8 +452,11 @@ function PartnerPicker({ session, state, me, players, value, onPick }) {
 
 /* ------------------------------------------------------------------ one side of the composer */
 
-function Pane({ session, state, options, tone, title, owner, isMe, ids, selected, onToggle, hintFor, cash, themName }) {
+function Pane({ session, state, options, tone, title, owner, isMe, ids, selected, onToggle, hintFor, cash, themName, max }) {
   const picked = selected.length;
+  const full = picked >= max;
+  const capId = `tx-cap-${tone}`;
+  const cap = full ? { max, describedBy: capId, text: limitHint(max) } : null;
   const anyLocked = ids.some((id) => isLocked(options, id));
   return (
     <section className={`tx-pane is-${tone}`} aria-label={title}>
@@ -462,13 +466,14 @@ function Pane({ session, state, options, tone, title, owner, isMe, ids, selected
           <h3>{title}</h3>
           <small>{isMe ? 'your districts' : 'their districts'}</small>
         </div>
-        <span className={`tx-pane__count${picked ? ' is-on' : ''}`}>{picked ? `${picked} picked` : 'none picked'}</span>
+        <span className={`tx-pane__count${picked ? ' is-on' : ''}`}>{picked ? `${picked}/${max} picked` : 'none picked'}</span>
       </header>
       {ids.length === 0 ? (
         <p className="tx-pane__empty">{isMe ? 'You own no districts yet.' : `${nameOf(owner)} owns no districts yet.`}</p>
       ) : (
-        <DeedGroups state={state} options={options} owner={owner} ids={ids} selected={selected} onToggle={onToggle} hintFor={hintFor} themName={themName} />
+        <DeedGroups state={state} options={options} owner={owner} ids={ids} selected={selected} onToggle={onToggle} hintFor={hintFor} themName={themName} cap={cap} />
       )}
+      {full && ids.length > picked ? <p id={capId} className="tx-pane__lock tx-pane__cap" role="status"><Icon name="info" size={12} /> {limitHint(max)}</p> : null}
       {anyLocked ? <p className="tx-pane__lock"><Icon name="lock" size={12} /> Locked districts cannot be traded right now.</p> : null}
       <CashField {...cash} tone={tone} />
     </section>
@@ -545,6 +550,7 @@ function ComposerSheet({ session, open, onClose, deadline, counter = null, onCou
   const me = session.me;
   const o = session.options || {};
   const myP = view.players.find((p) => p.id === me);
+  const maxTiles = tradeLimit(o);
   const others = view.players.filter((p) => p.id !== me && !p.bankrupt);
   const rivals = view.players.filter((p) => p.id !== me);
   const trade = view.trade && view.trade.from === me ? view.trade : null;
@@ -599,7 +605,7 @@ function ComposerSheet({ session, open, onClose, deadline, counter = null, onCou
   const waitPartner = tradeShown ? view.players.find((p) => p.id === tradeShown.to) || null : null;
 
   const pick = (id) => { setTo(id); setGetCash(0); setGetTiles([]); };
-  const toggle = (list, set) => (id) => set(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
+  const toggle = (list, set) => (id) => set(list.includes(id) ? list.filter((x) => x !== id) : list.length >= maxTiles ? list : [...list, id]);
 
   const give = { cash: giveCash, tiles: giveTiles };
   const get = { cash: getCash, tiles: getTiles };
@@ -612,7 +618,7 @@ function ComposerSheet({ session, open, onClose, deadline, counter = null, onCou
     me: myP, partner, give, get,
     canOffer: counter ? true : o.trade ? !!o.trade.canOffer : true,
     reason: status.reason,
-    original,
+    original, maxTiles,
   });
   const valid = !problem;
   const myIds = useMemo(() => TILES.filter((t) => isBuyableTile(t) && view.owners?.[t.id] === me).map((t) => t.id), [view.owners, me]);
@@ -740,6 +746,7 @@ function ComposerSheet({ session, open, onClose, deadline, counter = null, onCou
                 onToggle={toggle(giveTiles, setGiveTiles)}
                 hintFor={hintFor('give')}
                 themName={partner.name}
+                max={maxTiles}
                 cash={{ label: 'Cash you give', value: giveCash, max: myP?.cash || 0, onChange: setGiveCash }}
               />
               <Medallion />
@@ -755,6 +762,7 @@ function ComposerSheet({ session, open, onClose, deadline, counter = null, onCou
                 onToggle={toggle(getTiles, setGetTiles)}
                 hintFor={hintFor('get')}
                 themName={partner.name}
+                max={maxTiles}
                 cash={{ label: `Cash from ${partner.name}`, value: getCash, max: partner.cash || 0, onChange: setGetCash }}
               />
             </div>

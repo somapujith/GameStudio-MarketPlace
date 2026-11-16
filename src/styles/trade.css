@@ -390,3 +390,7 @@
 .tx-foot__btns.is-three .tx-change { padding-inline: 10px; font-size: 14px; white-space: nowrap; }
 @media (min-width: 900px) { .tx-sheet .tx-foot__btns.is-three { min-width: 430px; } }
 @media (max-width: 480px) { .tx-foot__btns.is-three .tx-change svg { display: none; } .tx-foot__btns.is-three { gap: 8px; } }
+
+/* the "Up to 2 districts per side" hint under a full side: a quiet line that wraps, never widens the pane */
+.tx-pane__cap { min-width: 0; overflow-wrap: anywhere; color: var(--gold); font-weight: 600; }
+.tx-pane__cap svg { flex: none; }

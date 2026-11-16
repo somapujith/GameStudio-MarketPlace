@@ -3,7 +3,7 @@
 // Values are the printed net-worth values (a district at its price, minus its loan when mortgaged, plus half of the
 // upgrades paid). They are information for the players, never a rule: an unbalanced offer can always be sent.
 import { TILES } from '@shared/board.js';
-import { tradeBlock } from '@shared/engine.js';
+import { MAX_TRADE_TILES, TRADE_TILES_ERROR, tradeBlock } from '@shared/engine.js';
 import { compactINR } from '@shared/format.js';
 import { COLLECTIONS, completedGroups, groupTiles, isBuyableTile, mortgageOf, rentLadder, upgradeCostOf } from './helpers.js';
 
@@ -193,17 +193,33 @@ export function counterDiff(trade, meId) {
 
 /** True when the diff of one side changes anything. */
 export const sideChanged = (d) => !!d && (d.added.length > 0 || d.removed.length > 0 || d.cashFrom !== d.cashTo);
+
+/* ------------------------------------------------------------------ the district limit */
+
+/** Most districts one side of a trade may carry: the engine's `options.trade.maxTiles` (MAX_TRADE_TILES, a fixed rule). */
+export function tradeLimit(options) {
+  const n = options && options.trade ? options.trade.maxTiles : undefined;
+  return Number.isInteger(n) && n >= 1 ? n : MAX_TRADE_TILES;
+}
+
+/** The short line under a side that is full ("Up to 2 districts per side"). */
+export const limitHint = (max = MAX_TRADE_TILES) => `Up to ${max} districts per side`;
+
+/** Can another district be added to a side that holds `picked` (ids)? Picked ones stay toggle-able so the choice can be swapped. */
+export const canPick = (picked = [], id, max = MAX_TRADE_TILES) => picked.includes(id) || picked.length < max;
+
 export const NOT_YOUR_TURN = 'You can only offer a trade on your own turn, before rolling or after.';
 
 /**
- * Why this offer cannot be sent, or null. Mirrors shared/engine.js tradeProblem (empty offer, cash on either side), plus
+ * Why this offer cannot be sent, or null. Mirrors shared/engine.js tradeProblem (at most `maxTiles` districts per side, empty offer, cash on either side), plus
  * the turn rule from `options.trade.canOffer`. The deal's fairness never blocks it.
  */
-export function offerProblem({ me, partner, give, get, canOffer = true, reason = '', original = null }) {
+export function offerProblem({ me, partner, give, get, canOffer = true, reason = '', original = null, maxTiles = MAX_TRADE_TILES }) {
   if (!partner) return NO_PARTNER;
   if (canOffer === false) return reason || NOT_YOUR_TURN;
   const g = { cash: num(give?.cash), tiles: give?.tiles || [] };
   const r = { cash: num(get?.cash), tiles: get?.tiles || [] };
+  if (g.tiles.length > maxTiles || r.tiles.length > maxTiles) return maxTiles === MAX_TRADE_TILES ? TRADE_TILES_ERROR : `A trade can include at most ${maxTiles} districts from each player.`;
   if (g.cash + r.cash + g.tiles.length + r.tiles.length === 0) return 'The offer is empty';
   if (original && sameSide(give, original.give) && sameSide(get, original.get)) return SAME_DEAL;
   if (g.cash > num(me?.cash)) return 'You do not have that much cash';

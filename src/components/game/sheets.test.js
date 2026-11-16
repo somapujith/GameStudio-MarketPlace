@@ -186,6 +186,43 @@ describe('TradeSheet', () => {
     expect(out).toContain('Change something first, or accept the offer as it is'); // unchanged deal cannot be sent
   });
 
+  it('a side that already holds 2 districts disables its other districts and says why; the picked ones stay toggle-able', () => {
+    const v = base();
+    [1, 3, 4, 6].forEach((t) => { v.owners[t] = 'me'; });
+    [28, 29, 31, 7].forEach((t) => { v.owners[t] = 'b1'; });
+    // Ravi offers two of his districts for two of mine: both sides are full
+    v.trade = { id: 4, from: 'b1', to: 'me', give: { cash: 0, tiles: [28, 29] }, get: { cash: 0, tiles: [1, 3] } };
+    const session = sess(v, { options: { tradeOffer: { id: 4 }, trade: { canOffer: true, maxTiles: 2 } } });
+    const html = renderToStaticMarkup(createElement(ComposerSheet, { session, open: false, onClose() {}, counter: v.trade, onCounterBack() {} }));
+    const deeds = html.match(/<button[^>]*class="tx-deed[^"]*"[\s\S]*?<\/button>/g) || [];
+    expect(deeds).toHaveLength(8);
+    const on = deeds.filter((d) => d.includes('aria-pressed="true"'));
+    const off = deeds.filter((d) => d.includes('aria-pressed="false"'));
+    expect(on).toHaveLength(4);
+    for (const d of on) expect(d).not.toContain('disabled=""'); // can be un-picked to swap
+    expect(off).toHaveLength(4);
+    for (const d of off) {
+      expect(d).toContain('disabled=""');
+      expect(d).toMatch(/aria-describedby="tx-cap-(give|get)"/);
+      expect(d).toContain('Up to 2 districts per side');
+    }
+    expect(html).toContain('id="tx-cap-give"');
+    expect(html).toContain('id="tx-cap-get"');
+    expect(text(createElement(ComposerSheet, { session, open: false, onClose() {}, counter: v.trade, onCounterBack() {} }))).toContain('2/2 picked');
+  });
+
+  it('a side below the limit keeps every district selectable and shows no limit hint', () => {
+    const v = base();
+    [1, 3, 4].forEach((t) => { v.owners[t] = 'me'; });
+    v.owners[31] = 'b1';
+    v.trade = { id: 4, from: 'b1', to: 'me', give: { cash: 10000, tiles: [31] }, get: { cash: 0, tiles: [1] } };
+    const session = sess(v, { options: { tradeOffer: { id: 4 } } });
+    const html = renderToStaticMarkup(createElement(ComposerSheet, { session, open: false, onClose() {}, counter: v.trade, onCounterBack() {} }));
+    expect(html).not.toContain('tx-cap-');
+    expect(html).not.toContain('Up to 2 districts');
+    expect(html).not.toMatch(/<button[^>]*class="tx-deed[^"]*"[^>]*disabled/);
+  });
+
   it('warns when the other side would complete a set, or I would break mine', () => {
     const v = base();
     v.owners[28] = 'me'; v.owners[29] = 'me'; v.owners[31] = 'me'; // I own Cyberabad whole

@@ -1,11 +1,11 @@
 // The pure side of the trade sheet: values, the balance split, set impact, the set badges, validation reasons (which
 // must match the engine's) and the cash helpers.
 import { describe, expect, it } from 'vitest';
-import { applyAction, createGame } from '@shared/index.js';
+import { MAX_TRADE_TILES, applyAction, createGame, getOptions } from '@shared/index.js';
 import {
   CASH_CHIPS, CASH_STEP, NOT_YOUR_TURN, NO_PARTNER, balanceSplit, byCollection, cashAfter, clampCash, deedFacts, districtsOf, fairness,
   fullSets, hasImpact, impactRows, offerProblem, parseCash, partnerHints, setImpact, setsToComplete, sideBrief, sideParts, sideValue,
-  tileHint, tileValue, SAME_DEAL, counterDiff, sameSide, sideChanged, tradeStatus,
+  tileHint, tileValue, SAME_DEAL, counterDiff, sameSide, sideChanged, tradeStatus, tradeLimit, limitHint, canPick,
 } from './tradeModel.js';
 
 const game = () => createGame({ players: [{ id: 'me', name: 'Asha' }, { id: 'b1', name: 'Ravi' }, { id: 'c2', name: 'Zoya' }], seed: 3 });
@@ -154,6 +154,18 @@ describe('validation (the same reasons as the engine)', () => {
     expect(offerProblem({ ...ok, give: { cash: 0, tiles: [] }, get: { cash: 0, tiles: [31] }, canOffer: true })).toBeNull();
   });
 
+  it('the district limit: the same wording as the engine, either side, and the limit comes from the options', () => {
+    const three = { cash: 0, tiles: [1, 3, 4] };
+    const two = { cash: 0, tiles: [1, 3] };
+    const s = game();
+    [1, 3, 4].forEach((t) => { s.owners[t] = 'me'; });
+    const engine = applyAction(s, { type: 'TRADE_OFFER', playerId: 'me', to: 'b1', give: three, get: { cash: 5, tiles: [] } }).error;
+    expect(offerProblem({ ...ok, give: three })).toBe(engine);
+    expect(offerProblem({ ...ok, get: three })).toBe('A trade can include at most 2 districts from each player.');
+    expect(offerProblem({ ...ok, give: two, get: two })).toBeNull();
+    expect(offerProblem({ ...ok, give: three, maxTiles: 3 })).toBeNull();
+  });
+
   it('never blocks an unbalanced offer', () => {
     expect(offerProblem({ ...ok, give: { cash: 0, tiles: [] }, get: { cash: 100000, tiles: [] } })).toBeNull();
   });
@@ -258,5 +270,24 @@ describe('counter-offers', () => {
     expect(sideChanged({ added: [], removed: [], cashFrom: 5, cashTo: 5 })).toBe(false);
     expect(counterDiff(trade, 'b1')).toBeNull(); // only the one who answers sees it
     expect(counterDiff({ id: 1, from: 'b1', to: 'a' }, 'a')).toBeNull(); // not a counter
+  });
+});
+
+describe('the district limit helpers', () => {
+  it('tradeLimit reads options.trade.maxTiles and falls back to the engine constant', () => {
+    const s = game();
+    expect(tradeLimit(getOptions(s, 'me'))).toBe(MAX_TRADE_TILES);
+    expect(tradeLimit({ trade: { maxTiles: 3 } })).toBe(3);
+    expect(tradeLimit({ trade: { canOffer: true } })).toBe(MAX_TRADE_TILES);
+    expect(tradeLimit(null)).toBe(MAX_TRADE_TILES);
+    expect(tradeLimit({ trade: { maxTiles: 0 } })).toBe(MAX_TRADE_TILES);
+  });
+
+  it('canPick: below the limit anything goes; at the limit only the picked ones (to swap them out)', () => {
+    expect(canPick([], 5, 2)).toBe(true);
+    expect(canPick([1], 5, 2)).toBe(true);
+    expect(canPick([1, 3], 5, 2)).toBe(false);
+    expect(canPick([1, 3], 3, 2)).toBe(true);
+    expect(limitHint(2)).toBe('Up to 2 districts per side');
   });
 });
