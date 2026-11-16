@@ -157,10 +157,15 @@ describe('join preview', () => {
 });
 
 describe('table header, empty seats, status and load screens', () => {
-  it('the table header shows the code in signage and a way to copy it', () => {
+  it('the table header shows the code as a compact chip you can tap to copy, not as a big block', () => {
     const html = renderToString(h(TableHeader, { game: null, gName: 'Lobby', code: 'ABC234', hostName: 'Ravi', chip: h('i', null, 'chip') }));
     expect(html).toContain('ABC 234');
-    expect(html).toContain('Tap to copy');
+    expect(html).toContain('>Code<');
+    expect(html).toContain('data-tour="lobby-code"');
+    expect(html).toContain('aria-label="Room code A B C 2 3 4. Tap to copy."');
+    expect((html.match(/ABC 234/g) || []).length).toBe(1);
+    expect(html).not.toContain('Tap to copy</span>');
+    expect(html).not.toContain('is-copied'); // "Copied" only after a tap
     expect(html).toContain("Ravi&#x27;s table");
     expect(html).toContain('chip');
   });

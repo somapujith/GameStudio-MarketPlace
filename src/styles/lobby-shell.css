@@ -179,13 +179,13 @@
   align-self: center;
 }
 
-/* ---------- hero: the lit table ---------- */
+/* ---------- hero: the lit table (title, status, then a small code chip) ---------- */
 .ls-hero {
   position: relative;
   isolation: isolate;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
+  gap: 12px;
   padding: 18px;
   overflow: hidden;
   background: linear-gradient(160deg, color-mix(in srgb, var(--g-accent, var(--hub-brand)) 16%, var(--hub-surface)), var(--hub-surface) 70%);
@@ -253,35 +253,53 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ls-hero__chip {
+.ls-hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  max-width: 100%;
   min-width: 0;
   margin-top: 8px;
 }
+.ls-hero__chip {
+  min-width: 0;
+}
+.ls-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 
-/* the room code: signage letters, tap to copy */
+/* the room code as a compact chip ("Code ABC 234" + copy icon): the big code lives in the invite ticket */
 .ls-code {
-  position: relative;
-  display: grid;
-  justify-items: center;
-  gap: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   min-height: 44px;
-  padding: 12px 14px 10px;
+  padding: 0 14px 0 14px;
   font: inherit;
   cursor: pointer;
-  color: var(--g-accent, var(--hub-gold));
-  background: var(--g-bg, var(--hub-surface-3));
+  color: var(--hub-text);
+  background: color-mix(in srgb, var(--g-accent, var(--hub-brand)) 14%, var(--hub-surface-3));
   border: 1px solid var(--g-line, var(--hub-line-2));
-  border-radius: 20px;
-  box-shadow:
-    inset 0 0 0 4px rgba(var(--hub-shadow-rgb), 0.35),
-    inset 0 1px 0 rgba(var(--hub-tint), 0.12),
-    0 14px 26px -16px var(--g-glow-strong, transparent);
+  border-radius: 999px;
   transition:
     transform var(--dur-1) var(--ease-out),
-    border-color var(--dur-2) var(--ease-out);
+    border-color var(--dur-2) var(--ease-out),
+    background-color var(--dur-2) var(--ease-out),
+    color var(--dur-2) var(--ease-out);
 }
 .ls-code:active {
-  transform: scale(0.985);
+  transform: scale(0.97);
+}
+.ls-code:focus-visible {
+  outline: 3px solid var(--hub-focus);
+  outline-offset: 2px;
 }
 @media (hover: hover) and (pointer: fine) {
   .ls-code:hover {
@@ -291,47 +309,57 @@
 .ls-code__label {
   font-size: var(--st-t-xs);
   font-weight: 800;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--hub-on-media);
-  opacity: 0.7;
+  color: var(--hub-dim);
 }
 .ls-code__text {
   font-family: var(--font-hub-display);
-  font-size: clamp(2.3rem, 12.5vw, 3.4rem);
+  font-size: 1.1rem;
   font-weight: 800;
   line-height: 1;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   white-space: nowrap;
-  text-shadow:
-    0 0 14px var(--g-glow-strong, transparent),
-    0 0 34px var(--g-glow, transparent);
-  user-select: all;
+  color: color-mix(in srgb, var(--g-accent, var(--hub-brand)) var(--hub-ink-mix, 60%), var(--hub-text));
 }
-.ls-code__copy {
+.ls-code__icon {
+  display: inline-flex;
+  color: var(--hub-dim);
+}
+.ls-code__svg {
+  animation: ls-pop var(--dur-2) var(--ease-out) backwards;
+}
+.ls-code:not(.is-copied) .ls-code__svg {
+  animation: none;
+}
+.ls-code__done {
   font-size: var(--st-t-xs);
-  font-weight: 700;
-  color: var(--hub-on-media);
-  opacity: 0.7;
+  font-weight: 800;
+  animation: ls-fade var(--dur-2) var(--ease-out) backwards;
 }
-.ls-code.is-copied .ls-code__copy {
+.ls-code.is-copied {
   color: var(--hub-good);
-  opacity: 1;
+  border-color: rgba(var(--hub-good-rgb), 0.5);
+}
+.ls-code.is-copied .ls-code__icon,
+.ls-code.is-copied .ls-code__text {
+  color: var(--hub-good);
+}
+@media (max-width: 719px) {
+  .ls-hero {
+    padding: 14px 16px;
+    gap: 12px;
+  }
 }
 @media (min-width: 720px) {
   .ls-hero {
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    padding: 24px 28px;
+    padding: 20px 28px;
   }
   .ls-hero__art {
     inset: 0 0 0 40%;
     opacity: 0.5;
     -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 48%);
     mask-image: linear-gradient(90deg, transparent 0%, #000 48%);
-  }
-  .ls-code__text {
-    font-size: clamp(2.4rem, 4.2vw, 3.4rem);
   }
 }
 
@@ -501,6 +529,12 @@
     opacity: 0;
   }
 }
+@keyframes ls-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
 @keyframes ls-glow {
   from {
     opacity: 0;
@@ -524,8 +558,12 @@
     animation: ls-fade var(--dur-2) linear backwards;
     animation-delay: 0ms;
   }
-  .ls-hero__glow {
+  .ls-hero__glow,
+  .ls-code__svg {
     animation: none;
+  }
+  .ls-code:active {
+    transform: none;
   }
   .ls-start__ring {
     display: none;
@@ -535,8 +573,11 @@
   animation: ls-fade var(--dur-2) linear backwards;
   animation-delay: 0ms;
 }
-:root[data-motion='reduced'] .ls-hero__glow {
+:root[data-motion='reduced'] :is(.ls-hero__glow, .ls-code__svg) {
   animation: none;
+}
+:root[data-motion='reduced'] .ls-code:active {
+  transform: none;
 }
 :root[data-motion='reduced'] .ls-start__ring {
   display: none;
