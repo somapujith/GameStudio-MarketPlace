@@ -172,9 +172,6 @@
   --lo-d: calc(var(--d, 0ms) + 220ms);
   justify-content: flex-start;
 }
-.mo-over-rest li.is-legend {
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rarity-legendary) 40%, transparent);
-}
 
 /* profile header: under the title */
 .xp-pro__loadout {

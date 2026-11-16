@@ -6,6 +6,8 @@
 // lobby are always there and large (online, the gold button is "Play again with everyone": the same table settings, the
 // same friends invited, and an "Add as friends" list of the other players); "Share result" copies a one-line summary. A resigned / bankrupt viewer gets the right
 // wording ("You resigned before the end" / "You went bankrupt before the end").
+// Everybody's equipped look shows next to their result: frame, title and the dice / trail / board chips (Loadout), read with
+// cosmeticsOf so a player who already left keeps theirs; a legendary frame / title / item gives the winner a soft gold rim.
 // Accessible: a modal dialog with a focus trap (ui/Sheet), the headline sits in an aria-live region, the animated digits
 // are aria-hidden next to a hidden copy of the final number.
 import '@/styles/sheets.css';
@@ -16,9 +18,10 @@ import { wordsOf } from '@/lib/mapWords.js';
 import Sheet from './ui/Sheet.jsx';
 import Button from './ui/Button.jsx';
 import Icon from './ui/Icon.jsx';
-import PlayerToken, { cosmeticsOf } from './ui/PlayerToken.jsx';
+import PlayerToken, { artPart, cosmeticsOf } from './ui/PlayerToken.jsx';
 import { ordinal, useHeld, worthParts } from './ui/helpers.js';
 import AutoMascot from '@/components/art/AutoMascot.jsx';
+import Loadout, { hasLegendary, loadoutItems } from '@/components/art/Loadout.jsx';
 import { compactTarget, targetOf } from './turn/target.js';
 import PlayAgain, { PostGameFriends } from '@/components/online/PlayAgain.jsx';
 import { gameName, gameOf } from '@/components/online/games.js';
@@ -136,8 +139,10 @@ export default function GameOverModal({ session, onExit }) {
       .map((r) => {
         const p = players.find((x) => same(x.id, r.id)) || {};
         const parts = view ? worthParts(view, p.id ?? r.id) : null;
-        return { ...r, color: p.color, piece: p.piece, avatar: r.avatar ?? p.avatar, bankrupt: !!p.bankrupt, parts, frame: cosmeticsOf(session, { ...p, id: p.id ?? r.id })?.frame };
+        const cos = cosmeticsOf(session, { ...p, id: p.id ?? r.id }) || {};
+        return { ...r, color: p.color, piece: p.piece, avatar: r.avatar ?? p.avatar, bankrupt: !!p.bankrupt, parts, cos, frame: cos.frame, title: cos.title, legend: hasLegendary(cos), chips: loadoutItems(cos).length };
       });
+    const TitleChip = rows.some((r) => r.title) ? artPart('TitleChip') : null; // looked up by name: a strict art mock may not have it
     const meRow = rows.find((r) => same(r.id, session.me));
     const rank = result.me?.rank ?? meRow?.rank ?? rows.length;
     won = !!(result.me?.won ?? rank === 1);
@@ -182,13 +187,15 @@ export default function GameOverModal({ session, onExit }) {
 
         <ol className={`mo-podium n${podium.length}`} aria-label="Final standings by net worth">
           {podium.map((r) => (
-            <li key={r.id} className={`mo-pod p${r.rank}${same(r.id, session.me) ? ' is-me' : ''}`} style={{ '--pc': r.color, '--bd': `${stepDelay(r.rank)}ms`, '--wd': `${stepDelay(r.rank) + 340}ms` }}>
+            <li key={r.id} className={`mo-pod p${r.rank}${same(r.id, session.me) ? ' is-me' : ''}${r.rank === 1 && r.legend ? ' is-legend' : ''}`} style={{ '--pc': r.color, '--bd': `${stepDelay(r.rank)}ms`, '--wd': `${stepDelay(r.rank) + 340}ms` }}>
               <span className="mo-pod__who">
                 <span className="mo-pod__av">
                   {r.rank === 1 ? <Icon name="crown" size={24} className="mo-pod__crown" /> : null}
                   <PlayerToken player={r} size={r.rank === 1 ? 60 : 48} ring={false} frame={r.frame} />
                 </span>
                 <b className="mo-pod__name">{r.name}</b>
+                {TitleChip && r.title ? <span className="mo-pod__title"><TitleChip title={r.title} size={r.rank === 1 ? 'md' : 'sm'} /></span> : null}
+                <Loadout cosmetics={r.cos} variant="row" size={r.rank === 1 ? 24 : 20} />
                 <span className="mo-pod__worth"><CountUp value={r.worth} format={compactINR} delay={stepDelay(r.rank) + 420} duration={900} skip={skipped} /></span>
                 {r.parts ? (
                   <span className="mo-pod__split" aria-label={`Cash ${formatINR(r.parts.cash)}, districts ${formatINR(r.parts.districts)}, upgrades ${formatINR(r.parts.upgrades)}`}>
@@ -211,8 +218,16 @@ export default function GameOverModal({ session, onExit }) {
             {rest.map((r, i) => (
               <li key={r.id} className={same(r.id, session.me) ? 'is-me' : ''} style={{ '--d': `${2500 + i * 100}ms` }}>
                 <span className="mo-over-rank">{r.rank}</span>
-                <PlayerToken player={r} size={28} />
-                <b>{r.name}{r.bankrupt ? <small> bankrupt</small> : null}</b>
+                <PlayerToken player={r} size={r.frame ? 34 : 28} frame={r.frame} />
+                <span className="lo-rest__who">
+                  <b>{r.name}{r.bankrupt ? <small> bankrupt</small> : null}</b>
+                  {r.title || r.chips ? (
+                    <span className="lo-rest__cos">
+                      {TitleChip && r.title ? <TitleChip title={r.title} size="sm" /> : null}
+                      <Loadout cosmetics={r.cos} variant="chips" size={16} />
+                    </span>
+                  ) : null}
+                </span>
                 <span>{formatINR(r.worth)}</span>
               </li>
             ))}
