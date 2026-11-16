@@ -1,5 +1,6 @@
 import { Avatar } from '@/components/art/index.js';
 import { AvatarFrame, PieceArt, TitleChip } from '@/platform/game/art.jsx';
+import Loadout from '@/components/art/Loadout.jsx';
 import SignalBars from '@/components/game/ui/SignalBars.jsx';
 import { signalOf } from '@/components/game/ui/signalModel.js';
 import { useNetStats } from '@/lib/netStats.js';
@@ -61,9 +62,10 @@ export default function Seat({ player, piece = null, piecesOn = false, isHost, i
         )}
         {cos.title && (
           <span className="lt-seat__title">
-            <TitleChip title={cos.title} />
+            <TitleChip title={cos.title} size="sm" />
           </span>
         )}
+        <Loadout cosmetics={cos} variant="chips" className="lt-seat__loadout" />
         <span className="lt-seat__tags">
           {isHost && (
             <span className="lt-tag lt-tag--host" title="Host">

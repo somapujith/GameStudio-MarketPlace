@@ -10,6 +10,7 @@ import { useToast } from '@/components/shell/Toast.jsx';
 import { useAccount, useDaily } from '@/components/shell/hooks.js';
 import { useProfile } from '@/components/shell/stores.js';
 import { cleanEquipped } from '@shared/cosmetics.js';
+import Loadout from '@/components/art/Loadout.jsx';
 import Ava, { Title } from './Ava.jsx';
 import { useCountUp } from './useApi.js';
 import { useAccountProgress } from './accountProgress.js';
@@ -142,6 +143,7 @@ export default function ProfileHeader() {
             {name}
           </h2>
           {equipped.title && <Title title={equipped.title} size="md" className="xp-pro__title" />}
+          <Loadout cosmetics={equipped} variant="chips" size={20} className="xp-pro__loadout" />
           <p className="xp-pro__xp">
             {li.into >= li.need ? (
               <>

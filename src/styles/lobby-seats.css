@@ -207,6 +207,10 @@
   overflow: hidden;
   font-size: 0.7rem;
 }
+/* the loadout chips (dice / trail / board, components/art/Loadout.jsx): one row, never wider than the seat; none equipped = no box at all */
+.lt-seat__loadout {
+  flex-wrap: nowrap; /* three 26px chips + gaps = 86px, inside the 104px seat; the glow of a legendary ring must not be clipped */
+}
 .lt-seat__tags {
   display: flex;
   flex-wrap: wrap;
@@ -481,6 +485,15 @@ button.lt-seat__invite:active .lt-seat__slot svg {
     /* 7-8 seats: the seat box is shorter, so the piece-name line is dropped (the badge and its screen-reader text stay) */
     .lt__table[data-n='7'] .lt-seat__pieceline,
     .lt__table[data-n='8'] .lt-seat__pieceline {
+      display: none;
+    }
+    /* 7-8 seats: tighter stack and at most two loadout chips (the seat box is 104 x 96) */
+    .lt__table[data-n='7'] .lt-seat,
+    .lt__table[data-n='8'] .lt-seat {
+      gap: 4px;
+    }
+    .lt__table[data-n='7'] .lt-seat__loadout .lo-chip:nth-of-type(n + 3),
+    .lt__table[data-n='8'] .lt-seat__loadout .lo-chip:nth-of-type(n + 3) {
       display: none;
     }
   }

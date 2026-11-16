@@ -128,7 +128,17 @@ describe('equipped cosmetics on friend rows', () => {
     expect(d.friends.find((f) => f.id === 'b').equipped).toEqual({});
     expect(cosmeticsOf(a).frame.name).toBe('Nizam Gold');
     expect(cosmeticsOf(a).title.name).toBe('Chai Connoisseur');
-    expect(cosmeticsOf(null)).toEqual({ frame: null, title: null });
+    expect(cosmeticsOf(null)).toEqual({ frame: null, title: null, dice: null, trail: null, board: null });
+  });
+  it('cosmeticsOf also returns the dice skin, pawn trail and board theme', () => {
+    const d = normalizeFriends({ friends: [{ id: 'a', equipped: { frame: 'frame-lake', dice: 'dice-gold', trail: 'trail-flame', board: 'board-marble', title: 'title-chai' } }] });
+    const a = d.friends[0];
+    expect(a.equipped).toEqual({ frame: 'frame-lake', dice: 'dice-gold', trail: 'trail-flame', board: 'board-marble', title: 'title-chai' });
+    const c = cosmeticsOf(a);
+    expect([c.frame.name, c.title.name]).toEqual(['Hussain Sagar', 'Chai Connoisseur']);
+    expect([c.dice.name, c.trail.name, c.board.name]).toEqual(['Solid Gold', 'Dragon Flame', 'Royal Marble']);
+    // a wrong-kind id in a slot is dropped, never shown in another
+    expect(cosmeticsOf({ equipped: { dice: 'trail-flame', board: 'nope' } })).toEqual({ frame: null, title: null, dice: null, trail: null, board: null });
   });
   it('a live friend_accepted without equipped keeps the known cosmetics', () => {
     const d = normalizeFriends({ friends: [{ id: '1', name: 'Amy', equipped: { frame: 'frame-lake' } }] });

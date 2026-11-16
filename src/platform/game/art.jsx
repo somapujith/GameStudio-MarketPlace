@@ -66,8 +66,8 @@ export function AvatarFrame(props) {
   return ArtFrame ? <ArtFrame {...props} /> : <FallbackFrame {...props} />;
 }
 
-/** `TitleChip({ title })`: the equipped title under a name (nothing when none). */
-export function TitleChip({ title }) {
+/** `TitleChip({ title, size })`: the equipped title under a name (nothing when none); `size` is 'sm' | 'md' (the kit's default). */
+export function TitleChip({ title, size }) {
   if (!title) return null;
-  return ArtTitle ? <ArtTitle title={title} /> : <FallbackTitle title={title} />;
+  return ArtTitle ? <ArtTitle title={title} size={size} /> : <FallbackTitle title={title} />;
 }

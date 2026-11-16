@@ -1,6 +1,6 @@
 // Pure state transitions for the Friends page (optimistic updates + live socket events) and the invites inbox. Unit-tested.
 // data = { friends: [...], incoming: [...], outgoing: [...] },
-// each entry { id, name, avatar, friendCode, online, status, code?, gameId?, level, equipped: { frame?, dice?, title? } }
+// each entry { id, name, avatar, friendCode, online, status, code?, gameId?, level, equipped: { frame?, dice?, trail?, board?, title? } }
 // (`status`: 'offline' | 'online' | 'lobby' | 'playing'; `code` only for an open lobby you can join; `gameId` in a room).
 import { cleanEquipped, cosmeticById } from '@shared/cosmetics.js';
 import { parseFriendLink } from './codes.js';
@@ -187,10 +187,11 @@ export const isEmpty = (data) => !data.friends.length && !data.incoming.length &
 
 // ---------------------------------------------------------------- cosmetics on a person
 
-/** `{ frame, title }` catalogue items (or null) for anyone with an `equipped` object. */
+/** `{ frame, title, dice, trail, board }` catalogue items (or null each) for anyone with an `equipped` object. */
 export function cosmeticsOf(person) {
   const eq = cleanEquipped(person && person.equipped);
-  return { frame: eq.frame ? cosmeticById(eq.frame) : null, title: eq.title ? cosmeticById(eq.title) : null };
+  const item = (kind) => (eq[kind] ? cosmeticById(eq[kind]) : null);
+  return { frame: item('frame'), title: item('title'), dice: item('dice'), trail: item('trail'), board: item('board') };
 }
 
 // ---------------------------------------------------------------- invites inbox
