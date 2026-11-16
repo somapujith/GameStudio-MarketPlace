@@ -355,7 +355,7 @@ describe('POST /api/invites', () => {
     expect(res.json).toEqual({ ok: true, delivered: true });
     expect(pushMock).toHaveBeenCalledWith(expect.anything(), FRIEND, {
       t: 'invite',
-      from: { id: ME, name: 'Me', avatar: 3 },
+      from: { id: ME, name: 'Me', avatar: 3, handle: null },
       code: 'ABCD23',
       gameId: 'hyderabad-tycoon',
       gameName: 'Kingpin',
@@ -464,7 +464,7 @@ describe('GET /api/friends/by-code/:friendCode', () => {
     lookup(null);
     let res = await call('/api/friends/by-code/hyd-fr22', { cookie });
     expect(res.status).toBe(200);
-    expect(res.json).toEqual({ user: { id: FRIEND, name: 'Friend', avatar: 3, level: 1, friendCode: 'HYD-FR22', relation: 'none' } });
+    expect(res.json).toEqual({ user: { id: FRIEND, name: 'Friend', avatar: 3, level: 1, friendCode: 'HYD-FR22', handle: null, relation: 'none' } });
     lookup({ user_id: ME, status: 'pending' });
     expect((await call('/api/friends/by-code/HYD-FR22', { cookie })).json.user.relation).toBe('outgoing');
     lookup({ user_id: FRIEND, status: 'pending' });

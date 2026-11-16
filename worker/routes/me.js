@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
 import { query } from '../db.js';
-import { HttpError } from '../db.js';
-import { requireUser, clearSessionCookie, isSecureRequest } from '../auth.js';
+import { HttpError, isUniqueViolation } from '../db.js';
+import { requireUser, requireMember, clearSessionCookie, isSecureRequest } from '../auth.js';
 import { USER_COLUMNS, rowToUser, rowDaily, loadGameStats } from '../users.js';
-import { validateName, parseAvatar } from '../validate.js';
+import { validateName, parseAvatar, validateHandle } from '../validate.js';
 import { limit } from '../ratelimit.js';
 import { readJson } from '../http.js';
 import { istDay, istYesterday, DAILY_BASE, DAILY_STEP, DAILY_CAP, dailyReward } from '../xp.js';
@@ -23,7 +23,19 @@ me.get('/', async (c) => {
   return c.json({ user: rowToUser(rows[0], await loadGameStats(c.env, rows[0].id)) });
 });
 
-// PATCH /api/me { name?, avatar? }
+export const HANDLE_CHANGE_DAYS = 7;
+const DAY_MS = 86_400_000;
+
+/** Whole days (rounded up) until a handle may be changed again; 0 when allowed. First claim is always free. */
+export function handleCooldownDays(user, now = Date.now()) {
+  if (!user || !user.handle || !user.handle_changed_at) return 0;
+  const left = new Date(user.handle_changed_at).getTime() + HANDLE_CHANGE_DAYS * DAY_MS - now;
+  return left > 0 ? Math.ceil(left / DAY_MS) : 0;
+}
+
+// PATCH /api/me { name?, avatar?, handle? }
+// handle: members only, 3-20 [a-z0-9_] (see validateHandle); 409 when taken; a claimed handle can be
+// changed once per 7 days (429 with the days left). Re-sending your current handle is a no-op.
 me.patch('/', requireUser, limit('me-patch', 30, 60), async (c) => {
   const body = await readJson(c);
   const sets = [];
@@ -40,11 +52,38 @@ me.patch('/', requireUser, limit('me-patch', 30, 60), async (c) => {
     params.push(a);
     sets.push(`avatar = $${params.length}`);
   }
+  if (body.handle !== undefined) {
+    const user = c.get('user');
+    if (user.is_guest) throw new HttpError(403, 'Sign in with Google to pick a username.');
+    const v = validateHandle(body.handle);
+    if (!v.ok) throw new HttpError(400, v.error);
+    if (String(user.handle || '').toLowerCase() !== v.value) {
+      const days = handleCooldownDays(user);
+      if (days) throw new HttpError(429, `You can change your username again in ${days} day${days === 1 ? '' : 's'}.`);
+      params.push(v.value);
+      sets.push(`handle = $${params.length}`, 'handle_changed_at = now()');
+    }
+  }
   const stats = await loadGameStats(c.env, c.get('user').id);
   if (!sets.length) return c.json({ user: rowToUser(c.get('user'), stats) });
   // `sets` only ever contains the fixed fragments built above; values are bound parameters.
-  const rows = await query(c.env, `UPDATE users SET ${sets.join(', ')} WHERE id = $1 RETURNING ${USER_COLUMNS}`, params);
+  let rows;
+  try {
+    rows = await query(c.env, `UPDATE users SET ${sets.join(', ')} WHERE id = $1 RETURNING ${USER_COLUMNS}`, params);
+  } catch (err) {
+    if (isUniqueViolation(err, 'handle')) throw new HttpError(409, 'That handle is taken.');
+    throw err;
+  }
   return c.json({ user: rowToUser(rows[0], stats) });
+});
+
+// GET /api/me/handle-available?h= -> { available, reason?: 'invalid'|'taken'|'reserved' }  (members only)
+// Advisory only: the PATCH is the source of truth (the unique index decides races). Your own handle counts as available.
+me.get('/handle-available', requireMember, limit('handle-available', 60, 60), async (c) => {
+  const v = validateHandle(c.req.query('h') || '');
+  if (!v.ok) return c.json({ available: false, reason: v.reason });
+  const rows = await query(c.env, 'SELECT 1 AS taken FROM users WHERE lower(handle) = $1 AND id <> $2 LIMIT 1', [v.value, c.get('user').id]);
+  return c.json(rows.length ? { available: false, reason: 'taken' } : { available: true });
 });
 
 // One atomic statement: only matches when today's (IST) reward has not been claimed yet, so a

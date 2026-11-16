@@ -5,7 +5,7 @@ import { cleanEquipped } from '../shared/cosmetics.js';
 
 // last_daily is returned as 'YYYY-MM-DD' text (never a driver-parsed Date, so no timezone drift).
 export const USER_COLUMNS =
-  'id, google_sub, email, name, avatar, friend_code, is_guest, xp, coins, level, games, wins, best_worth, rent_earned, created_at, last_seen, ' +
+  'id, google_sub, email, name, avatar, friend_code, handle, handle_changed_at, is_guest, xp, coins, level, games, wins, best_worth, rent_earned, created_at, last_seen, ' +
   "daily_streak, to_char(last_daily, 'YYYY-MM-DD') AS last_daily, equipped";
 
 /** users.equipped (jsonb) -> `{ frame?, dice?, title? }` with unknown ids dropped. */
@@ -57,6 +57,8 @@ export function rowToUser(r, gameStats, now = Date.now()) {
     name: r.name,
     avatar: r.avatar,
     friendCode: r.friend_code,
+    handle: r.handle || null,
+    handleChangedAt: r.handle_changed_at ? new Date(r.handle_changed_at).toISOString() : null,
     isGuest: !!r.is_guest,
     // When the account was created (ISO). The first-run tours use it to tell a new player from a returning one.
     createdAt: r.created_at ? new Date(r.created_at).toISOString() : null,
@@ -83,6 +85,7 @@ export function rowToFriend(r, online = false) {
     name: r.name,
     avatar: r.avatar,
     friendCode: r.friend_code,
+    handle: r.handle || null,
     online,
     level: levelFromXp(r.xp),
     equipped: rowEquipped(r),
@@ -99,5 +102,11 @@ export async function getUserByFriendCode(env, code) {
   return rows[0] || null;
 }
 
-/** `{id,name,avatar}` – the small identity blob pushed over sockets. */
-export const identity = (r) => ({ id: r.id, name: r.name, avatar: r.avatar });
+/** `{id,name,avatar,handle|null}` – the small identity blob pushed over sockets. */
+export const identity = (r) => ({ id: r.id, name: r.name, avatar: r.avatar, handle: r.handle || null });
+
+/** Lookup by (already normalised, lowercase) handle. */
+export async function getUserByHandle(env, handle) {
+  const rows = await query(env, `SELECT ${USER_COLUMNS} FROM users WHERE lower(handle) = $1`, [handle]);
+  return rows[0] || null;
+}

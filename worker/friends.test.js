@@ -100,7 +100,7 @@ describe('POST /api/friends/request { userId }', () => {
     expect(res.json.ok).toBe(true);
     expect(res.json.status).toBe('pending');
     expect(res.json.friend.id).toBe(FRIEND);
-    expect(pushMock).toHaveBeenCalledWith(expect.anything(), FRIEND, { t: 'friend_request', from: { id: ME, name: 'Me', avatar: 3 } });
+    expect(pushMock).toHaveBeenCalledWith(expect.anything(), FRIEND, { t: 'friend_request', from: { id: ME, name: 'Me', avatar: 3, handle: null } });
   });
 
   it('auto-accepts when they already asked me, and pushes friend_accepted', async () => {
@@ -108,7 +108,7 @@ describe('POST /api/friends/request { userId }', () => {
     const res = await call('/api/friends/request', { method: 'POST', body: { userId: FRIEND } });
     expect(res.status).toBe(200);
     expect(res.json.status).toBe('accepted');
-    expect(pushMock).toHaveBeenCalledWith(expect.anything(), FRIEND, { t: 'friend_accepted', by: { id: ME, name: 'Me', avatar: 3 } });
+    expect(pushMock).toHaveBeenCalledWith(expect.anything(), FRIEND, { t: 'friend_accepted', by: { id: ME, name: 'Me', avatar: 3, handle: null } });
   });
 
   it('is idempotent: an existing row reports its status and pushes nothing', async () => {
@@ -180,7 +180,7 @@ describe('GET /api/friends/search', () => {
       ['Ankit', 'outgoing'],
       ['Anya', 'incoming'],
     ]);
-    expect(res.json.results[0]).toEqual({ id: A, name: 'Anna', avatar: 3, level: expect.any(Number), equipped: {}, relation: 'none' });
+    expect(res.json.results[0]).toEqual({ id: A, name: 'Anna', avatar: 3, handle: null, level: expect.any(Number), equipped: {}, relation: 'none' });
   });
 
   it('never leaks email, google_sub or friend_code', async () => {
@@ -188,14 +188,14 @@ describe('GET /api/friends/search', () => {
     const res = await call('/api/friends/search?q=fri');
     const text = JSON.stringify(res.json);
     expect(text).not.toMatch(/secret|sub-secret|HYD-|friendCode|friend_code|email|google/i);
-    expect(Object.keys(res.json.results[0]).sort()).toEqual(['avatar', 'equipped', 'id', 'level', 'name', 'relation']);
+    expect(Object.keys(res.json.results[0]).sort()).toEqual(['avatar', 'equipped', 'handle', 'id', 'level', 'name', 'relation']);
   });
 
   it('passes the term as a parameter with LIKE wildcards escaped; members only, never me, max 8', async () => {
     found();
     await call(`/api/friends/search?q=${encodeURIComponent(' 50%_off\\x ')}`);
     const q = searchSql();
-    expect(q.params).toEqual([ME, '%50\\%\\_off\\\\x%', '50\\%\\_off\\\\x%']);
+    expect(q.params).toEqual([ME, '%50\\%\\_off\\\\x%', '50\\%\\_off\\\\x%', '50\\%\\_off\\\\x%', '50%_off\\x']);
     expect(q.text).not.toMatch(/off/); // nothing interpolated
     expect(q.text).toMatch(/is_guest = false/);
     expect(q.text).toMatch(/u\.id <> \$1/);
@@ -226,7 +226,7 @@ describe('GET /api/friends/recent', () => {
     installDb((text) => (/FROM match_players mine/.test(text) ? [{ ...userRow(FRIEND), last_played: new Date() }] : undefined));
     const res = await call('/api/friends/recent');
     expect(res.status).toBe(200);
-    expect(res.json.players).toEqual([{ id: FRIEND, name: 'Friend', avatar: 3, level: expect.any(Number), equipped: {}, relation: 'none' }]);
+    expect(res.json.players).toEqual([{ id: FRIEND, name: 'Friend', avatar: 3, handle: null, level: expect.any(Number), equipped: {}, relation: 'none' }]);
     expect(JSON.stringify(res.json)).not.toMatch(/secret|HYD-|friend_code/i);
   });
 
@@ -252,7 +252,7 @@ describe('DELETE /api/friends/:userId', () => {
     installDb((text) => (/DELETE FROM friendships/.test(text) ? [{ ok: 1 }] : undefined));
     const res = await call(`/api/friends/${FRIEND}`, { method: 'DELETE' });
     expect(res).toEqual({ status: 200, json: { ok: true } });
-    expect(pushMock).toHaveBeenCalledWith(expect.anything(), FRIEND, { t: 'friend_removed', by: { id: ME, name: 'Me', avatar: 3 } });
+    expect(pushMock).toHaveBeenCalledWith(expect.anything(), FRIEND, { t: 'friend_removed', by: { id: ME, name: 'Me', avatar: 3, handle: null } });
   });
 
   it('stays idempotent and silent when there was nothing to remove', async () => {

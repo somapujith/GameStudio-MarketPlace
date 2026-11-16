@@ -209,3 +209,13 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 
 CREATE INDEX IF NOT EXISTS push_subscriptions_user_idx
   ON push_subscriptions (user_id);
+
+-- handles
+-- Unique @usernames so friends can be found unambiguously. Nullable: existing users stay
+-- null until they claim one (no backfill). Stored lowercase; the index is case-insensitive.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS handle text;
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS handle_changed_at timestamptz;
+
+CREATE UNIQUE INDEX IF NOT EXISTS users_handle_uniq
+  ON users (lower(handle));
