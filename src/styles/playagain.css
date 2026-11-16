@@ -63,6 +63,7 @@
 }
 /* inside the game-over footer the block is one cell of the action row (the game draws the button) */
 .pa-again--over {
+  min-width: 0;
   flex: 1.35 1 0;
 }
 .pa-again--over .hg-btn {

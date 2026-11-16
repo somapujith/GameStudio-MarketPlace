@@ -120,13 +120,12 @@
   font-size: 0.76rem;
 }
 /* three podium columns are ~100px wide on a phone: names would not fit, the ringed art (and the tooltip) says it */
-@media (max-width: 480px) {
-  .mo-pod .lo-chip__name {
-    display: none;
-  }
-  .mo-pod .lo-chip {
-    padding: 2px;
-  }
+/* the sheet is about 410px wide at every window size, so the podium columns are always too narrow for a name: art + tooltip + aria-label only */
+.mo-pod .lo-chip__name {
+  display: none;
+}
+.mo-pod .lo-chip {
+  padding: 2px;
 }
 .mo-pod__title {
   display: inline-flex;

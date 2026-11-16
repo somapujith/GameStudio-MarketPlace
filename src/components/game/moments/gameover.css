@@ -126,6 +126,10 @@
 
 .mo-over-actions { display: flex; flex-wrap: nowrap; gap: 10px; }
 .mo-over-actions .hg-btn { flex: 1 1 0; min-width: 0; min-height: 56px; padding-inline: 12px; white-space: nowrap; }
+/* "Back to lobby" keeps its natural width on one line; the long "Play again with everyone" takes the rest and wraps inside its button
+   (three selectors deep so the load order of playagain.css can never turn the wrapping off again) */
+.mo-over .mo-over-actions .hg-btn--ghost { flex: 0 0 auto; white-space: nowrap; }
+.mo-over .mo-over-actions .hg-btn--gold { white-space: normal; line-height: 1.15; text-wrap: balance; overflow-wrap: anywhere; }
 .mo-over-actions .hg-btn--gold { flex-grow: 1.35; animation: mo-cta 1600ms var(--ease-std) 4000ms 3; }
 @keyframes mo-cta { 0%, 100% { transform: none; } 50% { transform: scale(1.035); } }
 @media (max-width: 440px) {
