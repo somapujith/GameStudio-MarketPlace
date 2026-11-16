@@ -3,7 +3,8 @@
 // on the winner, the reason line and your recap tiles (rent earned, districts, upgrades, best moment) slide in, and the
 // match highlights follow. The winner gets pooled confetti + fireworks (<= 60 pieces, none under reduced motion); everybody else a
 // dignified, calm version of the same screen. Tap anywhere (or "Skip") jumps to the finished screen. Rematch / Back to
-// lobby are always there and large; "Share result" copies a one-line summary. A resigned / bankrupt viewer gets the right
+// lobby are always there and large (online, the gold button is "Play again with everyone": the same table settings, the
+// same friends invited, and an "Add as friends" list of the other players); "Share result" copies a one-line summary. A resigned / bankrupt viewer gets the right
 // wording ("You resigned before the end" / "You went bankrupt before the end").
 // Accessible: a modal dialog with a focus trap (ui/Sheet), the headline sits in an aria-live region, the animated digits
 // are aria-hidden next to a hidden copy of the final number.
@@ -19,6 +20,8 @@ import PlayerToken, { cosmeticsOf } from './ui/PlayerToken.jsx';
 import { ordinal, useHeld, worthParts } from './ui/helpers.js';
 import AutoMascot from '@/components/art/AutoMascot.jsx';
 import { compactTarget, targetOf } from './turn/target.js';
+import PlayAgain, { PostGameFriends } from '@/components/online/PlayAgain.jsx';
+import { gameName, gameOf } from '@/components/online/games.js';
 import Confetti from './moments/Confetti.jsx';
 import CountUp from './moments/CountUp.jsx';
 import { recapTiles, shareText } from './moments/momentsModel.js';
@@ -26,6 +29,13 @@ import './moments/moments.css';
 import './moments/gameover.css';
 
 const same = (a, b) => a != null && b != null && String(a) === String(b);
+
+/** The "Play again with everyone" button drawn as this game's gold button (PlayAgain brings the logic). */
+const renderAgainButton = ({ onClick, label, disabled, busy }) => (
+  <Button variant="gold" size="lg" onClick={onClick} disabled={disabled} aria-busy={busy || undefined} icon={<Icon name="refresh" size={20} />}>
+    {label}
+  </Button>
+);
 
 /** How long the cinematic runs before the finished screen is "settled" (ms). Tap / Skip jumps there. */
 export const OVER_PLAY_MS = 5200;
@@ -240,6 +250,9 @@ export default function GameOverModal({ session, onExit }) {
             </ul>
           </>
         ) : null}
+
+        {/* online only: the other people of this match, one tap to add them as friends (hidden for friends, guests and you) */}
+        {session.room ? <PostGameFriends players={session.room.players} meId={session.me} /> : null}
       </div>
     );
   }
@@ -267,9 +280,13 @@ export default function GameOverModal({ session, onExit }) {
       footer={result ? (
         <div className="mo-over-actions">
           <Button variant="ghost" size="lg" onClick={() => onExit?.()} icon={<Icon name="home" size={20} />}>Back to lobby</Button>
-          <Button variant="gold" size="lg" onClick={() => session.restart?.()} icon={<Icon name="refresh" size={20} />}>
-            Rematch
-          </Button>
+          {session.room ? (
+            <PlayAgain room={session.room} gameId={session.room.gameId} game={gameOf(session.room.gameId)} gameLabel={gameName(session.room.gameId)} showSummary={false} variant="over" renderButton={renderAgainButton} />
+          ) : (
+            <Button variant="gold" size="lg" onClick={() => session.restart?.()} icon={<Icon name="refresh" size={20} />}>
+              Rematch
+            </Button>
+          )}
         </div>
       ) : null}
     >

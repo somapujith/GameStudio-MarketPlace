@@ -151,6 +151,9 @@ export const checkHandle = (handle, opts) => api.get(`/api/me/handle-available?h
 /** POST /api/invites: push an invite to room `code` to a friend (the server adds the game's id and name). */
 export const sendInvite = (code, userId, opts) => api.post('/api/invites', { code, userId }, opts);
 
+/** POST /api/invites/batch (up to 7 friends) -> { results: [{ userId, ok, delivered, error? }] }; non-friends get a per-user error. */
+export const sendInvites = (code, userIds, opts) => api.post('/api/invites/batch', { code, userIds }, opts);
+
 // ---- hub features (contract: docs/HUSTLE_PLAN.md section 4) -----------------------------------
 
 /** GET /api/rooms/mine -> { rooms: [{ code, gameId, status:'lobby'|'playing', players, maxPlayers }] } (signed in). */

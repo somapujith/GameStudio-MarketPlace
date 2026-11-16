@@ -1,7 +1,8 @@
 // Game invites between friends (docs/HUSTLE_PLAN.md section 4).
 //   POST /api/invites { code, userId }  -> { ok: true, delivered }   live push to the friend's /ws/user, a stored
 //                                          row (so an offline friend still sees it) and a Web Push when configured
-//   GET  /api/invites                   -> { invites: [{ id, from:{id,name,avatar}, code, gameId, gameName, createdAt }] }
+//   POST /api/invites/batch { code, userIds:[<=7] } -> { results:[{ userId, ok, delivered, error? }] }   one call for "play again"
+//   GET  /api/invites                 -> { invites: [{ id, from:{id,name,avatar}, code, gameId, gameName, createdAt }] }
 //                                          addressed to me, not dismissed, < 2 h old, room still a lobby, newest first
 //   POST /api/invites/:id/dismiss       -> { ok: true }   (only the recipient; pushes {t:'invite_declined',by,code} to the sender
 //                                          unless the body says {joined:true}: Join consumes the invite, it is not a decline)
@@ -11,7 +12,7 @@ import { requireMember, requireUser } from '../auth.js';
 import { identity } from '../users.js';
 import { normalizeRoomCode } from '../codes.js';
 import { isUuid } from '../validate.js';
-import { limit } from '../ratelimit.js';
+import { allow, limit } from '../ratelimit.js';
 import { readJson } from '../http.js';
 import { pushToUser, roomCall, background } from '../hub.js';
 import { getAdapter, DEFAULT_GAME_ID } from '../games/index.js';
@@ -115,17 +116,82 @@ invites.post('/', requireMember, limit('invite', 30, 60), async (c) => {
   if (data.status !== 'lobby') throw new HttpError(409, 'That game has already started.');
 
   const message = inviteMessage(identity(me), code, data.gameId);
+  const delivered = await deliverInvite(c, me, code, message, body.userId);
+  return c.json({ ok: true, delivered });
+});
+
+/** Store (best effort), push live and Web Push one invite. Resolves whether a live socket received it. */
+async function deliverInvite(c, me, code, message, userId) {
   // Stored so the friend still sees it after a reload or while offline (best effort: the live push matters most).
   try {
-    await query(c.env, STORE_INVITE_SQL, [me.id, body.userId, code, message.gameId]);
+    await query(c.env, STORE_INVITE_SQL, [me.id, userId, code, message.gameId]);
   } catch (err) {
     if (!missingTable(err)) console.error('invite store failed:', err && err.code ? `${err.code} ${err.message}` : err && err.message);
   }
-  const delivered = await pushToUser(c.env, body.userId, message);
+  const delivered = await pushToUser(c.env, userId, message);
   if (pushConfigured(c.env)) {
-    background(c, sendPushToUser(c.env, body.userId, inviteNotification({ fromName: me.name, gameName: message.gameName, code })));
+    background(c, sendPushToUser(c.env, userId, inviteNotification({ fromName: me.name, gameName: message.gameName, code })));
   }
-  return c.json({ ok: true, delivered: delivered > 0 });
+  return delivered > 0;
+}
+
+export const BATCH_MAX = 7;
+
+// Which of `$2` (uuid[]) are accepted friends of `$1`.
+export const FRIENDS_AMONG_SQL = `
+SELECT CASE WHEN user_id = $1::uuid THEN friend_id ELSE user_id END AS id
+  FROM friendships
+ WHERE status = 'accepted'
+   AND ((user_id = $1::uuid AND friend_id = ANY($2::uuid[])) OR (friend_id = $1::uuid AND user_id = ANY($2::uuid[])))`;
+
+// POST /api/invites/batch { code, userIds: [up to 7] } -> { results: [{ userId, ok, delivered, error? }] }
+// The room rules (member of an open lobby) fail the whole call; everything about one target (not a friend, bad id,
+// rate limit, delivery trouble) is that target's own `error`, so one stranger never blocks the rest of the table.
+invites.post('/batch', requireMember, limit('invite-batch', 10, 60), async (c) => {
+  const me = c.get('user');
+  const body = await readJson(c);
+  const code = normalizeRoomCode(body.code);
+  if (!code) throw new HttpError(400, 'Invalid room code.');
+  if (!Array.isArray(body.userIds) || body.userIds.length === 0) throw new HttpError(400, 'Pick at least one friend to invite.');
+  if (body.userIds.length > BATCH_MAX) throw new HttpError(400, `You can invite up to ${BATCH_MAX} friends at once.`);
+
+  const room = await roomCall(c.env, code, `/info?member=${me.id}`);
+  if (room.status !== 200 || !room.data?.exists) throw new HttpError(404, 'That room does not exist.');
+  if (!room.data.isMember) throw new HttpError(403, 'Join the room before inviting friends.');
+  if (room.data.status !== 'lobby') throw new HttpError(409, 'That game has already started.');
+
+  const seen = new Set();
+  const ids = [];
+  for (const raw of body.userIds) {
+    const key = typeof raw === 'string' ? raw.toLowerCase() : '';
+    if (key && seen.has(key)) continue; // the same person twice is one invite
+    seen.add(key);
+    ids.push(raw);
+  }
+  const valid = ids.filter((id) => isUuid(id) && String(id).toLowerCase() !== String(me.id).toLowerCase());
+  let friendIds = new Set();
+  if (valid.length) {
+    const rows = await query(c.env, FRIENDS_AMONG_SQL, [me.id, valid]);
+    friendIds = new Set(rows.map((r) => String(r.id).toLowerCase()));
+  }
+
+  const message = inviteMessage(identity(me), code, room.data.gameId);
+  const results = await Promise.all(
+    ids.map(async (userId) => {
+      if (!isUuid(userId)) return { userId: typeof userId === 'string' ? userId : null, ok: false, delivered: false, error: 'Invalid user id.' };
+      if (String(userId).toLowerCase() === String(me.id).toLowerCase()) return { userId, ok: false, delivered: false, error: 'You cannot invite yourself.' };
+      if (!friendIds.has(String(userId).toLowerCase())) return { userId, ok: false, delivered: false, error: 'You can only invite your friends.' };
+      // the same per-person budget as single invites
+      if (!allow(`invite:${c.get('session')?.uid || me.id}`, 30, 60_000)) return { userId, ok: false, delivered: false, error: 'Too many invites, slow down.' };
+      try {
+        return { userId, ok: true, delivered: await deliverInvite(c, me, code, message, userId) };
+      } catch (err) {
+        console.error('batch invite failed:', err && err.message);
+        return { userId, ok: false, delivered: false, error: 'Could not deliver this invite.' };
+      }
+    }),
+  );
+  return c.json({ results });
 });
 
 // GET /api/invites -> fresh invites addressed to me (guests have no friends, so theirs is always empty).
