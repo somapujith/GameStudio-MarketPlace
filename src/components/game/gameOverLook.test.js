@@ -49,7 +49,7 @@ const sess = (cosmetics, extra = {}) => {
   return { me: 'me', view: v, display: null, options: {}, busy: false, dispatch() {}, result: resultOf(v), cosmetics, ...extra };
 };
 const render = (session) => renderToStaticMarkup(createElement(GameOverModal, { session, onExit() {} }));
-const rest = (html) => html.slice(html.indexOf('mo-over-rest'), html.indexOf('mo-over-rest') + 4000);
+const rest = (html) => html.slice(html.indexOf('mo-over-rest'), html.indexOf('mo-over-actions'));
 
 const LOOK = {
   b1: { frame: 'frame-aurora', title: 'title-kingpin', dice: 'dice-gold', trail: 'trail-flame', board: 'board-goldleaf' },
