@@ -64,7 +64,7 @@ export function resetFriendStore() {
 /** Socket messages that change who my friends are. */
 export function handleFriendEvent(msg) {
   if (!msg || typeof msg !== 'object') return;
-  if (msg.t === 'presence') updateIfLoaded((d) => applyPresence(d, msg.userId, msg.online));
+  if (msg.t === 'presence') updateIfLoaded((d) => applyPresence(d, msg.userId, msg.online, msg));
   else if (msg.t === 'friend_request') {
     updateFriends((d) => addIncoming(d, msg.from));
     loadFriends({ force: true });

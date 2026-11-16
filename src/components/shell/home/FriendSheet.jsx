@@ -6,6 +6,7 @@ import HubIcon from '@/platform/game/HubIcon.jsx';
 import Ava from '@/platform/home/Ava.jsx';
 import Sheet from '@/components/online/Sheet.jsx';
 import InviteToGameSheet from '@/components/online/InviteToGameSheet.jsx';
+import { JoinButton, StatusText, canJoin, statusText } from '@/platform/social/PresenceBits.jsx';
 import Framed from './Framed.jsx';
 
 /**
@@ -21,13 +22,24 @@ export default function FriendSheet({ friend, onClose }) {
   if (inviting) return portal(<InviteToGameSheet friend={friend} onClose={onClose} />);
 
   return portal(
-    <Sheet open title={friend.name} subtitle={friend.online ? 'Online now' : 'Offline · they will see your invite later'} onClose={onClose}>
+    <Sheet open title={friend.name} subtitle={friend.online ? statusText(friend) : 'Offline · they will see your invite later'} onClose={onClose}>
       <div className="xh-fsheet">
         <div className="xh-fsheet__who" aria-hidden="true">
           <Framed frame={friend.equipped?.frame} size={72}>
             <Ava preset={friend.avatar} size={72} dot={friend.online ? 'on' : 'off'} />
           </Framed>
         </div>
+        {canJoin(friend) && (
+          <div className="pr-sheetjoin">
+            <span className="pr-sheetjoin__text">
+              <b>
+                <StatusText friend={friend} />
+              </b>
+              <small>{friend.name} has a table open with a free seat.</small>
+            </span>
+            <JoinButton friend={friend} onBefore={onClose} />
+          </div>
+        )}
         <ul className="xh-fsheet__list">
           <li>
             <button type="button" className="xh-action xh-action--primary" onClick={() => setInviting(true)}>

@@ -185,8 +185,11 @@ export const equipCosmetic = (kind, itemId, opts) => api.post('/api/shop/equip',
 /** GET /api/invites -> { invites: [{ id, from:{ id, name, avatar }, code, gameId, gameName, createdAt }] } (fresh, room still in lobby). */
 export const getInvites = (opts) => api.get('/api/invites', opts);
 
-/** POST /api/invites/:id/dismiss -> { ok: true }. */
-export const dismissInvite = (id, opts) => api.post(`/api/invites/${enc(id)}/dismiss`, {}, opts);
+/**
+ * POST /api/invites/:id/dismiss -> { ok: true }. The sender is told it was declined (`invite_declined`), unless
+ * `opts.joined` is true (the invite is consumed by tapping Join, which is not a decline).
+ */
+export const dismissInvite = (id, { joined, ...opts } = {}) => api.post(`/api/invites/${enc(id)}/dismiss`, joined ? { joined: true } : {}, opts);
 
 /** GET /api/push/key -> { key: string|null } (VAPID public key; null when push is not configured). */
 export const getPushKey = (opts) => api.get('/api/push/key', opts);

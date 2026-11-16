@@ -1,6 +1,7 @@
 // Pure state transitions for the Friends page (optimistic updates + live socket events) and the invites inbox. Unit-tested.
 // data = { friends: [...], incoming: [...], outgoing: [...] },
-// each entry { id, name, avatar, friendCode, online, level, equipped: { frame?, dice?, title? } }.
+// each entry { id, name, avatar, friendCode, online, status, code?, gameId?, level, equipped: { frame?, dice?, title? } }
+// (`status`: 'offline' | 'online' | 'lobby' | 'playing'; `code` only for an open lobby you can join; `gameId` in a room).
 import { cleanEquipped, cosmeticById } from '@shared/cosmetics.js';
 import { parseFriendLink } from './codes.js';
 
@@ -9,13 +10,31 @@ const without = (list, id) => list.filter((x) => !same(x.id, id));
 
 export const emptyFriends = () => ({ friends: [], incoming: [], outgoing: [] });
 
+const STATUSES = ['offline', 'online', 'lobby', 'playing'];
+const CODE_RE = /^[A-Za-z0-9]{4,10}$/;
+
+/**
+ * `{ online, status, code?, gameId? }` from any payload carrying `online` and optionally the richer fields. Old servers
+ * send only `online`; an unknown status, an offline user or a junk code never produce a room.
+ */
+export function presenceOf(p) {
+  const online = !!(p && p.online);
+  if (!online) return { online: false, status: 'offline' };
+  const st = p && STATUSES.includes(p.status) && p.status !== 'offline' ? p.status : 'online';
+  const out = { online: true, status: st };
+  if (st === 'lobby' && typeof p.code === 'string' && CODE_RE.test(p.code)) out.code = p.code;
+  if ((st === 'lobby' || st === 'playing') && typeof p.gameId === 'string' && p.gameId) out.gameId = p.gameId;
+  if (st === 'lobby' && !out.code) out.status = 'online'; // a lobby without a code is not joinable, nothing to show
+  return out;
+}
+
 const clean = (u) => ({
   id: u.id,
   name: typeof u.name === 'string' && u.name ? u.name : 'Player',
   avatar: Number.isInteger(u.avatar) ? u.avatar : 0,
   friendCode: u.friendCode || '',
   handle: parseHandle(u.handle) || null,
-  online: !!u.online,
+  ...presenceOf(u),
   level: Number.isFinite(u.level) ? u.level : 1,
   equipped: cleanEquipped(u.equipped),
 });
@@ -35,9 +54,45 @@ export function normalizeFriends(raw) {
   };
 }
 
-export function applyPresence(data, userId, online) {
+const PRESENCE_KEYS = ['online', 'status', 'code', 'gameId'];
+const samePresence = (a, b) => PRESENCE_KEYS.every((k) => a[k] === b[k]);
+
+/**
+ * A live `presence` message for friend `userId`. `extra` is `{ status, code, gameId }` from the message (omit it for an
+ * old-style `{userId, online}` push). Returns the SAME object when nothing changed.
+ */
+export function applyPresence(data, userId, online, extra) {
   if (!data.friends.some((f) => same(f.id, userId))) return data;
-  return { ...data, friends: sortFriends(data.friends.map((f) => (same(f.id, userId) ? { ...f, online: !!online } : f))) };
+  const next = presenceOf({ ...extra, online });
+  let changed = false;
+  const friends = data.friends.map((f) => {
+    if (!same(f.id, userId)) return f;
+    const { code, gameId, ...rest } = f;
+    const merged = { ...rest, ...next };
+    if (samePresence(f, merged)) return f;
+    changed = true;
+    return merged;
+  });
+  return changed ? { ...data, friends: sortFriends(friends) } : data;
+}
+
+/** The text and join target of a friend's presence: `{ text, tone, code|null }` (tone: 'off' | 'on' | 'lobby' | 'play'). */
+export function statusLine(f, nameOf = (id) => id) {
+  const p = presenceOf(f || {});
+  if (p.status === 'lobby') return { text: 'In a lobby', tone: 'lobby', code: p.code || null };
+  if (p.status === 'playing') return { text: p.gameId ? `Playing ${nameOf(p.gameId)}` : 'Playing', tone: 'play', code: null };
+  if (p.status === 'online') return { text: 'Online', tone: 'on', code: null };
+  return { text: 'Offline', tone: 'off', code: null };
+}
+
+/** `invite_joined` / `invite_declined` for room `code` -> `{ id, state:'joined'|'declined', name, text, tone }`, else null. */
+export function inviteEventResult(msg, code) {
+  if (!msg || (msg.t !== 'invite_joined' && msg.t !== 'invite_declined')) return null;
+  if (!msg.by || msg.by.id == null || !code || msg.code !== code) return null;
+  const name = typeof msg.by.name === 'string' && msg.by.name ? msg.by.name : 'Your friend';
+  return msg.t === 'invite_joined'
+    ? { id: msg.by.id, state: 'joined', name, text: `${name} joined your table`, tone: 'good' }
+    : { id: msg.by.id, state: 'declined', name, text: `${name} declined your invite`, tone: 'info' };
 }
 
 /** Add `user` to friends (deduped) and drop any pending request entries for them. */

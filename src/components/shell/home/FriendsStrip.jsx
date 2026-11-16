@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { paths } from '@/platform/paths.js';
+import { useUserEvents } from '@/lib/auth.jsx';
+import { presenceOf } from '@/components/online/friendsModel.js';
+import { StatusText, statusText } from '@/platform/social/PresenceBits.jsx';
 import HubIcon from '@/platform/game/HubIcon.jsx';
 import Ava from '@/platform/home/Ava.jsx';
 import { useApi, useApiGate } from '@/platform/home/useApi.js';
@@ -39,7 +42,21 @@ export default function FriendsStrip() {
   const { data, reload } = remote;
   // `ready` is false while auth boots and when the API is unreachable (static dev); treat the latter as offline.
   const status = account && !ready && !loading ? 'offline' : remote.status;
-  const friends = Array.isArray(data?.friends) ? data.friends : [];
+  // live presence pushes (online / in a lobby / playing) on top of the loaded list
+  const [live, setLive] = useState({});
+  useUserEvents((msg) => {
+    if (msg && msg.t === 'presence' && msg.userId != null) setLive((m) => ({ ...m, [msg.userId]: presenceOf(msg) }));
+  }, ['presence']);
+  useEffect(() => setLive({}), [data]); // a fresh answer from the server wins over older pushes
+  const loaded = Array.isArray(data?.friends) ? data.friends : [];
+  const friends = useMemo(
+    () =>
+      loaded.map((f) => {
+        const { code, gameId, ...rest } = f;
+        return { ...rest, ...presenceOf(live[f.id] ? live[f.id] : f) };
+      }),
+    [loaded, live],
+  );
   const incoming = Array.isArray(data?.incoming) ? data.incoming.length : 0;
   const sorted = [...friends].sort((a, b) => Number(!!b.online) - Number(!!a.online));
   const online = friends.filter((f) => f.online).length;
@@ -122,13 +139,14 @@ export default function FriendsStrip() {
               type="button"
               className={`hh2-friend xh-friend ${f.online ? 'is-online' : ''}`}
               aria-haspopup="dialog"
-              aria-label={`${f.name}, ${f.online ? 'online' : 'offline'}. Quick actions`}
+              aria-label={`${f.name}, ${statusText(f).toLowerCase()}. Quick actions`}
               onClick={() => setPicked(f)}
             >
               <Framed frame={f.equipped?.frame} size={56}>
                 <Ava preset={f.avatar} size={56} dot={f.online ? 'on' : 'off'} />
               </Framed>
               <span className="hh2-friend__name">{f.name}</span>
+              {(f.status === 'lobby' || f.status === 'playing') && <StatusText friend={f} className="pr-cap" />}
             </button>
           </li>
         ))}

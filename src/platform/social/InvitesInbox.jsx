@@ -79,7 +79,7 @@ export default function InvitesInbox({ meId }) {
                   )}
                 </span>
                 <span className="sc-row__actions">
-                  <Link to={paths.join(inv.code)} className="hub-btn hub-btn--primary hub-btn--sm" onClick={() => dismiss(inv)} tabIndex={leaving ? -1 : undefined}>
+                  <Link to={paths.join(inv.code)} className="hub-btn hub-btn--primary hub-btn--sm" onClick={() => dismiss(inv, { joined: true })} tabIndex={leaving ? -1 : undefined}>
                     Join
                   </Link>
                   <button

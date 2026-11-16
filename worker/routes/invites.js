@@ -3,7 +3,8 @@
 //                                          row (so an offline friend still sees it) and a Web Push when configured
 //   GET  /api/invites                   -> { invites: [{ id, from:{id,name,avatar}, code, gameId, gameName, createdAt }] }
 //                                          addressed to me, not dismissed, < 2 h old, room still a lobby, newest first
-//   POST /api/invites/:id/dismiss       -> { ok: true }   (only the recipient)
+//   POST /api/invites/:id/dismiss       -> { ok: true }   (only the recipient; pushes {t:'invite_declined',by,code} to the sender
+//                                          unless the body says {joined:true}: Join consumes the invite, it is not a decline)
 import { Hono } from 'hono';
 import { query, HttpError } from '../db.js';
 import { requireMember, requireUser } from '../auth.js';
@@ -60,7 +61,12 @@ SELECT i.id, i.room_code, i.game_id, i.created_at, u.id AS from_id, u.name AS fr
  ORDER BY i.created_at DESC
  LIMIT ${INVITES_MAX}`;
 
-export const DISMISS_INVITE_SQL = 'UPDATE invites SET dismissed = true WHERE id = $1::uuid AND to_id = $2::uuid RETURNING id';
+// `was_dismissed` is the state BEFORE this update (CTE snapshot), so a repeated dismiss does not notify the sender again.
+export const DISMISS_INVITE_SQL = `
+WITH prev AS (SELECT dismissed FROM invites WHERE id = $1::uuid AND to_id = $2::uuid)
+UPDATE invites SET dismissed = true
+ WHERE id = $1::uuid AND to_id = $2::uuid
+RETURNING id, from_id, room_code, (SELECT dismissed FROM prev) AS was_dismissed`;
 
 // Housekeeping: my invites that can never be shown again.
 export const DROP_STALE_INVITES_SQL = `DELETE FROM invites
@@ -140,6 +146,8 @@ invites.get('/', requireUser, limit('invites-list', 30, 60), async (c) => {
 invites.post('/:id/dismiss', requireUser, limit('invite-dismiss', 60, 60), async (c) => {
   const id = c.req.param('id');
   if (!isUuid(id)) throw new HttpError(400, 'Invalid invite id.');
+  const body = await c.req.json().catch(() => ({}));
+  const joined = !!body && body.joined === true; // "Join" consumes the invite: that is not a decline
   let rows;
   try {
     rows = await query(c.env, DISMISS_INVITE_SQL, [id, c.get('user').id]);
@@ -148,6 +156,11 @@ invites.post('/:id/dismiss', requireUser, limit('invite-dismiss', 60, 60), async
     throw err;
   }
   if (!rows.length) throw new HttpError(404, 'Invite not found.');
+  // Tell the sender it was declined (best effort, once per invite).
+  const row = rows[0];
+  if (row.from_id && row.room_code && !row.was_dismissed && !joined) {
+    background(c, pushToUser(c.env, row.from_id, { t: 'invite_declined', by: identity(c.get('user')), code: row.room_code }));
+  }
   return c.json({ ok: true });
 });
 

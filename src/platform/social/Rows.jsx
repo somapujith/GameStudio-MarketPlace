@@ -4,6 +4,7 @@ import { canShare } from '@/components/online/clipboard.js';
 import { handleLabel } from '@/components/online/friendsModel.js';
 import SIcon from './SIcon.jsx';
 import '@/styles/handle.css';
+import { JoinButton, StatusText, canJoin, statusText } from './PresenceBits.jsx';
 
 /** Skeleton rows shaped like the people rows (avatar + two lines). `ho-skel-list` is only a marker class. */
 export function RowSkeleton({ n = 3 }) {
@@ -84,7 +85,7 @@ export function SentRequests({ list, busy, onCancel }) {
 
 function FriendRow({ f, leaving, index, room, roomState, busy, onOpen, onInviteRoom, onInvite, onRemove }) {
   const st = room ? roomState(f) : undefined;
-  const done = st === 'sent' || st === 'saved';
+  const done = st === 'sent' || st === 'saved' || st === 'joined' || st === 'declined';
   return (
     <li className={`sc-row sc-friend sc-enter${f.online ? ' is-online' : ''}${leaving ? ' is-leaving' : ''}`} style={{ '--i': index }} aria-hidden={leaving || undefined}>
       <button
@@ -93,7 +94,7 @@ function FriendRow({ f, leaving, index, room, roomState, busy, onOpen, onInviteR
         onClick={() => onOpen(f)}
         disabled={leaving}
         aria-haspopup="dialog"
-        aria-label={`${f.name}, ${f.online ? 'online' : 'offline'}, level ${f.level}. Open actions`}
+        aria-label={`${f.name}, ${statusText(f).toLowerCase()}, level ${f.level}. Open actions`}
       >
         <span className="sc-row__avatar">
           <FriendAvatar person={f} size={46} online={f.online} />
@@ -102,7 +103,7 @@ function FriendRow({ f, leaving, index, room, roomState, busy, onOpen, onInviteR
           <span className="sc-row__name">{f.name}</span>
           {handleLabel(f) && <span className="hd-handle">{handleLabel(f)}</span>}
           <span className="sc-row__sub">
-            <span className={f.online ? 'sc-on' : undefined}>{f.online ? 'Online' : 'Offline'}</span>
+            <StatusText friend={f} />
             <span aria-hidden="true">·</span>
             <span>Lv {f.level}</span>
             <FriendTitle person={f} />
@@ -110,6 +111,7 @@ function FriendRow({ f, leaving, index, room, roomState, busy, onOpen, onInviteR
         </span>
       </button>
       <span className="sc-row__actions">
+        {!room && canJoin(f) && <JoinButton friend={f} disabled={leaving} />}
         {room ? (
           <button
             type="button"
@@ -118,12 +120,12 @@ function FriendRow({ f, leaving, index, room, roomState, busy, onOpen, onInviteR
             disabled={st === 'sending' || done || leaving}
             aria-label={`Invite ${f.name} to room ${room}`}
           >
-            {st === 'sending' ? 'Sending...' : st === 'sent' ? 'Invited' : st === 'saved' ? 'Saved' : 'Invite'}
+            {st === 'sending' ? 'Sending...' : st === 'sent' ? 'Invited' : st === 'saved' ? 'Saved' : st === 'joined' ? 'Joined' : st === 'declined' ? 'Declined' : 'Invite'}
           </button>
         ) : (
           <button
             type="button"
-            className={`hub-btn hub-btn--sm ${f.online ? 'hub-btn--primary' : 'hub-btn--soft'}`}
+            className={`hub-btn hub-btn--sm ${f.online && !canJoin(f) ? 'hub-btn--primary' : 'hub-btn--soft'}`}
             onClick={() => onInvite(f)}
             disabled={leaving}
             title={f.online ? undefined : `${f.name} is offline: they will see the invite when they are back`}
