@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { errorMessage, getMyRooms, getRoom } from '@/lib/api.js';
 import { useAuth } from '@/lib/auth.jsx';
 import { BRAND } from '@/platform/brand.js';
@@ -7,149 +7,61 @@ import { paths } from '@/platform/paths.js';
 import CodeInput from '@/components/online/CodeInput.jsx';
 import { useOnline } from '@/components/online/ConnectionChip.jsx';
 import GameIcon from '@/components/online/GameIcon.jsx';
+import InviteLanding, { InviteSkeleton } from '@/components/online/InviteLanding.jsx';
 import RoomPreview, { RoomPreviewSkeleton } from '@/components/online/RoomPreview.jsx';
-import { isRoomCode, normalizeRoomCode, playerCountOf, roomProblemKind } from '@/components/online/codes.js';
+import { codeFromSearch, isRoomCode, normalizeRoomCode, playerCountOf, roomProblemKind } from '@/components/online/codes.js';
 import { gameName, gameOf } from '@/components/online/games.js';
 import { roomGameId } from '@/components/online/gameRoute.js';
+import { clearJoinDraft, joinProblemCopy, readJoinDraft, writeJoinDraft } from '@/components/online/inviteModel.js';
 import HubIcon from '@/platform/game/HubIcon.jsx';
 import '@/styles/online.css';
 import '@/styles/store-rooms.css';
+import '@/styles/join-code.css';
 
 const JOIN_DELAY = 1400; // ms: long enough to read who and what you are joining, short enough to feel instant
 
-/** Why a code cannot be used: one clear card per reason, each with the way forward. */
-const BLOCKED = {
-  missing: {
-    icon: 'search',
-    title: 'Room not found',
-    body: 'No table has that code. It may be mistyped, or the room closed after everyone left.',
-  },
-  full: {
-    icon: 'users',
-    title: 'This table is full',
-    body: (max) => (max ? `All ${max} seats are taken. Ask the host for the next table, or start your own.` : 'Every seat is taken. Ask the host for the next table, or start your own.'),
-  },
-  playing: { icon: 'clock', title: 'This game has already started', body: 'New players cannot join a match in progress. If you were playing, you can rejoin.' },
-  finished: { icon: 'trophy', title: 'This game has ended', body: 'The match in this room is over. Ask the host for the code of their next table, or check how it went on your profile.' },
-  wrongGame: { icon: 'info', title: 'This game is not in your version', body: 'The table plays a game this version of GameHub does not have. Reload to get the latest, then try the code again.' },
-};
+const PROBLEM_ICON = { missing: 'search', full: 'users', playing: 'clock', finished: 'info', forbidden: 'info', wrongGame: 'info' };
 
+/** Why a code cannot be used: one clear card per reason, with the obvious next action first. */
 function BlockedState({ kind, info, onRejoin, onClear }) {
-  const b = BLOCKED[kind] || BLOCKED.missing;
+  const key = PROBLEM_ICON[kind] ? kind : 'missing';
+  const copy = joinProblemCopy(key, info && info.maxPlayers);
   const gameId = info ? roomGameId(info) : null;
-  const known = !!(gameId && gameOf(gameId));
-  const target = known ? gameId : BRAND.defaultGameId;
-  const body = typeof b.body === 'function' ? b.body(info && info.maxPlayers) : b.body;
+  const target = gameId && gameOf(gameId) ? gameId : BRAND.defaultGameId;
+  // The lookup does not say who is in the room: players already seated can always get back in.
+  const canRejoin = key === 'playing' || key === 'full';
   return (
-    <div className={`sr-blocked sr-blocked--${kind}`} role="alert">
+    <div className={`sr-blocked sr-blocked--${key}`} role="alert">
       <span className="sr-blocked__icon" aria-hidden="true">
-        <HubIcon name={b.icon} size={26} />
+        <HubIcon name={PROBLEM_ICON[key]} size={26} />
       </span>
       <div className="sr-blocked__text">
-        <b>{b.title}</b>
-        <span>{body}</span>
+        <b>{copy.title}</b>
+        <span>{copy.body}</span>
       </div>
       <div className="sr-blocked__actions">
-        {(kind === 'playing' || kind === 'full') && (
-          // The lookup does not say who is in the room: players already seated can always get back in.
+        {canRejoin && (
           <button type="button" className="ho-btn ho-btn--primary" onClick={onRejoin}>
             I was in this game: rejoin
           </button>
         )}
-        {kind === 'wrongGame' && (
+        {key === 'wrongGame' && (
           <button type="button" className="ho-btn ho-btn--primary" onClick={() => window.location.reload()}>
             Reload
           </button>
         )}
-        {kind === 'finished' && (
-          <>
-            {known && (
-              <Link to={paths.game(gameId)} className="ho-btn ho-btn--primary">
-                See the game
-              </Link>
-            )}
-            <Link to={paths.profile()} className="ho-btn ho-btn--ghost">
-              Your profile
-            </Link>
-          </>
+        {key !== 'wrongGame' && (
+          <button type="button" className={`ho-btn ${key === 'missing' ? 'ho-btn--primary' : 'ho-btn--ghost'}`} onClick={onClear}>
+            Try another code
+          </button>
         )}
-        {kind !== 'finished' && kind !== 'wrongGame' && (
-          <Link to={paths.game(target)} className="ho-btn ho-btn--ghost">
+        {key !== 'wrongGame' && (
+          <Link to={paths.game(target)} className={`ho-btn ${key === 'finished' || key === 'forbidden' ? 'ho-btn--primary' : 'ho-btn--ghost'}`}>
             Start your own table
           </Link>
         )}
-        <button type="button" className="ho-btn ho-btn--ghost" onClick={onClear}>
-          Try another code
-        </button>
       </div>
     </div>
-  );
-}
-
-/** Signed-out visitor with a good code: sign in, or take a seat as a guest with just a name. */
-function JoinGate({ code, loginGuest, hostName }) {
-  const [name, setName] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const submit = async (e) => {
-    e.preventDefault();
-    if (busy) return;
-    const clean = name.replace(/\s+/g, ' ').trim();
-    if (!clean) {
-      setError('Pick a name so the table knows who you are.');
-      return;
-    }
-    setBusy(true);
-    setError('');
-    try {
-      await loginGuest(clean);
-      // the session arrives through useAuth: the page then checks the room again and takes the seat
-    } catch (err) {
-      setError(errorMessage(err, 'Could not start a guest session. Try again.'));
-      setBusy(false);
-    }
-  };
-  return (
-    <section className="sr-gate" aria-labelledby="sr-gate-h">
-      <h2 id="sr-gate-h" className="sr-gate__title">
-        One step: who is joining{hostName ? ` ${hostName}` : ''}?
-      </h2>
-      <div className="sr-gate__opts">
-        <div className="sr-gate__opt">
-          <b>Sign in</b>
-          <span>Keep your coins, level and friends.</span>
-          <Link to={paths.login(paths.join(code))} className="ho-btn ho-btn--primary ho-btn--block">
-            Sign in to join
-          </Link>
-        </div>
-        <form className="sr-gate__opt" onSubmit={submit} noValidate>
-          <b>Play as a guest</b>
-          <label className="sr-gate__label" htmlFor="sr-gate-name">
-            Your name at the table
-          </label>
-          <input
-            id="sr-gate-name"
-            className="sr-gate__input"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            maxLength={24}
-            autoComplete="nickname"
-            placeholder="e.g. Asha"
-            aria-invalid={error ? true : undefined}
-            aria-describedby={error ? 'sr-gate-err' : undefined}
-          />
-          {error && (
-            <span id="sr-gate-err" className="sr-gate__error" role="alert">
-              {error}
-            </span>
-          )}
-          <button type="submit" className="ho-btn ho-btn--ghost ho-btn--block" disabled={busy}>
-            {busy ? 'Taking a seat...' : 'Join as guest'}
-          </button>
-        </form>
-      </div>
-      <p className="sr-gate__note">Guests can play but cannot add friends or keep progress between devices.</p>
-    </section>
   );
 }
 
@@ -202,24 +114,32 @@ function MyTables({ user }) {
 }
 
 /**
- * /join and /join/:code. Anyone can look a code up; taking the seat needs a session (Google or guest), so a signed-out
- * visitor is offered both right on the page and carries on by themselves. The code is checked against
- * GET /api/rooms/:code (game, host, seats, settings), then we open the lobby.
+ * /join/:code, /join?code=ABC234 and /join. Anyone can look a code up (GET /api/rooms/:code, no session needed), so
+ * the table is shown and any problem (not found, full, started, closed) is explained BEFORE anyone is asked to sign in.
+ *   - signed in (Google or guest): the table preview, then the lobby opens after a short visible countdown
+ *     (Join now / Cancel);
+ *   - signed out: the "You're invited" card with Google or "play as a guest"; whichever they pick, the page checks the
+ *     room again and goes straight to the lobby (no countdown: they just chose).
+ * Players already in the room may always come back (see roomProblemKind). The code survives a reload (URL, or the
+ * tab's session storage for a typed one).
  */
 export default function JoinRoom() {
   const { code: paramCode } = useParams();
-  const { user, loading, loginGuest } = useAuth();
+  const [search] = useSearchParams();
+  const { user, loading } = useAuth();
   const navigate = useNavigate();
   const online = useOnline();
-  const fromLink = !!paramCode;
-  const [code, setCode] = useState(normalizeRoomCode(paramCode || ''));
+  const queryCode = codeFromSearch(search);
+  const fromLink = !!paramCode || !!queryCode;
+  const [code, setCode] = useState(() => normalizeRoomCode(paramCode || '') || queryCode || readJoinDraft().code);
   // idle | checking | joining (auto-opens the lobby) | held (joining was cancelled) | gate (needs a session) | blocked (`kind`) | error | offline
   const [check, setCheck] = useState({ state: 'idle', message: '', info: null, kind: null });
   const [dropped, setDropped] = useState([]); // look-alike characters just refused (O I 0 1)
-  const [pasteNote, setPasteNote] = useState('');
   const seq = useRef(0);
   const joinTimer = useRef(null);
   const noteTimer = useRef(null);
+  const navigating = useRef(false); // one trip to the lobby, however many taps or timers ask for it
+  const chose = useRef(false); // the visitor was at the invite card: whatever they pick, go straight in
   const myId = user ? user.id : null;
 
   useEffect(
@@ -228,6 +148,22 @@ export default function JoinRoom() {
       clearTimeout(noteTimer.current);
     },
     [],
+  );
+
+  // a different /join/:code in the same page (link opened while on the join page)
+  useEffect(() => {
+    const next = normalizeRoomCode(paramCode || '') || queryCode;
+    if (next) setCode(next);
+  }, [paramCode, queryCode]);
+
+  const enter = useCallback(
+    (c) => {
+      if (navigating.current) return;
+      navigating.current = true;
+      clearJoinDraft();
+      navigate(paths.lobby(c), { replace: fromLink });
+    },
+    [navigate, fromLink],
   );
 
   const verify = useCallback(
@@ -240,29 +176,44 @@ export default function JoinRoom() {
         if (mine !== seq.current) return;
         const kind = roomProblemKind(info, myId);
         if (kind) {
+          chose.current = false;
           setCheck({ state: 'blocked', kind, info });
           return;
         }
         if (!gameOf(roomGameId(info))) {
+          chose.current = false;
           setCheck({ state: 'blocked', kind: 'wrongGame', info });
           return;
         }
         if (!myId) {
+          chose.current = true;
           setCheck({ state: 'gate', info });
+          return;
+        }
+        if (chose.current) {
+          // they just signed in from the invite card: no countdown, straight to the lobby
+          setCheck({ state: 'joining', message: '', info });
+          enter(c);
           return;
         }
         setCheck({ state: 'joining', message: '', info });
         joinTimer.current = setTimeout(() => {
-          if (mine === seq.current) navigate(paths.lobby(c), { replace: fromLink });
+          if (mine === seq.current) enter(c);
         }, JOIN_DELAY);
       } catch (e) {
         if (mine !== seq.current) return;
         if (e && e.status === 404) setCheck({ state: 'blocked', kind: 'missing', info: null });
         else if (e && e.status === 400) setCheck({ state: 'error', message: errorMessage(e, 'That code is not valid.'), info: null });
-        else setCheck({ state: 'offline', message: errorMessage(e, 'Could not reach the server'), info: null });
+        else if (e && (e.status === 401 || e.status === 403)) {
+          // the lookup wants a session: signed out -> the invite card without a preview; signed in -> not allowed
+          if (!myId) {
+            chose.current = true;
+            setCheck({ state: 'gate', info: null });
+          } else setCheck({ state: 'blocked', kind: 'forbidden', info: null });
+        } else setCheck({ state: 'offline', message: errorMessage(e, 'Could not reach the server'), info: null });
       }
     },
-    [myId, navigate, fromLink],
+    [myId, enter],
   );
 
   // stop the auto-join (wrong room, changed my mind): the room stays found, one tap joins it
@@ -274,7 +225,12 @@ export default function JoinRoom() {
   const joinNow = () => {
     seq.current += 1;
     clearTimeout(joinTimer.current);
-    navigate(paths.lobby(code), { replace: fromLink });
+    enter(code);
+  };
+  const resetCode = () => {
+    chose.current = false;
+    setCode('');
+    if (fromLink) navigate(paths.join(), { replace: true });
   };
 
   // check as soon as six valid characters are in (and again once the network or the session is back)
@@ -283,47 +239,57 @@ export default function JoinRoom() {
     if (!isRoomCode(code)) {
       seq.current += 1;
       clearTimeout(joinTimer.current);
+      chose.current = false;
       setCheck({ state: 'idle', message: '', info: null, kind: null });
       return;
     }
     verify(code);
   }, [code, loading, myId, verify, online]);
 
-  const flashNote = (text, set) => {
-    set(text);
-    clearTimeout(noteTimer.current);
-    noteTimer.current = setTimeout(() => set(''), 3200);
-  };
+  // keep the visitor's place across a reload
+  useEffect(() => {
+    if (isRoomCode(code) || code === '') writeJoinDraft({ code });
+  }, [code]);
+
   const onInvalid = (chars) => {
     setDropped(chars);
     clearTimeout(noteTimer.current);
     noteTimer.current = setTimeout(() => setDropped([]), 3200);
   };
-  const canPaste = typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.readText === 'function';
-  const paste = async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      const next = normalizeRoomCode(text);
-      if (next) setCode(next);
-      else flashNote('No room code on the clipboard.', setPasteNote);
-    } catch {
-      flashNote('Paste is blocked here: press and hold in the boxes, then choose Paste.', setPasteNote);
-    }
-  };
 
   const state = check.state;
-  const uiState = state === 'checking' || state === 'joining' ? 'checking' : state === 'error' || state === 'blocked' ? 'error' : state === 'held' || state === 'gate' ? 'ok' : 'idle';
+  const uiState = state === 'checking' ? 'checking' : state === 'error' || state === 'blocked' ? 'error' : state === 'joining' || state === 'held' || state === 'gate' ? 'ok' : 'idle';
   const info = check.info;
   const hostName = info && info.hostName;
   const joiningGame = info ? gameName(roomGameId(info)) : '';
   const statusId = 'sr-join-status';
+
+  // Opened from a link while signed out (or just signed in from the invite card): the invite takes the whole page.
+  const pending = isRoomCode(code) && (loading || state === 'idle' || state === 'checking');
+  const invite = fromLink && (!user || chose.current) && (pending || state === 'gate' || (chose.current && state === 'joining'));
+  if (invite) {
+    return (
+      <div className="hub-page st-scope sr-join jc-join">
+        <header className="sr-join__head st-reveal">
+          <span className="st-eyebrow">Join a table</span>
+          <h1 className="sr-join__title">{state === 'gate' ? "You're invited" : 'Opening your invite'}</h1>
+          <p className="sr-join__lead">{state === 'gate' ? 'Pick how you want to sit down. Either way you land in the lobby.' : 'One moment while we find the table.'}</p>
+        </header>
+        {state === 'gate' ? (
+          <InviteLanding code={code} info={info} onOtherCode={resetCode} />
+        ) : (
+          <InviteSkeleton text={user ? 'Taking you to the lobby...' : 'Opening your invite...'} />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="hub-page st-scope sr-join">
       <header className="sr-join__head st-reveal">
         <span className="st-eyebrow">Join a table</span>
         <h1 className="sr-join__title">Got a code? You are in.</h1>
-        <p className="sr-join__lead">Pop the code in, or paste the invite link, and you are at your friend's table.</p>
+        <p className="sr-join__lead">Type the code, paste it, or paste the invite link, and you are at your friend's table.</p>
       </header>
 
       <section className="sr-ticket st-reveal" style={{ '--i': 1 }} aria-labelledby="sr-join-h">
@@ -343,14 +309,13 @@ export default function JoinRoom() {
         />
 
         <div id={statusId} className="sr-ticket__status" role="status" aria-live="polite">
-          {state === 'idle' && code.length === 0 && !dropped.length && !pasteNote && <span className="sr-muted">Waiting for the code</span>}
+          {state === 'idle' && code.length === 0 && !dropped.length && <span className="sr-muted">Waiting for the code</span>}
           {state === 'idle' && code.length > 0 && !dropped.length && (
             <span className="sr-muted">
               {code.length} of 6 <span aria-hidden="true">·</span> {6 - code.length} more to go
             </span>
           )}
           {dropped.length > 0 && <span className="sr-warn">{dropped.join(', ')} {dropped.length === 1 ? 'is' : 'are'} not used in codes, so we left {dropped.length === 1 ? 'it' : 'them'} out.</span>}
-          {pasteNote && <span className="sr-warn">{pasteNote}</span>}
           {state === 'checking' && !dropped.length && (
             <span className="sr-muted">
               <span className="ho-spinner" aria-hidden="true" /> Looking for the table...
@@ -359,34 +324,21 @@ export default function JoinRoom() {
           {state === 'joining' && !dropped.length && <span className="sr-good">Table found. Taking you in...</span>}
           {state === 'held' && <span className="sr-muted">Table found. Join when you are ready.</span>}
           {state === 'gate' && <span className="sr-good">Table found. One step left.</span>}
-          {state === 'blocked' && <span className="ho-sr">{(BLOCKED[check.kind] || BLOCKED.missing).title}</span>}
+          {state === 'blocked' && <span className="sr-bad" aria-hidden="true">{joinProblemCopy(check.kind, info && info.maxPlayers).title}</span>}
           {state === 'error' && <span className="sr-bad">{check.message}</span>}
           {state === 'offline' && <span className="sr-bad">{online ? check.message : 'You are offline.'}</span>}
-        </div>
-
-        <div className="sr-ticket__tools">
-          {canPaste && code.length < 6 && (
-            <button type="button" className="ho-btn ho-btn--ghost ho-btn--sm" onClick={paste}>
-              <HubIcon name="copy" size={16} /> Paste code
-            </button>
-          )}
-          {code.length > 0 && state !== 'joining' && (
-            <button type="button" className="sr-link" onClick={() => setCode('')}>
-              Clear
-            </button>
-          )}
         </div>
       </section>
 
       {state === 'checking' && <RoomPreviewSkeleton />}
 
-      {(state === 'joining' || state === 'held' || state === 'gate') && info && (
+      {(state === 'joining' || state === 'held') && info && (
         <RoomPreview info={info}>
           {state === 'joining' && (
             <div className="sr-joining" style={{ '--sr-join-ms': `${JOIN_DELAY}ms` }}>
               <span className="sr-joining__text">
                 <span className="ho-spinner" aria-hidden="true" />
-                {hostName ? `Joining ${hostName}'s ${joiningGame} room...` : `Joining the ${joiningGame} room...`}
+                {hostName ? `Taking you to ${hostName}'s ${joiningGame} table...` : `Taking you to the ${joiningGame} table...`}
               </span>
               <span className="sr-joining__actions">
                 <button type="button" className="ho-btn ho-btn--primary ho-btn--sm" onClick={joinNow}>
@@ -403,10 +355,10 @@ export default function JoinRoom() {
             <div className="sr-joining sr-joining--held">
               <span className="sr-joining__actions">
                 <button type="button" className="ho-btn ho-btn--primary" onClick={joinNow}>
-                  <HubIcon name="arrowR" size={18} /> Join room
+                  <HubIcon name="arrowR" size={18} /> Join table
                 </button>
-                <button type="button" className="ho-btn ho-btn--ghost" onClick={() => setCode('')}>
-                  Clear code
+                <button type="button" className="ho-btn ho-btn--ghost" onClick={resetCode}>
+                  Use a different code
                 </button>
               </span>
             </div>
@@ -414,11 +366,11 @@ export default function JoinRoom() {
         </RoomPreview>
       )}
 
-      {state === 'gate' && !user && <JoinGate code={code} loginGuest={loginGuest} hostName={hostName} />}
+      {state === 'gate' && !user && <InviteLanding code={code} info={info} onOtherCode={resetCode} />}
 
       {state === 'blocked' && (
         <>
-          <BlockedState kind={check.kind} info={info} onRejoin={() => navigate(paths.lobby(code))} onClear={() => setCode('')} />
+          <BlockedState kind={check.kind} info={info} onRejoin={() => enter(code)} onClear={resetCode} />
           {info && info.exists !== false && check.kind !== 'missing' && <RoomPreview info={info} tone="blocked" />}
         </>
       )}
@@ -438,8 +390,8 @@ export default function JoinRoom() {
                 Try again
               </button>
             )}
-            <button type="button" className="ho-btn ho-btn--ghost" onClick={() => setCode('')}>
-              Clear code
+            <button type="button" className={`ho-btn ${state === 'offline' ? 'ho-btn--ghost' : 'ho-btn--primary'}`} onClick={resetCode}>
+              Use a different code
             </button>
           </div>
         </div>
