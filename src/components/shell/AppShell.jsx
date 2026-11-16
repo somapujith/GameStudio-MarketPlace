@@ -1,9 +1,10 @@
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { BRAND } from '@/platform/brand.js';
 import { getGame } from '@/games/registry.js';
 import { HubBackdrop } from '@/platform/game/hubArt.jsx';
 import { NoticeSlot } from '@/components/online/InviteBanner.jsx';
+import { useSocialCounts, withSocialBadge } from '@/platform/social/useSocialCounts.js';
 import ErrorBoundary from './ErrorBoundary.jsx';
 import Footer from './Footer.jsx';
 import InstallPrompt from './InstallPrompt.jsx';
@@ -93,7 +94,9 @@ function useRouteFocus(pathname, mainRef) {
 export default function AppShell() {
   const { pathname } = useLocation();
   const mainRef = useRef(null);
-  const badges = useNavBadges();
+  const navBadges = useNavBadges();
+  const social = useSocialCounts();
+  const badges = useMemo(() => withSocialBadge(navBadges, social), [navBadges, social]);
   useGlobalClickSfx();
   useBaseTitle(pathname);
   useRecentGame(pathname);

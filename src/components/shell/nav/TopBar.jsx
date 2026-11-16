@@ -3,6 +3,7 @@ import { BRAND } from '@/platform/brand.js';
 import { paths } from '@/platform/paths.js';
 import { HubLogo } from '@/platform/game/hubArt.jsx';
 import HubIcon from '@/platform/game/HubIcon.jsx';
+import SocialBell from '@/platform/social/SocialBell.jsx';
 import ProfileChip from '../ProfileChip.jsx';
 import CodeSheet from './CodeSheet.jsx';
 import CoinsChip from './CoinsChip.jsx';
@@ -74,6 +75,7 @@ export default function TopBar() {
             <span className="hub-codebtn__short">Code</span>
           </button>
           <CoinsChip />
+          <SocialBell />
           <ProfileChip />
         </div>
       </div>
