@@ -25,6 +25,7 @@ This file is the single spec for the rules, the wire contract (engine, server, c
   (2) Turn start: at the start of your turn, if your hand has room, a chance of `0.06`, raised to `0.15` when your net
   worth is below 0.8 x the average of active players (a soft comeback). Constants live in `shared/powerCards.js` (tuned with `npm run sim`: about 2 cards drawn per player per 10 rounds, most of them from card tiles).
 - **Weights** when drawing: shield 30, double 30, steal 25, swap 15.
+  **Variety:** each draw reweights those by what is already held, so the table is not dealt the same card: a type a rival holds counts x0.45 per rival, a type the drawing player holds x0.2 (`POWER.VARIETY_OTHER` / `VARIETY_OWN`). Still exactly one draw on the card stream, so it stays deterministic. In bot games the share of moments where two players hold the same card fell from 44% to 26%.
 - **Determinism and fairness.** Cards are drawn from a SEPARATE random stream (`state.prng`, created only when the
   rule is on). With the rule off the engine draws nothing extra and every existing seeded game is byte-identical.
   `state.prng` is secret (masked for clients like `rng` and `deck`).

@@ -8,6 +8,7 @@ import {
   netWorth, TILES, ruleField, ruleDefaults, LUCK_CARDS, DRAMA_CARDS,
 } from './index.js';
 import { POWER, POWER_IDS } from './powerCards.js';
+import { pickPowerId } from './engine.js';
 import { ANIM_MS } from './timing.js';
 
 // ---------------------------------------------------------------- helpers
@@ -725,5 +726,70 @@ describe('privacy of the public event stream', () => {
     // power cards do not change net worth by themselves
     const s = mk(3);
     expect(netWorth(edit(s, (c) => { P(c, 'a').hand = [card('shield')]; }), 'a')).toBe(netWorth(s, 'a'));
+  });
+});
+
+describe('variety: the table is not dealt the same card', () => {
+  // pickPowerId(state, player) is a weighted pick with one draw on the Power stream; holdings only reweight it.
+  const share = (s, p, id, n = 4000) => {
+    let hit = 0;
+    for (let i = 0; i < n; i++) {
+      const c = structuredClone(s);
+      c.prng = (i * 2654435761 + 12345) >>> 0;
+      if (pickPowerId(c, p === 'none' ? undefined : P(c, p)) === id) hit++;
+    }
+    return hit / n;
+  };
+
+  it('with nothing held, shield comes up at about its weight (30%)', () => {
+    const s = mk(3);
+    expect(share(s, 'a', 'shield')).toBeGreaterThan(0.26);
+    expect(share(s, 'a', 'shield')).toBeLessThan(0.34);
+  });
+
+  it('a type a rival already holds is dealt less often', () => {
+    const base = mk(3);
+    const s = edit(base, (c) => { P(c, 'b').hand = [card('shield')]; });
+    expect(share(s, 'a', 'shield')).toBeLessThan(0.2); // 30% -> about 16%
+    expect(share(s, 'a', 'double')).toBeGreaterThan(share(base, 'a', 'double')); // the others gain
+  });
+
+  it('a type you already hold is dealt much less often, but never made impossible', () => {
+    const s = edit(mk(3), (c) => { P(c, 'a').hand = [card('shield')]; });
+    const f = share(s, 'a', 'shield');
+    expect(f).toBeGreaterThan(0);
+    expect(f).toBeLessThan(0.12);
+  });
+
+  it('bankrupt players do not count, and the pick stays deterministic', () => {
+    const s = edit(mk(3), (c) => { P(c, 'b').hand = [card('shield')]; P(c, 'b').bankrupt = true; });
+    expect(share(s, 'a', 'shield')).toBeGreaterThan(0.26);
+    const a = edit(mk(3), (c) => { c.prng = 5; });
+    const b = edit(mk(3), (c) => { c.prng = 5; });
+    expect(pickPowerId(a, P(a, 'a'))).toBe(pickPowerId(b, P(b, 'a')));
+  });
+
+  it('over whole bot games two players rarely hold the same card at once', () => {
+    let both = 0;
+    let same = 0;
+    for (let g = 0; g < 16; g++) {
+      const players = ['p0', 'p1', 'p2', 'p3'].map((id) => ({ id, name: id, isBot: true, bot: {} }));
+      let s = createGame({ players, settings: { powerCards: true }, seed: 9000 + g });
+      const rnd = mulberry32(g * 31 + 7);
+      for (let i = 0; i < 20000 && s.phase !== 'over'; i++) {
+        const a = s.phase === 'snatch' ? { type: 'SNATCH_CLOSE' } : nextBotMove(s, rnd);
+        const r = applyAction(s, a);
+        expect(r.error).toBeUndefined();
+        s = r.state;
+        if (!r.events.some((e) => e.type === 'power_draw')) continue;
+        const held = s.players.filter((p) => !p.bankrupt && p.hand && p.hand.length).map((p) => p.hand.map((c) => c.id));
+        if (held.length < 2) continue;
+        both++;
+        const flat = held.flat();
+        if (new Set(flat).size < flat.length) same++;
+      }
+    }
+    expect(both).toBeGreaterThan(60);
+    expect(same / both).toBeLessThan(0.5); // before the variety weights this was well above that
   });
 });

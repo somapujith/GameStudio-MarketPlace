@@ -1155,9 +1155,23 @@ function powerFloat(s) {
   return f;
 }
 
-/** Weighted pick of a card id from POWER.WEIGHTS (one draw on the Power stream). */
-function pickPowerId(s) {
-  const weights = POWER_IDS.map((id) => Math.max(0, Number(POWER.WEIGHTS[id]) || 0));
+/**
+ * Weighted pick of a card id from POWER.WEIGHTS (one draw on the Power stream). With the drawing player `p` the weights favour
+ * variety: a type a rival already holds counts VARIETY_OTHER x per rival, a type `p` already holds VARIETY_OWN x, so the table
+ * is not dealt the same card over and over. Only the weights change: still exactly one draw, still deterministic.
+ */
+export function pickPowerId(s, p) {
+  const weights = POWER_IDS.map((id) => {
+    let w = Math.max(0, Number(POWER.WEIGHTS[id]) || 0);
+    if (p) {
+      for (const q of s.players) {
+        if (q.bankrupt || !Array.isArray(q.hand)) continue;
+        const n = q.hand.filter((c) => c && c.id === id).length;
+        if (n) w *= q === p ? Math.pow(POWER.VARIETY_OWN, n) : Math.pow(POWER.VARIETY_OTHER, n);
+      }
+    }
+    return w;
+  });
   const total = weights.reduce((a, b) => a + b, 0);
   let r = powerFloat(s) * total;
   for (let i = 0; i < POWER_IDS.length; i++) {
@@ -1175,7 +1189,7 @@ function drawPower(s, ev, p, source, tile) {
   if (!powerOn(s) || p.bankrupt) return false;
   if (!Array.isArray(p.hand)) p.hand = [];
   if (p.hand.length >= POWER.HAND_MAX) return false;
-  const id = pickPowerId(s);
+  const id = pickPowerId(s, p);
   const seat = s.players.indexOf(p);
   let uid;
   do uid = `p${seat}-${s.round}-${Math.floor(powerFloat(s) * 4096).toString(36)}`;

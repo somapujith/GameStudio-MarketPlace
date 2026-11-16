@@ -51,4 +51,8 @@ export const POWER = Object.freeze({
   TRAILING_RATIO: 0.8,
   /** Draw weights (relative). */
   WEIGHTS: Object.freeze({ shield: 30, double: 30, steal: 25, swap: 15 }),
+  /** Variety: a draw prefers types nobody else holds. Weight x VARIETY_OTHER for each rival already holding the type,
+   * x VARIETY_OWN when the drawing player already holds it (so one hand rarely doubles up and the table is not all the same card). */
+  VARIETY_OTHER: 0.45,
+  VARIETY_OWN: 0.2,
 });
