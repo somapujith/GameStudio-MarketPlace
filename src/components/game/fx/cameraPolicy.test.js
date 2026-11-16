@@ -84,6 +84,13 @@ describe('policy table: overview', () => {
     expect(shot(mk({ card: { title: 'x' }, display: { moving: 'me', landing: 3 } })).kind).toBe('overview');
     expect(shot(mk({ view: { phase: 'auction' }, display: { landing: 3 } })).kind).toBe('overview');
   });
+  it('a power card reveal backs the camera off to the whole board; the quieter power moments do not', () => {
+    const play = shot(mk({ power: { kind: 'play', player: 'sana', card: 'swap' }, display: { moving: 'me', landing: 3 } }));
+    expect(play).toMatchObject({ kind: 'overview', reason: 'overlay:power' });
+    for (const kind of ['draw', 'shield', 'double', 'expire']) {
+      expect(sit(mk({ power: { kind } })).overlay, kind).toBeNull();
+    }
+  });
   it('a city event announcement does not hide a pawn that is walking', () => {
     const s = mk({ busy: true, bubble: { type: 'city_event' }, display: { moving: 'me' }, players: [P('me', 5)] });
     expect(shot(s).kind).toBe('follow');

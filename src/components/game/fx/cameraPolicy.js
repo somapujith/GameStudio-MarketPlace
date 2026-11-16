@@ -44,6 +44,7 @@ function overlayOf(session, d, view, quiet) {
   if (d.phase === 'over' || view?.phase === 'over' || session?.result) return 'over';
   if (session?.card) return 'card';
   if (session?.handoff) return 'turn';
+  if (session?.power && session.power.kind === 'play') return 'power'; // the card reveal over the middle of the board (a swap's pawns pan on their own afterwards)
   if (view?.phase === 'auction') return 'auction';
   if (view?.phase === 'debt' || d.debt) return 'debt';
   if (view?.trade || d.trade) return 'trade';
