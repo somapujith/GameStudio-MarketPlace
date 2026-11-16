@@ -1,0 +1,98 @@
+/* ==========================================================================
+   block.css: Friends page "Privacy" card (request switch + blocked players). Prefix bl-.
+   Tokens only (--hub-*, --st-*, --dur-*, --ease-out). The switch animates transform / opacity-like properties only and
+   is switched off for [data-motion='reduced'] and prefers-reduced-motion. Reuses sc-card / hub-btn from the social + hub styles.
+   ========================================================================== */
+
+/* phones: after the add-friend card (sc-o1..o6 are the others); from 900px the columns use DOM order */
+.bl-o7 { order: 7; }
+@media (min-width: 900px) {
+  .bl-o7 { order: 0; }
+}
+
+.bl-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 4px 0 14px;
+  border-bottom: 1px solid var(--hub-line);
+}
+.bl-setting__text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.bl-setting__label { font-size: var(--st-t-m); font-weight: 800; line-height: 1.25; color: var(--hub-text); }
+.bl-setting__hint { font-size: var(--st-t-s); line-height: 1.35; color: var(--hub-dim); }
+
+/* the switch (44px+ tap target via padding-free 52x32 track) */
+.bl-switch {
+  position: relative;
+  flex: none;
+  width: 52px;
+  height: 32px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--hub-line-2);
+  background: var(--hub-surface-3);
+  cursor: pointer;
+  transition: background-color var(--dur-2, 160ms) var(--ease-out, ease-out), border-color var(--dur-2, 160ms) var(--ease-out, ease-out);
+}
+.bl-switch.is-on {
+  background: var(--hub-brand-fill);
+  border-color: color-mix(in srgb, var(--hub-brand) 55%, transparent);
+}
+.bl-switch__knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--hub-text);
+  box-shadow: var(--hub-shadow-s);
+  transition: transform var(--dur-2, 160ms) var(--ease-out, ease-out);
+}
+.bl-switch.is-on .bl-switch__knob { transform: translateX(20px); background: var(--hub-on-brand); }
+.bl-switch:focus-visible { outline: 3px solid var(--hub-focus); outline-offset: 2px; }
+.bl-switch:disabled { cursor: progress; opacity: 0.7; }
+
+.bl-sub {
+  margin: 16px 0 6px;
+  font-size: var(--st-t-xs);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--hub-dim);
+}
+.bl-note { margin: 4px 0 0; font-size: var(--st-t-s); line-height: 1.45; color: var(--hub-dim); }
+.bl-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 800;
+  color: var(--hub-brand);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.bl-link:focus-visible { outline: 3px solid var(--hub-focus); outline-offset: 2px; border-radius: 4px; }
+
+.bl-list { list-style: none; margin: 0; padding: 0; }
+.bl-row { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 8px 0; }
+.bl-row + .bl-row { border-top: 1px solid var(--hub-line); }
+.bl-row__avatar { flex: none; display: inline-flex; }
+.bl-row__name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--st-t-m);
+  font-weight: 800;
+  color: var(--hub-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bl-switch,
+  .bl-switch__knob { transition: none; }
+}
+:root[data-motion='reduced'] .bl-switch,
+:root[data-motion='reduced'] .bl-switch__knob { transition: none; }
