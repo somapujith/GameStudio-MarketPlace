@@ -150,6 +150,9 @@ events  snatch_open  { tile, buyer, price, eligible, ms }
 ```
 0 claimants: nothing, the buyer keeps the district. 1: the claimant gets it free and spends 1 button (the buyer is NOT refunded). 2+: sealed bidding among the claimants (the auction machinery, `pending.snatch === true`, `pending.claimants` public); the winner pays the bank and spends 1 button. Auto-play and bots never press (`botSnatchAction` is for the simulator only). `cfg.snatches = 0` turns Snatch off entirely.
 
+## 3g. Power Cards **[current; rules, wire contract and UX are `POWER_CARDS.md`]**
+Optional rule `cfg.powerCards` (off by default). Action `{ type:'PLAY_POWER', card:<uid>, target?:<playerId> }` (allow-listed and bounded in `worker/validate.js`; the engine decides legality). `state.prng` is secret like `rng`; `player.hand` is redacted per viewer by `worker/mask.js` (rivals see `[{ hidden:true }, ...]` of the same length, everyone sees all hands at `phase === 'over'`; `shield`, `doubleRent`, `powerPlayed` are public). Events `power_draw`, `power_play`, `power_trigger`, `power_expire` are public and never carry an unplayed card; they are timed by `estimateAnimMs` (`ANIM_MS.power*`). No new phase, pending type or timer, and idle auto-play never plays a card.
+
 ## 4. Content data **[removed]**
 Voice lines, actors, the story slides, the campaign and the bot rivals (`src/data/*`, `public/voices/**`) no longer exist: the game has no voices or subtitles, no story mode or campaign and no bots.
 
