@@ -814,10 +814,6 @@
     grid-template-columns: 1fr auto;
     align-items: center;
   }
-  .sa-shop .xp-filterbar {
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-  }
   .sa-shop .xp-items {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }

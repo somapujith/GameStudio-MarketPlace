@@ -807,17 +807,19 @@
 
 /* rarity filter + sort */
 .xp-filterbar {
-  display: grid;
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
   min-width: 0;
 }
 .xp-rarchips {
   display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
   gap: 6px;
   min-width: 0;
-  padding-bottom: 2px;
-  overflow-x: auto;
-  scrollbar-width: thin;
 }
 .xp-rarchip {
   --rr: var(--hub-dim);
