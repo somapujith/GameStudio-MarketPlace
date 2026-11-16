@@ -160,6 +160,98 @@ describe('POST /api/invites (stored)', () => {
   });
 });
 
+describe('POST /api/invites/batch', () => {
+  const F2 = '00000000-0000-4000-8000-0000000000c3';
+  const STRANGER = '00000000-0000-4000-8000-0000000000d4';
+  const friendsOf = (...ids) => (text) => (text === inv.FRIENDS_AMONG_SQL ? ids.map((id) => ({ id })) : undefined);
+  const post = (body, opts = {}) => call('/api/invites/batch', { method: 'POST', body, ...opts });
+
+  it('invites every friend in one call, with parameters only, and reports each result', async () => {
+    installDb(friendsOf(FRIEND, F2));
+    hubPushMock.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+    const res = await post({ code: 'abcd23', userIds: [FRIEND, F2] });
+    expect(res.status).toBe(200);
+    expect(res.json).toEqual({
+      results: [
+        { userId: FRIEND, ok: true, delivered: true },
+        { userId: F2, ok: true, delivered: false },
+      ],
+    });
+    expect(stores().map((q) => q.params)).toEqual([
+      [ME, FRIEND, 'ABCD23', 'hyderabad-tycoon'],
+      [ME, F2, 'ABCD23', 'hyderabad-tycoon'],
+    ]);
+    expect(sqlLog.find((q) => q.text === inv.FRIENDS_AMONG_SQL).params).toEqual([ME, [FRIEND, F2]]);
+    expect(inv.FRIENDS_AMONG_SQL).not.toMatch(/ABCD23|00000000/);
+  });
+
+  it('a non-friend, a bad id and yourself are per-user errors; the friends still get theirs', async () => {
+    installDb(friendsOf(FRIEND));
+    const res = await post({ code: 'ABCD23', userIds: [FRIEND, STRANGER, 'nope', ME] });
+    expect(res.status).toBe(200);
+    expect(res.json.results).toEqual([
+      { userId: FRIEND, ok: true, delivered: true },
+      { userId: STRANGER, ok: false, delivered: false, error: 'You can only invite your friends.' },
+      { userId: 'nope', ok: false, delivered: false, error: 'Invalid user id.' },
+      { userId: ME, ok: false, delivered: false, error: 'You cannot invite yourself.' },
+    ]);
+    expect(stores()).toHaveLength(1);
+    expect(hubPushMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks the database only about valid ids, and drops duplicates', async () => {
+    installDb(friendsOf(FRIEND));
+    const res = await post({ code: 'ABCD23', userIds: [FRIEND, FRIEND, 'nope'] });
+    expect(res.json.results.map((r) => r.userId)).toEqual([FRIEND, 'nope']);
+    expect(sqlLog.find((q) => q.text === inv.FRIENDS_AMONG_SQL).params).toEqual([ME, [FRIEND]]);
+  });
+
+  it('one failing delivery does not fail the others', async () => {
+    installDb(friendsOf(FRIEND, F2));
+    hubPushMock.mockRejectedValueOnce(new Error('hub down'));
+    const res = await post({ code: 'ABCD23', userIds: [FRIEND, F2] });
+    expect(res.status).toBe(200);
+    expect(res.json.results).toEqual([
+      { userId: FRIEND, ok: false, delivered: false, error: 'Could not deliver this invite.' },
+      { userId: F2, ok: true, delivered: true },
+    ]);
+  });
+
+  it('refuses the whole call for the room rules: not a member, not a lobby, no such room, bad code, bad list', async () => {
+    installDb(friendsOf(FRIEND));
+    roomCallMock.mockResolvedValue({ status: 200, data: { exists: true, isMember: false, status: 'lobby' } });
+    expect((await post({ code: 'ABCD23', userIds: [FRIEND] })).status).toBe(403);
+    roomCallMock.mockResolvedValue({ status: 200, data: { exists: true, isMember: true, status: 'playing' } });
+    expect((await post({ code: 'ABCD23', userIds: [FRIEND] })).status).toBe(409);
+    roomCallMock.mockResolvedValue({ status: 200, data: { exists: false } });
+    expect((await post({ code: 'ABCD23', userIds: [FRIEND] })).status).toBe(404);
+    expect((await post({ code: '!', userIds: [FRIEND] })).status).toBe(400);
+    expect((await post({ code: 'ABCD23', userIds: [] })).status).toBe(400);
+    expect((await post({ code: 'ABCD23', userIds: FRIEND })).status).toBe(400);
+    expect((await post({ code: 'ABCD23', userIds: Array.from({ length: 8 }, () => FRIEND) })).status).toBe(400);
+    expect(stores()).toEqual([]);
+    expect(hubPushMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts exactly seven; needs a session; guests are refused', async () => {
+    installDb(friendsOf());
+    const ids = Array.from({ length: 7 }, (_, i) => `00000000-0000-4000-8000-00000000e${String(i).padStart(3, '0')}`);
+    expect((await post({ code: 'ABCD23', userIds: ids })).json.results).toHaveLength(7);
+    expect((await post({ code: 'ABCD23', userIds: [FRIEND] }, { as: null })).status).toBe(401);
+    users.set(ME, userRow(ME, { is_guest: true }));
+    expect((await post({ code: 'ABCD23', userIds: [FRIEND] })).status).toBe(403);
+  });
+
+  it('is rate limited per call and per person, and the single invite route is untouched', async () => {
+    installDb(friendsOf(FRIEND));
+    for (let i = 0; i < 10; i++) expect((await post({ code: 'ABCD23', userIds: [FRIEND] })).status).toBe(200);
+    expect((await post({ code: 'ABCD23', userIds: [FRIEND] })).status).toBe(429);
+    _resetForTests();
+    const single = await call('/api/invites', { method: 'POST', body: { code: 'ABCD23', userId: FRIEND } });
+    expect(single.json).toEqual({ ok: true, delivered: true });
+  });
+});
+
 describe('GET /api/invites', () => {
   const row = {
     id: INVITE,
