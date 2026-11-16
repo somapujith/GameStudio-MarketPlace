@@ -209,3 +209,19 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
 
 CREATE INDEX IF NOT EXISTS push_subscriptions_user_idx
   ON push_subscriptions (user_id);
+
+-- blocks + privacy
+-- Who a member has blocked (hides them from search, requests and invites, and mutes them in rooms).
+CREATE TABLE IF NOT EXISTS blocks (
+  user_id    uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  blocked_id uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, blocked_id),
+  CHECK (user_id <> blocked_id)
+);
+
+CREATE INDEX IF NOT EXISTS blocks_blocked_idx
+  ON blocks (blocked_id);
+
+-- Who may send me friend requests: 'everyone' | 'nobody'.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS friend_requests text NOT NULL DEFAULT 'everyone';
