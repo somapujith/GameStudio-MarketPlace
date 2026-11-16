@@ -1,0 +1,203 @@
+/* Cosmetic shine: legendary gold foil + moving sheen for title chips and the legendary avatar frames (Aurora, Golconda
+   Diamond). Imported by src/components/art/cosmetics.jsx. Class prefix `cx-`.
+
+   Rules of the road
+   - Decorative loops animate transform / opacity only, one animating element per chip, a handful per legendary frame.
+   - Each loop is mostly REST (~65%) with one short pass, so it reads as a glint, not as constant noise.
+   - Phase is offset per instance by `--cx-delay` (set inline by cosmetics.jsx from the instance id), so a lobby full of
+     legendary chips does not flash in unison.
+   - Every loop is switched off (and the static look must stay finished) under: prefers-reduced-motion, the in-app
+     :root[data-motion='reduced'], an in-game .hg-game[data-rm] and :root[data-perf='low']. The four gate blocks at the
+     bottom MUST list every animated class; art/frames.test.js checks that.
+   - Motion curves: strong ease-in-out for on-screen movement (cubic-bezier(0.77, 0, 0.175, 1)); linear for the
+     constant aurora drift. Never ease-in. */
+
+.cx-sheen,
+.cx-orbit,
+.cx-glint,
+.cx-drift {
+  --cx-ease: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+/* ---------- cx-foil: gold / metal foil. Text (background-clip) or a plain surface. ---------- */
+.cx-foil {
+  --cx-foil-a: #8f5a0a;
+  --cx-foil-b: #e0a21f;
+  --cx-foil-c: #fff1a8;
+  --cx-foil-d: #f4c542;
+  --cx-foil-e: #a8680c;
+  background-image: linear-gradient(
+    115deg,
+    var(--cx-foil-a) 0%,
+    var(--cx-foil-b) 22%,
+    var(--cx-foil-c) 40%,
+    var(--cx-foil-d) 58%,
+    var(--cx-foil-b) 78%,
+    var(--cx-foil-e) 100%
+  );
+  color: var(--cx-foil-d); /* fallback where background-clip:text is missing */
+}
+/* night theme: a brighter foil that holds up on the dark chip */
+:root:not([data-theme='light']) .cx-foil {
+  --cx-foil-a: #d8981c;
+  --cx-foil-b: #ffd45e;
+  --cx-foil-c: #fffbe0;
+  --cx-foil-d: #ffc83a;
+  --cx-foil-e: #cf8a14;
+}
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .cx-foil--text {
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+}
+
+/* ---------- title chips ----------
+   The seat/lobby CSS (x-lobby.css .xl-seat__title, store-rooms.css .sr-seat__title) restyles every `[data-rarity]` chip
+   with !important (white-space, padding, radius, hidden star) because the chip's look was inline. Those rules only touch
+   layout, never colour, so they keep working. The rarity LOOK below is declared with !important for the same reason in
+   reverse: epic and legendary must read as rich on every surface (seat, pod, results, friends, leaderboard, shop) even
+   where a surface passes its own `style` or a future restyle sets a flat background/border; inline styles from callers
+   would otherwise win over a class. cosmetics.jsx deliberately omits the colour/background/border inline for these two
+   tiers so this file is the single source of their look. */
+[data-rarity='epic'].cx-chip {
+  color: var(--rarity-epic, #c58cff) !important;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--rarity-epic, #c58cff) 26%, transparent),
+    color-mix(in srgb, var(--rarity-epic, #c58cff) 8%, transparent) 70%,
+    color-mix(in srgb, var(--rarity-epic, #c58cff) 18%, transparent)
+  ) !important;
+  border: 1px solid color-mix(in srgb, var(--rarity-epic, #c58cff) 62%, transparent) !important;
+  box-shadow:
+    0 0 12px -3px color-mix(in srgb, var(--rarity-epic, #c58cff) 55%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #fff 28%, transparent) !important;
+}
+
+[data-rarity='legendary'].cx-chip {
+  position: relative;
+  overflow: hidden !important; /* clips the sheen band to the pill (and to the seat's 10px radius) */
+  isolation: isolate;
+  color: #ffd45e !important; /* star icon + fallback */
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #fff 22%, transparent), transparent 46%),
+    linear-gradient(135deg, color-mix(in srgb, #ffcf5a 30%, transparent), color-mix(in srgb, #b8741a 20%, transparent)) !important;
+  border: 1px solid #e3a92b !important;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff3b0 70%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, #7a4d00 45%, transparent),
+    0 0 14px -3px color-mix(in srgb, #ffcf5a 60%, transparent) !important;
+}
+:root[data-theme='light'] [data-rarity='legendary'].cx-chip {
+  color: #7a4d00 !important;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #fff 55%, transparent), transparent 50%),
+    linear-gradient(135deg, color-mix(in srgb, #ffcf5a 55%, #fff7df), color-mix(in srgb, #e0a21f 38%, #fff7df)) !important;
+  border-color: #b9801a !important;
+  box-shadow:
+    inset 0 1px 0 #fff,
+    inset 0 -1px 0 color-mix(in srgb, #7a4d00 28%, transparent),
+    0 0 10px -3px color-mix(in srgb, #d99a1e 55%, transparent) !important;
+}
+[data-rarity='legendary'].cx-chip > svg {
+  position: relative;
+  z-index: 1;
+  filter: none;
+}
+[data-rarity='legendary'].cx-chip [data-chip-text] {
+  position: relative;
+  z-index: 1;
+  letter-spacing: 0.02em;
+}
+
+/* ---------- cx-sheen: diagonal highlight band sweeping across a clipped element (needs overflow:hidden) ---------- */
+.cx-sheen {
+  position: relative;
+  overflow: hidden;
+}
+.cx-sheen::after {
+  content: '';
+  position: absolute;
+  inset: -2px 0;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(
+    105deg,
+    transparent 38%,
+    color-mix(in srgb, #fff 55%, transparent) 50%,
+    transparent 62%
+  );
+  transform: translateX(-130%);
+  animation: cx-sheen-sweep 3.6s var(--cx-ease) var(--cx-delay, 0s) infinite;
+}
+@keyframes cx-sheen-sweep {
+  0% { transform: translateX(-130%); }
+  34% { transform: translateX(130%); } /* ~1.2s pass, ~2.4s rest */
+  100% { transform: translateX(130%); }
+}
+
+/* ---------- cx-orbit: a short specular arc travelling once around a ring (SVG, legendary frames) ---------- */
+.cx-orbit {
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+  opacity: 0.55; /* static look: a fixed highlight arc top-left */
+  animation: cx-orbit-pass 8s var(--cx-ease) var(--cx-delay, 0s) infinite;
+}
+@keyframes cx-orbit-pass {
+  0% { transform: rotate(0deg); opacity: 0; }
+  6% { opacity: 0.9; }
+  40% { transform: rotate(360deg); opacity: 0.9; }
+  46% { transform: rotate(360deg); opacity: 0; }
+  100% { transform: rotate(360deg); opacity: 0; }
+}
+
+/* ---------- cx-glint: tiny 4-point star that scales and fades (SVG; twinkles in turn via --n modifiers) ---------- */
+.cx-glint {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  opacity: 0.9; /* static look: stars shown at rest */
+  animation: cx-glint-twinkle 3.6s var(--cx-ease) calc(var(--cx-delay, 0s) + var(--cx-turn, 0s)) infinite;
+}
+.cx-glint--1 { --cx-turn: 0s; }
+.cx-glint--2 { --cx-turn: 1.2s; }
+.cx-glint--3 { --cx-turn: 2.4s; }
+@keyframes cx-glint-twinkle {
+  0% { transform: scale(0.2); opacity: 0; }
+  10% { transform: scale(1.15); opacity: 1; }
+  24% { transform: scale(0.2); opacity: 0; }
+  100% { transform: scale(0.2); opacity: 0; }
+}
+
+/* ---------- cx-drift: the Aurora ribbon slowly turning, so its colours flow past the fixed highlight ---------- */
+.cx-drift {
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+  animation: cx-drift-turn 28s linear var(--cx-delay, 0s) infinite;
+}
+@keyframes cx-drift-turn {
+  to { transform: rotate(360deg); }
+}
+
+/* ---------- gates: every loop above is listed in each block ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .cx-sheen::after { animation: none; opacity: 0; }
+  .cx-orbit,
+  .cx-glint,
+  .cx-drift { animation: none; }
+}
+:root[data-motion='reduced'] .cx-sheen::after { animation: none; opacity: 0; }
+:root[data-motion='reduced'] .cx-orbit,
+:root[data-motion='reduced'] .cx-glint,
+:root[data-motion='reduced'] .cx-drift { animation: none; }
+
+.hg-game[data-rm] .cx-sheen::after { animation: none; opacity: 0; }
+.hg-game[data-rm] .cx-orbit,
+.hg-game[data-rm] .cx-glint,
+.hg-game[data-rm] .cx-drift { animation: none; }
+
+:root[data-perf='low'] .cx-sheen::after { animation: none; opacity: 0; }
+:root[data-perf='low'] .cx-orbit,
+:root[data-perf='low'] .cx-glint,
+:root[data-perf='low'] .cx-drift { animation: none; }
