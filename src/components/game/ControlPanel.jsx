@@ -29,6 +29,7 @@ import { hintLine } from './ui/hudModel.js';
 import { TimerBar } from './turn/TurnTimer.jsx';
 import { tradeStatus } from './ui/tradeModel.js';
 import { cosmeticsOf } from './turn/room.js';
+import PowerTray from './power/PowerTray.jsx';
 import '@/styles/controlpanel.css';
 import '@/styles/cpPremium.css';
 
@@ -311,6 +312,7 @@ export default function ControlPanel({ session, onOpenTile, onOpenTrade, actions
   const { spec, fire } = actions || own;
   const state = useStateLike(session);
   const [tab, setTab] = useState('buy');
+  const [paneEl, setPaneEl] = useState(null); // where the power-card detail panel opens (renders nothing when the rule is off)
 
   /* a fresh decision (buy / roll / traffic) pulls the Play tab forward; transient `busy` states never count */
   const stableKind = useRef(spec.kind);
@@ -337,6 +339,7 @@ export default function ControlPanel({ session, onOpenTile, onOpenTrade, actions
         <div className="cp-stage">
           <div className="cp-hero">
             <div className="cp-hero__die">
+              <PowerTray session={session} placement="panel" panelHost={paneEl} />
               <Dice session={session} skin={diceSkin} />
               <OddsToggle />
             </div>
@@ -351,6 +354,7 @@ export default function ControlPanel({ session, onOpenTile, onOpenTrade, actions
             className="cp-pane"
             role={docked ? undefined : 'tabpanel'}
             id={`${ids}-pane`}
+            ref={setPaneEl}
             aria-labelledby={docked ? undefined : `${ids}-tab-${shownTab}`}
           >
             {shownTab === 'buy' ? <BuyPane session={session} landed={landed} buying={spec.kind === 'buy'} onOpenTile={onOpenTile} /> : null}

@@ -8,6 +8,7 @@ import SceneStage from '../SceneStage.jsx';
 import { useSettings } from '@/lib/storage.js';
 import { activePlayer } from '../ui/helpers.js';
 import { cosmeticsOf } from '../turn/room.js';
+import PowerTray from '../power/PowerTray.jsx';
 import { captionFor, chipFor, splitCaption } from './phoneModel.js';
 
 /** How long an event caption ("You bought") stays before the status line comes back. */
@@ -94,6 +95,7 @@ export default function PhoneCentre({ session, spec, onChip }) {
       </div>
       <div className="pc-hero"><SceneStage session={session} /></div>
       <div className="pc-die"><Dice session={session} skin={diceSkin} /></div>
+      <PowerTray session={session} placement="phone" />
     </section>
   );
 }
