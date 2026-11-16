@@ -161,9 +161,9 @@ button.pw-card:active { transform: translateY(0) scale(0.97); transition-duratio
 @keyframes pw-crumble { 0% { opacity: 1; transform: none; } 55% { opacity: 0.7; } 100% { opacity: 0; transform: translateY(16px) scale(0.84) rotate(7deg); } }
 @keyframes pw-dust { 0% { opacity: 0; transform: translateY(0); } 40% { opacity: 1; } 100% { opacity: 0; transform: translateY(-14px); } }
 
-/* "Played this turn" lies over the dimmed fan; it is a note, not a control */
+/* "Played this turn" sits just above the dimmed hand (never over a card's name); it is a note, not a control */
 .pw-played {
-  position: absolute; left: 50%; bottom: 14px; translate: -50% 0; z-index: 8; padding: 3px 9px; border-radius: 99px; pointer-events: none; white-space: nowrap;
+  position: absolute; left: 50%; bottom: 100%; translate: -50% 0; z-index: 8; padding: 3px 9px; border-radius: 99px; pointer-events: none; white-space: nowrap;
   border: 1px solid rgba(255, 255, 255, 0.34); background: rgba(20, 14, 50, 0.92); color: #fff; font-size: 11px; font-weight: 800; letter-spacing: 0.01em;
 }
 .pw-tray[data-placement='phone'] .pw-played { left: 50%; bottom: calc(1cqh + var(--pw-h) + 6px); }
@@ -257,6 +257,7 @@ button.pw-panel__help:focus-visible { outline: 3px solid var(--sky, #4cc9f0); ou
   border: 1px solid rgba(255, 177, 0, 0.45); color: #ffe2a8; font-size: 12.5px; font-weight: 700;
 }
 .pw-why svg { flex: none; margin-top: 1px; }
+.pw-why { flex: none; }
 .pw-panel[data-step='target'] .pw-panel__long, .pw-panel[data-step='confirm'] .pw-panel__long { display: none; }
 /* targeting: the question and the list are the whole job, the card's own header would only eat the room (it stays as the panel's accessible name) */
 .pw-panel[data-step='target'] .pw-panel__head, .pw-panel[data-step='confirm'] .pw-panel__head { display: none; }

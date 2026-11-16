@@ -275,8 +275,8 @@ function Tray({ session, model, placement, panelHost, onInfo }) {
       ) : (
         <>
           <div className="pw-panel__body">
-            <p className="pw-panel__long">{selCard.long}</p>
             {!selCard.ok ? <p className="pw-why" id={whyId}><Icon name="info" size={15} /><span>{selCard.reason}</span></p> : null}
+            <p className="pw-panel__long">{selCard.long}</p>
           </div>
           <div className="pw-acts">
             <button type="button" className="pw-btn" onClick={cancel} disabled={nowPlaying}>Cancel</button>
