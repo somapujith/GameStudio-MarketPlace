@@ -421,3 +421,20 @@
   background: rgba(var(--hub-good-rgb), 0.14);
   border: 1px solid rgba(var(--hub-good-rgb), 0.4);
 }
+
+/* ---------- "Have a code?" sheet (top bar) ---------- */
+.jc-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 4px;
+}
+.jc-sheet__hint {
+  margin: 0;
+  font-size: var(--st-t-s, 0.9rem);
+  line-height: 1.45;
+  color: var(--hub-dim);
+}
+.jc-sheet .jc {
+  margin-block: 6px 0;
+}

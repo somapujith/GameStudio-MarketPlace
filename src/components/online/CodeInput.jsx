@@ -138,6 +138,7 @@ export default function CodeInput({ value, onChange, onInvalid, onComplete, stat
           autoCorrect="off"
           spellCheck={false}
           autoFocus={autoFocus}
+          data-autofocus={autoFocus ? '' : undefined} // the shared Modal focuses this one on open, not its close button
           disabled={disabled}
           value={value}
           aria-invalid={state === 'error' || undefined}
