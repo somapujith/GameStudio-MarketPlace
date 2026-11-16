@@ -6,13 +6,36 @@ import { normalizeFriendCode } from '../codes.js';
 import { isUuid } from '../validate.js';
 import { limit } from '../ratelimit.js';
 import { readJson } from '../http.js';
-import { isUserOnline, pushToUser, background } from '../hub.js';
+import { isUserOnline, getUserStatus, roomCall, pushToUser, background } from '../hub.js';
+import { isJoinableLobby } from '../presence.js';
 
 const friends = new Hono();
 friends.use('*', requireMember); // guests cannot use friends
 
+/**
+ * `{ online, status, code?, gameId? }` for one accepted friend. A "lobby" status is only kept (with its code) while the
+ * room is still an open lobby with a free seat, checked now through the room's `/info`; otherwise it falls back to
+ * plain "online" so a stale or full table is never offered. Never throws.
+ */
+export async function friendPresence(env, userId) {
+  const online = await isUserOnline(env, userId);
+  if (!online) return { online: false, status: 'offline' };
+  const st = await getUserStatus(env, userId);
+  if (!st || (st.status !== 'lobby' && st.status !== 'playing') || !st.code) return { online: true, status: 'online' };
+  if (st.status === 'playing') return { online: true, status: 'playing', ...(st.gameId ? { gameId: st.gameId } : {}) };
+  try {
+    const { data } = await roomCall(env, st.code, '/info');
+    if (isJoinableLobby(data, st.code)) return { online: true, status: 'lobby', code: st.code, gameId: data.gameId || st.gameId };
+  } catch {
+    /* room unreachable: not joinable */
+  }
+  return { online: true, status: 'online' };
+}
+
 // GET /api/friends -> { friends, incoming, outgoing }
-//   rows: { id, name, avatar, friendCode, online, level, equipped:{ frame?, dice?, title? } }
+//   rows: { id, name, avatar, friendCode, online, status, code?, gameId?, level, equipped:{ frame?, dice?, title? } }
+//   status: 'offline' | 'online' | 'lobby' | 'playing'; `code` only for an open lobby that still has a seat (checked
+//   against the room now), `gameId` for lobby/playing. Friends only: pending requests never carry a status.
 friends.get('/', async (c) => {
   const me = c.get('user');
   const rows = await query(
@@ -26,9 +49,9 @@ friends.get('/', async (c) => {
     [me.id],
   );
   const accepted = rows.filter((r) => r.status === 'accepted');
-  const onlineFlags = await Promise.all(accepted.map((r) => isUserOnline(c.env, r.id)));
+  const presences = await Promise.all(accepted.map((r) => friendPresence(c.env, r.id)));
   return c.json({
-    friends: accepted.map((r, i) => rowToFriend(r, onlineFlags[i])),
+    friends: accepted.map((r, i) => ({ ...rowToFriend(r, presences[i].online), ...presences[i] })),
     incoming: rows.filter((r) => r.status === 'pending' && !r.outgoing).map((r) => rowToFriend(r, false)),
     outgoing: rows.filter((r) => r.status === 'pending' && r.outgoing).map((r) => rowToFriend(r, false)),
   });

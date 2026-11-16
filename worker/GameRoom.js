@@ -34,6 +34,9 @@ import { sanitizeName, parseAvatar, sanitizeChat, sanitizeEmote, sanitizeVoiceId
 import { NetPresence, NET_BROADCAST_GAP_MS } from './netpresence.js';
 import { cleanEquipped, isVoiceId, VOICE_LIMITS } from '../shared/cosmetics.js';
 import { DECISION_MS } from '../shared/timing.js';
+import { setUserRoomStatus } from './hub.js';
+import { roomMemberStates, diffStates } from './presence.js';
+import { notifyInviteJoined } from './invitefeedback.js';
 
 // Version of the stored room record. 3 = the 40-square Hyderabad board; a record below it still holds
 // a 28-tile game, which the game adapter's `upgradeRecord` calls off instead of resuming.
@@ -56,6 +59,7 @@ const MAX_MESSAGE_CHARS = 4096;
 const MAX_SOCKETS_PER_USER = 3;
 const PERSIST_BACKOFF_MS = [2_000, 10_000, 30_000, 120_000, 600_000];
 const PERSIST_MAX_ATTEMPTS = 8;
+const HUB_RETRY_MS = 20_000; // a UserHub that was offline for a room-status update is asked again after this
 const COSMETICS_REFRESH_MS = 30_000; // a member's equipped cosmetics are re-read at most this often
 
 // Voice lines (soundboard, docs/CONTRACT.md "Voice lines"): a purchased clip any owner may play at any time, heard by the whole
@@ -117,6 +121,8 @@ export class GameRoom extends DurableObject {
     this.netBroadcastAt = 0; // when the last `room` broadcast went out (net changes are coalesced to one per second)
     this.netTimer = null;
     this.netTimerAt = 0;
+    this.hubSent = new Map(); // userId -> { state, ok, at }: the room state last told to that member's UserHub (memory only)
+    this.hubJob = Promise.resolve(); // the latest background hub update (tests await it)
     // Answer heartbeats without waking a hibernating object.
     try {
       ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('{"t":"ping"}', '{"t":"pong"}'));
@@ -152,6 +158,37 @@ export class GameRoom extends DurableObject {
     if (this.room) {
       await this.ctx.storage.put('room', this.room);
       this.syncListing();
+      this.syncHubStatus();
+    }
+  }
+
+  /**
+   * Keep each member's UserHub in step with this room (friends see "In a lobby" / "Playing"): tell the hub when a
+   * member enters, when the room starts, and clear it when they leave or the room finishes / expires. Only changes
+   * are sent. A hub that did not take the update (the user is offline) is retried at most every HUB_RETRY_MS.
+   * Best effort: never throws, never blocks the game.
+   */
+  syncHubStatus(clearAll = false) {
+    const r = this.room;
+    if (!r) return;
+    const now = Date.now();
+    const sent = new Map();
+    for (const [uid, e] of this.hubSent) if (e.ok || now - e.at < HUB_RETRY_MS) sent.set(uid, e.state);
+    const desired = clearAll ? new Map() : roomMemberStates(r, this.connectedIds());
+    const updates = diffStates(sent, desired);
+    if (!updates.length) return;
+    const jobs = updates.map(async ([uid, state]) => {
+      if (state) this.hubSent.set(uid, { state, ok: false, at: now });
+      else this.hubSent.delete(uid);
+      const accepted = await setUserRoomStatus(this.env, uid, state);
+      const e = this.hubSent.get(uid);
+      if (accepted && e && e.state === state) e.ok = true;
+    });
+    this.hubJob = Promise.all(jobs).catch(() => {});
+    try {
+      this.ctx.waitUntil(this.hubJob);
+    } catch {
+      /* no execution context (tests) */
     }
   }
 
@@ -623,6 +660,7 @@ export class GameRoom extends DurableObject {
       member = { id: userId, name, avatar, ready: false, guest, piece: this.freePieces(userId)[0] ?? null, cosmetics: {} };
       r.players.push(member);
       if (!r.hostId) r.hostId = userId;
+      if (!guest) this.inviteJoined = notifyInviteJoined(this.env, r.code, { id: userId, name, avatar }, this.ctx);
     } else {
       // Rejoin: refresh the display identity, clear absence markers.
       member.name = name;
@@ -631,6 +669,7 @@ export class GameRoom extends DurableObject {
       member.left = false;
       if (r.status === 'lobby' && !member.piece) member.piece = this.freePieces(userId)[0] ?? null;
     }
+    this.hubSent.delete(userId); // (re)connecting: make sure their hub hears where they are
     delete r.disc[userId];
     delete r.afk[userId];
     this.clearIdle(userId); // back at the table: a full decision timer again
@@ -743,6 +782,7 @@ export class GameRoom extends DurableObject {
     if (!r) return;
     this.net.prune(this.connectedIds()); // whoever has no live socket left is no longer measured
     if (r.players.length && this.reconcileConnections(Date.now())) await this.save();
+    this.syncHubStatus(); // a lobby member whose socket dropped is no longer "at the table"
     this.broadcastRoom();
     await this.scheduleAlarm();
   }
@@ -1198,6 +1238,7 @@ export class GameRoom extends DurableObject {
         }
       }
       this.dropListing(r.code);
+      this.syncHubStatus(true);
       await this.ctx.storage.deleteAlarm();
       await this.ctx.storage.deleteAll();
       this.room = null;
