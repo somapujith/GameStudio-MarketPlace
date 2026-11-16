@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { Avatar } from '@/components/art/index.js';
 import { api, errorMessage, sendInvite } from '@/lib/api.js';
 import { useUserEvents } from '@/lib/auth.jsx';
-import { paths } from '@/platform/paths.js';
-import { applyPresence, cosmeticsOf, inviteFeedback, normalizeFriends } from './friendsModel.js';
+import AddFriendPanel from '@/platform/social/AddFriendPanel.jsx';
+import Sheet from './Sheet.jsx';
+import { applyPresence, cosmeticsOf, inviteFeedback, normalizeFriends, removeFriend } from './friendsModel.js';
 import '@/styles/online.css';
 import '@/styles/x-social.css';
+import '@/styles/lobby-invite.css';
 
 const RESEND_AFTER = 30000;
 
@@ -60,16 +61,95 @@ export function FriendTitle({ person }) {
   return title ? <Title title={title.id} /> : null;
 }
 
+
 // ---------------------------------------------------------------- lobby panel
 
+/** Show the filter box only for long lists. */
+export const SEARCH_MIN = 7;
+
+/** Pure: case-insensitive "name contains" filter. Empty query returns the list untouched. */
+export function filterByName(list, query) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return list;
+  return list.filter((f) => String(f.name).toLowerCase().includes(q));
+}
+
+/** Label for the invite button in each state (idle | sending | sent | saved | again | error). */
+export const INVITE_LABEL = { idle: 'Invite', sending: 'Sending', sent: 'Invited', saved: 'Saved', again: 'Invite again', error: 'Retry' };
+
+function PlusIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg className="lp-ibtn__check" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 12.5l4.5 4.5L19 7.5" />
+    </svg>
+  );
+}
+
+/** One-tap invite button. The inner span is keyed by state so each change plays a short enter (transform + opacity). */
+function InviteButton({ state = 'idle', name, online, onClick }) {
+  const done = state === 'sent' || state === 'saved';
+  const label = INVITE_LABEL[state] || INVITE_LABEL.idle;
+  return (
+    <button
+      type="button"
+      className={`lp-ibtn is-${state}`}
+      onClick={onClick}
+      disabled={state === 'sending' || done}
+      aria-label={
+        state === 'sending'
+          ? `Sending invite to ${name}`
+          : done
+            ? `${label}: ${name}`
+            : `${state === 'error' ? 'Retry invite to' : state === 'again' ? 'Invite again' : 'Invite'} ${name}${online ? '' : ' (offline: they will see it when they are back)'}`
+      }
+    >
+      <span className="lp-ibtn__in" key={state}>
+        {state === 'sending' && <span className="lp-ibtn__spin" aria-hidden="true" />}
+        {done && <CheckIcon />}
+        <span>{label}</span>
+      </span>
+    </button>
+  );
+}
+
+function FriendRow({ friend, state, onInvite, index }) {
+  return (
+    <li className={`lp-row${friend.online ? '' : ' is-off'}`} style={{ '--lp-i': index }}>
+      <span className="lp-row__ava">
+        <FriendAvatar person={friend} size={40} online={friend.online} />
+      </span>
+      <span className="lp-row__main">
+        <span className="lp-row__name">{friend.name}</span>
+        <span className="lp-row__sub">{friend.online ? 'Online now' : 'Offline · sees it later'}</span>
+      </span>
+      <InviteButton state={state} name={friend.name} online={friend.online} onClick={() => onInvite(friend)} />
+    </li>
+  );
+}
+
 /**
- * Lobby panel: one tap invites a friend to this room (POST /api/invites; the server adds the game's name).
+ * Lobby friends list: one tap invites a friend to this room (POST /api/invites; the server adds the game's name).
  * Offline friends can be invited too: the server keeps the invite and they find it in their inbox later.
+ *
+ * Props: { code, gameName, onNotify(message, tone), onCount?(n | null) }
+ *  - `onCount` reports the friend count (null while loading) so the panel can pick its default tab.
+ * Live: presence (online dot + order), friend_accepted (reload), friend_removed (drop the row).
  */
-export default function InviteFriends({ code, gameName, onNotify }) {
+export default function InviteFriends({ code, gameName, onNotify, onCount }) {
   const [data, setData] = useState(null); // null = loading
   const [error, setError] = useState(null);
-  const [sent, setSent] = useState({}); // userId -> 'sending' | 'sent' | 'saved'
+  const [sent, setSent] = useState({}); // userId -> 'sending' | 'sent' | 'saved' | 'again' | 'error'
+  const [status, setStatus] = useState(''); // screen-reader announcement
+  const [query, setQuery] = useState('');
+  const [adding, setAdding] = useState(false);
   const timers = useRef(new Set());
   const alive = useRef(true);
 
@@ -83,13 +163,13 @@ export default function InviteFriends({ code, gameName, onNotify }) {
     };
   }, []);
 
-  const load = useCallback(async () => {
-    setError(null);
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setError(null);
     try {
       const raw = await api.get('/api/friends');
       if (alive.current) setData(normalizeFriends(raw));
     } catch (e) {
-      if (alive.current) setError(errorMessage(e, 'Could not load your friends'));
+      if (alive.current && !silent) setError(errorMessage(e, 'Could not load your friends'));
     }
   }, []);
 
@@ -97,88 +177,166 @@ export default function InviteFriends({ code, gameName, onNotify }) {
     load();
   }, [load]);
 
-  useUserEvents((msg) => setData((d) => (d ? applyPresence(d, msg.userId, msg.online) : d)), ['presence']);
+  useEffect(() => {
+    onCount?.(data ? data.friends.length : null);
+  }, [data, onCount]);
+
+  useUserEvents((msg) => {
+    if (msg.t === 'presence') setData((d) => (d ? applyPresence(d, msg.userId, msg.online) : d));
+    else if (msg.t === 'friend_accepted') load({ silent: true });
+    else if (msg.t === 'friend_removed') {
+      const gone = msg.by ?? msg.userId ?? msg.id;
+      if (gone != null) setData((d) => (d ? removeFriend(d, gone) : d));
+    }
+  }, ['presence', 'friend_accepted', 'friend_removed']);
+
+  const mark = (id, state) => setSent((s) => ({ ...s, [id]: state }));
 
   const invite = async (friend) => {
-    setSent((s) => ({ ...s, [friend.id]: 'sending' }));
+    mark(friend.id, 'sending');
+    setStatus(`Sending invite to ${friend.name}`);
     try {
       const res = await sendInvite(code, friend.id);
       if (!alive.current) return;
       const fb = inviteFeedback(res, friend.name);
-      setSent((s) => ({ ...s, [friend.id]: fb.state }));
+      mark(friend.id, fb.state);
+      setStatus(fb.text);
       onNotify?.(fb.text, fb.tone);
+      // After 30 s the button is live again, so a lost invite can be re-sent.
       const t = setTimeout(() => {
         timers.current.delete(t);
-        if (alive.current) setSent((s) => ({ ...s, [friend.id]: undefined }));
+        if (alive.current) mark(friend.id, 'again');
       }, RESEND_AFTER);
       timers.current.add(t);
     } catch (e) {
       if (!alive.current) return;
-      setSent((s) => ({ ...s, [friend.id]: undefined }));
-      onNotify?.(errorMessage(e, 'Could not send the invite'), 'bad');
+      const text = errorMessage(e, 'Could not send the invite');
+      mark(friend.id, 'error');
+      setStatus(`${text}. Try again.`);
+      onNotify?.(text, 'bad');
     }
   };
 
-  const online = data ? data.friends.filter((f) => f.online).length : 0;
+  const friends = data ? data.friends : [];
+  const online = friends.filter((f) => f.online).length;
+  const searchable = friends.length >= SEARCH_MIN;
+  const shown = searchable ? filterByName(friends, query) : friends;
+  const shownOnline = shown.filter((f) => f.online);
+  const shownOffline = shown.filter((f) => !f.online);
+  const grouped = shownOnline.length > 0 && shownOffline.length > 0;
+
+  const sheet = (
+    <Sheet
+      open={adding}
+      title="Add a friend"
+      subtitle="Find someone by name, or use their friend code."
+      onClose={() => {
+        setAdding(false);
+        load({ silent: true });
+      }}
+    >
+      <AddFriendPanel compact onDone={() => load({ silent: true })} />
+    </Sheet>
+  );
+
+  const addBtn = (
+    <button type="button" className="lp-addbtn" onClick={() => setAdding(true)}>
+      <PlusIcon /> Add friend
+    </button>
+  );
+
+  let body;
+  if (error) {
+    body = (
+      <div className="lp-state" role="alert">
+        <p className="lp-state__text">{error}</p>
+        <button type="button" className="ho-btn ho-btn--ghost ho-btn--sm lp-btn" onClick={() => load()}>
+          Retry
+        </button>
+      </div>
+    );
+  } else if (!data) {
+    body = (
+      <ul className="lp-list" aria-busy="true" aria-label="Loading friends">
+        {[0, 1, 2].map((i) => (
+          <li key={i} className="lp-row lp-skelrow" aria-hidden="true">
+            <span className="lp-skel lp-skel--circle" />
+            <span className="lp-skel lp-skel--line" />
+            <span className="lp-skel lp-skel--btn" />
+          </li>
+        ))}
+      </ul>
+    );
+  } else if (friends.length === 0) {
+    body = (
+      <div className="lp-state lp-state--empty">
+        <p className="lp-state__title">No friends yet</p>
+        <p className="lp-state__text">Add a friend once, then fill your table in one tap every time.</p>
+        <button type="button" className="ho-btn ho-btn--primary lp-btn" onClick={() => setAdding(true)}>
+          <PlusIcon /> Add a friend
+        </button>
+      </div>
+    );
+  } else {
+    let n = 0;
+    const rows = (list) => list.map((f) => <FriendRow key={f.id} friend={f} state={sent[f.id]} onInvite={invite} index={n++} />);
+    body = (
+      <>
+        <div className="lp-friendhead">
+          <span className="lp-friendhead__count">
+            {online > 0 ? (
+              <>
+                <span className="lp-dot" aria-hidden="true" /> {online} online
+              </>
+            ) : (
+              'Nobody online right now'
+            )}
+          </span>
+          {addBtn}
+        </div>
+        {searchable && (
+          <div className="lp-search">
+            <input
+              type="search"
+              className="lp-search__input"
+              placeholder="Search friends"
+              aria-label="Search your friends"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              autoComplete="off"
+              enterKeyHint="search"
+            />
+          </div>
+        )}
+        {shown.length === 0 ? (
+          <p className="lp-state__text lp-nomatch">No friend matches “{query.trim()}”.</p>
+        ) : (
+          <div className="lp-groups">
+            {shownOnline.length > 0 && (
+              <>
+                {grouped && <h3 className="lp-group">Online</h3>}
+                <ul className="lp-list">{rows(shownOnline)}</ul>
+              </>
+            )}
+            {shownOffline.length > 0 && (
+              <>
+                {grouped && <h3 className="lp-group">Offline</h3>}
+                <ul className="lp-list">{rows(shownOffline)}</ul>
+              </>
+            )}
+          </div>
+        )}
+      </>
+    );
+  }
 
   return (
-    <section className="ho-card ho-invite" aria-label={gameName ? `Invite friends to ${gameName}` : 'Invite friends'}>
-      <div className="ho-card__head">
-        <h2 className="ho-h2">{gameName ? `Invite friends to ${gameName}` : 'Invite friends'}</h2>
-        {data && data.friends.length > 0 && <span className="ho-muted">{online} online</span>}
-      </div>
-
-      {error ? (
-        <div className="ho-inline-error" role="alert">
-          <span>{error}</span>
-          <button type="button" className="ho-btn ho-btn--ghost ho-btn--sm" onClick={load}>
-            Retry
-          </button>
-        </div>
-      ) : !data ? (
-        <ul className="ho-list" aria-busy="true" aria-label="Loading friends">
-          {[0, 1].map((i) => (
-            <li key={i} className="ho-row ho-skel-row" aria-hidden="true">
-              <span className="ho-skel ho-skel--circle" />
-              <span className="ho-skel ho-skel--line" />
-            </li>
-          ))}
-        </ul>
-      ) : data.friends.length === 0 ? (
-        <p className="ho-empty">
-          No friends yet. Share the link above, or <Link to={`${paths.friends()}?room=${code}`}>add friends</Link> to invite them in one tap.
-        </p>
-      ) : (
-        <ul className="ho-list">
-          {data.friends.map((f, i) => {
-            const state = sent[f.id];
-            const done = state === 'sent' || state === 'saved';
-            return (
-              <li key={f.id} className="ho-row xs-enter" style={{ '--xs-i': i }}>
-                <span className="ho-row__avatar xs-rowava">
-                  <FriendAvatar person={f} size={40} online={f.online} />
-                </span>
-                <span className="ho-row__main">
-                  <span className="ho-row__name">{f.name}</span>
-                  <span className="ho-row__sub xs-sub">
-                    <span>{f.online ? 'Online now' : 'Offline · gets it later'}</span>
-                    <FriendTitle person={f} />
-                  </span>
-                </span>
-                <button
-                  type="button"
-                  className={`ho-btn ho-btn--sm ${done ? 'ho-btn--ghost' : 'ho-btn--primary'}`}
-                  onClick={() => invite(f)}
-                  disabled={state === 'sending' || done}
-                  aria-label={`Invite ${f.name}${f.online ? '' : ' (offline: they will see it when they are back)'}`}
-                >
-                  {state === 'sending' ? 'Sending...' : state === 'sent' ? 'Invited' : state === 'saved' ? 'Saved' : 'Invite'}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
+    <div className="lp-friends" aria-label={gameName ? `Invite friends to ${gameName}` : 'Invite friends'}>
+      {body}
+      <p className="lp-sr" role="status" aria-live="polite">
+        {status}
+      </p>
+      {sheet}
+    </div>
   );
 }

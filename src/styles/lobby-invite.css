@@ -1,0 +1,621 @@
+/* ==========================================================================
+   LOBBY INVITE PANEL ("Fill the table")  ·  prefix lp-
+   InvitePanel.jsx (tabs), InviteFriends.jsx (friends list + invite buttons), ShareCard.jsx (share tools).
+   Colours only from tokens (--hub-*, --g-*, --ho-accent). Motion = transform + opacity, --dur-1..3, --ease-out / --ease-spring.
+   ========================================================================== */
+
+.lp,
+.lp-card {
+  --lp-accent: var(--g-accent, var(--ho-accent, var(--hub-brand)));
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  color: var(--hub-text);
+  background: var(--hub-surface);
+  border: 1px solid var(--hub-line);
+  border-top: 2px solid var(--hub-line-2);
+  border-top-color: color-mix(in srgb, var(--lp-accent) 50%, var(--hub-line));
+  border-radius: var(--st-radius-card, 22px);
+  box-shadow: var(--hub-shadow-s);
+}
+.lp:focus {
+  outline: none;
+}
+.lp:focus-visible {
+  outline: 3px solid var(--hub-focus);
+  outline-offset: 2px;
+}
+.lp .st-eyebrow {
+  color: color-mix(in srgb, var(--lp-accent) var(--hub-ink-mix, 60%), var(--hub-text));
+}
+
+/* ---------- header ---------- */
+.lp__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+}
+.lp__titles {
+  min-width: 0;
+}
+.lp__title {
+  margin: 4px 0 0;
+  font-family: var(--font-hub-display);
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--hub-text);
+}
+.lp__seats {
+  flex: none;
+  padding: 6px 11px;
+  border-radius: 999px;
+  font-size: var(--st-t-xs, 0.75rem);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--lp-accent) var(--hub-ink-mix, 60%), var(--hub-text));
+  background: color-mix(in srgb, var(--lp-accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--lp-accent) 30%, var(--hub-line));
+}
+
+/* ---------- segmented tabs ---------- */
+.lp-tabs {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--hub-surface-3);
+  border: 1px solid var(--hub-line);
+}
+.lp-tabs__thumb {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--lp-accent), var(--g-accent-2, var(--hub-brand-2, var(--lp-accent))));
+  box-shadow: 0 6px 18px -8px var(--g-glow-strong, var(--g-glow, var(--hub-brand-glow)));
+  transition: transform var(--dur-2) var(--ease-out);
+  pointer-events: none;
+}
+.lp[data-tab='share'] .lp-tabs__thumb {
+  transform: translateX(100%);
+}
+.lp-tab {
+  position: relative;
+  z-index: 1;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: var(--hub-dim);
+  cursor: pointer;
+  transition: color var(--dur-2) var(--ease-out);
+}
+.lp-tab.is-on {
+  color: var(--g-on, var(--hub-on-brand));
+}
+.lp-tab:focus-visible,
+.lp-ibtn:focus-visible,
+.lp-addbtn:focus-visible,
+.lp-search__input:focus-visible,
+.lp-link__input:focus-visible,
+.lp-btn:focus-visible {
+  outline: 3px solid var(--hub-focus);
+  outline-offset: 2px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .lp-tab:not(.is-on):hover {
+    color: var(--hub-text);
+  }
+}
+
+/* ---------- tab panels: the incoming panel slides in a few px from the side it is on, and fades ---------- */
+.lp-panel {
+  min-width: 0;
+  animation: lp-panel-in var(--dur-2) var(--ease-out) both;
+}
+.lp-panel[hidden] {
+  display: none;
+}
+@keyframes lp-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(var(--lp-dx, 10px));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes lp-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ---------- friends ---------- */
+.lp-friends {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.lp-friendhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.lp-friendhead__count {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--hub-dim);
+}
+.lp-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--hub-good);
+  box-shadow: 0 0 0 3px rgba(var(--hub-good-rgb), 0.22);
+}
+.lp-addbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: var(--hub-brand-ink);
+  cursor: pointer;
+  transition: transform var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out);
+}
+.lp-addbtn:active {
+  transform: scale(0.96);
+}
+@media (hover: hover) and (pointer: fine) {
+  .lp-addbtn:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+}
+
+.lp-search__input,
+.lp-link__input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid var(--hub-line-2);
+  background: var(--hub-surface-3);
+  color: var(--hub-text);
+  font: inherit;
+  font-size: 1rem; /* 16px keeps iOS from zooming on focus */
+}
+.lp-search__input::placeholder {
+  color: var(--hub-faint);
+}
+
+.lp-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+@media (min-width: 960px) and (min-height: 640px) {
+  .lp-groups {
+    max-height: min(48vh, 440px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 2px;
+  }
+}
+.lp-group {
+  margin: 4px 0 -2px;
+  font-size: var(--st-t-xs, 0.75rem);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--hub-dim);
+}
+.lp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lp-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  padding: 8px 8px 8px 10px;
+  border-radius: 16px;
+  border: 1px solid var(--hub-line);
+  background: rgba(var(--hub-tint), 0.04);
+}
+.lp-row__ava {
+  display: inline-flex;
+}
+.lp-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  transition: opacity var(--dur-2) var(--ease-out);
+}
+.lp-row__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 800;
+  color: var(--hub-text);
+}
+.lp-row__sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  color: var(--hub-dim);
+}
+.lp-row:not(.is-off) .lp-row__sub {
+  color: var(--hub-good);
+}
+.lp-row.is-off .lp-row__ava,
+.lp-row.is-off .lp-row__main {
+  opacity: 0.62;
+}
+
+/* ---------- invite button: Invite -> Sending -> Invited (check); keyed inner span replays an enter on every state ---------- */
+.lp-ibtn {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  min-width: 104px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+  color: var(--hub-on-brand);
+  background: var(--hub-brand-fill);
+  box-shadow: 0 6px 18px -8px var(--hub-brand-glow);
+  transition:
+    transform var(--dur-1) var(--ease-out),
+    background var(--dur-2) var(--ease-out),
+    color var(--dur-2) var(--ease-out),
+    border-color var(--dur-2) var(--ease-out),
+    box-shadow var(--dur-2) var(--ease-out);
+}
+.lp-ibtn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+@media (hover: hover) and (pointer: fine) {
+  .lp-ibtn:hover:not(:disabled) {
+    filter: brightness(1.1);
+  }
+}
+.lp-ibtn:disabled {
+  cursor: default;
+}
+.lp-ibtn__in {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  animation: lp-btn-in var(--dur-2) var(--ease-out) both;
+}
+@keyframes lp-btn-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.lp-ibtn.is-sending {
+  color: var(--hub-dim);
+  background: var(--hub-surface-3);
+  border-color: var(--hub-line-2);
+  box-shadow: none;
+}
+.lp-ibtn.is-sent,
+.lp-ibtn.is-saved {
+  color: var(--hub-good);
+  background: rgba(var(--hub-good-rgb), 0.14);
+  border-color: rgba(var(--hub-good-rgb), 0.45);
+  box-shadow: none;
+}
+.lp-ibtn.is-saved {
+  color: var(--hub-info, var(--hub-good));
+  background: rgba(var(--hub-info-rgb, var(--hub-good-rgb)), 0.14);
+  border-color: rgba(var(--hub-info-rgb, var(--hub-good-rgb)), 0.45);
+}
+.lp-ibtn.is-again {
+  color: var(--hub-text);
+  background: transparent;
+  border-color: var(--hub-line-2);
+  box-shadow: none;
+}
+.lp-ibtn.is-error {
+  color: var(--hub-bad-ink);
+  background: rgba(var(--hub-bad-rgb), 0.12);
+  border-color: rgba(var(--hub-bad-rgb), 0.5);
+  box-shadow: none;
+}
+.lp-ibtn__check {
+  animation: lp-check var(--dur-3) var(--ease-spring) both;
+}
+@keyframes lp-check {
+  from {
+    opacity: 0;
+    transform: scale(0.4) rotate(-12deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.lp-ibtn__spin {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2.5px solid currentColor;
+  border-top-color: transparent;
+  animation: lp-spin 0.8s linear infinite;
+}
+@keyframes lp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- states ---------- */
+.lp-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--hub-line);
+  background: rgba(var(--hub-tint), 0.04);
+}
+.lp-state--empty {
+  border-style: dashed;
+  border-color: var(--hub-line-2);
+}
+.lp-state__title {
+  margin: 0;
+  font-weight: 800;
+  color: var(--hub-text);
+}
+.lp-state__text {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--hub-dim);
+}
+.lp-state[role='alert'] .lp-state__text {
+  color: var(--hub-bad-ink);
+}
+.lp-nomatch {
+  padding: 4px 2px;
+}
+.lp-note {
+  margin: 0;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px dashed var(--hub-line-2);
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: var(--hub-dim);
+}
+.lp-note a {
+  color: var(--hub-brand-ink);
+  font-weight: 800;
+}
+
+.lp-skelrow {
+  pointer-events: none;
+}
+.lp-skel {
+  display: block;
+  background: linear-gradient(100deg, var(--hub-skel) 30%, var(--hub-skel-hi) 50%, var(--hub-skel) 70%);
+  animation: lp-breathe 1.4s ease-in-out infinite alternate;
+}
+.lp-skel--circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+.lp-skel--line {
+  height: 14px;
+  width: 60%;
+  border-radius: 8px;
+}
+.lp-skel--btn {
+  width: 96px;
+  height: 36px;
+  border-radius: 999px;
+}
+@keyframes lp-breathe {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.lp-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- share tools ---------- */
+.lp-share {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.lp-btn {
+  min-height: var(--hub-tap, 44px);
+}
+.lp-label {
+  font-size: var(--st-t-xs, 0.75rem);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--hub-dim);
+}
+.lp-code {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--hub-line);
+  background: rgba(var(--hub-tint), 0.04);
+}
+.lp-code__main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.lp-code__value {
+  font-family: var(--font-hub-display);
+  font-size: clamp(1.7rem, 8vw, 2.2rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+  color: var(--hub-text);
+  user-select: all;
+}
+.lp-link {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.lp-link__input {
+  flex: 1 1 150px;
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  color: var(--hub-dim);
+}
+.lp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.lp-actions .lp-btn {
+  flex: 1 1 auto;
+}
+.lp-btn.is-done {
+  color: var(--hub-good);
+  border-color: rgba(var(--hub-good-rgb), 0.5);
+}
+.lp-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  animation: lp-btn-in var(--dur-3) var(--ease-out) both;
+}
+.lp-qr__tile {
+  padding: 6px;
+  line-height: 0;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: var(--hub-shadow-s);
+}
+.lp-qr__hint {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--hub-dim);
+}
+
+/* ---------- reduced motion: no travel, no spin, no spring; opacity fades only ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .lp-panel,
+  .lp-qr,
+  .lp-ibtn__in {
+    animation: lp-fade-in var(--dur-1) linear both;
+  }
+  .lp-ibtn__check,
+  .lp-ibtn__spin,
+  .lp-skel {
+    animation: none;
+  }
+  .lp-ibtn__spin {
+    border-style: dotted;
+  }
+  .lp-tabs__thumb,
+  .lp-ibtn,
+  .lp-addbtn {
+    transition: none;
+  }
+  .lp-ibtn:active:not(:disabled),
+  .lp-addbtn:active {
+    transform: none;
+  }
+}
+:root[data-motion='reduced'] :is(.lp-panel, .lp-qr, .lp-ibtn__in) {
+  animation: lp-fade-in var(--dur-1) linear both;
+}
+:root[data-motion='reduced'] :is(.lp-ibtn__check, .lp-ibtn__spin, .lp-skel) {
+  animation: none;
+}
+:root[data-motion='reduced'] .lp-ibtn__spin {
+  border-style: dotted;
+}
+:root[data-motion='reduced'] :is(.lp-tabs__thumb, .lp-ibtn, .lp-addbtn) {
+  transition: none;
+}
+:root[data-motion='reduced'] :is(.lp-ibtn, .lp-addbtn):active:not(:disabled) {
+  transform: none;
+}
