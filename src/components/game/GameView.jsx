@@ -56,6 +56,8 @@ import '../../styles/gamemobile.css';
 import '../../styles/perf.css';
 import { usePerfMode } from '@/lib/perfMode.js';
 import '../../styles/map-andhra.css'; // the Andhra map's look; every rule is scoped under [data-map='andhra']
+import '../../styles/board-themes.css'; // equipped board themes; every rule is scoped under .hg-game[data-board-theme]
+import { equippedBoardTheme } from './boardTheme.js';
 import FxLayer from './fx/FxLayer.jsx';
 import ActivityFeed from './feed/ActivityFeed.jsx';
 import FeedToasts from './feed/FeedToasts.jsx';
@@ -228,11 +230,13 @@ function GameViewInner({ session: rawSession, onExit }) {
   const playerCount = (session.display?.players ?? session.view?.players ?? []).length;
   const seated = (session.display?.players ?? session.view?.players ?? []).some((p) => p.id === session.me);
   const opponents = Math.max(0, playerCount - (seated ? 1 : 0));
+  const boardTheme = equippedBoardTheme(session); // my own equipped board look (local only), or null
 
   return (
     <div
       className={`hg-game${compact ? ` hg-game--compact hg-game--${layout}` : ''}`}
       data-map={artMap}
+      data-board-theme={boardTheme ?? undefined}
       data-wide={wide ? '' : undefined}
       data-rm={reduced ? '' : undefined}
       data-layout={phoneSimple ? 'phone-simple' : undefined}
