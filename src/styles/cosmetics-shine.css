@@ -21,11 +21,12 @@
 
 /* ---------- cx-foil: gold / metal foil. Text (background-clip) or a plain surface. ---------- */
 .cx-foil {
-  --cx-foil-a: #8f5a0a;
-  --cx-foil-b: #e0a21f;
-  --cx-foil-c: #fff1a8;
-  --cx-foil-d: #f4c542;
-  --cx-foil-e: #a8680c;
+  /* light theme: every stop stays dark enough for 4.5:1 on the pale gold chip (the highlight is a warmer amber, not a pale one) */
+  --cx-foil-a: #5e3700;
+  --cx-foil-b: #86520a;
+  --cx-foil-c: #9a6208;
+  --cx-foil-d: #7d4b05;
+  --cx-foil-e: #5e3700;
   background-image: linear-gradient(
     115deg,
     var(--cx-foil-a) 0%,
