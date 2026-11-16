@@ -208,7 +208,7 @@ Seat order is shuffled with a CSPRNG when the host presses Start; seat 0 plays f
   min bid 50% of its price); the lander bids like everyone. None unowned: nothing.
 * **Cards (2, 21 Nawabi Luck; 12, 30 City Drama)**: see 10.
 * **Trades** move districts (with their upgrades and mortgages) and cash. Only districts can be traded. Either side may be cash only, a
-  district only or both; a side may be empty as long as the deal is not (an outright gift is legal). **When may I propose one?** On my own turn
+  district only or both; a side may be empty as long as the deal is not (an outright gift is legal). **District limit (fixed, always on): one trade moves at most `MAX_TRADE_TILES` = 2 districts from each player** (give <= 2 and get <= 2, in an offer, in a counter-offer and again when it is accepted), so nobody can hand over everything they own in one go and wipe the other player out; cash is not limited. Error: `A trade can include at most 2 districts from each player.`; `getOptions().trade.maxTiles` tells the client. **When may I propose one?** On my own turn
   in any quiet moment: before the roll, while deciding about the district I landed on (phase `buy`: the district stays mine to buy or pass
   afterwards), after buying / managing, and on an extra roll (a six). Never during a debt, an auction or a Snatch window, never while another
   offer is open, never when I am the only active player. `shared/engine.js tradeBlock(state, playerId)` is the one rule (it returns the exact
@@ -530,7 +530,7 @@ state = {
 ```
 The client computes `getOptions(state, me)` from `shared/engine.js` on the (redacted) view. Keys:
 `roll payTraffic useChai buy skipBuy ride endTurn upgrade[] bid mortgage[] unmortgage[] sellBuilding[] debt payDebt
-trade tradeOffer tradeSent sets[] resign snatch snatched` (`trade: { canOffer }`; `tradeOffer` also carries `counters, canCounter`; everything false / null / [] when it is not that player's moment).
+trade tradeOffer tradeSent sets[] resign snatch snatched` (`trade: { canOffer, maxTiles }`; `tradeOffer` also carries `counters, canCounter`; everything false / null / [] when it is not that player's moment).
 `roll` is also true while stuck (it means "wait"); `payTraffic` = the fine or `false`; `useChai` boolean;
 `ride` = `{ to, fare } | null`; `upgrade[]` = `{ tile, cost, level }`; `bid` = `{ tile, min, max }`;
 `sets[]` = `{ group, owned, size, multiplier }`; `snatch` = `{ tile, ms } | null` (an eligible player who has not
@@ -559,7 +559,7 @@ Tile fields are integers 0-35.
 | `PAY_DEBT` | | you are the debtor, cash >= amount | `You do not owe anything right now` · `Raise ₹X more first` |
 | `END_TURN` | | your turn, phase `manage`, no `extraRoll` | `You cannot end your turn yet` · `You rolled a six. Roll again` |
 | `BID` | `amount` (int 0 - 100,000,000; 0 = pass) | auction, once per player | `There is no auction right now` · `You already placed your bid` · `The minimum bid is ₹X` · `You cannot bid more than your cash` |
-| `TRADE_OFFER` | `to`, `give`/`get`: `{cash:int>=0, tiles:int[]}` (unique, on board, not both empty) | your turn, phase `roll` / `manage` / `buy` (8.8), no other offer open | `You can propose a trade on your own turn` · `Trading opens again when the auction ends` · `Settle the debt before trading` · `Trading opens again when the Snatch window closes` · `Only districts can be traded` · `You do not have that much cash` |
+| `TRADE_OFFER` | `to`, `give`/`get`: `{cash:int>=0, tiles:int[]}` (unique, on board, at most 2 tiles per side, not both empty) | your turn, phase `roll` / `manage` / `buy` (8.8), no other offer open | `You can propose a trade on your own turn` · `Trading opens again when the auction ends` · `Settle the debt before trading` · `Trading opens again when the Snatch window closes` · `Only districts can be traded` · `A trade can include at most 2 districts from each player.` · `You do not have that much cash` |
 | `TRADE_ACCEPT` / `TRADE_REJECT` | | the recipient of the pending offer | `There is no trade offer` · `This offer is not for you` |
 | `TRADE_CANCEL` | | the offerer | `Only the player who made the offer can cancel it` |
 | `TRADE_COUNTER` | `give`/`get` as in `TRADE_OFFER` (no `to`: the proposer is implied) | the recipient of the pending offer, fewer than 5 counters so far | `There is no trade offer` · `This offer is not for you` · `Counter-offers are used up (5). Accept or reject` · the `TRADE_OFFER` deal errors |
