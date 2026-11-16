@@ -9,6 +9,12 @@
 //   card     null | { player, deck, title, text, kind, cardId }   while a card event plays
 //   handoff  null | { player, round, isFinal }                     while a turn event plays (isFinal: last round)
 //   auctionResult  null | { ...auction_end, id, ms }              while an auction_end plays (the bidding screen's reveal; ms = how long it is held)
+//   power    null | { id, kind, player, ms, ... }                  while a power-card event plays (docs/POWER_CARDS.md 3.3):
+//              kind 'draw'    { source, tile?, card? }             card = { uid, id, exp } only for MY draw (found by diffing my hand
+//                                                                  between two authoritative states: the event never names the card)
+//              kind 'play'    { card, target? }                    the card id, now public
+//              kind 'shield' | 'double'  { card, amount, other? }  an armed card did its job
+//              kind 'expire'  { count }
 //   flights  [{ id, from, to, amount, reason, ms }]                money in the air; from / to = player id | 'bank'.
 //            Pushed on cash transfers (rent pair -> player->player, gains -> bank->player, payments ->
 //            player->bank) and dropped again once their animation is over (`ms`). FxLayer flies them.
@@ -71,7 +77,17 @@ const NEEDS_ATTENTION = new Set([
   'auction_start', 'auction_end',
   'trade_offer', 'trade_countered', 'trade_done', 'trade_rejected', 'city_event',
   'snatch_open', 'snatch_end', 'token_earned',
+  'power_draw', 'power_play', 'power_trigger', 'power_expire', // the power-card moments always play at full pace
 ]);
+
+/** Fallbacks for the power waits until shared/timing.js carries the keys (a test fails loudly if they go missing once it does). */
+export const POWER_MS_FALLBACK = Object.freeze({ powerDraw: 900, powerPlay: 1500, powerTrigger: 1400, powerExpire: 700 });
+
+/** The cards I can see in my own hand of a state (other hands are redacted to { hidden: true }). */
+function myHandOf(state, me) {
+  const p = state && Array.isArray(state.players) ? state.players.find((x) => x && x.id === me) : null;
+  return p && Array.isArray(p.hand) ? p.hand.filter((c) => c && !c.hidden && typeof c.uid === 'string') : [];
+}
 
 let uid = 0;
 const nextId = () => {
@@ -164,6 +180,7 @@ function makeSnapshot(state) {
     card: null,
     handoff: null,
     auctionResult: null,
+    power: null,
     flights: [],
     log: [],
   };
@@ -199,6 +216,8 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
   let reducedNow = false;
   let rate = clampSpeed(speedOpt);
   let quickNow = false; // the item being played is background activity (see QUICK)
+  let knownHand = new Set(myHandOf(initialState, meId).map((c) => c.uid)); // my hand's uids in the last authoritative state seen (the power-draw diff)
+  let swapQuiet = 0; // the two teleport moves of a Swap Tiles are told by the power_play line: they stay out of the log and silent
   let lastLeg = null; // the last money flight of this item (so the other leg of a rent pair does not fly twice)
   const timers = new Set();
   const flightTimers = new Set();
@@ -304,6 +323,15 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
     }
   };
 
+  /** A power moment: commit it (unless catching up), wait the ANIM_MS key for it, clear it. Resolves false when cancelled. */
+  async function powerMoment(key, moment, wait) {
+    const base = dlOr(key, POWER_MS_FALLBACK[key]);
+    if (!backedUp()) commit({ power: { id: `pw${nextId()}`, ...moment, ms: Math.round(base * factor()) } });
+    const ok = await wait(base);
+    if (ok) commit({ power: null });
+    return ok;
+  }
+
   // ---- money flights ----
   function pushFlight(from, to, amount, reason) {
     if (disposed || backedUp() || !(amount > 0) || from === to) return;
@@ -390,7 +418,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
 
   // ---- event playback ----
   /** Plays one event. Resolves to false when playback was cancelled (reset/unmount). */
-  async function playEvent(ev, wait) {
+  async function playEvent(ev, wait, drawn = []) {
     const dsp = S.display;
     const byMe = ev.player === me;
 
@@ -433,13 +461,15 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
         patchDisplay((d) => ({ ...d, landing: null, moving: ev.player }));
         if (ev.teleport || path.length === 0) {
           // one arc over the board: the pawn flies for teleportPre + teleport (`stepMs` = its flight time)
-          fx(ev.teleport ? 'card' : 'step');
+          const quietSwap = !!ev.teleport && swapQuiet > 0;
+          if (quietSwap) swapQuiet -= 1;
+          else fx(ev.teleport ? 'card' : 'step');
           patchDisplay((d) => ({
             ...d,
             stepMs: Math.round((dl('teleportPre') + dl('teleport')) * factor()),
             players: d.players.map((p) => (p.id === ev.player ? { ...p, pos: ev.to, motion } : p)),
           }));
-          if (ev.teleport) announce(ev);
+          if (ev.teleport && !quietSwap) announce(ev);
           if (!(await wait(dl('teleportPre')))) return false;
           const ok = await wait(dl('teleport'));
           if (ok) {
@@ -752,6 +782,64 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
         return wait(dl('bankrupt'));
       }
 
+      case 'power_draw': {
+        // the event never names the card: my own draw carries the card found in my hand diff, a rival's is a card back
+        const mine = byMe ? drawn.shift() || null : null;
+        announce(ev, { bubble: false });
+        fx('powerDraw', 'card', { vol: byMe ? 1 : 0.6 });
+        if (byMe) hp('powerDraw');
+        return powerMoment('powerDraw', {
+          kind: 'draw',
+          player: ev.player,
+          source: ev.source === 'tile' ? 'tile' : 'turn',
+          ...(Number.isInteger(ev.tile) ? { tile: ev.tile } : null),
+          ...(mine ? { card: { uid: mine.uid, id: mine.id, exp: mine.exp } } : null),
+        }, wait);
+      }
+
+      case 'power_play': {
+        announce(ev, { bubble: false });
+        fx('powerPlay', 'card', { vol: byMe ? 1 : 0.8 });
+        if (ev.card === 'swap' || ev.card === 'steal') {
+          // the card's own sound follows the slam
+          const myEpoch = epoch;
+          const id = setTimeout(() => {
+            flightTimers.delete(id);
+            if (epoch === myEpoch) fx(ev.card === 'swap' ? 'powerSwap' : 'powerSteal', 'card', { vol: byMe ? 1 : 0.8 });
+          }, Math.round(220 * factor()));
+          flightTimers.add(id);
+        }
+        if (ev.card === 'swap') swapQuiet = 2; // two teleport moves follow
+        if (byMe) hp('powerPlay');
+        return powerMoment('powerPlay', {
+          kind: 'play',
+          player: ev.player,
+          card: ev.card,
+          ...(ev.target !== undefined && ev.target !== null ? { target: ev.target } : null),
+        }, wait);
+      }
+
+      case 'power_trigger': {
+        const kind = ev.card === 'double' ? 'double' : 'shield';
+        announce(ev, { bubble: false });
+        fx(kind === 'double' ? 'powerDouble' : 'powerShield', 'coin', { vol: byMe || ev.other === me ? 1 : 0.8 });
+        if (byMe) hp(kind === 'double' ? 'powerDouble' : 'powerShield');
+        return powerMoment('powerTrigger', {
+          kind,
+          player: ev.player,
+          card: kind,
+          amount: Number(ev.amount) || 0,
+          ...(ev.other !== undefined && ev.other !== null ? { other: ev.other } : null),
+        }, wait);
+      }
+
+      case 'power_expire': {
+        announce(ev, { bubble: false });
+        fx('powerExpire', 'click', { vol: byMe ? 1 : 0.6 });
+        if (byMe) hp('powerExpire');
+        return powerMoment('powerExpire', { kind: 'expire', player: ev.player, count: Math.max(1, Math.floor(Number(ev.count)) || 1) }, wait);
+      }
+
       case 'turn': {
         const idx = dsp.players.findIndex((p) => p.id === ev.player);
         const max = dsp.cfg ? Number(dsp.cfg.maxRounds) : NaN;
@@ -798,8 +886,9 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
     }
   }
 
-  async function playItem(events, myEpoch) {
+  async function playItem(events, myEpoch, drawn = []) {
     reducedNow = reducedMotion();
+    swapQuiet = 0;
     quickNow = computeQuick(events);
     lastLeg = null;
     const alive = () => epoch === myEpoch && !disposed;
@@ -811,7 +900,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
       if (!alive()) return false;
       if (!ev || typeof ev.type !== 'string') continue;
       try {
-        if (!(await playEvent(ev, wait))) return false;
+        if (!(await playEvent(ev, wait, drawn))) return false;
       } catch (err) {
         devWarn('event failed', ev, err);
       }
@@ -821,7 +910,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
 
   function snapTo(state) {
     if (!state || !Array.isArray(state.players)) {
-      commit({ rolling: false, card: null, handoff: null, auctionResult: null });
+      commit({ rolling: false, card: null, handoff: null, auctionResult: null, power: null });
       return;
     }
     // `assist` belongs to the last roll, which the state itself does not carry: keep it.
@@ -831,6 +920,7 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
       card: null,
       handoff: null,
       auctionResult: null,
+      power: null,
     });
   }
 
@@ -839,16 +929,21 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
     if (disposed) return;
     const list = Array.isArray(events) ? events : [];
     if (list.length === 0 && pending === 0) {
+      knownHand = new Set(myHandOf(newState, me).map((c) => c.uid));
       snapTo(newState); // nothing to play and nothing ahead of us: apply instantly, no busy flicker
       return;
     }
     const myEpoch = epoch;
+    // my new cards since the last state, in the order drawn: my power_draw events take them one by one
+    const nowHand = myHandOf(newState, me);
+    const drawn = nowHand.filter((c) => !knownHand.has(c.uid));
+    knownHand = new Set(nowHand.map((c) => c.uid));
     pending += 1;
     if (!S.busy) commit({ busy: true });
     chain = chain.then(async () => {
       if (myEpoch !== epoch || disposed) return;
       try {
-        await playItem(list, myEpoch);
+        await playItem(list, myEpoch, drawn);
       } catch (err) {
         devWarn('playback failed', err);
       }
@@ -865,6 +960,8 @@ export function createPresenterCore({ meId, initialState, speed: speedOpt = 1, d
     chain = Promise.resolve();
     pending = 0;
     lastLeg = null;
+    swapQuiet = 0;
+    knownHand = new Set(myHandOf(state, me).map((c) => c.uid)); // a fresh snapshot: nothing in it is "new"
     S = { ...makeSnapshot(state) };
     listeners.forEach((l) => l());
   }

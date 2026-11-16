@@ -176,3 +176,21 @@ describe('chipify', () => {
     expect(rowLabel({ text: 'Plain', tile: null })).toBe('Plain');
   });
 });
+
+describe('power card rows', () => {
+  it('the four events are one kind with their own label and icon', () => {
+    for (const type of ['power_draw', 'power_play', 'power_trigger', 'power_expire']) expect(kindOf({ type }), type).toBe('power');
+    const item = feedItem({ type: 'power_play', player: 'rav', card: 'shield' }, ctx);
+    expect(item).toMatchObject({ text: 'Ravi played Shield', kind: 'power', label: 'POWER', players: ['rav'] });
+    expect(item.icon).toBeTruthy();
+  });
+  it('a swap row lists both players; a trigger row keeps the rent amount in its words for the chips', () => {
+    expect(feedItem({ type: 'power_play', player: 'sana', card: 'swap', target: 'rav' }, ctx).text).toBe('Sana swapped places with Ravi');
+    const trig = feedItem({ type: 'power_trigger', player: 'rav', card: 'shield', amount: 42000, other: 'sana' }, ctx);
+    expect(trig.text).toMatch(/Ravi's Shield blocked .*42,000 of rent/);
+    expect(trig.players).toEqual(['rav', 'sana']);
+  });
+  it('an expiry row is not about anyone in particular but still renders', () => {
+    expect(feedItem({ type: 'power_expire', player: 'rav', count: 2 }, ctx).text).toBe('2 power cards expired');
+  });
+});

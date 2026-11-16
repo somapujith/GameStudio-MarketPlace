@@ -35,6 +35,7 @@ export const KIND_LABEL = {
   auction: 'AUCTION',
   snatch: 'SNATCH',
   set: 'COLLECTION',
+  power: 'POWER',
   mortgage: 'MORTGAGE',
   trade: 'TRADE',
   debt: 'DEBT',
@@ -48,7 +49,7 @@ export const KIND_LABEL = {
 /** Icon for a row that has no emoji of its own. */
 export const KIND_ICON = {
   roll: '🎲', move: '👣', rent: '🏠', tax: '🏛️', salary: '💰', fine: '🚦', cash: '💸', buy: '🔑', build: '🏗️', sell: '📉',
-  card: '🃏', event: '🌆', ride: '🛺', traffic: '🚦', chai: '☕', auction: '🔨', snatch: '⚡', set: '🎉', mortgage: '🏦',
+  card: '🃏', event: '🌆', ride: '🛺', traffic: '🚦', chai: '☕', auction: '🔨', snatch: '⚡', set: '🎉', power: '🃏', mortgage: '🏦',
   trade: '🤝', debt: '⚠️', bankrupt: '💥', round: '🔔', win: '🏆', note: '📌', info: '•',
 };
 
@@ -81,6 +82,7 @@ export function kindOf(ev) {
     case 'auction_start': case 'auction_end': return 'auction';
     case 'snatch_open': case 'snatch_end': case 'token_earned': return 'snatch';
     case 'set_complete': return 'set';
+    case 'power_draw': case 'power_play': case 'power_trigger': case 'power_expire': return 'power';
     case 'mortgage': case 'unmortgage': return 'mortgage';
     case 'trade_offer': case 'trade_countered': case 'trade_done': case 'trade_rejected': return 'trade';
     case 'debt': return 'debt';

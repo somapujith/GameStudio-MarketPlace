@@ -8,6 +8,7 @@ import { DICE_BOUNCES } from './soundscape/recipes.js';
 
 const ORIGINAL_NAMES = ['click', 'dice', 'step', 'coin', 'pay', 'buy', 'upgrade', 'hotel', 'mortgage', 'trade', 'lucky', 'jail', 'card', 'win', 'lose', 'cheer', 'error', 'turn', 'warn', 'ride', 'chai', 'invite', 'levelup', 'friend'];
 const NEW_NAMES = ['tap', 'toggle', 'diceLand', 'land', 'rent', 'sold', 'auction', 'announce', 'traffic', 'turnOther', 'tick', 'snatchAlarm', 'snatchTick', 'snatchPress', 'snatchWin', 'snatchLost', 'bankrupt'];
+const POWER_NAMES = ['powerDraw', 'powerPlay', 'powerShield', 'powerDouble', 'powerSwap', 'powerSteal', 'powerExpire'];
 
 // a few option sets per sound, to exercise every branch
 const OPTS = {
@@ -23,6 +24,7 @@ const OPTS = {
   snatchTick: [{ urgency: 0.5, tock: true }],
   bankrupt: [{ mine: true }, { mine: false }],
   toggle: [{ on: true }, { on: false }],
+  ...Object.fromEntries(POWER_NAMES.map((n) => [n, [undefined, { vol: 0.6 }, { vol: 5 }]])),
 };
 
 function rig(extra = {}) {
@@ -48,7 +50,7 @@ function rig(extra = {}) {
 
 describe('sound registry', () => {
   it('keeps every original name and adds the new soundscape', () => {
-    for (const n of [...ORIGINAL_NAMES, ...NEW_NAMES]) expect(SFX_NAMES).toContain(n);
+    for (const n of [...ORIGINAL_NAMES, ...NEW_NAMES, ...POWER_NAMES]) expect(SFX_NAMES).toContain(n);
     expect(SFX_NAMES).toEqual(SOUND_NAMES);
   });
 
@@ -65,6 +67,22 @@ describe('sound registry', () => {
     for (const n of ['turn', 'snatchAlarm', 'snatchWin', 'win', 'bankrupt']) expect(RECIPES[n].priority).toBe(3);
     for (const n of ['step', 'click', 'tap', 'turnOther']) expect(RECIPES[n].priority).toBe(0);
     expect(RECIPES.coin.priority).toBeLessThan(RECIPES.turn.priority);
+  });
+});
+
+describe('power card sounds', () => {
+  it('are registered with the priorities of the spec: the play is notable, the rest are ordinary events', () => {
+    expect(RECIPES.powerPlay.priority).toBeGreaterThanOrEqual(2);
+    expect(RECIPES.powerPlay.priority).toBeLessThanOrEqual(3);
+    for (const n of POWER_NAMES) {
+      expect(RECIPES[n].priority, n).toBeGreaterThanOrEqual(1);
+      expect(RECIPES[n].priority, n).toBeLessThanOrEqual(3);
+      expect(RECIPES[n].dur, n).toBeLessThanOrEqual(1.5); // short one-shots: the ambient bed ducks for this long
+      expect(RECIPES[n].cooldown, n).toBeGreaterThan(0);
+    }
+  });
+  it('stay below the turn / win fanfares so a power card never drowns them', () => {
+    for (const n of POWER_NAMES) expect(RECIPES[n].priority, n).toBeLessThan(RECIPES.turn.priority);
   });
 });
 

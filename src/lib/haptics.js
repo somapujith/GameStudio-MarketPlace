@@ -22,6 +22,13 @@ export const PATTERNS = {
   pay: 40, // you paid rent / a fee
   earn: [15, 40, 15], // you collected money
   card: [14, 40, 22], // a card flips
+  powerDraw: [12, 40, 18], // you drew a power card
+  powerPlay: [34, 50, 20], // you played one: a firm slam
+  powerShield: [22, 30, 22, 30, 50], // your Shield blocked a payment
+  powerDouble: [14, 36, 14, 36, 14, 36, 44], // your Double Rent paid out: a run of coins
+  powerSwap: [18, 40, 18, 40, 28], // you traded places
+  powerSteal: [12, 30, 10, 30, 10, 30, 30], // an extra roll: the rattle
+  powerExpire: 12, // one of your cards crumbled
   turn: [30, 60, 30], // it is your turn
   warn: [60, 80, 60], // timer about to run out
   snatchOpen: [40, 50, 40, 50, 40], // the Snatch window opened for you: urgent

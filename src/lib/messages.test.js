@@ -230,3 +230,40 @@ describe('Snatch lines', () => {
     expect(nameList(sctx, null)).toBe('Nobody');
   });
 });
+
+describe('power card lines (docs/POWER_CARDS.md 3.4)', () => {
+  const pctx = { ...ctx, players: [...ctx.players, { id: 'g', name: 'Gita' }] };
+  const t = (ev) => describeEvent(ev, pctx);
+  it('a draw never names the card', () => {
+    expect(t({ type: 'power_draw', player: 'b1', source: 'turn' }).text).toBe('Chai Uncle drew a power card');
+    expect(t({ type: 'power_draw', player: 'me', source: 'tile', tile: 7 })).toMatchObject({ text: 'You drew a power card', tone: 'good', tile: 7 });
+  });
+  it('a play names the card from the shared metadata; a swap names both players', () => {
+    expect(t({ type: 'power_play', player: 'b1', card: 'shield' }).text).toBe('Chai Uncle played Shield');
+    expect(t({ type: 'power_play', player: 'me', card: 'double' }).text).toBe('You played Double Rent');
+    expect(t({ type: 'power_play', player: 'b1', card: 'steal' }).text).toBe('Chai Uncle played Steal a Roll');
+    expect(t({ type: 'power_play', player: 'g', card: 'swap', target: 'b1' }).text).toBe('Gita swapped places with Chai Uncle');
+    expect(t({ type: 'power_play', player: 'b1', card: 'swap', target: 'me' }).text).toBe('Chai Uncle swapped places with you');
+  });
+  it('a shield trigger says how much rent it blocked, tax without a rival says so', () => {
+    expect(t({ type: 'power_trigger', player: 'b1', card: 'shield', amount: 42000, other: 'g' }).text).toBe("Chai Uncle's Shield blocked ₹42,000 of rent");
+    expect(t({ type: 'power_trigger', player: 'me', card: 'shield', amount: 70000 }).text).toBe('Your Shield blocked ₹70,000 of Municipal Charges');
+    expect(t({ type: 'power_trigger', player: 'b1', card: 'shield', amount: 1, other: 'me' }).tone).toBe('bad'); // my rent was blocked
+    expect(t({ type: 'power_trigger', player: 'me', card: 'shield', amount: 1, other: 'b1' }).tone).toBe('good');
+  });
+  it('a double trigger says how much extra it earned', () => {
+    expect(t({ type: 'power_trigger', player: 'b1', card: 'double', amount: 30000, other: 'g' }).text).toBe("Chai Uncle's Double Rent earned ₹30,000 extra");
+    expect(t({ type: 'power_trigger', player: 'me', card: 'double', amount: 30000, other: 'b1' }).text).toBe('Your Double Rent earned ₹30,000 extra');
+    expect(t({ type: 'power_trigger', player: 'b1', card: 'double', amount: 30000, other: 'me' }).tone).toBe('bad');
+  });
+  it('an expiry counts the cards', () => {
+    expect(t({ type: 'power_expire', player: 'b1', count: 1 }).text).toBe('A power card expired');
+    expect(t({ type: 'power_expire', player: 'b1', count: 2 }).text).toBe('2 power cards expired');
+    expect(t({ type: 'power_expire', player: 'me' }).text).toBe('A power card expired');
+  });
+  it('is safe on odd input: an unknown card id, a missing amount', () => {
+    expect(t({ type: 'power_play', player: 'b1', card: 'nope' }).text).toBe('Chai Uncle played power card');
+    expect(t({ type: 'power_trigger', player: 'b1', card: 'shield' }).text).toBe("Chai Uncle's Shield blocked the payment");
+    expect(() => t({ type: 'power_play' })).not.toThrow();
+  });
+});

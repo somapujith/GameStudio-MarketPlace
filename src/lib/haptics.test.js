@@ -74,3 +74,9 @@ describe('haptics', () => {
     expect(vibrate).toHaveBeenLastCalledWith(0);
   });
 });
+
+describe('power card haptics', () => {
+  it('has a pattern for every power moment', () => {
+    for (const k of ['powerDraw', 'powerPlay', 'powerShield', 'powerDouble', 'powerSwap', 'powerSteal', 'powerExpire']) expect(PATTERNS[k], k).toBeDefined();
+  });
+});

@@ -55,6 +55,8 @@ export { useRoomConnection };
  *  - session.roomPlayers  the `{t:'room'}` players ({ id, name, connected, piece, cosmetics }), [] before the room arrives
  *  - session.cosmetics    { [playerId]: { frame?, dice?, title? } } built from them; session.room = the raw room
  *  - session.card / handoff / flights  the presenter's card reveal, turn hand-off and coin flights (null / null / [])
+ *  - session.power        the presenter's current power-card moment (draw / play / shield / double / expire), null between moments;
+ *                         `session.options.power` (the hand's playable cards) passes through gateOptions like the other options
  *  - the presenter plays back at the `playbackSpeed` setting
  *
  * `useOnlineGame(code, { getOptions, standings })`: the two engine calls that are specific to a game.
@@ -209,6 +211,7 @@ export function useOnlineGame(code, { getOptions = tycoonGetOptions, standings =
       card: presenter.card ?? null,
       handoff: presenter.handoff ?? null,
       auctionResult: presenter.auctionResult ?? null,
+      power: presenter.power ?? null,
       flights: presenter.flights ?? EMPTY,
       clock: liveClock,
       roomPlayers,
@@ -225,7 +228,7 @@ export function useOnlineGame(code, { getOptions = tycoonGetOptions, standings =
       quit: leave,
     }),
     [
-      me, view, display, busy, presenter.rolling, presenter.bubble, presenter.stageTile, presenter.lastCash, presenter.log, presenter.card, presenter.handoff, presenter.auctionResult,
+      me, view, display, busy, presenter.rolling, presenter.bubble, presenter.stageTile, presenter.lastCash, presenter.log, presenter.card, presenter.handoff, presenter.auctionResult, presenter.power,
       presenter.flights, liveClock, roomPlayers, cosmetics, room, options, dispatch, chat, sendChat, sendVoice, result, connection, restart, leave,
     ],
   );

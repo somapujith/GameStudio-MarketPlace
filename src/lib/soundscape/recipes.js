@@ -522,6 +522,81 @@ def('friend', 1, 400, 0.5, (s, t) => {
   s.tone({ f: NOTE.G6, t: t + 0.12, d: 0.2, v: 0.04 });
 });
 
+// ---------------------------------------------------------------------------------------------
+// Power cards (docs/POWER_CARDS.md 3.3): one short, distinct sound per moment, all one-shots.
+// `vol` (0..1) is how loud: the presenter passes less for a rival's card.
+// ---------------------------------------------------------------------------------------------
+
+// a card is drawn: a soft paper flick and a small gold sparkle
+def('powerDraw', 1, 220, 0.6, (s, t, o) => {
+  const v = clamp(num(o.vol, 1), 0.2, 1);
+  s.noise({ t, a: 0.04, d: 0.1, v: 0.09 * v, type: 'highpass', f: 2400, f2: 1300 }); // the flick
+  s.tone({ f: 620, f2: 900, type: 'triangle', t: t + 0.03, d: 0.07, v: 0.1 * v });
+  [NOTE.E6, NOTE.G6, 2093].forEach((f, i) => s.tone({ f, t: t + 0.13 + i * 0.07, d: 0.22, v: (0.075 - i * 0.012) * v })); // sparkle
+  s.noise({ t: t + 0.14, a: 0.04, d: 0.3, v: 0.025 * v, type: 'highpass', f: 6500 });
+});
+
+// a card is played: a decisive slam on the table with a bright ring after it
+def('powerPlay', 2, 400, 0.9, (s, t, o) => {
+  const v = clamp(num(o.vol, 1), 0.3, 1);
+  s.noise({ t, d: 0.05, v: 0.12 * v, type: 'highpass', f: 2600 }); // the snap of the card
+  s.tone({ f: 190, f2: 55, t: t + 0.02, d: 0.2, v: 0.4 * v });
+  s.noise({ t: t + 0.02, d: 0.09, v: 0.26 * v, type: 'lowpass', f: 520 });
+  s.bell({ f: 784, t: t + 0.07, d: 0.55, v: 0.13 * v, ratios: [1, 2.0, 2.76] });
+  s.tone({ f: 1568, type: 'triangle', t: t + 0.09, d: 0.3, v: 0.05 * v });
+});
+
+// a Shield blocks a payment: a metallic hit and a bright shimmering chime
+def('powerShield', 2, 400, 1.3, (s, t, o) => {
+  const v = clamp(num(o.vol, 1), 0.3, 1);
+  s.tone({ f: 320, f2: 150, type: 'triangle', t, d: 0.1, v: 0.3 * v });
+  s.noise({ t, d: 0.03, v: 0.2 * v, f: 3400, q: 1.8 }); // the clang
+  s.bell({ f: 1046.5, t: t + 0.02, d: 0.8, v: 0.18 * v, ratios: [1, 2.76, 5.4, 8.9] });
+  [NOTE.C6, NOTE.E6, NOTE.G6, 2093].forEach((f, i) => s.tone({ f, t: t + 0.16 + i * 0.075, d: 0.4, v: 0.1 * v })); // the shimmer
+  s.noise({ t: t + 0.18, a: 0.08, d: 0.6, v: 0.03 * v, type: 'highpass', f: 7000 });
+});
+
+// Double Rent pays out: a coin cascade under a rising tone
+def('powerDouble', 2, 400, 1.2, (s, t, o) => {
+  const v = clamp(num(o.vol, 1), 0.3, 1);
+  let at = t;
+  let gap = 0.07;
+  for (let i = 0; i < 6; i++) {
+    clink(s, at, { v: (0.19 - i * 0.012) * v, d: i === 5 ? 0.3 : 0.13 });
+    at += gap + rand(0, 0.012);
+    gap = Math.max(0.04, gap * 0.9);
+  }
+  [NOTE.C5, NOTE.E5, NOTE.G5, NOTE.C6].forEach((f, i) => s.tone({ f, type: 'triangle', t: t + 0.04 + i * 0.1, d: 0.22, v: 0.1 * v })); // rising
+  s.tone({ f: NOTE.E6, t: t + 0.46, d: 0.5, v: 0.09 * v });
+});
+
+// Swap Tiles: two tones sliding past each other, a whoosh under them, a little tick where they cross
+def('powerSwap', 2, 400, 0.8, (s, t, o) => {
+  const v = clamp(num(o.vol, 1), 0.3, 1);
+  s.tone({ f: 420, f2: 960, type: 'triangle', t, a: 0.03, d: 0.5, v: 0.16 * v, pan: -0.5 });
+  s.tone({ f: 960, f2: 420, type: 'triangle', t, a: 0.03, d: 0.5, v: 0.16 * v, pan: 0.5 });
+  s.noise({ t, a: 0.12, d: 0.45, v: 0.07 * v, f: 700, f2: 2600, q: 0.8 });
+  s.tone({ f: 1318.5, t: t + 0.24, d: 0.16, v: 0.08 * v });
+});
+
+// Steal a Roll: a quick whoosh-snatch, then a die rattle
+def('powerSteal', 2, 400, 0.9, (s, t, o) => {
+  const v = clamp(num(o.vol, 1), 0.3, 1);
+  s.noise({ t, a: 0.05, d: 0.18, v: 0.16 * v, f: 500, f2: 3200, q: 0.9 }); // the grab
+  s.tone({ f: 260, f2: 520, type: 'triangle', t: t + 0.12, d: 0.07, v: 0.16 * v }); // the snatch
+  s.noise({ t: t + 0.17, d: 0.03, v: 0.14 * v, f: 3000, q: 1.6 });
+  s.rattle({ t: t + 0.22, d: 0.4, hits: 9, v: 0.15 * v, decay: 0.35 });
+  s.tone({ f: 175, f2: 100, t: t + 0.55, d: 0.1, v: 0.22 * v }); // it lands
+});
+
+// a card expires: a short dry crumble and a low blip
+def('powerExpire', 1, 300, 0.5, (s, t, o) => {
+  const v = clamp(num(o.vol, 1), 0.2, 1);
+  s.rattle({ t, d: 0.22, hits: 8, v: 0.1 * v, f1: 1200, f2: 3200, tickV: 0.03, decay: 0.5 });
+  s.noise({ t, d: 0.2, v: 0.05 * v, type: 'lowpass', f: 900 });
+  s.tone({ f: 196, f2: 130, type: 'triangle', t: t + 0.2, d: 0.14, v: 0.16 * v });
+});
+
 // double buzz
 def('error', 2, 200, 0.4, (s, t) => {
   [0, 0.16].forEach((dt) => {

@@ -17,7 +17,62 @@
 import { TILES, GROUPS, MAX_LEVEL, levelName } from '@shared/board.js';
 import { formatINR } from '@shared/format.js';
 import { activeMapId } from '@shared/maps.js';
+import { powerCardById } from '@shared/powerCards.js';
 import { wordsOf } from './mapWords.js';
+
+/** A power card's display name ("Double Rent"); an unknown id reads as a plain "power card". */
+export const powerName = (id) => {
+  const c = powerCardById(id);
+  return c ? c.name : 'power card';
+};
+
+/** The power-card lines (docs/POWER_CARDS.md 3.4): power_draw, power_play, power_trigger, power_expire. */
+function describePower(ev, ctx) {
+  const who = playerName(ctx, ev.player);
+  const mine = isMe(ctx, ev.player);
+  switch (ev.type) {
+    case 'power_draw':
+      return { text: `${who} drew a power card`, tone: toneFor(ctx, ev.player, 'good'), icon: '🃏', ...(Number.isInteger(ev.tile) ? { tile: ev.tile } : null) };
+    case 'power_play': {
+      const name = powerName(ev.card);
+      if (ev.card === 'swap' && ev.target !== null && ev.target !== undefined) {
+        return { text: `${who} swapped places with ${whom(ctx, ev.target)}`, bubble: `${name}!`, tone: 'info', icon: '🔀' };
+      }
+      return { text: `${who} played ${name}`, bubble: `${name}!`, tone: 'info', icon: '🃏' };
+    }
+    case 'power_trigger': {
+      const name = powerName(ev.card);
+      const amount = Number(ev.amount) > 0 ? formatINR(Number(ev.amount)) : null;
+      const other = ev.other !== null && ev.other !== undefined;
+      const hit = other && isMe(ctx, ev.other); // the other side: I was blocked / I paid double
+      const owner = mine ? 'Your' : `${who}'s`;
+      if (ev.card === 'shield') {
+        return {
+          text: `${owner} ${name} blocked ${amount ? `${amount} of ${other ? 'rent' : 'Municipal Charges'}` : 'the payment'}`,
+          bubble: 'Blocked!',
+          tone: mine ? 'good' : hit ? 'bad' : 'info',
+          icon: '🛡️',
+        };
+      }
+      return {
+        text: `${owner} ${name} earned ${amount ? `${amount} extra` : 'extra rent'}`,
+        bubble: 'x2 rent!',
+        tone: mine ? 'good' : hit ? 'bad' : 'info',
+        icon: '✨',
+      };
+    }
+    case 'power_expire': {
+      const n = Math.max(1, Math.floor(Number(ev.count)) || 1);
+      return {
+        text: n === 1 ? 'A power card expired' : `${n} power cards expired`,
+        tone: mine ? 'warn' : 'info',
+        icon: '⌛',
+      };
+    }
+    default:
+      return null;
+  }
+}
 
 const tileName = (id) => (TILES[id] ? TILES[id].name : `tile ${id}`);
 
@@ -538,6 +593,12 @@ export function describeEvent(ev, ctx) {
           icon: '⚠️',
         };
       }
+
+      case 'power_draw':
+      case 'power_play':
+      case 'power_trigger':
+      case 'power_expire':
+        return describePower(ev, ctx);
 
       case 'turn':
         return describeTurn(ev, ctx);
