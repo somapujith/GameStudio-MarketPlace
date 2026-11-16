@@ -120,6 +120,21 @@ export function estimateAnimMs(events, state = null) {
       case 'win':
         ms += A.win;
         break;
+      // Power Cards (docs/POWER_CARDS.md section 2). The ANIM_MS keys come from shared/timing.js; the fallbacks are the
+      // spec values so this adapter is right even against a timing.js that predates them. Swap's two teleport
+      // move events are timed by the move case above.
+      case 'power_draw':
+        ms += A.powerDraw ?? 900;
+        break;
+      case 'power_play':
+        ms += A.powerPlay ?? 1500;
+        break;
+      case 'power_trigger':
+        ms += A.powerTrigger ?? 1400;
+        break;
+      case 'power_expire':
+        ms += A.powerExpire ?? 700;
+        break;
       default:
         break;
     }
@@ -166,6 +181,9 @@ export function autoMove(state, playerId, rnd = Math.random) {
   if (action && (action.type === 'RIDE' || action.type === 'TRADE_OFFER')) {
     action = { type: state.extraRoll ? 'ROLL' : 'END_TURN', playerId }; // belt and braces: never for a human seat
   }
+  // Power Cards: auto-play never spends a human's hidden hand (they stay for when the player is back; unplayed cards
+  // simply expire). Rolling is always legal in the phase the brain would play a card in, so this never blocks the turn.
+  if (action && action.type === 'PLAY_POWER') action = { type: 'ROLL', playerId };
   // Safety net for a phase the brain declines to act in: a debtor tries to pay (the engine rejects it if they
   // cannot, and repeated rejections end in RESIGN).
   if (!action && state.phase === 'debt' && state.debt && state.debt.player === playerId) {

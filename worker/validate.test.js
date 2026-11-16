@@ -164,3 +164,63 @@ describe('sanitizeAction forces the player id and drops everything unexpected', 
     }
   });
 });
+
+describe('PLAY_POWER (Power Cards)', () => {
+  const uid = 'a1b2c3d4-e5f6-4a7b-8c9d-0123456789ab';
+  const rival = '00000000-0000-4000-8000-000000000002';
+
+  it('accepts a card uid, forces the player id and drops extra properties', () => {
+    expect(sanitizeAction({ type: 'PLAY_POWER', card: uid }, 'me')).toEqual({ type: 'PLAY_POWER', card: uid, playerId: 'me' });
+    expect(sanitizeAction({ type: 'PLAY_POWER', card: uid, playerId: 'victim', id: 'shield', exp: 99, extra: 1 }, 'me')).toEqual({
+      type: 'PLAY_POWER',
+      card: uid,
+      playerId: 'me',
+    });
+  });
+
+  it('keeps a target for swaps', () => {
+    expect(sanitizeAction({ type: 'PLAY_POWER', card: 'c_1-x', target: rival, junk: true }, 'me')).toEqual({
+      type: 'PLAY_POWER',
+      card: 'c_1-x',
+      target: rival,
+      playerId: 'me',
+    });
+  });
+
+  it('trims the card and enforces the length limits (card 40, target 64)', () => {
+    expect(sanitizeAction({ type: 'PLAY_POWER', card: `  ${uid}\n` }, 'me').card).toBe(uid);
+    expect(sanitizeAction({ type: 'PLAY_POWER', card: 'a'.repeat(40) }, 'me').card).toBe('a'.repeat(40));
+    expect(sanitizeAction({ type: 'PLAY_POWER', card: 'a'.repeat(41) }, 'me')).toBeNull();
+    expect(sanitizeAction({ type: 'PLAY_POWER', card: uid, target: 'b'.repeat(64) }, 'me').target).toBe('b'.repeat(64));
+    expect(sanitizeAction({ type: 'PLAY_POWER', card: uid, target: 'b'.repeat(65) }, 'me')).toBeNull();
+  });
+
+  it('rejects a missing, empty, non-string or odd-charset card or target', () => {
+    const bad = [
+      { type: 'PLAY_POWER' },
+      { type: 'PLAY_POWER', card: '' },
+      { type: 'PLAY_POWER', card: '   ' },
+      { type: 'PLAY_POWER', card: 5 },
+      { type: 'PLAY_POWER', card: null },
+      { type: 'PLAY_POWER', card: ['x'] },
+      { type: 'PLAY_POWER', card: { uid } },
+      { type: 'PLAY_POWER', card: 'sh ield' },
+      { type: 'PLAY_POWER', card: 'a/b' },
+      { type: 'PLAY_POWER', card: '<script>' },
+      { type: 'PLAY_POWER', card: 'ünï' },
+      { type: 'PLAY_POWER', card: uid, target: '' },
+      { type: 'PLAY_POWER', card: uid, target: null },
+      { type: 'PLAY_POWER', card: uid, target: 7 },
+      { type: 'PLAY_POWER', card: uid, target: { id: rival } },
+      { type: 'PLAY_POWER', card: uid, target: 'bob smith' },
+      { type: 'PLAY_POWER', card: uid, target: '../x' },
+    ];
+    for (const b of bad) expect(sanitizeAction(b, 'me'), JSON.stringify(b)).toBeNull();
+  });
+
+  it('is the only new action: neighbours stay refused', () => {
+    for (const type of ['PLAY_CARD', 'USE_POWER', 'play_power', 'PLAY_POWER_ALL']) {
+      expect(sanitizeAction({ type, card: uid }, 'me'), type).toBeNull();
+    }
+  });
+});

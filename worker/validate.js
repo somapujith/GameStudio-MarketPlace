@@ -82,6 +82,10 @@ const SIMPLE_ACTIONS = new Set([
 // Actions that carry a single tile id.
 const TILE_ACTIONS = new Set(['UPGRADE', 'MORTGAGE', 'UNMORTGAGE', 'SELL_BUILDING']);
 const MAX_MONEY = 100_000_000;
+// PLAY_POWER ids: a card uid / a player id (uuids, bot ids): letters, digits, underscore, hyphen.
+const ID_RE = /^[A-Za-z0-9_-]+$/;
+const POWER_CARD_MAX = 40;
+const POWER_TARGET_MAX = 64;
 
 const isTile = (t) => Number.isInteger(t) && t >= 0 && t < BOARD_SIZE;
 
@@ -130,6 +134,16 @@ export function sanitizeAction(input, playerId) {
       if (!give || !get) return null;
       if (!give.cash && !give.tiles.length && !get.cash && !get.tiles.length) return null;
       return { type, give, get, playerId };
+    }
+    case 'PLAY_POWER': {
+      // Power Cards (docs/POWER_CARDS.md section 2): `card` is the hand card's uid, `target` a rival's player id (swap
+      // only). Whether the card, the target and the moment are legal is the engine's job.
+      const card = typeof input.card === 'string' ? input.card.trim() : '';
+      if (!card || card.length > POWER_CARD_MAX || !ID_RE.test(card)) return null;
+      if (input.target === undefined) return { type, card, playerId };
+      const target = input.target;
+      if (typeof target !== 'string' || !target || target.length > POWER_TARGET_MAX || !ID_RE.test(target)) return null;
+      return { type, card, target, playerId };
     }
     default:
       return null;
