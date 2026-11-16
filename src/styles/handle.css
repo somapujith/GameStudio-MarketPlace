@@ -44,15 +44,22 @@
   align-items: center;
   min-height: 48px;
   padding: 0 14px;
-  gap: 2px;
+  gap: 4px;
   border-radius: var(--hub-r-m);
   border: 1px solid var(--hub-line-2);
   background: var(--hub-field);
   transition: border-color var(--dur-2) var(--ease-out);
 }
+/* ONE focus ring for the whole control. The hub's global `.hub-app :focus-visible` rule (0,2,0) used to draw a second
+   ring around the bare <input> inside this box, so a focused field showed a double outline with stray vertical lines. */
 .hd-field:focus-within {
   outline: 3px solid var(--hub-focus);
-  outline-offset: 1px;
+  outline-offset: 2px;
+}
+.hd-field .hd-input:focus,
+.hd-field .hd-input:focus-visible {
+  outline: 0;
+  box-shadow: none;
 }
 .hd-field[data-status='available'] {
   border-color: var(--hub-good);
