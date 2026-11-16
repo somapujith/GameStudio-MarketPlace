@@ -21,17 +21,36 @@ import {
   tumblePlan,
 } from './diceMotion.js';
 import '@/styles/dice.css';
+import '@/styles/dice-finishes.css';
+
+/** The catalogue item behind a dice skin id, or null (unknown ids, other kinds, malformed colours). */
+function diceItemOf(skin) {
+  const item = skin ? cosmeticById(skin) : null;
+  return item && item.kind === 'dice' && Array.isArray(item.colors) && item.colors.length >= 3 ? item : null;
+}
 
 /**
  * CSS variables for a dice skin (a `dice` cosmetic id from @shared/cosmetics.js): colors = [face, pip, edge].
+ * Skins with a `finish` (a material) also get --die-glow (halo / sparkle / burst colour, default the edge colour).
  * Unknown ids, other kinds and no skin -> null (the default ivory die).
  */
 export function diceSkinStyle(skin) {
-  const item = skin ? cosmeticById(skin) : null;
-  if (!item || item.kind !== 'dice' || !Array.isArray(item.colors) || item.colors.length < 3) return null;
+  const item = diceItemOf(skin);
+  if (!item) return null;
   const [face, pip, edge] = item.colors;
-  return { '--die-face': face, '--die-pip': pip, '--die-edge': edge };
+  const style = { '--die-face': face, '--die-pip': pip, '--die-edge': edge };
+  if (item.finish || item.glow) style['--die-glow'] = item.glow || edge;
+  return style;
 }
+
+/** The material key of a dice skin (`gold`, `ruby`, ...), or null for the plain skins. */
+export const diceFinish = (skin) => diceItemOf(skin)?.finish || null;
+
+/** Legendary materials get the animated shine (a sweep and glints on every face). */
+const diceShines = (skin) => {
+  const item = diceItemOf(skin);
+  return !!item?.finish && item.rarity === 'legendary';
+};
 
 // pip cells on a 3x3 grid as [row, col]
 const PIPS = {
@@ -60,7 +79,7 @@ const POP_MS = 1000; // the result pop (numeral + face glow)
 const RIBBON_MS = 2600; // "Roll again!" after a six
 let popId = 0;
 
-function Die3D({ value, rolling, reduced, tumbleMs, settleMs, primed, ready, tapProps }) {
+function Die3D({ value, rolling, reduced, tumbleMs, settleMs, primed, ready, shine, tapProps }) {
   const root = useRef(null);
   const cube = useRef(null);
   const air = useRef(null);
@@ -263,6 +282,7 @@ function Die3D({ value, rolling, reduced, tumbleMs, settleMs, primed, ready, tap
             {[1, 2, 3, 4, 5, 6].map((f) => (
               <span className={`cp-face cp-face--${f}`} key={f} data-face={f}>
                 <PipGrid value={f} />
+                {shine ? <i className="cp-glint" /> : null}
               </span>
             ))}
           </span>
@@ -436,18 +456,20 @@ export function Dice({ session, skin = null }) {
   }
 
   const skinStyle = diceSkinStyle(skin);
+  const finish = skinStyle ? diceFinish(skin) : null;
 
   return (
     <div
       className={`cp-dice${rolling ? ' is-rolling' : ''}${reduced ? ' is-reduced' : ''}${skinStyle ? ' has-skin' : ''}${canRoll ? ' is-ready' : ''}`}
       style={skinStyle || undefined}
       data-skin={skinStyle ? skin : undefined}
+      data-finish={finish || undefined}
       role="group"
       aria-label="Die"
       aria-busy={rolling}
     >
       <span className="cp-dice__row" aria-hidden="true">
-        <Die3D value={value} rolling={rolling} reduced={reduced} tumbleMs={tumbleMs} settleMs={settleMs} primed={primed} ready={canRoll} tapProps={tapProps} />
+        <Die3D value={value} rolling={rolling} reduced={reduced} tumbleMs={tumbleMs} settleMs={settleMs} primed={primed} ready={canRoll} shine={diceShines(skin)} tapProps={tapProps} />
       </span>
       {mode ? (
         <span className={`cp-dice__mode is-${mode}`} role="img" aria-label={mode === 'fair' ? 'Fair dice' : 'Lucky dice'} title={MODE_LABEL[mode]}>
