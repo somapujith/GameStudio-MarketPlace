@@ -18,21 +18,21 @@ const RECENT_SHOWN = 4;
 /** One person: avatar, name, level (+ title) and either the add button or their relation. */
 function PersonRow({ p, onSent }) {
   return (
-    <li className="af-row">
-      <span className="af-row__ava">
+    <li className="fa-row">
+      <span className="fa-row__ava">
         <FriendAvatar person={p} size={44} />
       </span>
-      <span className="af-row__main">
-        <span className="af-row__name">{p.name}</span>
+      <span className="fa-row__main">
+        <span className="fa-row__name">{p.name}</span>
         {handleLabel(p) && <span className="hd-handle">{handleLabel(p)}</span>}
-        <span className="af-row__sub">
+        <span className="fa-row__sub">
           <span>Lv {p.level}</span>
           <FriendTitle person={p} />
         </span>
       </span>
-      <span className="af-row__act">
+      <span className="fa-row__act">
         {p.relation === 'friends' ? (
-          <span className="af-chip af-chip--good">
+          <span className="fa-chip fa-chip--good">
             <SIcon name="check" size={15} /> Friends
           </span>
         ) : (
@@ -157,23 +157,23 @@ export default function AddFriendPanel({ onDone, compact = false, onNotify }) {
   };
 
   return (
-    <section className={`af-panel${compact ? ' af-panel--compact' : ' sc-card'}`} aria-labelledby={`${uid}-h`}>
-      <div className="af-head">
-        <h2 id={`${uid}-h`} className="af-title">
+    <section className={`fa-panel${compact ? ' fa-panel--compact' : ' sc-card'}`} aria-labelledby={`${uid}-h`}>
+      <div className="fa-head">
+        <h2 id={`${uid}-h`} className="fa-title">
           Add a friend
         </h2>
-        {!compact && <p className="af-lede">Search by name or @username, pick someone you just played with, or use a code.</p>}
+        {!compact && <p className="fa-lede">Search by name or @username, pick someone you just played with, or use a code.</p>}
       </div>
 
-      <div className="af-sec">
-        <h3 className="af-h3">
+      <div className="fa-sec">
+        <h3 className="fa-h3">
           <label htmlFor={searchId}>Find by name or @username</label>
         </h3>
-        <div className="af-search">
-          <SIcon name="users" size={18} className="af-search__icon" />
+        <div className="fa-search">
+          <SIcon name="users" size={18} className="fa-search__icon" />
           <input
             id={searchId}
-            className="af-search__input"
+            className="fa-search__input"
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -190,7 +190,7 @@ export default function AddFriendPanel({ onDone, compact = false, onNotify }) {
           {query && (
             <button
               type="button"
-              className="af-search__clear"
+              className="fa-search__clear"
               onClick={() => {
                 setQuery('');
                 document.getElementById(searchId)?.focus();
@@ -201,14 +201,14 @@ export default function AddFriendPanel({ onDone, compact = false, onNotify }) {
             </button>
           )}
         </div>
-        <p id={hintId} className="af-hint" role="status" aria-live="polite">
+        <p id={hintId} className="fa-hint" role="status" aria-live="polite">
           {typed === 0 ? `Type at least ${MIN_CHARS} letters.` : typed < MIN_CHARS ? `Keep typing: ${MIN_CHARS} letters or more.` : status}
         </p>
 
         {typed >= MIN_CHARS && (
-          <div className="af-results" ref={listRef} aria-busy={waiting || undefined}>
+          <div className="fa-results" ref={listRef} aria-busy={waiting || undefined}>
             {search.status === 'error' && !waiting ? (
-              <div className="af-state af-state--bad">
+              <div className="fa-state fa-state--bad">
                 <span>{search.error}</span>
                 <button type="button" className="hub-btn hub-btn--ghost hub-btn--sm" onClick={() => setAttempt((n) => n + 1)}>
                   <SIcon name="refresh" size={16} /> Try again
@@ -217,8 +217,8 @@ export default function AddFriendPanel({ onDone, compact = false, onNotify }) {
             ) : waiting && results.length === 0 ? (
               <RowSkeleton n={3} />
             ) : results.length === 0 ? (
-              <div className="af-state">
-                <span className="af-state__icon">
+              <div className="fa-state">
+                <span className="fa-state__icon">
                   <SIcon name="question" size={20} />
                 </span>
                 <span>
@@ -227,7 +227,7 @@ export default function AddFriendPanel({ onDone, compact = false, onNotify }) {
                 </span>
               </div>
             ) : (
-              <ul className={`af-list${waiting ? ' is-stale' : ''}`} aria-label="Search results">
+              <ul className={`fa-list${waiting ? ' is-stale' : ''}`} aria-label="Search results">
                 {results.map((p) => (
                   <PersonRow key={p.id} p={p} onSent={sent} />
                 ))}
@@ -238,28 +238,28 @@ export default function AddFriendPanel({ onDone, compact = false, onNotify }) {
       </div>
 
       {recent.status === 'ready' && recents.length > 0 && (
-        <div className="af-sec">
-          <h3 className="af-h3" id={`${uid}-recent`}>
+        <div className="fa-sec">
+          <h3 className="fa-h3" id={`${uid}-recent`}>
             Recently played with
           </h3>
-          <ul className="af-list" aria-labelledby={`${uid}-recent`}>
+          <ul className="fa-list" aria-labelledby={`${uid}-recent`}>
             {shownRecents.map((p) => (
               <PersonRow key={p.id} p={p} onSent={sent} />
             ))}
           </ul>
           {recents.length > RECENT_SHOWN && (
-            <button type="button" className="af-more" onClick={() => setShowAllRecent((v) => !v)} aria-expanded={showAllRecent}>
+            <button type="button" className="fa-more" onClick={() => setShowAllRecent((v) => !v)} aria-expanded={showAllRecent}>
               {showAllRecent ? 'Show fewer' : `Show ${recents.length - RECENT_SHOWN} more`}
             </button>
           )}
         </div>
       )}
 
-      <div className="af-sec">
-        <h3 className="af-h3">Have a friend code?</h3>
+      <div className="fa-sec">
+        <h3 className="fa-h3">Have a friend code?</h3>
         <AddByCode embedded myCode={user.friendCode} myHandle={user.handle} onNotify={tell} onSent={sent} />
         {notice && (
-          <p className="af-note" role="status">
+          <p className="fa-note" role="status">
             <SIcon name="check" size={15} /> {notice}
           </p>
         )}

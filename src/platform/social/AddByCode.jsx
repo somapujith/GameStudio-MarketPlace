@@ -97,7 +97,7 @@ export default function AddByCode({ myCode, myHandle, onSent, onNotify, embedded
     </form>
   );
 
-  if (embedded) return <div className="af-code">{form}</div>;
+  if (embedded) return <div className="fa-code">{form}</div>;
   return (
     <section className="sc-card sc-add" aria-labelledby={`${uid}-h`}>
       <h2 id={`${uid}-h`} className="sc-card__title">

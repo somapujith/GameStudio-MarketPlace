@@ -1,10 +1,10 @@
 /* ==========================================================================
-   social-add.css: "add friends" (AddFriendButton, AddFriendPanel). Prefix af-.
+   social-add.css: "add friends" (AddFriendButton, AddFriendPanel). Prefix fa-.
    Tokens only (--hub-*, --st-*, --dur-*, --ease-out); motion is transform/opacity and is switched off for
    [data-motion='reduced'] and prefers-reduced-motion. Reuses sc-card / sc-add / hub-btn from the social + hub styles.
    ========================================================================== */
 
-.af-sr {
+.fa-sr {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -17,34 +17,34 @@
 }
 
 /* ---------- the button ---------- */
-.af-add {
+.fa-add {
   position: relative;
   display: inline-flex;
   align-items: center;
   flex: none;
   max-width: 100%;
 }
-.af-btn {
+.fa-btn {
   gap: 6px;
   white-space: nowrap;
 }
-.af-btn.is-done {
+.fa-btn.is-done {
   color: var(--hub-good);
   border-color: color-mix(in srgb, var(--hub-good) 45%, transparent);
   opacity: 1;
 }
-.af-btn.is-done:disabled {
+.fa-btn.is-done:disabled {
   opacity: 1;
   cursor: default;
 }
-.af-btn--icon {
+.fa-btn--icon {
   width: 40px;
   min-width: 40px;
   padding: 0;
   justify-content: center;
   border-radius: 999px;
 }
-.af-chip {
+.fa-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -58,23 +58,23 @@
   background: var(--hub-surface-2);
   border: 1px solid var(--hub-line-2);
 }
-.af-chip--good {
+.fa-chip--good {
   color: var(--hub-good);
   background: color-mix(in srgb, var(--hub-good) 12%, transparent);
   border-color: color-mix(in srgb, var(--hub-good) 40%, transparent);
 }
-.af-chip--icon {
+.fa-chip--icon {
   width: 32px;
   padding: 0;
   justify-content: center;
 }
-.af-chip svg,
-.af-btn svg {
+.fa-chip svg,
+.fa-btn svg {
   flex: none;
 }
 
 /* error bubble: sits under the button, never shifts the layout */
-.af-bubble {
+.fa-bubble {
   position: absolute;
   z-index: 5;
   top: calc(100% + 6px);
@@ -91,12 +91,12 @@
   background: var(--hub-surface);
   border: 1px solid color-mix(in srgb, var(--hub-bad) 55%, transparent);
   box-shadow: var(--hub-shadow-s);
-  animation: af-pop var(--dur-2) var(--ease-out) both;
+  animation: fa-pop var(--dur-2) var(--ease-out) both;
 }
-.af-add--compact .af-bubble {
+.fa-add--compact .fa-bubble {
   right: -4px;
 }
-@keyframes af-pop {
+@keyframes fa-pop {
   from {
     opacity: 0;
     transform: translateY(-4px);
@@ -108,48 +108,48 @@
 }
 
 /* ---------- the panel ---------- */
-.af-panel {
+.fa-panel {
   display: flex;
   flex-direction: column;
   gap: 18px;
   min-width: 0;
 }
-.af-panel--compact {
+.fa-panel--compact {
   gap: 14px;
   padding: 0;
 }
-.af-head {
+.fa-head {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
-.af-title {
+.fa-title {
   margin: 0;
   font-size: var(--st-t-l, 18px);
   font-weight: 800;
   line-height: 1.1;
   color: var(--hub-text);
 }
-.af-panel--compact .af-title {
+.fa-panel--compact .fa-title {
   font-size: var(--st-t-m, 16px);
 }
-.af-lede {
+.fa-lede {
   margin: 0;
   font-size: var(--st-t-s, 14px);
   line-height: 1.4;
   color: var(--hub-dim);
 }
-.af-sec {
+.fa-sec {
   display: flex;
   flex-direction: column;
   gap: 8px;
   min-width: 0;
 }
-.af-sec + .af-sec {
+.fa-sec + .fa-sec {
   padding-top: 16px;
   border-top: 1px solid var(--hub-line);
 }
-.af-h3 {
+.fa-h3 {
   margin: 0;
   font-family: var(--font-hub-body);
   font-size: var(--st-t-xs, 12px);
@@ -158,23 +158,23 @@
   text-transform: uppercase;
   color: var(--hub-dim);
 }
-.af-h3 label {
+.fa-h3 label {
   cursor: pointer;
 }
 
 /* search field */
-.af-search {
+.fa-search {
   position: relative;
   display: flex;
   align-items: center;
 }
-.af-search__icon {
+.fa-search__icon {
   position: absolute;
   left: 14px;
   color: var(--hub-faint);
   pointer-events: none;
 }
-.af-search__input {
+.fa-search__input {
   width: 100%;
   min-width: 0;
   min-height: 48px;
@@ -189,18 +189,18 @@
   appearance: none;
   -webkit-appearance: none;
 }
-.af-search__input::-webkit-search-cancel-button {
+.fa-search__input::-webkit-search-cancel-button {
   display: none;
 }
-.af-search__input::placeholder {
+.fa-search__input::placeholder {
   color: var(--hub-faint);
   font-weight: 600;
 }
-.af-search__input:focus-visible {
+.fa-search__input:focus-visible {
   outline: 3px solid var(--hub-focus);
   outline-offset: 1px;
 }
-.af-search__clear {
+.fa-search__clear {
   position: absolute;
   right: 2px;
   display: grid;
@@ -216,19 +216,19 @@
     transform var(--dur-1) var(--ease-out),
     opacity var(--dur-1) var(--ease-out);
 }
-.af-search__clear:active {
+.fa-search__clear:active {
   transform: scale(0.9);
 }
-.af-search__clear:focus-visible {
+.fa-search__clear:focus-visible {
   outline: 3px solid var(--hub-focus);
   outline-offset: -2px;
 }
 @media (hover: hover) {
-  .af-search__clear:hover {
+  .fa-search__clear:hover {
     color: var(--hub-text);
   }
 }
-.af-hint {
+.fa-hint {
   margin: 0;
   min-height: 1.3em;
   font-size: var(--st-t-xs, 12px);
@@ -236,10 +236,10 @@
 }
 
 /* results + recent rows */
-.af-results {
+.fa-results {
   min-width: 0;
 }
-.af-list {
+.fa-list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -247,33 +247,33 @@
   flex-direction: column;
   transition: opacity var(--dur-2) var(--ease-out);
 }
-.af-list.is-stale {
+.fa-list.is-stale {
   opacity: 0.55;
 }
-.af-row {
+.fa-row {
   display: flex;
   align-items: center;
   gap: 12px;
   min-width: 0;
   min-height: 60px;
   padding: 8px 0;
-  animation: af-in var(--dur-2) var(--ease-out) both;
+  animation: fa-in var(--dur-2) var(--ease-out) both;
 }
-.af-row + .af-row {
+.fa-row + .fa-row {
   border-top: 1px solid var(--hub-line);
 }
-.af-row__ava {
+.fa-row__ava {
   flex: none;
   display: inline-flex;
 }
-.af-row__main {
+.fa-row__main {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
-.af-row__name {
+.fa-row__name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -282,7 +282,7 @@
   line-height: 1.2;
   color: var(--hub-text);
 }
-.af-row__sub {
+.fa-row__sub {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -292,11 +292,11 @@
   white-space: nowrap;
   overflow: hidden;
 }
-.af-row__act {
+.fa-row__act {
   flex: none;
   display: inline-flex;
 }
-@keyframes af-in {
+@keyframes fa-in {
   from {
     opacity: 0;
     transform: translateY(6px);
@@ -308,7 +308,7 @@
 }
 
 /* empty / error state inside the search results */
-.af-state {
+.fa-state {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -319,17 +319,17 @@
   line-height: 1.45;
   color: var(--hub-dim);
 }
-.af-state > span:last-child {
+.fa-state > span:last-child {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
 }
-.af-state strong {
+.fa-state strong {
   color: var(--hub-text);
   font-size: var(--st-t-m, 16px);
 }
-.af-state__icon {
+.fa-state__icon {
   flex: none;
   display: grid;
   place-items: center;
@@ -339,7 +339,7 @@
   color: var(--hub-brand-ink);
   background: var(--hub-brand-soft);
 }
-.af-state--bad {
+.fa-state--bad {
   flex-wrap: wrap;
   justify-content: space-between;
   color: var(--hub-bad-ink);
@@ -348,7 +348,7 @@
   background: color-mix(in srgb, var(--hub-bad) 8%, transparent);
 }
 
-.af-more {
+.fa-more {
   align-self: flex-start;
   min-height: 44px;
   padding: 0 4px;
@@ -360,17 +360,17 @@
   font-weight: 800;
   cursor: pointer;
 }
-.af-more:focus-visible {
+.fa-more:focus-visible {
   outline: 3px solid var(--hub-focus);
   outline-offset: 0;
   border-radius: var(--hub-r-s);
 }
 
 /* friend code section reuses .sc-add__*; just keep it flush */
-.af-code .sc-add__row .hub-btn {
+.fa-code .sc-add__row .hub-btn {
   min-height: 48px;
 }
-.af-note {
+.fa-note {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -381,24 +381,24 @@
 }
 
 @media (max-width: 420px) {
-  .af-row {
+  .fa-row {
     gap: 10px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .af-row,
-  .af-bubble {
+  .fa-row,
+  .fa-bubble {
     animation: none;
   }
-  .af-list,
-  .af-search__clear {
+  .fa-list,
+  .fa-search__clear {
     transition: none;
   }
 }
-:root[data-motion='reduced'] :is(.af-row, .af-bubble) {
+:root[data-motion='reduced'] :is(.fa-row, .fa-bubble) {
   animation: none !important;
 }
-:root[data-motion='reduced'] :is(.af-list, .af-search__clear) {
+:root[data-motion='reduced'] :is(.fa-list, .fa-search__clear) {
   transition: none !important;
 }

@@ -69,12 +69,12 @@ export default function AddFriendButton({ userId, name, compact = false, onSent 
   const rel = relationOf(userId);
   if (done === 'accepted') {
     return (
-      <span className={`af-add${compact ? ' af-add--compact' : ''}`}>
-        <span className={`af-chip af-chip--good${compact ? ' af-chip--icon' : ''}`} title={compact ? 'Friends' : undefined}>
+      <span className={`fa-add${compact ? ' fa-add--compact' : ''}`}>
+        <span className={`fa-chip fa-chip--good${compact ? ' fa-chip--icon' : ''}`} title={compact ? 'Friends' : undefined}>
           <SIcon name="check" size={15} />
-          {compact ? <span className="af-sr">{`Friends with ${who}`}</span> : 'Friends'}
+          {compact ? <span className="fa-sr">{`Friends with ${who}`}</span> : 'Friends'}
         </span>
-        <span className="af-sr" role="status">{`You and ${who} are friends now`}</span>
+        <span className="fa-sr" role="status">{`You and ${who} are friends now`}</span>
       </span>
     );
   }
@@ -86,25 +86,25 @@ export default function AddFriendButton({ userId, name, compact = false, onSent 
   const aria = requested ? `Friend request to ${who} sent` : incoming ? `Accept friend request from ${who}` : `Add ${who} as a friend`;
 
   return (
-    <span className={`af-add${compact ? ' af-add--compact' : ''}`}>
+    <span className={`fa-add${compact ? ' fa-add--compact' : ''}`}>
       <button
         type="button"
-        className={`hub-btn hub-btn--sm af-btn ${requested ? 'hub-btn--ghost is-done' : 'hub-btn--soft'}${compact ? ' af-btn--icon' : ''}`}
+        className={`hub-btn hub-btn--sm fa-btn ${requested ? 'hub-btn--ghost is-done' : 'hub-btn--soft'}${compact ? ' fa-btn--icon' : ''}`}
         onClick={send}
         disabled={requested || sending}
         aria-label={compact ? aria : `${label}, ${who}`}
         aria-busy={sending || undefined}
-        aria-describedby={error ? `af-err-${userId}` : undefined}
+        aria-describedby={error ? `fa-err-${userId}` : undefined}
         title={compact ? label : undefined}
       >
         <SIcon name={requested ? 'check' : 'userPlus'} size={compact ? 18 : 16} />
         {!compact && label}
       </button>
-      <span className="af-sr" role="status">
+      <span className="fa-sr" role="status">
         {done === 'pending' ? `Friend request sent to ${who}` : ''}
       </span>
       {error && (
-        <span id={`af-err-${userId}`} className="af-bubble" role="alert">
+        <span id={`fa-err-${userId}`} className="fa-bubble" role="alert">
           {error}
         </span>
       )}
