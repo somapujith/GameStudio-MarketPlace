@@ -5,6 +5,7 @@ import { getGame } from '@/games/registry.js';
 import { HubBackdrop } from '@/platform/game/hubArt.jsx';
 import { NoticeSlot } from '@/components/online/InviteBanner.jsx';
 import { useSocialCounts, withSocialBadge } from '@/platform/social/useSocialCounts.js';
+import { useTitleCount } from '@/platform/social/useTitleCount.js';
 import ErrorBoundary from './ErrorBoundary.jsx';
 import Footer from './Footer.jsx';
 import InstallPrompt from './InstallPrompt.jsx';
@@ -97,6 +98,7 @@ export default function AppShell() {
   const navBadges = useNavBadges();
   const social = useSocialCounts();
   const badges = useMemo(() => withSocialBadge(navBadges, social), [navBadges, social]);
+  useTitleCount(social.total); // "(2) Friends · Kingpin" while requests / invites wait
   useGlobalClickSfx();
   useBaseTitle(pathname);
   useRecentGame(pathname);

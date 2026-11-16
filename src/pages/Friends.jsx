@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth, useUserSocket } from '@/lib/auth.jsx';
 import { paths } from '@/platform/paths.js';
@@ -55,9 +55,9 @@ export default function Friends() {
   return <FriendsInner user={user} />;
 }
 
-function Card({ id, order, title, count, tone, children, className = '' }) {
+function Card({ id, anchor, order, title, count, tone, children, className = '' }) {
   return (
-    <section className={`sc-card ${order} ${className}`.trim()} aria-labelledby={id}>
+    <section id={anchor} tabIndex={anchor ? -1 : undefined} className={`sc-card ${order} ${className}`.trim()} aria-labelledby={id}>
       <div className="sc-card__head">
         <h2 id={id} className="sc-card__title">
           {title}
@@ -93,6 +93,21 @@ function FriendsInner({ user }) {
     const t = setTimeout(() => document.getElementById('invites')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 60);
     return () => clearTimeout(t);
   }, [location.hash]);
+
+  // /friends#requests (the nav badge): bring the Requests card into view and move focus to it (once per visit)
+  const requestsShown = !loadError && (!data || d.incoming.length > 0);
+  const focusedKey = useRef(null);
+  useEffect(() => {
+    if (location.hash !== '#requests' || !requestsShown || focusedKey.current === location.key) return undefined;
+    const t = setTimeout(() => {
+      focusedKey.current = location.key; // marked when it actually ran, so a StrictMode re-run still does it
+      const el = document.getElementById('requests');
+      if (!el) return;
+      el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      el.focus({ preventScroll: true });
+    }, 60);
+    return () => clearTimeout(t);
+  }, [location.hash, location.key, requestsShown]);
 
   // an old share link (`/friends?add=HYD-7K2Q`) opens the "Add <name>?" screen instead
   const legacyAdd = parseFriendLink(params.get('add') || '');
@@ -163,7 +178,7 @@ function FriendsInner({ user }) {
           ) : (
             <>
               {(!data || d.incoming.length > 0) && (
-                <Card id="sc-req-h" order="sc-o2" title="Requests" count={d.incoming.length} tone="gold">
+                <Card id="sc-req-h" anchor="requests" order="sc-o2" title="Requests" count={d.incoming.length} tone="gold">
                   {!data ? <RowSkeleton n={1} /> : <IncomingRequests shown={incomingShown} busy={busy} onAccept={f.accept} onDecline={f.decline} />}
                 </Card>
               )}
