@@ -22,8 +22,8 @@ This file is the single spec for the rules, the wire contract (engine, server, c
   removed at the start of the round with a `power_expire` event. Armed effects (`shield`, `doubleRent`) also lapse at
   their round.
 - **Sources.** (1) Landing on a card tile (luck/drama deck) also draws a power card (always, if the hand has room).
-  (2) Turn start: at the start of your turn, if your hand has room, a chance of `0.25`, raised to `0.5` when your net
-  worth is below 0.8 x the average of active players (a soft comeback). Constants live in `shared/powerCards.js`.
+  (2) Turn start: at the start of your turn, if your hand has room, a chance of `0.06`, raised to `0.15` when your net
+  worth is below 0.8 x the average of active players (a soft comeback). Constants live in `shared/powerCards.js` (tuned with `npm run sim`: about 2 cards drawn per player per 10 rounds, most of them from card tiles).
 - **Weights** when drawing: shield 30, double 30, steal 25, swap 15.
 - **Determinism and fairness.** Cards are drawn from a SEPARATE random stream (`state.prng`, created only when the
   rule is on). With the rule off the engine draws nothing extra and every existing seeded game is byte-identical.
@@ -138,3 +138,12 @@ important is conveyed by colour or motion alone; fast to use, hard to misfire.
 - Tests: engine (same seed + actions -> same events; no extra draws when off; each card's rules and illegal plays),
   mask (others never see ids; reveal at game over), fuzz/sim invariants (new fields are legal), UI model + SSR render
   tests for tray, pods, guide and moments.
+
+## 5. Implementation notes (as built)
+
+- Steal a Roll is refused while stuck in the Traffic Jam, and Swap Tiles is refused when the target is on the same tile, so a card is never wasted.
+- `extraRoll` can be true in phase `roll` after a Steal (with `powerPlayed` true): treat it as roll available. A six on the first roll and a Steal coincide into ONE extra roll.
+- A Shield-waived payment emits no `cash` events. Armed effects lapse silently; only expired CARDS emit `power_expire`.
+- The first turn of a game has no turn-start draw (createGame returns no events).
+- The client omits `target` for every card except Swap Tiles (the server rejects `target: null`).
+- Idle (AFK) humans never auto-play cards; bots do.
