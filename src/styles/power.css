@@ -213,7 +213,23 @@ button.pw-coach__btn {
   background: linear-gradient(180deg, #232063 0%, #15173f 100%); color: #f4f1ff; font-size: 13px; line-height: 1.35;
   box-shadow: 0 14px 30px rgba(4, 3, 22, 0.65); animation: pw-pop var(--dur-2) var(--ease-out) both;
 }
-.pw-panel[data-placement='panel'] { left: 0; right: 0; bottom: 0; max-height: max(100%, 15em); }
+/* wide layouts: the panel takes exactly the Play pane's box (it never grows over the die row, so the status line, the die and the
+   turn timer above it stay uncovered). The pane is only ~135px high, so the head and the buttons share one row and the body scrolls. */
+.pw-panel[data-placement='panel'] { inset: 0; padding: 8px 10px; gap: 6px 10px; }
+.pw-panel[data-placement='panel']:not([data-step='target']):not([data-step='confirm']) {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto minmax(0, 1fr); grid-template-areas: 'head acts' 'body body'; align-items: center;
+}
+.pw-panel[data-placement='panel'] .pw-panel__head { grid-area: head; }
+.pw-panel[data-placement='panel'] .pw-panel__body { grid-area: body; align-self: stretch; }
+.pw-panel[data-placement='panel'] > .pw-acts { grid-area: acts; }
+.pw-panel[data-placement='panel'] > .pw-acts .pw-btn { flex: none; padding: 0 16px; }
+.pw-panel[data-placement='panel'] .pw-target__list { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); }
+.pw-panel[data-placement='panel'] .pw-rival__go { display: none; }
+.pw-panel[data-placement='panel'] button.pw-rival { min-height: 44px; padding-top: 3px; padding-bottom: 3px; }
+.pw-panel[data-placement='panel'] .pw-rival__txt small { font-size: 11px; line-height: 1.15; }
+.pw-panel[data-placement='panel'] .pw-target--confirm { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+.pw-panel[data-placement='panel'] .pw-target--confirm .pw-target__q { flex: 1 1 180px; }
+.pw-panel[data-placement='panel'] .pw-target--confirm .pw-acts { flex: 0 1 250px; }
 /* on a phone the panel covers the whole centre (the hand and die are behind it while you decide); its body scrolls, the buttons never do */
 .pw-panel[data-placement='phone'] { left: 2cqw; right: 2cqw; bottom: 2cqh; max-height: 96cqh; gap: 6px; padding: 8px 10px 10px; }
 .pw-panel[data-placement='phone'][data-step='target'], .pw-panel[data-placement='phone'][data-step='confirm'] { padding-top: 6px; }
@@ -222,7 +238,6 @@ button.pw-coach__btn {
 .pw-panel[data-placement='phone'] .pw-rival__txt small { font-size: 11px; line-height: 1.15; }
 /* the panel covers the hand on a phone: the hand steps aside rather than peeking out around the panel's edges */
 .pw-tray[data-placement='phone']:not([data-step='idle']) .pw-fan { opacity: 0; transition: opacity var(--dur-1) linear; }
-.pw-panel[data-placement='phone'][data-step='target'] .pw-panel__head, .pw-panel[data-placement='phone'][data-step='confirm'] .pw-panel__head { display: none; }
 .pw-panel__head { flex: none; display: flex; align-items: center; gap: 10px; }
 .pw-panel__art { flex: none; display: grid; place-items: center; width: 48px; height: 48px; border-radius: 12px; background: rgba(255, 255, 255, 0.1); }
 .pw-panel[data-placement='phone'] .pw-panel__art { width: 44px; height: 44px; }
@@ -243,6 +258,8 @@ button.pw-panel__help:focus-visible { outline: 3px solid var(--sky, #4cc9f0); ou
 }
 .pw-why svg { flex: none; margin-top: 1px; }
 .pw-panel[data-step='target'] .pw-panel__long, .pw-panel[data-step='confirm'] .pw-panel__long { display: none; }
+/* targeting: the question and the list are the whole job, the card's own header would only eat the room (it stays as the panel's accessible name) */
+.pw-panel[data-step='target'] .pw-panel__head, .pw-panel[data-step='confirm'] .pw-panel__head { display: none; }
 
 .pw-acts { flex: none; display: flex; gap: 8px; }
 .pw-acts .pw-btn { flex: 1 1 0; }
@@ -263,7 +280,9 @@ button.pw-btn--primary { border-color: #b97800; background: linear-gradient(180d
 /* ------------------------------------------------------------------ Swap Tiles targeting */
 .pw-target { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
 .pw-panel[data-placement='phone'] .pw-target { gap: 6px; }
-.pw-target__h { margin: 0; font-size: 13px; font-weight: 800; color: #fff; }
+.pw-target__top { flex: none; display: flex; align-items: center; gap: 10px; }
+.pw-target__top .pw-btn { flex: none; padding: 0 12px; }
+.pw-target__h { margin: 0; min-width: 0; font-size: 13px; font-weight: 800; line-height: 1.2; color: #fff; }
 .pw-target__list { flex: 1 1 auto; min-height: 0; display: grid; align-content: start; gap: 6px; margin: 0; padding: 0; overflow: auto; overscroll-behavior: contain; list-style: none; }
 .pw-panel[data-placement='phone'] .pw-target__list { gap: 4px; }
 button.pw-rival {
@@ -284,7 +303,6 @@ button.pw-rival {
 .pw-target__q { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 15px; font-weight: 700; color: #fff; }
 .pw-target__q b { color: #ffe08a; }
 .pw-target__ava { width: 40px; height: 40px; }
-.pw-acts--one .pw-btn { flex: 1 1 auto; }
 
 /* ------------------------------------------------------------------ phone keyboard / short screens */
 :root[data-kb] .pw-coach { display: none; }

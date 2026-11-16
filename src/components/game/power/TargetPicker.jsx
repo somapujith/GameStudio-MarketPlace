@@ -9,7 +9,8 @@ import '@/styles/power.css';
  *   rivals    [{ id, name, avatar, color, ok, reason }]  from powerModel.targetsFor (eligible first)
  *   picked    the rival id awaiting confirmation, or null (list step)
  *   onPick(id) / onConfirm() / onBack()      pending  the server is deciding: everything is inert
- * List step: eligible rivals are buttons, ineligible ones are listed disabled with their reason underneath.
+ * List step: Back and the question share one row (the list gets the room); eligible rivals are buttons, ineligible ones are listed
+ * disabled with their reason underneath.
  * Confirm step: "Trade places with Ravi?" with Confirm / Back.
  */
 function TargetPicker({ rivals, picked = null, onPick, onConfirm, onBack, pending = false, confirmRef, firstRef, idPrefix = 'pw' }) {
@@ -34,7 +35,10 @@ function TargetPicker({ rivals, picked = null, onPick, onConfirm, onBack, pendin
   let firstOk = true;
   return (
     <div className="pw-target">
-      <p className="pw-target__h" id={`${idPrefix}-targets`}>Choose a rival to trade places with</p>
+      <div className="pw-target__top">
+        <button type="button" className="pw-btn pw-target__back" ref={anyOk ? undefined : firstRef} onClick={onBack}>Back</button>
+        <p className="pw-target__h" id={`${idPrefix}-targets`}>Choose a rival to trade places with</p>
+      </div>
       <ul className="pw-target__list" aria-labelledby={`${idPrefix}-targets`}>
         {rivals.map((r) => {
           const isFirst = r.ok && firstOk;
@@ -62,9 +66,6 @@ function TargetPicker({ rivals, picked = null, onPick, onConfirm, onBack, pendin
         })}
       </ul>
       {anyOk ? null : <p className="pw-why" role="note">No rival can swap right now.</p>}
-      <div className="pw-acts pw-acts--one">
-        <button type="button" className="pw-btn" ref={anyOk ? undefined : firstRef} onClick={onBack}>Back</button>
-      </div>
     </div>
   );
 }
