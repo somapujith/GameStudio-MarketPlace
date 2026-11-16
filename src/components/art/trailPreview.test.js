@@ -29,10 +29,11 @@ describe('TrailPreview', () => {
   });
 
   it('gives each instance unique gradient ids that its fills point at', () => {
-    const [a, b] = [trails[0], trails[0]];
+    const comet = trails.find((t) => t.finish === 'comet'); // the scene with the most gradients
+    const [a, b] = [comet, comet];
     const html = renderToString(h(Fragment, null, h(TrailPreview, { item: a }), h(TrailPreview, { item: b })));
     const all = ids(html);
-    expect(all.length).toBeGreaterThan(8);
+    expect(all.length).toBe(6); // three gradients each, none shared
     expect(new Set(all).size).toBe(all.length);
     expect(all.every((id) => id.startsWith('tp'))).toBe(true);
     expect(all.some((id) => /[:\s]/.test(id))).toBe(false);

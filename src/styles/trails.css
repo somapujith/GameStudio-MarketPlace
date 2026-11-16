@@ -260,6 +260,9 @@
    puck passes (--t seconds into the 3s loop). */
 .trp { display: block; overflow: visible; }
 .trp-puck { transform: translateX(28px); }
+.trp-p {
+  opacity: var(--o, 1); /* the still frame; the loop takes over opacity */
+}
 .trp-p,
 .trp-line {
   transform-box: fill-box;

@@ -125,6 +125,9 @@ function TrailPreview({ item, size = 64 }) {
   const parts = particles(finish, a, b, uid);
   const tails = lines(finish, a, b, uid);
   const comet = finish === 'comet';
+  // only the gradients the scene references are emitted (the results screen renders these as 16px chips, so keep the markup lean)
+  const used = [...parts, ...tails].map((e) => e.props.fill).join(' ');
+  const need = Object.fromEntries('pscklgh'.split('').map((k) => [k, used.includes(`#${uid}${k}`) || (comet && k === 'h')]));
 
   return (
     <svg
@@ -137,40 +140,54 @@ function TrailPreview({ item, size = 64 }) {
       aria-label={item ? item.name : 'Trail'}
     >
       <defs>
-        {/* soft puff (dust) and wisp (steam): the two colours fading out, never a filter */}
-        <radialGradient id={`${uid}p`}>
-          <stop offset="0" stopColor={a} stopOpacity="0.95" />
-          <stop offset="0.6" stopColor={b} stopOpacity="0.6" />
-          <stop offset="1" stopColor={b} stopOpacity="0" />
-        </radialGradient>
-        <radialGradient id={`${uid}s`}>
-          <stop offset="0" stopColor={a} stopOpacity="0.9" />
-          <stop offset="0.6" stopColor={b} stopOpacity="0.45" />
-          <stop offset="1" stopColor={b} stopOpacity="0" />
-        </radialGradient>
-        <radialGradient id={`${uid}c`} cx="0.35" cy="0.3" r="0.8">
-          <stop offset="0" stopColor="#fff" />
-          <stop offset="0.35" stopColor={a} />
-          <stop offset="1" stopColor={b} />
-        </radialGradient>
-        <linearGradient id={`${uid}k`}>
-          <stop offset="0" stopColor={a} stopOpacity="0" />
-          <stop offset="1" stopColor="#fff" />
-        </linearGradient>
-        <linearGradient id={`${uid}l`}>
-          <stop offset="0" stopColor={b} stopOpacity="0" />
-          <stop offset="0.55" stopColor={b} />
-          <stop offset="1" stopColor={a} />
-        </linearGradient>
-        <linearGradient id={`${uid}g`}>
-          <stop offset="0" stopColor={b} stopOpacity="0" />
-          <stop offset="1" stopColor={b} stopOpacity="0.7" />
-        </linearGradient>
-        <radialGradient id={`${uid}h`}>
-          <stop offset="0" stopColor="#fff" />
-          <stop offset="0.3" stopColor={a} />
-          <stop offset="1" stopColor={a} stopOpacity="0" />
-        </radialGradient>
+        {/* only the gradients this finish uses; no filters, the two colours just fade out */}
+        {need.p ? (
+          <radialGradient id={`${uid}p`}>
+            <stop offset="0" stopColor={a} stopOpacity="0.95" />
+            <stop offset="0.6" stopColor={b} stopOpacity="0.6" />
+            <stop offset="1" stopColor={b} stopOpacity="0" />
+          </radialGradient>
+        ) : null}
+        {need.s ? (
+          <radialGradient id={`${uid}s`}>
+            <stop offset="0" stopColor={a} stopOpacity="0.9" />
+            <stop offset="0.6" stopColor={b} stopOpacity="0.45" />
+            <stop offset="1" stopColor={b} stopOpacity="0" />
+          </radialGradient>
+        ) : null}
+        {need.c ? (
+          <radialGradient id={`${uid}c`} cx="0.35" cy="0.3" r="0.8">
+            <stop offset="0" stopColor="#fff" />
+            <stop offset="0.35" stopColor={a} />
+            <stop offset="1" stopColor={b} />
+          </radialGradient>
+        ) : null}
+        {need.k ? (
+          <linearGradient id={`${uid}k`}>
+            <stop offset="0" stopColor={a} stopOpacity="0" />
+            <stop offset="1" stopColor="#fff" />
+          </linearGradient>
+        ) : null}
+        {need.l ? (
+          <linearGradient id={`${uid}l`}>
+            <stop offset="0" stopColor={b} stopOpacity="0" />
+            <stop offset="0.55" stopColor={b} />
+            <stop offset="1" stopColor={a} />
+          </linearGradient>
+        ) : null}
+        {need.g ? (
+          <linearGradient id={`${uid}g`}>
+            <stop offset="0" stopColor={b} stopOpacity="0" />
+            <stop offset="1" stopColor={b} stopOpacity="0.7" />
+          </linearGradient>
+        ) : null}
+        {need.h ? (
+          <radialGradient id={`${uid}h`}>
+            <stop offset="0" stopColor="#fff" />
+            <stop offset="0.3" stopColor={a} />
+            <stop offset="1" stopColor={a} stopOpacity="0" />
+          </radialGradient>
+        ) : null}
       </defs>
 
       {/* the tile it walks along */}
@@ -178,7 +195,7 @@ function TrailPreview({ item, size = 64 }) {
 
       {tails.map((t) => {
         const Tag = t.tag;
-        return <Tag key={t.key} className="trp-line" opacity={t.o} {...t.props} />;
+        return <Tag key={t.key} className="trp-line" style={t.o < 1 ? { opacity: t.o } : undefined} {...t.props} />;
       })}
       {parts.map((p) => {
         const Tag = p.tag;
@@ -186,7 +203,6 @@ function TrailPreview({ item, size = 64 }) {
           <Tag
             key={p.key}
             className={`trp-p${p.cls || ''}`}
-            opacity={p.o}
             style={{ '--t': p.t, '--o': p.o, rotate: p.rot ? `${p.rot}deg` : undefined }}
             {...p.props}
           />
