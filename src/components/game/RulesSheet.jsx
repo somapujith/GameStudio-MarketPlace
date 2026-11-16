@@ -15,6 +15,8 @@ import {
 } from './ui/helpers.js';
 import { compactTarget, targetOf, targetRuleText } from './turn/target.js';
 import { ROUND_CAP } from '@shared/modes.js';
+import { PowerGuideHost, openPowerGuide } from './power/PowerGuide.jsx';
+import { GUIDE_BUTTON, RULES_PROSE, powerOn } from './power/powerView.js';
 
 const X = '×';
 
@@ -81,7 +83,9 @@ export default function RulesSheet({ open, onClose, session }) {
   const snatchSecs = Math.max(1, Math.round((Number(rawCfg.snatchMs) || 5000) / 1000));
   const snatchCards = Math.max(0, Math.round(Number(rawCfg.snatchCardCap) || 0));
 
+  const powerCards = powerOn(rawCfg); // optional rule: the section, the guide button and the guide's host exist only when it is on
   return (
+    <>
     <Sheet open={open} onClose={onClose} title="How to play" className="hg-rules" desktop="modal">
       <p className="hg-summary is-strong">{summary}</p>
       <p className="hg-rules-pitch">Buy districts across {w.place}, build businesses, collect rent and survive the traffic, festivals and drama. Richest after the last round wins.</p>
@@ -202,6 +206,13 @@ export default function RulesSheet({ open, onClose, session }) {
         </Rule>
       ) : null}
 
+      {powerCards ? (
+        <Rule icon={'🃏'} title="Power cards" id="rules-power">
+          {RULES_PROSE.map((t) => <p key={t}>{t}</p>)}
+          <p><button type="button" className="pwo-rule-link" onClick={openPowerGuide}>{GUIDE_BUTTON}</button></p>
+        </Rule>
+      ) : null}
+
       <Rule icon={'🎴'} title={`${DECKS.luck.name} & ${DECKS.drama.name}`}>
         <p>
           <b>{DECKS.luck.name}</b> cards bring windfalls, free {w.isDefault ? 'chai' : w.chaiTokens} and lucky {w.isDefault ? 'rides' : 'trips'}. <b>{DECKS.drama.name}</b> brings bills, traffic and surprises.
@@ -254,5 +265,7 @@ export default function RulesSheet({ open, onClose, session }) {
         <p>{fairDice ? FAIR_DICE_TEXT : LUCKY_DICE_TEXT}</p>
       </Rule>
     </Sheet>
+    {powerCards ? <PowerGuideHost /> : null}
+    </>
   );
 }
