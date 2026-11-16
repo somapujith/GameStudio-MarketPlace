@@ -85,7 +85,7 @@
 .pwo-gc p { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--text-dim, #b4c3ca); }
 .pwo-guide__rules li { position: relative; padding-left: 22px; font-size: 14px; line-height: 1.45; color: var(--text, #fff); }
 .pwo-guide__rules li::before { content: ''; position: absolute; left: 3px; top: 0.45em; width: 6px; height: 10px; border: solid var(--gold, #ffca7a); border-width: 0 2px 2px 0; transform: rotate(40deg); }
-.pwo-rule-link { margin-top: 8px; min-height: 44px; padding: 0 14px; border: 0; border-radius: 12px; font: inherit; font-weight: 800; cursor: pointer; color: #3b2300; background: var(--gold, #ffca7a); }
+button.pwo-rule-link { margin-top: 8px; min-height: 44px; padding: 0 14px; border: 0; border-radius: 12px; font: inherit; font-weight: 800; cursor: pointer; color: #3b2300; background: var(--gold, #ffca7a); }
 .pwo-rule-link:focus-visible { outline: 3px solid var(--sky, #4cc9f0); outline-offset: 2px; }
 
 /* ---- gates ----
