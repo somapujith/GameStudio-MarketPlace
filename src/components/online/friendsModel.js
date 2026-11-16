@@ -2,6 +2,7 @@
 // data = { friends: [...], incoming: [...], outgoing: [...] },
 // each entry { id, name, avatar, friendCode, online, level, equipped: { frame?, dice?, title? } }.
 import { cleanEquipped, cosmeticById } from '@shared/cosmetics.js';
+import { parseFriendLink } from './codes.js';
 
 const same = (a, b) => a != null && b != null && String(a) === String(b);
 const without = (list, id) => list.filter((x) => !same(x.id, id));
@@ -13,6 +14,7 @@ const clean = (u) => ({
   name: typeof u.name === 'string' && u.name ? u.name : 'Player',
   avatar: Number.isInteger(u.avatar) ? u.avatar : 0,
   friendCode: u.friendCode || '',
+  handle: parseHandle(u.handle) || null,
   online: !!u.online,
   level: Number.isFinite(u.level) ? u.level : 1,
   equipped: cleanEquipped(u.equipped),
@@ -257,4 +259,62 @@ export function withLeaving(items, gone, keyOf) {
   const extra = [...gone.entries()].filter(([k]) => !live.has(k)).sort((a, b) => a[1].index - b[1].index);
   for (const [key, { item, index }] of extra) out.splice(Math.min(index, out.length), 0, { key, item, leaving: true });
   return out;
+}
+
+// ---------------------------------------------------------------- usernames (@handles)
+
+export const HANDLE_MIN = 3;
+export const HANDLE_MAX = 20;
+export const HANDLE_COOLDOWN_DAYS = 7;
+export const HANDLE_RULES = `${HANDLE_MIN}-${HANDLE_MAX} characters: letters, numbers and single underscores, starting with a letter.`;
+
+/** A typed username -> the lowercase handle (no "@"), or '' when it does not have the shape of one. Reserved words are the server's call. */
+export function parseHandle(raw) {
+  if (typeof raw !== 'string') return '';
+  const h = raw.trim().replace(/^@/, '').toLowerCase();
+  return /^[a-z][a-z0-9_]{2,19}$/.test(h) && !h.includes('__') ? h : '';
+}
+
+/** "@teja" for display ('' when there is none), so rows never print "@null". */
+export const handleLabel = (person) => {
+  const h = person && parseHandle(person.handle);
+  return h ? `@${h}` : '';
+};
+
+/**
+ * What a person typed into "add by code": a friend code / friend link, or an "@username".
+ * -> { kind: 'code' | 'handle', value } (code as HYD-XXXX, handle lowercase without "@") or { kind: 'invalid', value: '' }.
+ * A username needs its "@" so a half-typed code is never mistaken for one.
+ */
+export function parseFriendInput(raw) {
+  const s = typeof raw === 'string' ? raw.trim() : '';
+  if (s.startsWith('@')) {
+    const value = parseHandle(s);
+    return value ? { kind: 'handle', value } : { kind: 'invalid', value: '' };
+  }
+  const code = parseFriendLink(s);
+  return code ? { kind: 'code', value: code } : { kind: 'invalid', value: '' };
+}
+
+/** Whole days (rounded up) until a claimed username may be changed again (the server allows one change per week); 0 when allowed. */
+export function handleCooldownLeft(user, now = Date.now()) {
+  if (!user || !user.handle || !user.handleChangedAt) return 0;
+  const t = Date.parse(user.handleChangedAt);
+  if (!Number.isFinite(t)) return 0;
+  const left = t + HANDLE_COOLDOWN_DAYS * 86_400_000 - now;
+  return left > 0 ? Math.ceil(left / 86_400_000) : 0;
+}
+
+/**
+ * The state of the Username field: 'idle' | 'checking' | 'available' | 'taken' | 'invalid'.
+ * `value` is what is typed, `current` the saved handle, `remote` the last server answer for `value`
+ * ({ value, available, reason } or null while it is still being asked).
+ */
+export function handleStatus(value, current, remote) {
+  const v = typeof value === 'string' ? value.trim().replace(/^@/, '').toLowerCase() : '';
+  if (!v || v === (current || '')) return 'idle';
+  if (!parseHandle(v)) return 'invalid';
+  if (!remote || remote.value !== v) return 'checking';
+  if (remote.available) return 'available';
+  return remote.reason === 'taken' ? 'taken' : 'invalid';
 }

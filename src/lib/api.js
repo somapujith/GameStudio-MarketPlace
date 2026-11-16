@@ -118,10 +118,10 @@ export function createRoom({ gameId, settings, maxPlayers, visibility } = {}, op
   return api.post('/api/rooms', body, opts);
 }
 
-/** GET /api/friends/by-code/:friendCode -> { user: { id, name, avatar, level, friendCode, relation } } (signed-in, non-guest). */
+/** GET /api/friends/by-code/:friendCode -> { user: { id, name, avatar, handle, level, friendCode, relation } } (signed-in, non-guest). */
 export const getFriendByCode = (friendCode, opts) => api.get(`/api/friends/by-code/${enc(friendCode)}`, opts);
 
-/** GET /api/friends/search?q= (2+ chars) -> { results: [{ id, name, avatar, level, equipped, relation }] }; relation: 'none'|'friends'|'outgoing'|'incoming'. Pass `{ signal }` to cancel. */
+/** GET /api/friends/search?q= (2+ chars) -> { results: [{ id, name, avatar, handle, level, equipped, relation }] } (a leading '@' searches usernames only); relation: 'none'|'friends'|'outgoing'|'incoming'. Pass `{ signal }` to cancel. */
 export const searchPlayers = (q, opts) => api.get(`/api/friends/search?q=${enc(q)}`, opts);
 
 /** GET /api/friends/recent -> { players: [{ id, name, avatar, level, equipped, relation: 'none' }] } (people I played with, not yet friends). */
@@ -138,6 +138,15 @@ export const blockUser = (userId, opts) => api.post('/api/blocks', { userId }, o
 
 /** DELETE /api/blocks/:userId -> { ok } (idempotent). */
 export const unblockUser = (userId, opts) => api.del(`/api/blocks/${enc(userId)}`, opts);
+
+/** POST /api/friends/request { friendCode } -> same answer as by id / handle. */
+export const requestFriendByCode = (friendCode, opts) => api.post('/api/friends/request', { friendCode }, opts);
+
+/** POST /api/friends/request { handle } -> same answer as by id / code. The leading "@" is optional. 404 unknown username, 400 yourself. */
+export const requestFriendByHandle = (handle, opts) => api.post('/api/friends/request', { handle: String(handle ?? '').replace(/^@/, '') }, opts);
+
+/** GET /api/me/handle-available?h= -> { available: boolean, reason?: 'invalid'|'taken'|'reserved' } (members only; your own handle counts as available). Pass `{ signal }` to cancel. */
+export const checkHandle = (handle, opts) => api.get(`/api/me/handle-available?h=${enc(handle)}`, opts);
 
 /** POST /api/invites: push an invite to room `code` to a friend (the server adds the game's id and name). */
 export const sendInvite = (code, userId, opts) => api.post('/api/invites', { code, userId }, opts);

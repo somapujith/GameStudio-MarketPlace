@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
 import { query, HttpError } from '../db.js';
 import { requireMember } from '../auth.js';
-import { getUserByFriendCode, getUserById, rowToFriend, identity } from '../users.js';
+import { getUserByFriendCode, getUserByHandle, getUserById, rowToFriend, identity } from '../users.js';
 import { normalizeFriendCode } from '../codes.js';
-import { isUuid } from '../validate.js';
+import { isUuid, normalizeHandle } from '../validate.js';
 import { limit } from '../ratelimit.js';
 import { readJson } from '../http.js';
 import { isUserOnline, pushToUser, background } from '../hub.js';
@@ -48,13 +48,13 @@ export function notifyFriend(c, userId, message, notification) {
 friends.use('*', requireMember); // guests cannot use friends
 
 // GET /api/friends -> { friends, incoming, outgoing }
-//   rows: { id, name, avatar, friendCode, online, level, equipped:{ frame?, dice?, title? } }
+//   rows: { id, name, avatar, friendCode, handle|null, online, level, equipped:{ frame?, dice?, title? } }
 friends.get('/', async (c) => {
   const me = c.get('user');
   const rows = await query(
     c.env,
     `SELECT f.status, (f.user_id = $1) AS outgoing,
-            u.id, u.name, u.avatar, u.friend_code, u.xp, u.equipped
+            u.id, u.name, u.avatar, u.friend_code, u.handle, u.xp, u.equipped
        FROM friendships f
        JOIN users u ON u.id = CASE WHEN f.user_id = $1 THEN f.friend_id ELSE f.user_id END
       WHERE f.user_id = $1 OR f.friend_id = $1
@@ -78,43 +78,60 @@ const SEARCH_MAX = 40;
 const SEARCH_LIMIT = 8;
 const RECENT_LIMIT = 12;
 
-/** A search / recent row -> the public card `{ id, name, avatar, level, equipped, relation }` (no code, no email). */
+/** A search / recent row -> the public card `{ id, name, avatar, handle|null, level, equipped, relation }` (no code, no email). */
 function rowToCard(r, meId) {
-  const { id, name, avatar, level, equipped } = rowToFriend(r);
+  const { id, name, avatar, handle, level, equipped } = rowToFriend(r);
   const relation = friendRelation(r.rel_status ? { user_id: r.rel_user_id, status: r.rel_status } : undefined, meId);
-  return { id, name, avatar, level, equipped, relation };
+  return { id, name, avatar, handle, level, equipped, relation };
 }
 
-// GET /api/friends/search?q= -> { results: [{ id, name, avatar, level, equipped, relation }] }
-// Members only, never me, max 8; names starting with q come first, then names containing it.
+// GET /api/friends/search?q= -> { results: [{ id, name, avatar, handle, level, equipped, relation }] }
+// Members only, never me, max 8. "@foo" searches usernames only (exact match first, then prefix).
+// A plain query matches names containing it and usernames starting with it: exact username first,
+// then names starting with q, then username prefixes, then the rest.
 friends.get('/search', limit('friend-search', 40, 60), async (c) => {
   const me = c.get('user');
   const q = (c.req.query('q') || '').trim();
   if (q.length < SEARCH_MIN) throw new HttpError(400, `Type at least ${SEARCH_MIN} characters to search.`);
   if (q.length > SEARCH_MAX) throw new HttpError(400, 'That search is too long.');
-  const esc = escapeLike(q);
-  const rows = await query(
-    c.env,
-    `SELECT u.id, u.name, u.avatar, u.xp, u.equipped, f.user_id AS rel_user_id, f.status AS rel_status
-       FROM users u
+  const FROM = `FROM users u
        LEFT JOIN friendships f
-         ON (f.user_id = $1 AND f.friend_id = u.id) OR (f.user_id = u.id AND f.friend_id = $1)
-      WHERE u.is_guest = false AND u.id <> $1 AND u.name ILIKE $2 ESCAPE '\\'
-        AND ${NOT_BLOCKED_SQL('u')}
-      ORDER BY (u.name ILIKE $3 ESCAPE '\\') DESC, lower(u.name), u.id
+         ON (f.user_id = $1 AND f.friend_id = u.id) OR (f.user_id = u.id AND f.friend_id = $1)`;
+  const COLS = 'u.id, u.name, u.avatar, u.handle, u.xp, u.equipped, f.user_id AS rel_user_id, f.status AS rel_status';
+  let rows;
+  if (q.startsWith('@')) {
+    const h = q.slice(1).toLowerCase();
+    rows = await query(
+      c.env,
+      `SELECT ${COLS} ${FROM}
+      WHERE u.is_guest = false AND u.id <> $1 AND lower(u.handle) LIKE $2 ESCAPE '\\'
+      AND ${NOT_BLOCKED_SQL('u')}
+      ORDER BY (lower(u.handle) = $3) DESC, lower(u.handle), u.id
       LIMIT ${SEARCH_LIMIT}`,
-    [me.id, `%${esc}%`, `${esc}%`],
-  );
+      [me.id, `${escapeLike(h)}%`, h],
+    );
+  } else {
+    const esc = escapeLike(q);
+    rows = await query(
+      c.env,
+      `SELECT ${COLS} ${FROM}
+      WHERE u.is_guest = false AND u.id <> $1 AND (u.name ILIKE $2 ESCAPE '\\' OR lower(u.handle) LIKE $4 ESCAPE '\\')
+      AND ${NOT_BLOCKED_SQL('u')}
+      ORDER BY (lower(u.handle) = $5) DESC, (u.name ILIKE $3 ESCAPE '\\') DESC, (lower(u.handle) LIKE $4 ESCAPE '\\') DESC, lower(u.name), u.id
+      LIMIT ${SEARCH_LIMIT}`,
+      [me.id, `%${esc}%`, `${esc}%`, `${esc.toLowerCase()}%`, q.toLowerCase()],
+    );
+  }
   return c.json({ results: rows.map((r) => rowToCard(r, me.id)) });
 });
 
-// GET /api/friends/recent -> { players: [{ id, name, avatar, level, equipped, relation:'none' }] }
+// GET /api/friends/recent -> { players: [{ id, name, avatar, handle, level, equipped, relation:'none' }] }
 // People I shared a finished match with (most recent first), minus me, guests, friends and pending requests.
 friends.get('/recent', limit('friend-recent', 30, 60), async (c) => {
   const me = c.get('user');
   const rows = await query(
     c.env,
-    `SELECT u.id, u.name, u.avatar, u.xp, u.equipped, max(m.ended_at) AS last_played
+    `SELECT u.id, u.name, u.avatar, u.handle, u.xp, u.equipped, max(m.ended_at) AS last_played
        FROM match_players mine
        JOIN match_players theirs ON theirs.match_id = mine.match_id AND theirs.user_id <> mine.user_id
        JOIN matches m ON m.id = mine.match_id
@@ -139,7 +156,19 @@ export function friendRelation(row, meId) {
   return row.user_id === meId ? 'outgoing' : 'incoming';
 }
 
-// GET /api/friends/by-code/:friendCode -> { user:{ id, name, avatar, level, friendCode, relation } }
+/** The preview card of `target` as seen by `me` (shared by by-code and by-handle). */
+async function previewUser(c, me, target) {
+  const rows = await query(
+    c.env,
+    `SELECT user_id, status FROM friendships
+      WHERE (user_id = $1 AND friend_id = $2) OR (user_id = $2 AND friend_id = $1)`,
+    [me.id, target.id],
+  );
+  const { id, name, avatar, handle, level, friendCode } = rowToFriend(target);
+  return c.json({ user: { id, name, avatar, handle, level, friendCode, relation: friendRelation(rows[0], me.id) } });
+}
+
+// GET /api/friends/by-code/:friendCode -> { user:{ id, name, avatar, handle|null, level, friendCode, relation } }
 // For the friend-link screen (/f/HYD-XXXX). relation: 'none' | 'friends' | 'outgoing' | 'incoming'.
 friends.get('/by-code/:friendCode', limit('friend-lookup', 30, 60), async (c) => {
   const me = c.get('user');
@@ -150,17 +179,23 @@ friends.get('/by-code/:friendCode', limit('friend-lookup', 30, 60), async (c) =>
   if (target.id === me.id) throw new HttpError(400, 'That is your own friend code.');
   const block = await blockRelation(c.env, me.id, target.id);
   if (block.mine || block.theirs) throw new HttpError(404, 'No player found with that friend code.'); // a block looks like "no such player"
-  const rows = await query(
-    c.env,
-    `SELECT user_id, status FROM friendships
-      WHERE (user_id = $1 AND friend_id = $2) OR (user_id = $2 AND friend_id = $1)`,
-    [me.id, target.id],
-  );
-  const { id, name, avatar, level, friendCode } = rowToFriend(target);
-  return c.json({ user: { id, name, avatar, level, friendCode, relation: friendRelation(rows[0], me.id) } });
+  return previewUser(c, me, target);
 });
 
-// POST /api/friends/request { friendCode } or { userId } - idempotent; a mutual request auto-accepts.
+// GET /api/friends/by-handle/:handle -> same shape as by-code. The handle may carry a leading "@".
+friends.get('/by-handle/:handle', limit('friend-lookup', 30, 60), async (c) => {
+  const me = c.get('user');
+  const handle = normalizeHandle(c.req.param('handle'));
+  if (!handle) throw new HttpError(400, 'That username does not look right (e.g. @chai_uncle).');
+  const target = await getUserByHandle(c.env, handle);
+  if (!target || target.is_guest) throw new HttpError(404, 'No player found with that username.');
+  if (target.id === me.id) throw new HttpError(400, 'That is your own username.');
+  const block = await blockRelation(c.env, me.id, target.id);
+  if (block.mine || block.theirs) throw new HttpError(404, 'No player found with that username.'); // a block looks like "no such player"
+  return previewUser(c, me, target);
+});
+
+// POST /api/friends/request { friendCode } or { userId } or { handle } ("@" optional) - idempotent; a mutual request auto-accepts.
 friends.post('/request', limit('friend-request', 20, 60), async (c) => {
   const me = c.get('user');
   const body = await readJson(c);
@@ -170,6 +205,13 @@ friends.post('/request', limit('friend-request', 20, 60), async (c) => {
     notFound = 'No player found.';
     if (!isUuid(body.userId)) throw new HttpError(400, 'Invalid user id.');
     target = await getUserById(c.env, body.userId);
+    if (!target || target.is_guest) throw new HttpError(404, notFound);
+    if (target.id === me.id) throw new HttpError(400, 'You cannot add yourself.');
+  } else if (body.handle !== undefined && body.handle !== null && body.friendCode === undefined) {
+    notFound = 'No player found with that username.';
+    const handle = normalizeHandle(body.handle);
+    if (!handle) throw new HttpError(400, 'That username does not look right (e.g. @chai_uncle).');
+    target = await getUserByHandle(c.env, handle);
     if (!target || target.is_guest) throw new HttpError(404, notFound);
     if (target.id === me.id) throw new HttpError(400, 'You cannot add yourself.');
   } else {

@@ -135,3 +135,75 @@ export function sanitizeAction(input, playerId) {
       return null;
   }
 }
+
+// ---- Usernames ("@handles") ----
+export const HANDLE_MIN = 3;
+export const HANDLE_MAX = 20;
+export const HANDLE_RULES = `Usernames are ${HANDLE_MIN}-${HANDLE_MAX} characters: letters, numbers and single underscores, starting with a letter.`;
+
+// Names nobody may claim (exact match, after lowercasing).
+export const RESERVED_HANDLES = new Set([
+  'admin',
+  'administrator',
+  'support',
+  'gamehub',
+  'kingpin',
+  'system',
+  'moderator',
+  'mod',
+  'help',
+  'official',
+  'staff',
+  'root',
+  'owner',
+  'team',
+  'security',
+  'service',
+  'null',
+  'undefined',
+  'anonymous',
+  'guest',
+  'everyone',
+  'hyd',
+  'hydtycoon',
+]);
+
+// Easily extended: a handle containing any of these (underscores dropped, common digit look-alikes
+// folded to letters) is refused as reserved. Keep it to clear profanity / brand impersonation so
+// innocent names are not caught by accident.
+export const BLOCKED_HANDLE_WORDS = ['gamehub', 'kingpin', 'fuck', 'shit', 'cunt', 'nigg', 'faggot', 'rapist', 'nazi', 'hitler'];
+
+const HANDLE_RE = /^[a-z][a-z0-9_]*$/;
+const LEET = { 0: 'o', 1: 'i', 3: 'e', 4: 'a', 5: 's', 7: 't' };
+
+/** True when a (lowercase) handle is reserved or contains a blocked word. */
+export function isReservedHandle(h) {
+  if (RESERVED_HANDLES.has(h)) return true;
+  const folded = h.replace(/_/g, '').replace(/[013457]/g, (d) => LEET[d]);
+  return BLOCKED_HANDLE_WORDS.some((w) => folded.includes(w));
+}
+
+/**
+ * Lenient lookup form of a handle typed by a user: trims, drops one leading "@", lowercases.
+ * Returns '' unless the result has the shape of a handle (no reserved check: lookups just miss).
+ */
+export function normalizeHandle(input) {
+  if (typeof input !== 'string') return '';
+  const h = input.trim().replace(/^@/, '').toLowerCase();
+  if (h.length < HANDLE_MIN || h.length > HANDLE_MAX || !HANDLE_RE.test(h) || h.includes('__')) return '';
+  return h;
+}
+
+/**
+ * Strict handle validation for claiming one. Accepts uppercase / a leading "@" and stores lowercase.
+ * `{ ok:true, value }` or `{ ok:false, reason:'invalid'|'reserved', error }`.
+ */
+export function validateHandle(input) {
+  if (typeof input !== 'string') return { ok: false, reason: 'invalid', error: 'Username must be text.' };
+  const h = input.trim().replace(/^@/, '').toLowerCase();
+  if (h.length < HANDLE_MIN || h.length > HANDLE_MAX || !HANDLE_RE.test(h) || h.includes('__')) {
+    return { ok: false, reason: 'invalid', error: HANDLE_RULES };
+  }
+  if (isReservedHandle(h)) return { ok: false, reason: 'reserved', error: 'That username is not available.' };
+  return { ok: true, value: h };
+}

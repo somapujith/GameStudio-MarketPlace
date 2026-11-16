@@ -1,0 +1,191 @@
+/* ==========================================================================
+   handle.css: the Username field on Profile (HandleField) and the quiet "@username" line on person rows.
+   Prefix hd-. Tokens only (--hub-*, --st-*, --dur-*, --ease-out). The only motion is a colour / opacity fade on the
+   status line, switched off for [data-motion='reduced'] and prefers-reduced-motion.
+   ========================================================================== */
+
+.hd-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.hd-lede {
+  margin: 0;
+  font-size: var(--st-t-s);
+  color: var(--hub-dim);
+}
+
+.hd-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hd-label {
+  display: block;
+  font-size: var(--st-t-xs);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--hub-dim);
+}
+
+.hd-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.hd-field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 0 14px;
+  gap: 2px;
+  border-radius: var(--hub-r-m);
+  border: 1px solid var(--hub-line-2);
+  background: var(--hub-field);
+  transition: border-color var(--dur-2) var(--ease-out);
+}
+.hd-field:focus-within {
+  outline: 3px solid var(--hub-focus);
+  outline-offset: 1px;
+}
+.hd-field[data-status='available'] {
+  border-color: var(--hub-good);
+}
+.hd-field[data-status='taken'],
+.hd-field[data-status='invalid'] {
+  border-color: var(--hub-bad);
+}
+.hd-field.is-locked {
+  opacity: 0.7;
+}
+
+.hd-at {
+  flex: none;
+  font-size: var(--st-t-l);
+  font-weight: 800;
+  color: var(--hub-dim);
+}
+
+.hd-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--hub-text);
+  font: inherit;
+  font-size: var(--st-t-l);
+  font-weight: 800;
+}
+.hd-input::placeholder {
+  color: var(--hub-faint);
+  font-weight: 700;
+}
+
+.hd-save {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* The status line keeps its height in every state so the card never jumps while typing. */
+.hd-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 1.5em;
+  margin: 0;
+  font-size: var(--st-t-s);
+  color: var(--hub-dim);
+  transition: color var(--dur-2) var(--ease-out);
+}
+.hd-status--available {
+  color: var(--hub-good);
+  font-weight: 700;
+}
+.hd-status--taken,
+.hd-status--invalid {
+  color: var(--hub-bad-ink);
+  font-weight: 700;
+}
+.hd-status__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--hub-r-pill);
+  background: currentColor;
+}
+.hd-status--checking .hd-status__dot {
+  animation: hd-pulse 1s var(--ease-out) infinite alternate;
+}
+@keyframes hd-pulse {
+  from {
+    opacity: 0.3;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.hd-rules {
+  margin: 0;
+  font-size: var(--st-t-xs);
+  color: var(--hub-faint);
+}
+
+.hd-note {
+  margin: 0;
+  font-size: var(--st-t-s);
+  color: var(--hub-warn);
+}
+
+/* ---------- the quiet second line on person / friend / invite rows ---------- */
+.hd-handle {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--st-t-xs, 12px);
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--hub-dim);
+}
+
+@media (max-width: 420px) {
+  .hd-row {
+    flex-direction: column;
+  }
+  .hd-save {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hd-status,
+  .hd-field {
+    transition: none;
+  }
+  .hd-status--checking .hd-status__dot {
+    animation: none;
+  }
+}
+:root[data-motion='reduced'] :is(.hd-status, .hd-field) {
+  transition: none;
+}
+:root[data-motion='reduced'] .hd-status--checking .hd-status__dot {
+  animation: none;
+}
+
+/* "Add by code" accepts @usernames: undo the code field's uppercase / wide tracking while one is typed. */
+.sc-add__input.hd-lower {
+  text-transform: none;
+  letter-spacing: 0.02em;
+}

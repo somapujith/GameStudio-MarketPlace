@@ -225,3 +225,13 @@ CREATE INDEX IF NOT EXISTS blocks_blocked_idx
 
 -- Who may send me friend requests: 'everyone' | 'nobody'.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS friend_requests text NOT NULL DEFAULT 'everyone';
+
+-- handles
+-- Unique @usernames so friends can be found unambiguously. Nullable: existing users stay
+-- null until they claim one (no backfill). Stored lowercase; the index is case-insensitive.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS handle text;
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS handle_changed_at timestamptz;
+
+CREATE UNIQUE INDEX IF NOT EXISTS users_handle_uniq
+  ON users (lower(handle));
