@@ -424,9 +424,10 @@ export function faceTones(color) {
   return out;
 }
 
-/** The printed name of a tile in capitals: { lines, chars } (chars = the longest line, drives the font size). */
-export function faceName(tile) {
-  const lines = labelLines(tile).map((l) => l.toUpperCase());
+/** Keep names readable in their original case; the wider side tiles can leave short words whole. */
+export function faceName(tile, { wide = false } = {}) {
+  const short = String(tile?.short || tile?.name || '').trim();
+  const lines = wide && short && !/\s/.test(short) && short.length <= 10 ? [short] : labelLines(tile);
   return { lines, chars: lines.reduce((m, l) => Math.max(m, l.length), 1) };
 }
 

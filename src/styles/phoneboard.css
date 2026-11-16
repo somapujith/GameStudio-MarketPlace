@@ -2,7 +2,7 @@
    "Hyderabad night market": a deep indigo frame with a gold hairline and a string of lantern bulbs, glossy colour tiles with a
    lighter price band and a fine texture, warm paper tiles for the corners / stops / cards, glossy disc pawns with a contact shadow,
    and a calm dusk panel in the middle (PhoneCentre). Tile faces are drawn by phone/PhoneTileFace.jsx; sizes come from board.css's
-   --hb-u (one edge tile = 1u wide, 1.5u deep; side tiles 1.5u x 1u).
+   --hb-u (one edge tile's width); portrait height can give the ring extra depth.
    Motion = transform / opacity only, one language: anticipation -> action -> settle on the --ease-spring curve; every loop is a
    single small element (the bulbs, the lit tile, the pawn marker) and everything stops under reduced motion (bottom of the file). */
 
@@ -18,7 +18,9 @@
 }
 
 /* ---- frame, ring, gaps ------------------------------------------------------ */
-.ph .hb-board { overflow-clip-margin: 2cqw; }
+.ph .hb-board { overflow-clip-margin: 2cqw; container-type: size; }
+/* Pawn coordinates use each axis of the portrait ring independently. */
+.ph .hb-pawn { transform: translate(calc(var(--x) * var(--ring)), calc(var(--y) * (100cqh - 2 * var(--hb-pad)))); }
 .ph .hb-frame {
   --hb-pad: 1.7cqw;
   border-radius: 3cqw;
@@ -52,7 +54,6 @@
   box-shadow: inset 0 0 0 max(0.5cqw, 2px) var(--o);
 }
 .ph .hb-tile--phone.is-max .pt::after { box-shadow: inset 0 0 0 max(0.6cqw, 2.4px) #ffd34d; }
-.ph .hb-tile--phone:is(.is-set, .is-max) .pt__name { padding-bottom: 2px; }
 /* a sheet is open for it: a bright white ring inside a gold one */
 .ph .hb-tile--phone.is-hl { outline: max(0.6cqw, 2px) solid #fff; outline-offset: max(-0.6cqw, -2px); box-shadow: inset 0 0 0 max(1.1cqw, 3px) var(--hb-gold); z-index: 6; }
 /* the tile the mover stands on: a soft lantern ring and glow breathing (one pseudo-element, opacity only), and room for the callout */
@@ -68,7 +69,7 @@
 .hb-side--top .pt, .hb-side--bottom .pt { --tw: calc(var(--hb-u) - 3px); }
 .hb-tile--corner .pt { --tw: calc(var(--hb-u) * 1.5 - 5px); }
 
-/* ---- districts: glossy colour + lighter price band + capitals --------------- */
+/* ---- districts: glossy colour, compact price band, fitted mixed-case names -- */
 .pt--prop {
   color: var(--pt-ink);
   background:
@@ -77,12 +78,12 @@
     var(--pt-body);
 }
 .pt__band {
-  flex: 0 0 36%; min-height: 0; display: grid; place-items: center;
+  flex: 0 0 26%; min-height: 8px; display: grid; place-items: center;
   background: linear-gradient(180deg, color-mix(in srgb, var(--pt-band) 82%, #fff), var(--pt-band));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), inset 0 -1px 0 rgba(0, 0, 0, 0.16);
 }
 .pt__price, .pt__tag {
-  max-width: 100%; font-size: clamp(7px, calc(var(--hb-u) * 0.27), 10.5px); font-weight: 800; line-height: 1; letter-spacing: -0.01em;
+  max-width: 100%; font-size: clamp(6.5px, calc(var(--hb-u) * 0.24), 9px); font-weight: 800; line-height: 1; letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 /* the rent of an owned district, on a little flag in the owner's colour with a white rim */
@@ -93,13 +94,28 @@
   animation: pt-tag var(--dur-3) var(--ease-spring) both;
 }
 .pt__name {
-  flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 1px 1px;
-  font-size: clamp(5.8px, min(10px, calc(var(--tw) / (var(--chars, 6) * 0.72))), 10px); font-weight: 800; line-height: 1.04; letter-spacing: -0.02em;
+  flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1px 2px 2px;
+  container-type: size;
+  font-size: clamp(6px, calc((var(--tw) - 2px) / (var(--chars, 6) * 0.5)), 10px); font-weight: 800; line-height: 1.12; letter-spacing: -0.025em;
   -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision;
 }
 .pt[data-ink='dark'] .pt__name { text-shadow: 0 1px 0 rgba(255, 255, 255, 0.28); }
 .pt[data-ink='light'] .pt__name { text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35); }
-.pt__name > span { display: block; max-width: 100%; white-space: nowrap; }
+.pt__name[data-lines='2'] { --name-lines: 2; }
+.pt__name > span {
+  display: block; max-width: 100%; white-space: nowrap;
+  font-size: min(10px, calc(100cqw / (var(--chars, 6) * 0.6)), calc(100cqh / (var(--name-lines, 1) * 1.35)));
+  line-height: 1.12;
+}
+/* Names, amounts and upgrades each have their own space. Side tiles place the
+   upgrade track on the outer edge, leaving the price band clear. */
+.hb-side--top .pt--prop[data-owned] .pt__name,
+.hb-side--bottom .pt--prop[data-owned] .pt__name { padding-bottom: max(1.8cqw, 6px); }
+.hb-side--left .pt--prop[data-owned] { padding-left: max(1.3cqw, 4px); }
+.hb-side--right .pt--prop[data-owned] { padding-right: max(1.3cqw, 4px); }
+.hb-side--left .pt--prop[data-owned] .pt__name,
+.hb-side--right .pt--prop[data-owned] .pt__name { --tw: calc(var(--hb-u) * 1.5 - max(1.3cqw, 4px) - 3px); }
+.pt--prop[data-mortgaged] .pt__name { padding-bottom: max(3.5cqw, 12px); }
 /* owned: a foot ribbon in the owner's colour under the name (white hairline above it) */
 .pt--prop[data-owned]::before {
   content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: max(0.8cqw, 3px); z-index: 1;
@@ -111,11 +127,15 @@
 
 /* upgrade pips: one tiny building per level, each a step taller than the one before; the lit ones are gold and pop when they light */
 .pt__pips {
-  position: absolute; left: 0; right: 0; bottom: max(1.2cqw, 4.5px); z-index: 2; display: flex; align-items: flex-end; justify-content: center; gap: max(0.45cqw, 1.5px);
+  position: absolute; left: 0; right: 0; bottom: max(0.85cqw, 3px); z-index: 2; display: flex; align-items: flex-end; justify-content: center; gap: max(0.35cqw, 1px);
 }
-.hb-side--left .pt__pips, .hb-side--right .pt__pips { top: 0; bottom: auto; left: auto; right: max(0.6cqw, 2px); height: 36%; align-items: center; justify-content: flex-end; }
+.hb-side--left .pt__pips, .hb-side--right .pt__pips {
+  top: 2px; bottom: 2px; left: auto; right: 0; width: max(1.3cqw, 4px);
+  flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+}
+.hb-side--left .pt__pips { left: 0; right: auto; }
 .pt__pips i {
-  --k: 0; display: block; width: calc(max(1.35cqw, 4.5px) * (1 + var(--k) * 0.28)); height: calc(max(1.35cqw, 4.5px) * (1 + var(--k) * 0.28));
+  --k: 0; flex: none; display: block; width: calc(max(0.8cqw, 2.5px) * (1 + var(--k) * 0.2)); height: calc(max(0.8cqw, 2.5px) * (1 + var(--k) * 0.2));
   clip-path: polygon(50% 0, 100% 42%, 100% 100%, 0 100%, 0 42%); transform-origin: 50% 100%;
   background: color-mix(in srgb, var(--pt-ink) 30%, transparent);
 }
@@ -128,6 +148,8 @@
   position: absolute; right: 1px; bottom: 1px; z-index: 2; width: max(2.6cqw, 9px); height: max(2.6cqw, 9px); display: grid; place-items: center; border-radius: 50%;
   background: #2b2f38; color: #fff; font-size: max(1.8cqw, 6px); font-weight: 800; line-height: 1; box-shadow: 0 0 0 1px #fff;
 }
+.hb-side--left .pt--prop[data-mortgaged] .pt__name,
+.hb-side--right .pt--prop[data-mortgaged] .pt__name { padding: 1px max(2.9cqw, 10px) 1px 1px; --tw: calc(var(--hb-u) * 1.5 - max(2.9cqw, 10px) - 3px); }
 /* mortgaged: grey, a bold diagonal hatch over the face and the M badge */
 .ph .hb-tile--phone.is-mortgaged .pt--prop { --pt-body: #8d949b; --pt-band: #a3a9af; --pt-ink: #1d2128; }
 .ph .hb-tile--phone.is-mortgaged .pt__name { opacity: 0.85; }
@@ -287,15 +309,6 @@
 .pc-hero .city-story__mascot { max-height: 52cqmin; }
 .pc-die { position: absolute; left: 50%; bottom: 0.5cqh; translate: -50% 0; z-index: 2; pointer-events: none; }
 .pc-die .cp-dice { color: var(--pt-cream); }
-
-/* small boards (320px phones, a squeezed 375x667): the names cannot be read, so the tile keeps its price big and the icons */
-@container (max-width: 299px) {
-  .pt__name { display: none; }
-  .pt--prop .pt__band { flex: 1 1 0; }
-  .pt__price, .pt__tag { font-size: clamp(7px, calc(var(--hb-u) * 0.3), 9px); }
-  .pt--stop .pt__cap, .pt--card .pt__cap, .hb-tile--corner:not(.hb-tile--start) .pt__pill { display: none; }
-  .pt__pips { bottom: 3px; }
-}
 
 @keyframes pt-tag { from { opacity: 0; transform: translateY(-40%) scale(0.7); } to { opacity: 1; transform: none; } }
 @keyframes pt-pip { 0% { transform: scale(0.2); } 55% { transform: scale(1.5); } 100% { transform: scale(1); } }

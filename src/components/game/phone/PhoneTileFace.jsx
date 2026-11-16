@@ -1,16 +1,17 @@
 // The phone face of a board tile (Tile.jsx renders this inside the simple portrait-phone table only):
 //   district   flat colour, a lighter band on top with the PRICE (or an owner-coloured tag with the RENT once owned),
-//              the name in bold capitals under it (horizontal on every side), small upgrade pips
+//              the name in its original case (horizontal on every side), small upgrade pips
 //   stop       light tile: a coloured capital label (AUTO / METRO / MMTS) on top, our transit art under it
 //   card       light tile: the deck's card art with LUCK / DRAMA
 //   corner     light tile: the icon on top, a grey pill label under it (START, TRAFFIC, CHAI ADDA, MUNICIPAL, AUCTION)
-// Sizes come from board.css's --hb-u (one edge tile) in phoneboard.css; the long capitals shrink with --chars.
+// Sizes come from board.css's --hb-u (one edge tile) in phoneboard.css; long names shrink with --chars.
 import { useRef } from 'react';
 import { compactINR } from '@shared/format.js';
 import { MAX_LEVEL } from '@shared/board.js';
 import { TileIcon } from '@/components/art/index.js';
 import { useArtMap } from '@/components/art/andhra/artMap.js';
 import { ChaiSteam, CardShimmer } from '../fx/TileFx.jsx';
+import { sideOf } from '../fx/geometry.js';
 import { bestInk } from '../PropertySheet.jsx';
 import { calloutFor, faceKind, faceLabel, faceName, faceTones, isLightInk, pipStates } from './phoneModel.js';
 
@@ -70,14 +71,15 @@ function Face({
 
   if (kind === 'prop') {
     const tones = faceTones(group?.color || '#8a7a66');
-    const { lines, chars } = faceName(tile);
+    const side = sideOf(tile.id);
+    const { lines, chars } = faceName(tile, { wide: side === 'left' || side === 'right' });
     const style = { '--pt-body': tones.body, '--pt-band': tones.band, '--pt-ink': tones.ink, '--chars': chars };
     if (owned && ownerColor) {
       style['--tag'] = ownerColor;
       style['--tag-ink'] = bestInk(ownerColor);
     }
     return (
-      <span className="pt pt--prop" style={style} data-owned={owned && ownerColor && !mortgaged ? '' : undefined} data-ink={isLightInk(tones.ink) ? 'light' : 'dark'}>
+      <span className="pt pt--prop" style={style} data-owned={owned && ownerColor && !mortgaged ? '' : undefined} data-mortgaged={mortgaged ? '' : undefined} data-ink={isLightInk(tones.ink) ? 'light' : 'dark'}>
         <span className="pt__band">
           {owned && ownerColor && !mortgaged ? (
             <b className="pt__tag">{compactINR(rent)}</b>

@@ -1,6 +1,8 @@
 // The simple phone table: every pure helper behind it (objective line, captions, player grid, action labels, buy card, tile faces).
 import { describe, expect, it } from 'vitest';
 import { TILES, GROUPS } from '@shared/board.js';
+import { MAP_IDS, tileSkin } from '@shared/maps.js';
+import { labelLines, labelText } from '../tileLabel.js';
 import { buildActionSpec } from '../ActionBar.jsx';
 import { contrastRatio } from '../PropertySheet.jsx';
 import {
@@ -356,15 +358,34 @@ describe('tile faces', () => {
     expect(stopKind({ name: 'Metro Interchange' })).toBe('metro');
   });
 
-  it('district names are capitals on one or two lines with the longest line counted', () => {
+  it('district names preserve their printed case on one or two lines with the longest line counted', () => {
     for (const tile of TILES.filter((t) => t.type === 'property')) {
       const { lines, chars } = faceName(tile);
       expect(lines.length).toBeGreaterThanOrEqual(1);
       expect(lines.length).toBeLessThanOrEqual(2);
-      lines.forEach((l) => expect(l).toBe(l.toUpperCase()));
+      expect(lines).toEqual(labelLines(tile));
       expect(chars).toBe(Math.max(...lines.map((l) => l.length)));
       expect(chars, tile.name).toBeLessThanOrEqual(9);
     }
-    expect(faceName({ short: 'Tolichowki' })).toEqual({ lines: ['TOLI-', 'CHOWKI'], chars: 6 });
+    expect(faceName({ short: 'Tolichowki' })).toEqual({ lines: ['Toli-', 'chowki'], chars: 6 });
+    expect(faceName({ short: 'HITEC City' })).toEqual({ lines: ['HITEC', 'City'], chars: 5 });
+  });
+
+  it.each(MAP_IDS)('%s: wide district labels preserve names while leaving short single words whole', (map) => {
+    for (const base of TILES.filter((t) => t.type === 'property')) {
+      const tile = { ...base, ...tileSkin(map, base.id) };
+      const narrow = faceName(tile);
+      const wide = faceName(tile, { wide: true });
+      const short = tile.short || tile.name;
+      expect(narrow.lines, tile.name).toEqual(labelLines(tile));
+      expect(labelText(wide.lines), tile.name).toBe(wide.lines.length === 1 ? short : labelText(narrow.lines));
+      expect(wide.chars).toBe(Math.max(...wide.lines.map((l) => l.length)));
+      if (!/\s/.test(short) && short.length <= 10) expect(wide.lines).toEqual([short]);
+      else expect(wide.lines).toEqual(narrow.lines);
+      expect(wide.lines.join('').replace(/-/g, '').replace(/\s/g, ''), tile.name)
+        .toBe(narrow.lines.join('').replace(/-/g, '').replace(/\s/g, ''));
+    }
+    expect(faceName({ short: 'Malakpet' }, { wide: true })).toEqual({ lines: ['Malakpet'], chars: 8 });
+    expect(faceName({ short: 'Lepakshi', lines: ['Lepak-', 'shi'] }, { wide: true })).toEqual({ lines: ['Lepakshi'], chars: 8 });
   });
 });
