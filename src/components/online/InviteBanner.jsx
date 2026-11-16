@@ -122,7 +122,7 @@ export function addLiveInvite(msg) {
 }
 
 /** Dismiss (or, with `{ joined: true }`, consume after Join): gone locally at once, and on the server. */
-export function dismissInviteEntry(inv) {
+export function dismissInviteEntry(inv, { joined = false } = {}) {
   if (!inv || !inv.key) return;
   const match = store.snap.invites.find((i) => i.key === inv.key);
   const id = inv.id || (match && match.id);
@@ -130,7 +130,7 @@ export function dismissInviteEntry(inv) {
   store.live = dropInvite(store.live, inv.key);
   store.stored = dropInvite(store.stored, inv.key);
   emit({});
-  if (id) dismissInvite(id).catch(() => {});
+  if (id) (joined ? dismissInvite(id, { joined: true }) : dismissInvite(id)).catch(() => {});
 }
 
 const subscribeStore = (fn) => {
@@ -281,8 +281,8 @@ function Notice({ item, leaving, onDismiss, go }) {
   const { title, body, actionLabel, target } = noticeContent(item);
   const isInvite = kind === 'invite';
 
-  const dismissThis = () => {
-    if (isInvite) dismissInviteEntry(normalizeInvite(item));
+  const dismissThis = (joined = false) => {
+    if (isInvite) dismissInviteEntry(normalizeInvite(item), { joined });
     onDismiss(key);
   };
 
@@ -307,7 +307,7 @@ function Notice({ item, leaving, onDismiss, go }) {
             className="hub-btn hub-btn--primary hub-btn--sm"
             disabled={leaving}
             onClick={() => {
-              dismissThis();
+              dismissThis(true); // the action is "Join": consuming the invite is not a decline
               go(target);
             }}
           >
@@ -315,11 +315,11 @@ function Notice({ item, leaving, onDismiss, go }) {
           </button>
         )}
         {isInvite ? (
-          <button type="button" className="hub-btn hub-btn--ghost hub-btn--sm" disabled={leaving} onClick={dismissThis} aria-label={`Dismiss: ${title}`}>
+          <button type="button" className="hub-btn hub-btn--ghost hub-btn--sm" disabled={leaving} onClick={() => dismissThis()} aria-label={`Dismiss: ${title}`}>
             Dismiss
           </button>
         ) : (
-          <button type="button" className="sc-toast__x" disabled={leaving} onClick={dismissThis} aria-label={`Dismiss: ${title}`}>
+          <button type="button" className="sc-toast__x" disabled={leaving} onClick={() => dismissThis()} aria-label={`Dismiss: ${title}`}>
             <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" fill="none" />
             </svg>
@@ -376,7 +376,7 @@ function PendingBanner({ invites, go }) {
           type="button"
           className="hub-btn hub-btn--primary hub-btn--sm"
           onClick={() => {
-            if (s.count === 1) dismissInviteEntry(top);
+            if (s.count === 1) dismissInviteEntry(top, { joined: true }); // Join, not a decline
             go(s.target);
           }}
         >

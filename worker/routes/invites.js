@@ -3,7 +3,8 @@
 //                                          row (so an offline friend still sees it) and a Web Push when configured
 //   GET  /api/invites                   -> { invites: [{ id, from:{id,name,avatar}, code, gameId, gameName, createdAt }] }
 //                                          addressed to me, not dismissed, < 2 h old, room still a lobby, newest first
-//   POST /api/invites/:id/dismiss       -> { ok: true }   (only the recipient; pushes {t:'invite_declined',by,code} to the sender)
+//   POST /api/invites/:id/dismiss       -> { ok: true }   (only the recipient; pushes {t:'invite_declined',by,code} to the sender
+//                                          unless the body says {joined:true}: Join consumes the invite, it is not a decline)
 import { Hono } from 'hono';
 import { query, HttpError } from '../db.js';
 import { requireMember, requireUser } from '../auth.js';
@@ -139,6 +140,8 @@ invites.get('/', requireUser, limit('invites-list', 30, 60), async (c) => {
 invites.post('/:id/dismiss', requireUser, limit('invite-dismiss', 60, 60), async (c) => {
   const id = c.req.param('id');
   if (!isUuid(id)) throw new HttpError(400, 'Invalid invite id.');
+  const body = await c.req.json().catch(() => ({}));
+  const joined = !!body && body.joined === true; // "Join" consumes the invite: that is not a decline
   let rows;
   try {
     rows = await query(c.env, DISMISS_INVITE_SQL, [id, c.get('user').id]);
@@ -149,7 +152,7 @@ invites.post('/:id/dismiss', requireUser, limit('invite-dismiss', 60, 60), async
   if (!rows.length) throw new HttpError(404, 'Invite not found.');
   // Tell the sender it was declined (best effort, once per invite).
   const row = rows[0];
-  if (row.from_id && row.room_code && !row.was_dismissed) {
+  if (row.from_id && row.room_code && !row.was_dismissed && !joined) {
     background(c, pushToUser(c.env, row.from_id, { t: 'invite_declined', by: identity(c.get('user')), code: row.room_code }));
   }
   return c.json({ ok: true });

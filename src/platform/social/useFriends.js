@@ -12,6 +12,7 @@ import {
   applyPresence,
   applyRemoved,
   emptyFriends,
+  inviteEventResult,
   inviteFeedback,
   normalizeFriends,
   removeFriend,
@@ -64,7 +65,7 @@ export default function useFriends({ push }) {
 
   useUserEvents(
     (msg) => {
-      if (msg.t === 'presence') setData((d) => (d ? applyPresence(d, msg.userId, msg.online) : d));
+      if (msg.t === 'presence') setData((d) => (d ? applyPresence(d, msg.userId, msg.online, msg) : d));
       else if (msg.t === 'friend_request') {
         setData((d) => addIncoming(d || emptyFriends(), msg.from));
         load({ silent: true });
@@ -74,9 +75,16 @@ export default function useFriends({ push }) {
         load({ silent: true });
       } else if (msg.t === 'friend_removed') {
         setData((d) => (d ? applyRemoved(d, msg.by) : d));
+      } else if (msg.t === 'invite_joined' || msg.t === 'invite_declined') {
+        // answers to the invites I sent from this page: the row says "Joined" / "Declined" and a toast tells me
+        const res = inviteEventResult(msg, msg.code);
+        if (res) {
+          setInvited((s) => ({ ...s, [`${res.id}:${msg.code}`]: res.state }));
+          push(res.text, res.tone);
+        }
       }
     },
-    ['presence', 'friend_request', 'friend_accepted', 'friend_removed'],
+    ['presence', 'friend_request', 'friend_accepted', 'friend_removed', 'invite_joined', 'invite_declined'],
   );
 
   /** Optimistic update + request; rolls back and resyncs on failure. */
