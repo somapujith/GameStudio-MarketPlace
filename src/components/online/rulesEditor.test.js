@@ -62,9 +62,9 @@ describe('host: the editor', () => {
     const wide = panel({});
     expect(tags(wide, 'button').filter((t) => t.includes('xl-group__btn')).every((t) => t.includes('aria-expanded="true"'))).toBe(true);
     expect(tags(wide, 'div').filter((t) => t.includes('xl-group__body')).some((t) => t.includes('hidden=""'))).toBe(false);
+    // the card itself and the guest's list are collapsed everywhere, a wide screen included
     const guest = panel({ isHost: false, settings: CUSTOM });
-    expect(guest).toContain('aria-expanded="true"');
-    expect(guest).not.toMatch(/<div id="[^"]*-ro" hidden/);
+    expect(tags(guest, 'button').filter((t) => t.includes('lr-more')).every((t) => t.includes('aria-expanded="false"'))).toBe(true);
   });
 
   it('numbers: a slider with its value in words, -/+ buttons, the value formatted per unit', () => {
@@ -159,6 +159,32 @@ describe('host: the editor', () => {
   });
 });
 
+describe('the card: collapsed by default, the summary as chips', () => {
+  const html = panel({ settings: CUSTOM });
+
+  it('a host sees "Edit rules" (collapsed, wired to the card), a guest "View rules"', () => {
+    const edit = tags(html, 'button').find((t) => t.includes('lr-toggle'));
+    expect(edit).toMatch(/aria-expanded="false" aria-controls="[^"]+"/);
+    expect(html).toContain('<span>Edit rules</span>');
+    expect(panel({ isHost: false })).toContain('<span>View rules</span>');
+  });
+
+  it('one line of chips: the map, the game own summary parts, the custom count', () => {
+    const chips = [...html.matchAll(/<li class="lr-chip[^"]*">([^<]+)<\/li>/g)].map((m) => m[1]);
+    expect(chips).toEqual(['Charminar Chaos', 'Standard City Hustle', '20 rounds', 'richest wins', '₹50L target', 'Custom rules (4)']);
+    expect(html).toContain('lr-chip--custom');
+  });
+
+  it('the card and the rules open from two separate buttons; the tour hooks are kept', () => {
+    expect(tags(html, 'button').filter((t) => t.includes('lr-more'))).toHaveLength(1);
+    expect(html).toContain('>More rules<');
+    expect(html).toContain('data-tour="lobby-rules-host"');
+    expect(html).toContain('data-tour="lobby-rules-bar"');
+    // everything stays in the page, only inert while shut
+    expect((html.match(/class="lr-fold" inert=""/g) || []).length).toBe(2);
+  });
+});
+
 describe('host: custom rules, resets', () => {
   it('a stock room: no badge, no per-rule reset, "Reset all" is off', () => {
     const html = panel({});
@@ -209,7 +235,7 @@ describe('host: custom rules, resets', () => {
 
 describe('locked and disconnected', () => {
   const interactive = (html) =>
-    [...tags(html, 'button'), ...tags(html, 'input')].filter((t) => !t.includes('xl-group__btn') && !t.includes('xl-rules__toggle'));
+    [...tags(html, 'button'), ...tags(html, 'input')].filter((t) => !t.includes('xl-group__btn') && !t.includes('xl-rules__toggle') && !t.includes('lr-toggle') && !t.includes('lr-more'));
 
   it('while the game starts or the socket is down every control is disabled; only opening a group still works', () => {
     const html = panel({ settings: CUSTOM, disabled: true });
@@ -269,11 +295,15 @@ describe('guest: the same list, read only', () => {
     for (const control of ['type="range"', 'role="switch"', 'role="radio"', 'xl-preset', 'xl-rule__reset', 'xl-rules__reset', 'xl-slider']) expect(html, control).not.toContain(control);
   });
 
-  it('collapsed on a phone with a "Show all rules" button that points at the list', () => {
-    const toggle = tags(html, 'button').find((t) => t.includes('xl-rules__toggle'));
-    expect(toggle).toContain('aria-expanded="false"');
-    const id = /aria-controls="([^"]+)"/.exec(toggle)[1];
-    expect(html).toContain(`<div id="${id}" hidden="">`);
+  it('collapsed: a "View rules" button opens the card, a "Show all rules" button inside opens the list; both point at their region', () => {
+    const view = tags(html, 'button').find((t) => t.includes('lr-toggle'));
+    expect(view).toContain('aria-expanded="false"');
+    expect(html).toContain('View rules');
+    expect(html).toContain(`<div id="${/aria-controls="([^"]+)"/.exec(view)[1]}" class="lr-fold" inert="">`);
+    const more = tags(html, 'button').find((t) => t.includes('lr-more'));
+    expect(more).toContain('aria-expanded="false"');
+    const id = /aria-controls="([^"]+)"/.exec(more)[1];
+    expect(html).toContain(`<div id="${id}" class="lr-fold" inert="">`);
     expect(html).toContain('Show all rules');
   });
 
