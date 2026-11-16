@@ -1,0 +1,106 @@
+/* Power cards on the player surfaces (docs/POWER_CARDS.md 3.2 / 3.4): the face-down stack + count, the armed-effect chips,
+   the player-sheet section, the guide sheet. Prefix pwo-. Dark in-game theme; tokens only for motion; every animation is a
+   one-shot (transform / opacity) and is gated at the bottom of this file for reduced motion and data-perf='low'. */
+
+/* ---------- the face-down stack ---------- */
+.pwo-stack { --pwo-w: 20px; position: relative; display: inline-flex; flex: none; align-items: flex-end; vertical-align: middle; }
+.pwo-cards { position: relative; display: block; width: calc(var(--pwo-w) + 10px); height: calc(var(--pwo-w) * 1.4 + 2px); }
+.pwo-card { position: absolute; bottom: 0; left: 0; display: block; line-height: 0; border-radius: 3px; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55); transform-origin: 50% 100%; }
+.pwo-card svg { border-radius: 3px; }
+.pwo-card__fill { display: block; width: var(--pwo-w); height: calc(var(--pwo-w) * 1.4); border-radius: 3px; background: linear-gradient(160deg, #a8379a, #2e2475); box-shadow: inset 0 0 0 1px #ffd23f; }
+.pwo-card--under { transform: rotate(-9deg); }
+.pwo-card--top { left: 8px; transform: rotate(4deg); }
+.pwo-stack:not(.is-two) .pwo-card--top { left: 5px; transform: none; }
+
+.pwo-badge {
+  position: absolute; right: -5px; bottom: -3px; z-index: 1; min-width: 15px; height: 15px; padding: 0 4px; box-sizing: border-box;
+  display: grid; place-items: center; border-radius: 999px; font-size: 10px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums;
+  color: #3b2300; background: var(--gold, #ffca7a); box-shadow: 0 0 0 2px #10171e;
+}
+.pwo-stack--md { --pwo-w: 34px; }
+.pwo-stack--md .pwo-badge { right: -7px; bottom: -4px; min-width: 20px; height: 20px; font-size: 12px; }
+
+/* xs: no cards, just a tiny card glyph and the count in a pill (compact pods, phone cells) */
+.pwo-stack--xs { align-items: center; gap: 3px; height: 16px; padding: 0 5px 0 4px; border-radius: 999px; background: #241e5c; box-shadow: 0 0 0 2px #10171e, inset 0 0 0 1px rgba(255, 210, 63, 0.55); }
+.pwo-mini { display: block; width: 8px; height: 11px; border-radius: 2px; background: linear-gradient(160deg, #a8379a, #4a3aa8); box-shadow: 0 0 0 1px #ffd23f; }
+.pwo-stack--xs .pwo-badge { position: static; min-width: 0; height: auto; padding: 0; border-radius: 0; background: none; box-shadow: none; color: #ffe7a3; font-size: 11px; line-height: 16px; }
+
+/* where the xs pieces sit: on the avatar's corners (absolute: zero layout cost) */
+.hg-pod__ava:has(> .pwo-corner) { position: relative; }
+.pwo-corner { position: absolute; right: -7px; bottom: -5px; z-index: 4; display: flex; pointer-events: none; }
+.pwo-flags { position: absolute; right: -7px; top: -5px; z-index: 4; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; pointer-events: none; }
+.pwo-flags:empty, .pwo-corner:empty { display: none; }
+
+/* ---------- armed chips ---------- */
+.pwo-chips { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+.pwo-chips--xs { flex-direction: column; align-items: flex-end; gap: 2px; }
+.pwo-chip {
+  --c: #8fdcf5; position: relative; display: inline-flex; flex: none; align-items: center; gap: 3px; box-sizing: border-box; height: 20px; padding: 0 7px 0 4px;
+  border-radius: 999px; font-size: 10.5px; font-weight: 800; line-height: 1; white-space: nowrap; color: var(--c);
+  background: color-mix(in srgb, var(--c) 16%, #10171e); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 55%, transparent);
+}
+.pwo-chip.is-double { --c: #ffd98a; }
+.pwo-chip svg { width: 13px; height: 13px; flex: none; }
+.pwo-chip__t { display: inline-flex; align-items: baseline; gap: 4px; }
+.pwo-chip__t b { font-weight: 800; }
+.pwo-chip__t small { font-size: 9.5px; font-weight: 700; opacity: 0.85; }
+.pwo-chip--xs { height: 16px; padding: 0 4px 0 2px; gap: 1px; box-shadow: 0 0 0 2px #10171e, inset 0 0 0 1px color-mix(in srgb, var(--c) 55%, transparent); background: color-mix(in srgb, var(--c) 22%, #10171e); }
+.pwo-chip--xs svg { width: 11px; height: 11px; }
+.pwo-chip__n { font-size: 10px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.pwo-chip--md { height: 26px; padding: 0 10px 0 6px; gap: 5px; font-size: 12.5px; }
+.pwo-chip--md svg { width: 16px; height: 16px; }
+.pwo-chip--md .pwo-chip__t small { font-size: 11px; }
+/* a chip that just went away (consumed or expired): a ring flashes out around it */
+.pwo-chip.is-gone { animation: pwo-gone var(--dur-4) var(--ease-out) both; }
+.pwo-chip.is-gone::after { content: ''; position: absolute; inset: -2px; border-radius: inherit; border: 2px solid var(--c); pointer-events: none; animation: pwo-ring var(--dur-4) var(--ease-out) both; }
+@keyframes pwo-gone { 0% { opacity: 1; transform: scale(1); } 30% { opacity: 1; transform: scale(1.1); } 100% { opacity: 0; transform: scale(0.9); } }
+@keyframes pwo-ring { 0% { opacity: 0.9; transform: scale(1); } 100% { opacity: 0; transform: scale(1.35); } }
+
+/* ---------- the count ticks (one-shot, only after the count changed) ---------- */
+.pwo-stack.is-ticked .pwo-badge { animation: pwo-tick var(--dur-2) var(--ease-out) both; }
+.pwo-stack.is-ticked .pwo-card--top, .pwo-stack.is-ticked .pwo-mini { animation: pwo-nudge var(--dur-2) var(--ease-out) both; }
+@keyframes pwo-tick { 0% { transform: scale(1.5); } 100% { transform: scale(1); } }
+@keyframes pwo-nudge { 0% { translate: 0 -4px; opacity: 0.55; } 100% { translate: 0 0; opacity: 1; } }
+@keyframes pwo-fade { 0% { opacity: 0.4; } 100% { opacity: 1; } }
+
+/* ---------- player sheet section ---------- */
+.pwo-sec__row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 6px 4px 2px; }
+.pwo-sec__count { font-size: 14px; font-weight: 700; color: var(--text, #fff); }
+.pwo-sec__note { margin: 8px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--text-dim, #b4c3ca); }
+
+/* ---------- the guide sheet ---------- */
+.pwo-guide__intro { margin: 4px 0 12px; font-size: 14px; line-height: 1.5; color: var(--text-dim, #b4c3ca); }
+.pwo-guide__cards, .pwo-guide__rules { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.pwo-gc {
+  --t: #ffc857; display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 12px; align-items: center; padding: 10px 12px; border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05); box-shadow: inset 3px 0 0 var(--t);
+}
+.pwo-gc[data-tone='blue'] { --t: #4cc9f0; }
+.pwo-gc[data-tone='gold'] { --t: #ffc857; }
+.pwo-gc[data-tone='teal'] { --t: #3ddc97; }
+.pwo-gc[data-tone='violet'] { --t: #b794f6; }
+.pwo-gc__art { display: grid; place-items: center; width: 72px; height: 72px; }
+.pwo-gc__art svg { max-width: 100%; height: auto; }
+.pwo-gc h4 { margin: 0 0 3px; font-size: 15px; font-weight: 800; color: var(--t); }
+.pwo-gc p { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--text-dim, #b4c3ca); }
+.pwo-guide__rules li { position: relative; padding-left: 22px; font-size: 14px; line-height: 1.45; color: var(--text, #fff); }
+.pwo-guide__rules li::before { content: ''; position: absolute; left: 3px; top: 0.45em; width: 6px; height: 10px; border: solid var(--gold, #ffca7a); border-width: 0 2px 2px 0; transform: rotate(40deg); }
+.pwo-rule-link { margin-top: 8px; min-height: 44px; padding: 0 14px; border: 0; border-radius: 12px; font: inherit; font-weight: 800; cursor: pointer; color: #3b2300; background: var(--gold, #ffca7a); }
+.pwo-rule-link:focus-visible { outline: 3px solid var(--sky, #4cc9f0); outline-offset: 2px; }
+
+/* ---- gates ----
+   Reduced motion (OS or the in-game switch): the count and the cards fade instead of moving, a vanished chip just fades.
+   data-perf='low': no animation at all (the information is the same). */
+@media (prefers-reduced-motion: reduce) {
+  .pwo-stack.is-ticked .pwo-badge { animation: pwo-fade var(--dur-1) linear both; }
+  .pwo-stack.is-ticked .pwo-card--top, .pwo-stack.is-ticked .pwo-mini { animation: none; }
+  .pwo-chip.is-gone { animation: pwo-fade var(--dur-2) linear reverse both; }
+  .pwo-chip.is-gone::after { animation: none; display: none; }
+}
+:root[data-motion='reduced'] .pwo-stack.is-ticked .pwo-badge { animation: pwo-fade var(--dur-1) linear both; }
+:root[data-motion='reduced'] .pwo-stack.is-ticked .pwo-card--top, :root[data-motion='reduced'] .pwo-stack.is-ticked .pwo-mini { animation: none; }
+:root[data-motion='reduced'] .pwo-chip.is-gone { animation: pwo-fade var(--dur-2) linear reverse both; }
+:root[data-motion='reduced'] .pwo-chip.is-gone::after { animation: none; display: none; }
+:root[data-perf='low'] .pwo-stack.is-ticked .pwo-badge, :root[data-perf='low'] .pwo-stack.is-ticked .pwo-card--top, :root[data-perf='low'] .pwo-stack.is-ticked .pwo-mini { animation: none; }
+:root[data-perf='low'] .pwo-chip.is-gone { animation: none; display: none; }
+:root[data-perf='low'] .pwo-chip.is-gone::after { animation: none; display: none; }

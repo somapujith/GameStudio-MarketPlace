@@ -9,6 +9,7 @@ import Pill from './ui/Pill.jsx';
 import Icon from './ui/Icon.jsx';
 import PlayerToken, { artPart, cosmeticsOf } from './ui/PlayerToken.jsx';
 import TileChip from './ui/TileChip.jsx';
+import { PowerSheetSection } from './power/PowerChips.jsx';
 import { activePlayer, pieceName, setProgress, settingsSummary, useHeld, useStateLike, worthParts } from './ui/helpers.js';
 
 /** One card per collection the player has a district in: name, n/total, chips with their business level. */
@@ -124,6 +125,7 @@ export default function PlayerSheet({ session, playerId, onClose, onOpenTile, on
       {p ? (
         <>
           <WorthBreakdown parts={parts} />
+          <PowerSheetSection session={session} player={p} />
           <h3 className="hg-h3">This match</h3>
           <StatGrid stats={live?.stats || p.stats} laps={live?.laps ?? p.laps} />
 

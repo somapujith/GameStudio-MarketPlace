@@ -27,6 +27,8 @@ import { snatchChipsOn, snatchCount } from './snatch.js';
 import { pillText, signalOf, signalWords } from './ui/signalModel.js';
 import { useNetStats } from '@/lib/netStats.js';
 import { podTarget, targetOf } from './turn/target.js';
+import { PlayerPower } from './power/PowerChips.jsx';
+import { powerOf, powerWords } from './power/powerView.js';
 import '../../styles/pods.css';
 import '../../styles/podsPremium.css';
 
@@ -141,7 +143,7 @@ function Pod({ session, player, slot, cell, worth, rank, ranked, empire, isMe, i
   const goal = podTarget({ worth, target, isMe, isLeader, bankrupt: player.bankrupt });
   const cls = ['hg-pod', isMe && 'is-me', isTurn && 'is-turn', isLeader && !player.bankrupt && 'is-leader', player.bankrupt && 'is-out', offline && 'is-offline', pillText(sig) && 'has-pill', goal && 'has-goal', goal?.hot && 'is-hot'].filter(Boolean).join(' ');
   const showRank = ranked && !compact && !player.bankrupt && rank > 0;
-  const label = [rowLabel({ player, worth, isMe, isTurn, isLeader, offline: false }), showRank && !isLeader ? `${rankLabel(rank)} by net worth` : '', !compact && !player.bankrupt && empire ? empireWords(empire) : '', signalWords(sig), goal?.sr, snatchOn && !player.bankrupt && snatchCount(player) !== null ? `${snatchCount(player)} Snatch ${snatchCount(player) === 1 ? 'button' : 'buttons'}` : '']
+  const label = [rowLabel({ player, worth, isMe, isTurn, isLeader, offline: false }), showRank && !isLeader ? `${rankLabel(rank)} by net worth` : '', !compact && !player.bankrupt && empire ? empireWords(empire) : '', signalWords(sig), goal?.sr, snatchOn && !player.bankrupt && snatchCount(player) !== null ? `${snatchCount(player)} Snatch ${snatchCount(player) === 1 ? 'button' : 'buttons'}` : '', powerWords(powerOf(session, player))]
     .filter(Boolean).join(', ');
   const badges = compact && !player.bankrupt && (player.stuck || player.chai > 0);
   return (
@@ -162,6 +164,7 @@ function Pod({ session, player, slot, cell, worth, rank, ranked, empire, isMe, i
               <ChaiToken count={player.chai} hideEmpty />
             </span>
           ) : null}
+          {compact ? <PlayerPower session={session} player={player} variant="corner" /> : null}
         </span>
         <span className="hg-pod__who">
           <span className="hg-pod__name">
@@ -179,6 +182,7 @@ function Pod({ session, player, slot, cell, worth, rank, ranked, empire, isMe, i
                 {player.stuck && !compact ? <TrafficTag /> : null}
                 {compact ? null : <ChaiToken count={player.chai} hideEmpty />}
                 <span className="hg-pod__worth" title={`Net worth ${formatINR(worth)}`}>Worth {compactINR(worth)}</span>
+                {compact ? null : <PlayerPower session={session} player={player} variant="pod" />}
               </>
             )}
             {title ? <span className="hg-pod__title"><TitleChip title={title} size="sm" /></span> : null}

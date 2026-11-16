@@ -20,6 +20,8 @@ import { snatchChipsOn, snatchCount } from '../snatch.js';
 import { pillText, signalOf, signalWords } from '../ui/signalModel.js';
 import { useNetStats } from '@/lib/netStats.js';
 import { podTarget, targetOf } from '../turn/target.js';
+import { PlayerPower } from '../power/PowerChips.jsx';
+import { powerOf, powerWords } from '../power/powerView.js';
 import { cashChars, cellSides, cellSpans, gridFor, orderPlayers, outWord, playerSizes, resignedOf } from './phoneModel.js';
 
 /** 'up' | 'down' for a second after the player's cash changes (drives the avatar's reaction), else ''. */
@@ -52,7 +54,7 @@ function Cell({ session, player, span, side, density, sizes, avaH, worth, isMe, 
   const worthText = `(${compactINR(worth)})`;
   const label = [
     out ? `${player.name}${isMe ? ' (you)' : ''}, ${forfeit ? 'forfeited' : 'bankrupt'}` : rowLabel({ player, worth, isMe, isTurn, isLeader, offline: false }),
-    signalWords(sig), goal?.sr, tokens !== null ? `${tokens} Snatch ${tokens === 1 ? 'button' : 'buttons'}` : '',
+    signalWords(sig), goal?.sr, tokens !== null ? `${tokens} Snatch ${tokens === 1 ? 'button' : 'buttons'}` : '', powerWords(powerOf(session, player)),
   ].filter(Boolean).join(', ');
   const cls = ['pp', `pp--${density}`, `pp--${side}`, tokens !== null && 'has-sn', isMe && 'is-me', isTurn && 'is-turn', isLeader && !out && 'is-leader', out && 'is-out', offline && 'is-offline', goal && 'has-goal', goal?.hot && 'is-hot']
     .filter(Boolean).join(' ');
@@ -68,6 +70,7 @@ function Cell({ session, player, span, side, density, sizes, avaH, worth, isMe, 
   const avaEl = (
     <span className="pp__ava">
       <PlayerAvatar session={session} player={player} size={size} offline={offline} turn={isTurn && !offline} leader={isLeader} mood={mood} live />
+      <PlayerPower session={session} player={player} variant="corner" />
     </span>
   );
   const badgeEl = !out && (player.stuck || player.chai > 0) ? (

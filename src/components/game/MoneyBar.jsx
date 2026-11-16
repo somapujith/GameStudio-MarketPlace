@@ -15,6 +15,8 @@ import AvatarToken from './ui/AvatarToken.jsx';
 import SnatchChip from './ui/SnatchChip.jsx';
 import { TitleChip, cosmeticsOf, isConnected, tableSummary } from './turn/room.js';
 import { withMapLine } from '../online/mapModel.js';
+import { PlayerPower } from './power/PowerChips.jsx';
+import { powerOf, powerWords } from './power/powerView.js';
 
 /** Chai glass + "Chai": the player holds a chai token (max 1). Dimmed (or hidden with `hideEmpty`) at 0. */
 export function ChaiToken({ count, hideEmpty = false, className = '' }) {
@@ -116,12 +118,13 @@ export function rowLabel({ player, worth, isMe, isTurn, isLeader, offline }) {
 }
 
 function Row({ session, player, worth, isMe, isTurn, isLeader, onSelect }) {
+  const power = powerWords(powerOf(session, player)); // '' when the rule is off
   const offline = !isConnected(session, player.id) && !player.bankrupt;
   const title = cosmeticsOf(session, player.id).title;
   const cls = `hg-mb-row${isTurn ? ' is-turn' : ''}${isMe ? ' is-me' : ''}${player.bankrupt ? ' is-out' : ''}${offline ? ' is-offline' : ''}`;
   return (
     <li className={cls} style={{ '--pc': player.color }}>
-      <button type="button" className="hg-mb-btn" onClick={() => onSelect?.(player.id)} aria-label={rowLabel({ player, worth, isMe, isTurn, isLeader, offline })}>
+      <button type="button" className="hg-mb-btn" onClick={() => onSelect?.(player.id)} aria-label={`${rowLabel({ player, worth, isMe, isTurn, isLeader, offline })}${power ? `, ${power}` : ''}`}>
         <svg className="hg-mb-arrow" viewBox="0 0 12 16" width="12" height="16" aria-hidden="true" focusable="false">
           <path d="M1.5 1.2L10.5 8l-9 6.8z" />
         </svg>
@@ -149,6 +152,7 @@ function Row({ session, player, worth, isMe, isTurn, isLeader, onSelect }) {
         <span className="hg-mb-end">
           {player.bankrupt ? <span className="hg-mb-cash">&mdash;</span> : <Money value={player.cash} flash className="hg-mb-cash" />}
           {player.bankrupt ? null : <ChaiToken count={player.chai} hideEmpty />}
+          <PlayerPower session={session} player={player} variant="row" />
         </span>
       </button>
     </li>
