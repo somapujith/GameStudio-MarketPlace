@@ -399,13 +399,19 @@ export { DiceSwatch } from './DiceSwatch.jsx';
 
 /** Title badge: catalogue name in a chip tinted by rarity. Unknown title -> nothing. */
 export function TitleChip({ title, className, size = 'md', style }) {
+  const uid = uidOf(useId());
   const item = resolveCosmetic(title, 'title');
   if (!item) return null;
   const c = rarityVar(item.rarity);
   const sm = size === 'sm';
+  const legendary = item.rarity === 'legendary';
+  // Epic and legendary take their colour / background / border / glow from cosmetics-shine.css (see the note there on
+  // why it uses !important); common and rare stay inline, rare with a slightly brighter border.
+  const rich = legendary || item.rarity === 'epic';
+  const classes = [className, rich && 'cx-chip', legendary && 'cx-sheen'].filter(Boolean).join(' ') || undefined;
   return (
     <span
-      className={className}
+      className={classes}
       data-rarity={item.rarity}
       title={item.name}
       style={{
@@ -421,9 +427,14 @@ export function TitleChip({ title, className, size = 'md', style }) {
         fontWeight: 700,
         lineHeight: 1.35,
         letterSpacing: '.01em',
-        color: c,
-        background: `color-mix(in srgb, ${c} 16%, transparent)`,
-        border: `1px solid color-mix(in srgb, ${c} 55%, transparent)`,
+        ...(rich
+          ? null
+          : {
+              color: c,
+              background: `color-mix(in srgb, ${c} ${item.rarity === 'rare' ? 18 : 16}%, transparent)`,
+              border: `1px solid color-mix(in srgb, ${c} ${item.rarity === 'rare' ? 68 : 55}%, transparent)`,
+            }),
+        ...(legendary ? { '--cx-delay': shinePhase(uid) } : null),
         whiteSpace: 'nowrap',
         ...style,
       }}
@@ -431,7 +442,7 @@ export function TitleChip({ title, className, size = 'md', style }) {
       <svg width={sm ? 9 : 11} height={sm ? 9 : 11} viewBox="0 0 10 10" aria-hidden="true" focusable="false" style={{ flex: 'none' }}>
         <path d="M5 0L6.2 3.8L10 5L6.2 6.2L5 10L3.8 6.2L0 5L3.8 3.8Z" fill="currentColor" />
       </svg>
-      <span data-chip-text="" style={{ overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{item.name}</span>
+      <span data-chip-text="" className={legendary ? 'cx-foil cx-foil--text' : undefined} style={{ overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>{item.name}</span>
     </span>
   );
 }

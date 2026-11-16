@@ -101,10 +101,13 @@ describe('cosmetics', () => {
     const strip = (s) => s.replace(/id="[^"]*"|url\(#[^)]*\)|href="#[^"]*"/g, '');
     expect(strip(html(h(AvatarFrame, { frame: null, size: 48 }, child)))).toBe(plain);
     expect(strip(html(h(AvatarFrame, { frame: 'frame-bogus', size: 48 }, child)))).toBe(plain);
-    for (const f of ['sandstone', 'pearl', 'lake', 'nizam', 'frame-nizam']) {
+    for (const f of ['sandstone', 'pearl', 'lake', 'nizam', 'frame-nizam', 'silver', 'emerald', 'obsidian', 'aurora', 'golconda']) {
       const s = html(h(AvatarFrame, { frame: f, size: 48 }, child));
       expect(s).toContain('data-frame="frame-');
       expect(strip(s)).toContain(plain);
+    }
+    for (const size of [22, 104]) {
+      for (const f of COSMETICS.filter((c) => c.kind === 'frame')) expect(html(h(AvatarFrame, { frame: f, size }, child))).toContain(`data-frame="${f.id}"`);
     }
     const fn = html(h(AvatarFrame, { frame: 'lake', size: 50 }, (inner) => h('i', null, String(inner))));
     expect(fn).toContain('<i>' + frameInner(50) + '</i>');
@@ -113,6 +116,11 @@ describe('cosmetics', () => {
     for (const skin of ['dice-ivory', 'cyber', 'dice-bangle', undefined]) expect(html(h(DiceSwatch, { skin, size: 32 }))).toContain('<svg');
     expect(html(h(TitleChip, { title: 'title-nawab' }))).toContain('Nawab of the City');
     expect(html(h(TitleChip, { title: 'chai' }))).toContain('Chai Connoisseur');
+    const legendary = html(h(TitleChip, { title: 'title-kingpin' }));
+    expect(legendary).toContain('data-rarity="legendary"');
+    expect(legendary).toContain('data-chip-text=""');
+    expect(legendary).toContain('cx-sheen');
+    expect(html(h(TitleChip, { title: 'title-charminar' }))).toContain('data-rarity="epic"');
     expect(html(h(TitleChip, { title: 'frame-lake' }))).toBe('');
     expect(html(h(TitleChip, { title: undefined }))).toBe('');
   });
