@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { buzz } from '@/lib/haptics.js';
 import HubIcon from '@/platform/game/HubIcon.jsx';
+import Badge from '@/platform/social/Badge.jsx';
 import { NAV_ITEMS, useIsActive } from './nav/navItems.js';
 import TransitionLink from './nav/TransitionLink.jsx';
 
@@ -8,21 +9,14 @@ import TransitionLink from './nav/TransitionLink.jsx';
 function NavBadge({ id, badges }) {
   const b = badges && badges[id];
   if (!b) return null;
-  if (b.count > 0) {
-    return (
-      <i className="hub-navbadge" aria-hidden="true">
-        {b.count > 9 ? '9+' : b.count}
-      </i>
-    );
-  }
+  if (b.count > 0) return <Badge count={b.count} label={b.label || `${b.count} waiting`} className="bd-badge--nav" />; // announces itself
   return b.online > 0 ? <i className="hub-navbadge hub-navbadge--live st-live" aria-hidden="true" /> : null;
 }
 
-/** Screen-reader note for the same badge. */
+/** Screen-reader note for the live dot (a count badge carries its own label). */
 function NavNote({ id, badges }) {
   const b = badges && badges[id];
-  if (!b) return null;
-  if (b.count > 0) return <span className="hub-sr">, {b.count} waiting</span>;
+  if (!b || b.count > 0) return null;
   return b.online > 0 ? <span className="hub-sr">, {b.online} online</span> : null;
 }
 

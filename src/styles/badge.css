@@ -1,0 +1,128 @@
+/* Social notification badge (friend requests + game invites waiting). Tokens only; transform / opacity motion.
+   Used by the Friends tab (phones), the Friends rail item, the top-bar bell and anywhere else a count is needed. */
+
+.bd-badge {
+  display: inline-grid;
+  place-items: center;
+  box-sizing: border-box;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  font-family: var(--font-hub-body);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--hub-bg);
+  background: var(--hub-bad);
+  box-shadow: 0 0 0 2px var(--hub-glass-2);
+  transform-origin: center;
+  animation: bd-in var(--dur-2) var(--ease-spring) both;
+}
+.bd-badge--popa {
+  animation: bd-pop-a var(--dur-3) var(--ease-spring) both;
+}
+.bd-badge--popb {
+  animation: bd-pop-b var(--dur-3) var(--ease-spring) both;
+}
+
+/* two identical keyframes so a second increase restarts the pop */
+@keyframes bd-in {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes bd-pop-a {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes bd-pop-b {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* on a nav icon: pinned to its top right corner (the icon wrapper is position: relative) */
+.bd-badge--nav {
+  position: absolute;
+  top: -6px;
+  right: 4px;
+  z-index: 2;
+}
+.hub-rail__icon .bd-badge--nav {
+  top: -8px;
+  right: -10px;
+}
+
+/* top-bar bell: only rendered while something waits */
+.bd-bell {
+  position: relative;
+  display: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  color: var(--hub-text);
+  background: var(--hub-surface-2);
+  border: 1px solid var(--hub-line-2);
+  transition: background var(--dur-2), border-color var(--dur-2);
+}
+@media (min-width: 600px) {
+  .bd-bell {
+    display: inline-grid;
+  }
+}
+@media (hover: hover) {
+  .bd-bell:hover {
+    background: var(--hub-surface-3);
+    border-color: var(--hub-brand);
+  }
+}
+.bd-bell:focus-visible {
+  outline: 2px solid var(--hub-brand);
+  outline-offset: 2px;
+}
+.bd-badge--bell {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bd-badge,
+  .bd-badge--popa,
+  .bd-badge--popb {
+    animation: none;
+  }
+  .bd-bell {
+    transition: none;
+  }
+}
+:root[data-motion='reduced'] .bd-badge,
+:root[data-motion='reduced'] .bd-badge--popa,
+:root[data-motion='reduced'] .bd-badge--popb {
+  animation: none;
+}
+:root[data-motion='reduced'] .bd-bell {
+  transition: none;
+}
