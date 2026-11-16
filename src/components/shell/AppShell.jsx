@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { BRAND } from '@/platform/brand.js';
 import { getGame } from '@/games/registry.js';
@@ -17,6 +17,9 @@ import { pushRecent } from './nav/recent.js';
 import { useNavBadges } from './nav/useNavBadges.js';
 import { useGlobalClickSfx } from './hooks.js';
 import '@/styles/x-shell.css';
+
+// The daily-reward popup: its own chunk (it pulls the Home card's styles), and a failed load just means no popup.
+const DailyRewardPopup = lazy(() => import('@/platform/home/DailyRewardPopup.jsx').catch(() => ({ default: () => null })));
 
 /** Static titles for hub screens; game pages (/games/:id) set their own with useDocTitle. */
 export const TITLES = [
@@ -137,6 +140,9 @@ export default function AppShell() {
 
       <TabBar badges={badges} />
       <InstallPrompt />
+      <Suspense fallback={null}>
+        <DailyRewardPopup />
+      </Suspense>
       <p className="hub-sr" role="status" aria-live="polite">
         {announce ? `${announce}, page loaded` : ''}
       </p>

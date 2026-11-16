@@ -127,3 +127,13 @@ describe('daily-popup.css gates', () => {
     }
   });
 });
+
+describe('mounting', () => {
+  it('is mounted exactly once, in the hub shell (full-screen play and lobby routes live outside it)', () => {
+    const shell = read('../../components/shell/AppShell.jsx');
+    expect(shell.match(/<DailyRewardPopup \/>/g)).toHaveLength(1);
+    expect(shell).toContain("import('@/platform/home/DailyRewardPopup.jsx')");
+    const app = read('../../App.jsx');
+    expect(app).not.toContain('DailyRewardPopup');
+  });
+});
