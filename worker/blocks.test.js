@@ -191,14 +191,14 @@ describe('GET / POST / DELETE /api/blocks', () => {
     await block(BOB);
     const res = await call('/api/blocks');
     expect(res.status).toBe(200);
-    expect(res.json).toEqual({ blocked: [{ id: BOB, name: 'Bob', avatar: 3 }] });
+    expect(res.json).toEqual({ blocked: [{ id: BOB, name: 'Bob', avatar: 3, handle: null }] });
     expect(JSON.stringify(res.json)).not.toMatch(/secret|HYD-|email|google/i);
   });
 
   it('blocking is idempotent and answers with the blocked identity', async () => {
     const a = await block(BOB);
     const b = await block(BOB);
-    expect(a).toEqual({ status: 200, json: { ok: true, blocked: { id: BOB, name: 'Bob', avatar: 3 } } });
+    expect(a).toEqual({ status: 200, json: { ok: true, blocked: { id: BOB, name: 'Bob', avatar: 3, handle: null } } });
     expect(b.status).toBe(200);
     expect(blocks.size).toBe(1);
     // always a bound-parameter insert with ON CONFLICT DO NOTHING
@@ -239,7 +239,7 @@ describe('GET / POST / DELETE /api/blocks', () => {
     friendships.push({ user_id: BOB, friend_id: ME, status: 'accepted' });
     await block(BOB);
     expect(friendships).toEqual([]);
-    expect(pushMock).toHaveBeenCalledWith(expect.anything(), BOB, { t: 'friend_removed', by: { id: ME, name: 'Me', avatar: 3 } });
+    expect(pushMock).toHaveBeenCalledWith(expect.anything(), BOB, { t: 'friend_removed', by: { id: ME, name: 'Me', avatar: 3, handle: null } });
   });
 
   it('blocking drops my pending request (they see it vanish) and clears room invites', async () => {
