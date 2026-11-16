@@ -6,7 +6,7 @@
 //
 // --set      host-rule overrides to experiment without editing the engine: ANY key of shared/ruleSettings.js (startCash,
 //            passStart, targetWorth, rentPercent, trafficFine, turnSeconds, tradeSeconds, auctionSeconds, maxRounds, dice,
-//            requireFullSet, eventEvery, chaiCap, snatches, snatchMs, snatchCardCap), e.g.
+//            requireFullSet, eventEvery, chaiCap, powerCards, snatches, snatchMs, snatchCardCap), e.g.
 //            --set rentPercent=200,requireFullSet=false,dice=fair. `null` switches targetWorth / maxRounds off, true / false are
 //            booleans. Out-of-range values are clamped like the engine does (SETTING_LIMITS).
 // --extremes the host-rule extremes battery: every preset (see EXTREMES below, or pick by name) is played --games times per
@@ -30,6 +30,7 @@ import {
   MAP_IDS, mapOf, createGame, applyAction, nextBotMove, botSnatchAction, netWorth, liquidationValue, estateValue, owedPayments, standings, mulberry32,
   BOARD_SIZE, MAX_LEVEL, TILES, GROUP_TILES, isBuyable, CITY_EVENTS, MODES, ROUND_CAP, SETTING_LIMITS, RULE_KEYS, previewRent, isTargetAmount,
 } from '../shared/index.js';
+import { POWER, POWER_IDS } from '../shared/powerCards.js';
 
 // ---------- CLI ----------
 const argv = process.argv.slice(2);
@@ -93,6 +94,7 @@ function checkInvariants(s) {
     for (const [k, v] of Object.entries(p.stats)) if (!Number.isFinite(v) || v < 0) fail(`${p.id} stat ${k}=${v}`);
     if (!Number.isFinite(netWorth(s, p.id))) fail(`${p.id} worth not finite`);
   }
+  checkPower(s);
   if (s.event !== null) {
     if (!CITY_EVENTS.some((d) => d.id === s.event.id)) fail(`unknown city event ${s.event.id}`);
     if (!(s.cfg.eventEvery > 0) || s.event.round !== s.round || s.round % s.cfg.eventEvery !== 0) fail(`city event ${s.event.id} in round ${s.round} (eventEvery ${s.cfg.eventEvery})`);
@@ -163,6 +165,35 @@ function checkInvariants(s) {
   }
 }
 
+/**
+ * Power cards (docs/POWER_CARDS.md): with the rule OFF no new state exists at all (byte-identical games); with it ON the
+ * stream, hands (at most POWER.HAND_MAX, legal ids, unique uids, not expired) and armed effects are all legal.
+ */
+function checkPower(s) {
+  const fail = (msg) => { throw new Error(`invariant: power: ${msg}`); };
+  if (s.cfg.powerCards !== true) {
+    if ('prng' in s || 'powerPlayed' in s) fail('power state exists with the rule off');
+    for (const p of s.players) if ('hand' in p || 'shield' in p || 'doubleRent' in p) fail(`${p.id} has power fields with the rule off`);
+    return;
+  }
+  if (!Number.isInteger(s.prng) || s.prng < 0 || s.prng > 0xffffffff) fail(`bad prng ${s.prng}`);
+  if (typeof s.powerPlayed !== 'boolean') fail('powerPlayed is not a boolean');
+  for (const p of s.players) {
+    if (!Array.isArray(p.hand) || p.hand.length > POWER.HAND_MAX) fail(`${p.id} hand ${JSON.stringify(p.hand)}`);
+    if (new Set(p.hand.map((c) => c.uid)).size !== p.hand.length) fail(`${p.id} duplicate card uid`);
+    for (const c of p.hand) {
+      if (typeof c.uid !== 'string' || !POWER_IDS.includes(c.id) || !Number.isInteger(c.exp)) fail(`${p.id} bad card ${JSON.stringify(c)}`);
+      if (c.exp < s.round && s.round <= (s.cfg.maxRounds ?? ROUND_CAP)) fail(`${p.id} holds an expired card (exp ${c.exp}, round ${s.round})`);
+      if (c.exp > s.round + POWER.LIFE_ROUNDS) fail(`${p.id} card lives too long (exp ${c.exp}, round ${s.round})`);
+    }
+    for (const k of ['shield', 'doubleRent']) {
+      if (!Number.isInteger(p[k]) || p[k] < 0 || p[k] > s.round + POWER.ARMED_ROUNDS) fail(`${p.id} bad ${k} ${p[k]}`);
+    }
+    if (p.bankrupt && (p.hand.length || p.shield || p.doubleRent)) fail(`${p.id} is out but still holds power cards or armed effects`);
+  }
+  if (s.phase === 'roll' && s.extraRoll && !s.powerPlayed) fail('an extra roll in the roll phase without a played Steal a Roll');
+}
+
 /** Every rule asked for really is in cfg (clamped like the engine does), and every rule key is there; everybody starts with startCash. */
 function checkConfig(s, wanted) {
   const fail = (msg) => { throw new Error(`config: ${msg}`); };
@@ -198,6 +229,7 @@ function checkRules(prev, action, res) {
       if (!GROUP_TILES[TILES[e.tile].group].every((t) => prev.owners[t] === owner)) fail(`tile ${e.tile} upgraded without the full collection`);
     }
   }
+  checkPowerEvents(prev, action, res);
   if (cfg.passStart === 0 && res.events.some((e) => e.type === 'cash' && e.reason === 'salary')) fail('salary although passStart is 0');
   // a plain landing on somebody's district: the rent paid is the preview of the engine (cfg.rentPercent included), or its chai-halved half
   if (action.type === 'ROLL' && res.events.filter((e) => e.type === 'land').length === 1) {
@@ -207,8 +239,50 @@ function checkRules(prev, action, res) {
         && !res.events.some((e) => e.type === 'debt' || e.type === 'bankrupt')) {
       const paid = res.events.filter((e) => e.type === 'cash' && e.reason === 'rent' && e.delta < 0 && e.player === action.playerId).reduce((n, e) => n - e.delta, 0);
       const bill = previewRent(prev, land.tile);
-      if (paid !== bill && paid !== bill - Math.floor(bill / 2)) fail(`rent on tile ${land.tile}: paid ${paid}, preview ${bill} (rent level ${cfg.rentPercent}%)`);
+      const shielded = res.events.some((e) => e.type === 'power_trigger' && e.card === 'shield' && e.player === action.playerId);
+      if (shielded) { if (paid !== 0) fail(`a Shield waived the rent on tile ${land.tile} but ${paid} was paid`); }
+      else if (paid !== bill && paid !== bill - Math.floor(bill / 2)) fail(`rent on tile ${land.tile}: paid ${paid}, preview ${bill} (rent level ${cfg.rentPercent}%)`);
     }
+  }
+}
+
+/** What one action's power events must respect (docs/POWER_CARDS.md): public events never name a card that was not played. */
+function checkPowerEvents(prev, action, res) {
+  const fail = (msg) => { throw new Error(`power: ${msg}`); };
+  const cards = res.events.filter((e) => e.type.startsWith('power_'));
+  if (prev.cfg.powerCards !== true) { if (cards.length) fail('power events with the rule off'); return; }
+  for (const e of cards) {
+    if (e.type === 'power_draw' && (!['tile', 'turn'].includes(e.source) || 'id' in e || 'card' in e || 'uid' in e)) fail(`bad power_draw ${JSON.stringify(e)}`);
+    if (e.type === 'power_expire' && (!(e.count > 0) || 'id' in e || 'card' in e || 'cards' in e)) fail(`bad power_expire ${JSON.stringify(e)}`);
+    if (e.type === 'power_play' && !POWER_IDS.includes(e.card)) fail(`bad power_play ${JSON.stringify(e)}`);
+    if (e.type === 'power_trigger' && (!['shield', 'double'].includes(e.card) || !(e.amount > 0))) fail(`bad power_trigger ${JSON.stringify(e)}`);
+  }
+  const plays = cards.filter((e) => e.type === 'power_play');
+  if (plays.length !== (action.type === 'PLAY_POWER' ? 1 : 0)) fail(`${plays.length} power_play events for ${action.type}`);
+  if (action.type === 'PLAY_POWER') {
+    const e = plays[0];
+    const was = prev.players.find((p) => p.id === action.playerId).hand.find((c) => c.uid === action.card);
+    const now = res.state.players.find((p) => p.id === action.playerId);
+    if (!was || was.id !== e.card || now.hand.some((c) => c.uid === action.card)) fail('the played card is not spent');
+    if (!res.state.powerPlayed) fail('powerPlayed not set');
+    const moves = res.events.filter((x) => x.type === 'move');
+    if (e.card === 'swap') {
+      if (moves.length !== 2 || moves.some((m) => !m.teleport || m.passedStart) || res.events.some((x) => x.type === 'land')) fail('a swap is two teleports with no landing');
+      const them = res.state.players.find((p) => p.id === e.target);
+      const before = prev.players.find((p) => p.id === e.target);
+      if (now.pos !== before.pos || them.pos !== prev.players.find((p) => p.id === action.playerId).pos) fail('a swap did not exchange positions');
+    } else if (moves.length) fail(`${e.card} moved a pawn`);
+    if (e.card === 'steal' && (!res.state.extraRoll || res.events.some((x) => x.type === 'dice'))) fail('Steal a Roll: extraRoll not set, or a dice event');
+  }
+  for (const e of cards) {
+    if (e.type !== 'power_trigger') continue;
+    const owner = res.state.players.find((p) => p.id === e.player);
+    if (e.card === 'shield' && owner.shield !== 0) fail('a triggered Shield was not consumed');
+    if (e.card === 'double' && owner.doubleRent !== 0) fail('a triggered Double Rent was not consumed');
+  }
+  // shield beats double: a waived rent never spends the owner's Double Rent
+  for (const sh of cards.filter((e) => e.type === 'power_trigger' && e.card === 'shield' && e.other)) {
+    if (cards.some((e) => e.type === 'power_trigger' && e.card === 'double' && e.player === sh.other)) fail('Shield and Double Rent both triggered on the same rent');
   }
 }
 
@@ -338,7 +412,9 @@ function playGame(n, mode, seed, extra = {}) {
   let s = createGame({ players, settings: wanted, seed });
   checkConfig(s, wanted);
   const rnd = mulberry32(seed * 31 + 7);
-  const c = { bankPaid: 0, upgrades: 0, rides: 0, auctions: 0, bazaar: 0, rents: 0, rentTotal: 0, bankrupt: 0, debts: 0, mortgages: 0, stuck: 0, chaiSaved: 0, cards: 0, windows: 0, snatched: 0, snatchBids: 0, snatchCards: 0, snatchPaid: 0, auctionsStarted: 0, auctionsEnded: 0, auctionsTimedOut: 0, auctionTies: 0, auctionsUnsold: 0, auctionSteps: 0 };
+  const c = { bankPaid: 0, upgrades: 0, rides: 0, auctions: 0, bazaar: 0, rents: 0, rentTotal: 0, bankrupt: 0, debts: 0, mortgages: 0, stuck: 0, chaiSaved: 0, cards: 0, windows: 0, snatched: 0, snatchBids: 0, snatchCards: 0, snatchPaid: 0, auctionsStarted: 0, auctionsEnded: 0, auctionsTimedOut: 0, auctionTies: 0, auctionsUnsold: 0, auctionSteps: 0, pDraw: 0, pTile: 0, pPlay: 0, pTrig: 0, pExpired: 0, pPlays: {}, pTrigs: {} };
+  const PW_ROUND = 6; // "trailing at round N wins": who led / trailed when round N began
+  let atRound = null;
   const owned = {};
   let actions = 0;
   let auctionSteps = 0; // actions since the open auction started (every auction ends within one bid per player)
@@ -399,6 +475,15 @@ function playGame(n, mode, seed, extra = {}) {
       else if (e.type === 'snatch_end' && e.outcome === 'snatched') c.snatched++;
       else if (e.type === 'snatch_end' && e.outcome === 'bidding') c.snatchBids++;
       else if (e.type === 'token_earned') c.snatchCards++;
+      else if (e.type === 'power_draw') { c.pDraw++; if (e.source === 'tile') c.pTile++; }
+      else if (e.type === 'power_play') { c.pPlay++; c.pPlays[e.card] = (c.pPlays[e.card] || 0) + 1; }
+      else if (e.type === 'power_trigger') { c.pTrig++; c.pTrigs[e.card] = (c.pTrigs[e.card] || 0) + e.amount; }
+      else if (e.type === 'power_expire') c.pExpired += e.count;
+    }
+    if (s.round !== before && s.round === PW_ROUND && !atRound && s.phase !== 'over') {
+      const st = standings(s).filter((r) => !r.bankrupt);
+      const avgWorth = avg(st.map((r) => r.worth));
+      atRound = Object.fromEntries(st.map((r) => [r.id, { rank: r.rank, below: r.worth < POWER.TRAILING_RATIO * avgWorth }]));
     }
     if (s.round !== before) for (const r of [4, 6]) if (s.round === r && !(r in owned)) owned[r] = s.owners.filter(Boolean).length;
     checkInvariants(s);
@@ -413,6 +498,8 @@ function playGame(n, mode, seed, extra = {}) {
     top: Math.max(...worths),
     levels: s.levels.reduce((a, b) => a + b, 0),
     seatWin: s.players.findIndex((p) => p.id === s.winner),
+    // winner's standing when round PW_ROUND began (null = the game ended earlier or the winner was already out)
+    winnerAt: atRound && atRound[s.winner] ? atRound[s.winner] : null,
   };
 }
 
@@ -480,6 +567,16 @@ for (const mode of MODE_LIST) {
       auctionTies: avg(rows.map((x) => x.c.auctionTies)),
       auctionsUnsold: avg(rows.map((x) => x.c.auctionsUnsold)),
       auctionSteps: Math.max(...rows.map((x) => x.c.auctionSteps)),
+      pDraw: avg(rows.map((x) => x.c.pDraw)),
+      pTile: avg(rows.map((x) => x.c.pTile)),
+      pPlay: avg(rows.map((x) => x.c.pPlay)),
+      pTrig: avg(rows.map((x) => x.c.pTrig)),
+      pExpired: avg(rows.map((x) => x.c.pExpired)),
+      pPerPlayer10: avg(rows.map((x) => (x.c.pDraw / (n * Math.max(1, x.rounds))) * 10)),
+      pPlays: Object.fromEntries(POWER_IDS.map((id) => [id, avg(rows.map((x) => x.c.pPlays[id] || 0))])),
+      pTrigs: Object.fromEntries(['shield', 'double'].map((id) => [id, avg(rows.map((x) => x.c.pTrigs[id] || 0))])),
+      comeback: rows.filter((x) => x.winnerAt).length ? rows.filter((x) => x.winnerAt && x.winnerAt.rank > 1).length / rows.filter((x) => x.winnerAt).length : null,
+      comebackBelow: rows.filter((x) => x.winnerAt).length ? rows.filter((x) => x.winnerAt && x.winnerAt.below).length / rows.filter((x) => x.winnerAt).length : null,
     };
     summary.push(r);
     if (TARGET_SWEEP) {
@@ -495,6 +592,8 @@ for (const mode of MODE_LIST) {
       console.log(`per game      : ${r.upgrades.toFixed(1)} upgrades (${r.endLevels.toFixed(1)} levels standing at the end), ${r.rides.toFixed(1)} rides, ${r.auctions.toFixed(1)} auctions won (${r.bazaar.toFixed(1)} bazaar), ${r.stuck.toFixed(1)} traffic jams`);
       console.log(`rent          : ${r.rents.toFixed(1)} payments/game, ${L(r.rentAvg)} avg payment;  seat 1 wins ${pct(r.seat1)}`);
       console.log(`auctions      : ${r.auctionsEnded.toFixed(1)} ended/game, ${r.auctionsTimedOut.toFixed(1)} by the timer, ${r.auctionsUnsold.toFixed(1)} unsold, ${r.auctionTies.toFixed(2)} ties; longest ${r.auctionSteps} actions`);
+      if (SETTINGS.powerCards === true) console.log(`power cards   : ${r.pDraw.toFixed(1)} drawn/game (${r.pTile.toFixed(1)} from tiles; ${r.pPerPlayer10.toFixed(2)} per player per 10 rounds), ${r.pPlay.toFixed(1)} played (${POWER_IDS.map((id) => `${id} ${r.pPlays[id].toFixed(2)}`).join(', ')}), ${r.pExpired.toFixed(1)} expired; triggers: shield saved ${L(r.pTrigs.shield)}, double earned ${L(r.pTrigs.double)} per game`);
+      if (SETTINGS.powerCards === true && r.comeback !== null) console.log(`comeback      : the winner was NOT leading at round ${6} in ${pct(r.comeback)} of games, below ${POWER.TRAILING_RATIO} x the average in ${pct(r.comebackBelow)}`);
       console.log(`snatch        : ${r.windows.toFixed(1)} windows/game, ${r.snatched.toFixed(2)} snatched + ${r.snatchBids.toFixed(2)} bidding; ${r.snatchCards.toFixed(2)} buttons from cards, ${r.snatchPaid.toFixed(2)} cards paid out at the cap`);
     }
    }
@@ -503,5 +602,5 @@ for (const mode of MODE_LIST) {
 }
 }
 console.log(`\n${failures === 0 ? `ALL INVARIANTS HELD (${RUN_MAPS.join(', ')})` : `${failures} GAME(S) FAILED`} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-if (QUIET && !TARGET_SWEEP) for (const r of summary) console.log(`${r.map} ${r.mode} n=${r.n} rounds=${r.rounds.toFixed(1)} turns=${r.turns.toFixed(0)} owned5=${pct(r.owned5)} target=${pct(r.targetEnd)} bankr=${pct(r.bankruptEnd)} spread=${L(r.spread)} upg=${r.upgrades.toFixed(1)}`);
+if (QUIET && !TARGET_SWEEP) for (const r of summary) console.log(`${r.map} ${r.mode} n=${r.n} rounds=${r.rounds.toFixed(1)} turns=${r.turns.toFixed(0)} owned5=${pct(r.owned5)} target=${pct(r.targetEnd)} bankr=${pct(r.bankruptEnd)} spread=${L(r.spread)} upg=${r.upgrades.toFixed(1)} seat1=${pct(r.seat1)}${r.comeback === null ? '' : ` comeback=${pct(r.comeback)}`}${SETTINGS.powerCards === true ? ` cards=${r.pDraw.toFixed(1)}/${r.pPlay.toFixed(1)} (${r.pPerPlayer10.toFixed(2)}/player/10r) trig=${r.pTrig.toFixed(1)} exp=${r.pExpired.toFixed(1)}` : ''}`);
 if (failures) process.exitCode = 1;
