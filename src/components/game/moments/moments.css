@@ -18,6 +18,9 @@
 .mo-rib--player, .mo-rib--set { --mo-bg: linear-gradient(180deg, color-mix(in srgb, var(--mo-c, #ffca7a) 72%, #fff), var(--mo-c, #ffca7a) 55%, color-mix(in srgb, var(--mo-c, #ffca7a) 78%, #000)); --mo-ink: #fff; }
 .mo-rib--final { --mo-bg: linear-gradient(180deg, #e8485c, #c21f39 55%, #8f1224); --mo-ink: #fff; --mo-kick: #ffe0e5; --mo-trim: #ffd27a; filter: drop-shadow(0 12px 20px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 26px rgba(229, 56, 79, 0.55)); }
 .mo-rib--six { --mo-bg: linear-gradient(180deg, #b6f7d2, #3ddc97 52%, #16a07a); --mo-ink: #04281b; filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 24px rgba(61, 220, 151, 0.5)); }
+/* Power cards: night-indigo band, gold bunting (src/components/game/power/PowerMoments.jsx) */
+.mo-rib--power { --mo-bg: linear-gradient(180deg, #6a58e8, #4234b8 52%, #271d78); --mo-ink: #fff; --mo-kick: #ffe7a3; --mo-trim: #ffd23f; filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 24px rgba(150, 120, 255, 0.45)); }
+.mo-rib--power .mo-rib__title { text-shadow: 0 2px 3px rgba(0, 0, 0, 0.45); }
 .mo-rib--out { --mo-bg: linear-gradient(180deg, #46505d, #2a323c 60%, #1b2128); --mo-ink: #fff; --mo-kick: #ffc9d0; --mo-trim: rgba(255, 93, 115, 0.8); filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.55)); }
 
 .mo-rib__band {

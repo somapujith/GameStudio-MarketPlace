@@ -59,6 +59,7 @@ import '../../styles/map-andhra.css'; // the Andhra map's look; every rule is sc
 import '../../styles/board-themes.css'; // equipped board themes; every rule is scoped under .hg-game[data-board-theme]
 import { equippedBoardTheme } from './boardTheme.js';
 import FxLayer from './fx/FxLayer.jsx';
+import PowerMoments from './power/PowerMoments.jsx';
 import ActivityFeed from './feed/ActivityFeed.jsx';
 import FeedToasts from './feed/FeedToasts.jsx';
 
@@ -322,6 +323,7 @@ function GameViewInner({ session: rawSession, onExit }) {
       <EmoteFloats session={session} />
       <VoiceHost session={session} />
       <FxLayer flights={session.flights || []} session={session} />
+      <PowerMoments session={session} />
       <FeedToasts session={session} />
 
       <PropertySheet session={session} tileId={tileId} onClose={closeTile} />
