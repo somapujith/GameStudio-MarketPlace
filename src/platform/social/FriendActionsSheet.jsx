@@ -25,9 +25,10 @@ function Action({ icon, title, sub, onClick, disabled, tone, index }) {
 
 /**
  * Quick actions for one friend, as a sheet: invite to a table you already opened (or the room you came from), start a
- * new table (pick a game -> we open a room and invite them), copy their code or link, remove.
+ * new table (pick a game -> we open a room and invite them), copy their code or link, remove, block (`onBlock(friend)`
+ * opens the page's confirm dialog; the action is hidden when the prop is not given).
  */
-export default function FriendActionsSheet({ friend, room, inviteState, onInvite, onNewTable, onRemove, onNotify, onClose }) {
+export default function FriendActionsSheet({ friend, room, inviteState, onInvite, onNewTable, onRemove, onBlock, onNotify, onClose }) {
   const [tables, setTables] = useState(null); // null = loading, [] = none / unavailable
   const [codeCopied, copyCode] = useCopied();
   const [linkCopied, copyLink] = useCopied();
@@ -122,6 +123,16 @@ export default function FriendActionsSheet({ friend, room, inviteState, onInvite
             </>
           )}
           <Action index={n++} icon="trash" tone="danger" title="Remove friend" sub="You can add them again with their code" onClick={() => onRemove(friend)} />
+          {onBlock && (
+            <Action
+              index={n++}
+              icon="close"
+              tone="danger"
+              title="Block"
+              sub="They can't send you requests or invites, and you won't see their chat"
+              onClick={() => onBlock(friend)}
+            />
+          )}
         </ul>
       </div>
     </Sheet>

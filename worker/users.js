@@ -6,7 +6,7 @@ import { cleanEquipped } from '../shared/cosmetics.js';
 // last_daily is returned as 'YYYY-MM-DD' text (never a driver-parsed Date, so no timezone drift).
 export const USER_COLUMNS =
   'id, google_sub, email, name, avatar, friend_code, is_guest, xp, coins, level, games, wins, best_worth, rent_earned, created_at, last_seen, ' +
-  "daily_streak, to_char(last_daily, 'YYYY-MM-DD') AS last_daily, equipped";
+  "daily_streak, to_char(last_daily, 'YYYY-MM-DD') AS last_daily, equipped, friend_requests";
 
 /** users.equipped (jsonb) -> `{ frame?, dice?, title? }` with unknown ids dropped. */
 export function rowEquipped(r) {
@@ -71,6 +71,8 @@ export function rowToUser(r, gameStats, now = Date.now()) {
     },
     daily: rowDaily(r, now),
     equipped: rowEquipped(r),
+    // who may send me friend requests: 'everyone' (default) | 'nobody'
+    friendRequests: r.friend_requests === 'nobody' ? 'nobody' : 'everyone',
   };
   if (gameStats) user.gameStats = gameStats;
   return user;

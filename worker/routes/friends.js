@@ -8,6 +8,7 @@ import { limit } from '../ratelimit.js';
 import { readJson } from '../http.js';
 import { isUserOnline, pushToUser, background } from '../hub.js';
 import { sendPushToUser, pushConfigured } from '../push.js';
+import { blockRelation, NOT_BLOCKED_SQL } from './blocks.js';
 
 const friends = new Hono();
 
@@ -99,6 +100,7 @@ friends.get('/search', limit('friend-search', 40, 60), async (c) => {
        LEFT JOIN friendships f
          ON (f.user_id = $1 AND f.friend_id = u.id) OR (f.user_id = u.id AND f.friend_id = $1)
       WHERE u.is_guest = false AND u.id <> $1 AND u.name ILIKE $2 ESCAPE '\\'
+        AND ${NOT_BLOCKED_SQL('u')}
       ORDER BY (u.name ILIKE $3 ESCAPE '\\') DESC, lower(u.name), u.id
       LIMIT ${SEARCH_LIMIT}`,
     [me.id, `%${esc}%`, `${esc}%`],
@@ -118,6 +120,7 @@ friends.get('/recent', limit('friend-recent', 30, 60), async (c) => {
        JOIN matches m ON m.id = mine.match_id
        JOIN users u ON u.id = theirs.user_id
       WHERE mine.user_id = $1 AND u.is_guest = false
+        AND ${NOT_BLOCKED_SQL('u')}
         AND NOT EXISTS (
           SELECT 1 FROM friendships f
            WHERE (f.user_id = $1 AND f.friend_id = u.id) OR (f.user_id = u.id AND f.friend_id = $1))
@@ -145,6 +148,8 @@ friends.get('/by-code/:friendCode', limit('friend-lookup', 30, 60), async (c) =>
   const target = await getUserByFriendCode(c.env, code);
   if (!target || target.is_guest) throw new HttpError(404, 'No player found with that friend code.');
   if (target.id === me.id) throw new HttpError(400, 'That is your own friend code.');
+  const block = await blockRelation(c.env, me.id, target.id);
+  if (block.mine || block.theirs) throw new HttpError(404, 'No player found with that friend code.'); // a block looks like "no such player"
   const rows = await query(
     c.env,
     `SELECT user_id, status FROM friendships
@@ -160,17 +165,34 @@ friends.post('/request', limit('friend-request', 20, 60), async (c) => {
   const me = c.get('user');
   const body = await readJson(c);
   let target;
+  let notFound; // the exact "unknown player" answer of this path: a block must be indistinguishable from it
   if (body.userId !== undefined && body.userId !== null) {
+    notFound = 'No player found.';
     if (!isUuid(body.userId)) throw new HttpError(400, 'Invalid user id.');
     target = await getUserById(c.env, body.userId);
-    if (!target || target.is_guest) throw new HttpError(404, 'No player found.');
+    if (!target || target.is_guest) throw new HttpError(404, notFound);
     if (target.id === me.id) throw new HttpError(400, 'You cannot add yourself.');
   } else {
+    notFound = 'No player found with that friend code.';
     const code = normalizeFriendCode(body.friendCode);
     if (!code) throw new HttpError(400, 'That friend code does not look right (e.g. HYD-7K2Q).');
     target = await getUserByFriendCode(c.env, code);
-    if (!target || target.is_guest) throw new HttpError(404, 'No player found with that friend code.');
+    if (!target || target.is_guest) throw new HttpError(404, notFound);
     if (target.id === me.id) throw new HttpError(400, 'That is your own friend code.');
+  }
+
+  // Blocks and privacy. Someone who blocked me looks exactly like a player that does not exist; I am told about MY block.
+  const block = await blockRelation(c.env, me.id, target.id);
+  if (block.mine) throw new HttpError(403, 'You blocked this player. Unblock them first to send a request.');
+  if (block.theirs) throw new HttpError(404, notFound);
+  if (target.friend_requests === 'nobody') {
+    // Not accepting NEW requests. An existing row (their request to me, mine to them, a friendship) still resolves below.
+    const known = await query(
+      c.env,
+      `SELECT 1 AS ok FROM friendships WHERE (user_id = $1 AND friend_id = $2) OR (user_id = $2 AND friend_id = $1)`,
+      [me.id, target.id],
+    );
+    if (!known.length) throw new HttpError(403, 'This player is not accepting requests.');
   }
 
   // 1) They already asked me -> accept (mutual request).

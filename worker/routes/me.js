@@ -23,7 +23,7 @@ me.get('/', async (c) => {
   return c.json({ user: rowToUser(rows[0], await loadGameStats(c.env, rows[0].id)) });
 });
 
-// PATCH /api/me { name?, avatar? }
+// PATCH /api/me { name?, avatar?, friendRequests?: 'everyone'|'nobody' }
 me.patch('/', requireUser, limit('me-patch', 30, 60), async (c) => {
   const body = await readJson(c);
   const sets = [];
@@ -39,6 +39,13 @@ me.patch('/', requireUser, limit('me-patch', 30, 60), async (c) => {
     if (a == null) throw new HttpError(400, 'Avatar must be a number from 0 to 11.');
     params.push(a);
     sets.push(`avatar = $${params.length}`);
+  }
+  if (body.friendRequests !== undefined) {
+    if (body.friendRequests !== 'everyone' && body.friendRequests !== 'nobody') {
+      throw new HttpError(400, 'Friend requests must be "everyone" or "nobody".');
+    }
+    params.push(body.friendRequests);
+    sets.push(`friend_requests = $${params.length}`);
   }
   const stats = await loadGameStats(c.env, c.get('user').id);
   if (!sets.length) return c.json({ user: rowToUser(c.get('user'), stats) });

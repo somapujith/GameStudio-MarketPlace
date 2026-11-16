@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { openRoomSocket } from '@/lib/socket.js';
 import { netStats } from '@/lib/netStats.js';
 import { createNetReporter } from '@/lib/rtt.js';
@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth.jsx';
 import { isFatalRoomError, roomKey, toConnection } from './gameHelpers.js';
 import { localClock } from '@/components/game/turn/clock.js';
 import { voiceEntryFromMessage } from '@/components/voice/voiceModel.js';
+import { filterMuted, isBlocked, useBlocks } from '@/platform/social/blockStore.js';
 
 // Socket + room state for ONE room code, with no game in it: the lobby, the generic online-game page and every
 // game plugin build on this. (It lives here, not in lib/session/useOnlineGame.js, so the lobby does not pull
@@ -46,6 +47,8 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
   const [error, setError] = useState(null);
   const [fatal, setFatal] = useState(null);
   const [link, setLink] = useState(LINK_IDLE);
+  // Players I blocked are muted here (client side only): their chat and voice lines never show or sound.
+  const { ids: blockedIds } = useBlocks({ enabled: !!uid });
   const sockRef = useRef(null);
   const handlers = useRef({});
   const errorSeq = useRef(0);
@@ -151,6 +154,7 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
           const id = msg.id ?? `c${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
           if (st.seen.has(id)) break;
           st.seen.add(id);
+          if (isBlocked(msg.from)) break; // muted: no line, no onChat
           const entry = { id, from: msg.from, text: typeof msg.text === 'string' ? msg.text : '' };
           if (msg.emote) entry.emote = msg.emote;
           if (typeof msg.name === 'string') entry.name = msg.name;
@@ -165,6 +169,7 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
           const entry = voiceEntryFromMessage(msg);
           if (!entry || st.seen.has(entry.id)) break;
           st.seen.add(entry.id);
+          if (isBlocked(entry.from)) break; // muted: no history line, so VoiceHost never plays it
           setChat((cur) => [...cur, entry].slice(-100));
           break;
         }
@@ -250,10 +255,13 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
 
   const authFatal = !loading && !uid ? { kind: 'auth', message: 'Sign in to join a room.' } : null;
 
+  // Blocking someone mid-game also hides what they already said (same array back when nobody is muted).
+  const shownChat = useMemo(() => filterMuted(chat, blockedIds), [chat, blockedIds]);
+
   return {
     room,
     view,
-    chat,
+    chat: shownChat,
     connection: authFatal ? 'closed' : connection,
     link,
     error: error ? error.message : null,

@@ -15,6 +15,7 @@ import { readJson } from '../http.js';
 import { pushToUser, roomCall, background } from '../hub.js';
 import { getAdapter, DEFAULT_GAME_ID } from '../games/index.js';
 import { sendPushToUser, pushConfigured, inviteNotification } from '../push.js';
+import { blockRelation } from './blocks.js';
 
 const invites = new Hono();
 
@@ -54,6 +55,8 @@ SELECT i.id, i.room_code, i.game_id, i.created_at, u.id AS from_id, u.name AS fr
    AND r.status = 'lobby'
    AND r.player_count < r.max_players
    AND NOT (r.member_ids @> ARRAY[$1::uuid])
+   AND NOT EXISTS (SELECT 1 FROM blocks b
+        WHERE (b.user_id = $1::uuid AND b.blocked_id = i.from_id) OR (b.user_id = i.from_id AND b.blocked_id = $1::uuid))
  ORDER BY i.created_at DESC
  LIMIT ${INVITES_MAX}`;
 
@@ -95,6 +98,9 @@ invites.post('/', requireMember, limit('invite', 30, 60), async (c) => {
     [me.id, body.userId],
   );
   if (!friend.length) throw new HttpError(403, 'You can only invite your friends.');
+  // A blocked pair (either direction) cannot invite each other; same neutral answer as "not friends", never a hint of a block.
+  const block = await blockRelation(c.env, me.id, body.userId);
+  if (block.mine || block.theirs) throw new HttpError(403, 'You can only invite your friends.');
 
   // The room must be an open lobby that the inviter is part of.
   const { status, data } = await roomCall(c.env, code, `/info?member=${me.id}`);

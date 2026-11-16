@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
+import { errorMessage } from '@/lib/api.js';
 import { useAuth, useUserSocket } from '@/lib/auth.jsx';
 import { paths } from '@/platform/paths.js';
 import { canShare, shareOrCopy } from '@/components/online/clipboard.js';
@@ -15,6 +16,8 @@ import FriendActionsSheet from '@/platform/social/FriendActionsSheet.jsx';
 import FriendCodeCard from '@/platform/social/FriendCodeCard.jsx';
 import FriendsGate from '@/platform/social/FriendsGate.jsx';
 import InvitesInbox from '@/platform/social/InvitesInbox.jsx';
+import PrivacyCard from '@/platform/social/PrivacyCard.jsx';
+import { blockPlayer } from '@/platform/social/blockStore.js';
 import { FriendsEmpty, FriendsList, IncomingRequests, RowSkeleton, SentRequests } from '@/platform/social/Rows.jsx';
 import SIcon from '@/platform/social/SIcon.jsx';
 import SocialHead from '@/platform/social/SocialHead.jsx';
@@ -78,6 +81,7 @@ function FriendsInner({ user }) {
   const { status: socketStatus } = useUserSocket();
   const f = useFriends({ push });
   const [confirm, setConfirm] = useState(null);
+  const [blockConfirm, setBlockConfirm] = useState(null); // friend about to be blocked
   const [actionsFor, setActionsFor] = useState(null); // friend whose quick actions are open
   const [inviteSheet, setInviteSheet] = useState(null); // friend picked for "Invite to a new table"
 
@@ -218,6 +222,9 @@ function FriendsInner({ user }) {
           <div className={o.add}>
             <AddFriendPanel onDone={() => load({ silent: true })} onNotify={push} />
           </div>
+          <div className="bl-o7">
+            <PrivacyCard onNotify={push} />
+          </div>
         </div>
       </div>
 
@@ -234,6 +241,10 @@ function FriendsInner({ user }) {
           onRemove={(fr) => {
             setActionsFor(null);
             setConfirm(fr);
+          }}
+          onBlock={(fr) => {
+            setActionsFor(null);
+            setBlockConfirm(fr);
           }}
           onNotify={push}
           onClose={() => setActionsFor(null)}
@@ -253,6 +264,26 @@ function FriendsInner({ user }) {
           const fr = confirm;
           setConfirm(null);
           if (fr) f.remove(fr);
+        }}
+      />
+      <ConfirmDialog
+        open={!!blockConfirm}
+        title={blockConfirm ? `Block ${blockConfirm.name}?` : ''}
+        body="They will be removed from your friends and cannot send you requests or invites. You will not see their chat or hear their voice lines in rooms. You can unblock them under Privacy."
+        confirmLabel="Block"
+        danger
+        onCancel={() => setBlockConfirm(null)}
+        onConfirm={async () => {
+          const fr = blockConfirm;
+          setBlockConfirm(null);
+          if (!fr) return;
+          try {
+            await blockPlayer(fr);
+            push(`${fr.name} is blocked`, 'good');
+          } catch (e) {
+            push(errorMessage(e, `Could not block ${fr.name}`), 'bad');
+          }
+          load({ silent: true });
         }}
       />
       {node}
