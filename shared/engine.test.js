@@ -35,7 +35,7 @@ describe('createGame and settings', () => {
     expect(s.cfg).toEqual({
       mode: 'standard', startCash: 1500000, passStart: 200000, maxRounds: 20, targetWorth: 5000000, dice: 'lucky',
       trafficFine: 25000, chaiCap: 1, rentPercent: 100, requireFullSet: true, eventEvery: 3, turnSeconds: 60, tradeSeconds: 45,
-      auctionSeconds: 20, snatches: 1, snatchMs: 5000, snatchCardCap: 2,
+      auctionSeconds: 20, snatches: 1, snatchMs: 5000, snatchCardCap: 2, powerCards: false,
     });
     expect(s.owners).toHaveLength(36);
     expect(s.levels).toHaveLength(36);

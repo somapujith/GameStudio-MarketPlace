@@ -10,7 +10,7 @@ describe('RULE_FIELDS', () => {
   it('lists every key once, each in a known group, with a default that is itself legal in every mode', () => {
     expect(RULE_KEYS).toEqual([
       'startCash', 'passStart', 'targetWorth', 'rentPercent', 'trafficFine', 'turnSeconds', 'tradeSeconds', 'auctionSeconds', 'maxRounds',
-      'dice', 'requireFullSet', 'eventEvery', 'chaiCap', 'snatches', 'snatchMs', 'snatchCardCap',
+      'dice', 'requireFullSet', 'eventEvery', 'chaiCap', 'powerCards', 'snatches', 'snatchMs', 'snatchCardCap',
     ]);
     expect(new Set(RULE_KEYS).size).toBe(RULE_KEYS.length);
     const groups = RULE_GROUPS.map((g) => g.id);

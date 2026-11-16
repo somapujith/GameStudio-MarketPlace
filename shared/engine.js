@@ -12,7 +12,7 @@ import {
   mortgageValue, unmortgageCost, nextTransport, municipalFor, auctionMinBid,
 } from './board.js';
 import { SNATCH_CAP_PAYOUT } from './cards.js';
-import { shuffle, seedToUint32, randInt } from './rng.js';
+import { shuffle, seedToUint32, randInt, nextFloat } from './rng.js';
 import { EVENT_EVERY } from './events.js';
 import { MAP_IDS, DEFAULT_MAP, levelNameOf, groupName, tileName, termsOf, deckCards, cityEventsOf, rushFlavourOf, monsoonTextOf, festivalsOf } from './maps.js';
 import { MODES, MODE_IDS, DEFAULT_MODE, ROUND_CAP, TARGET_OPTIONS, isTargetAmount } from './modes.js';
@@ -20,6 +20,7 @@ import { ruleDefaults } from './ruleSettings.js';
 import { formatINR } from './format.js';
 import { rollDice, DICE_RULES } from './dice.js';
 import { auctionMsOf, snatchBidMsOf } from './timing.js';
+import { POWER, POWER_IDS } from './powerCards.js';
 
 export { MODES, MODE_IDS, DEFAULT_MODE, ROUND_CAP, TARGET_OPTIONS };
 
@@ -77,6 +78,7 @@ export function normalizeSettings(input) {
   if (src.targetWorth === null || isTargetAmount(src.targetWorth)) cfg.targetWorth = src.targetWorth;
   if (src.dice === 'fair' || src.dice === 'lucky') cfg.dice = src.dice;
   if (typeof src.requireFullSet === 'boolean') cfg.requireFullSet = src.requireFullSet;
+  if (typeof src.powerCards === 'boolean') cfg.powerCards = src.powerCards; // Power cards (docs/POWER_CARDS.md): off by default
   const ranged = (key) => {
     if (!(key in src) || src[key] === undefined) return;
     const n = toInt(src[key]);
@@ -141,6 +143,9 @@ const snatchCardCapOf = (s) => (Number.isFinite(s.cfg.snatchCardCap) ? s.cfg.sna
 const snatchMsOf = (s) => (Number.isFinite(s.cfg.snatchMs) ? s.cfg.snatchMs : 5000);
 /** Snatch is on when players start with at least one button (`cfg.snatches` 0 turns it off entirely). */
 const snatchOn = (s) => snatchStart(s) > 0;
+/** Power cards (docs/POWER_CARDS.md): a stored game without `cfg.powerCards` is off. Everything below is inert when off. */
+const powerOn = (s) => s.cfg.powerCards === true;
+const handOf = (p) => (Array.isArray(p.hand) ? p.hand : []);
 
 /** Multiplier the current city event puts on `tileId`'s rent (1 when none applies). */
 function eventMult(s, tileId) {
@@ -154,7 +159,7 @@ function eventMult(s, tileId) {
 }
 
 /** Rent the district asks right now from a visitor (before the visitor's chai). 0 for a mortgaged or unowned tile. */
-function rentOf(s, tileId, ownerId) {
+function rentOf(s, tileId, ownerId, withDouble = true) {
   const tile = TILES[tileId];
   if (!isBuyable(tile) || !ownerId || isMort(s, tileId)) return 0;
   const level = s.levels[tileId] || 0;
@@ -162,10 +167,15 @@ function rentOf(s, tileId, ownerId) {
   let rent = rentFor(tile, level, full) * eventMult(s, tileId);
   const owner = byId(s, ownerId);
   if (owner && owner.rentBoost > 1) rent *= owner.rentBoost;
+  if (withDouble && owner && doubleArmed(s, owner)) rent *= 2; // Power card Double Rent: part of the owner's rent, so previews and look-ahead agree
   const pct = s.cfg.rentPercent;
   if (Number.isFinite(pct) && pct !== 100) rent = (rent * pct) / 100; // host rule "rent level": scales every rent
   return Math.round(rent);
 }
+
+/** Power cards: is the armed Double Rent / Shield of `p` still live this round? (read with fallbacks: stored games lack them) */
+const doubleArmed = (s, p) => powerOn(s) && (p.doubleRent || 0) >= s.round;
+const shieldArmed = (s, p) => powerOn(s) && (p.shield || 0) >= s.round;
 
 // ---------------------------------------------------------------------------------------------
 // Public queries
@@ -405,8 +415,17 @@ export function tradeBlock(state, playerId) {
   return null;
 }
 
-/** What `playerId` may do right now. Everything false/null/[] when it is not their moment. */
+/**
+ * What `playerId` may do right now. Everything false/null/[] when it is not their moment. With the Power cards rule on
+ * the result also carries `power` (see powerOptions); with it off the object is exactly what it always was.
+ */
 export function getOptions(state, playerId) {
+  const out = baseOptions(state, playerId);
+  if (powerOn(state)) out.power = powerOptions(state, playerId);
+  return out;
+}
+
+function baseOptions(state, playerId) {
   const none = {
     roll: false, payTraffic: false, useChai: false, buy: false, skipBuy: false, ride: null, endTurn: false,
     upgrade: [], bid: null, mortgage: [], unmortgage: [], sellBuilding: [], debt: null, payDebt: false,
@@ -511,6 +530,9 @@ function assignPieces(players) {
   });
 }
 
+/** Fixed constant the Power cards stream is derived from the game seed with (docs/POWER_CARDS.md). */
+const POWER_SEED_XOR = 0x9e3779b1;
+
 export function createGame({ players, settings = {}, seed } = {}) {
   if (!Array.isArray(players) || players.length < 2 || players.length > 6) {
     throw new RangeError('createGame needs 2 to 6 players');
@@ -519,10 +541,11 @@ export function createGame({ players, settings = {}, seed } = {}) {
 
   const cfg = normalizeSettings(settings);
   const pieces = assignPieces(players);
+  const seed32 = seedToUint32(seed);
 
   const state = {
     cfg,
-    rng: seedToUint32(seed),
+    rng: seed32,
     round: 1,
     event: null, // the city event of this round, or null
     turn: 0,
@@ -563,12 +586,19 @@ export function createGame({ players, settings = {}, seed } = {}) {
       rentBoost: 0, // > 1 while a "your rents x2" card is active (until the player's next turn)
       lastOfferTurn: null,
       stats: newStats(),
+      ...(cfg.powerCards ? { hand: [], shield: 0, doubleRent: 0 } : null), // Power cards: hand, armed Shield / Double Rent (round they last to)
     })),
     deck: { luck: [], drama: [] }, // shuffled card order per deck (server secret)
     deckPos: { luck: 0, drama: 0 },
     winner: null,
     winReason: null,
   };
+  // Power cards draw from their OWN stream (never `rng`), created only when the rule is on: a game with the rule off makes
+  // no extra draw and carries no new state, so every seeded game stays byte-identical.
+  if (cfg.powerCards) {
+    state.prng = (seed32 ^ POWER_SEED_XOR) >>> 0;
+    state.powerPlayed = false;
+  }
   state.deck.luck = shuffle(state, deckOrder(state, 'luck'));
   state.deck.drama = shuffle(state, deckOrder(state, 'drama'));
   return state;
@@ -683,6 +713,11 @@ function bankruptPlayer(s, ev, p, owed, how = null) {
   p.snatches = 0;
   p.sixes = 0;
   p.rentBoost = 0;
+  if (powerOn(s)) {
+    p.hand = []; // power cards of a player who is out are discarded
+    p.shield = 0;
+    p.doubleRent = 0;
+  }
   if (s.ride && s.ride.player === p.id) s.ride = null;
   cancelTradeOf(s, ev, p.id, 'bankrupt');
   // reason 'resign' = left by choice; `paid` (only when a creditor was paid) tells who the bank paid, for the log
@@ -703,6 +738,14 @@ function settlePayment(s, ev, pay, rest) {
   if (creditor && creditor.bankrupt) creditor = null;
   let amount = Math.max(0, Math.round(pay.amount));
   if (amount === 0) return true;
+  // Power card Shield: the next rent or municipal tax is waived in full (consumed). Before chai, so chai is kept.
+  // A waived rent never reaches the owner, so their armed Double Rent stays armed.
+  if (powerOn(s) && (pay.reason === 'rent' || pay.reason === 'tax') && shieldArmed(s, p)) {
+    p.shield = 0;
+    ev.push({ type: 'power_trigger', player: p.id, card: 'shield', amount, ...(creditor ? { other: creditor.id } : null) });
+    return true;
+  }
+  const billed = amount;
   // Irani chai: the first rent payment of at least CHAI_MIN_RENT is halved automatically.
   if (pay.reason === 'rent' && (p.chai || 0) > 0 && amount >= CHAI_MIN_RENT) {
     const saved = Math.floor(amount / 2);
@@ -710,6 +753,11 @@ function settlePayment(s, ev, pay, rest) {
     p.chai -= 1;
     p.stats.chaiSaved += saved;
     ev.push({ type: 'chai', player: p.id, chai: p.chai, change: -1, reason: 'rent', saved });
+  }
+  // Power card Double Rent: the rent that carried the doubling is paid (or owed): the owner's card is spent.
+  if (pay.reason === 'rent' && pay.extra > 0 && creditor && doubleArmed(s, creditor)) {
+    creditor.doubleRent = 0;
+    ev.push({ type: 'power_trigger', player: creditor.id, card: 'double', amount: billed === amount ? pay.extra : Math.round((pay.extra * amount) / billed), other: p.id });
   }
   if (p.cash >= amount) {
     transfer(s, ev, p, creditor, amount, pay.reason);
@@ -802,7 +850,12 @@ function land(s, ev, p, depth = 0) {
         // Cannot afford it: nothing is offered and nothing is auctioned; the district stays free (no way around Snatch).
       } else if (ownerId !== p.id) {
         const owner = byId(s, ownerId);
-        if (owner && !owner.bankrupt) runPayments(s, ev, [{ from: p.id, to: ownerId, amount: rentOf(s, tileId, ownerId), reason: 'rent' }]);
+        if (owner && !owner.bankrupt) {
+          const rent = rentOf(s, tileId, ownerId);
+          // an armed Double Rent is inside `rent`; `extra` is what it added (so settlePayment can report and consume it)
+          const extra = doubleArmed(s, owner) ? rent - rentOf(s, tileId, ownerId, false) : 0;
+          runPayments(s, ev, [{ from: p.id, to: ownerId, amount: rent, reason: 'rent', ...(extra > 0 ? { extra } : null) }]);
+        }
       }
       break;
     }
@@ -825,7 +878,10 @@ function land(s, ev, p, depth = 0) {
       break;
     }
     case 'card':
-      if (depth < MAX_CARD_DEPTH) drawCard(s, ev, p, depth, tile.deck);
+      if (depth < MAX_CARD_DEPTH) {
+        drawCard(s, ev, p, depth, tile.deck);
+        drawPower(s, ev, p, 'tile', tileId); // a power card too, when the rule is on and the hand has room
+      }
       break;
     default:
       break; // START: the salary came with the move
@@ -1084,6 +1140,179 @@ function maybeCloseSnatch(s, ev) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Power cards (docs/POWER_CARDS.md). An optional rule (`cfg.powerCards`, off by default): every player holds up to POWER.HAND_MAX
+// short-lived cards, drawn from card tiles and as a turn-start bonus, played in the roll phase before the roll. They draw
+// from their own stream `state.prng` (never `rng`), so the rule never shifts a board outcome and a game with it off is untouched.
+// Hooks: draw = land() on a card tile + endTurn() (turn start); expiry = startRound(); play = PLAY_POWER (phase roll);
+// effects = settlePayment() (Shield, Double Rent), rentOf() (Double Rent), doRoll() (Steal a Roll), doPlayPower() (Swap Tiles).
+// ---------------------------------------------------------------------------------------------
+
+/** Next float in [0,1) from the Power cards stream. Advances `s.prng` (derived from `s.rng` when a stored game lacks it). */
+function powerFloat(s) {
+  const h = { rng: Number.isInteger(s.prng) ? s.prng : (s.rng ^ POWER_SEED_XOR) >>> 0 };
+  const f = nextFloat(h);
+  s.prng = h.rng;
+  return f;
+}
+
+/** Weighted pick of a card id from POWER.WEIGHTS (one draw on the Power stream). */
+function pickPowerId(s) {
+  const weights = POWER_IDS.map((id) => Math.max(0, Number(POWER.WEIGHTS[id]) || 0));
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = powerFloat(s) * total;
+  for (let i = 0; i < POWER_IDS.length; i++) {
+    if (r < weights[i]) return POWER_IDS[i];
+    r -= weights[i];
+  }
+  return POWER_IDS[0];
+}
+
+/**
+ * Give `p` a power card when the rule is on, they are in the game and the hand has room (a full hand gets nothing, no
+ * prompt). `source` 'tile' (a card tile, `tile` = its index) or 'turn'. The `power_draw` event never names the card.
+ */
+function drawPower(s, ev, p, source, tile) {
+  if (!powerOn(s) || p.bankrupt) return false;
+  if (!Array.isArray(p.hand)) p.hand = [];
+  if (p.hand.length >= POWER.HAND_MAX) return false;
+  const id = pickPowerId(s);
+  const seat = s.players.indexOf(p);
+  let uid;
+  do uid = `p${seat}-${s.round}-${Math.floor(powerFloat(s) * 4096).toString(36)}`;
+  while (p.hand.some((c) => c.uid === uid));
+  p.hand.push({ uid, id, exp: s.round + POWER.LIFE_ROUNDS });
+  ev.push({ type: 'power_draw', player: p.id, source, ...(tile !== undefined && tile !== null ? { tile } : null) });
+  return true;
+}
+
+/** Is `p` trailing: net worth below POWER.TRAILING_RATIO x the average of the active players? */
+function isTrailing(s, p) {
+  const active = activePlayers(s);
+  if (active.length < 2) return false;
+  const avg = active.reduce((n, q) => n + netWorth(s, q.id), 0) / active.length;
+  return netWorth(s, p.id) < POWER.TRAILING_RATIO * avg;
+}
+
+/** The turn-start bonus: when the turn begins (phase roll) and the hand has room, a chance of a card (higher when trailing). */
+function turnStartDraw(s, ev, p) {
+  if (!p || p.bankrupt || !Array.isArray(p.hand) || p.hand.length >= POWER.HAND_MAX) return;
+  const chance = isTrailing(s, p) ? POWER.TRAILING_CHANCE : POWER.TURN_START_CHANCE;
+  if (powerFloat(s) < chance) drawPower(s, ev, p, 'turn');
+}
+
+/**
+ * A new round begins: cards past their `exp` leave every hand (one `power_expire { player, count }` per player who lost
+ * some; identities are never named) and armed Shield / Double Rent past their round lapse silently.
+ */
+function expirePower(s, ev) {
+  if (!powerOn(s)) return;
+  for (const q of s.players) {
+    if (q.bankrupt) continue;
+    const hand = handOf(q);
+    const keep = hand.filter((c) => c.exp >= s.round);
+    if (keep.length !== hand.length) {
+      q.hand = keep;
+      ev.push({ type: 'power_expire', player: q.id, count: hand.length - keep.length });
+    }
+    if ((q.shield || 0) > 0 && q.shield < s.round) q.shield = 0;
+    if ((q.doubleRent || 0) > 0 && q.doubleRent < s.round) q.doubleRent = 0;
+  }
+}
+
+/** null when `p` may play a card right now (turn player, phase roll, nothing open, not yet played this turn), else the reason. */
+function powerGate(s, p) {
+  if (!powerOn(s)) return 'Power cards are not enabled';
+  if (s.phase === 'over') return 'The game is over';
+  if (p.bankrupt) return 'You are out of the game';
+  if (turnPlayer(s).id !== p.id) return 'Not your turn';
+  if (s.trade) return 'Answer the trade offer first';
+  if (s.phase === 'debt') return 'Settle the debt first';
+  if (s.phase !== 'roll') return 'Play a card before you roll';
+  if (s.powerPlayed) return 'Already played a card this turn';
+  return null;
+}
+
+/** Why `target` cannot be swapped with by `p` (null = fine). Stuck pawns, bankrupt players, yourself and the same tile are out. */
+function swapTargetProblem(s, p, target) {
+  if (!target || target.bankrupt || target.id === p.id) return 'Pick an active rival to swap with';
+  if (p.stuck) return 'You are stuck in traffic';
+  if (target.stuck) return `${target.name} is stuck in traffic`;
+  if (target.pos === p.pos) return `You are already on the same tile as ${target.name}`;
+  return null;
+}
+
+const swapTargetsOf = (s, p) => s.players.filter((q) => !swapTargetProblem(s, p, q)).map((q) => q.id);
+
+/** null when `card` (a hand entry) may be played by `p` now with `target`, else the reason. The gate is checked by the caller. */
+function powerCardProblem(s, p, card, target) {
+  if (card.exp < s.round) return 'That card has expired';
+  if (card.id === 'swap') {
+    if (p.stuck) return 'You are stuck in traffic';
+    if (target === undefined || target === null) return swapTargetsOf(s, p).length ? 'Pick a rival to swap with' : 'No rival can swap right now';
+    return swapTargetProblem(s, p, byId(s, target));
+  }
+  if (target !== undefined && target !== null) return 'This card has no target';
+  if (card.id === 'steal') {
+    if (p.stuck) return 'Get out of the traffic jam first'; // the roll would only wait the jam out and the extra roll would be lost
+    if (s.extraRoll) return 'You already have an extra roll';
+  }
+  return null;
+}
+
+/**
+ * `getOptions(...).power` (rule on): `{ canPlay, reason?, cards: [{ uid, id, exp, ok, reason?, targets? }] }`. `cards` is the
+ * viewer's own hand; every card carries `ok` and, when not playable, the user-facing `reason`; a swap lists its legal `targets`.
+ */
+function powerOptions(s, playerId) {
+  const p = byId(s, playerId);
+  if (!p) return { canPlay: false, reason: 'Unknown player', cards: [] };
+  const gate = powerGate(s, p);
+  const cards = handOf(p).map((c) => {
+    const row = { uid: c.uid, id: c.id, exp: c.exp, ok: false };
+    if (c.id === 'swap') row.targets = gate ? [] : swapTargetsOf(s, p);
+    const why = gate || powerCardProblem(s, p, c, c.id === 'swap' ? row.targets[0] : undefined);
+    if (why) row.reason = why;
+    else row.ok = true;
+    return row;
+  });
+  if (cards.some((c) => c.ok)) return { canPlay: true, cards };
+  return { canPlay: false, reason: gate || (cards.length ? cards[0].reason : 'You hold no power cards'), cards };
+}
+
+/** PLAY_POWER: spend the card, announce it (public), apply its effect. Validated by `validate`. */
+function doPlayPower(s, ev, p, action) {
+  const hand = handOf(p);
+  const idx = hand.findIndex((c) => c.uid === action.card);
+  const [card] = hand.splice(idx, 1);
+  s.powerPlayed = true;
+  const target = card.id === 'swap' ? byId(s, action.target) : null;
+  ev.push({ type: 'power_play', player: p.id, card: card.id, ...(target ? { target: target.id } : null) });
+  switch (card.id) {
+    case 'shield':
+      p.shield = s.round + POWER.ARMED_ROUNDS;
+      break;
+    case 'double':
+      p.doubleRent = s.round + POWER.ARMED_ROUNDS;
+      break;
+    case 'steal':
+      s.extraRoll = true; // the same state as a six, without a dice event (doRoll keeps it through the first roll)
+      break;
+    case 'swap': {
+      // Two teleports, no landing, nobody passes START.
+      const a = p.pos;
+      const b = target.pos;
+      p.pos = b;
+      target.pos = a;
+      ev.push({ type: 'move', player: p.id, from: a, to: b, path: [b], passedStart: false, teleport: true });
+      ev.push({ type: 'move', player: target.id, from: b, to: a, path: [a], passedStart: false, teleport: true });
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Turn flow, city events and the win check
 // ---------------------------------------------------------------------------------------------
 
@@ -1091,6 +1320,7 @@ function maybeCloseSnatch(s, ev) {
 function startRound(s, ev) {
   s.event = null;
   if (s.round > roundLimit(s)) return; // the round limit just ended the game: no event
+  expirePower(s, ev); // power cards past their round go, armed effects lapse
   const every = eventEveryOf(s);
   if (every <= 0 || s.round % every !== 0) return; // host rule `eventEvery`: 0 = no city events
   const defs = cityEventsOf(s);
@@ -1148,6 +1378,7 @@ function endTurn(s, ev) {
   s.phase = 'roll';
   s.turnCount += 1;
   s.players[next].rentBoost = 0; // "your rents x2 until your next turn" ends now
+  if (powerOn(s)) s.powerPlayed = false; // a new turn: one power card may be played again
   if (next <= cur) {
     s.round += 1;
     startRound(s, ev);
@@ -1160,6 +1391,8 @@ function endTurn(s, ev) {
     s.players[next].stuck = false;
     ev.push({ type: 'traffic', player: s.players[next].id, stuck: false, reason: 'free' });
   }
+  // Power cards, turn-start bonus: drawn as the turn begins (phase roll), after the round start (expiry) and the turn event
+  if (powerOn(s) && s.round <= roundLimit(s)) turnStartDraw(s, ev, s.players[next]);
 }
 
 /** The richest active player: highest net worth, then most cash, then the earliest seat (same order as standings). */
@@ -1308,6 +1541,9 @@ function doRoll(s, ev, action) {
   ev.push({ type: 'dice', player: p.id, values: [...dice], assist: rolled.assist ?? null });
   const total = dice[0];
   const isSix = total === 6;
+  // Steal a Roll (docs/POWER_CARDS.md): played before the roll it sets `extraRoll` in phase `roll`. This first roll must not
+  // clear it; the extra roll after it is then spent like any other. A six on the same roll does not add a second one.
+  const stolen = s.phase === 'roll' && s.extraRoll === true;
   p.rollsSinceSix = isSix ? 0 : (p.rollsSinceSix || 0) + 1;
   if ((rolled.active || []).includes('mercy')) p.rentStreak = 0; // mercy lasts one roll
   if (isSix) {
@@ -1315,7 +1551,7 @@ function doRoll(s, ev, action) {
     s.extraRoll = true;
   } else {
     p.sixes = 0;
-    s.extraRoll = false;
+    s.extraRoll = stolen;
   }
   s.phase = 'manage';
   moveForward(s, ev, p, total);
@@ -1538,6 +1774,15 @@ function validate(prev, action) {
       if (pend.claims.includes(p.id)) return 'You already pressed Snatch';
       return null;
     }
+    case 'PLAY_POWER': {
+      const gate = powerGate(prev, p);
+      if (gate) return gate;
+      if (typeof action.card !== 'string') return 'Invalid card';
+      if (action.target !== undefined && action.target !== null && typeof action.target !== 'string') return 'Invalid target';
+      const card = handOf(p).find((c) => c.uid === action.card);
+      if (!card) return 'You do not hold that card';
+      return powerCardProblem(prev, p, card, action.target);
+    }
     case 'RESIGN':
       return null;
     default:
@@ -1671,6 +1916,9 @@ export function applyAction(prev, action) {
       break;
     case 'SNATCH_CLOSE':
       resolveSnatch(s, ev);
+      break;
+    case 'PLAY_POWER':
+      doPlayPower(s, ev, p, action);
       break;
     case 'RESIGN':
       doResign(s, ev, p);

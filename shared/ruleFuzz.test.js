@@ -6,6 +6,7 @@ import {
   BOARD_SIZE, MAX_LEVEL, TILES, GROUP_TILES, GROUPS, isBuyable, canUpgrade, rentFor, setMultiplier,
   RULE_FIELDS, MODE_IDS, ROUND_CAP, sanitizeRules, liquidationValue, CITY_EVENTS,
 } from './index.js';
+import { POWER, POWER_IDS } from './powerCards.js';
 
 /** One random legal value for a field: often an extreme, sometimes anything on the grid. */
 function pickValue(f, rnd) {
@@ -60,6 +61,9 @@ function randomAction(s, rnd) {
     add(3, { type: 'BID', amount: Math.min(o.bid.max, o.bid.min + 1000 * Math.floor(rnd() * 200)) });
   } else {
     if (o.roll) add(10, { type: 'ROLL' });
+    for (const c of (o.power && o.power.cards) || []) {
+      if (c.ok) add(6, { type: 'PLAY_POWER', card: c.uid, ...(c.id === 'swap' ? { target: pick(c.targets) } : null) });
+    }
     if (o.endTurn) add(6, { type: 'END_TURN' });
     if (o.buy) add(5, { type: 'BUY' });
     if (o.skipBuy) add(2, { type: 'SKIP_BUY' });
@@ -93,6 +97,11 @@ function invariants(s) {
     ok(p.pos >= 0 && p.pos < BOARD_SIZE, `${p.id} pos ${p.pos}`);
     ok(p.chai >= 0 && p.chai <= cfg.chaiCap, `chai ${p.chai} cap ${cfg.chaiCap}`);
     ok(Number.isFinite(netWorth(s, p.id)), 'net worth');
+    if (cfg.powerCards === true) {
+      ok(Array.isArray(p.hand) && p.hand.length <= POWER.HAND_MAX, `${p.id} hand`);
+      ok(p.hand.every((c) => POWER_IDS.includes(c.id) && c.exp <= s.round + POWER.LIFE_ROUNDS), `${p.id} card`);
+      ok(p.shield >= 0 && p.doubleRent >= 0 && !(p.bankrupt && (p.hand.length || p.shield || p.doubleRent)), `${p.id} armed`);
+    } else ok(!('hand' in p) && !('prng' in s), 'power state with the rule off');
     if (p.bankrupt) ok(!p.stuck, 'a bankrupt player is not stuck');
     if (cfg.trafficFine === 0 && s.phase !== 'over' && !p.bankrupt && s.players[s.turn].id === p.id) ok(!p.stuck, 'a free jam never holds a turn');
   }
@@ -138,7 +147,9 @@ function eventRules(before, action, events, after) {
       const bill = previewRent(before, land.tile);
       const halved = bill - Math.floor(bill / 2);
       const debt = after.phase === 'debt' || events.some((e) => e.type === 'bankrupt' || e.type === 'debt');
-      if (!debt) ok(paid === bill || paid === halved, `rent on ${land.tile} (${cfg.rentPercent}%): paid ${paid}, preview ${bill}`);
+      const shielded = events.some((e) => e.type === 'power_trigger' && e.card === 'shield'); // a Shield waives the whole rent
+      if (shielded) ok(paid === 0, `a Shield waived the rent on ${land.tile} but ${paid} was paid`);
+      else if (!debt) ok(paid === bill || paid === halved, `rent on ${land.tile} (${cfg.rentPercent}%): paid ${paid}, preview ${bill}`);
     }
   }
   if (action.type === 'UPGRADE' && cfg.requireFullSet) {

@@ -44,6 +44,10 @@ export const ANIM_MS = Object.freeze({
   snatchOpen: 300, // the Snatch window opening: short on purpose, the window itself is the phase (real time), not an animation
   snatchEnd: 1800, // the Snatch outcome (nobody / who snatched / who goes to the bidding) stays on screen long enough to read
   token: 1100, // a Snatch button gained from a card
+  powerDraw: 900, // a power card drawn (tile or turn start)
+  powerPlay: 1500, // a power card played: the reveal
+  powerTrigger: 1400, // an armed Shield / Double Rent did its job
+  powerExpire: 700, // power cards expired at the start of a round
 });
 
 /** A pawn move longer than this many squares hops faster so the whole trip stays short. */

@@ -52,7 +52,7 @@ describe('Tycoon adapter: settings', () => {
     expect(tycoon.validateSettings({ goal: 50000, debug: true, seed: 3 })).toEqual({ ok: true, settings: ROOM_DEFAULTS });
     expect(tycoon.defaultSettings).toEqual(ROOM_DEFAULTS);
     expect(tycoon.defaultSettings).toEqual({ mode: 'standard', ...engine.ruleDefaults('standard') });
-    expect(Object.keys(tycoon.defaultSettings)).toHaveLength(17); // mode + the 16 rules of shared/ruleSettings.js
+    expect(Object.keys(tycoon.defaultSettings)).toHaveLength(18); // mode + the 17 rules of shared/ruleSettings.js
     expect(tycoon.validateSettings({ snatches: 3, rentPercent: 150 }).settings).toMatchObject({ snatches: 3, rentPercent: 150 });
     expect(tycoon.validateSettings({ rentPercent: 7 })).toEqual({ ok: false, error: 'Rent level must be one of 50, 75, 100, 125, 150, 200.' });
   });

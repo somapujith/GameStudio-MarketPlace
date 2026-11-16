@@ -51,6 +51,7 @@ result from `state.cfg`. `settings.test.js` fails when the lobby schema and the 
 | `requireFullSet` | rules | boolean | `true` | On: a district can only be upgraded once the player owns **every** district of its collection (reason text `Own all N districts of <collection> first (you have M)`). Off: owning the district is enough (turn, cash, mortgage and level checks still apply). The 1.5x set bonus on first businesses always needs the whole collection. |
 | `eventEvery` | rules | 0 (off), 2, 3, 4, 5, 6 | 3 | A city event in every N-th round (never round 1; section 9). `0` = no city events at all. |
 | `chaiCap` | rules | 1 - 3 | 1 | Chai tokens a player can hold; at the cap Chai Adda and the free-chai card give nothing. |
+| `powerCards` | rules | boolean | `false` | Short-lived Power cards: Shield, Double Rent, Steal a Roll, Swap Tiles (section 16, `docs/POWER_CARDS.md`). Off: no extra state, no extra random draw, seeded games are byte-identical. |
 | `snatches` | snatch | 0 - 3 | 1 | Snatch buttons each player starts with; `0` turns Snatch off (section 14). |
 | `snatchMs` | snatch | 3000 - 10000 ms in steps of 1000 | 5000 | The Snatch window (section 14). |
 | `snatchCardCap` | snatch | 0 - 2 | 2 | Extra buttons one player can win from chance cards per game (section 14.2). |
@@ -78,7 +79,7 @@ Modes (`shared/modes.js` `MODES`, re-exported by the engine):
 | `classic` | Classic Long Game | none (`maxRounds: null`; safety cap `ROUND_CAP` = 60) | ₹15,00,000 | ₹30,00,000 (what ends the game, section 12) |
 
 `state.cfg` = `{ mode, ...every rule above except maxPlayers }` = `{ mode, startCash, passStart, targetWorth, rentPercent, trafficFine,
-turnSeconds, tradeSeconds, auctionSeconds, maxRounds, dice, requireFullSet, eventEvery, chaiCap, snatches, snatchMs, snatchCardCap }`
+turnSeconds, tradeSeconds, auctionSeconds, maxRounds, dice, requireFullSet, eventEvery, chaiCap, powerCards, snatches, snatchMs, snatchCardCap }`
 (`engine.normalizeSettings`; the engine clamps numbers to the wider `SETTING_LIMITS`, so tests and the simulator may go outside the
 host bounds; the server enforces the host bounds). Every rule is **read from `state.cfg`** by the engine, with the old constant as the
 fallback for a game stored before the rule existed (`PASS_START`, `EVENT_EVERY`, 60 s / 45 s / 20 s). The room stores the full normalised
@@ -563,6 +564,7 @@ Tile fields are integers 0-35.
 | `TRADE_CANCEL` | | the offerer | `Only the player who made the offer can cancel it` |
 | `TRADE_COUNTER` | `give`/`get` as in `TRADE_OFFER` (no `to`: the proposer is implied) | the recipient of the pending offer, fewer than 5 counters so far | `There is no trade offer` · `This offer is not for you` · `Counter-offers are used up (5). Accept or reject` · the `TRADE_OFFER` deal errors |
 | `SNATCH` | | an eligible player who has not pressed, phase `snatch` (14.4) | `There is nothing to snatch` · `You cannot snatch this one` · `You already pressed Snatch` |
+| `PLAY_POWER` | `card` (uid), `target?` (player id, swap only) | your turn, phase `roll`, rule on, no card played yet this turn (16) | `Power cards are not enabled` · `Not your turn` · `Play a card before you roll` · `Already played a card this turn` · `You do not hold that card` · `That card has expired` · `Pick a rival to swap with` · `No rival can swap right now` · `This card has no target` |
 | `RESIGN` | | any non-bankrupt player, any time (7.3) | `You are out of the game` |
 
 While a trade is pending only the four trade answers (accept, reject, cancel, counter) and `RESIGN` are legal (`A trade offer is waiting for an
@@ -599,6 +601,10 @@ snatch window`). `SNATCH_CLOSE` is issued by the room only (14.4), `AUCTION_CLOS
 | `trade_countered` | `id (the replaced offer), from, to (its proposer / recipient), by (who countered), newId, counters` - always followed by the `trade_offer` of the counter |
 | `trade_rejected` | `id, from, to, reason: 'rejected'\|'cancelled'\|'bankrupt'\|'invalid'` |
 | `turn` | `player, round` |
+| `power_draw` | `player, source: 'tile'\|'turn', tile?` (a Power card was drawn; the card is NOT named, 16) |
+| `power_play` | `player, card: 'shield'\|'double'\|'steal'\|'swap', target?` |
+| `power_trigger` | `player, card: 'shield'\|'double', amount, other?` (a Shield waived `amount` of a rent / tax; a Double Rent earned `amount` extra; `other` = counterparty) |
+| `power_expire` | `player, count` (cards that expired at the start of a round; not named) |
 | `win` | `player (id\|null), reason: 'last_standing'\|'target'\|'rounds', worth` (the winner's net worth; for `'target'` it is at least `cfg.targetWorth`) |
 
 Order of a typical roll: `dice, move, (cash salary), land, ...effect`. A stuck turn that waits: `traffic (waited), turn`.
@@ -1041,3 +1047,27 @@ monument town the thing you buy is a fictional local business (the lore says so)
   imports them shows the active map, and returns `{ id, version }` (the version grows on every change; use it as a React key). Do not call it in the Worker (a Durable Object serves many rooms).
 * **Listings.** `summarize` appends " · Andhra Aatalu map" for a non-default map, and `GET /api/rooms/open` rows carry `map` (only when it is not the default).
 * **Simulation.** `node scripts/simulate.js --map andhra` (or `--map all`) plays bot games on the map with every invariant, including "every card and city event belongs to the map".
+
+## 16. Power cards
+
+An optional rule (`cfg.powerCards`, default off; the spec with the UX is `docs/POWER_CARDS.md`, the metadata and tuning in `shared/powerCards.js`, the rules in `shared/engine.js`).
+
+* **State** (only when on): `state.prng` (uint32, secret; derived from the seed with a fixed XOR constant), `state.powerPlayed`, and per player `hand: [{ uid, id, exp }]` (at most 2, `exp` = the last round
+  it can be played = round drawn + 3), `shield` and `doubleRent` (the round the armed effect lasts to, 0 = none). Read all of them with fallbacks: a stored game lacks them.
+  Cards use their OWN random stream: the board stream `rng` never draws for a card, so the rule never shifts a dice roll, deck or event, and with the rule off the engine makes no extra draw at all.
+* **Draw sources** (`drawPower`): a card tile always draws one (after the Luck / Drama card, `power_draw source:'tile'`); at the START of a turn (`endTurn`, after the round start and the `turn` event, so in phase `roll`)
+  the new turn player draws with a chance of `POWER.TURN_START_CHANCE` (0.06), `POWER.TRAILING_CHANCE` (0.15) when their net worth is below 0.8 x the average of the active players. A full hand draws nothing. The first turn
+  of a game has no turn-start draw. The card is chosen by `POWER.WEIGHTS` (shield 30, double 30, steal 25, swap 15). Tuned with the simulator (about 2 cards per player per 10 rounds for a bot that plays at once).
+* **Playing** (`PLAY_POWER`): the turn player, phase `roll`, nothing else open, one card per turn (`powerPlayed`, reset when the next turn starts); `getOptions().power = { canPlay, reason?, cards: [{ uid, id, exp, ok, reason?, targets? }] }`.
+  Every play emits the public `power_play`. No new phase, pending type or timer.
+* **Shield** arms `shield = round + 3`. The next rent or municipal tax the player would pay is waived in full (`power_trigger`), in `settlePayment` before chai, and the shield is consumed. Card and city-event cash is never waived.
+* **Double Rent** arms `doubleRent = round + 3`. The owner's next rent is doubled INSIDE `rentOf` (so `previewRent`, the lucky-dice look-ahead and the client previews agree) and the card is spent when that rent is paid
+  (`settlePayment`, `power_trigger card:'double'`, `amount` = the extra). A rent waived by a Shield does not spend it (the Shield wins).
+* **Steal a Roll** sets `extraRoll = true` in phase `roll` (no `dice` event). `doRoll` keeps it through the first roll (`s.phase === 'roll' && extraRoll`) and the extra roll is spent like a six. A six on the first roll and a
+  Steal coincide (one extra roll only); landing in the Traffic Jam on the first roll loses it, like a six. It cannot be played while stuck.
+* **Swap Tiles** (`target` = an active rival; not allowed while either pawn is stuck, nor on the same tile): two `move` events with `teleport: true`, no landing, no salary (`passedStart: false`).
+* **Expiry** (`startRound`): cards with `exp < round` leave every hand (`power_expire { player, count }`, never the identity); armed effects past their round lapse silently.
+* **Bankruptcy / resign:** the cards and armed effects are discarded. Nothing blocks `checkWin`.
+* **Events are public:** `power_draw` and `power_expire` never name a card; the owner learns it from their own (redacted) state. A played card is public by design.
+* **Simulator:** `node scripts/simulate.js --set powerCards=true` checks the invariants (hand cap, expiry, armed rounds, no state when off, shield/double/steal/swap consistency) and prints cards drawn / played per card, triggers, expiries
+  and the "winner not leading at round 6" rate. Bots play cards only as simulator bots (`isBot`); the auto-play of an idle human keeps its hand.

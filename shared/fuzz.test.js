@@ -6,6 +6,7 @@ import {
   createGame, applyAction, getOptions, netWorth, standings, liquidationValue, mulberry32,
   BOARD_SIZE, MAX_LEVEL, TILES, GROUP_TILES, isBuyable, canUpgrade, nextBotMove, chooseBotAction, botSnatchAction,
 } from './index.js';
+import { POWER, POWER_IDS } from './powerCards.js';
 
 /** The Hustle upgrade rule, restated independently of canUpgrade: the actor owns EVERY district of the tile's collection. */
 const ownsWholeCollection = (s, playerId, tileId) => GROUP_TILES[TILES[tileId].group].every((t) => s.owners[t] === playerId);
@@ -59,6 +60,10 @@ function randomAction(s, rnd) {
     add(3, { type: 'BID', amount: Math.min(o.bid.max, o.bid.min + 1000 * Math.floor(rnd() * 200)) });
   } else {
     if (o.roll) add(10, { type: 'ROLL' });
+    // Power cards (rule on): every card getOptions().power calls ok is a legal PLAY_POWER; a swap picks one of its targets
+    for (const c of (o.power && o.power.cards) || []) {
+      if (c.ok) add(6, { type: 'PLAY_POWER', card: c.uid, ...(c.id === 'swap' ? { target: pick(c.targets) } : null) });
+    }
     if (o.endTurn) add(6, { type: 'END_TURN' });
     if (o.buy) add(5, { type: 'BUY' });
     if (o.skipBuy) add(2, { type: 'SKIP_BUY' });
@@ -87,6 +92,26 @@ function randomAction(s, rnd) {
   return c.at(-1).a;
 }
 
+/** Power cards: no new state with the rule off; with it on the hand, armed rounds and the stream are legal. */
+function powerInvariants(s, p) {
+  if (s.cfg.powerCards !== true) {
+    expect('hand' in p || 'shield' in p || 'doubleRent' in p || 'prng' in s || 'powerPlayed' in s).toBe(false);
+    return;
+  }
+  expect(Number.isInteger(s.prng)).toBe(true);
+  expect(typeof s.powerPlayed).toBe('boolean');
+  expect(p.hand.length).toBeLessThanOrEqual(POWER.HAND_MAX);
+  expect(new Set(p.hand.map((c) => c.uid)).size).toBe(p.hand.length);
+  for (const c of p.hand) {
+    expect(POWER_IDS).toContain(c.id);
+    expect(c.exp).toBeLessThanOrEqual(s.round + POWER.LIFE_ROUNDS);
+  }
+  expect(p.shield >= 0 && p.shield <= s.round + POWER.ARMED_ROUNDS).toBe(true);
+  expect(p.doubleRent >= 0 && p.doubleRent <= s.round + POWER.ARMED_ROUNDS).toBe(true);
+  if (p.bankrupt) expect(p.hand.length + p.shield + p.doubleRent).toBe(0);
+  if (s.phase === 'roll' && s.extraRoll) expect(s.powerPlayed).toBe(true); // an extra roll in the roll phase is a played Steal a Roll
+}
+
 function invariants(s) {
   const ids = new Set(s.players.map((p) => p.id));
   expect(new Set(s.players.map((p) => p.piece)).size).toBe(s.players.length);
@@ -106,6 +131,7 @@ function invariants(s) {
       expect(p.stuck).toBe(false);
     }
     expect(Number.isFinite(netWorth(s, p.id))).toBe(true);
+    powerInvariants(s, p);
   }
   for (let i = 0; i < BOARD_SIZE; i++) {
     const o = s.owners[i];
@@ -166,7 +192,7 @@ describe('fuzz: random legal actions', () => {
         for (let g = 0; g < 4; g++) {
           const seed = n * 1000 + g * 17 + mode.length;
           const rnd = mulberry32(seed);
-          let s = createGame({ players: Array.from({ length: n }, (_, i) => ({ id: `p${i}`, name: `P${i}` })), settings: { mode }, seed });
+          let s = createGame({ players: Array.from({ length: n }, (_, i) => ({ id: `p${i}`, name: `P${i}` })), settings: { mode, powerCards: g % 2 === 1 }, seed });
           for (let step = 0; step < 2500 && s.phase !== 'over'; step++) {
             const a = randomAction(s, rnd);
             if (a.type === 'UPGRADE') expect(ownsWholeCollection(s, a.playerId, a.tile)).toBe(true);

@@ -20,7 +20,7 @@
 // server closes it with its own timer). Only the simulator, to exercise the rule, asks `botSnatchAction`.
 
 import { TILES, GROUP_TILES, GROUPS, BOARD_SIZE, rentFor, mortgageValue, MAX_LEVEL } from './board.js';
-import { DEFAULT_BOT, getOptions, previewRent, canUpgrade } from './engine.js';
+import { DEFAULT_BOT, getOptions, previewRent, canUpgrade, netWorth, municipalDue } from './engine.js';
 
 const thousand = (x) => Math.floor(x / 1000) * 1000;
 
@@ -221,6 +221,83 @@ function wantsRide(state, player, ride, rnd) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Power cards (rule on): cheap heuristics so the simulator is meaningful. Never required for validity: the engine's
+// getOptions().power says what is playable, a bot only ever picks from it. Only simulator bots (`isBot`) play cards; the
+// auto-play of an idle human seat keeps its hand (a card is never spent for someone who is not there).
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * How good it is to stand on `pos` before a roll, for `player`: the average over the six squares ahead of what landing there
+ * costs (a rival's rent, municipal tax, the traffic fine) or offers (a free district they can afford, a tenth of its price).
+ */
+function spotScore(state, player, pos) {
+  let v = 0;
+  for (let k = 1; k <= 6; k++) {
+    const t = (pos + k) % BOARD_SIZE;
+    const tile = TILES[t];
+    const owner = state.owners[t];
+    if (tile.type === 'property') {
+      if (owner && owner !== player.id) v -= previewRent(state, t);
+      else if (!owner && player.cash >= tile.price) v += tile.price * 0.1;
+    } else if (tile.type === 'municipal') v -= municipalDue(state, player.id);
+    else if (tile.type === 'traffic') v -= state.cfg.trafficFine;
+  }
+  return v / 6;
+}
+
+/** Rent a rival is likely to owe the player in the next few squares: the player's districts within 12 squares ahead of a rival pawn. */
+function rentLikelyToCollect(state, player) {
+  let hits = 0;
+  for (const q of state.players) {
+    if (q.bankrupt || q.id === player.id) continue;
+    for (let k = 1; k <= 12; k++) {
+      const t = (q.pos + k) % BOARD_SIZE;
+      if (state.owners[t] === player.id && !(state.mortgaged && state.mortgaged[t])) hits++;
+    }
+  }
+  return hits;
+}
+
+/** The card (and swap target) a bot plays before rolling, or null to hold. */
+function powerPlay(state, player) {
+  const opts = getOptions(state, player.id);
+  const pw = opts.power;
+  if (!pw || !pw.canPlay) return null;
+  const { reserve } = botParams(player);
+  const cards = pw.cards.filter((c) => c.ok);
+  const lastRound = (c) => c.exp <= state.round; // about to expire: nothing to lose by using it
+  const rivals = state.players.filter((q) => !q.bankrupt && q.id !== player.id);
+  const avg = rivals.length ? (rivals.reduce((n, q) => n + netWorth(state, q.id), netWorth(state, player.id))) / (rivals.length + 1) : 0;
+  const behind = netWorth(state, player.id) < avg * 0.9;
+
+  // Swap: only when it clearly moves the bot onto a better spot (and does not hand the rival a much better one)
+  const swap = cards.find((c) => c.id === 'swap');
+  if (swap && swap.targets && swap.targets.length) {
+    const mine = spotScore(state, player, player.pos);
+    let best = null;
+    for (const id of swap.targets) {
+      const q = state.players.find((x) => x.id === id);
+      const gain = (spotScore(state, player, q.pos) - mine) - 0.5 * (spotScore(state, q, player.pos) - spotScore(state, q, q.pos));
+      if (!best || gain > best.gain || (gain === best.gain && id < best.id)) best = { id, gain };
+    }
+    if (best && best.gain > Math.max(30000, reserve * 0.2)) return { type: 'PLAY_POWER', playerId: player.id, card: swap.uid, target: best.id };
+  }
+  const steal = cards.find((c) => c.id === 'steal');
+  if (steal) return { type: 'PLAY_POWER', playerId: player.id, card: steal.uid };
+  const double = cards.find((c) => c.id === 'double');
+  if (double && !((player.doubleRent || 0) >= state.round) && (rentLikelyToCollect(state, player) > 0 || (lastRound(double) && state.owners.some((o) => o === player.id)))) {
+    return { type: 'PLAY_POWER', playerId: player.id, card: double.uid };
+  }
+  const shield = cards.find((c) => c.id === 'shield');
+  if (shield && !((player.shield || 0) >= state.round)) {
+    const owns = state.owners.some((o) => o === player.id);
+    const exposed = spotScore(state, player, player.pos) < -reserve * 0.1;
+    if (exposed || behind || lastRound(shield) || (owns && player.cash < 3 * reserve)) return { type: 'PLAY_POWER', playerId: player.id, card: shield.uid };
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Entry points
 // ---------------------------------------------------------------------------------------------
 
@@ -285,6 +362,11 @@ export function chooseBotAction(state, playerId, rnd = Math.random) {
   if (state.phase === 'manage' && !state.extraRoll && opts.trade.canOffer) {
     const offer = proposeTrade(state, player, rnd);
     if (offer) return offer;
+  }
+
+  if (state.phase === 'roll' && player.isBot && opts.power && opts.power.canPlay) {
+    const play = powerPlay(state, player);
+    if (play) return play;
   }
 
   if (opts.roll) return { type: 'ROLL', playerId };

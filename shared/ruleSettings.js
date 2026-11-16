@@ -88,6 +88,11 @@ export const RULE_FIELDS = Object.freeze([
     key: 'chaiCap', group: 'rules', label: 'Chai tokens a player can hold', type: 'number',
     min: 1, max: 3, step: 1, help: 'A chai token halves a big rent or skips a traffic jam.', default: () => 1,
   },
+  {
+    key: 'powerCards', group: 'rules', label: 'Power cards', type: 'boolean',
+    help: 'Short-lived cards: Shield, Double Rent, Steal a Roll, Swap Tiles. Held in secret, played before your roll.',
+    default: () => false,
+  },
   // ---- snatch ----
   {
     key: 'snatches', group: 'snatch', label: 'Snatch buttons each player starts with', type: 'number',

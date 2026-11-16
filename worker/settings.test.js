@@ -165,7 +165,7 @@ describe('normalizeSettings', () => {
   it('keeps every legal custom rule and drops illegal ones back to the default', () => {
     const custom = {
       mode: 'quick', startCash: 3000000, passStart: 0, targetWorth: 12500000, rentPercent: 150, trafficFine: 0, turnSeconds: 15, tradeSeconds: 120, auctionSeconds: 45,
-      maxRounds: null, dice: 'fair', requireFullSet: false, eventEvery: 0, chaiCap: 3, snatches: 0, snatchMs: 3000, snatchCardCap: 1,
+      maxRounds: null, dice: 'fair', requireFullSet: false, eventEvery: 0, chaiCap: 3, snatches: 0, snatchMs: 3000, snatchCardCap: 1, powerCards: false,
     };
     expect(normalizeSettings(custom)).toEqual(custom);
     expect(normalizeSettings({ ...custom, startCash: 7, rentPercent: 33, turnSeconds: 'fast' })).toEqual({

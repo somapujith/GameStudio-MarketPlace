@@ -41,9 +41,13 @@ export const POWER = Object.freeze({
   LIFE_ROUNDS: 3,
   /** Armed effects (shield / doubleRent) last this many rounds after being played. */
   ARMED_ROUNDS: 3,
-  /** Turn-start bonus chance when the hand has room; the trailing chance applies below TRAILING_RATIO x the active average worth. */
-  TURN_START_CHANCE: 0.25,
-  TRAILING_CHANCE: 0.5,
+  /**
+   * Turn-start bonus chance when the hand has room; the trailing chance applies below TRAILING_RATIO x the active average worth.
+   * Tuned with the simulator (docs/POWER_CARDS.md section 4): card tiles always draw (about 1.3 cards per player per 10 rounds),
+   * the turn-start bonus adds about 0.7, so a bot that plays at once draws about 2 per 10 rounds (a human holding cards draws fewer).
+   */
+  TURN_START_CHANCE: 0.06,
+  TRAILING_CHANCE: 0.15,
   TRAILING_RATIO: 0.8,
   /** Draw weights (relative). */
   WEIGHTS: Object.freeze({ shield: 30, double: 30, steal: 25, swap: 15 }),
