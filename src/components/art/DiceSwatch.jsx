@@ -81,7 +81,7 @@ function material(item) {
           </>
         ) };
     case 'silver':
-      return { ...base, pip: 'engraved', shade: '#1c2333', stops: [[0, '#ffffff'], [0.3, fc], [0.62, mix(fc, ec, 0.55)], [1, ec]],
+      return { ...base, pip: 'engraved', shade: '#1c2333', stops: [[0, '#f4f7ff'], [0.28, fc], [0.58, mix(fc, ec, 0.6)], [1, mix(ec, '#27304a', 0.5)]],
         defs: (g) => (
           <linearGradient id={g}>
             <stop offset="0" stopColor="#fff" stopOpacity="0" />
