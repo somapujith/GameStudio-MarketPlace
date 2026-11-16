@@ -110,7 +110,7 @@ describe('Friends', () => {
     expect(html).toContain('HYD-7K2Q');
     expect(html).toContain('/f/HYD-7K2Q'); // the friend link (origin + paths.friendLink)
     expect(html).toContain('Copy link');
-    expect(html).toContain('Add by code');
+    expect(html).toContain('Have a friend code?');
     expect(html).toContain('Copy code');
     expect(html).toContain('ho-skel');
     expect(html).toContain('ABC234'); // inviting-to-room banner
@@ -338,8 +338,9 @@ describe('small components', () => {
       { id: 'b', name: 'Bela', avatar: 3, piece: 'auto' },
     ];
     const { choices } = pieceChoices(pieces, players, 'me');
-    const html = renderToString(h(PiecePicker, { choices, color: '#3ddc97', onPick() {} }));
+    const html = renderToString(h(PiecePicker, { choices, color: '#3ddc97', onPick() {}, variant: 'classic' }));
     expect(html).toContain('Choose your piece');
+    expect(renderToString(h(PiecePicker, { choices, color: '#3ddc97', onPick() {} }))).toContain('>Your piece<'); // the compact look is the default
     expect(html).toContain('role="radiogroup"');
     expect((html.match(/aria-checked="true"/g) || []).length).toBe(1);
     expect(html).toContain('Auto-rickshaw, taken by Bela');

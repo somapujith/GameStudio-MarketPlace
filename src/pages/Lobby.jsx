@@ -3,18 +3,15 @@ import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-route
 import { createRoom, errorMessage } from '@/lib/api.js';
 import { useAuth } from '@/lib/auth.jsx';
 import { paths } from '@/platform/paths.js';
+import { BRAND } from '@/platform/brand.js';
 import { useRoomConnection } from '@/components/online/useRoomConnection.js';
 import {
   fatalView,
-  joinedLabel,
-  joinedPercent,
   pieceChoices,
-  pieceOf,
   rosterChanges,
   seatColor,
   startReason,
   startState,
-  waitingText,
 } from '@/components/online/lobbyModel.js';
 import { resolveSettings } from '@/components/online/settings.js';
 import { sameId } from '@/components/online/gameHelpers.js';
@@ -27,20 +24,22 @@ import { useApplyMap } from '@/components/online/useApplyMap.js';
 import { useRoster } from '@/components/online/roster.js';
 import ConfirmDialog from '@/components/online/ConfirmDialog.jsx';
 import ConnectionChip from '@/components/online/ConnectionChip.jsx';
-import InviteFriends from '@/components/online/InviteFriends.jsx';
-import Seat, { EmptySeat } from '@/components/online/Seat.jsx';
+import InvitePanel from '@/components/online/InvitePanel.jsx';
+import SeatsCard from '@/components/online/SeatsCard.jsx';
 import SettingsPanel from '@/components/online/SettingsPanel.jsx';
-import ShareCard from '@/components/online/ShareCard.jsx';
+import StartBar from '@/components/online/StartBar.jsx';
 import StatusPanel from '@/components/online/StatusPanel.jsx';
 import TableHeader from '@/components/online/TableHeader.jsx';
 import { useToasts } from '@/components/online/Toasts.jsx';
 import HubIcon from '@/platform/game/HubIcon.jsx';
+import { HubBackdrop, HubLogo } from '@/platform/game/hubArt.jsx';
+import { themeVars as gameVars } from '@/platform/game/color.js';
 import LobbyTour from '@/components/tour/LobbyTour.jsx';
 import PiecePicker from '@/platform/game/PiecePicker.jsx';
-import AutoMascot from '@/components/art/AutoMascot.jsx';
 import '@/styles/online.css';
 import '@/styles/x-lobby.css';
 import '@/styles/store-rooms.css';
+import '@/styles/lobby-shell.css';
 
 const PIECE_SETTLE = 4000; // ms: no answer to a piece pick -> show what the server says again
 
@@ -89,21 +88,53 @@ export default function Lobby() {
   return <LobbyInner code={code} user={user} />;
 }
 
-/** Back to the game page (left) and leave the table (right). The lobby sits outside the hub chrome, so it brings its own bar. */
-function TopBar({ game, gName, backTo, onLeave, isHost, alone, tour = null }) {
+/** The same soft glow as behind Home (the lobby is full screen, so it brings its own copy of the hub backdrop). */
+function Backdrop() {
   return (
-    <nav className="sr-topbar" aria-label="Lobby">
-      <Link to={backTo} className="sr-topbar__back">
-        <HubIcon name="chevL" size={20} />
-        <span>{game ? gName : 'Games'}</span>
-      </Link>
-      {tour}
-      {onLeave && (
-        <button type="button" className="ho-btn ho-btn--ghost ho-btn--sm sr-topbar__leave" onClick={onLeave} data-tour="lobby-leave">
-          <HubIcon name="door" size={18} /> <span>{isHost && alone ? 'Close table' : 'Leave table'}</span>
-        </button>
-      )}
-    </nav>
+    <div className="hub-backdrop ls-backdrop" aria-hidden="true">
+      <HubBackdrop />
+      <div className="hub-backdrop__shade" />
+    </div>
+  );
+}
+
+/**
+ * The hub's top bar in the lobby's own words: logo (home), "Home / <Game> / Table ABCD", the tour "?" and Leave.
+ * The lobby stays full screen (no tab bar) so nobody leaves by accident; the logo and crumbs only walk away, Leave asks.
+ */
+function TopBar({ game, gName, code, backTo, onLeave, isHost, alone, tour = null }) {
+  return (
+    <header className="ls-bar">
+      <div className="ls-bar__in">
+        <Link to={paths.hub()} className="ls-bar__logo" aria-label={`${BRAND.name}, home`}>
+          <HubLogo size={30} />
+        </Link>
+        <nav className="ls-crumbs" aria-label="Breadcrumb">
+          <ol>
+            <li className="ls-crumbs__home">
+              <Link to={paths.hub()}>Home</Link>
+            </li>
+            <li className="ls-crumbs__game">
+              <Link to={backTo}>
+                <HubIcon name="chevL" size={16} className="ls-crumbs__chev" />
+                <span>{game ? gName : 'Games'}</span>
+              </Link>
+            </li>
+            <li className="ls-crumbs__here" aria-current="page">
+              Table {code}
+            </li>
+          </ol>
+        </nav>
+        <div className="ls-bar__end">
+          {tour}
+          {onLeave && (
+            <button type="button" className="ho-btn ho-btn--ghost ho-btn--sm ls-bar__leave" onClick={onLeave} data-tour="lobby-leave">
+              <HubIcon name="door" size={18} /> <span>{isHost && alone ? 'Close table' : 'Leave table'}</span>
+            </button>
+          )}
+        </div>
+      </div>
+    </header>
   );
 }
 
@@ -225,25 +256,35 @@ function LobbyInner({ code, user }) {
 
   if (!room) {
     return (
-      <div className="hub-page st-scope ho-lobby sr-lobby">
-        <TopBar game={null} gName="Lobby" backTo={paths.hub()} />
-        <TableHeader game={null} gName="Lobby" code={code} chip={chip} onNotify={push} />
-        <div className="sr-lobby__cols">
-          <section className="sr-card sr-seatscard" aria-busy="true">
-            <header className="sr-card__head">
-              <div>
-                <span className="st-eyebrow">Players</span>
-                <h2 className="sr-card__title" role="status" aria-live="polite">
-                  Joining the room...
-                </h2>
-              </div>
-            </header>
-            <SeatsSkeleton />
-          </section>
-        </div>
-        <button type="button" className="ho-btn ho-btn--ghost sr-cancel" onClick={() => navigate(paths.hub())}>
-          Cancel
-        </button>
+      <div className="hub-page st-scope ho-lobby sr-lobby ls-page">
+        <Backdrop />
+        <TopBar game={null} gName="Lobby" code={code} backTo={paths.hub()} />
+        <main className="ls-main" aria-busy="true">
+          <div className="ls-rise" style={{ '--i': 0 }}>
+            <TableHeader game={null} gName="Lobby" code={code} chip={chip} onNotify={push} />
+          </div>
+          <div className="ls-grid">
+            <div className="ls-table ls-rise" style={{ '--i': 1 }}>
+              <section className="sr-card sr-seatscard">
+                <header className="sr-card__head">
+                  <div>
+                    <span className="st-eyebrow">Players</span>
+                    <h2 className="sr-card__title" role="status" aria-live="polite">
+                      Joining the room...
+                    </h2>
+                  </div>
+                </header>
+                <SeatsSkeleton />
+              </section>
+            </div>
+            <div className="ls-side ls-rise" style={{ '--i': 2 }} aria-hidden="true">
+              <div className="ls-side__skel st-skel" />
+            </div>
+          </div>
+          <button type="button" className="ho-btn ho-btn--ghost ls-cancel" onClick={() => navigate(paths.hub())}>
+            Cancel
+          </button>
+        </main>
         {node}
       </div>
     );
@@ -309,118 +350,95 @@ function LobbyInner({ code, user }) {
   };
 
   const alone = joined <= 1;
-  const vars = { ...themeVars(game) };
+  const vars = { ...gameVars(game && game.theme), ...themeVars(game) };
 
   return (
-    <div className="hub-page st-scope ho-lobby sr-lobby" style={vars}>
-      <TopBar game={game} gName={gName} backTo={game ? paths.game(gameId) : paths.hub()} onLeave={askLeave} isHost={isHost} alone={alone} tour={<LobbyTour isHost={isHost} ready={open && !!game} />} />
+    <div className="hub-page st-scope ho-lobby sr-lobby ls-page" style={vars}>
+      <Backdrop />
+      <TopBar
+        game={game}
+        gName={gName}
+        code={code}
+        backTo={game ? paths.game(gameId) : paths.hub()}
+        onLeave={askLeave}
+        isHost={isHost}
+        alone={alone}
+        tour={<LobbyTour isHost={isHost} ready={open && !!game} />}
+      />
 
-      <TableHeader game={game} gName={gName} code={code} hostName={host && host.name} chip={chip} onNotify={push} map={hasMaps ? room.settings || {} : null} />
-
-      {!game && (
-        <div className="sr-note sr-note--warn" role="status">
-          <span>This game is not available in this version of the app. Reload to update, or leave the room.</span>
-          <button type="button" className="ho-btn ho-btn--ghost ho-btn--sm" onClick={() => window.location.reload()}>
-            Reload
-          </button>
+      <main className="ls-main">
+        <div className="ls-rise" style={{ '--i': 0 }}>
+          <TableHeader game={game} gName={gName} code={code} hostName={host && host.name} chip={chip} onNotify={push} map={hasMaps ? room.settings || {} : null} />
         </div>
-      )}
 
-      {choices.length > 0 && (
-        <div className="sr-o-pieces" data-tour="lobby-pieces">
-          <PiecePicker choices={choices} color={myColor} onPick={choosePiece} disabled={!open} pending={!!pending} me={{ name: user.name, avatar: (players[myIndex] || user).avatar }} />
-        </div>
-      )}
+        {!game && (
+          <div className="sr-note sr-note--warn" role="status">
+            <span>This game is not available in this version of the app. Reload to update, or leave the room.</span>
+            <button type="button" className="ho-btn ho-btn--ghost ho-btn--sm" onClick={() => window.location.reload()}>
+              Reload
+            </button>
+          </div>
+        )}
 
-      <div className="sr-lobby__cols">
-        <div className="sr-lobby__main">
-          {/* The host's Start button lives at the TOP of the lobby (it used to be under the long rules editor). */}
-          <section className={`sr-card sr-start sr-o-start${isHost && canStart ? ' is-ready' : ''}${full ? ' is-full' : ''}${starting ? ' is-starting' : ''}`} aria-label="Start" data-tour="lobby-start">
-            {gameId === 'hyderabad-tycoon' && (
-              <div className="sr-start__mascot" aria-hidden="true">
-                <AutoMascot key={canStart ? 'ready' : 'waiting'} mood={canStart ? 'roll' : 'waiting'} />
-              </div>
-            )}
-            {isHost ? (
-              <>
-                <button
-                  type="button"
-                  className={`ho-btn ho-btn--primary ho-btn--lg ho-btn--block sr-start__btn${full && canStart ? ' ho-btn--full' : ''}`}
-                  onClick={start}
-                  disabled={!canStart}
-                  aria-describedby="sr-start-note"
-                >
-                  {starting ? <span className="ho-spinner" aria-hidden="true" /> : <HubIcon name="play" size={18} />} {starting ? 'Starting...' : 'Start game'}
-                </button>
-                <p id="sr-start-note" className={`sr-start__note${reason ? ' is-reason' : ''}`} aria-live="polite">
-                  {reason || startHelp}
-                </p>
-              </>
-            ) : (
-              <p className="sr-start__wait" role="status" aria-live="polite">
-                <span className="ho-spinner" aria-hidden="true" /> {open ? waitingText({ need, hostName: host && host.name }) : 'Reconnecting to the room...'}
-              </p>
-            )}
-          </section>
+        {/* Three zones in reading order (also the phone order): the table (who is here + Start), fill the table (invite), your setup (piece + rules). */}
+        <div className="ls-grid">
+          <div className="ls-table">
+            <div className="ls-rise" style={{ '--i': 1 }}>
+              <SeatsCard
+                seats={seats}
+                players={players}
+                room={room}
+                user={user}
+                game={game}
+                pieces={pieces}
+                choices={choices}
+                myPiece={myPiece}
+                joined={joined}
+                maxPlayers={maxPlayers}
+                emptySeats={emptySeats}
+                full={full}
+                isHost={isHost}
+                open={open}
+                onKick={(player) => setConfirm({ kind: 'kick', player })}
+                onInvite={inviteSomeone}
+              />
+            </div>
+            <StartBar
+              isHost={isHost}
+              canStart={canStart}
+              starting={starting}
+              full={full}
+              open={open}
+              reason={reason}
+              help={startHelp}
+              need={need}
+              hostName={host && host.name}
+              onStart={start}
+            />
+          </div>
 
-          <section className="sr-card sr-seatscard sr-o-seats" aria-label="Players" data-tour="lobby-seats">
-            <header className="sr-card__head">
-              <div>
-                <span className="st-eyebrow">Players</span>
-                <h2 className="sr-card__title">Around the table</h2>
-              </div>
-              <span className={`sr-count${full ? ' is-full' : ''}`} aria-live="polite">
-                {joinedLabel(joined, maxPlayers)}
-              </span>
+          <div className="ls-side ls-rise" style={{ '--i': 2 }}>
+            <InvitePanel code={code} gameName={gName} isGuest={!!user.isGuest} onNotify={push} />
+          </div>
+
+          <section className="ls-setup ls-rise" style={{ '--i': 3 }} aria-labelledby="ls-setup-h">
+            <header className="ls-zonehead">
+              <span className="st-eyebrow">Before you start</span>
+              <h2 id="ls-setup-h" className="ls-zonehead__title">
+                Your setup
+              </h2>
             </header>
-            <div className="sr-meter" role="progressbar" aria-label="Seats taken" aria-valuemin={0} aria-valuemax={maxPlayers} aria-valuenow={Math.min(joined, maxPlayers)}>
-              <span style={{ transform: `scaleX(${joinedPercent(joined, maxPlayers) / 100})` }} />
+            {choices.length > 0 && (
+              <div className="sr-o-pieces" data-tour="lobby-pieces">
+                <PiecePicker choices={choices} color={myColor} onPick={choosePiece} disabled={!open} pending={!!pending} me={{ name: user.name, avatar: (players[myIndex] || user).avatar }} />
+              </div>
+            )}
+            <div className="sr-o-settings" data-tour="lobby-settings">
+              <SettingsPanel game={game} settings={room.settings} isHost={isHost} disabled={!open || starting} errorId={errorId} error={error} onSend={(msg) => send(msg, { queue: false })} />
             </div>
-            <ul className="sr-seats" data-seats={joined + emptySeats}>
-              {seats.map(({ key, player: p, leaving }) => {
-                const me = sameId(p.id, user.id);
-                const i = players.findIndex((q) => sameId(q.id, p.id));
-                return (
-                  <Seat
-                    key={key}
-                    player={p}
-                    piece={pieceOf(me ? { ...p, piece: myPiece } : p, pieces)}
-                    piecesOn={choices.length > 0}
-                    color={seatColor(game, i < 0 ? 0 : i)}
-                    isMe={me}
-                    isHost={sameId(p.id, room.hostId)}
-                    canRemove={isHost && !me && open && !leaving}
-                    leaving={leaving}
-                    onRemove={() => setConfirm({ kind: 'kick', player: p })}
-                  />
-                );
-              })}
-              {Array.from({ length: emptySeats }, (_, i) => (
-                <EmptySeat key={`empty-${i}`} onInvite={inviteSomeone} />
-              ))}
-            </ul>
           </section>
-
-          <div className="sr-o-settings" data-tour="lobby-settings">
-            <SettingsPanel game={game} settings={room.settings} isHost={isHost} disabled={!open || starting} errorId={errorId} error={error} onSend={(msg) => send(msg, { queue: false })} />
-          </div>
         </div>
-
-        <div className="sr-lobby__side">
-          <div className="sr-o-invite" data-tour="lobby-invite">
-            <ShareCard code={code} gameName={gName} onNotify={push} id="sr-invite" />
-          </div>
-          {user.isGuest ? (
-            <p className="sr-guest sr-o-guest" data-tour="lobby-friends">
-              Share the code, link or QR above. <Link to={paths.login(paths.lobby(code))}>Sign in with Google</Link> to invite friends in one tap.
-            </p>
-          ) : (
-            <div className="sr-o-friends" data-tour="lobby-friends">
-              <InviteFriends code={code} gameName={gName} onNotify={push} />
-            </div>
-          )}
-        </div>
-      </div>
+      </main>
 
       <ConfirmDialog
         open={confirm?.kind === 'leave'}

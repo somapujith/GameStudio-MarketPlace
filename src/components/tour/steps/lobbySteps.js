@@ -40,12 +40,20 @@ export const lobbyHostSteps = [
     body: 'Friends type this code to join your table. Tap it to copy.',
   },
   {
+    id: 'seats',
+    target: t('lobby-seats'),
+    placement: 'right',
+    title: 'Around the table',
+    body: 'Everyone who joins shows up here. Tap an empty seat to invite someone, or remove a player you do not want.',
+    phone: { placement: 'top' },
+  },
+  {
     id: 'invite',
     target: t('lobby-invite'),
     placement: 'left',
     title: 'Fill the table',
     body: 'Copy the code or link, send it on WhatsApp, share it, or show the QR code to someone next to you.',
-    phone: { target: `${t('lobby-invite')} .sr-share__actions`, placement: 'top' },
+    phone: { placement: 'top' },
   },
   {
     id: 'friends',
@@ -62,14 +70,6 @@ export const lobbyHostSteps = [
     title: 'Choose your icon',
     body: 'Tap an icon to pick your piece for the board. Greyed-out ones are taken.',
     phone: { target: `${t('lobby-pieces')} .xl-pieces__head`, placement: 'top' },
-  },
-  {
-    id: 'seats',
-    target: t('lobby-seats'),
-    placement: 'right',
-    title: 'Around the table',
-    body: 'Everyone who joins shows up here. Tap an empty seat to invite someone, or remove a player you do not want.',
-    phone: { target: `${t('lobby-seats')} .sr-card__head`, placement: 'top' },
   },
   {
     id: 'map',
@@ -140,7 +140,7 @@ export const lobbyHostSteps = [
     target: t('lobby-start'),
     placement: 'top',
     title: 'Start the game',
-    body: 'Lights up when enough players are here. The line under it says what is still missing.',
+    body: 'Lights up when enough players are here. The note beside it says what is still missing.',
   },
   {
     id: 'leave',
@@ -186,7 +186,7 @@ export const lobbyGuestSteps = [
     placement: 'right',
     title: 'Around the table',
     body: 'Everyone at the table, with their icons. Your seat is highlighted and the host wears the crown.',
-    phone: { target: `${t('lobby-seats')} .sr-card__head`, placement: 'top' },
+    phone: { placement: 'top' },
   },
   {
     id: 'settings',
@@ -210,7 +210,7 @@ export const lobbyGuestSteps = [
     placement: 'left',
     title: 'Bring more friends',
     body: 'You can share the code, link or QR code too.',
-    phone: { target: `${t('lobby-invite')} .sr-share__actions`, placement: 'top' },
+    phone: { placement: 'top' },
   },
   {
     id: 'start',

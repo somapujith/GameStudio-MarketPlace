@@ -43,7 +43,7 @@ const PLAYERS = [
 ];
 const card = (opts = {}, players = PLAYERS, pending = null) => {
   const { choices } = pieceChoices(PIECES, players, 'me', pending);
-  return renderToString(h(PiecePicker, { choices, color: '#3ddc97', onPick() {}, ...opts }));
+  return renderToString(h(PiecePicker, { choices, color: '#3ddc97', onPick() {}, variant: 'classic', ...opts }));
 };
 
 describe('Choose your piece: the card says what to do', () => {
@@ -158,6 +158,58 @@ describe('Seat: the chosen piece is named, next to the character', () => {
   });
 });
 
+describe('Your piece (compact, the default): one scrolling row', () => {
+  const compact = (opts = {}, players = PLAYERS, pending = null) => {
+    const { choices } = pieceChoices(PIECES, players, 'me', pending);
+    return renderToString(h(PiecePicker, { choices, color: '#3ddc97', onPick() {}, ...opts }));
+  };
+
+  it('is the default look: an eyebrow label, one radiogroup labelled by it, one radio per piece in game order', () => {
+    const html = compact();
+    expect(html).toContain('>Your piece<');
+    expect(html).toContain('st-eyebrow');
+    expect(html).toContain('lr-pieces__row');
+    expect(html).not.toContain('xl-pieces--top');
+    expect((html.match(/role="radio"/g) || []).length).toBe(6);
+    expect(html.indexOf('Pearl')).toBeLessThan(html.indexOf('Film camera'));
+    const group = /role="radiogroup" aria-labelledby="([^"]+)"/.exec(html)[1];
+    expect(html).toContain(`id="${group}"`);
+    expect(html).toContain('xl-pieces__head'); // the guest tour points at it
+  });
+
+  it('mine is the one checked radio and the only tab stop; the status says so', () => {
+    const html = compact();
+    expect((html.match(/aria-checked="true"/g) || []).length).toBe(1);
+    expect(html).toMatch(/aria-checked="true"[^>]*aria-label="Pearl"/);
+    expect((html.match(/tabindex="0"/g) || []).length).toBe(1);
+    expect(html).toContain('lr-piece__check');
+    expect(html).toContain('You are the Pearl');
+  });
+
+  it('taken pieces are disabled, dimmed and name who has them', () => {
+    const html = compact();
+    expect(html).toContain('aria-label="Auto-rickshaw, taken by Bela"');
+    expect((html.match(/is-taken/g) || []).length).toBe(2);
+    expect((html.match(/disabled=""/g) || []).length).toBe(2);
+    expect(html).toContain('lr-piece__ownername">Bela<');
+    expect(html).toContain('data-avatar="3"');
+  });
+
+  it('while the socket is down every piece is disabled; a pending pick is mine at once and the card is busy', () => {
+    expect((compact({ disabled: true }).match(/disabled=""/g) || []).length).toBe(6);
+    const html = compact({ pending: true }, PLAYERS, 'chai');
+    expect(html).toContain('aria-busy="true"');
+    expect(html).toMatch(/aria-checked="true"[^>]*aria-label="Irani chai glass"/);
+  });
+
+  it('nothing picked yet: the first free piece is the tab stop; nothing to choose from renders nothing', () => {
+    const html = compact({}, [{ id: 'me', name: 'Gita', avatar: 2 }, { id: 'b', name: 'Bela', avatar: 3, piece: 'pearl' }]);
+    expect(html).toContain('Pick a piece to play with');
+    expect(html).toMatch(/tabindex="0"[^>]*>(?:(?!<button)[\s\S])*?Auto-rickshaw/);
+    expect(renderToString(h(PiecePicker, { choices: [], onPick() {} }))).toBe('');
+  });
+});
+
 // ---- the lobby page: the piece card is the first thing under the table header ---------------------------------------
 
 const base = {
@@ -207,18 +259,27 @@ function lobbyHtml(over = {}) {
   );
 }
 
-describe('Lobby page: the icon choice comes first', () => {
-  it('"Choose your piece" sits above the players list, the share card and the rules', () => {
+describe('Lobby page: three zones, the icon choice sits in "Your setup"', () => {
+  it('reads table -> invite -> setup (the phone order), with the piece and the rules inside the setup zone', () => {
     const html = lobbyHtml();
     const at = (s) => html.indexOf(s);
-    expect(at('Choose your piece')).toBeGreaterThan(-1);
-    expect(at('Choose your piece')).toBeLessThan(at('Around the table')); // the players list
-    expect(at('Choose your piece')).toBeLessThan(at('sr-o-invite')); // the share card
-    expect(at('Choose your piece')).toBeLessThan(at('sr-o-settings')); // the rules
-    expect(at('Choose your piece')).toBeLessThan(at('aria-label="Start"'));
-    // it is not inside either column: it is the full-width block above them
-    expect(at('sr-o-pieces')).toBeLessThan(at('sr-lobby__cols'));
-    expect(html.slice(at('sr-o-pieces'), at('sr-lobby__cols'))).toContain('xl-pieces--top');
+    expect(at('ls-table')).toBeGreaterThan(-1);
+    expect(at('ls-table')).toBeLessThan(at('ls-side'));
+    expect(at('ls-side')).toBeLessThan(at('ls-setup'));
+    expect(at('Around the table')).toBeLessThan(at('aria-label="Start"')); // seats, then Start
+    expect(at('aria-label="Start"')).toBeLessThan(at('id="sr-invite"')); // the invite panel is the second zone
+    expect(at('id="sr-invite"')).toBeLessThan(at('Your setup'));
+    expect(at('Your setup')).toBeLessThan(at('Your piece')); // the piece card belongs to the setup zone
+    expect(at('Your piece')).toBeLessThan(at('sr-o-settings')); // then the rules
+  });
+
+  it('has one h1, a main landmark and the hooks the tours point at', () => {
+    const html = lobbyHtml();
+    expect((html.match(/<h1[ >]/g) || []).length).toBe(1);
+    expect(html).toContain('<main');
+    for (const hook of ['lobby-header', 'lobby-code', 'lobby-connection', 'lobby-pieces', 'lobby-start', 'lobby-seats', 'lobby-settings', 'lobby-invite', 'lobby-leave']) {
+      expect(html, hook).toContain(`data-tour="${hook}"`);
+    }
   });
 
   it('shows my character, the taken pieces and each seat\'s piece', () => {
@@ -231,7 +292,7 @@ describe('Lobby page: the icon choice comes first', () => {
 
   it('there is no piece card for a game without pieces', () => {
     const html = lobbyHtml({ gameId: 'no-such-game' });
-    expect(html).not.toContain('Choose your piece');
+    expect(html).not.toContain('Your piece');
   });
 });
 
