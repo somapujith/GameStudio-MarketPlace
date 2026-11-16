@@ -34,6 +34,66 @@ friends.get('/', async (c) => {
   });
 });
 
+/** Escape LIKE/ILIKE wildcards so a typed `%` or `_` matches itself (used with ESCAPE '\'). */
+export const escapeLike = (s) => s.replace(/[\\%_]/g, '\\$&');
+
+const SEARCH_MIN = 2;
+const SEARCH_MAX = 40;
+const SEARCH_LIMIT = 8;
+const RECENT_LIMIT = 12;
+
+/** A search / recent row -> the public card `{ id, name, avatar, level, equipped, relation }` (no code, no email). */
+function rowToCard(r, meId) {
+  const { id, name, avatar, level, equipped } = rowToFriend(r);
+  const relation = friendRelation(r.rel_status ? { user_id: r.rel_user_id, status: r.rel_status } : undefined, meId);
+  return { id, name, avatar, level, equipped, relation };
+}
+
+// GET /api/friends/search?q= -> { results: [{ id, name, avatar, level, equipped, relation }] }
+// Members only, never me, max 8; names starting with q come first, then names containing it.
+friends.get('/search', limit('friend-search', 40, 60), async (c) => {
+  const me = c.get('user');
+  const q = (c.req.query('q') || '').trim();
+  if (q.length < SEARCH_MIN) throw new HttpError(400, `Type at least ${SEARCH_MIN} characters to search.`);
+  if (q.length > SEARCH_MAX) throw new HttpError(400, 'That search is too long.');
+  const esc = escapeLike(q);
+  const rows = await query(
+    c.env,
+    `SELECT u.id, u.name, u.avatar, u.xp, u.equipped, f.user_id AS rel_user_id, f.status AS rel_status
+       FROM users u
+       LEFT JOIN friendships f
+         ON (f.user_id = $1 AND f.friend_id = u.id) OR (f.user_id = u.id AND f.friend_id = $1)
+      WHERE u.is_guest = false AND u.id <> $1 AND u.name ILIKE $2 ESCAPE '\\'
+      ORDER BY (u.name ILIKE $3 ESCAPE '\\') DESC, lower(u.name), u.id
+      LIMIT ${SEARCH_LIMIT}`,
+    [me.id, `%${esc}%`, `${esc}%`],
+  );
+  return c.json({ results: rows.map((r) => rowToCard(r, me.id)) });
+});
+
+// GET /api/friends/recent -> { players: [{ id, name, avatar, level, equipped, relation:'none' }] }
+// People I shared a finished match with (most recent first), minus me, guests, friends and pending requests.
+friends.get('/recent', limit('friend-recent', 30, 60), async (c) => {
+  const me = c.get('user');
+  const rows = await query(
+    c.env,
+    `SELECT u.id, u.name, u.avatar, u.xp, u.equipped, max(m.ended_at) AS last_played
+       FROM match_players mine
+       JOIN match_players theirs ON theirs.match_id = mine.match_id AND theirs.user_id <> mine.user_id
+       JOIN matches m ON m.id = mine.match_id
+       JOIN users u ON u.id = theirs.user_id
+      WHERE mine.user_id = $1 AND u.is_guest = false
+        AND NOT EXISTS (
+          SELECT 1 FROM friendships f
+           WHERE (f.user_id = $1 AND f.friend_id = u.id) OR (f.user_id = u.id AND f.friend_id = $1))
+      GROUP BY u.id
+      ORDER BY last_played DESC, u.id
+      LIMIT ${RECENT_LIMIT}`,
+    [me.id],
+  );
+  return c.json({ players: rows.map((r) => rowToCard(r, me.id)) });
+});
+
 /** How `me` relates to the other user, from their friendship row (or undefined). */
 export function friendRelation(row, meId) {
   if (!row) return 'none';
@@ -60,15 +120,23 @@ friends.get('/by-code/:friendCode', limit('friend-lookup', 30, 60), async (c) =>
   return c.json({ user: { id, name, avatar, level, friendCode, relation: friendRelation(rows[0], me.id) } });
 });
 
-// POST /api/friends/request { friendCode } - idempotent; a mutual request auto-accepts.
+// POST /api/friends/request { friendCode } or { userId } - idempotent; a mutual request auto-accepts.
 friends.post('/request', limit('friend-request', 20, 60), async (c) => {
   const me = c.get('user');
   const body = await readJson(c);
-  const code = normalizeFriendCode(body.friendCode);
-  if (!code) throw new HttpError(400, 'That friend code does not look right (e.g. HYD-7K2Q).');
-  const target = await getUserByFriendCode(c.env, code);
-  if (!target || target.is_guest) throw new HttpError(404, 'No player found with that friend code.');
-  if (target.id === me.id) throw new HttpError(400, 'That is your own friend code.');
+  let target;
+  if (body.userId !== undefined && body.userId !== null) {
+    if (!isUuid(body.userId)) throw new HttpError(400, 'Invalid user id.');
+    target = await getUserById(c.env, body.userId);
+    if (!target || target.is_guest) throw new HttpError(404, 'No player found.');
+    if (target.id === me.id) throw new HttpError(400, 'You cannot add yourself.');
+  } else {
+    const code = normalizeFriendCode(body.friendCode);
+    if (!code) throw new HttpError(400, 'That friend code does not look right (e.g. HYD-7K2Q).');
+    target = await getUserByFriendCode(c.env, code);
+    if (!target || target.is_guest) throw new HttpError(404, 'No player found with that friend code.');
+    if (target.id === me.id) throw new HttpError(400, 'That is your own friend code.');
+  }
 
   // 1) They already asked me -> accept (mutual request).
   const accepted = await query(
@@ -139,15 +207,17 @@ friends.post('/decline', async (c) => {
 });
 
 // DELETE /api/friends/:userId - unfriend, or cancel my outgoing request (idempotent).
+// When a row really went away the other player's hub gets { t:'friend_removed', by } (best effort).
 friends.delete('/:userId', async (c) => {
   const me = c.get('user');
   const userId = c.req.param('userId');
   if (!isUuid(userId)) throw new HttpError(400, 'Invalid user id.');
-  await query(
+  const removed = await query(
     c.env,
-    `DELETE FROM friendships WHERE (user_id = $1 AND friend_id = $2) OR (user_id = $2 AND friend_id = $1)`,
+    `DELETE FROM friendships WHERE (user_id = $1 AND friend_id = $2) OR (user_id = $2 AND friend_id = $1) RETURNING 1 AS ok`,
     [me.id, userId],
   );
+  if (removed.length) background(c, pushToUser(c.env, userId, { t: 'friend_removed', by: identity(me) }));
   return c.json({ ok: true });
 });
 

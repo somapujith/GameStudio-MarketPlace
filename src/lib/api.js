@@ -121,6 +121,15 @@ export function createRoom({ gameId, settings, maxPlayers, visibility } = {}, op
 /** GET /api/friends/by-code/:friendCode -> { user: { id, name, avatar, level, friendCode, relation } } (signed-in, non-guest). */
 export const getFriendByCode = (friendCode, opts) => api.get(`/api/friends/by-code/${enc(friendCode)}`, opts);
 
+/** GET /api/friends/search?q= (2+ chars) -> { results: [{ id, name, avatar, level, equipped, relation }] }; relation: 'none'|'friends'|'outgoing'|'incoming'. Pass `{ signal }` to cancel. */
+export const searchPlayers = (q, opts) => api.get(`/api/friends/search?q=${enc(q)}`, opts);
+
+/** GET /api/friends/recent -> { players: [{ id, name, avatar, level, equipped, relation: 'none' }] } (people I played with, not yet friends). */
+export const getRecentPlayers = (opts) => api.get('/api/friends/recent', opts);
+
+/** POST /api/friends/request { userId } -> { ok, status: 'pending'|'accepted', friend } (same answer as adding by friend code). */
+export const requestFriendById = (userId, opts) => api.post('/api/friends/request', { userId }, opts);
+
 /** POST /api/invites: push an invite to room `code` to a friend (the server adds the game's id and name). */
 export const sendInvite = (code, userId, opts) => api.post('/api/invites', { code, userId }, opts);
 
