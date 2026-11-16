@@ -395,6 +395,13 @@ function setsFor(s, playerId) {
 export const MAX_COUNTERS = 5;
 
 /**
+ * Most districts ONE side of a trade may carry (give <= 2 and get <= 2, in an offer, a counter-offer and at accept time).
+ * A fixed rule, always on: nobody can be wiped out by a single trade that hands over everything they own. Cash is not limited.
+ */
+export const MAX_TRADE_TILES = 2;
+export const TRADE_TILES_ERROR = `A trade can include at most ${MAX_TRADE_TILES} districts from each player.`;
+
+/**
  * null when `playerId` may PROPOSE a trade right now, else the exact reason (the Trade button shows it). One rule for
  * the engine (TRADE_OFFER), getOptions().trade.canOffer and the client: your own turn, in a quiet moment (before the roll,
  * after landing and while deciding about the district, after buying, on an extra roll), nothing else waiting for an answer.
@@ -429,7 +436,7 @@ function baseOptions(state, playerId) {
   const none = {
     roll: false, payTraffic: false, useChai: false, buy: false, skipBuy: false, ride: null, endTurn: false,
     upgrade: [], bid: null, mortgage: [], unmortgage: [], sellBuilding: [], debt: null, payDebt: false,
-    trade: { canOffer: false }, tradeOffer: null, tradeSent: null, sets: [], resign: false, snatch: null,
+    trade: { canOffer: false, maxTiles: MAX_TRADE_TILES }, tradeOffer: null, tradeSent: null, sets: [], resign: false, snatch: null,
   };
   const p = byId(state, playerId);
   if (!p || p.bankrupt || state.phase === 'over') return none;
@@ -490,7 +497,7 @@ function baseOptions(state, playerId) {
   } else if (state.phase === 'buy') {
     out.skipBuy = true;
     out.buy = !!state.pending && p.cash >= state.pending.price;
-    out.trade = { canOffer: !tradeBlock(state, playerId) }; // you may trade while you make up your mind about the district
+    out.trade = { canOffer: !tradeBlock(state, playerId), maxTiles: MAX_TRADE_TILES }; // you may trade while you make up your mind about the district
   } else if (state.phase === 'manage') {
     if (state.extraRoll) out.roll = true;
     else out.endTurn = true;
@@ -505,7 +512,7 @@ function baseOptions(state, playerId) {
       if (u.ok) out.unmortgage.push({ tile: t, cost: u.cost });
     }
     raiseCash();
-    out.trade = { canOffer: !tradeBlock(state, playerId) };
+    out.trade = { canOffer: !tradeBlock(state, playerId), maxTiles: MAX_TRADE_TILES };
   }
   return out;
 }
@@ -1490,6 +1497,7 @@ function normSide(side) {
 function tradeProblem(s, from, to, give, get) {
   if (!from || !to || from.bankrupt || to.bankrupt || from.id === to.id) return 'Pick another active player to trade with';
   if (!give || !get) return 'Invalid offer';
+  if (give.tiles.length > MAX_TRADE_TILES || get.tiles.length > MAX_TRADE_TILES) return TRADE_TILES_ERROR;
   if (give.cash + get.cash + give.tiles.length + get.tiles.length === 0) return 'The offer is empty';
   if (give.cash > from.cash) return 'You do not have that much cash';
   if (get.cash > to.cash) return `${to.name} does not have that much cash`;

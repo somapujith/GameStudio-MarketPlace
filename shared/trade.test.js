@@ -1,7 +1,7 @@
 // Trading rules: when a trade may be offered (tradeBlock / getOptions.trade), counter-offers (TRADE_COUNTER) and the edge cases of
 // a deal (mortgaged and upgraded districts, cash only, an empty side). docs/GAME_RULES.md 8.8.
 import { describe, it, expect } from 'vitest';
-import { createGame, applyAction, getOptions, tradeBlock, MAX_COUNTERS } from './index.js';
+import { createGame, applyAction, getOptions, tradeBlock, MAX_COUNTERS, MAX_TRADE_TILES, TILES, GROUP_TILES, chooseBotAction } from './index.js';
 
 function game(n = 3) {
   const ids = ['a', 'b', 'c'].slice(0, n);
@@ -192,5 +192,121 @@ describe('counter-offers', () => {
     const r = act(c, { type: 'TRADE_ACCEPT', playerId: 'a' });
     expect(r.events[0]).toMatchObject({ type: 'trade_rejected', reason: 'invalid' });
     expect(r.state.owners[1]).toBe('a');
+  });
+});
+
+describe('the district limit: at most MAX_TRADE_TILES (2) districts from each player in one trade', () => {
+  const LIMIT_ERROR = 'A trade can include at most 2 districts from each player.';
+  // five districts for a, five for b (property tiles only, so the limit is the only thing that can refuse the deal)
+  function rich() {
+    const s = game();
+    const props = TILES.filter((t) => t.type === 'property').map((t) => t.id);
+    props.slice(0, 5).forEach((t) => { s.owners[t] = 'a'; });
+    props.slice(5, 10).forEach((t) => { s.owners[t] = 'b'; });
+    return { s, mine: props.slice(0, 5), theirs: props.slice(5, 10) };
+  }
+  const snap = (s) => JSON.stringify(s);
+
+  it('the limit is a named constant and getOptions tells the client', () => {
+    expect(MAX_TRADE_TILES).toBe(2);
+    const { s } = rich();
+    expect(getOptions(s, 'a').trade.maxTiles).toBe(2);
+    expect(getOptions(s, 'b').trade.maxTiles).toBe(2); // also when it is not their turn
+    expect(getOptions({ ...s, phase: 'over' }, 'a').trade.maxTiles).toBe(2);
+  });
+
+  it('refuses an offer with 3 districts on the give side, or on the get side', () => {
+    const { s, mine, theirs } = rich();
+    const before = snap(s);
+    expect(offer(s, 'a', 'b', side(0, mine.slice(0, 3)), side(0, [theirs[0]])).error).toBe(LIMIT_ERROR);
+    expect(offer(s, 'a', 'b', side(0, [mine[0]]), side(0, theirs.slice(0, 3))).error).toBe(LIMIT_ERROR);
+    expect(offer(s, 'a', 'b', side(50000, mine.slice(0, 3)), side()).error).toBe(LIMIT_ERROR); // with cash, a gift
+    expect(snap(s)).toBe(before); // no state changed
+  });
+
+  it('a player owning 5 districts cannot give all 5 in one trade', () => {
+    const { s, mine } = rich();
+    expect(offer(s, 'a', 'b', side(0, mine), side(100000)).error).toBe(LIMIT_ERROR);
+  });
+
+  it('exactly 2 on each side is accepted, executes and moves exactly those 4 districts', () => {
+    const { s, mine, theirs } = rich();
+    const r = act(s, { type: 'TRADE_OFFER', playerId: 'a', to: 'b', give: side(10000, mine.slice(0, 2)), get: side(0, theirs.slice(0, 2)) });
+    expect(r.state.trade.give.tiles).toEqual(mine.slice(0, 2));
+    const d = act(r.state, { type: 'TRADE_ACCEPT', playerId: 'b' });
+    mine.slice(0, 2).forEach((t) => expect(d.state.owners[t]).toBe('b'));
+    theirs.slice(0, 2).forEach((t) => expect(d.state.owners[t]).toBe('a'));
+    mine.slice(2).forEach((t) => expect(d.state.owners[t]).toBe('a'));
+    theirs.slice(2).forEach((t) => expect(d.state.owners[t]).toBe('b'));
+    expect(d.events.filter((e) => e.type === 'own' && e.reason === 'trade')).toHaveLength(4);
+  });
+
+  it('1 district and cash only still work as before (cash is not limited)', () => {
+    const { s, mine } = rich();
+    expect(offer(s, 'a', 'b', side(0, [mine[0]]), side()).error).toBeUndefined();
+    expect(offer(s, 'a', 'b', side(P(s, 'a').cash), side(P(s, 'b').cash)).error).toBeUndefined();
+  });
+
+  it('a counter with 3 districts on either side is refused with the same error and changes nothing', () => {
+    const { s, mine, theirs } = rich();
+    const t = act(s, { type: 'TRADE_OFFER', playerId: 'a', to: 'b', give: side(0, [mine[0]]), get: side(0, [theirs[0]]) }).state;
+    const before = snap(t);
+    const counter3 = (give, get) => applyAction(t, { type: 'TRADE_COUNTER', playerId: 'b', give, get });
+    expect(counter3(side(0, theirs.slice(0, 3)), side(0, [mine[0]])).error).toBe(LIMIT_ERROR);
+    expect(counter3(side(0, [theirs[0]]), side(0, mine.slice(0, 3))).error).toBe(LIMIT_ERROR);
+    expect(snap(t)).toBe(before);
+    expect(t.trade.counters || 0).toBe(0); // the failed counters were not counted against MAX_COUNTERS
+    // a counter at the limit works and counts
+    const ok = act(t, { type: 'TRADE_COUNTER', playerId: 'b', give: side(0, theirs.slice(0, 2)), get: side(0, mine.slice(0, 2)) });
+    expect(ok.state.trade.counters).toBe(1);
+  });
+
+  it('a malicious client that forces a 3 district trade into the state still cannot execute it (re-checked on accept)', () => {
+    const { s, mine, theirs } = rich();
+    const t = act(s, { type: 'TRADE_OFFER', playerId: 'a', to: 'b', give: side(0, [mine[0]]), get: side(0, [theirs[0]]) }).state;
+    t.trade.give = side(0, mine.slice(0, 3)); // tampered pending offer
+    const r = act(t, { type: 'TRADE_ACCEPT', playerId: 'b' });
+    expect(r.events[0]).toMatchObject({ type: 'trade_rejected', reason: 'invalid' });
+    mine.forEach((m) => expect(r.state.owners[m]).toBe('a'));
+    expect(r.events.some((e) => e.type === 'trade_done')).toBe(false);
+  });
+
+  it('a long chain of counters can never move more than 2 districts per side', () => {
+    const { s, mine, theirs } = rich();
+    let t = act(s, { type: 'TRADE_OFFER', playerId: 'a', to: 'b', give: side(0, mine.slice(0, 2)), get: side(0, theirs.slice(0, 2)) }).state;
+    t = act(t, { type: 'TRADE_COUNTER', playerId: 'b', give: side(0, theirs.slice(0, 2)), get: side(0, mine.slice(0, 2)) }).state;
+    const done = act(t, { type: 'TRADE_ACCEPT', playerId: 'a' });
+    const moved = done.state.owners.filter((o, i) => o !== s.owners[i]).length;
+    expect(moved).toBeLessThanOrEqual(4);
+  });
+});
+
+describe('bots respect the district limit', () => {
+  it('a bot proposing a trade asks for one district for cash: never more than MAX_TRADE_TILES per side', () => {
+    const s = createGame({ players: [{ id: 'a', name: 'A', isBot: true }, { id: 'b', name: 'B' }], settings: { debug: true, snatches: 0 }, seed: 3 });
+    const group = Object.keys(GROUP_TILES).find((g) => GROUP_TILES[g].length >= 3);
+    const [t1, t2, ...rest] = GROUP_TILES[group];
+    s.owners[t1] = 'a'; s.owners[t2] = 'a';
+    rest.forEach((t) => { s.owners[t] = 'b'; });
+    s.phase = 'manage';
+    s.turnCount = 40;
+    const move = chooseBotAction(s, 'a', () => 0);
+    expect(move.type).toBe('TRADE_OFFER');
+    expect(move.give.tiles.length).toBeLessThanOrEqual(MAX_TRADE_TILES);
+    expect(move.get.tiles.length).toBeLessThanOrEqual(MAX_TRADE_TILES);
+    expect(applyAction(s, move).error).toBeUndefined(); // and the engine takes it
+  });
+
+  it('a bot never accepts a trade that breaks the rule (the engine drops it before it can move anything)', () => {
+    const { state, mine } = (() => {
+      const s = game(2);
+      const props = TILES.filter((t) => t.type === 'property').map((t) => t.id).slice(0, 4);
+      props.forEach((t) => { s.owners[t] = 'a'; });
+      return { state: s, mine: props };
+    })();
+    state.trade = { id: 1, from: 'a', to: 'b', give: side(0, mine), get: side(), };
+    const r = applyAction(state, { type: 'TRADE_ACCEPT', playerId: 'b' });
+    expect(r.events.some((e) => e.type === 'trade_done')).toBe(false);
+    mine.forEach((m) => expect(r.state.owners[m]).toBe('a'));
   });
 });

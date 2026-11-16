@@ -20,7 +20,7 @@
 // server closes it with its own timer). Only the simulator, to exercise the rule, asks `botSnatchAction`.
 
 import { TILES, GROUP_TILES, GROUPS, BOARD_SIZE, rentFor, mortgageValue, MAX_LEVEL } from './board.js';
-import { DEFAULT_BOT, getOptions, previewRent, canUpgrade, netWorth, municipalDue } from './engine.js';
+import { DEFAULT_BOT, MAX_TRADE_TILES, getOptions, previewRent, canUpgrade, netWorth, municipalDue } from './engine.js';
 
 const thousand = (x) => Math.floor(x / 1000) * 1000;
 
@@ -202,7 +202,8 @@ function proposeTrade(state, player, rnd) {
   if (!best || rnd() >= 0.5) return null;
   return {
     type: 'TRADE_OFFER', playerId: player.id, to: best.to,
-    give: { cash: best.offer, tiles: [] }, get: { cash: 0, tiles: [best.tile] },
+    // one district for cash; never more than MAX_TRADE_TILES per side (engine rule, shared with the trade sheet)
+    give: { cash: best.offer, tiles: [].slice(0, MAX_TRADE_TILES) }, get: { cash: 0, tiles: [best.tile].slice(0, MAX_TRADE_TILES) },
   };
 }
 
