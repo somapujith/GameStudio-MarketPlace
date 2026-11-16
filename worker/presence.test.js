@@ -512,7 +512,7 @@ describe('POST /api/invites/:id/dismiss feedback', () => {
   it('tells the sender once that the invite was declined', async () => {
     queryMock.mockImplementation(async (_e, text) => (text === invitesMod.DISMISS_INVITE_SQL ? [{ id: INVITE, from_id: U(2), room_code: 'ABCD23', was_dismissed: false }] : [{ id: U(1), name: 'P1', avatar: 1, is_guest: false }]));
     expect((await call(`/api/invites/${INVITE}/dismiss`, { method: 'POST', as: U(1) })).json).toEqual({ ok: true });
-    expect(pushMock).toHaveBeenCalledWith(expect.anything(), U(2), { t: 'invite_declined', by: { id: U(1), name: 'P1', avatar: expect.anything() }, code: 'ABCD23' });
+    expect(pushMock).toHaveBeenCalledWith(expect.anything(), U(2), { t: 'invite_declined', by: { id: U(1), name: 'P1', avatar: expect.anything(), handle: null }, code: 'ABCD23' });
   });
   it('does not tell the sender when the invite is consumed by tapping Join', async () => {
     queryMock.mockImplementation(async (_e, text) => (text === invitesMod.DISMISS_INVITE_SQL ? [{ id: INVITE, from_id: U(2), room_code: 'ABCD23', was_dismissed: false }] : [{ id: U(1), name: 'P1', avatar: 1, is_guest: false }]));
