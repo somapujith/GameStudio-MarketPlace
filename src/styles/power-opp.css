@@ -46,7 +46,16 @@
 .pwo-chip.is-double { --c: #ffd98a; }
 .pwo-chip svg { width: 13px; height: 13px; flex: none; }
 .pwo-chip__t { display: inline-flex; align-items: baseline; gap: 4px; }
-.pwo-chip__t b { font-weight: 800; }
+.pwo-chip__t b { flex: none; font-weight: 800; }
+.pwo-chip__t small { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pwo-chips--sm, .pwo-chips--md { max-width: 100%; }
+.pwo-chips--sm .pwo-chip { flex: 0 1 auto; min-width: 0; }
+.pwo-chip__t { min-width: 0; }
+/* two armed effects at once: both chips share a row as icon + rounds left (the words stay in the tooltip / label) (a pod must not grow taller and push the board's corners off screen) */
+.pwo-chip__n--alt { display: none; }
+.pwo-chips--sm:has(.pwo-chip + .pwo-chip) { flex-wrap: nowrap; }
+.pwo-chips--sm:has(.pwo-chip + .pwo-chip) .pwo-chip__t { display: none; }
+.pwo-chips--sm:has(.pwo-chip + .pwo-chip) .pwo-chip__n--alt { display: inline; }
 .pwo-chip__t small { font-size: 9.5px; font-weight: 700; opacity: 0.85; }
 .pwo-chip--xs { height: 15px; padding: 0 4px 0 2px; gap: 1px; box-shadow: 0 0 0 2px #10171e, inset 0 0 0 1px color-mix(in srgb, var(--c) 55%, transparent); background: color-mix(in srgb, var(--c) 22%, #10171e); }
 .pwo-chip--xs svg { width: 11px; height: 11px; }

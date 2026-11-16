@@ -32,7 +32,11 @@ function Chip({ chip, size, gone = false }) {
     >
       <ChipIcon id={chip.id} />
       {size === 'xs' ? <b className="pwo-chip__n" aria-hidden="true">{chip.rounds}</b> : (
-        <span className="pwo-chip__t" aria-hidden="true"><b>{chip.label}</b><small>{chip.rounds > 1 ? `${chip.rounds} rounds` : 'last round'}</small></span>
+        <>
+          <span className="pwo-chip__t" aria-hidden="true"><b>{chip.label}</b><small>{chip.rounds > 1 ? `${chip.rounds} rounds` : 'last round'}</small></span>
+          {/* two chips at once: CSS swaps the words for this number (the icon says which, the label has the words) */}
+          <b className="pwo-chip__n pwo-chip__n--alt" aria-hidden="true">{chip.rounds}</b>
+        </>
       )}
     </span>
   );
