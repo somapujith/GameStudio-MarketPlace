@@ -62,7 +62,7 @@ describe('phone tile labels', () => {
   it("Andhra districts print on at most two lines of nine characters, honouring the skin's own `lines`", () => {
     applyMap('andhra');
     expect(labelLines(TILES[7])).toEqual(['Machili-', 'patnam']);
-    expect(faceName(TILES[13]).lines).toEqual(['RAJAH-', 'MUNDRY']);
+    expect(faceName(TILES[13]).lines).toEqual(['Rajah-', 'mundry']);
     for (const t of TILES) {
       const lines = labelLines(t);
       expect(lines.length, t.name).toBeGreaterThanOrEqual(1);

@@ -371,10 +371,10 @@ describe('PhoneTileFace / Tile in the phone table', () => {
     return html(h(PhoneTileFace, { tile, group: null, ...props }));
   };
 
-  it('a district: price band + name in capitals; owned: the rent tag in the owner colour and pips', () => {
+  it('a district: price band + name in its original case; owned: the rent tag in the owner colour and pips', () => {
     const free = html(h(PhoneTileFace, { tile: TILES[29], group: { color: '#4f7cff' } }));
     expect(free).toContain('pt__price">₹3.2L<');
-    expect(free).toContain('<span>MADHA-</span>');
+    expect(free).toContain('<span>Madha-</span>');
     expect(free).not.toContain('pt__tag');
     const owned = html(h(PhoneTileFace, { tile: TILES[29], group: { color: '#4f7cff' }, owned: true, ownerColor: '#ff4d6d', level: 1, rent: 32000 }));
     expect(owned).toContain('pt__tag">₹32k<');
