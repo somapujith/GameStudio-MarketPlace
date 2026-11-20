@@ -1,6 +1,6 @@
-# GameHub marketplace — build contract
+# Jalebi Games marketplace — build contract
 
-GameHub is a small **games marketplace** (reference: https://platoapp.com — a hub with a featured game, image-led cards grouped by category, a leaderboard, a People tab with friend links, public rooms, no-signup guest play, coins and profiles). **Hyderabad Tycoon is the first game, as a plugin.** More games will be added later, so nothing outside `src/games/<id>/`, `worker/games/<id>.js` and `shared/` (that game's rules) may know about Tycoon.
+Jalebi Games is a small **games marketplace** (reference: https://platoapp.com — a hub with a featured game, image-led cards grouped by category, a leaderboard, a People tab with friend links, public rooms, no-signup guest play, coins and profiles). **Hyderabad Tycoon is the first game, as a plugin.** More games will be added later, so nothing outside `src/games/<id>/`, `worker/games/<id>.js` and `shared/` (that game's rules) may know about Tycoon.
 
 Stack is unchanged: React 19 + Vite 8 (plain JS/JSX, no TypeScript), Cloudflare Worker (Hono) + Durable Objects, Neon Postgres, Google login + guests.
 
@@ -17,7 +17,7 @@ Stack is unchanged: React 19 + Vite 8 (plain JS/JSX, no TypeScript), Cloudflare 
 8. Verify your work: syntax-check with `node_modules/.bin/esbuild <files> --loader:.js=jsx --log-level=warning --outdir=<scratchpad>`; run `npx vitest run <your tests>`; once everything exists `npx vite build` must pass. Final report <=200 words: what you built, public exports, deviations, known gaps.
 
 ## 1. Product flow
-**Navigation** (Plato-style): bottom tab bar on phones, left rail >=900 px: **Games** `/` · **Friends** `/friends` · **Rank** `/leaderboard` · **Profile** `/profile`. A thin top bar shows the GameHub logo, a "Have a code?" action, coins and the profile chip. Game screens (`/play/**`) have no hub chrome.
+**Navigation** (Plato-style): bottom tab bar on phones, left rail >=900 px: **Games** `/` · **Friends** `/friends` · **Rank** `/leaderboard` · **Profile** `/profile`. A thin top bar shows the Jalebi Games logo, a "Have a code?" action, coins and the profile chip. Game screens (`/play/**`) have no hub chrome.
 
 **Games home `/`** (top to bottom): featured **hero** (the featured game's cover, name, tagline, a big "Play now" button; rotates if several games are live) -> **Friends online** strip (+ invite) -> **category chips** and one horizontal snap-scroll row per category that has games (Board, Card, Arcade, Social, Word, Sports; `coming_soon` games appear dimmed with a "Soon" badge and a local "Notify me" toggle) -> **Top players** teaser -> **daily reward**. Image-led cards: 16:9 cover, title, one-line tagline, player count, "Play" pill; accent colour from the game's `theme`.
 

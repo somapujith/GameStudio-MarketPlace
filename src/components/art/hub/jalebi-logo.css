@@ -1,0 +1,93 @@
+.jalebi-logo {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: .18em;
+  line-height: 1;
+}
+.jalebi-logo__art {
+  display: block;
+  position: relative;
+  width: 1.385475em;
+  height: 1em;
+  flex: none;
+}
+.jalebi-logo__art > img,
+.jalebi-face {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.jalebi-logo__art > img { object-fit: contain; }
+.jalebi-face { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.jalebi-logo__descriptor {
+  display: flex;
+  flex-direction: column;
+  gap: .2em;
+  font-family: var(--font-display, system-ui, sans-serif);
+  font-size: .4em;
+  font-weight: 850;
+  letter-spacing: -.025em;
+  color: #ff871b;
+}
+.jalebi-logo__descriptor > span:last-child {
+  color: #ffdfb3;
+  font-size: .45em;
+  font-weight: 750;
+  letter-spacing: .26em;
+  text-transform: uppercase;
+}
+.jalebi-logo--compact .jalebi-logo__descriptor { display: none; }
+.jalebi-face__eye,
+.jalebi-face__pupil { transform-box: fill-box; transform-origin: center; }
+.jalebi-face__happy { opacity: 0; }
+.jalebi-logo--animated .jalebi-face__eye--left { animation: jalebi-blink 24s linear infinite; }
+.jalebi-logo--animated .jalebi-face__eye--right { animation: jalebi-wink 24s linear infinite; }
+.jalebi-logo--animated .jalebi-face__pupil { animation: jalebi-curious 24s cubic-bezier(.77, 0, .175, 1) infinite; }
+.jalebi-logo--animated .jalebi-face__open { animation: jalebi-open 24s linear infinite; }
+.jalebi-logo--animated .jalebi-face__happy { animation: jalebi-happy 24s linear infinite; }
+
+/* Short expressions with quiet holds: blink, glance, grin, surprise, wink. */
+@keyframes jalebi-blink {
+  0%, 12%, 13.2%, 39%, 40.2%, 41%, 42.2%, 100% { transform: scaleY(1); }
+  12.6%, 39.6%, 41.6% { transform: scaleY(.1); }
+}
+@keyframes jalebi-wink {
+  0%, 12%, 13.2%, 39%, 40.2%, 41%, 42.2%, 85%, 89%, 100% { transform: scaleY(1); }
+  12.6%, 39.6%, 41.6%, 86%, 88% { transform: scaleY(.1); }
+}
+@keyframes jalebi-curious {
+  0%, 20%, 34%, 63%, 77%, 100% { transform: translate(0, 0) scale(1); }
+  24%, 30% { transform: translate(-10px, 3px); }
+  67%, 73% { transform: translate(-2px, 5px) scale(.72); }
+}
+@keyframes jalebi-open {
+  0%, 48%, 55%, 100% { opacity: 1; }
+  49%, 54% { opacity: 0; }
+}
+@keyframes jalebi-happy {
+  0%, 48%, 55%, 100% { opacity: 0; }
+  49%, 54% { opacity: 1; }
+}
+
+/* Link focus gives the same cheerful response as a fine-pointer hover. */
+a:focus-visible .jalebi-logo--animated .jalebi-face__open { animation: none; opacity: 0; }
+a:focus-visible .jalebi-logo--animated .jalebi-face__happy { animation: none; opacity: 1; }
+@media (hover: hover) and (pointer: fine) {
+  .jalebi-logo--animated:hover .jalebi-face__open { animation: none; opacity: 0; }
+  .jalebi-logo--animated:hover .jalebi-face__happy { animation: none; opacity: 1; }
+}
+
+/* A calm, open-eyed mascot for both the app setting and the OS preference. */
+html[data-motion='reduced'] .jalebi-logo .jalebi-face * { animation: none; }
+html[data-motion='reduced'] .jalebi-face__eye,
+html[data-motion='reduced'] .jalebi-face__pupil { transform: none; }
+html[data-motion='reduced'] .jalebi-logo .jalebi-face__open { opacity: 1; }
+html[data-motion='reduced'] .jalebi-logo .jalebi-face__happy { opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .jalebi-logo .jalebi-face * { animation: none; }
+  .jalebi-face__eye,
+  .jalebi-face__pupil { transform: none; }
+  .jalebi-logo.jalebi-logo--animated .jalebi-face .jalebi-face__open { opacity: 1; }
+  .jalebi-logo.jalebi-logo--animated .jalebi-face .jalebi-face__happy { opacity: 0; }
+}

@@ -2,8 +2,8 @@
 // Owned by the orchestrator: do not edit.
 
 export const BRAND = {
-  name: 'GameHub',
-  short: 'GameHub',
+  name: 'Jalebi Games',
+  short: 'Jalebi Games',
   tagline: 'Play together. Anywhere.',
   description: 'A little marketplace of multiplayer games. Pick a game, grab your friends, and play in seconds.',
   // The first game in the catalogue; used for the default hero and for old links.

@@ -99,7 +99,7 @@ CREATE INDEX IF NOT EXISTS match_players_user_idx
   WHERE user_id IS NOT NULL;
 
 -- ---------------------------------------------------------------------------------------------
--- GameHub marketplace (docs/MARKETPLACE.md section 6). Everything below is additive + idempotent.
+-- Jalebi Games marketplace (docs/MARKETPLACE.md section 6). Everything below is additive + idempotent.
 -- ---------------------------------------------------------------------------------------------
 
 -- Which game a match belongs to. Rows written by the old (Tycoon-only) version get the default.

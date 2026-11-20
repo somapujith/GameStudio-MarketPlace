@@ -1,4 +1,4 @@
-// Hyderabad Tycoon: the first GameHub plugin. Keep this file TINY: no engine, no pages, no React
+// Hyderabad Tycoon: the first Jalebi Games plugin. Keep this file TINY: no engine, no pages, no React
 // components except the two art components. Everything heavy is behind `loaders` (code-split).
 // Contract: docs/MARKETPLACE.md section 3. How to add the next game: docs/ADDING_A_GAME.md.
 import { TycoonCover, TycoonIcon } from '@/components/art/hub/index.js';

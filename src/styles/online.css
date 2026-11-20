@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GameHub online pages (login, friends, friend link, join, lobby, online-game screens).
+   Jalebi Games online pages (login, friends, friend link, join, lobby, online-game screens).
    Everything is prefixed .ho- and only needs the CSS variables from tokens.css.
    Mobile first (360px), two columns from 900px.
    ========================================================================== */
@@ -1433,7 +1433,7 @@
 }
 
 /* ==========================================================================
-   GameHub marketplace additions: game header, public/private, room preview, game picker, sheet,
+   Jalebi Games marketplace additions: game header, public/private, room preview, game picker, sheet,
    friend link, schema-driven settings. Games tint these through --ho-accent / --ho-accent-2 / --ho-game-bg.
    ========================================================================== */
 

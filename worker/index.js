@@ -1,4 +1,4 @@
-// GameHub - Cloudflare Worker entry.
+// Jalebi Games - Cloudflare Worker entry.
 // Same-origin API (no CORS), cookie sessions, WebSocket upgrades forwarded to Durable
 // Objects, everything else served from the static bundle (ASSETS).
 import { Hono } from 'hono';

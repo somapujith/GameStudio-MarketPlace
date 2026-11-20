@@ -1,4 +1,4 @@
-# Adding a game to GameHub
+# Adding a game to Jalebi Games
 
 A game is three small pieces that share one **id** (url-safe, lowercase, never changes, e.g. `ludo-lanes`):
 

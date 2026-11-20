@@ -1,5 +1,5 @@
 /* ==========================================================================
-   GameHub — shared hub styles (owner: platform-core). Loaded once from src/App.jsx.
+   Jalebi Games — shared hub styles (owner: platform-core). Loaded once from src/App.jsx.
    Everything is prefixed `.hub-`; per-game colour comes from CSS variables set on a wrapper:
      --g-accent --g-accent-2 --g-bg --g-on --g-soft --g-line --g-glow   (see themeVars() in src/platform/game/color.js)
    Hub tokens: --hub-bg --hub-bg-2 --hub-surface --hub-surface-2 --hub-surface-3 --hub-line --hub-line-2
@@ -747,10 +747,15 @@
     padding: 0 12px;
   }
 }
-/* very narrow phones: logo mark only (the wordmark is the logo's aria-hidden second span) */
-@media (max-width: 359px) {
-  .hub-topbar__logo > span > span {
+/* Compact phones keep the supplied logo; only the English descriptor hides. */
+@media (max-width: 599px) {
+  .hub-topbar__logo .jalebi-logo__descriptor {
     display: none;
+  }
+}
+@media (max-width: 359px) {
+  :root {
+    --jalebi-nav-size: 76px;
   }
   .hub-topbar__end {
     gap: 6px;

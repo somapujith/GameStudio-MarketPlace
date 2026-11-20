@@ -76,7 +76,7 @@ export default function Login() {
       <header className="ho-hero ho-hero--hub">
         <div className="ho-hero__glow" aria-hidden="true" />
         <div className="ho-hero__inner">
-          <HubLogo size={52} />
+          <HubLogo size={96} />
           <p className="ho-hero__tag">{BRAND.tagline} Pick a game, grab your friends, and play in seconds.</p>
         </div>
       </header>

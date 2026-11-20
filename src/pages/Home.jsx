@@ -18,7 +18,7 @@ export default function Home() {
 
   return (
     <div className="hub-page hh2 hh2-home">
-      <h1 className="hub-sr">{BRAND.name} games</h1>
+      <h1 className="hub-sr">{BRAND.name}</h1>
       <Hero />
       <FriendsStrip />
 

@@ -17,7 +17,7 @@ html {
   -webkit-tap-highlight-color: transparent;
   background: var(--bg-0);
   scroll-behavior: smooth;
-  scroll-padding-top: 80px;
+  scroll-padding-top: calc(var(--topbar-h) + var(--safe-top, 0px) + 12px);
 }
 
 body {
@@ -150,7 +150,8 @@ code {
 
 /* ---------- aliases local to the shell ---------- */
 :root {
-  --topbar-h: 60px;
+  --topbar-h: 104px;
+  --jalebi-nav-size: 88px;
   --tabbar-h: 64px;
   --maxw: 1100px;
   --glass: linear-gradient(155deg, rgba(58, 47, 140, 0.72), rgba(29, 22, 80, 0.8));
@@ -1046,7 +1047,8 @@ code {
 }
 @media (min-width: 900px) {
   :root {
-    --topbar-h: 68px;
+    --topbar-h: 128px;
+    --jalebi-nav-size: 112px;
     --tabbar-h: 0px;
   }
   .hh-tabbar {

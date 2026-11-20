@@ -100,7 +100,7 @@ describe('sharing', () => {
   it('builds the invite message (names the game) and the wa.me link', () => {
     const t = inviteText('ABC234', 'Hyderabad Tycoon', 'https://h.dev');
     expect(t).toContain('Hyderabad Tycoon');
-    expect(t).toContain('GameHub');
+    expect(t).toContain('Jalebi Games');
     expect(t).toContain('ABC234');
     expect(t).toContain('https://h.dev/join/ABC234');
     const m = inviteMessage('ABC234', 'Ludo Lanes', 'https://h.dev');
@@ -111,7 +111,7 @@ describe('sharing', () => {
     expect(decodeURIComponent(u.slice('https://wa.me/?text='.length))).toBe(t);
   });
   it('falls back to the brand name when the game is unknown', () => {
-    expect(inviteText('ABC234', undefined, 'https://h.dev')).toContain('Come play GameHub with me');
+    expect(inviteText('ABC234', undefined, 'https://h.dev')).toContain('Come play Jalebi Games with me');
   });
 });
 

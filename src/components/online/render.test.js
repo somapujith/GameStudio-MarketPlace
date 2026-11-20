@@ -59,9 +59,9 @@ const routed = (route, path, el, auth = {}) =>
   );
 
 describe('Login', () => {
-  it('signed out + Google configured: guest form, avatar picker, honest guest limits, GameHub copy', () => {
+  it('signed out + Google configured: guest form, avatar picker, honest guest limits, Jalebi Games copy', () => {
     const html = page('/login', h(Login), { configured: true, googleClientId: 'x.apps.googleusercontent.com' });
-    expect(html).toContain('Sign in to GameHub');
+    expect(html).toContain('Sign in to Jalebi Games');
     expect(html).toContain('Play as guest');
     expect(html).toContain('Your name');
     expect((html.match(/name="avatar"/g) || []).length).toBe(12);

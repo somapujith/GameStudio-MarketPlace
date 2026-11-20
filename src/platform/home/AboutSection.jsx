@@ -24,7 +24,7 @@ export default function AboutSection() {
           ))}
         </div>
       ))}
-      <p className="hub-muted">Built with React and Vite. Fonts: Noto Sans (SIL Open Font License). All art is inline SVG.</p>
+      <p className="hub-muted">Built with React and Vite. Fonts: Noto Sans (SIL Open Font License). Featuring the Jalebi Games mascot and logo.</p>
     </section>
   );
 }

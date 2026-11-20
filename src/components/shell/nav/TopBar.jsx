@@ -11,7 +11,7 @@ import CoinsChip from './CoinsChip.jsx';
 /** Window event any screen can dispatch to open the "Have a code?" sheet: `window.dispatchEvent(new Event('hub:open-code'))`. */
 export const OPEN_CODE_EVENT = 'hub:open-code';
 
-/** Thin top bar: logo, "Have a code?", coins, profile chip. Sticky, fixed height (no layout shift). */
+/** Branded top bar with a prominent mascot and a stable responsive height. */
 export default function TopBar() {
   const [codeOpen, setCodeOpen] = useState(false);
 
@@ -25,7 +25,7 @@ export default function TopBar() {
     <header className="hub-topbar">
       <div className="hub-topbar__inner">
         <Link to={paths.hub()} className="hub-topbar__logo" aria-label={`${BRAND.name}, home`}>
-          <HubLogo size={30} />
+          <HubLogo size={112} animated compact style={{ fontSize: 'var(--jalebi-nav-size, 112px)' }} />
         </Link>
         <div className="hub-topbar__end">
           <button type="button" className="hub-codebtn" onClick={() => setCodeOpen(true)} aria-haspopup="dialog" aria-label="Have a code? Join a table with a room code">

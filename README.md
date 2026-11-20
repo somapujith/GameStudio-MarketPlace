@@ -1,6 +1,6 @@
-# GameHub: Hyderabad Tycoon
+# Jalebi Games: Hyderabad Tycoon
 
-GameHub is a small online games marketplace; **Hyderabad Tycoon** is its first (and so far only live) game: a Monopoly-style
+Jalebi Games is a small online games marketplace; **Hyderabad Tycoon** is its first (and so far only live) game: a Monopoly-style
 property game on a 40-square Hyderabad board, for 2-6 friends, played in a private room. React 19 + Vite on the front, one Cloudflare Worker
 (Hono) with Durable Objects for real-time rooms, Neon Postgres for accounts / friends / match history, Google Sign-In or guest play.
 
@@ -126,7 +126,7 @@ Changes to authorized origins can take a few minutes to apply.
 | `DATABASE_URL` | `.dev.vars` / `wrangler secret` | yes | Neon connection string |
 | `JWT_SECRET` | `.dev.vars` / `wrangler secret` | yes | HS256 key for the `hyd_session` cookie (≥ 16 chars; use 48+ random bytes) |
 | `GOOGLE_CLIENT_ID` | `.dev.vars` / `wrangler secret` | no (public id) | audience check for Google ID tokens; also sent to the browser by `/api/config` |
-| `APP_NAME` | `wrangler.toml [vars]` | no | display name returned by `/api/config` (`GameHub`) |
+| `APP_NAME` | `wrangler.toml [vars]` | no | display name returned by `/api/config` (`Jalebi Games`) |
 
 ## Deploying to Cloudflare (first time)
 

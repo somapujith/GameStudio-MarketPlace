@@ -67,7 +67,7 @@ export function parseFriendLink(raw) {
   if (/^https?:\/\//i.test(s) || s.includes('/') || s.includes('?')) {
     let url = null;
     try {
-      url = new URL(s, 'https://gamehub.invalid');
+      url = new URL(s, 'https://jalebi.invalid');
     } catch {
       url = null;
     }

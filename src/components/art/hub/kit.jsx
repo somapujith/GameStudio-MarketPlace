@@ -1,4 +1,4 @@
-// Shared drawing helpers for the GameHub brand art (covers, icons, badges, backdrop).
+// Shared drawing helpers for the Jalebi Games brand art (covers, icons, badges, backdrop).
 // Same family as the Tycoon art kit (flat shapes + isometric props, hue-shifted shadows), just bolder.
 // Pure inline SVG: no assets, no dependencies. Private to src/components/art/hub/.
 import { useId } from 'react';
