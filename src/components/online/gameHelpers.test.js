@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createGame, standings, getOptions } from '../../../shared/index.js';
-import { blankOptions, buildResult, isFatalRoomError, toConnection } from './gameHelpers.js';
+import { blankOptions, buildResult, isFatalRoomError, roomKey, toConnection } from './gameHelpers.js';
 
 const mk = () =>
   createGame({
@@ -81,7 +81,7 @@ describe('buildResult', () => {
     s.phase = 'over';
     s.winner = 'u-2';
     s.winReason = 'net_worth';
-    s.players[1].cash = 90000;
+    s.players[1].cash = s.players[0].cash + 900000; // richer than the loser whatever the start cash is
     s.players[1].stats.rentEarned = 1234;
     s.players[0].stats.propertiesBought = 4;
     const winner = buildResult(s, 'u-2', standings);
@@ -102,5 +102,20 @@ describe('buildResult', () => {
     s.phase = 'over';
     s.winner = 'u-1';
     expect(buildResult(s, 'someone-else', standings).me).toMatchObject({ won: false, rank: 2, worth: 0 });
+  });
+});
+
+describe('roomKey', () => {
+  it('is the same for a repeated room frame and differs when anything about the room changes', () => {
+    const a = { code: 'ABC', status: 'playing', players: [{ id: 'u-1', connected: true, net: { q: 3, rtt: 80 } }] };
+    const same = JSON.parse(JSON.stringify(a));
+    expect(roomKey(a)).toBe(roomKey(same));
+    expect(roomKey({ ...a, players: [{ id: 'u-1', connected: true, net: { q: 4, rtt: 80 } }] })).not.toBe(roomKey(a));
+    expect(roomKey({ ...a, status: 'finished' })).not.toBe(roomKey(a));
+  });
+  it('never claims "unchanged" for something it cannot serialise', () => {
+    const loop = {};
+    loop.self = loop;
+    expect(roomKey(loop)).toBeNull();
   });
 });

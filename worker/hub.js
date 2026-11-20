@@ -34,6 +34,36 @@ export async function isUserOnline(env, userId) {
   }
 }
 
+/**
+ * Tell a user's hub which room they are in: `{status:'lobby'|'playing', code, gameId}`, or `null` to clear it.
+ * Resolves to true when the hub took the update (it ignores room states while the user is offline), false otherwise.
+ */
+export async function setUserRoomStatus(env, userId, state) {
+  try {
+    const res = await userHubStub(env, userId).fetch(`${INTERNAL}/status`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(state || { status: 'online' }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data.accepted === true;
+  } catch {
+    return false;
+  }
+}
+
+/** `{ online, status, code?, gameId? }` from a user's hub, or null on failure. */
+export async function getUserStatus(env, userId) {
+  try {
+    const res = await userHubStub(env, userId).fetch(`${INTERNAL}/online`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 /** Internal JSON call into a GameRoom. Returns `{ status, data }`. */
 export async function roomCall(env, code, path, body) {
   const res = await roomStub(env, code).fetch(`${INTERNAL}${path}`, {

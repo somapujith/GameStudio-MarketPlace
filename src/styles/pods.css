@@ -1,0 +1,197 @@
+/* Player pods: the players sit around the board (corners; middle edges for 5-6 players) instead of in a scoreboard.
+   Owned by the game screen; selectors are .hg-pod*. The grid areas themselves are set on .hg-table in game.css.
+   Your own pod is the loud one: gold frame, "Your cash" label and a large gold figure. */
+
+.hg-pods {
+  display: contents;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.hg-pod {
+  position: relative;
+  min-width: 0;
+  list-style: none;
+  container-type: inline-size;
+}
+.hg-pod[data-slot='tl'] { grid-area: tl; align-self: start; }
+.hg-pod[data-slot='tr'] { grid-area: tr; align-self: start; }
+.hg-pod[data-slot='bl'] { grid-area: bl; align-self: end; }
+.hg-pod[data-slot='br'] { grid-area: br; align-self: end; }
+.hg-pod[data-slot='ml'] { grid-area: ml; align-self: center; }
+.hg-pod[data-slot='mr'] { grid-area: mr; align-self: center; }
+
+/* ---------- the card ---------- */
+.hg-pod__btn {
+  --ava: 42px;
+  position: relative;
+  width: 100%;
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: 'ava who' 'cash cash' 'empire empire';
+  align-items: center;
+  gap: 6px 10px;
+  padding: 10px 12px 10px 14px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text);
+  background: linear-gradient(180deg, #243543, var(--surface));
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 14px 26px -18px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  transition: transform var(--dur-1), border-color var(--dur-2), box-shadow var(--dur-2), background var(--dur-2);
+}
+@media (hover: hover) { .hg-pod__btn:hover { border-color: var(--line-strong); } }
+.hg-pod__btn:active { transform: scale(0.985); }
+.hg-pod__btn:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
+/* the pawn colour, as a slim bar on the leading edge */
+.hg-pod__btn::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 12px;
+  bottom: 12px;
+  width: 4px;
+  border-radius: 3px;
+  background: var(--pc);
+}
+/* whose turn it is: a bright pawn-coloured frame and a soft breathing halo (opacity only: no repaint loop) */
+.hg-pod__btn::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow: 0 0 0 2px var(--pc), 0 0 30px -4px var(--pc);
+}
+.hg-pod.is-turn .hg-pod__btn::after { opacity: 1; animation: hg-pod-breathe 1.8s var(--ease-std, ease-in-out) infinite; }
+@keyframes hg-pod-breathe { 50% { opacity: 0.55; } }
+
+.hg-pod__ava { grid-area: ava; display: grid; place-items: center; }
+.hg-pod .hg-mb-ava { width: auto; height: auto; }
+
+.hg-pod__who { grid-area: who; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.hg-pod__name { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 15px; line-height: 20px; }
+.hg-pod__name b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 800; }
+/* connection strength (signal.css): the bars sit at the right end of the name row, the pill right beside them; the name gives way first */
+.hg-pod__sig { margin-left: auto; }
+/* with a pill ("Offline" / "Reconnecting…") the bars + pill drop to their own line under the name (right-aligned) instead of squeezing the name away */
+.hg-pod.has-pill .hg-pod__name { flex-wrap: wrap; row-gap: 3px; }
+.hg-pod.has-pill .hg-pod__sig { max-width: 100%; }
+.hg-pod__you {
+  flex: none; padding: 0 6px; border-radius: 6px; font-size: 9.5px; font-weight: 900; letter-spacing: 0.08em; line-height: 15px;
+  color: #3b2300; background: var(--gold);
+}
+.hg-pod__sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; font-size: 11px; line-height: 16px; color: var(--text-dim); }
+.hg-pod__worth { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.hg-pod__title { display: inline-flex; min-width: 0; }
+.hg-pod__turn {
+  flex: none; padding: 0 7px; border-radius: 999px; font-size: 9.5px; font-weight: 900; letter-spacing: 0.07em; line-height: 16px;
+  text-transform: uppercase; color: #0b1219; background: var(--pc);
+}
+.hg-pod__out { padding: 0 7px; border-radius: 999px; font-size: 10px; font-weight: 800; color: #ffb4bf; background: rgba(229, 56, 79, 0.2); }
+
+/* ---------- the money ---------- */
+.hg-pod__cash { grid-area: cash; display: flex; flex-direction: column; gap: 1px; min-width: 0; line-height: 1.05; }
+.hg-pod__lbl { font-size: 10px; font-weight: 900; letter-spacing: 0.16em; text-transform: uppercase; color: var(--gold); opacity: 0.9; }
+.hg-pod__amt {
+  font-family: var(--font-display);
+  font-size: calc(22px * var(--fit, 1));
+  font-size: calc(clamp(18px, 10.5cqi, 25px) * var(--fit, 1));
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text);
+}
+.hg-pod__amt.is-out { color: var(--text-faint); }
+
+/* you: the loudest thing on the table */
+.hg-pod.is-me .hg-pod__btn {
+  --ava: 50px;
+  padding-block: 12px 12px;
+  border: 2px solid var(--gold);
+  background:
+    radial-gradient(130% 120% at 0% 0%, color-mix(in srgb, var(--pc) 30%, transparent), transparent 62%),
+    linear-gradient(180deg, #2c3d4b, #1c2a35);
+  box-shadow:
+    0 0 0 1px rgba(255, 202, 122, 0.25),
+    0 22px 38px -20px rgba(255, 177, 0, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+.hg-pod.is-me .hg-pod__name { font-size: 16px; }
+.hg-pod.is-me .hg-pod__amt {
+  font-size: calc(36px * var(--fit, 1));
+  font-size: calc(clamp(28px, 17cqi, 42px) * var(--fit, 1));
+  font-weight: 900;
+  color: var(--gold);
+  text-shadow: 0 0 22px rgba(255, 202, 122, 0.5), 0 2px 0 rgba(0, 0, 0, 0.4);
+}
+.hg-pod.is-me.is-out .hg-pod__amt { color: var(--text-faint); text-shadow: none; }
+.hg-pod .hg-money.is-up { color: var(--good) !important; text-shadow: 0 0 18px rgba(61, 220, 151, 0.45); }
+.hg-pod .hg-money.is-down { color: var(--bad) !important; text-shadow: 0 0 18px rgba(255, 93, 115, 0.4); }
+.hg-pod .hg-delta { font-size: 13px; left: auto; right: 0; transform: none; }
+.hg-pod.is-out .hg-pod__btn { opacity: 0.6; }
+.hg-pod.is-out .hg-pod__name b { text-decoration: line-through; }
+
+/* ---------- net worth target: a slim progress bar + percentage under the cash ---------- */
+.hg-pod.has-goal .hg-pod__btn { grid-template-areas: 'ava who' 'cash cash' 'empire empire' 'goal goal'; }
+.hg-pod__goal { grid-area: goal; display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 2px; }
+.hg-pod__goalbar { position: relative; flex: 1 1 auto; min-width: 0; height: 5px; border-radius: 999px; overflow: hidden; background: rgba(255, 255, 255, 0.13); }
+.hg-pod__goalbar i {
+  position: absolute; inset: 0; background: var(--pc); transform: scaleX(var(--tp, 0)); transform-origin: left center;
+  transition: transform var(--dur-4) var(--ease-out);
+}
+.hg-pod__goalpct, .hg-pod__goalhead b { flex: none; font-size: 12px; line-height: 14px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text-dim); }
+.hg-pod__goalhead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+.hg-pod__goallbl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 14px; font-weight: 700; color: var(--text-dim); }
+/* the leader: a thicker, glowing bar and a bright figure */
+.hg-pod__goal.is-lead .hg-pod__goalbar { height: 7px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22); }
+.hg-pod__goal.is-lead .hg-pod__goalbar i { box-shadow: 0 0 10px var(--pc); }
+.hg-pod__goal.is-lead .hg-pod__goalpct, .hg-pod__goal.is-lead .hg-pod__goalhead b { color: var(--text); }
+/* 80% of the target and up: gold, and the fill breathes (opacity only) */
+.hg-pod__goal.is-hot .hg-pod__goalbar i { background: linear-gradient(90deg, #ffc857, #ff8a3d); box-shadow: 0 0 10px rgba(255, 177, 0, 0.7); animation: hg-goal-pulse 1.4s var(--ease-std) infinite; }
+.hg-pod__goal.is-hot .hg-pod__goalpct, .hg-pod__goal.is-hot .hg-pod__goalhead b { color: var(--gold); }
+@keyframes hg-goal-pulse { 50% { opacity: 0.6; } }
+/* you: the figure as a sentence over a clearer, thicker bar */
+.hg-pod.is-me .hg-pod__goal { flex-direction: column; align-items: stretch; gap: 4px; margin-top: 4px; }
+.hg-pod.is-me .hg-pod__goalbar { height: 8px; background: rgba(0, 0, 0, 0.35); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14); }
+.hg-pod.is-me .hg-pod__goal.is-lead .hg-pod__goalbar { height: 9px; }
+.hg-pod.is-me .hg-pod__goallbl { color: var(--text); }
+
+/* ---------- rows above / below the board (phones and tablets): compact pods ---------- */
+@media (max-width: 959px) {
+  .hg-pod.has-goal .hg-pod__btn { grid-template-areas: 'ava who' 'ava cash' 'empire empire' 'goal goal'; }
+  .hg-pod__btn {
+    grid-template-areas: 'ava who' 'ava cash' 'empire empire';
+    gap: 0 8px;
+    padding: 7px 10px 7px 14px;
+    border-radius: 16px;
+  }
+  .hg-pod__name { font-size: 13px; line-height: 17px; }
+  .hg-pod__sub { flex-wrap: nowrap; overflow: hidden; }
+  .hg-pod__worth,
+  .hg-pod .hg-chai > span,
+  .hg-pod .hg-traffic > span,
+  .hg-pod .hg-offline > span { display: none; }
+  .hg-pod .hg-chai, .hg-pod .hg-traffic, .hg-pod .hg-offline { padding: 0 4px 0 3px; }
+  .hg-pod__title { display: none; }
+  .hg-pod__amt { font-size: calc(18px * var(--fit, 1)); font-size: calc(clamp(15px, 11cqi, 20px) * var(--fit, 1)); }
+  /* you (tablets): avatar + name on the left, the big figure on the right: a wallet bar, not a tall card */
+  .hg-pod.is-me .hg-pod__btn { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: 'ava who cash' 'empire empire empire'; gap: 0 12px; padding-block: 8px; }
+  .hg-pod.is-me.has-goal .hg-pod__btn { grid-template-areas: 'ava who cash' 'empire empire empire' 'goal goal goal'; row-gap: 4px; }
+  .hg-pod.is-me .hg-pod__cash { align-items: flex-end; text-align: right; }
+  .hg-pod.is-me .hg-pod__amt { font-size: calc(26px * var(--fit, 1)); font-size: calc(clamp(24px, 6cqi, 34px) * var(--fit, 1)); }
+  .hg-pod.is-me .hg-pod__name { font-size: 14px; }
+  .hg-pod.is-me .hg-pod__sub { flex-wrap: wrap; overflow: visible; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hg-pod.is-turn .hg-pod__btn::after { animation: none; }
+  .hg-pod__goal.is-hot .hg-pod__goalbar i { animation: none; }
+  .hg-pod__goalbar i { transition: none; }
+}
+:root[data-motion='reduced'] .hg-pod__goal.is-hot .hg-pod__goalbar i, .hg-game[data-rm] .hg-pod__goal.is-hot .hg-pod__goalbar i { animation: none; }
+:root[data-motion='reduced'] .hg-pod__goalbar i, .hg-game[data-rm] .hg-pod__goalbar i { transition: none; }

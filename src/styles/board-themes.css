@@ -1,0 +1,444 @@
+/* ==========================================================================
+   Board themes: the cosmetic looks a player equips in the shop (shared/cosmetics.js, kind 'board').
+   Laad Bazaar, Hussain Sagar Night, Cyberabad Grid, Royal Marble, Obsidian & Gold, Emerald Court, Golconda Gilded.
+
+   The theme is LOCAL: GameView writes the equipped finish on the game root as `data-board-theme` and only that player's own
+   screen changes. Rules, tile names and the map never change; no theme equipped = no attribute = none of these rules match,
+   so the default look is untouched. EVERY rule is scoped under `.hg-game[data-board-theme]`.
+
+   How it works: each finish sets the `--hb-*` variables of board.css on `.hb-board` (frame night colour, paper, gold, lantern,
+   ink) plus a few `--bt-*` tokens (frame / centre / tile texture, trim). The shared rules below turn those into the frame, the
+   lantern string, the centre, the tile paper and the edge trim. The colours mirror the catalogue's [night, paper, accent].
+
+   Readability is the rule: tile text sits on paper that stays >= 4.5:1 against its ink (checked in boardThemes.css.test.js),
+   group colour bands and their patterns, house / hotel markers, owner marks, pawns and the set / hotel rings are never
+   repainted. The highlight ring of the tile in play (--hb-lantern) is a deeper shade of the accent that holds >= 3:1 on the paper.
+
+   Precedence with a map skin (map-andhra.css, (0,2,0) selectors): the theme re-skins the SURFACE (frame, lights, centre base,
+   tile paper, trim); the map keeps its group colours and band patterns, its centre artwork and the translucent panel scrim
+   (the opaque panel recolour below is skipped on Andhra), and its special-corner pills.
+
+   Phone board (`.ph`, data-layout='phone-simple'): the frame, lights and centre use the same rules; district tiles keep their
+   glossy group colour, the light tiles (stops, cards, corners) take the theme paper through --pt-paper / --pt-paper-2.
+
+   Performance: static only. No backdrop-filter, no CSS filter / blur / drop-shadow, no mix-blend-mode, no SVG filter. The ONE
+   motion is the slow opacity sheen across the Golconda Gilded frame, gated off for reduced motion, [data-rm], data-perf='low'
+   and until the table has proved fast (data-perf='high', like the lantern twinkle in perf.css).
+   ========================================================================== */
+
+/* ---- the frame --------------------------------------------------------------------------------------------- */
+.hg-game[data-board-theme] .hb-board .hb-frame {
+  background:
+    radial-gradient(circle 1.5cqw at 1.2cqw 1.2cqw, var(--bt-jewel)),
+    radial-gradient(circle 1.5cqw at calc(100% - 1.2cqw) 1.2cqw, var(--bt-jewel)),
+    radial-gradient(circle 1.5cqw at 1.2cqw calc(100% - 1.2cqw), var(--bt-jewel)),
+    radial-gradient(circle 1.5cqw at calc(100% - 1.2cqw) calc(100% - 1.2cqw), var(--bt-jewel)),
+    var(--bt-frame-fx),
+    linear-gradient(160deg, var(--bt-night-hi) 0%, var(--hb-night) 55%, var(--bt-night-lo) 100%);
+  box-shadow:
+    var(--bt-frame-trim),
+    inset 0 0 2.6cqw rgba(0, 0, 0, 0.5),
+    0 1.2cqw 3.2cqw rgba(0, 0, 0, 0.55);
+}
+/* the lantern string takes the accent: only the bulb colours change, the wire and layout are board.css's */
+.hg-game[data-board-theme] .hb-board .hb-frame__lights {
+  --rest: var(--bt-rest);
+  --lit: var(--bt-lit);
+}
+
+/* ---- the middle: a dark base in the theme's night colours (the control panel / phone captions sit on it) ----- */
+.hg-game[data-board-theme] .hb-board .hb-center {
+  background:
+    var(--bt-centre-fx),
+    radial-gradient(ellipse at 50% 30%, var(--bt-glow) 0%, transparent 60%),
+    var(--bt-centre);
+  box-shadow: inset 0 0 0 1px var(--bt-edge), inset 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+/* the desktop control panel mat (a teal gradient by default) wears the same night colours. Andhra keeps its own
+   translucent scrim so the map artwork still shows through. Text on it is light and stays well above AA on every night colour. */
+.hg-game[data-board-theme]:not([data-map='andhra']) .hb-board .cp .cp__in {
+  background:
+    var(--bt-centre-fx),
+    linear-gradient(180deg, color-mix(in srgb, var(--bt-night-hi) 60%, var(--bt-centre)) 0%, var(--bt-centre) 55%, var(--bt-night-lo) 100%);
+  box-shadow: inset 0 0 0 1px var(--bt-edge), inset 0 0 3.4cqmin rgba(0, 0, 0, 0.5);
+}
+
+/* ---- tiles: theme paper, group tint, texture, edge trim ------------------------------------------------------ */
+/* paper: every tile family but the dark Traffic Jam corner, and never a mortgaged tile (it stays the greyed state) */
+.hg-game[data-board-theme] .hb-tile:not(.is-mortgaged):not(.hb-tile--traffic) { --paper: var(--bt-paper); }
+/* districts keep a faint tint of their collection colour, like the default sandstone, so groups still read at a glance */
+.hg-game[data-board-theme] .hb-tile--property:not(.is-mortgaged) { --paper: color-mix(in srgb, var(--g, #b9835a) 9%, var(--bt-paper)); }
+.hg-game[data-board-theme] .hb-tile--property.is-owned:not(.is-mortgaged) {
+  --paper: color-mix(in srgb, var(--o) 14%, color-mix(in srgb, var(--g, #b9835a) 8%, var(--bt-paper)));
+}
+/* the special squares keep a hint of their own colour (stop, start, chai, municipal, auction) */
+.hg-game[data-board-theme] .hb-tile--transport:not(.is-mortgaged) { --paper: color-mix(in srgb, #b9cdee var(--bt-tint), var(--bt-paper)); }
+.hg-game[data-board-theme] .hb-tile--start:not(.is-mortgaged) { --paper: color-mix(in srgb, #a6dfb2 var(--bt-tint), var(--bt-paper)); }
+.hg-game[data-board-theme] .hb-tile--chai:not(.is-mortgaged) { --paper: color-mix(in srgb, #f2c48e var(--bt-tint), var(--bt-paper)); }
+.hg-game[data-board-theme] .hb-tile--municipal:not(.is-mortgaged) { --paper: color-mix(in srgb, #b4c4e6 var(--bt-tint), var(--bt-paper)); }
+.hg-game[data-board-theme] .hb-tile--auction:not(.is-mortgaged) { --paper: color-mix(in srgb, #ecb2a8 var(--bt-tint), var(--bt-paper)); }
+
+/* texture: one static pattern per theme, nudged per tile (--bt-x / --bt-y) so the repeat does not read as a stamp.
+   The phone face shells are transparent (their own face covers them), so they are left alone. */
+.hg-game[data-board-theme] :is(.hb-tile--property, .hb-tile--transport, .hb-tile--auction, .hb-tile--start, .hb-tile--chai, .hb-tile--municipal, .hb-tile--card):not(.hb-tile--phone):not(.is-mortgaged) {
+  background:
+    var(--bt-img) var(--bt-x, 0px) var(--bt-y, 0px) / var(--bt-size) var(--bt-size),
+    linear-gradient(158deg, var(--bt-hi) 0%, transparent 48%),
+    linear-gradient(0deg, var(--bt-shade) 0%, transparent 42%),
+    var(--paper);
+}
+/* edge trim in the accent; the owner's set / hotel rings (.is-set, .is-max) keep their own shadow */
+.hg-game[data-board-theme] :is(.hb-tile--property, .hb-tile--transport, .hb-tile--auction, .hb-tile--start, .hb-tile--chai, .hb-tile--municipal, .hb-tile--card):not(.hb-tile--phone):not(.is-mortgaged):not(.is-set):not(.is-max) {
+  box-shadow: var(--bt-tile-edge);
+}
+.hg-game[data-board-theme] .hb-tile:nth-child(4n + 1) { --bt-x: -11px; --bt-y: -23px; }
+.hg-game[data-board-theme] .hb-tile:nth-child(4n + 2) { --bt-x: -29px; --bt-y: -7px; }
+.hg-game[data-board-theme] .hb-tile:nth-child(4n + 3) { --bt-x: -3px; --bt-y: -31px; }
+.hg-game[data-board-theme] .hb-tile:nth-child(4n) { --bt-x: -19px; --bt-y: -15px; }
+/* the tile a sheet is open for: the deep accent, so the ring reads on pale paper too */
+.hg-game[data-board-theme] .hb-tile.is-hl { outline-color: var(--hb-lantern); }
+
+/* ---- phone board ----------------------------------------------------------------------------------------------- */
+.hg-game[data-board-theme] .ph .hb-tile--phone.is-hl { box-shadow: inset 0 0 0 max(1.1cqw, 3px) var(--hb-lantern); }
+/* the light faces (stops, cards, corners) are paper-coloured with an accent hairline; district faces keep their group colour */
+.hg-game[data-board-theme] .ph .pt--light { box-shadow: inset 0 0 0 1px var(--bt-line), inset 0 -2px 0 rgba(0, 0, 0, 0.07); }
+.hg-game[data-board-theme] .ph .pt--card { background: linear-gradient(180deg, var(--pt-paper), var(--pt-paper-2)); }
+.hg-game[data-board-theme] .ph .hb-tile--start .pt--corner { background: linear-gradient(180deg, var(--pt-paper), color-mix(in srgb, #cdeed6 45%, var(--pt-paper-2))); }
+.hg-game[data-board-theme] .ph .hb-tile--traffic .pt--corner { background: linear-gradient(180deg, var(--pt-paper), color-mix(in srgb, #f3d3cc 45%, var(--pt-paper-2))); }
+.hg-game[data-board-theme] .ph .hb-tile--chai .pt--corner { background: linear-gradient(180deg, var(--pt-paper), color-mix(in srgb, #f4dcbc 45%, var(--pt-paper-2))); }
+.hg-game[data-board-theme] .ph .hb-tile--municipal .pt--corner { background: linear-gradient(180deg, var(--pt-paper), color-mix(in srgb, #cdd9ee 45%, var(--pt-paper-2))); }
+.hg-game[data-board-theme] .ph .hb-tile--auction .pt--corner { background: linear-gradient(180deg, var(--pt-paper), color-mix(in srgb, #f1cdc6 45%, var(--pt-paper-2))); }
+
+/* ==========================================================================
+   1. BAZAAR  Laad Bazaar: warm plum frame, saffron lantern trim, a woven weave and bangle rings
+   ========================================================================== */
+.hg-game[data-board-theme='bazaar'] .hb-board {
+  --hb-night: #3a1d2e;
+  --hb-paper: #f6e3c4;
+  --hb-gold: #ff9d3c;
+  --hb-gold-2: #e0701c;
+  --hb-lantern: #c75a00;
+  --bt-paper: #f6e3c4;
+  --bt-night-hi: #4d2740;
+  --bt-night-lo: #240f1c;
+  --bt-centre: #2d1524;
+  --bt-glow: rgba(255, 157, 60, 0.16);
+  --bt-edge: rgba(255, 157, 60, 0.42);
+  --bt-line: rgba(224, 112, 28, 0.55);
+  --bt-jewel: #fff1d6 0 18%, rgba(255, 157, 60, 0.95) 34%, rgba(255, 120, 30, 0) 100%;
+  --bt-rest: #ffe6bd 0 24%, rgba(255, 157, 60, 0.85) 38%, rgba(255, 120, 30, 0) 100%;
+  --bt-lit: #fff6e6 0 22%, rgba(255, 190, 100, 0.9) 40%, rgba(255, 150, 50, 0) 100%;
+  /* a woven weave: two crossing diagonal threads */
+  --bt-frame-fx:
+    repeating-linear-gradient(45deg, rgba(255, 157, 60, 0.14) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(-45deg, rgba(255, 157, 60, 0.14) 0 1px, transparent 1px 5px);
+  --bt-frame-trim: 0 0 0 1px rgba(255, 157, 60, 0.55), inset 0 0 0 0.25cqw rgba(255, 157, 60, 0.24);
+  /* bangle rings on the centre and on the tile paper */
+  --bt-centre-fx: radial-gradient(circle at 50% 50%, transparent 0 1.6px, rgba(255, 157, 60, 0.17) 1.9px 2.6px, transparent 3px) 0 0 / 9px 9px;
+  --bt-img: radial-gradient(circle at 50% 50%, transparent 0 1.8px, rgba(150, 70, 20, 0.09) 2.1px 2.9px, transparent 3.2px);
+  --bt-size: 9px;
+  --bt-hi: rgba(255, 255, 255, 0.5);
+  --bt-shade: rgba(122, 64, 24, 0.13);
+  --bt-tint: 32%;
+  --bt-tile-edge: inset 0 0 0 1px rgba(224, 112, 28, 0.55), inset 0 calc(var(--hb-u) * -0.05) 0 rgba(122, 64, 24, 0.15);
+}
+.hg-game[data-board-theme='bazaar'] .ph {
+  --pt-paper: #fbf1de;
+  --pt-paper-2: #f6e3c4;
+  --pt-night: #3a1d2e;
+  --pt-night-2: #4d2740;
+  --pt-gold: #ff9d3c;
+}
+
+/* ==========================================================================
+   2. LAKE  Hussain Sagar Night: deep blue night frame, pale water-tinted tiles, soft ripples, cyan trim
+   ========================================================================== */
+.hg-game[data-board-theme='lake'] .hb-board {
+  --hb-night: #0e2347;
+  --hb-paper: #e4f1fb;
+  --hb-gold: #4cc9f0;
+  --hb-gold-2: #2a8fdb;
+  --hb-lantern: #0a7fb0;
+  --bt-paper: #e4f1fb;
+  --bt-night-hi: #17356a;
+  --bt-night-lo: #08142b;
+  --bt-centre: #0b1d3d;
+  --bt-glow: rgba(76, 201, 240, 0.18);
+  --bt-edge: rgba(76, 201, 240, 0.42);
+  --bt-line: rgba(10, 127, 176, 0.5);
+  --bt-jewel: #e8fbff 0 18%, rgba(76, 201, 240, 0.95) 34%, rgba(42, 143, 219, 0) 100%;
+  --bt-rest: #dff7ff 0 24%, rgba(76, 201, 240, 0.85) 38%, rgba(42, 143, 219, 0) 100%;
+  --bt-lit: #f4fdff 0 22%, rgba(140, 226, 250, 0.9) 40%, rgba(76, 201, 240, 0) 100%;
+  /* a soft ripple: concentric rings, like a drop on the lake */
+  --bt-frame-fx: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Cg fill='none' stroke='%234cc9f0' stroke-opacity='.15' stroke-width='1'%3E%3Ccircle cx='20' cy='20' r='6'/%3E%3Ccircle cx='20' cy='20' r='12'/%3E%3Ccircle cx='20' cy='20' r='18'/%3E%3C/g%3E%3C/svg%3E") 0 0 / 40px 40px;
+  --bt-frame-trim: 0 0 0 1px rgba(76, 201, 240, 0.55), inset 0 0 0 0.25cqw rgba(76, 201, 240, 0.22);
+  --bt-centre-fx: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='24'%3E%3Cpath d='M0 6q6-5 12 0t12 0 12 0 12 0M0 18q6-5 12 0t12 0 12 0 12 0' fill='none' stroke='%234cc9f0' stroke-opacity='.1' stroke-width='1'/%3E%3C/svg%3E") 0 0 / 48px 24px;
+  --bt-img: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36'%3E%3Cg fill='none' stroke='%230a7fb0' stroke-opacity='.11' stroke-width='1'%3E%3Ccircle cx='18' cy='18' r='5'/%3E%3Ccircle cx='18' cy='18' r='10'/%3E%3Ccircle cx='18' cy='18' r='15'/%3E%3C/g%3E%3C/svg%3E");
+  --bt-size: 36px;
+  --bt-hi: rgba(255, 255, 255, 0.55);
+  --bt-shade: rgba(20, 90, 140, 0.1);
+  --bt-tint: 32%;
+  --bt-tile-edge: inset 0 0 0 1px rgba(10, 127, 176, 0.55), inset 0 calc(var(--hb-u) * -0.05) 0 rgba(20, 90, 140, 0.14);
+}
+.hg-game[data-board-theme='lake'] .ph {
+  --pt-paper: #f2f9fd;
+  --pt-paper-2: #e4f1fb;
+  --pt-night: #0e2347;
+  --pt-night-2: #17356a;
+  --pt-gold: #4cc9f0;
+}
+
+/* ==========================================================================
+   3. GRID  Cyberabad Grid: near-black frame with a faint cyan grid, neon trim
+   ========================================================================== */
+.hg-game[data-board-theme='grid'] .hb-board {
+  --hb-night: #0b0f26;
+  --hb-paper: #dfe6ff;
+  --hb-gold: #5ef2ff;
+  --hb-gold-2: #7b6dff;
+  --hb-lantern: #0a6ea8;
+  --bt-paper: #dfe6ff;
+  --bt-night-hi: #151b45;
+  --bt-night-lo: #05071a;
+  --bt-centre: #0a0e24;
+  --bt-glow: rgba(94, 242, 255, 0.12);
+  --bt-edge: rgba(94, 242, 255, 0.5);
+  --bt-line: rgba(10, 110, 168, 0.55);
+  --bt-jewel: #f0ffff 0 18%, rgba(94, 242, 255, 0.95) 34%, rgba(123, 109, 255, 0) 100%;
+  --bt-rest: #e6ffff 0 24%, rgba(94, 242, 255, 0.85) 38%, rgba(123, 109, 255, 0) 100%;
+  --bt-lit: #f6ffff 0 22%, rgba(160, 248, 255, 0.92) 40%, rgba(94, 242, 255, 0) 100%;
+  --bt-frame-fx:
+    repeating-linear-gradient(0deg, rgba(94, 242, 255, 0.1) 0 1px, transparent 1px 14px),
+    repeating-linear-gradient(90deg, rgba(94, 242, 255, 0.1) 0 1px, transparent 1px 14px);
+  --bt-frame-trim: 0 0 0 1px rgba(94, 242, 255, 0.75), inset 0 0 0 0.22cqw rgba(94, 242, 255, 0.34);
+  --bt-centre-fx:
+    repeating-linear-gradient(0deg, rgba(94, 242, 255, 0.07) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(90deg, rgba(94, 242, 255, 0.07) 0 1px, transparent 1px 16px);
+  --bt-img: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18'%3E%3Cpath d='M0 .5H18M.5 0V18' fill='none' stroke='%232b46c9' stroke-opacity='.1'/%3E%3C/svg%3E");
+  --bt-size: 18px;
+  --bt-hi: rgba(255, 255, 255, 0.5);
+  --bt-shade: rgba(43, 70, 201, 0.1);
+  --bt-tint: 30%;
+  --bt-tile-edge: inset 0 0 0 1px rgba(10, 150, 200, 0.75), inset 0 calc(var(--hb-u) * -0.05) 0 rgba(43, 70, 201, 0.13);
+}
+.hg-game[data-board-theme='grid'] .ph {
+  --pt-paper: #f0f3ff;
+  --pt-paper-2: #dfe6ff;
+  --pt-night: #0b0f26;
+  --pt-night-2: #151b45;
+  --pt-gold: #5ef2ff;
+}
+
+/* ==========================================================================
+   4. MARBLE  Royal Marble: cream marble tiles with soft veining and gold trim on a dark frame
+   ========================================================================== */
+.hg-game[data-board-theme='marble'] .hb-board {
+  --hb-night: #2b2740;
+  --hb-paper: #f5f2ee;
+  --hb-gold: #d4af37;
+  --hb-gold-2: #b8860b;
+  --hb-lantern: #8f6b00;
+  --bt-paper: #f5f2ee;
+  --bt-night-hi: #3a3558;
+  --bt-night-lo: #19162a;
+  --bt-centre: #221e36;
+  --bt-glow: rgba(212, 175, 55, 0.14);
+  --bt-edge: rgba(212, 175, 55, 0.5);
+  --bt-line: rgba(184, 134, 11, 0.55);
+  --bt-jewel: #fff3c4 0 18%, rgba(212, 175, 55, 0.95) 34%, rgba(184, 134, 11, 0) 100%;
+  --bt-rest: #fff1bd 0 24%, rgba(212, 175, 55, 0.85) 38%, rgba(184, 134, 11, 0) 100%;
+  --bt-lit: #fffbe6 0 22%, rgba(245, 214, 120, 0.92) 40%, rgba(212, 175, 55, 0) 100%;
+  --bt-frame-fx: repeating-linear-gradient(135deg, rgba(212, 175, 55, 0.08) 0 1px, transparent 1px 9px);
+  --bt-frame-trim: 0 0 0 1px rgba(212, 175, 55, 0.7), inset 0 0 0 0.25cqw rgba(212, 175, 55, 0.3);
+  --bt-centre-fx: repeating-linear-gradient(135deg, rgba(212, 175, 55, 0.06) 0 1px, transparent 1px 11px);
+  /* veining: three hair-thin curves, shifted tile to tile */
+  --bt-img: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96'%3E%3Cg fill='none' stroke-linecap='round'%3E%3Cpath d='M-4 22C18 34 30 6 52 38S86 58 100 48' stroke='%237d7a8c' stroke-opacity='.28' stroke-width='.9'/%3E%3Cpath d='M12 -4C28 36 54 52 40 100' stroke='%237d7a8c' stroke-opacity='.18' stroke-width='.7'/%3E%3Cpath d='M64 -4C72 28 98 38 102 72' stroke='%23b8a98a' stroke-opacity='.3' stroke-width='.8'/%3E%3C/g%3E%3C/svg%3E");
+  --bt-size: 96px;
+  --bt-hi: rgba(255, 255, 255, 0.6);
+  --bt-shade: rgba(90, 80, 110, 0.1);
+  --bt-tint: 30%;
+  --bt-tile-edge: inset 0 0 0 1px rgba(184, 134, 11, 0.65), inset 0 calc(var(--hb-u) * -0.05) 0 rgba(90, 80, 110, 0.14);
+}
+.hg-game[data-board-theme='marble'] .ph {
+  --pt-paper: #faf8f5;
+  --pt-paper-2: #f5f2ee;
+  --pt-night: #2b2740;
+  --pt-night-2: #3a3558;
+  --pt-gold: #d4af37;
+}
+
+/* ==========================================================================
+   5. OBSIDIAN  Obsidian & Gold: black glossy frame, charcoal tiles, thin gold inlay lines
+   The only theme with DARK tile paper, so it also flips the tile ink to light (and re-inks the few hard-coded dark texts).
+   ========================================================================== */
+.hg-game[data-board-theme='obsidian'] .hb-board {
+  --hb-night: #0a0a12;
+  --hb-paper: #2a2a38;
+  --hb-gold: #ffd36b;
+  --hb-gold-2: #e0a020;
+  --hb-lantern: #ffd36b;
+  --bt-paper: #2a2a38;
+  --bt-night-hi: #1a1a28;
+  --bt-night-lo: #04040a;
+  --bt-centre: #0e0e18;
+  --bt-glow: rgba(255, 211, 107, 0.1);
+  --bt-edge: rgba(255, 211, 107, 0.4);
+  --bt-line: rgba(255, 211, 107, 0.55);
+  --bt-jewel: #fff4d0 0 18%, rgba(255, 211, 107, 0.95) 34%, rgba(224, 160, 32, 0) 100%;
+  --bt-rest: #fff1c4 0 24%, rgba(255, 211, 107, 0.85) 38%, rgba(224, 160, 32, 0) 100%;
+  --bt-lit: #fffbe8 0 22%, rgba(255, 226, 150, 0.92) 40%, rgba(255, 211, 107, 0) 100%;
+  /* glossy: a bright top edge and one wide, faint glare */
+  --bt-frame-fx:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.13) 0%, rgba(255, 255, 255, 0) 22%),
+    linear-gradient(120deg, transparent 38%, rgba(255, 255, 255, 0.06) 50%, transparent 62%);
+  /* two thin gold inlay lines running round the frame, with black between them */
+  --bt-frame-trim:
+    0 0 0 1px rgba(255, 211, 107, 0.7),
+    inset 0 0 0 0.2cqw rgba(255, 211, 107, 0.85),
+    inset 0 0 0 0.5cqw rgba(10, 10, 18, 0.9),
+    inset 0 0 0 0.6cqw rgba(255, 211, 107, 0.4);
+  --bt-centre-fx: linear-gradient(transparent, transparent);
+  --bt-img: linear-gradient(transparent, transparent);
+  --bt-size: 36px;
+  --bt-hi: rgba(255, 255, 255, 0.07);
+  --bt-shade: rgba(0, 0, 0, 0.3);
+  --bt-tint: 16%;
+  --bt-tile-edge: inset 0 0 0 1px rgba(255, 211, 107, 0.6), inset 0 calc(var(--hb-u) * -0.05) 0 rgba(0, 0, 0, 0.35);
+}
+.hg-game[data-board-theme='obsidian'] .ph {
+  /* the light faces stay ivory (their icons are drawn for light paper), inside the black and gold frame */
+  --pt-paper: #f4efe3;
+  --pt-paper-2: #e9e3d3;
+  --pt-night: #0a0a12;
+  --pt-night-2: #1a1a28;
+  --pt-gold: #ffd36b;
+}
+/* dark paper: the tile ink turns light (set on the tile, not the board, so nothing else drawn on the board changes), the
+   letterpress shadow turns dark, and the icons and buildings sit on a pale cameo so their art stays legible */
+.hg-game[data-board-theme='obsidian'] .hb-tile:not(.is-mortgaged):not(.hb-tile--phone) {
+  --hb-ink: #f4ecd8;
+  --hb-ink-dim: #cfc7b4;
+}
+.hg-game[data-board-theme='obsidian'] .hb-tile:not(.is-mortgaged) .hb-tile__name { text-shadow: 0 1px 0 rgba(0, 0, 0, 0.65); }
+.hg-game[data-board-theme='obsidian'] .hb-tile--auction:not(.is-mortgaged) :is(.hb-tile__name, .hb-tile__nm) { color: #ffd9a0; }
+.hg-game[data-board-theme='obsidian'] .hb-tile.is-owned .hb-tile__price.is-rent { color: #2a1d12; } /* the rent pill is light */
+.hg-game[data-board-theme='obsidian'] .hb-tile:not(.is-mortgaged):not(.hb-tile--phone):not(.hb-tile--card) :is(.hb-tile__icon, .hb-tile__bldg) {
+  background: radial-gradient(circle closest-side at 50% 50%, #f1ead8 0 92%, transparent 96%);
+}
+
+/* ==========================================================================
+   6. EMERALD  Emerald Court: dark green frame, pale green tiles, emerald trim, a jali diamond lattice
+   ========================================================================== */
+.hg-game[data-board-theme='emerald'] .hb-board {
+  --hb-night: #073b2a;
+  --hb-paper: #e8f6ee;
+  --hb-gold: #3ee8a0;
+  --hb-gold-2: #12b886;
+  --hb-lantern: #0b8a5a;
+  --bt-paper: #e8f6ee;
+  --bt-night-hi: #0d5a3f;
+  --bt-night-lo: #03231a;
+  --bt-centre: #052d20;
+  --bt-glow: rgba(62, 232, 160, 0.14);
+  --bt-edge: rgba(62, 232, 160, 0.42);
+  --bt-line: rgba(11, 138, 90, 0.55);
+  --bt-jewel: #e8fff5 0 18%, rgba(62, 232, 160, 0.95) 34%, rgba(18, 184, 134, 0) 100%;
+  --bt-rest: #dcffef 0 24%, rgba(62, 232, 160, 0.85) 38%, rgba(18, 184, 134, 0) 100%;
+  --bt-lit: #f3fffa 0 22%, rgba(150, 250, 205, 0.92) 40%, rgba(62, 232, 160, 0) 100%;
+  --bt-frame-fx:
+    repeating-linear-gradient(60deg, rgba(62, 232, 160, 0.11) 0 1px, transparent 1px 10px),
+    repeating-linear-gradient(-60deg, rgba(62, 232, 160, 0.11) 0 1px, transparent 1px 10px);
+  --bt-frame-trim: 0 0 0 1px rgba(62, 232, 160, 0.6), inset 0 0 0 0.25cqw rgba(62, 232, 160, 0.26);
+  --bt-centre-fx:
+    repeating-linear-gradient(60deg, rgba(62, 232, 160, 0.07) 0 1px, transparent 1px 12px),
+    repeating-linear-gradient(-60deg, rgba(62, 232, 160, 0.07) 0 1px, transparent 1px 12px);
+  --bt-img: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M12 3L21 12 12 21 3 12z' fill='none' stroke='%230b8a5a' stroke-opacity='.11'/%3E%3C/svg%3E");
+  --bt-size: 24px;
+  --bt-hi: rgba(255, 255, 255, 0.55);
+  --bt-shade: rgba(11, 100, 70, 0.1);
+  --bt-tint: 32%;
+  --bt-tile-edge: inset 0 0 0 1px rgba(11, 138, 90, 0.6), inset 0 calc(var(--hb-u) * -0.05) 0 rgba(11, 100, 70, 0.14);
+}
+.hg-game[data-board-theme='emerald'] .ph {
+  --pt-paper: #f2faf6;
+  --pt-paper-2: #e8f6ee;
+  --pt-night: #073b2a;
+  --pt-night-2: #0d5a3f;
+  --pt-gold: #3ee8a0;
+}
+
+/* ==========================================================================
+   7. GOLDLEAF  Golconda Gilded (legendary): dark bronze frame with gold-leaf flecks and a gold bevel
+   ========================================================================== */
+.hg-game[data-board-theme='goldleaf'] .hb-board {
+  --hb-night: #2a1a05;
+  --hb-paper: #fbf0cf;
+  --hb-gold: #ffcf5a;
+  --hb-gold-2: #e09b1a;
+  --hb-lantern: #a86e00;
+  --bt-paper: #fbf0cf;
+  --bt-night-hi: #4a3010;
+  --bt-night-lo: #170d02;
+  --bt-centre: #211306;
+  --bt-glow: rgba(255, 207, 90, 0.16);
+  --bt-edge: rgba(255, 207, 90, 0.5);
+  --bt-line: rgba(184, 120, 10, 0.6);
+  --bt-jewel: #fff6d0 0 18%, rgba(255, 207, 90, 0.98) 34%, rgba(224, 155, 26, 0) 100%;
+  --bt-rest: #ffefb8 0 24%, rgba(255, 207, 90, 0.88) 38%, rgba(224, 155, 26, 0) 100%;
+  --bt-lit: #fffbe6 0 22%, rgba(255, 228, 140, 0.94) 40%, rgba(255, 207, 90, 0) 100%;
+  /* gold-leaf flecks: four sparse speckle layers on coprime tiles, so the repeat never shows */
+  --bt-frame-fx:
+    radial-gradient(circle at 18% 34%, rgba(255, 214, 110, 0.95) 0 1.1px, transparent 1.7px) 0 0 / 47px 41px,
+    radial-gradient(circle at 72% 66%, rgba(255, 236, 170, 0.85) 0 0.9px, transparent 1.5px) 0 0 / 61px 53px,
+    radial-gradient(circle at 40% 82%, rgba(224, 155, 26, 0.9) 0 1.3px, transparent 2px) 0 0 / 37px 59px,
+    radial-gradient(circle at 88% 16%, rgba(255, 214, 110, 0.8) 0 0.8px, transparent 1.3px) 0 0 / 71px 43px;
+  /* a gold bevel: bright rim, a lit top edge and a shaded bottom edge */
+  --bt-frame-trim:
+    0 0 0 1px rgba(255, 207, 90, 0.85),
+    inset 0 0 0 0.2cqw #ffcf5a,
+    inset 0 0.32cqw 0 0.2cqw rgba(255, 244, 196, 0.5),
+    inset 0 -0.3cqw 0 0.2cqw rgba(0, 0, 0, 0.45);
+  --bt-centre-fx:
+    radial-gradient(circle at 22% 30%, rgba(255, 214, 110, 0.5) 0 0.9px, transparent 1.5px) 0 0 / 43px 37px,
+    radial-gradient(circle at 70% 72%, rgba(255, 236, 170, 0.4) 0 0.8px, transparent 1.4px) 0 0 / 57px 49px;
+  --bt-img: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Cg fill='%23c8920a' fill-opacity='.4'%3E%3Ccircle cx='7' cy='9' r='.9'/%3E%3Ccircle cx='28' cy='21' r='.7'/%3E%3Ccircle cx='15' cy='33' r='1.1'/%3E%3Cpath d='M33 5l1.4 1.4-1.4 1.4-1.4-1.4z'/%3E%3C/g%3E%3C/svg%3E");
+  --bt-size: 40px;
+  --bt-hi: rgba(255, 255, 255, 0.5);
+  --bt-shade: rgba(150, 100, 10, 0.14);
+  --bt-tint: 32%;
+  --bt-tile-edge: inset 0 0 0 1px rgba(200, 146, 10, 0.7), inset 0 calc(var(--hb-u) * -0.05) 0 rgba(150, 100, 10, 0.16);
+}
+.hg-game[data-board-theme='goldleaf'] .ph {
+  --pt-paper: #fdf6df;
+  --pt-paper-2: #fbf0cf;
+  --pt-night: #2a1a05;
+  --pt-night-2: #4a3010;
+  --pt-gold: #ffcf5a;
+}
+
+/* the sheen: one soft diagonal band over the frame ring (under the tiles), opacity only. At rest it is a faint static glint.
+   It only moves once the table has proved fast (data-perf='high'), never for reduced motion and never on a slow renderer. */
+.hg-game[data-board-theme='goldleaf'] .hb-board .hb-frame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(115deg, transparent 28%, rgba(255, 236, 170, 0.38) 46%, rgba(255, 214, 110, 0.5) 52%, transparent 72%);
+  opacity: 0.2;
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-perf='high']:not([data-motion='reduced']) .hg-game[data-board-theme='goldleaf']:not([data-rm]) .hb-board .hb-frame::before {
+    animation: bt-sheen 9s ease-in-out infinite;
+  }
+}
+:root[data-perf='low'] .hg-game[data-board-theme='goldleaf'] .hb-board .hb-frame::before,
+:root[data-motion='reduced'] .hg-game[data-board-theme='goldleaf'] .hb-board .hb-frame::before,
+.hg-game[data-board-theme='goldleaf'][data-rm] .hb-board .hb-frame::before { animation: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .hg-game[data-board-theme='goldleaf'] .hb-board .hb-frame::before { animation: none !important; }
+}
+@keyframes bt-sheen {
+  0%, 100% { opacity: 0.08; }
+  50% { opacity: 0.5; }
+}

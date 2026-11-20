@@ -1,0 +1,1601 @@
+/* ==========================================================================
+   H-LOBBY: game detail sections, lobby (own header, pieces, seats, phone order) and join states.
+   Prefix .xl-. Colours only from --hub-* tokens (+ the game's --g-* / --ho-* accents set by the page);
+   motion from --dur-1..4 / --ease-*. Builds on hub.css (.hub-*) and online.css (.ho-*).
+   ========================================================================== */
+
+/* ---------- game detail: quick card + sections ---------- */
+.xl-detail__grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.xl-detail__side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+@media (min-width: 960px) {
+  .xl-detail__grid {
+    display: grid;
+    grid-template-columns: minmax(360px, 480px) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+  }
+  .xl-detail__main {
+    position: sticky;
+    top: calc(var(--topbar-h, 68px) + 16px);
+  }
+}
+.xl-sec {
+  gap: 12px;
+  animation: xl-rise var(--dur-3) var(--ease-out) both;
+}
+.xl-sec__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+}
+.xl-sec .hub-section__more {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.xl-note p {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+/* how to play: four illustrated steps (2x2 on phones, a row of 4 when there is room) */
+.xl-how__list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+@media (min-width: 1600px) {
+  .xl-how__list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.xl-how__step {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--hub-r-m);
+  background: var(--hub-surface-2);
+  border: 1px solid var(--hub-line);
+}
+.xl-how__art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  color: var(--g-on, var(--hub-text));
+  background: linear-gradient(135deg, var(--g-accent, var(--hub-brand)), var(--g-accent-2, var(--hub-brand-2)));
+  box-shadow: 0 10px 16px -8px var(--g-glow-strong, var(--g-glow, var(--hub-brand-soft)));
+}
+.xl-how__num {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+  color: var(--hub-text);
+  background: var(--hub-surface-3);
+  border: 2px solid var(--hub-surface-2);
+}
+.xl-how__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.xl-how__text b {
+  font-size: 15px;
+  line-height: 1.25;
+  color: var(--hub-text);
+}
+.xl-how__text small {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--hub-dim);
+}
+
+/* your record */
+.xl-record__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.xl-record__tile {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+  padding: 12px 8px;
+  border-radius: var(--hub-r-s);
+  background: var(--hub-surface-2);
+  border: 1px solid var(--hub-line);
+  text-align: center;
+  min-width: 0;
+}
+.xl-record__tile dt {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--hub-faint);
+}
+.xl-record__tile dd {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--hub-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (min-width: 480px) {
+  .xl-record__grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.xl-record__hint {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* top players */
+.xl-top {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.xl-top__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 8px 10px;
+  border-radius: var(--hub-r-m);
+  background: var(--hub-surface-2);
+  border: 1px solid var(--hub-line);
+}
+.xl-top__row.is-me {
+  border-color: var(--hub-brand);
+  background: var(--hub-brand-soft);
+}
+.xl-top__rank {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 800;
+  color: #1b1d33; /* ink on the fixed medal colours, same in both themes */
+  background: var(--xl-medal, var(--hub-faint));
+}
+.xl-top__av {
+  flex: none;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 0 0 2px var(--xl-medal, var(--hub-line-2));
+}
+.xl-top__av > * {
+  width: 100%;
+  height: 100%;
+}
+.xl-top__who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.xl-top__who b {
+  font-size: 15px;
+  color: var(--hub-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.xl-top__who em {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--hub-dim);
+}
+.xl-top__who small {
+  font-size: 13px;
+  color: var(--hub-dim);
+}
+
+/* open tables */
+.xl-tables {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.xl-tables__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 56px;
+  padding: 8px 10px 8px 14px;
+  border-radius: var(--hub-r-m);
+  background: var(--hub-surface-2);
+  border: 1px solid var(--hub-line);
+}
+.xl-tables__who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.xl-tables__who b {
+  font-size: 15px;
+  color: var(--hub-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.xl-tables__who small {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--hub-dim);
+}
+.xl-tables__row .hub-btn--sm {
+  min-height: 44px;
+  min-width: 72px;
+}
+.xl-tables__empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.xl-tables__empty p {
+  margin: 0;
+}
+
+/* ---------- lobby: own compact header (no hub chrome around /lobby) ---------- */
+.xl-lobby {
+  padding-top: max(8px, var(--safe-top, 0px));
+}
+.xl-head {
+  position: sticky;
+  top: max(8px, var(--safe-top, 0px));
+  z-index: 20;
+  padding: 8px 10px 8px 6px;
+  gap: 10px;
+}
+.xl-head__back {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  color: var(--hub-text);
+  transition: background-color var(--dur-1) var(--ease-std), transform var(--dur-1) var(--ease-std);
+}
+@media (hover: hover) {
+  .xl-head__back:hover {
+    background: var(--hub-line);
+  }
+}
+.xl-head__back:active {
+  transform: scale(0.94);
+}
+.xl-head__back:focus-visible {
+  outline: 2px solid var(--hub-brand);
+  outline-offset: 2px;
+}
+.xl-head .ho-qhead__icon {
+  flex: none;
+}
+.xl-head__leave {
+  flex: none;
+  min-height: 44px;
+  gap: 6px;
+}
+.xl-head .ho-h1 {
+  font-size: clamp(1.05rem, 4.6vw, 1.6rem);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.xl-head .ho-qhead__main p {
+  margin: 0;
+  white-space: nowrap;
+}
+@media (max-width: 479px) {
+  .xl-head .ho-qhead__icon {
+    width: 36px !important;
+    height: 36px !important;
+  }
+  .xl-head__leave {
+    width: 44px;
+    padding: 0;
+    justify-content: center;
+  }
+  .xl-head__leave span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+@media (max-width: 339px) {
+  .xl-head .ho-qhead__icon {
+    display: none;
+  }
+}
+
+/* phones: one column ordered seats -> invite -> piece -> settings -> start -> friends */
+@media (max-width: 959px) {
+  .xl-o-seats {
+    order: 1;
+  }
+  .xl-o-invite {
+    order: 2;
+  }
+  .xl-o-guest {
+    order: 3;
+  }
+  .xl-o-pieces {
+    order: 4;
+  }
+  .xl-o-settings {
+    order: 5;
+  }
+  .xl-o-start {
+    order: 6;
+  }
+  .xl-o-friends {
+    order: 7;
+  }
+}
+.xl-o-invite,
+.xl-o-pieces,
+.xl-o-settings,
+.xl-o-friends {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* ---------- seats: spring pop-in, piece badge, frame, title ---------- */
+.xl-lobby .ho-seat.xl-seat {
+  animation: xl-seat-pop var(--dur-3) var(--ease-spring) both;
+}
+.xl-seat.is-away .ho-seat__avatar {
+  opacity: 0.55;
+  filter: grayscale(0.6);
+}
+.xl-seat .ho-seat__avatar {
+  position: relative;
+}
+.xl-seat__piece {
+  position: absolute;
+  left: -8px;
+  bottom: -6px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--hub-surface);
+  border: 2px solid var(--ho-seat, var(--hub-line-2));
+  box-shadow: var(--hub-shadow-s);
+  animation: xl-pop var(--dur-2) var(--ease-spring) both;
+}
+.xl-seat__piece svg {
+  width: 22px;
+  height: 22px;
+}
+.xl-seat__title {
+  display: flex;
+  justify-content: center;
+  max-width: 100%;
+  min-width: 0;
+}
+.xl-frame {
+  position: relative;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+}
+.xl-frame.has-frame {
+  padding: 3px;
+  background: conic-gradient(from 210deg, var(--xl-frame-a), var(--xl-frame-b), var(--xl-frame-a));
+}
+.xl-frame > * {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+}
+.xl-title {
+  display: inline-block;
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--hub-dim);
+  background: var(--hub-line);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- piece picker ---------- */
+.xl-pieces__now {
+  font-weight: 700;
+  color: var(--hub-text);
+}
+.xl-pieces__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.xl-piece {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 92px;
+  padding: 10px 6px;
+  border-radius: var(--hub-r-m);
+  border: 1px solid var(--hub-line);
+  background: var(--hub-surface-2);
+  color: var(--hub-text);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    transform var(--dur-1) var(--ease-std),
+    border-color var(--dur-2) var(--ease-out),
+    background-color var(--dur-2) var(--ease-out);
+}
+@media (hover: hover) {
+  .xl-piece:hover:not(:disabled) {
+    border-color: var(--hub-line-2);
+    transform: translateY(-1px);
+  }
+}
+.xl-piece:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.xl-piece:focus-visible {
+  outline: 2px solid var(--ho-accent, var(--hub-brand));
+  outline-offset: 2px;
+}
+.xl-piece.is-mine {
+  border-color: var(--ho-accent, var(--hub-brand));
+  background: var(--hub-surface-2);
+  background: color-mix(in srgb, var(--ho-accent, var(--hub-brand)) 16%, var(--hub-surface-2));
+  box-shadow: 0 0 0 1px var(--ho-accent, var(--hub-brand)) inset;
+}
+.xl-piece.is-mine .xl-piece__art {
+  animation: xl-pop var(--dur-3) var(--ease-spring) both;
+}
+.xl-piece.is-taken {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.xl-piece:disabled:not(.is-taken) {
+  cursor: progress;
+  opacity: 0.75;
+}
+.xl-piece__art {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+}
+.xl-piece__art svg {
+  width: 44px;
+  height: 44px;
+}
+.xl-piece__name {
+  max-width: 100%;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.xl-piece__owner {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 0 0 2px var(--hub-surface);
+}
+.xl-piece__owner > * {
+  width: 100%;
+  height: 100%;
+}
+.xl-piece__check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: var(--hub-bg);
+  background: var(--ho-accent, var(--hub-brand));
+  animation: xl-pop var(--dur-2) var(--ease-spring) both;
+}
+@media (min-width: 560px) and (max-width: 959px) {
+  .xl-pieces__grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+/* ---------- join: auto-join countdown with cancel, blocked states ---------- */
+.ho-join__status > .xl-joining {
+  position: relative;
+  overflow: hidden;
+  flex-wrap: wrap;
+}
+.xl-joining__text {
+  flex: 1;
+  min-width: 0;
+}
+.xl-joining__cancel {
+  flex: none;
+  min-height: 40px;
+}
+.xl-joining__bar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 3px;
+  background: var(--hub-good);
+  transform-origin: left center;
+  animation: xl-countdown var(--xl-join-ms, 700ms) linear both;
+}
+.xl-blocked {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px 14px;
+  padding: 16px;
+  border-radius: var(--hub-r-m);
+  background: var(--hub-surface-2);
+  border: 1px solid var(--hub-line-2);
+  animation: xl-rise var(--dur-3) var(--ease-out) both;
+}
+.xl-blocked__icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  color: var(--hub-warn);
+  background: rgba(var(--hub-warn-rgb), 0.16);
+  background: color-mix(in srgb, var(--hub-warn) 16%, transparent);
+}
+.xl-blocked--missing .xl-blocked__icon,
+.xl-blocked--finished .xl-blocked__icon {
+  color: var(--hub-bad);
+  background: rgba(var(--hub-bad-rgb), 0.14);
+  background: color-mix(in srgb, var(--hub-bad) 14%, transparent);
+}
+.xl-blocked__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.xl-blocked__text b {
+  font-size: 17px;
+  color: var(--hub-text);
+}
+.xl-blocked__text span {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--hub-dim);
+}
+.xl-blocked__actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+@media (min-width: 520px) {
+  .xl-blocked__actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .xl-blocked__actions > * {
+    flex: 1 1 auto;
+  }
+}
+
+/* ---------- keyframes + reduced motion ---------- */
+@keyframes xl-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes xl-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+@keyframes xl-seat-pop {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.82);
+  }
+}
+@keyframes xl-countdown {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .xl-sec,
+  .xl-lobby .ho-seat.xl-seat,
+  .xl-seat__piece,
+  .xl-piece.is-mine .xl-piece__art,
+  .xl-piece__check,
+  .xl-blocked {
+    animation: none;
+  }
+  .xl-joining__bar {
+    animation: none;
+    transform: none;
+  }
+  .xl-piece,
+  .xl-head__back {
+    transition: none;
+  }
+}
+:root[data-motion='reduced'] :is(.xl-sec, .xl-lobby .ho-seat.xl-seat, .xl-seat__piece, .xl-piece.is-mine .xl-piece__art, .xl-piece__check, .xl-blocked) {
+  animation: none;
+}
+:root[data-motion='reduced'] .xl-joining__bar {
+  animation: none;
+  transform: none;
+}
+:root[data-motion='reduced'] :is(.xl-piece, .xl-head__back) {
+  transition: none;
+}
+
+/* ---------- lobby page gutter (the lobby runs outside the hub shell, so it brings its own side margin) ---------- */
+.xl-lobby,
+.ho-page.xl-page {
+  padding-inline: var(--hub-pad-l) var(--hub-pad-r);
+}
+
+/* ---------- wide lobby: balanced columns. Left = share card + invite friends, right = seats, piece, mode, start.
+   Neither column is sticky (a sticky column taller than the viewport hides its own bottom). ---------- */
+@media (min-width: 960px) {
+  .xl-lobby .ho-lobby__col--invite {
+    position: static;
+  }
+}
+
+/* ---------- seat title chip: wraps under the name (whole words) instead of truncating to "HI..." in narrow
+   seats; the star is dropped and the padding trimmed so a word like "Hustler" fits a 3-up phone seat ---------- */
+.xl-seat__title > [data-rarity] {
+  white-space: normal !important; /* TitleChip sets nowrap + pill shape inline */
+  max-width: 100%;
+  padding: 2px 8px !important;
+  font-size: 11.5px !important;
+  text-align: center;
+  justify-content: center;
+  border-radius: 10px !important;
+}
+.xl-seat__title > [data-rarity] > svg {
+  display: none;
+}
+.xl-seat__title [data-chip-text] {
+  white-space: normal;
+  overflow-wrap: normal;
+}
+@media (min-width: 480px) {
+  .xl-seat__title > [data-rarity] > svg {
+    display: block;
+  }
+}
+
+/* ==========================================================================
+   LOBBY: "Choose your piece" (the first card of the lobby) + the seat piece line.
+   Colours from --hub-* tokens and the table's --ho-accent; the motion has a reduced-motion switch (bottom).
+   ========================================================================== */
+
+/* ---------- Choose your piece: the lobby's first card, above the players, the share card and the rules ---------- */
+.sr-lobby > .sr-o-pieces {
+  order: 0; /* the phone order of the columns (store-rooms.css) must not push this card down */
+}
+.xl-pieces--top {
+  padding: 16px;
+  border-top-width: 3px;
+  background: var(--hub-surface);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--ho-accent, var(--hub-brand)) 10%, var(--hub-surface)), var(--hub-surface) 70%);
+}
+.xl-pieces__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-bottom: 14px;
+}
+.xl-pieces__titles {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.xl-pieces__title {
+  margin: 0;
+  font-family: var(--font-hub-display);
+  font-size: clamp(1.3rem, 5.4vw, 1.75rem);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+}
+.xl-pieces__lede {
+  margin: 5px 0 0;
+  font-size: var(--st-t-s, 0.92rem);
+  line-height: 1.4;
+  color: var(--hub-dim);
+}
+.xl-pieces__me {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 6px 14px 6px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--hub-line);
+  background: var(--hub-surface-2);
+}
+.xl-pieces__me.has-pick {
+  border-color: var(--ho-accent, var(--hub-brand));
+  border-color: color-mix(in srgb, var(--ho-accent, var(--hub-brand)) 55%, var(--hub-line));
+}
+.xl-pieces__avatar {
+  flex: none;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 0 0 2px var(--hub-surface);
+}
+.xl-pieces__avatar > * {
+  width: 100%;
+  height: 100%;
+}
+.xl-pieces--top .xl-pieces__now {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: var(--st-t-xs, 0.8rem);
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--hub-dim);
+}
+.xl-pieces__now b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--st-t-s, 0.92rem);
+  color: var(--hub-text);
+}
+.xl-pieces--top .xl-pieces__grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 0;
+}
+@media (min-width: 560px) {
+  .xl-pieces--top .xl-pieces__grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+.xl-pieces--top .xl-piece {
+  min-height: 128px;
+  padding: 12px 6px 10px;
+  gap: 5px;
+  border-width: 2px;
+  border-radius: 18px;
+}
+.xl-pieces--top .xl-piece__art,
+.xl-pieces--top .xl-piece__art svg {
+  width: 60px;
+  height: 60px;
+}
+.xl-pieces--top .xl-piece__name {
+  font-size: 13px;
+}
+.xl-piece__hint {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--hub-faint);
+}
+.xl-piece.is-mine {
+  border-width: 3px;
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--ho-accent, var(--hub-brand)) 30%, transparent),
+    0 12px 28px -14px var(--ho-accent, var(--hub-brand));
+}
+.xl-piece__yours {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #0f1220;
+  color: lch(from var(--ho-accent, var(--hub-brand)) calc((62 - l) * 100) 0 0);
+  background: var(--ho-accent, var(--hub-brand));
+}
+.xl-pieces--top .xl-piece__check {
+  top: 6px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  color: #0f1220;
+  color: lch(from var(--ho-accent, var(--hub-brand)) calc((62 - l) * 100) 0 0);
+}
+/* taken: the piece is greyed out, the person who has it is named, nothing to press */
+.xl-pieces--top .xl-piece.is-taken {
+  opacity: 1;
+  cursor: not-allowed;
+  border-style: dashed;
+  background: var(--hub-field, var(--hub-surface-2));
+}
+.xl-pieces--top .xl-piece.is-taken .xl-piece__art,
+.xl-pieces--top .xl-piece.is-taken .xl-piece__name {
+  opacity: 0.5;
+  filter: grayscale(0.7);
+}
+.xl-pieces--top .xl-piece__owner {
+  position: static;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  padding: 2px 8px 2px 2px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--hub-surface);
+  box-shadow: 0 0 0 1px var(--hub-line-2);
+}
+.xl-piece__ownerav {
+  flex: none;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  overflow: hidden;
+}
+.xl-piece__ownerav > * {
+  width: 100%;
+  height: 100%;
+}
+.xl-piece__ownername {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--hub-dim);
+}
+.xl-pieces__foot {
+  margin: 10px 2px 0;
+  font-size: var(--st-t-xs, 0.8rem);
+  color: var(--hub-faint);
+}
+/* phones: the whole card has to fit under the table header, so it is tighter (the lede already says "tap") */
+@media (max-width: 559px) {
+  .xl-pieces--top {
+    padding: 14px;
+  }
+  .xl-pieces__head {
+    margin-bottom: 10px;
+    gap: 8px 12px;
+  }
+  .xl-pieces__lede {
+    font-size: var(--st-t-xs, 0.82rem);
+  }
+  .xl-pieces--top .xl-pieces__grid {
+    gap: 8px;
+  }
+  .xl-pieces--top .xl-piece {
+    min-height: 112px;
+    padding: 10px 4px 8px;
+    gap: 4px;
+  }
+  .xl-piece__hint {
+    display: none;
+  }
+}
+@media (max-width: 380px) {
+  .xl-pieces--top {
+    padding: 12px 10px;
+  }
+  .xl-pieces--top .xl-piece {
+    min-height: 108px;
+    padding-inline: 3px;
+  }
+  .xl-pieces--top .xl-piece__name {
+    font-size: 12px;
+  }
+}
+
+/* ---------- seat: the chosen piece, named (the badge on the avatar stays) ---------- */
+.sr-seat__pieceline {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 2px 8px 2px 4px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--hub-dim);
+  background: var(--hub-surface-2);
+  border: 1px solid var(--hub-line);
+}
+.sr-seat__pieceline svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+.sr-seat__pieceline > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sr-seat__pieceline.is-none {
+  border-style: dashed;
+  color: var(--hub-faint);
+}
+.sr-seat__piece {
+  width: 34px;
+  height: 34px;
+}
+.sr-seat__piece svg {
+  width: 26px;
+  height: 26px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .xl-pieces--top .xl-piece,
+  .xl-pieces--top .xl-piece__art,
+  .xl-pieces--top .xl-piece__check {
+    animation: none;
+    transition: none;
+  }
+}
+:root[data-motion='reduced'] :is(.xl-pieces--top .xl-piece, .xl-pieces--top .xl-piece__art, .xl-pieces--top .xl-piece__check) {
+  animation: none;
+  transition: none;
+}
+
+/* ==========================================================================
+   LOBBY: the host's "Game rules" editor styles (the rules-editor owns this block, down to the end of the file).
+   Used by components/online/{SettingsPanel,SettingControls,RulesEditor}.jsx.
+   ========================================================================== */
+/* ---------- Game rules (host editor + read-only list) ---------- */
+.xl-rules {
+  container-type: inline-size;
+  container-name: xlrules;
+}
+.xl-rules [hidden] {
+  display: none !important;
+}
+/* presets: Standard / Quick / Classic as three cards */
+.xl-presets__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+@container xlrules (min-width: 460px) {
+  .xl-presets__row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.xl-preset {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  min-height: 56px;
+  padding: 10px 14px;
+  text-align: left;
+  font: inherit;
+  color: var(--hub-text);
+  cursor: pointer;
+  border-radius: var(--hub-r-m, 14px);
+  border: 2px solid var(--hub-line);
+  background: var(--hub-surface-2);
+  transition:
+    border-color var(--dur-2) var(--ease-out),
+    background-color var(--dur-2) var(--ease-out),
+    transform var(--dur-1) var(--ease-std);
+}
+@media (hover: hover) {
+  .xl-preset:hover:not(:disabled):not(.is-on) {
+    border-color: var(--hub-line-2);
+  }
+}
+.xl-preset:active:not(:disabled) {
+  transform: scale(0.985);
+}
+.xl-preset:focus-visible {
+  outline: 3px solid var(--hub-focus);
+  outline-offset: 2px;
+}
+.xl-preset:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.xl-preset.is-on {
+  border-color: var(--ho-accent, var(--hub-brand));
+  background: color-mix(in srgb, var(--ho-accent, var(--hub-brand)) 16%, var(--hub-surface-2));
+}
+.xl-preset__name {
+  font-family: var(--font-hub-display);
+  font-size: 0.98rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+.xl-preset__hint {
+  font-size: var(--st-t-xs, 0.8rem);
+  line-height: 1.3;
+  color: var(--hub-dim);
+}
+
+/* the bar under the presets: badge, reset all, collapse */
+.xl-rules__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin-top: 16px;
+}
+.xl-rules__bar > .ho-muted {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.xl-custom {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 6px 0 12px;
+  border-radius: 999px;
+  font-size: var(--st-t-xs, 0.8rem);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--hub-text);
+  color: color-mix(in srgb, var(--ho-accent, var(--hub-brand)) var(--hub-ink-mix, 60%), var(--hub-text));
+  border: 1px solid var(--ho-accent, var(--hub-brand));
+  background: color-mix(in srgb, var(--ho-accent, var(--hub-brand)) 16%, transparent);
+}
+.xl-custom b {
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: #0f1220;
+  color: lch(from var(--ho-accent, var(--hub-brand)) calc((62 - l) * 100) 0 0);
+  background: var(--ho-accent, var(--hub-brand));
+}
+.xl-rules__reset,
+.xl-rules__toggle {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font: 700 0.9rem var(--font-display);
+  cursor: pointer;
+  color: var(--hub-text);
+  border: 1px solid var(--hub-line-2);
+  background: transparent;
+  transition:
+    background-color var(--dur-1) var(--ease-std),
+    transform var(--dur-1) var(--ease-out);
+}
+.xl-rules__bar .xl-rules__reset {
+  margin-left: auto;
+}
+.xl-rules__toggle {
+  border-color: transparent;
+  color: var(--hub-dim);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@media (hover: hover) {
+  .xl-rules__reset:hover:not(:disabled),
+  .xl-rules__toggle:hover {
+    background: rgba(var(--hub-tint), 0.08);
+  }
+}
+.xl-rules__reset:active:not(:disabled),
+.xl-rules__toggle:active {
+  transform: scale(0.97);
+}
+.xl-rules__reset:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.xl-rules__reset:focus-visible,
+.xl-rules__toggle:focus-visible,
+.xl-rule__reset:focus-visible,
+.xl-group__btn:focus-visible {
+  outline: 3px solid var(--hub-focus);
+  outline-offset: 2px;
+}
+
+/* groups: an accordion on a phone, two columns when the card is wide */
+.xl-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+@container xlrules (min-width: 540px) {
+  .xl-groups {
+    display: block;
+    columns: 2;
+    column-gap: 16px;
+  }
+  .xl-group {
+    break-inside: avoid;
+    margin-bottom: 12px;
+  }
+}
+.xl-group {
+  border-radius: var(--hub-r-m, 14px);
+  border: 1px solid var(--hub-line);
+  background: var(--hub-surface-2);
+  overflow: hidden;
+}
+.xl-group__h {
+  margin: 0;
+  font: inherit;
+}
+.xl-group__btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 14px;
+  text-align: left;
+  font: inherit;
+  color: var(--hub-text);
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+}
+.xl-group__title {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-hub-display);
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.xl-group__count {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--hub-text);
+  background: color-mix(in srgb, var(--ho-accent, var(--hub-brand)) 20%, transparent);
+}
+.xl-group__chev {
+  flex: none;
+  color: var(--hub-dim);
+  transition: transform var(--dur-2) var(--ease-out);
+}
+.xl-group.is-open .xl-group__chev {
+  transform: rotate(180deg);
+}
+.xl-group__body {
+  display: flex;
+  flex-direction: column;
+  padding: 0 14px 6px;
+}
+.xl-group__note,
+.xl-ro__note {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: var(--st-t-s, 0.92rem);
+  line-height: 1.45;
+  color: var(--hub-text);
+  background: color-mix(in srgb, var(--ho-accent, var(--hub-brand)) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ho-accent, var(--hub-brand)) 28%, transparent);
+}
+.xl-ro__note {
+  margin: 4px 0 6px;
+  font-size: 0.86rem;
+}
+
+/* one rule */
+.xl-rule {
+  margin: 0;
+  padding: 14px 0 14px 0;
+  border-top: 1px solid var(--hub-line);
+}
+.xl-rule.is-modified {
+  margin-inline: -14px;
+  padding-inline: 11px 14px;
+  border-left: 3px solid var(--ho-accent, var(--hub-brand));
+  background: color-mix(in srgb, var(--ho-accent, var(--hub-brand)) 8%, transparent);
+}
+.xl-rule__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.xl-rule__label {
+  flex: 1 1 96px;
+  min-width: 0;
+  margin: 0;
+  letter-spacing: 0.03em;
+}
+.xl-rule__val {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--hub-text);
+  color: color-mix(in srgb, var(--ho-accent, var(--hub-brand)) var(--hub-ink-mix, 60%), var(--hub-text));
+}
+.xl-rule__meta span,
+.xl-ro__row b,
+.xl-ro__row small {
+  white-space: nowrap;
+}
+.xl-rule__reset {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font: 700 0.85rem var(--font-display);
+  cursor: pointer;
+  color: var(--hub-text);
+  border: 1px solid var(--hub-line-2);
+  background: var(--hub-surface);
+}
+@media (hover: hover) {
+  .xl-rule__reset:hover:not(:disabled) {
+    background: rgba(var(--hub-tint), 0.1);
+  }
+}
+.xl-rule__reset:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.xl-rule > .ho-help {
+  margin: 4px 0 0;
+  line-height: 1.4;
+}
+.xl-rule__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--hub-faint);
+}
+.xl-rule__err {
+  margin-top: 8px;
+}
+.xl-rule__switchrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.xl-rule__switchrow .ho-switch {
+  flex: 1 1 190px; /* a long name wraps its Reset button underneath instead of squeezing the switch */
+  min-width: min(190px, 100%);
+}
+.xl-rule__switchrow .xl-rule__reset {
+  margin-left: auto;
+}
+.xl-rule .ho-chips {
+  margin-top: 10px;
+}
+.xl-rule .ho-seg {
+  margin-top: 10px;
+}
+.xl-rule .ho-chip {
+  min-height: 44px;
+}
+
+/* slider: -  [=====o-----]  + */
+.xl-slider {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.xl-slider__btn {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--hub-line-2);
+  background: var(--hub-field, var(--hub-surface));
+}
+.xl-slider__input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  background: transparent;
+  touch-action: pan-y;
+  --xl-track: linear-gradient(to right, var(--ho-accent, var(--hub-brand)) 0 var(--p, 0%), var(--hub-line-2) var(--p, 0%) 100%);
+}
+.xl-slider__input::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--xl-track);
+}
+.xl-slider__input::-moz-range-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--xl-track);
+}
+.xl-slider__input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 28px;
+  height: 28px;
+  margin-top: -10px;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid var(--ho-accent, var(--hub-brand));
+  box-shadow: 0 2px 8px rgba(var(--hub-shadow-rgb), 0.45);
+}
+.xl-slider__input::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid var(--ho-accent, var(--hub-brand));
+  box-shadow: 0 2px 8px rgba(var(--hub-shadow-rgb), 0.45);
+}
+.xl-slider__input.is-off {
+  --xl-track: var(--hub-line-2);
+}
+.xl-slider__input.is-off::-webkit-slider-thumb {
+  border-color: var(--hub-line-2);
+}
+.xl-slider__input.is-off::-moz-range-thumb {
+  border-color: var(--hub-line-2);
+}
+.xl-slider__input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.xl-slider__input:focus-visible {
+  outline: 3px solid var(--hub-focus);
+  outline-offset: 2px;
+  border-radius: 14px;
+}
+
+/* read-only rules */
+.xl-rules__bar .xl-rules__toggle {
+  margin-left: auto;
+}
+.xl-ro {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+@container xlrules (min-width: 540px) {
+  .xl-ro {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+.xl-ro__group {
+  padding: 8px 12px 6px;
+  border-radius: var(--hub-r-m, 14px);
+  border: 1px solid var(--hub-line);
+  background: var(--hub-surface-2);
+}
+.xl-ro__h {
+  margin: 4px 0 4px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--hub-dim);
+}
+.xl-ro__list {
+  margin: 0;
+}
+.xl-ro__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 8px;
+  border-top: 1px solid var(--hub-line);
+  font-size: 0.92rem;
+}
+.xl-ro__row dt {
+  min-width: 0;
+  color: var(--hub-dim);
+}
+.xl-ro__row dd {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin: 0;
+  text-align: right;
+}
+.xl-ro__row b {
+  color: var(--hub-text);
+  font-variant-numeric: tabular-nums;
+}
+.xl-ro__row small {
+  font-size: 11.5px;
+  color: var(--hub-faint);
+}
+.xl-ro__row.is-changed {
+  margin-inline: -4px;
+  padding-inline: 8px;
+  border-radius: 10px;
+  border-top-color: transparent;
+  background: color-mix(in srgb, var(--ho-accent, var(--hub-brand)) 14%, transparent);
+  box-shadow: inset 3px 0 0 var(--ho-accent, var(--hub-brand));
+}
+.xl-ro__row.is-changed dt {
+  color: var(--hub-text);
+  font-weight: 700;
+}
+
+/* phones: nothing may force a sideways scroll at 320px */
+.xl-rules,
+.xl-group,
+.xl-pieces {
+  min-width: 0;
+  max-width: 100%;
+}
+/* a modified rule bleeds to the group's edges (negative margins), so it must NOT be capped to the content width */
+.xl-rule {
+  min-width: 0;
+}
+.xl-rules .ho-summary {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 380px) {
+  .xl-group__btn {
+    padding-inline: 12px;
+  }
+  .xl-group__body {
+    padding-inline: 12px;
+  }
+  .xl-rule.is-modified {
+    margin-inline: -12px;
+    padding-inline: 9px 12px;
+  }
+  .xl-rules .ho-stepper__val {
+    min-width: 0;
+  }
+  .xl-rules .ho-chip {
+    padding-inline: 12px;
+  }
+}
+
+/* reduced motion: no pop, no slide, no spin */
+@media (prefers-reduced-motion: reduce) {
+  .xl-group__chev,
+  .xl-preset,
+  .xl-rules__reset,
+  .xl-rules__toggle {
+    transition: none;
+  }
+}
+:root[data-motion='reduced'] :is(.xl-group__chev, .xl-preset, .xl-rules__reset, .xl-rules__toggle) {
+  animation: none;
+  transition: none;
+}
+
+/* a legal but odd rule combination (e.g. a win target below the starting cash): a gentle heads-up, never a blocker */
+.xl-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 9px 12px;
+  border-radius: 12px;
+  font-size: 13.5px;
+  line-height: 1.4;
+  font-weight: 650;
+  color: #6b4300;
+  background: #fff3cf;
+  border: 1px solid #f0cf7a;
+}
+.xl-warn > span {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 900;
+  color: #fff;
+  background: #c98a00;
+}

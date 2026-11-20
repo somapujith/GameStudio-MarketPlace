@@ -71,7 +71,8 @@ export function parseSettingsPatch(adapter, current, patch) {
     maxPlayers = parseSeats(adapter, seats);
     if (maxPlayers == null) return fail(seatsMessage(adapter));
   }
-  const v = adapter.validateSettings({ ...current, ...rest });
+  const base = typeof adapter.mergeSettings === 'function' ? adapter.mergeSettings(current, rest) : { ...current, ...rest };
+  const v = adapter.validateSettings(base);
   if (!v.ok) return fail(v.error);
   return maxPlayers === undefined ? { ok: true, settings: v.settings } : { ok: true, settings: v.settings, maxPlayers };
 }

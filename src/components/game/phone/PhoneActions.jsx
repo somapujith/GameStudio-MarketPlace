@@ -1,0 +1,120 @@
+// The action row of the simple phone table, in the thumb zone under the players.
+//   [ Your move · 30s  ▬▬▬▬ ]          the decision timer (TurnTimer's TimerBar), only while a clock runs
+//   [ Use chai ] [ Ride ₹35,000 ]      secondary actions as small pills, only when the spec has any
+//   [ Manage ] [   ROLL / BUY ₹3,20,000 / END TURN …   ] [ Trade ]
+// The one big primary comes from the shared action spec (ActionBar.useActionSpec), so every rule behind Roll, Buy, End turn,
+// Pay the fine, Use chai, Ride, Wait it out stays exactly as it was. While somebody else plays it is a calm, disabled
+// "Waiting for Sana…". Manage (upgrades, mortgages) and Trade stay one tap away on either side of it.
+// During a Snatch window the primary slot is the SNATCH! button for a player who may press (SnatchButton.jsx).
+import { Avatar } from '@/components/art/index.js';
+import { sfx } from '@/lib/sfx.js';
+import Icon from '../ui/Icon.jsx';
+import { TimerBar } from '../turn/TurnTimer.jsx';
+import SnatchButton, { useSnatchControl } from '../SnatchButton.jsx';
+import { pillFor, primaryFor, soundOf } from './phoneModel.js';
+import { tradeStatus } from '../ui/tradeModel.js';
+
+const play = (action) => {
+  try { sfx.play(soundOf(action)); } catch { /* sound is optional */ }
+};
+
+function Tool({ icon, label, badge, onClick, hint }) {
+  return (
+    <button
+      type="button"
+      className="pa-tool"
+      onClick={onClick}
+      aria-label={badge ? `${label}, ${badge.label}` : label}
+      title={hint || label}
+      data-tour={label === 'Manage' ? 'manage' : label === 'Trade' ? 'trade' : undefined}
+    >
+      <Icon name={icon} size={22} />
+      <span aria-hidden="true">{label}</span>
+      {badge ? <i className="pa-tool__badge" aria-hidden="true">{badge.text}</i> : null}
+    </button>
+  );
+}
+
+export default function PhoneActions({ session, spec, fire, badges = {}, onManage, onTrade, hidePills = [], reopen = null }) {
+  const prim = primaryFor(spec);
+  const sn = useSnatchControl(session); // while I may snatch, the big primary slot IS the SNATCH! button
+  const pills = (spec.secondaries || []).filter((s) => !hidePills.includes(s.key)).map((s) => pillFor(s, session));
+  const out = spec.kind === 'out';
+  const pillCount = pills.length + (reopen ? 1 : 0);
+  const waiting = prim.disabled;
+  const rolling = waiting && prim.kind === 'busy' && !!session.rolling; // my dice are in the air: "Rolling…" instead of three dots
+  const tradeState = tradeStatus(session);
+  const tradeHint = !tradeState.can && !session.view?.trade ? tradeState.reason : undefined;
+
+  return (
+    <section className="pa" aria-label="Your actions" data-kind={spec.kind} data-pills={pillCount || undefined}>
+      <p className="cp-sr" role="status" aria-live="polite">{spec.sr}</p>
+      <TimerBar session={session} className="pa-timer" />
+
+      {pillCount ? (
+        <div className="pa-pills" role="group" aria-label="More actions">
+          {reopen ? (
+            <button type="button" className="pa-pill is-reopen" aria-label={`${reopen.label}. Show the choices again`} onClick={reopen.onClick}>
+              <Icon name={reopen.icon} size={16} />
+              <span>{reopen.label}</span>
+            </button>
+          ) : null}
+          {pills.map((p) => (
+            <button
+              key={p.key}
+              type="button"
+              className={`pa-pill is-${p.key}`}
+              aria-label={p.aria}
+              onClick={() => { play(p.action); fire(p.action)(); }}
+            >
+              {p.icon ? <Icon name={p.icon} size={16} /> : null}
+              <span>{p.text}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="pa-main">
+        {out ? <span className="pa-tool pa-tool--gap" aria-hidden="true" /> : <Tool icon="home" label="Manage" badge={badges.manage} onClick={onManage} />}
+
+        {sn.show ? (
+          <SnatchButton ctl={sn} variant="phone" />
+        ) : waiting ? (
+          <div
+            className={`pa-primary is-wait is-${prim.key}${rolling ? ' is-rolling' : ''}`}
+            role="status"
+            aria-label={rolling ? 'Rolling the dice' : prim.aria}
+            data-kind={prim.kind}
+          >
+            {rolling ? (
+              <>
+                <span className="pa-die" aria-hidden="true"><i /><i /><i /></span>
+                <span className="pa-primary__txt">Rolling…</span>
+              </>
+            ) : prim.kind === 'busy' ? (
+              <span className="pa-dots" aria-hidden="true"><i /><i /><i /></span>
+            ) : (
+              <>
+                {prim.waitFor ? <span className="pa-primary__ava" style={{ '--pc': prim.waitFor.color }}><Avatar preset={prim.waitFor.avatar} size={26} /></span> : null}
+                <span className="pa-primary__txt">{prim.text}</span>
+              </>
+            )}
+          </div>
+        ) : (
+          <button
+            type="button"
+            key={prim.key}
+            className={`pa-primary is-${prim.key} tone-${prim.tone}`}
+            aria-label={prim.aria}
+            onClick={() => { play(spec.primary.action); fire(spec.primary.action)(); }}
+          >
+            <span className="pa-primary__txt">{prim.text}</span>
+            {prim.sub ? <small className="pa-primary__sub">{prim.sub}</small> : null}
+          </button>
+        )}
+
+        {out ? <span className="pa-tool pa-tool--gap" aria-hidden="true" /> : <Tool icon="swap" label="Trade" badge={badges.trade} onClick={onTrade} hint={tradeHint} />}
+      </div>
+    </section>
+  );
+}

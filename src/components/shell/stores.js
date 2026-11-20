@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import * as storage from '@/lib/storage.js';
+import { claimDailyReward, errorMessage } from '@/lib/api.js';
 
 /*
  * Thin, defensive wrappers around the lib/storage hooks. They normalise the shapes the
@@ -11,7 +12,12 @@ const noop = () => {};
 export const DEFAULT_SETTINGS = {
   sfx: true,
   volume: 0.8,
+  sfxVolume: 1,
+  ambient: false,
   reducedMotion: false,
+  theme: 'system',
+  playbackSpeed: 1,
+  haptics: true,
 };
 
 export const DEFAULT_PROFILE = {
@@ -51,9 +57,17 @@ export function levelInfo(xp) {
   } catch {
     /* fall through */
   }
-  const need = 200;
-  const into = Math.max(0, Number(xp) || 0) % need;
-  return { level: 1 + Math.floor((Number(xp) || 0) / need), into, need, pct: into / need };
+  // Same curve as the server: level L -> L+1 costs 100 + (L - 1) * 50 XP.
+  const x = Math.max(0, Math.floor(Number(xp) || 0));
+  let level = 1;
+  let start = 0;
+  while (start + 100 + (level - 1) * 50 <= x) {
+    start += 100 + (level - 1) * 50;
+    level += 1;
+  }
+  const need = 100 + (level - 1) * 50;
+  const into = x - start;
+  return { level, into, need, pct: Math.round((into / need) * 1000) / 10 };
 }
 
 /**
@@ -69,12 +83,79 @@ export function progressOf(user, profile) {
   return { xp, coins, info, level: info.level };
 }
 
-export function claimDaily() {
+/** On-device daily claim (signed out only). `{ ok, coins, streak }` or `{ ok: false }`. */
+export function claimDailyLocal() {
   try {
     return storage.claimDaily?.() || { ok: false };
   } catch {
     return { ok: false };
   }
+}
+
+/**
+ * Server daily claim for a session (`POST /api/me/daily`), then `refresh()` so `user.coins` / `user.daily` update.
+ * Resolves (never rejects) to
+ *   `{ ok: true, coins: reward, streak, balance, daily, server: true }`
+ *   `{ ok: false, already: true, server: true }`            already claimed today (409)
+ *   `{ ok: false, error: 'message', server: true }`          offline / other failure
+ */
+export async function claimDailyServer({ refresh } = {}) {
+  try {
+    const r = (await claimDailyReward()) || {};
+    try {
+      await refresh?.();
+    } catch {
+      /* the claim itself succeeded */
+    }
+    return { ok: true, coins: Number(r.reward) || 0, streak: Number(r.streak) || 1, balance: Number(r.coins), daily: r.daily || null, server: true };
+  } catch (e) {
+    if (e?.status === 409) {
+      try {
+        await refresh?.();
+      } catch {
+        /* ignore */
+      }
+      return { ok: false, already: true, server: true };
+    }
+    return { ok: false, error: errorMessage(e, "Couldn't claim the reward. Try again."), server: true };
+  }
+}
+
+/**
+ * Claim today's reward.
+ *   claimDaily({ user, refresh })  with a session  -> Promise of the `claimDailyServer` result
+ *   claimDaily()                   no session      -> the on-device result, synchronously (older callers)
+ * Prefer `useDaily().claim()` (hooks.js), which always returns a Promise and picks the right store.
+ */
+export function claimDaily(ctx) {
+  if (ctx?.user) return claimDailyServer(ctx);
+  return claimDailyLocal();
+}
+
+/**
+ * Daily-reward state for the UI: the server's `user.daily` for a session, else the on-device profile.
+ * `{ canClaim, streak, lastClaim, nextReward, server }` (nextReward = coins the next claim pays).
+ */
+export function dailyStateOf(user, profile, now = new Date()) {
+  const d = user && user.daily && typeof user.daily === 'object' ? user.daily : null;
+  if (user && d) {
+    const streak = Math.max(0, Math.floor(Number(d.streak) || 0));
+    const nextReward = Number(d.nextReward);
+    return {
+      canClaim: !!d.canClaim,
+      streak,
+      lastClaim: typeof d.lastClaim === 'string' ? d.lastClaim : null,
+      nextReward: Number.isFinite(nextReward) && nextReward > 0 ? nextReward : dailyRewardFor(d.canClaim ? streak + 1 : streak),
+      server: true,
+    };
+  }
+  const last = typeof profile?.lastDailyClaim === 'string' ? profile.lastDailyClaim : null;
+  const today = todayKey(now);
+  const y = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  const streak = Math.max(0, Math.floor(Number(profile?.dailyStreak) || 0));
+  const canClaim = last !== today;
+  const nextStreak = canClaim ? (last === todayKey(y) ? streak + 1 : 1) : streak;
+  return { canClaim: user ? false : canClaim, streak, lastClaim: last, nextReward: dailyRewardFor(nextStreak), server: !!user };
 }
 
 /** Local calendar day as YYYY-MM-DD (the format profile.lastDailyClaim uses). */

@@ -1,28 +1,40 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { openRoomSocket } from '@/lib/socket.js';
+import { netStats } from '@/lib/netStats.js';
+import { createNetReporter } from '@/lib/rtt.js';
 import { api } from '@/lib/api.js';
 import { useAuth } from '@/lib/auth.jsx';
-import { isFatalRoomError, toConnection } from './gameHelpers.js';
+import { isFatalRoomError, roomKey, toConnection } from './gameHelpers.js';
+import { localClock } from '@/components/game/turn/clock.js';
+import { voiceEntryFromMessage } from '@/components/voice/voiceModel.js';
+import { filterMuted, isBlocked, useBlocks } from '@/platform/social/blockStore.js';
 
 // Socket + room state for ONE room code, with no game in it: the lobby, the generic online-game page and every
 // game plugin build on this. (It lives here, not in lib/session/useOnlineGame.js, so the lobby does not pull
 // the Tycoon engine and presenter into its chunk; useOnlineGame.js re-exports it for the plugins.)
 
 const ERROR_TTL = 6000;
+const LINK_IDLE = { attempt: 0, since: null, everOpen: false };
 
 /**
  * Socket + room state for ONE room code. No game presentation: the lobby uses this directly.
  *
- * Returns { room, view, chat, connection, error, errorId, fatal, send, leave }
+ * Returns { room, view, chat, connection, link, error, errorId, fatal, send, pickPiece, leave, retry }
  *  - room        the last `{t:'room'}` payload (null until it arrives)
  *  - view        the last `{t:'state'}` engine state (null until a game is running)
  *  - connection  'connecting' | 'open' | 'closed'   (reconnects show up as 'connecting')
  *  - error       transient server error text (auto-clears), `errorId` changes on every new one
- *  - fatal       null | { kind: 'kicked'|'join'|'auth'|'closed'|'left', message }  (the socket is closed)
+ *  - fatal       null | { kind: 'kicked'|'join'|'auth'|'closed'|'left', message, reason? }  (the socket is closed;
+ *                reason 'replaced' = the same account opened this room somewhere else)
+ *  - link        { attempt, since, everOpen }: failed reconnect attempts in a row, when the link dropped (ms), and whether
+ *                it was ever up (presentation only: see connection.js)
+ *  - retry()     reconnect now instead of waiting for the backoff timer
  *  - send(msg, {queue})  JSON to the room; queued while connecting unless queue:false
+ *  - pickPiece(piece)    lobby only: asks for a free game piece (`{t:'piece', piece}`); false when not connected.
+ *                        A taken / unknown piece comes back as a normal `error` (so the caller can roll back).
  *  - leave()     sends {t:'leave'} and closes for good
  *
- * `onState({state, events, seq, fresh})` fires for every state; `fresh` = first state after (re)connect,
+ * `onState({state, events, seq, fresh, clock})` fires for every state; `fresh` = first state after (re)connect,
  * i.e. the events must NOT be animated. `onChat(entry)` fires once per new chat message.
  */
 export function useRoomConnection(code, { onState, onChat } = {}) {
@@ -34,6 +46,9 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
   const [connection, setConnection] = useState('connecting');
   const [error, setError] = useState(null);
   const [fatal, setFatal] = useState(null);
+  const [link, setLink] = useState(LINK_IDLE);
+  // Players I blocked are muted here (client side only): their chat and voice lines never show or sound.
+  const { ids: blockedIds } = useBlocks({ enabled: !!uid });
   const sockRef = useRef(null);
   const handlers = useRef({});
   const errorSeq = useRef(0);
@@ -50,15 +65,20 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
     setError(null);
     setFatal(null);
     setConnection('connecting');
+    setLink(LINK_IDLE);
 
     let alive = true;
     const sock = openRoomSocket(code);
     sockRef.current = sock;
-    const st = { fresh: true, gotRoom: false, lastSeq: -1, diagnosing: false, seen: new Set() };
+    // Connection strength: the socket measures its round trips; the store feeds your own bars, the reporter tells the room.
+    netStats.reset();
+    netStats.setStatus(sock.status);
+    const reporter = createNetReporter({ send: (msg) => sock.send(msg, { queue: false }) });
+    const st = { fresh: true, gotRoom: false, lastSeq: -1, diagnosing: false, seen: new Set(), roomKey: null };
 
-    const fail = (kind, message) => {
+    const fail = (kind, message, reason) => {
       if (!alive) return;
-      setFatal((cur) => cur || { kind, message }); // keep the first (most specific) reason
+      setFatal((cur) => cur || (reason ? { kind, message, reason } : { kind, message })); // keep the first (most specific) reason
       setConnection('closed');
       sock.close();
     };
@@ -75,7 +95,7 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
         case 4004:
           return fail('join', reason || 'That room does not exist.');
         case 4009:
-          return fail('closed', 'This room was opened in another tab or device.');
+          return fail('closed', 'This room was opened in another tab or device.', 'replaced');
         default:
           return fail('closed', 'The connection to the room was closed.');
       }
@@ -108,19 +128,25 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
           if (!msg.room) break;
           st.gotRoom = true;
           if (msg.room.status === 'lobby') st.lastSeq = -1;
-          setRoom(msg.room);
+          const key = roomKey(msg.room);
+          if (key === null || key !== st.roomKey) {
+            st.roomKey = key;
+            setRoom(msg.room);
+          }
           break;
         }
         case 'state': {
           const { state, events, seq } = msg;
+          const clock = localClock(msg.clock, msg.now); // countdown in this device's time, whatever its clock says
           if (!state) break;
           const list = Array.isArray(events) ? events : [];
-          const fresh = st.fresh || list.length === 0;
+          // only the first state after (re)connect is a snapshot; an applied action without events (a sealed bid) is not
+          const fresh = st.fresh;
           if (!fresh && typeof seq === 'number' && seq <= st.lastSeq) break; // duplicate / out-of-order
           st.fresh = false;
           if (typeof seq === 'number') st.lastSeq = seq;
           // presenter first, then `view`: the board must never render a state its display has not got yet
-          handlers.current.onState?.({ state, events: list, seq, fresh });
+          handlers.current.onState?.({ state, events: list, seq, fresh, clock: clock ?? null });
           setView(state);
           break;
         }
@@ -128,12 +154,23 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
           const id = msg.id ?? `c${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
           if (st.seen.has(id)) break;
           st.seen.add(id);
+          if (isBlocked(msg.from)) break; // muted: no line, no onChat
           const entry = { id, from: msg.from, text: typeof msg.text === 'string' ? msg.text : '' };
           if (msg.emote) entry.emote = msg.emote;
           if (typeof msg.name === 'string') entry.name = msg.name;
           if (typeof msg.ts === 'number') entry.ts = msg.ts;
           setChat((cur) => [...cur, entry].slice(-100));
           handlers.current.onChat?.(entry);
+          break;
+        }
+        case 'voice': {
+          // A voice line someone played (soundboard). Looked up in the catalogue; an unknown id or a replay is dropped.
+          // It shows up in the history like an emote and VoiceHost (components/voice) plays it. Never touches game state.
+          const entry = voiceEntryFromMessage(msg);
+          if (!entry || st.seen.has(entry.id)) break;
+          st.seen.add(entry.id);
+          if (isBlocked(entry.from)) break; // muted: no history line, so VoiceHost never plays it
+          setChat((cur) => [...cur, entry].slice(-100));
           break;
         }
         case 'error': {
@@ -159,10 +196,18 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
     const offs = [
       sock.on('open', () => {
         st.fresh = true; // the next state is a snapshot, not a live update
+        reporter.reset(); // a new connection reports as soon as it has measured something
         setConnection('open');
+        setLink({ attempt: 0, since: null, everOpen: true });
+      }),
+      sock.on('rtt', (rtt) => {
+        netStats.setRtt(rtt);
+        reporter.rtt(rtt);
       }),
       sock.on('status', (s, info) => {
+        netStats.setStatus(s);
         setConnection(toConnection(s));
+        if (s === 'reconnecting' && info) setLink((l) => ({ ...l, attempt: info.attempt || l.attempt + 1, since: l.since ?? Date.now() }));
         if (s === 'closed' && info && info.reason && info.reason !== 'client') {
           failFromClose(info);
         } else if (s === 'reconnecting' && !st.gotRoom && info && info.attempt % 3 === 0) {
@@ -175,6 +220,7 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
     return () => {
       alive = false;
       offs.forEach((off) => off());
+      netStats.reset();
       sock.close();
       if (sockRef.current === sock) sockRef.current = null;
     };
@@ -189,6 +235,14 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
 
   const send = useCallback((msg, opts) => (sockRef.current ? sockRef.current.send(msg, opts) : false), []);
 
+  const pickPiece = useCallback((piece) => (typeof piece === 'string' && piece && sockRef.current ? sockRef.current.send({ t: 'piece', piece }, { queue: false }) : false), []);
+
+  // "Try now": skip the rest of the backoff wait (the socket also does this by itself when the network returns)
+  const retry = useCallback(() => {
+    const sock = sockRef.current;
+    if (sock && typeof sock._kick === 'function') sock._kick();
+  }, []);
+
   const leave = useCallback(() => {
     const sock = sockRef.current;
     if (sock) {
@@ -201,16 +255,22 @@ export function useRoomConnection(code, { onState, onChat } = {}) {
 
   const authFatal = !loading && !uid ? { kind: 'auth', message: 'Sign in to join a room.' } : null;
 
+  // Blocking someone mid-game also hides what they already said (same array back when nobody is muted).
+  const shownChat = useMemo(() => filterMuted(chat, blockedIds), [chat, blockedIds]);
+
   return {
     room,
     view,
-    chat,
+    chat: shownChat,
     connection: authFatal ? 'closed' : connection,
+    link,
     error: error ? error.message : null,
     errorId: error ? error.id : 0,
     fatal: fatal || authFatal,
     send,
+    pickPiece,
     leave,
+    retry,
   };
 }
 

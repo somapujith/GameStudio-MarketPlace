@@ -10,4 +10,10 @@ export default makeSoon({
   duration: '10-20 min',
   theme: { accent: '#f5b83d', accent2: '#e0792b', bg: '#2b1c10' },
   features: ['Online rooms', 'Pass and play'],
+  tags: ['Carrom', 'Flick', 'Classic', 'Online'],
+  highlights: [
+    { icon: 'target', title: 'Line up the strike', text: 'Aim, flick and sink the queen.' },
+    { icon: 'users', title: 'Singles or doubles', text: 'Two or four players around one board.' },
+    { icon: 'door', title: 'Online rooms', text: 'Share a code and play together, no download needed.' },
+  ],
 });

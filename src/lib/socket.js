@@ -8,6 +8,10 @@
 //   sock.send({ t: 'ready', ready: true });       // queued while the socket is not open
 //   sock.close();                                 // terminal: no more reconnects
 
+import { wsUrl as configWsUrl, isCrossOrigin } from './config.js';
+import { api } from './api.js';
+import { RttTracker, PROBE_MS } from './rtt.js';
+
 export const HEARTBEAT_MS = 20000;
 export const BACKOFF_BASE_MS = 500;
 export const BACKOFF_CAP_MS = 8000;
@@ -29,11 +33,18 @@ export function backoffDelay(attempt, { base = BACKOFF_BASE_MS, cap = BACKOFF_CA
   return Math.round(exp / 2 + (rnd() * exp) / 2);
 }
 
-/** ws(s) URL on the same host as the page, so the Vite `/ws` proxy and the Worker both just work. */
+/**
+ * ws(s) URL: on the same host as the page (so the Vite `/ws` proxy and the Worker both just work), or, in the
+ * optional cross-origin mode (VITE_API_ORIGIN), on the Worker's origin. See config.js.
+ */
 export function wsUrl(path, loc = globalThis.location) {
-  const p = String(path).startsWith('/') ? String(path) : `/${path}`;
-  if (!loc || !loc.host) return `ws://localhost:8787${p}`;
-  return `${loc.protocol === 'https:' ? 'wss:' : 'ws:'}//${loc.host}${p}`;
+  return configWsUrl(path, loc);
+}
+
+/** Cross-origin mode: trade the bearer session for a one-shot 60 s WebSocket ticket (POST /api/ws-ticket). */
+export async function fetchWsTicket() {
+  const r = await api.post('/api/ws-ticket');
+  return r && typeof r.ticket === 'string' ? r.ticket : '';
 }
 
 const hasWindow = () => typeof window !== 'undefined' && typeof window.addEventListener === 'function';
@@ -42,7 +53,11 @@ export class ReconnectingSocket {
   /**
    * @param {string} path  e.g. '/ws/room/ABC234'
    * @param {object} [opts] heartbeatMs, staleMs (0 = off), baseDelay, maxDelay, maxAttempts, noRetryCodes,
-   *                        WebSocketImpl, location, rnd, autoConnect
+   *                        WebSocketImpl, location, rnd, autoConnect,
+   *                        useTicket (default: cross-origin mode), fetchTicket (async () => ticket string),
+   *                        rttMs (ping every N ms and measure the round trip; 0 = off). `sock.on('rtt', (smoothed, sample) => …)`
+   *                        and `sock.rtt` (median of the last few samples, null before the first pong),
+   *                        dropOnOffline (the window's 'offline' event ends an open socket: it is dead, reconnect on 'online').
    */
   constructor(path, opts = {}) {
     this.path = path;
@@ -57,15 +72,24 @@ export class ReconnectingSocket {
       location: undefined,
       rnd: Math.random,
       autoConnect: true,
+      fetchTicket: fetchWsTicket,
+      rttMs: 0,
+      dropOnOffline: false,
       ...opts,
     };
+    this._rtt = this.opts.rttMs > 0 ? new RttTracker() : null; // ping/pong round trips (connection strength)
+    this._probe = null;
+    // Cross-origin mode: browsers cannot set headers on a WebSocket, so each (re)connect first fetches a fresh ticket.
+    if (this.opts.useTicket === undefined) this.opts.useTicket = isCrossOrigin(this.opts.location);
     this.status = 'idle';
     this.attempt = 0; // consecutive failed attempts (0 while healthy)
     this.everOpen = false;
     this._ws = null;
+    this._gen = 0; // bumped per connection attempt: a ticket answer for an older attempt is dropped
+    this._fetching = false; // a ticket request is in flight
     this._queue = [];
     this._closed = false;
-    this._listeners = { message: new Set(), status: new Set(), open: new Set(), close: new Set() };
+    this._listeners = { message: new Set(), status: new Set(), open: new Set(), close: new Set(), rtt: new Set() };
     this._hb = null;
     this._retry = null;
     this._start = null;
@@ -73,12 +97,19 @@ export class ReconnectingSocket {
     this._openedAt = 0;
 
     this._onOnline = () => this._kick();
+    // The browser says the network is gone: the socket is dead even if it still looks open (nothing will ever answer).
+    // Say so now ("Reconnecting…") instead of after the 45 s silence check; 'online' then reconnects without waiting.
+    this._onOffline = () => {
+      if (this.opts.dropOnOffline && !this._closed && this._ws && this._isOpen()) this._forceReconnect();
+    };
     this._onVisible = () => {
       if (typeof document === 'undefined' || document.visibilityState !== 'visible') return;
       this._kick();
+      if (this._rtt && this._isOpen()) this._ping(); // back from the background: measure now, not at the next (throttled) tick
     };
     if (hasWindow()) {
       window.addEventListener('online', this._onOnline);
+      window.addEventListener('offline', this._onOffline);
       document.addEventListener('visibilitychange', this._onVisible);
     }
     if (this.opts.autoConnect) this.connect();
@@ -86,7 +117,7 @@ export class ReconnectingSocket {
 
   /** Start connecting (deferred one tick so a React StrictMode mount/unmount never opens a socket). */
   connect() {
-    if (this._closed || this._ws || this._start || this._retry) return this;
+    if (this._closed || this._ws || this._start || this._retry || this._fetching) return this;
     if (this.status === 'idle') this._setStatus('connecting');
     this._start = setTimeout(() => {
       this._start = null;
@@ -123,6 +154,11 @@ export class ReconnectingSocket {
     return this._queue.length;
   }
 
+  /** Round-trip time in ms (median of the last few pings), or null: nothing measured on this connection yet / measuring is off. */
+  get rtt() {
+    return this._rtt ? this._rtt.rtt : null;
+  }
+
   close() {
     if (this._closed) return;
     this._closed = true;
@@ -130,6 +166,7 @@ export class ReconnectingSocket {
     this._queue = [];
     if (hasWindow()) {
       window.removeEventListener('online', this._onOnline);
+      window.removeEventListener('offline', this._onOffline);
       document.removeEventListener('visibilitychange', this._onVisible);
     }
     const ws = this._ws;
@@ -153,21 +190,58 @@ export class ReconnectingSocket {
     return !!this._ws && this._ws.readyState === 1;
   }
 
-  _url() {
-    return wsUrl(this.path, this.opts.location);
+  _url(ticket) {
+    const base = wsUrl(this.path, this.opts.location);
+    return ticket ? `${base}?ticket=${encodeURIComponent(ticket)}` : base;
   }
 
   _open() {
     if (this._closed) return;
     this._retry = null;
-    const Impl = this.opts.WebSocketImpl;
-    if (!Impl) {
+    if (!this.opts.WebSocketImpl) {
       this._terminate({ reason: 'unsupported' });
       return;
     }
+    if (!this.opts.useTicket) {
+      this._connect(this._url());
+      return;
+    }
+    // Never reuse a ticket: every attempt (including every reconnect) asks for a new one.
+    const gen = (this._gen += 1);
+    this._fetching = true;
+    let pending;
+    try {
+      pending = Promise.resolve(this.opts.fetchTicket());
+    } catch (err) {
+      pending = Promise.reject(err);
+    }
+    pending.then(
+      (ticket) => {
+        if (this._closed || gen !== this._gen) return;
+        this._fetching = false;
+        if (typeof ticket !== 'string' || !ticket) this._scheduleRetry();
+        else this._connect(this._url(ticket));
+      },
+      (err) => {
+        if (this._closed || gen !== this._gen) return;
+        this._fetching = false;
+        if (err && err.status === 401) {
+          // Signed out (or the stored token is stale): retrying cannot help, same as the server's close code 4001.
+          const info = { code: 4001, reason: 'Please sign in first.', clean: true };
+          this._emit('close', info);
+          this._terminate({ reason: 'fatal_close', code: 4001, closeReason: info.reason });
+        } else {
+          this._scheduleRetry(); // offline / server hiccup: back off and ask for a fresh ticket again
+        }
+      },
+    );
+  }
+
+  _connect(url) {
+    const Impl = this.opts.WebSocketImpl;
     let ws;
     try {
-      ws = new Impl(this._url());
+      ws = new Impl(url);
     } catch {
       this._scheduleRetry();
       return;
@@ -181,6 +255,7 @@ export class ReconnectingSocket {
       this._lastRx = this._openedAt;
       this._setStatus('open', { reconnect });
       this._startHeartbeat();
+      this._startProbe(); // every (re)connect measures from scratch (the ticket flow reconnects through here too)
       this._flush();
       this._emit('open', { reconnect });
     };
@@ -196,7 +271,10 @@ export class ReconnectingSocket {
         }
       }
       if (!data || typeof data !== 'object') return;
-      if (data.t === 'pong') return;
+      if (data.t === 'pong') {
+        this._onPong();
+        return;
+      }
       this._emit('message', data);
     };
     ws.onerror = () => {
@@ -239,6 +317,7 @@ export class ReconnectingSocket {
     this._clearTimers();
     if (hasWindow()) {
       window.removeEventListener('online', this._onOnline);
+      window.removeEventListener('offline', this._onOffline);
       document.removeEventListener('visibilitychange', this._onVisible);
     }
     this._setStatus('closed', info);
@@ -286,13 +365,48 @@ export class ReconnectingSocket {
         this._forceReconnect();
         return;
       }
-      this._rawSend({ t: 'ping' });
+      this._ping();
     }, heartbeatMs);
   }
 
   _stopHeartbeat() {
     if (this._hb) clearInterval(this._hb);
     this._hb = null;
+    this._stopProbe();
+  }
+
+  /** One ping (the Worker answers it without waking the room); its answer is a round-trip sample. */
+  _ping() {
+    if (this._rawSend({ t: 'ping' }) && this._rtt) this._rtt.sent(Date.now());
+  }
+
+  /** Connection strength: ping right away, then every `rttMs`. A ping nobody answered counts as a (long) sample. */
+  _startProbe() {
+    if (!this._rtt) return;
+    this._stopProbe();
+    this._ping();
+    this._probe = setInterval(() => {
+      if (!this._isOpen()) return;
+      const late = this._rtt.late(Date.now(), Math.round((this.opts.rttMs || PROBE_MS) * 0.75)); // timers jitter: 3 s of a 4 s tick is late enough
+      if (late != null) this._emitRtt(late);
+      this._ping();
+    }, this.opts.rttMs);
+  }
+
+  _stopProbe() {
+    if (this._probe) clearInterval(this._probe);
+    this._probe = null;
+    if (this._rtt) this._rtt.reset(); // nothing carries over from a connection that is gone
+  }
+
+  _onPong() {
+    if (!this._rtt) return;
+    const sample = this._rtt.received(Date.now());
+    if (sample != null) this._emitRtt(sample);
+  }
+
+  _emitRtt(sample) {
+    this._emit('rtt', this._rtt.rtt, sample);
   }
 
   _clearTimers() {
@@ -341,6 +455,8 @@ export class ReconnectingSocket {
 export function openRoomSocket(code, opts = {}) {
   return new ReconnectingSocket(`/ws/room/${encodeURIComponent(String(code))}`, {
     staleMs: HEARTBEAT_MS * 2 + 5000,
+    rttMs: PROBE_MS, // connection strength: the room shows everybody's bars (docs/CONTRACT.md `{t:'net'}`)
+    dropOnOffline: true, // the browser's 'offline' event ends a socket that still looks open
     ...opts,
   });
 }

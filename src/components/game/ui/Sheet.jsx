@@ -1,5 +1,6 @@
 // Bottom sheet (mobile) / side drawer or centred modal (desktop) / centred dialog (always).
 // Focus trap, Esc, backdrop tap, swipe-down to dismiss on touch layouts, exit animation.
+import '@/styles/sheets.css'; // motion tokens for every sheet (enter --dur-3 --ease-out, exit --ease-in)
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Icon from './Icon.jsx';
@@ -11,8 +12,24 @@ const FOCUSABLE =
 const stack = []; // open dialog elements, topmost last
 const visible = (el) => el.getClientRects().length > 0;
 
+/* The last input that came in: 'mouse' | 'touch' | 'pen' | 'keyboard'. Focus goes back to a sheet's opener on close
+   unless the sheet was opened with a mouse (a clicked tile button must not swallow the next Space press). */
+let lastInput = 'keyboard';
+if (typeof window !== 'undefined') {
+  window.addEventListener('pointerdown', (e) => { lastInput = e.pointerType || 'mouse'; }, { capture: true, passive: true });
+  window.addEventListener('keydown', () => { lastInput = 'keyboard'; }, { capture: true, passive: true });
+}
+/** Restore focus to the opener on close? Pure; exported for tests. */
+export const shouldRestoreFocus = (input) => input !== 'mouse';
+
 /** True while any game sheet/dialog is open (keyboard shortcuts stand down). */
 export const hasOpenSheet = () => stack.length > 0;
+
+/** Lets another modal layer (the guided tour) stand in the sheet stack so the table's keyboard shortcuts stand down; returns the release. */
+export function holdShortcuts(el) {
+  stack.push(el);
+  return () => { const i = stack.indexOf(el); if (i >= 0) stack.splice(i, 1); };
+}
 
 /**
  * variant: 'sheet' (bottom sheet; on desktop it becomes `desktop`: 'drawer' | 'modal') | 'dialog' (centred everywhere)
@@ -50,9 +67,8 @@ export default function Sheet({
     const el = dialogRef.current;
     if (!el) return undefined;
     const prev = document.activeElement;
-    // give focus back only to keyboard users (a tapped tile button must not swallow the next Space press)
-    let restore = false;
-    try { restore = !!prev && prev !== document.body && prev.matches(':focus-visible'); } catch { restore = false; }
+    // give focus back on close (keyboard, touch, screen readers) unless the opener was clicked with a mouse
+    const restore = !!prev && prev !== document.body && shouldRestoreFocus(lastInput);
     stack.push(el);
     (el.querySelector('[data-autofocus]') || el).focus({ preventScroll: true });
     const onFocusIn = (e) => {

@@ -9,7 +9,8 @@
 //
 //   required:  id, name, minPlayers, maxPlayers, defaultSettings,
 //              validateSettings(raw) -> { ok:true, settings } | { ok:false, error }   (strict, untrusted input)
-//              createGame({ players:[{id,name,avatar}], settings, seed }) -> state
+//              createGame({ players:[{id,name,avatar,piece?}], settings, seed }) -> state
+//                                  (`piece` is only passed when the adapter has `pieces`; keep it if it is free)
 //              applyAction(state, action) -> { state, events, error? }                (pure; invalid -> same state + error)
 //              turnPlayerId(state) -> playerId | null          (who the idle timer waits for)
 //              deadlines(state) -> [{ key, afterMs, playerId, action }]   (game timers besides the turn timer;
@@ -21,15 +22,25 @@
 //
 //   optional (all have a harmless default):
 //              defaultMaxPlayers            seats of a new room (default min(4, maxPlayers))
+//              turnMs(state)                how long a connected human has per decision, in ms (default: GameRoom's
+//                                           TURN_MS, 60 s). Tycoon returns the host rule `turnSeconds` of the running game.
 //              pendingPlayerIds(state)      every player the game waits for (default [turnPlayerId])
 //              sanitizeAction(raw, playerId)  allow-list for client actions (default: any {type} object, playerId forced)
+//              mergeSettings(current, patch)  what a host's patch makes of the current settings before validateSettings
+//                                           (default: { ...current, ...patch })
 //              lobbySettings(settings)      settings as the lobby shows them (default: the settings)
 //              summarize(settings)          one-line summary for open-table cards
+//              customRules(settings)        how many host rules differ from the game's stock rules (open tables carry it as
+//                                           `customRules`, default 0)
 //              animationMs(events)          client animation time of an action (the next move waits for it)
 //              startAnimMs                  client animation time when the game starts
 //              resignAction(state, playerId)  what leaving a running game does (default: nothing)
 //              track(meta, events, state)   fold events into an opaque per-match `meta` kept in the room record
 //              emotes                       whitelist for `{t:'chat', emote}` (default: none)
+//              pieces                       string[] of piece ids a player can pick in the lobby (`{t:'piece', piece}`).
+//                                           The room auto-assigns the first free one on join, refuses unknown or taken
+//                                           ones, shows it as room.players[i].piece and passes it to createGame as
+//                                           players[i].piece. Without it, pieces are off (`piece` is null, `{t:'piece'}` errors).
 //
 //   `result().legacy` is only for Nawabi Raj: when present, the old users.games / wins /
 //   best_worth / rent_earned columns and the matches goal / max_rounds / dice_mode columns are

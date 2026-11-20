@@ -1,0 +1,452 @@
+/* The simple table on a portrait phone (components/game/phone/*): top bar, board, players, action row, chat bar.
+   Scoped to `.ph` (only rendered by PhoneTable) so tablets, landscape phones and desktop never see a rule from here.
+   One non-scrolling flex column filling the screen (GameView's `.hg-game` is `position: fixed; inset: 0`):
+
+     .ph-top        back · objective (+ event chip) · menu            fixed height
+     .ph-stage      the board, fitted to available width and portrait height       flexes
+     .pp-list       players                                           natural height
+     .pa            timer bar, pills, [Manage][PRIMARY][Trade]        natural height
+     .pcb           chat bar, above the on-screen keyboard            natural height
+
+   The board takes whatever the four natural-height blocks leave, so 320x568 ... 430x932 all fit without scrolling and the
+   board never moves when the keyboard opens (the chat bar is lifted with a transform, not by re-laying anything out).
+   Motion = transform / opacity with the --dur-* / --ease-* tokens; off under reduced motion. */
+
+.ph {
+  --ph-top: 60px;
+  --ph-ink-soft: #b9c7cf;
+  --ph-line: rgba(255, 255, 255, 0.1);
+  flex: 1 1 0; min-height: 0; width: 100%; max-width: 640px; margin: 0 auto;
+  display: flex; flex-direction: column; position: relative;
+  color: var(--text); font-family: var(--font-body);
+}
+@media (max-height: 700px) { .ph { --ph-top: 52px; } }
+.ph :where(button, input) { font: inherit; color: inherit; }
+.ph button { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.ph button:focus-visible, .ph input:focus-visible, .bcard :focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
+
+/* ============================================================ top bar */
+.ph-top {
+  position: relative; z-index: 30; flex: none; display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; gap: 8px;
+  min-height: calc(var(--ph-top) + var(--safe-top)); padding: var(--safe-top) 10px 0;
+}
+.ph-round {
+  position: relative; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; padding: 0;
+  background: linear-gradient(180deg, #1c2354, #10143a); border: 1px solid rgba(255, 200, 87, 0.3); color: var(--text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 2px 6px rgba(0, 0, 0, 0.35);
+  transition: transform var(--dur-1) var(--ease-out), background var(--dur-2);
+}
+.ph-round:active { transform: scale(0.94); }
+@media (hover: hover) { .ph-round:hover { background: linear-gradient(180deg, #242c66, #151a47); } }
+.ph-dot {
+  position: absolute; top: 5px; right: 5px; width: 11px; height: 11px; border-radius: 50%; background: var(--gold);
+  box-shadow: 0 0 0 2px #0d141a; animation: ph-dot var(--dur-4) var(--ease-spring) both;
+}
+.ph-top__mid { min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; }
+.ph-obj {
+  margin: 0; max-width: 100%; text-align: center; font-size: 14px; line-height: 18px; font-weight: 600; letter-spacing: 0.005em; color: var(--text);
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; text-wrap: balance; font-variant-numeric: tabular-nums;
+}
+.ph-obj__target { color: var(--good); font-weight: 800; }
+/* the way to the target: a slim track, the best rival as a faint fill under my own (transform-only fills), gold once anyone is near */
+.ph-goal { position: relative; flex: none; width: min(168px, 62%); height: 4px; border-radius: 99px; overflow: hidden; background: rgba(255, 255, 255, 0.14); }
+.ph-goal i { position: absolute; inset: 0; border-radius: inherit; transform-origin: left; transition: transform var(--dur-4) var(--ease-out); }
+.ph-goal__rival { background: rgba(255, 255, 255, 0.34); }
+.ph-goal__mine { background: linear-gradient(90deg, #2fc785, var(--good)); }
+.ph-goal.is-hot .ph-goal__mine { background: linear-gradient(90deg, var(--gold-2), #ffe08a); }
+@media (max-height: 620px), (max-width: 340px) { .ph-goal { display: none; } } /* the objective may wrap to two lines here: keep the board's room */
+.ph-event {
+  position: relative; max-width: 100%; height: 22px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; cursor: pointer;
+  border: 0; border-radius: 999px; background: rgba(255, 202, 122, 0.16); color: var(--gold); font-size: 13px; font-weight: 700; line-height: 1;
+  animation: ph-pop var(--dur-3) var(--ease-spring) both;
+}
+.ph-event::before { content: ''; position: absolute; inset: -11px -6px; }
+.ph-event i { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 3px rgba(255, 202, 122, 0.25); }
+.ph-event span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ph-eventtip {
+  position: absolute; z-index: 31; left: 12px; right: 12px; top: calc(100% - 4px); margin: 0; padding: 10px 14px; display: grid; gap: 2px;
+  border-radius: 14px; background: #1b2731; border: 1px solid var(--line-strong); box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+  font-size: 14px; line-height: 1.35; animation: ph-pop var(--dur-2) var(--ease-out) both;
+}
+.ph-eventtip b { color: var(--gold); }
+.ph-eventtip span { color: var(--text-dim); }
+
+/* ============================================================ the board */
+.ph-stage {
+  flex: 1 1 0; min-height: 0; container-type: size; display: grid; place-items: center; padding: 0 4px;
+}
+/* Use spare portrait height for the ring, with a gentle limit on its proportions.
+   A short stage still fits a square; the players and actions keep their space. */
+.ph-board { position: relative; width: min(100cqw, 100cqh); height: min(118cqw, 100cqh); }
+.ph-board > .hb-board { max-width: none; height: 100%; aspect-ratio: auto; }
+
+/* ============================================================ players */
+/* No boxes, no borders: every player is a column on the plain table. PhonePlayers sets --ava-h (the tallest avatar: yours) and
+   --pw (the piece token) on the list and --ava (this avatar) on every cell; the density tokens below set the type and the gaps. */
+.pp-list {
+  --pw: 34px; --gap: 6px; --slot: 14px; --pill-h: 20px; --nfs: 16px; --nlh: 20px; --afs: 19px; --afs-me: 26px; --wfs: 14px; --row-gap: 6px;
+  flex: none; list-style: none; margin: 0; padding: 8px 10px 2px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--row-gap) 8px; align-items: stretch;
+}
+.pp-list[data-density='row'] { --gap: 5px; --slot: 8px; --pill-h: 16px; --nfs: 15px; --nlh: 16px; --afs: 17px; --afs-me: 22px; --wfs: 13px; --row-gap: 5px; padding-top: 6px; }
+.pp-list[data-density='compact'] { --gap: 4px; --slot: 8px; --pill-h: 16px; --nfs: 14px; --nlh: 17px; --afs: 16px; --afs-me: 22px; --wfs: 13px; --row-gap: 8px; }
+.pp {
+  grid-column: span var(--span, 6); min-width: 0; container-type: inline-size; display: flex;
+  --amt-max: var(--afs); --worth-w: calc(var(--wchars, 8) * var(--wfs) * 0.58 + 6px); --cash-h: calc(var(--amt-max) * 1.08);
+}
+.pp.is-me { --amt-max: var(--afs-me); }
+.pp--compact { --worth-w: 0px; --cash-h: calc(var(--amt-max) * 1.08 + var(--wfs) * 1.15); } /* 5-6 players: the net worth gets its own line under the cash */
+.pp__btn {
+  position: relative; flex: 1 1 auto; width: 100%; min-height: 44px; padding: 0 2px; display: flex; flex-direction: column; align-items: center; gap: 0;
+  background: none; border: 0; border-radius: 14px; cursor: pointer; text-align: center; color: inherit;
+}
+.pp .hg-mb-ava { display: grid; width: auto; height: auto; margin: -4px; } /* the timer arc's 4px halo stays out of the layout */
+
+/* the top row: [token] [avatar] [empty] for a left column, [empty] [avatar] [token] for the others: the avatar is always
+   the middle track, so the name and the money under it are centred under the avatar */
+.pp__id { position: relative; display: grid; grid-template-columns: var(--pw) auto var(--pw); grid-template-rows: var(--ava-h) var(--slot); column-gap: var(--gap); justify-content: center; align-items: end; }
+.pp__ava { grid-column: 2; grid-row: 1; position: relative; display: grid; place-items: center; }
+.pp__piece { grid-row: 1; position: relative; width: var(--pw); height: var(--pw); margin-bottom: calc((var(--ava, 40px) - var(--pw)) / 2); }
+.pp--left .pp__piece { grid-column: 1; }
+.pp--right .pp__piece, .pp--mid .pp__piece { grid-column: 3; }
+/* the piece: the board's pawn, a round disc in the player's colour with a white rim and the piece in white */
+.pp__disc {
+  position: absolute; inset: 0; display: grid; place-items: center; border-radius: 50%;
+  background: radial-gradient(circle at 34% 26%, color-mix(in srgb, var(--pc) 52%, #fff) 0, var(--pc) 56%, color-mix(in srgb, var(--pc) 72%, #000) 100%);
+  box-shadow: 0 0 0 2px #fff, 0 2px 5px rgba(0, 0, 0, 0.5);
+}
+/* Snatch on (the bolt chip hangs under the token, see snatch.css): the token rides at the top of the avatar so the chip sits in the
+   rest of the avatar's height instead of on the token */
+.pp.has-sn .pp__piece { align-self: start; margin: calc(var(--ava-h) - var(--ava)) 0 0; }
+.pp-list .pp.has-sn .pp__piece > .pp__sn { top: 100%; bottom: auto; margin-top: 1px; }
+.pp__glyph { display: block; width: 74%; height: 74%; }
+.pp__glyph svg { display: block; width: 100% !important; height: 100% !important; overflow: visible; }
+.pp__badges { grid-row: 1; align-self: start; position: relative; z-index: 3; display: flex; flex-direction: column; gap: 2px; }
+.pp--left .pp__badges { grid-column: 3; justify-self: start; }
+.pp--right .pp__badges, .pp--mid .pp__badges { grid-column: 1; justify-self: end; }
+.pp__badges .hg-chai, .pp__badges .hg-traffic { width: 20px; height: 20px; padding: 0; justify-content: center; border-radius: 50%; box-shadow: 0 0 0 2px #10171e; }
+.pp__badges .hg-chai > span, .pp__badges .hg-traffic > span { display: none; }
+/* the pill ("Your turn" / "Turn", "Offline", "Reconnecting…") hangs under the avatar: the slot is short, the pill taller, it overlaps the avatar's foot */
+.pp__slot { grid-column: 2; grid-row: 2; position: relative; z-index: 3; justify-self: center; align-self: start; height: var(--slot); display: flex; align-items: flex-end; justify-content: center; }
+.pp__turn {
+  white-space: nowrap; height: var(--pill-h); padding: 0 10px; border-radius: 999px; display: grid; place-items: center; font-size: 13px; font-weight: 800; line-height: 1; letter-spacing: 0.01em;
+  background: var(--pc); color: var(--pill-ink, #fff); box-shadow: 0 0 0 2px #10171e, 0 3px 8px rgba(0, 0, 0, 0.45);
+  animation: ph-pop var(--dur-3) var(--ease-spring) both;
+}
+
+/* the name row: connection bars, then the name */
+.pp__name { max-width: 100%; margin-top: 2px; display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; font-size: var(--nfs); line-height: var(--nlh); font-weight: 700; }
+.pp__name b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.pp.is-turn .pp__name b { color: var(--pc); filter: brightness(1.25); }
+/* the money: cash in bold white (yours: gold), the net worth in brackets in green. The cash shrinks to fit its cell; when cash
+   and net worth do not fit one line even then, the net worth drops under the cash instead of the cash being cut. */
+.pp__cash, .pp__out { max-width: 100%; min-height: var(--cash-h); display: flex; flex-wrap: wrap; align-items: baseline; align-content: flex-start; justify-content: center; column-gap: 5px; line-height: 1.08; }
+.pp__amt {
+  --fit-all: calc((100cqw - 4px - var(--worth-w)) / (var(--chars, 9) * 0.57));  /* the size at which cash and net worth share a line */
+  --fit-cash: calc((100cqw - 4px) / (var(--chars, 9) * 0.57));                  /* the size at which the cash alone fills the cell */
+  /* --wrap-at: the smallest size we shrink to before the net worth is let drop to its own line instead */
+  font-size: clamp(12px, min(var(--amt-max), max(var(--fit-all), min(var(--fit-cash), var(--wrap-at, 16px)))), var(--amt-max));
+  font-weight: 800; letter-spacing: -0.01em; color: var(--text); white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.pp.is-me { --wrap-at: 18px; }
+.pp--roomy.is-me { --wrap-at: 24px; }
+.pp.is-me .pp__amt { color: var(--gold); text-shadow: 0 0 16px rgba(255, 202, 122, 0.35); }
+.pp__worth { font-size: var(--wfs); font-weight: 700; color: var(--good); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pp__out { font-size: var(--afs); font-weight: 800; color: var(--bad); letter-spacing: 0.01em; }
+.pp.is-me .pp__out { font-size: var(--afs-me); }
+.pp .hg-money.is-up { text-shadow: none; }
+.pp .hg-delta { right: 0; left: auto; bottom: 90%; font-size: 14px; translate: 0 0; }
+/* a player who is out: the avatar greys out (AvatarToken), the piece and name dim, the red word stays loud */
+.pp.is-out .pp__piece, .pp.is-out .pp__name { opacity: 0.6; }
+.pp.is-out .pp__piece { filter: grayscale(0.7); }
+.pp.has-goal .pp__cash, .pp.has-goal .pp__out { margin-bottom: 3px; }
+.pp.is-offline .hg-mb-ava { filter: grayscale(0.6); opacity: 0.75; }
+/* the way to the net worth target: a very thin line under the money, only when the table has a target */
+.pp__goal { flex: none; align-self: center; width: 72%; max-width: 160px; margin-top: auto; height: 2px; border-radius: 99px; overflow: hidden; background: rgba(255, 255, 255, 0.14); }
+.pp__goal i { display: block; height: 100%; width: 100%; border-radius: inherit; transform-origin: left; transform: scaleX(var(--tp, 0)); background: var(--good); transition: transform var(--dur-4) var(--ease-out); }
+.pp__goal.is-hot i { background: var(--gold); }
+
+/* 3-4 players: the same column, a size down, two columns */
+.pp--row .pp__turn, .pp--compact .pp__turn { padding: 0 8px; font-size: 12px; }
+/* 5-6 players: three columns; the net worth sits under the cash (a third of the width cannot hold both on a line) */
+.pp--compact .pp__cash { flex-direction: column; flex-wrap: nowrap; align-items: center; }
+.pp--compact .pp__worth { line-height: 1.15; }
+
+/* short screens (iPhone SE and smaller): a size down again so the board keeps its size; the compact grid drops the net worth and the goal line */
+@media (max-height: 700px) {
+  .pp-list { --slot: 10px; --pill-h: 18px; --nlh: 18px; --row-gap: 4px; padding-top: 6px; }
+  .pp-list[data-density='row'] { --slot: 7px; --pill-h: 15px; --nlh: 15px; --row-gap: 4px; padding-top: 4px; }
+  .pp-list[data-density='compact'] { --slot: 7px; --pill-h: 15px; --nlh: 16px; --row-gap: 6px; }
+  .pp--compact { --cash-h: calc(var(--amt-max) * 1.08); }
+  .pp--compact .pp__worth, .pp--compact .pp__goal { display: none; }
+  /* Three/four seats become compact rows so the board keeps the phone's width. */
+  .pp-list[data-density='row'] { --row-gap: 6px; padding-block: 6px; }
+  .pp--row .pp__btn { display: grid; grid-template-columns: 36px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 7px; align-content: center; min-height: 44px; }
+  .pp--row .pp__id { grid-column: 1; grid-row: 1 / 3; grid-template-columns: 28px; grid-template-rows: 28px; align-self: center; }
+  .pp--row .pp__ava { grid-column: 1; grid-row: 1; }
+  .pp--row .pp__piece { position: absolute; grid-column: 1; width: 16px; height: 16px; bottom: -3px; left: -5px; margin: 0; z-index: 2; }
+  .pp-list .pp--row.has-sn .pp__piece > .pp__sn { top: -6px; bottom: auto; left: -4px; right: auto; margin: 0; min-width: 14px; height: 12px; padding-inline: 2px; font-size: 9px; }
+  .pp--row .pp__sn svg { width: 7px; height: 9px; }
+  .pp--row .pp__slot { position: absolute; grid-column: 1; grid-row: 1; bottom: -5px; right: -3px; height: 12px; }
+  .pp--row .pp__turn { height: 12px; padding-inline: 4px; font-size: 8px; }
+  .pp--row .pp__btn:has(.sg__pill) { min-height: 58px; padding-bottom: 14px; }
+  .pp--row .pp__slot:has(.sg__pill) { left: 43px; right: auto; bottom: -12px; justify-content: flex-start; width: max-content; max-width: calc(100cqw - 47px); }
+  .pp--row .pp__slot .sg__pill { max-width: 100%; padding: 0 3px; font-size: 9px; line-height: 12px; }
+  .pp--row .pp__badges { position: absolute; top: -4px; right: -5px; gap: 1px; }
+  .pp--row .pp__badges :is(.hg-chai, .hg-traffic) { width: 12px; height: 12px; }
+  .pp--row .pp__badges svg { width: 10px; height: 10px; }
+  .pp--row .pp__name { grid-column: 2; grid-row: 1; justify-content: flex-start; margin: 0; font-size: 12px; line-height: 16px; }
+  .pp--row .pp__cash, .pp--row .pp__out { grid-column: 2; grid-row: 2; justify-content: flex-start; min-height: 16px; margin: 0; }
+  .pp--row .pp__amt { font-size: 12px; }
+  .pp--row .pp__worth, .pp--row .pp__goal { display: none; }
+}
+
+/* ============================================================ action row */
+.pa { flex: none; padding: 4px 10px 6px; display: flex; flex-direction: column; gap: 6px; }
+.pa .tt-bar { font-size: 16px; gap: 3px; color: var(--ph-ink-soft); }
+.pa .tt-bar.is-mine { color: var(--text); }
+.pa .tt-bar__track { height: 4px; background: rgba(255, 255, 255, 0.14); }
+.pa .tt-bar.is-warn { color: #ff9aa9; }
+.pa-pills { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.pa-pill {
+  height: 38px; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; cursor: pointer; border-radius: 999px;
+  border: 1px solid var(--line-strong); background: rgba(255, 255, 255, 0.08); color: var(--text); font-size: 14px; font-weight: 700; white-space: nowrap;
+  animation: ph-pop var(--dur-3) var(--ease-spring) both;
+  transition: transform var(--dur-1) var(--ease-out), background var(--dur-2);
+}
+.pa-pill:active { transform: scale(0.96); }
+.pa-pill.is-skip { color: #d3dbe0; }
+.pa-pill.is-chai { border-color: rgba(61, 220, 151, 0.5); color: var(--good); }
+@media (hover: hover) { .pa-pill:hover { background: rgba(255, 255, 255, 0.14); } }
+.pa-main { display: flex; align-items: stretch; gap: 8px; }
+.pa-tool {
+  position: relative; flex: none; width: 58px; min-height: 56px; padding: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.14); background: #141d25; color: var(--text); font-size: 13px; font-weight: 700; line-height: 1.1; cursor: pointer;
+  transition: transform var(--dur-1) var(--ease-out), background var(--dur-2);
+}
+.pa-tool--gap { visibility: hidden; border: 0; }
+.pa-tool:active { transform: scale(0.95); }
+@media (hover: hover) { .pa-tool:hover { background: #1c2832; } }
+.pa-tool__badge {
+  position: absolute; top: -5px; right: -4px; min-width: 20px; height: 20px; padding: 0 5px; display: grid; place-items: center; border-radius: 999px;
+  background: var(--gold); color: #3b2300; font-style: normal; font-size: 13px; font-weight: 900; line-height: 1; box-shadow: 0 0 0 2px #10171e;
+  animation: ph-pop var(--dur-3) var(--ease-spring) both;
+}
+.pa-primary {
+  position: relative; flex: 1 1 0; min-width: 0; min-height: 56px; padding: 6px 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  border: 0; border-radius: 16px; cursor: pointer; font-family: var(--font-display); font-weight: 900; letter-spacing: 0.04em; text-align: center; line-height: 1.1;
+  transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-1), filter var(--dur-2);
+  animation: ph-pop var(--dur-3) var(--ease-spring) both;
+}
+/* a glossy cap: a soft highlight across the top half (static) */
+.pa-primary:not(.is-wait)::before {
+  content: ''; position: absolute; inset: 2px 3px 48% 3px; border-radius: 14px 14px 40% 40% / 14px 14px 12px 12px; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0));
+}
+/* ROLL breathes while it waits for you (a slow swell and a ring that ripples out: transform / opacity only, one button) */
+.pa-primary.is-roll:not(.is-wait) { animation: ph-pop var(--dur-3) var(--ease-spring) both, pa-breathe 2.6s ease-in-out 700ms infinite; }
+.pa-primary.is-roll:not(.is-wait)::after {
+  content: ''; position: absolute; inset: -2px; border-radius: 18px; border: 2px solid rgba(255, 224, 138, 0.9); pointer-events: none; opacity: 0;
+  animation: pa-ripple 2.6s ease-out 700ms infinite;
+}
+.pa-primary__txt { max-width: 100%; font-size: clamp(16px, 5vw, 21px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pa-primary:not(.is-wait) > .pa-primary__txt, .pa-primary:not(.is-wait) > .pa-primary__sub { position: relative; z-index: 1; }
+.pa-primary__sub { font-size: 13px; font-weight: 700; letter-spacing: 0; opacity: 0.9; }
+.pa-primary:active:not(.is-wait) { animation: none; transform: translateY(3px) scale(0.985); }
+.pa-primary:active:not(.is-wait)::after { animation: none; opacity: 0; }
+.pa-primary.tone-gold { color: #3b2300; background: linear-gradient(180deg, #ffe590, var(--gold-2)); box-shadow: 0 4px 0 #b97800, 0 10px 22px rgba(255, 177, 0, 0.3), inset 0 -2px 0 rgba(185, 120, 0, 0.35); }
+.pa-primary.tone-gold:active { box-shadow: 0 1px 0 #b97800; }
+.pa-primary.tone-blue, .pa-primary.tone-green.is-buy { color: #fff; background: linear-gradient(180deg, #4e94ff, #2368e0); box-shadow: 0 4px 0 #1747a8, 0 10px 22px rgba(35, 104, 224, 0.32); }
+.pa-primary.tone-blue:active { box-shadow: 0 1px 0 #1747a8; }
+.pa-primary.tone-green { color: #04281a; background: linear-gradient(180deg, #67f0b0, #22b573); box-shadow: 0 4px 0 #14804f, 0 10px 22px rgba(34, 181, 115, 0.26); }
+.pa-primary.tone-green:active { box-shadow: 0 1px 0 #14804f; }
+.pa-primary.tone-dark { color: var(--text); background: #2a3944; box-shadow: 0 4px 0 #161f26; }
+.pa-primary.is-skip { color: #fff; background: #5d6b78; box-shadow: 0 4px 0 #3a4651; }
+@media (hover: hover) { .pa-primary:not(.is-wait):hover { filter: brightness(1.06); } }
+.pa-primary.is-wait {
+  flex-direction: row; gap: 8px; padding-inline: 8px; cursor: default; letter-spacing: 0.01em; font-weight: 700; color: var(--ph-ink-soft);
+  background: rgba(255, 255, 255, 0.06); border: 1px dashed rgba(255, 255, 255, 0.18); animation: none;
+}
+.pa-primary.is-wait .pa-primary__txt { font-size: clamp(14px, 4.1vw, 17px); font-weight: 700; }
+.pa-primary__ava { flex: none; display: grid; place-items: center; border-radius: 50%; overflow: hidden; box-shadow: 0 0 0 2px var(--pc, #55d6c2); }
+/* "Rolling…": the die tumbles (one element, rotation only) beside the word */
+.pa-primary.is-rolling { color: #ffe08a; border-color: rgba(255, 202, 122, 0.5); background: rgba(255, 202, 122, 0.1); }
+.pa-die {
+  position: relative; flex: none; width: 24px; height: 24px; border-radius: 6px; background: linear-gradient(180deg, #fffdf4, #e9dfc7);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35); animation: pa-tumble 0.7s linear infinite;
+}
+.pa-die i { position: absolute; width: 4px; height: 4px; border-radius: 50%; background: #3b2300; }
+.pa-die i:nth-child(1) { left: 4px; top: 4px; }
+.pa-die i:nth-child(2) { left: 10px; top: 10px; }
+.pa-die i:nth-child(3) { right: 4px; bottom: 4px; }
+.pa-dots { display: inline-flex; gap: 4px; }
+.pa-dots i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: ph-dot-b 1s ease-in-out infinite; }
+.pa-dots i:nth-child(2) { animation-delay: 0.15s; }
+.pa-dots i:nth-child(3) { animation-delay: 0.3s; }
+.pa-dots.is-quiet { opacity: 0.7; }
+
+/* ============================================================ chat bar */
+.pcb {
+  position: relative; z-index: 40; flex: none; padding: 4px 10px max(6px, var(--safe-bottom));
+  background: linear-gradient(180deg, #0f1233, #0a0d26); border-top: 1px solid rgba(255, 200, 87, 0.2);
+  transform: translateY(calc(-1 * max(var(--hg-kb, 0px), var(--kb-inset, 0px))));
+}
+/* the home-indicator padding of the bar hides under the keyboard (no change of size: the board must not move) */
+html[data-hg-keyboard] .pcb { transform: translateY(calc(var(--safe-bottom) - max(var(--hg-kb, 0px), var(--kb-inset, 0px)))); }
+.pcb-bar { display: flex; align-items: center; gap: 4px; }
+.pcb-bar input {
+  flex: 1 1 0; min-width: 0; height: 44px; padding: 0 14px; font-size: 16px; line-height: 1.2; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 999px; background: rgba(255, 255, 255, 0.07); color: var(--text);
+  user-select: text; -webkit-user-select: text; transition: border-color var(--dur-2), background var(--dur-2);
+}
+.pcb-bar input:focus { border-color: rgba(255, 202, 122, 0.6); background: rgba(255, 255, 255, 0.1); }
+.pcb-bar input::placeholder { color: var(--text-faint); opacity: 1; }
+.pcb-bar input:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.pcb-btn {
+  position: relative; flex: none; width: 44px; height: 44px; padding: 0; display: grid; place-items: center; cursor: pointer; border: 0; border-radius: 12px;
+  background: transparent; color: var(--text-dim); transition: transform var(--dur-1) var(--ease-out), color var(--dur-2);
+}
+.pcb-btn:first-child { color: var(--good); }
+.pcb-btn[aria-expanded='true'] { color: var(--gold); }
+.pcb-btn:active:not(:disabled) { transform: scale(0.92); }
+.pcb-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.pcb-send:not(:disabled) { color: #3b2300; background: linear-gradient(180deg, #ffe590, var(--gold-2)); box-shadow: 0 2px 0 #b97800; animation: ph-pop var(--dur-3) var(--ease-spring) both; }
+.pcb-send:not(:disabled):active { transform: translateY(2px) scale(0.95); box-shadow: none; }
+.pcb-dot { position: absolute; top: 8px; right: 8px; width: 9px; height: 9px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 2px #0a1015; }
+.pcb-pop {
+  position: absolute; z-index: 5; left: 8px; right: 8px; bottom: calc(100% + 6px); border-radius: 18px; background: #1a1f52; border: 1px solid rgba(255, 200, 87, 0.35);
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.5); animation: pcb-rise var(--dur-3) var(--ease-spring) both; transform-origin: 50% 100%; user-select: text; -webkit-user-select: text;
+}
+.pcb-emoji { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2px; padding: 6px; }
+.pcb-emoji button { height: 48px; padding: 0; display: grid; place-items: center; cursor: pointer; border: 0; border-radius: 12px; background: transparent; font-size: 26px; }
+.pcb-emoji button { animation: ph-pop var(--dur-3) var(--ease-spring) both; }
+.pcb-emoji button:nth-child(2) { animation-delay: 30ms; } .pcb-emoji button:nth-child(3) { animation-delay: 60ms; }
+.pcb-emoji button:nth-child(4) { animation-delay: 90ms; } .pcb-emoji button:nth-child(5) { animation-delay: 120ms; } .pcb-emoji button:nth-child(6) { animation-delay: 150ms; }
+.pcb-emoji button:active:not(:disabled) { background: rgba(255, 255, 255, 0.1); transform: scale(0.92); }
+.pcb-emoji button:disabled { opacity: 0.4; }
+.pcb-history { max-height: min(40vh, 260px); overflow-y: auto; overscroll-behavior: contain; padding: 8px 14px; }
+.pcb-history ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.pcb-history li { font-size: 14px; line-height: 1.35; display: flex; gap: 6px; flex-wrap: wrap; }
+.pcb-history li b { flex: none; }
+.pcb-history li span { min-width: 0; overflow-wrap: anywhere; }
+.pcb-history p { margin: 6px 0; font-size: 14px; color: var(--text-dim); text-align: center; }
+
+/* ============================================================ buy popup (over the board) */
+/* The card is as wide as a phone allows (up to 340px), whatever the board size: on a 320px phone the board is smaller than the card. */
+.bcard-root { position: absolute; inset: 0; z-index: 6; display: flex; align-items: center; justify-content: center; }
+.bcard-scrim { position: absolute; inset: 0; border-radius: 3cqw; background: radial-gradient(70% 60% at 50% 45%, rgba(18, 14, 60, 0.5), rgba(6, 8, 24, 0.78)); animation: ph-fade-in var(--dur-2) var(--ease-out) both; }
+.bcard {
+  position: relative; flex: none; width: max(min(86cqw, 340px), min(300px, calc(100vw - 24px))); max-width: calc(100vw - 16px); overflow: hidden; border-radius: 18px;
+  background: var(--cream); color: var(--ink); font-size: 15px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.6), 0 0 0 2px rgba(255, 200, 87, 0.75); display: flex; flex-direction: column; outline: none;
+  animation: bcard-pop 460ms var(--ease-spring) both; transform-origin: 50% 70%;
+}
+.bcard-head { position: relative; display: grid; gap: 1px; padding: 7px 14px 8px; text-align: center; color: var(--bink); background: linear-gradient(180deg, var(--band), var(--band2)); box-shadow: inset 0 -3px 0 rgba(255, 200, 87, 0.85); animation: bcard-slide var(--dur-3) var(--ease-out) 80ms both; }
+.bcard-count {
+  position: absolute; top: 7px; right: 10px; min-width: 40px; padding: 2px 8px; border-radius: 999px; text-align: center; font-size: 13px; font-weight: 800; line-height: 1.25; font-variant-numeric: tabular-nums;
+  background: rgba(8, 10, 30, 0.55); color: #fff;
+}
+.bcard-count.is-warn { background: #ff5d73; color: #2b0008; }
+.bcard-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; overflow: hidden; background: rgba(0, 0, 0, 0.22); }
+.bcard-bar i { position: absolute; inset: 0; background: #fff; transform-origin: left; opacity: 0.85; }
+.bcard-bar.is-warn i { background: #ff5d73; opacity: 1; }
+.bcard-head small { font-size: 13px; font-weight: 700; letter-spacing: 0.04em; opacity: 0.92; }
+.bcard-head h2 { margin: 0; font-family: var(--font-display); font-size: 21px; font-weight: 900; line-height: 1.1; overflow-wrap: anywhere; }
+.bcard-stats { margin: 0; padding: 8px 8px 2px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; text-align: center; }
+.bcard-stats div { min-width: 0; display: grid; gap: 1px; padding: 2px 2px 3px; border-radius: 10px; background: rgba(36, 26, 92, 0.06); animation: ph-pop var(--dur-3) var(--ease-spring) 140ms both; }
+.bcard-stats div:nth-child(2) { animation-delay: 190ms; }
+.bcard-stats div:nth-child(3) { animation-delay: 240ms; }
+.bcard-stats dt { font-size: 13px; font-weight: 600; color: var(--ink-dim); }
+.bcard-stats dd { margin: 0; font-size: 17px; font-weight: 900; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bcard-levels { list-style: none; margin: 0; padding: 2px 8px 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; text-align: center; }
+.bcard-levels li { min-width: 0; display: grid; justify-items: center; gap: 0; animation: ph-pop var(--dur-3) var(--ease-spring) calc(260ms + var(--i, 0) * 70ms) both; }
+.bcard-levels__art { display: block; line-height: 0; margin-bottom: -6px; }
+.bcard-levels__art svg { width: 52px; height: auto; animation: bcard-bob 2.4s ease-in-out calc(700ms + var(--i, 0) * 260ms) infinite; }
+.bcard-levels li:nth-child(2) .bcard-levels__art svg { animation-duration: 2.7s; }
+.bcard-levels li:nth-child(3) .bcard-levels__art svg { animation-duration: 3s; }
+.bcard-levels b { font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--ink); }
+.bcard-levels small { max-width: 100%; font-size: 13px; line-height: 1.2; color: var(--ink-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bcard-cost { margin: 4px 12px 0; text-align: center; font-size: 15px; line-height: 1.25; }
+.bcard-cost b { font-weight: 900; }
+.bcard-note { margin: 2px 12px 0; text-align: center; font-size: 13px; line-height: 1.25; color: var(--ink-dim); }
+.bcard-afford { margin: 5px 12px 0; padding: 3px 10px; border-radius: 999px; text-align: center; font-size: 13px; line-height: 1.25; color: #0b5a35; background: rgba(23, 153, 91, 0.14); animation: ph-pop var(--dur-3) var(--ease-spring) 340ms both; }
+.bcard-afford b { font-weight: 900; }
+.bcard-actions { display: grid; grid-template-columns: 1fr 1.25fr; gap: 10px; padding: 8px 12px 11px; }
+.bcard-btn {
+  min-height: 46px; padding: 0 8px; cursor: pointer; border: 0; border-radius: 12px; color: #fff; font-family: var(--font-display); font-size: 17px; font-weight: 900; letter-spacing: 0.04em;
+  white-space: nowrap; transition: transform var(--dur-1) var(--ease-out), filter var(--dur-2);
+}
+.bcard-btn:active:not(:disabled) { transform: translateY(2px); }
+.bcard-btn span { font-weight: 800; letter-spacing: 0; }
+.bcard-pass { background: #5d6b78; box-shadow: 0 3px 0 #3a4651; }
+.bcard-buy { position: relative; background: linear-gradient(180deg, #4e94ff, #2368e0); box-shadow: 0 3px 0 #1747a8; animation: ph-pop var(--dur-3) var(--ease-spring) 380ms both, pa-breathe 2.6s ease-in-out 1s infinite; }
+.bcard-buy:active:not(:disabled) { animation: none; }
+.bcard-buy:disabled { cursor: not-allowed; background: #8a97a6; box-shadow: none; filter: saturate(0.5); animation: none; }
+@media (hover: hover) { .bcard-btn:hover:not(:disabled) { filter: brightness(1.07); } }
+.bcard-why { margin: -4px 12px 12px; padding: 3px 10px; border-radius: 999px; text-align: center; font-size: 14px; font-weight: 700; color: #a3211b; background: rgba(214, 51, 40, 0.1); }
+/* short phones: the card keeps every number but loses the level names so it stays about as tall as the small board */
+@media (max-height: 640px) {
+  .bcard-levels small { display: none; }
+  .bcard-head { padding: 5px 12px 6px; }
+  .bcard-head h2 { font-size: 19px; }
+  .bcard-stats { padding-top: 5px; padding-bottom: 0; }
+  .bcard-stats div { padding: 0 2px 1px; }
+  .bcard-stats dd { font-size: 15px; }
+  .bcard-levels__art svg { width: 34px; }
+  .bcard-levels b { font-size: 13px; }
+  .bcard-cost { font-size: 14px; }
+  .bcard-note { line-height: 1.15; }
+  .bcard-cost { margin-top: 2px; }
+  .bcard-actions { padding: 6px 10px 9px; }
+  .bcard-btn { min-height: 44px; }
+}
+.ph[data-buy] .ph-board > .hb-board { filter: saturate(0.85); }
+@media (max-height: 800px) { .bcard-afford { display: none; } }
+
+/* ============================================================ short phones: tighter bars */
+@media (max-height: 700px) {
+  .ph { --ph-top: 48px; }
+  .pa { padding: 2px 10px 4px; gap: 4px; }
+  .pa-tool, .pa-primary { min-height: 52px; }
+  .pa-pill { height: 34px; }
+  .pcb { padding: 2px 10px max(4px, var(--safe-bottom)); }
+  .pcb-bar input, .pcb-btn { height: 40px; }
+  .pcb-btn { width: 42px; }
+}
+@media (max-height: 620px) {
+  .pa .tt-bar__txt { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .pa .tt-bar { gap: 0; }
+  .pa .tt-bar__track { height: 5px; }
+}
+@media (max-width: 380px) {
+  .ph-top { gap: 4px; padding-inline: 8px; }
+  .ph-obj { font-size: 13px; letter-spacing: -0.01em; }
+}
+@media (max-width: 340px) {
+  .ph { --ph-top: 56px; }
+  .pa-tool { width: 50px; }
+  .pa-main { gap: 6px; }
+  .ph-obj { font-size: 13px; line-height: 15px; }
+  .ph-top { gap: 4px; padding-inline: 6px; }
+}
+
+/* ============================================================ motion */
+@keyframes ph-pop { from { opacity: 0; transform: scale(0.86); } to { opacity: 1; transform: none; } }
+@keyframes bcard-pop {
+  0%   { opacity: 0; transform: translateY(26px) scale(0.84); }
+  60%  { opacity: 1; transform: translateY(-4px) scale(1.025); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes bcard-slide { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+@keyframes bcard-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes pa-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.025); } }
+@keyframes pa-ripple { 0% { opacity: 0.75; transform: scale(1); } 70%, 100% { opacity: 0; transform: scale(1.09, 1.22); } }
+@keyframes pa-tumble { to { transform: rotate(360deg); } }
+@keyframes pcb-rise { from { opacity: 0; transform: translateY(10px) scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes ph-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ph-fade { from { opacity: 0.55; } to { opacity: 1; } }
+@keyframes ph-dot { from { opacity: 0; transform: scale(0.3); } to { opacity: 1; transform: none; } }
+@keyframes ph-dot-b { 0%, 100% { opacity: 0.35; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) {
+  .ph *, .ph *::before, .ph *::after { animation: none !important; transition: none !important; }
+}
+:root[data-motion='reduced'] .ph *, :root[data-motion='reduced'] .ph *::before, :root[data-motion='reduced'] .ph *::after,
+.hg-game[data-rm] .ph *, .hg-game[data-rm] .ph *::before, .hg-game[data-rm] .ph *::after { animation: none !important; transition: none !important; }

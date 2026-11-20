@@ -7,11 +7,81 @@ import { errorMessage } from '@/lib/api.js';
 import { CoinIcon } from '@/components/shell/icons.jsx';
 import { fmtNum, radioKeyNav } from '@/components/shell/ui.jsx';
 import { useToast } from '@/components/shell/Toast.jsx';
-import { useAccount, useProgress } from '@/components/shell/hooks.js';
-import { pctOf, useProfile } from '@/components/shell/stores.js';
-import Ava from './Ava.jsx';
+import { useAccount, useDaily } from '@/components/shell/hooks.js';
+import { useProfile } from '@/components/shell/stores.js';
+import { cleanEquipped } from '@shared/cosmetics.js';
+import Loadout from '@/components/art/Loadout.jsx';
+import Ava, { Title } from './Ava.jsx';
+import { useCountUp } from './useApi.js';
+import { useAccountProgress } from './accountProgress.js';
 
 const MAX_NAME = 20;
+const RING = 2 * Math.PI * 47; // circumference of the r=47 level ring (viewBox 100)
+
+/** Avatar inside a ring that fills with the XP progress of the current level, with the level on a tab below. */
+function LevelRing({ pct, level, children }) {
+  const p = Math.max(0, Math.min(100, Number(pct) || 0));
+  return (
+    <span className="xp-ring" style={{ '--off': `${RING * (1 - p / 100)}` }} data-level={level}>
+      <svg className="xp-ring__svg" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+        <circle cx="50" cy="50" r="47" className="xp-ring__track" />
+        <circle cx="50" cy="50" r="47" className="xp-ring__fill" strokeDasharray={RING} />
+      </svg>
+      <span className="xp-ring__ava">{children}</span>
+      <span className="xp-ring__lv" aria-hidden="true">
+        Lv {level}
+      </span>
+    </span>
+  );
+}
+
+/** Today's reward at a glance. The claim button itself lives on Home; this says whether it is waiting. */
+function DailyStatus({ daily, signedIn }) {
+  const reward = Number(daily.nextReward) || 0;
+  const ready = !!daily.canClaim;
+  return (
+    <div className={`sa-daily ${ready ? 'is-ready' : ''}`.trim()}>
+      <span className="sa-daily__icon" aria-hidden="true">
+        <HubIcon name="gift" size={20} />
+      </span>
+      <span className="sa-daily__text">
+        <b>{ready ? 'Daily reward is ready' : 'Daily reward claimed'}</b>
+        <small>
+          {ready
+            ? `Claim +${fmtNum(reward)} coins${daily.streak ? ` and keep your ${daily.streak}-day streak` : ''}.`
+            : `Come back tomorrow for +${fmtNum(reward)} coins${signedIn ? '' : ' (this device)'}.`}
+        </small>
+      </span>
+      {ready && (
+        <Link to={paths.hub()} className="hub-btn hub-btn--primary hub-btn--sm">
+          Claim on Home
+        </Link>
+      )}
+    </div>
+  );
+}
+
+/** Visitors and guests: why signing in matters, one clear action. */
+function SaveProgress({ guest }) {
+  return (
+    <div className="sa-save" role="note">
+      <span className="sa-save__icon" aria-hidden="true">
+        <HubIcon name="lock" size={20} />
+      </span>
+      <span className="sa-save__text">
+        <b>Save your progress: sign in</b>
+        <small>
+          {guest
+            ? 'A guest keeps level, coins and badges in this browser only. Sign in with Google to keep them on every device, add friends and join the leaderboard.'
+            : 'Sign in with Google to keep your level, coins and badges on every device, add friends and join the leaderboard.'}
+        </small>
+      </span>
+      <Link to={paths.login(paths.profile())} className="hub-btn hub-btn--primary hub-btn--sm">
+        Sign in
+      </Link>
+    </div>
+  );
+}
 
 /** Avatar, name, level / XP bar and coins, with an inline editor for the name and avatar. */
 export default function ProfileHeader() {
@@ -26,8 +96,13 @@ export default function ProfileHeader() {
   const [draft, setDraft] = useState(name);
   useEffect(() => setDraft(name), [name]);
 
-  const { info: li, coins } = useProgress();
-  const pct = pctOf(li);
+  // One level for the whole app: the server's when signed in (same number as the top bar), derived only for visitors.
+  const li = useAccountProgress();
+  const { coins, pct } = li;
+  const shownCoins = useCountUp(coins);
+  const equipped = cleanEquipped(signedIn ? user?.equipped : null);
+  const daily = useDaily();
+  const streak = Number(signedIn ? user?.daily?.streak : profile.dailyStreak) || 0;
 
   // The local profile is the source of truth offline; signed-in players also get it saved on the server.
   const sync = async (patch) => {
@@ -55,19 +130,39 @@ export default function ProfileHeader() {
   };
 
   const current = (AVATAR_PRESETS || []).find((a) => a.id === avatar);
-  const status = account ? { text: 'Signed in', tone: 'good' } : guest ? { text: 'Guest account', tone: '' } : { text: 'Not signed in', tone: '' };
+  const status = account ? { text: 'Signed in with Google', tone: 'good', icon: 'check' } : guest ? { text: 'Guest', tone: 'warn', icon: 'user' } : { text: 'Not signed in', tone: '', icon: 'lock' };
 
   return (
-    <section className="hub-panel hh2-pro" aria-labelledby="hh2-pro-h">
-      <div className="hh2-pro__top">
-        <Ava preset={avatar} size={88} ring="var(--hh2-brand)" dot={account ? 'on' : undefined} />
+    <section className="hub-panel hh2-pro" aria-labelledby="hh2-pro-h" data-tour="profile-header">
+      <div className="hh2-pro__top xp-pro__top">
+        <LevelRing pct={pct} level={li.level}>
+          <Ava preset={avatar} size={80} ring="var(--hub-surface-3)" frame={equipped.frame} dot={account ? 'on' : undefined} />
+        </LevelRing>
         <div className="hh2-pro__id">
           <h2 id="hh2-pro-h" className="hh2-pro__name" title={name}>
             {name}
           </h2>
+          {equipped.title && <Title title={equipped.title} size="md" className="xp-pro__title" />}
+          <Loadout cosmetics={equipped} variant="chips" size={20} className="xp-pro__loadout" />
+          <p className="xp-pro__xp">
+            {li.into >= li.need ? (
+              <>
+                Ready for <b>level {li.level + 1}</b>
+              </>
+            ) : (
+              <>
+                <b>{fmtNum(li.into)}</b> / {fmtNum(li.need)} XP to level {li.level + 1}
+              </>
+            )}
+          </p>
+          <div className="sa-xpbar" aria-hidden="true">
+            <i style={{ '--k': Math.max(0.02, pct / 100) }} />
+          </div>
           <div className="hh2-pro__pills">
-            <span className="hub-pill hub-pill--accent">Level {li.level}</span>
-            <span className={`hub-pill${status.tone === 'good' ? ' hub-pill--good' : ''}`}>{status.text}</span>
+            <span className={`hub-pill sa-status sa-status--${status.tone || 'none'}${status.tone === 'good' ? ' hub-pill--good' : ''}`}>
+              <HubIcon name={status.icon} size={13} strokeWidth={2.6} />
+              {status.text}
+            </span>
           </div>
         </div>
         <button
@@ -77,32 +172,40 @@ export default function ProfileHeader() {
           aria-expanded={open}
           aria-controls={`${inputId}-edit`}
         >
-          <HubIcon name={open ? 'check' : 'pencil'} size={16} /> {open ? 'Done' : 'Edit'}
+          <HubIcon name={open ? 'check' : 'pencil'} size={16} /> <span className="xp-pro__editlbl">{open ? 'Done' : 'Edit profile'}</span>
         </button>
       </div>
+      <div
+        className="sr-only"
+        role="progressbar"
+        aria-label={`Level ${li.level}: experience to the next level`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(pct)}
+      />
 
-      <div className="hh2-pro__stats">
-        <div className="hh2-xp">
-          <div className="hh2-xp__top">
-            <span>
-              <HubIcon name="bolt" size={14} /> Level {li.level}
-            </span>
-            <span>
-              {fmtNum(li.into)} / {fmtNum(li.need)} XP
-            </span>
-          </div>
-          <div className="hh2-xp__track" role="progressbar" aria-label="Experience to next level" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)}>
-            <i style={{ width: `${pct}%` }} />
-          </div>
-        </div>
-        <div className="hh2-pro__coins" aria-label={`${fmtNum(coins)} coins`}>
+      <div className="xp-pro__stats">
+        <div className="hh2-pro__coins xp-pro__coins" aria-label={`${fmtNum(coins)} coins`}>
           <CoinIcon size={26} />
-          <span>
-            <b>{fmtNum(coins)}</b>
+          <span aria-hidden="true">
+            <b>{fmtNum(shownCoins)}</b>
             <small>Coins</small>
           </span>
         </div>
+        <div className="xp-pro__streak" aria-label={`Daily streak: ${streak} ${streak === 1 ? 'day' : 'days'}`}>
+          <HubIcon name="flame" size={22} />
+          <span aria-hidden="true">
+            <b>{fmtNum(streak)}</b>
+            <small>Day streak</small>
+          </span>
+        </div>
+        <Link to={paths.shop()} className="hub-btn hub-btn--primary xp-pro__shop">
+          <HubIcon name="gift" size={18} /> Shop
+        </Link>
       </div>
+
+      <DailyStatus daily={daily} signedIn={signedIn} />
+      {!account && <SaveProgress guest={guest} />}
 
       <div id={`${inputId}-edit`} className={`hh2-collapse ${open ? 'is-open' : ''}`}>
         <div className="hh2-collapse__inner" inert={!open}>
@@ -157,15 +260,7 @@ export default function ProfileHeader() {
                 })}
               </div>
             </div>
-            {!signedIn && (
-              <p className="hub-muted">
-                Saved on this device.{' '}
-                <Link to={paths.login(paths.profile())} className="hh2-textlink">
-                  Sign in
-                </Link>{' '}
-                to keep your progress and play with friends.
-              </p>
-            )}
+            {!signedIn && <p className="hub-muted">Your name and character are saved on this device.</p>}
           </div>
         </div>
       </div>

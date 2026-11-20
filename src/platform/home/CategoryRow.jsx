@@ -4,8 +4,11 @@ import { useReducedMotion } from '@/components/shell/hooks.js';
 import GameCard from './GameCard.jsx';
 import { CatIcon } from './GameArt.jsx';
 
-/** One category: a heading and a horizontal snap-scroll row (`.hub-row`) of game cards, with arrows on pointer devices. */
-export default function CategoryRow({ cat, games }) {
+/**
+ * One category: a heading and a horizontal snap-scroll row (`.hub-row`) of game cards, with arrows on pointer devices.
+ * `note` = optional one-line hint under the heading (the "Coming soon" row explains Notify me).
+ */
+export default function CategoryRow({ cat, games, note, className = '' }) {
   const id = useId();
   const rail = useRef(null);
   const reduced = useReducedMotion();
@@ -45,7 +48,7 @@ export default function CategoryRow({ cat, games }) {
   };
 
   return (
-    <section className="hub-section hh2-catrow street-category" aria-labelledby={id} data-count={games.length}>
+    <section className={`hub-section hh2-catrow street-category ${className}`.trim()} aria-labelledby={id} data-count={games.length} data-cat={cat.id}>
       <div className="hub-section__head">
         <h3 id={id} className="hub-section__title hh2-catrow__title">
           <CatIcon cat={cat} size={22} />
@@ -63,6 +66,7 @@ export default function CategoryRow({ cat, games }) {
           </button>
         </div>
       </div>
+      {note && <p className="xh-rownote">{note}</p>}
       <ul className="hub-row hh2-rail street-catalog__rail" ref={rail} aria-label={`${cat.label} games`}>
         {games.map((g) => (
           <li key={g.id}>

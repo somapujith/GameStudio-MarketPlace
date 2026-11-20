@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { BADGES, buildBadgeContext, evaluateBadges } from './badges.js';
-import { fmtStat, resolveGameStats, statDefs, statValue } from './gameStats.js';
+import { BADGES, buildBadgeContext, evaluateBadges, gameBadges, newlyEarned } from './badges.js';
+import { fmtStat, matchResult, ordinal, relTime, resolveGameStats, statDefs, statDefsWithRating, statValue } from './gameStats.js';
 import { playersLabel } from './gameTheme.js';
 
 describe('resolveGameStats', () => {
@@ -66,18 +66,24 @@ describe('badges', () => {
     expect(ids).not.toContain('social-butterfly');
   });
 
-  it('Landlord reads the rent the server counts on the account; Hotel Tycoon is gone (no server data)', () => {
-    expect(BADGES.some((b) => b.id === 'hotel-tycoon')).toBe(false);
-    const user = { stats: { rentEarned: 50000 } };
-    expect(earnedIds(buildBadgeContext({ perGame: [], user, level: 1, friends: 0 }))).toContain('landlord');
-    expect(earnedIds(buildBadgeContext({ perGame: [], user: { stats: { rentEarned: 49999 } }, level: 1, friends: 0 }))).not.toContain('landlord');
-    expect(earnedIds(buildBadgeContext({ perGame: [], level: 1, friends: 0 }))).not.toContain('landlord');
+  it('platform badges carry no game-specific rules or money text', () => {
+    expect(BADGES.some((b) => b.id === 'landlord' || b.id === 'hotel-tycoon')).toBe(false);
+    expect(BADGES.every((b) => !/₹|\brent\b|hotel|tycoon/i.test(`${b.label} ${b.desc}`))).toBe(true);
   });
 
-  it('Level 5 follows the level it is given (the server level when signed in) and the streak the device keeps', () => {
+  it('level and streak badges follow the level and daily streak they are given', () => {
     expect(earnedIds(buildBadgeContext({ perGame: [], level: 5, friends: 0 }))).toContain('level-5');
     expect(earnedIds(buildBadgeContext({ perGame: [], level: 4, friends: 0 }))).not.toContain('level-5');
-    expect(earnedIds(buildBadgeContext({ perGame: [], streak: 7, level: 1, friends: 0 }))).toContain('streak-7');
+    expect(earnedIds(buildBadgeContext({ perGame: [], level: 10, friends: 0 }))).toEqual(expect.arrayContaining(['level-5', 'level-10']));
+    expect(earnedIds(buildBadgeContext({ perGame: [], streak: 3, level: 1, friends: 0 }))).toEqual(['streak-3']);
+    expect(earnedIds(buildBadgeContext({ perGame: [], streak: 7, level: 1, friends: 0 }))).toEqual(expect.arrayContaining(['streak-3', 'streak-7']));
+  });
+
+  it('hides Explorer until at least two games are live', () => {
+    const one = evaluateBadges(buildBadgeContext({ perGame: [{ games: 1, wins: 0 }], level: 1, friends: 0, liveGames: 1 }));
+    expect(one.some((b) => b.id === 'explorer')).toBe(false);
+    const two = buildBadgeContext({ perGame: [{ games: 1, wins: 0 }, { games: 2, wins: 1 }], level: 1, friends: 0, liveGames: 2 });
+    expect(earnedIds(two)).toContain('explorer');
   });
 
   it('hides Social Butterfly until the friends list is known, then needs 3 friends', () => {
@@ -91,5 +97,68 @@ describe('badges', () => {
     const ctx = buildBadgeContext({ perGame: [{ games: 5, wins: 5 }], level: 1, friends: 0 });
     const ten = evaluateBadges(ctx).find((b) => b.id === 'ten-wins');
     expect(ten).toMatchObject({ earned: false, value: 5, target: 10, pct: 50 });
+  });
+});
+
+describe('game badges from the manifest', () => {
+  const game = {
+    id: 'g1',
+    name: 'Game One',
+    badges: [
+      { id: 'landlord', label: 'Landlord', desc: 'Collect 5,00,000 in rent', stat: 'rentEarned', target: 500000, icon: 'landlord' },
+      { id: 'bad' }, // malformed: skipped
+    ],
+  };
+
+  it('evaluates against the per-game stats, falling back to the extra source, with namespaced ids', () => {
+    const [b] = gameBadges(game, { rentEarned: 250000 });
+    expect(b).toMatchObject({ id: 'g1:landlord', label: 'Landlord', art: 'landlord', earned: false, value: 250000, pct: 50, gameId: 'g1' });
+    expect(gameBadges(game, {}, { rentEarned: 600000 })[0]).toMatchObject({ earned: true, value: 500000, pct: 100 });
+    expect(gameBadges(game, null)).toHaveLength(1);
+    expect(gameBadges({ id: 'x' }, {})).toEqual([]);
+  });
+
+  it('newlyEarned lists earned badges that were not seen before', () => {
+    const list = [
+      { id: 'a', earned: true },
+      { id: 'b', earned: true },
+      { id: 'c', earned: false },
+    ];
+    expect(newlyEarned(['a'], list)).toEqual(['b']);
+    expect(newlyEarned([], list)).toEqual(['a', 'b']);
+    expect(newlyEarned(null, list)).toEqual(['a', 'b']);
+    expect(newlyEarned(['a', 'b'], list)).toEqual([]);
+  });
+});
+
+describe('match + leaderboard helpers', () => {
+  it('puts rating second in the stat columns', () => {
+    const game = { stats: [{ key: 'wins', label: 'Wins' }, { key: 'games', label: 'Games' }, { key: 'bestScore', label: 'Best net worth' }] };
+    expect(statDefsWithRating(game, 3).map((d) => d.key)).toEqual(['wins', 'rating', 'games']);
+    expect(statDefsWithRating({ stats: [{ key: 'rating', label: 'Elo' }, { key: 'wins', label: 'Wins' }] }, 3).map((d) => d.label)).toEqual(['Wins', 'Elo']);
+    expect(statDefsWithRating(null, 2).map((d) => d.key)).toEqual(['wins', 'rating']);
+  });
+
+  it('ordinals', () => {
+    expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 101].map(ordinal)).toEqual(['1st', '2nd', '3rd', '4th', '11th', '12th', '13th', '21st', '22nd', '101st']);
+  });
+
+  it('result chip: Won, or place of player count', () => {
+    expect(matchResult({ won: true, rank: 1, playerCount: 4 })).toEqual({ text: 'Won', tone: 'win' });
+    expect(matchResult({ won: false, rank: 2, playerCount: 4 })).toEqual({ text: '2nd of 4', tone: 'podium' });
+    expect(matchResult({ won: false, rank: 2, playerCount: 2 })).toEqual({ text: '2nd of 2', tone: 'loss' });
+    expect(matchResult({ rank: 3, players: [{}, {}, {}] }).text).toBe('3rd of 3');
+    expect(matchResult({}).text).toBe('Finished');
+  });
+
+  it('relative time', () => {
+    const now = Date.parse('2026-11-15T12:00:00Z');
+    expect(relTime('2026-11-15T11:59:50Z', now)).toBe('just now');
+    expect(relTime('2026-11-15T11:55:00Z', now)).toBe('5 minutes ago');
+    expect(relTime('2026-11-15T09:00:00Z', now)).toBe('3 hours ago');
+    expect(relTime('2026-11-14T12:00:00Z', now)).toBe('yesterday');
+    expect(relTime('2026-11-01T12:00:00Z', now)).toMatch(/1 Nov/);
+    expect(relTime('nope', now)).toBe('');
+    expect(relTime(null, now)).toBe('');
   });
 });

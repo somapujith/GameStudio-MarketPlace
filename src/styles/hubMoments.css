@@ -1,0 +1,28 @@
+/* Small moments live inside artwork; labels, prices and actions stay still. */
+.hub-moment-preview,.hub-moment-badge { display: inline-flex; align-items: center; justify-content: center; position: relative; }
+.xp-item.is-sel .hub-moment-preview { animation: hub-preview-turn var(--dur-3,360ms) var(--ease-out) both; }
+.xp-item.is-fresh .hub-moment-preview { animation: hub-art-reveal var(--dur-4,600ms) var(--ease-out) both; }
+.hub-moment-preview::after,.hub-moment-badge.is-new::after { content: ''; position: absolute; inset: 3px; pointer-events: none; border: 2px solid var(--gold,#ffca7a); border-radius: 50%; opacity: 0; }
+.xp-item.is-sel .hub-moment-preview::after,.hub-moment-badge.is-new::after { animation: hub-art-ring var(--dur-4,600ms) var(--ease-out) both; }
+.xp-badges > .hh2-badge.is-earned .hh2-badge-art { animation: none; }
+.hub-moment-badge.is-new { animation: hub-art-reveal var(--dur-4,600ms) var(--ease-out) both; }
+.hub-moment-welcome { display: flex; align-items: center; justify-content: center; gap: 18px; }
+.hub-moment-welcome .auto-mascot { width: 96px; height: 72px; }
+.xs-upsell__art.hub-moment-friends { gap: 6px; }
+.hub-moment-friends .auto-mascot { width: 112px; height: 84px; }
+.hub-moment-friends .xs-upsell__ava { margin: 0 0 8px; }
+.xs-empty.hub-moment-empty { display: grid; grid-template-columns: 76px minmax(0,1fr); align-items: center; gap: 8px 12px; }
+.hub-moment-empty > .auto-mascot { width: 76px; height: 57px; }
+.xs-empty.hub-moment-empty .ho-btn { grid-column: 2; margin-left: 0; justify-self: start; }
+@keyframes hub-preview-turn { from { transform: rotate(-5deg); opacity: .8; } to { transform: none; opacity: 1; } }
+@keyframes hub-art-reveal { from { opacity: .4; transform: translateY(5px) scale(.94); } to { opacity: 1; transform: none; } }
+@keyframes hub-art-ring { from { opacity: .7; transform: scale(.94); } to { opacity: 0; transform: scale(1.14); } }
+:root[data-motion='reduced'] :is(.hub-moment-preview,.hub-moment-badge),:root[data-motion='reduced'] .hub-moment-badge > *, :root[data-motion='reduced'] :is(.hub-moment-preview,.hub-moment-badge)::after { animation: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  :is(.hub-moment-preview,.hub-moment-badge), .hub-moment-badge > *, :is(.hub-moment-preview,.hub-moment-badge)::after { animation: none !important; }
+}
+@media (max-width: 420px) {
+  .hub-moment-welcome .auto-mascot { width: 80px; height: 60px; }
+  .xs-empty.hub-moment-empty { grid-template-columns: 62px minmax(0,1fr); gap: 8px; }
+  .hub-moment-empty > .auto-mascot { width: 62px; height: 47px; }
+}

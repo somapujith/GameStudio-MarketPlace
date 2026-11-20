@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/lib/auth.jsx';
-import { progressOf, useProfile, useSettings } from './stores.js';
+import { claimDailyLocal, claimDailyServer, dailyStateOf, progressOf, useProfile, useSettings } from './stores.js';
 import { playSfx, unlockAudio } from './sound.js';
 
 /** True when the user asked for reduced motion (OS preference or the in-app setting). */
@@ -36,6 +36,33 @@ export function useProgress() {
   const [profile] = useProfile();
   const { user } = useAccount();
   return useMemo(() => progressOf(user, profile), [user, profile]);
+}
+
+/**
+ * Daily reward for whoever is here: the server (`user.daily`, `POST /api/me/daily` then `refresh()`) for a session,
+ * the on-device profile otherwise.
+ *   const { canClaim, streak, lastClaim, nextReward, server, busy, claim } = useDaily();
+ *   const r = await claim();   // { ok, coins, streak, balance?, daily?, already?, error? } (never rejects)
+ */
+export function useDaily() {
+  const [profile] = useProfile();
+  const { user, auth } = useAccount();
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  const refresh = auth?.refresh;
+  const state = useMemo(() => dailyStateOf(user, profile), [user, profile]);
+  const claim = useCallback(async () => {
+    if (busyRef.current) return { ok: false, busy: true };
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      return user ? await claimDailyServer({ refresh }) : claimDailyLocal();
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  }, [user, refresh]);
+  return { ...state, busy, claim };
 }
 
 /**

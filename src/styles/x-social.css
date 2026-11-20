@@ -1,0 +1,248 @@
+/* ==========================================================================
+   H-SOCIAL base layer: avatar + frame + presence dot + title chip (FriendAvatar), list enter / exit motion, the
+   in-flow notice slot, Login back link and 404 bits. Prefix .xs-. The Friends, Friend link, invites and Rank screens
+   live in store-social.css (.sc- / .sl-). Colours only from --hub-* tokens; motion from --dur-* / --ease-*.
+   ========================================================================== */
+
+/* ---------- avatar + frame + dot + title ---------- */
+.xs-ava {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  line-height: 0;
+}
+.xs-frame {
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  padding: 3px;
+  background: conic-gradient(from 210deg, var(--xs-f1), var(--xs-f2), var(--xs-f1));
+  box-shadow: 0 0 0 1px var(--hub-line-2), 0 4px 14px transparent;
+  box-shadow: 0 0 0 1px var(--hub-line-2), 0 4px 14px color-mix(in srgb, var(--xs-f1) 35%, transparent);
+}
+.xs-frame > * {
+  border-radius: 50%;
+}
+.xs-dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2.5px solid var(--hub-surface);
+  background: var(--hub-faint);
+}
+.xs-dot.is-on {
+  background: var(--hub-good);
+}
+/* the "online" ring: a compositor-only ripple on a pseudo-element (transform + opacity), a few beats then still */
+.xs-dot.is-on::after {
+  content: '';
+  position: absolute;
+  inset: -2.5px;
+  border-radius: 50%;
+  border: 2px solid var(--hub-good);
+  opacity: 0;
+  pointer-events: none;
+  animation: xs-pulse 2.4s var(--ease-out) 3;
+}
+@keyframes xs-pulse {
+  0% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+.xs-title {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: var(--hub-dim);
+  background: var(--hub-surface-2);
+  border: 1px solid var(--hub-line-2);
+}
+.xs-title--rare {
+  color: var(--hub-text);
+  border-color: rgba(var(--hub-brand-rgb), 0.55);
+  border-color: color-mix(in srgb, var(--hub-brand) 55%, transparent);
+  background: var(--hub-brand-soft);
+}
+.xs-title--epic {
+  color: var(--hub-text);
+  border-color: rgba(var(--hub-warn-rgb), 0.6);
+  border-color: color-mix(in srgb, var(--hub-warn) 60%, transparent);
+  background: rgba(var(--hub-warn-rgb), 0.16);
+  background: color-mix(in srgb, var(--hub-warn) 16%, transparent);
+}
+.xs-rowava {
+  width: auto;
+  height: auto;
+  display: inline-flex;
+}
+.xs-sub {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  min-width: 0;
+}
+.xs-on {
+  color: var(--hub-good);
+  font-weight: 700;
+}
+.xs-eyebrow {
+  color: var(--hub-brand);
+}
+
+/* ---------- motion: list enter / exit ---------- */
+@keyframes xs-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes xs-out {
+  to {
+    opacity: 0;
+    transform: translateX(18px) scale(0.98);
+  }
+}
+@keyframes xs-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.98);
+  }
+}
+@keyframes xs-lift {
+  to {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.98);
+  }
+}
+.xs-enter {
+  animation: xs-in var(--dur-2) var(--ease-out) both;
+  animation-delay: calc(min(var(--xs-i, 0), 8) * 35ms);
+}
+.xs-enter.is-leaving {
+  animation: xs-out var(--dur-2) var(--ease-in) both;
+  pointer-events: none;
+}
+
+/* ---------- login: back link ---------- */
+.xs-backrow {
+  display: flex;
+  margin-bottom: -8px;
+}
+.xs-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 12px 0 6px;
+  margin-left: -6px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--hub-dim);
+  text-decoration: none;
+  transition:
+    color var(--dur-1) var(--ease-std),
+    background-color var(--dur-1) var(--ease-std);
+}
+@media (hover: hover) {
+  .xs-back:hover {
+    color: var(--hub-text);
+    background: var(--hub-surface-2);
+  }
+}
+.xs-back:focus-visible {
+  outline: 3px solid var(--hub-brand);
+  outline-offset: 2px;
+}
+.xs-back svg {
+  transition: transform var(--dur-1) var(--ease-std);
+}
+@media (hover: hover) {
+  .xs-back:hover svg {
+    transform: translateX(-2px);
+  }
+}
+
+/* ---------- 404 ---------- */
+.xs-404 .hub-404__art {
+  animation: xs-in var(--dur-3) var(--ease-spring) both;
+}
+
+/* ---------- reduced motion: every change is instant ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .xs-enter,
+  .xs-enter.is-leaving,
+  .xs-404 .hub-404__art,
+  .xs-dot.is-on::after {
+    animation: none !important;
+  }
+  .xs-back,
+  .xs-back svg {
+    transition: none !important;
+  }
+}
+:root[data-motion='reduced'] :is(.xs-enter, .xs-404 .hub-404__art),
+:root[data-motion='reduced'] .xs-dot.is-on::after {
+  animation: none !important;
+}
+:root[data-motion='reduced'] :is(.xs-back, .xs-back svg) {
+  transition: none !important;
+}
+
+/* the login hero is a dark art panel in both themes: keep its tagline light */
+.xs-login .ho-hero__tag {
+  color: rgba(255, 255, 255, 0.84);
+  color: color-mix(in srgb, #fff 84%, transparent);
+}
+
+/* wide screens: notices sit top-right, clear of the centred page content */
+@media (min-width: 900px) {
+  .ho-notices.xs-notices {
+    left: auto;
+    right: 24px;
+    transform: none;
+    width: min(440px, calc(100vw - 48px));
+  }
+}
+
+/* the login page is a 2-column grid from 900px: the back link spans the full width above both columns */
+@media (min-width: 900px) {
+  .ho-page.ho-login > .xs-backrow {
+    grid-column: 1 / -1;
+    margin-bottom: -12px;
+  }
+}
+
+/* in-flow notices: inside the hub shell they render in the content column (AppShell's <NoticeSlot />) and push
+   the page down instead of floating over page headers and their buttons */
+.hub-noticeslot:empty {
+  display: none;
+}
+.hub-noticeslot {
+  margin-bottom: var(--hub-gap-l);
+}
+.ho-notices.xs-notices.is-inline {
+  position: static;
+  left: auto;
+  right: auto;
+  transform: none;
+  z-index: auto;
+  width: auto;
+  max-width: 720px;
+}

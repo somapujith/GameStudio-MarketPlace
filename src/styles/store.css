@@ -1,0 +1,183 @@
+/* Store layer (Wave 0, shared). The marketplace look on top of the hub tokens in hub.css:
+   type pairing, scale, section rhythm and a few primitives every hub screen shares.
+   Hub screens only: game screens (/play/**) keep their own fonts and theme.
+   Rule: screens read these tokens and the --hub-* tokens; they never hard-code a hex colour. */
+:root {
+  --font-hub-display: 'Bricolage Grotesque Variable', 'Bricolage Grotesque', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-hub-body: 'Plus Jakarta Sans Variable', 'Plus Jakarta Sans', 'Segoe UI', system-ui, -apple-system, sans-serif;
+
+  /* type scale (about 1.25) */
+  --st-t-xs: 0.75rem;
+  --st-t-s: 0.875rem;
+  --st-t-m: 1rem;
+  --st-t-l: 1.25rem;
+  --st-t-xl: 1.625rem;
+  --st-t-2xl: clamp(2rem, 1.4rem + 2.6vw, 3.25rem);
+  --st-t-3xl: clamp(2.5rem, 1.5rem + 4.4vw, 4.75rem);
+
+  /* rhythm */
+  --st-gap-section: clamp(28px, 4vw, 48px);
+  --st-gap-card: 14px;
+  --st-radius-card: 22px;
+  --st-radius-chip: 999px;
+  --st-radius-tile: 16px;
+  --st-rail-peek: 28px; /* how much of the next card peeks in a snap row */
+}
+
+.hub-app,
+.hub-page,
+.st-scope {
+  font-family: var(--font-hub-body);
+  font-optical-sizing: auto;
+}
+/* :where() keeps this a default (zero specificity): component headings set their own face (the Jalebi poster type) */
+:where(.hub-app, .hub-page) :where(h1, h2, h3),
+.st-display {
+  font-family: var(--font-hub-display);
+  font-optical-sizing: auto;
+  letter-spacing: -0.015em;
+}
+
+/* Eyebrow: the small signage label above a heading */
+.st-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--st-t-xs);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--hub-brand-ink);
+}
+.st-eyebrow::before {
+  content: '';
+  width: 18px;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.7;
+}
+
+/* Section head: title left, optional action right */
+.st-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 14px;
+}
+.st-head__title {
+  margin: 0;
+  font-size: var(--st-t-xl);
+  line-height: 1.1;
+  color: var(--hub-text);
+}
+.st-head__sub {
+  margin: 4px 0 0;
+  font-size: var(--st-t-s);
+  color: var(--hub-dim);
+}
+.st-link {
+  font-weight: 700;
+  font-size: var(--st-t-s);
+  color: var(--hub-brand-ink);
+  text-decoration: none;
+  border-radius: 8px;
+  padding: 6px 2px;
+}
+.st-link:hover { text-decoration: underline; }
+
+/* Chip: facts and tags (players, duration, category) */
+.st-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  min-height: 28px;
+  border-radius: var(--st-radius-chip);
+  font-size: var(--st-t-xs);
+  font-weight: 700;
+  color: var(--hub-dim);
+  background: var(--hub-surface-2);
+  border: 1px solid var(--hub-line);
+  white-space: nowrap;
+}
+
+/* Surface: the standard card */
+.st-card {
+  background: var(--hub-surface);
+  border: 1px solid var(--hub-line);
+  border-radius: var(--st-radius-card);
+  box-shadow: var(--hub-shadow-s);
+}
+
+/* Snap-scroll rail: children are the cards */
+.st-rail {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: min(78%, 300px);
+  gap: var(--st-gap-card);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: var(--gutter);
+  padding: 4px var(--gutter) 14px;
+  margin-inline: calc(var(--gutter) * -1);
+  scrollbar-width: none;
+}
+.st-rail::-webkit-scrollbar { display: none; }
+.st-rail > * { scroll-snap-align: start; }
+@media (min-width: 900px) {
+  .st-rail { grid-auto-columns: 280px; margin-inline: 0; padding-inline: 2px; }
+}
+
+/* Live dot: the "something is happening now" pulse */
+.st-live {
+  position: relative;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--hub-good);
+}
+/* the ring is a pseudo-element animated with transform + opacity (a box-shadow animation repaints every frame) */
+.st-live::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(var(--hub-good-rgb), 0.55);
+  opacity: 0;
+  animation: st-pulse 2s var(--ease-out) infinite;
+}
+@keyframes st-pulse {
+  0% { opacity: 1; transform: scale(1); }
+  70%, 100% { opacity: 0; transform: scale(3); }
+}
+
+/* Reveal: enter animation for sections (transform + opacity only) */
+.st-reveal { animation: st-rise var(--dur-3) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 60ms); }
+@keyframes st-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+/* Skeleton block shaped like content */
+.st-skel {
+  border-radius: var(--st-radius-tile);
+  background: linear-gradient(100deg, var(--hub-skel) 30%, var(--hub-skel-hi) 50%, var(--hub-skel) 70%);
+  /* a breathing opacity instead of a sliding gradient: background-position repaints every skeleton every frame */
+  animation: st-shimmer 1.4s ease-in-out infinite alternate;
+}
+@keyframes st-shimmer { from { opacity: 0.55; } to { opacity: 1; } }
+
+.st-scope :focus-visible,
+.hub-app :focus-visible {
+  outline: 3px solid var(--hub-focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .st-reveal, .st-live, .st-live::after, .st-skel { animation: none; }
+}
+:root[data-motion='reduced'] .st-reveal,
+:root[data-motion='reduced'] .st-live,
+:root[data-motion='reduced'] .st-live::after,
+:root[data-motion='reduced'] .st-skel { animation: none; }

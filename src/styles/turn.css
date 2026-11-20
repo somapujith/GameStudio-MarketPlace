@@ -1,0 +1,205 @@
+/* The in-game turn experience: decision timer (ring + bar), round badge, turn hand-off banner, card reveal,
+   speech bubbles, emote pops, the phone action dock and the phone Manage sheet. Owned by G-TURN.
+   Motion: transform / opacity only, motion tokens from tokens.css; every animation collapses under reduced motion
+   (game.css forces ~0 durations for .hg-game[data-rm] and prefers-reduced-motion). Keyframes here never rely on a
+   "forwards" fill for the visible state, so an instant animation still leaves the element readable. */
+
+/* ============================================================ decision timer: ring around an avatar */
+.tt-ring { position: relative; display: inline-grid; place-items: center; flex: none; border-radius: 50%; }
+.tt-ring__svg {
+  position: absolute; left: -4px; top: -4px; width: calc(100% + 8px); height: calc(100% + 8px);
+  overflow: visible; pointer-events: none;
+}
+.tt-ring__track { fill: none; stroke: rgba(16, 44, 42, 0.16); stroke-width: 3; }
+.tt-ring__run {
+  fill: none; stroke: #e89b1c; stroke-width: 3; stroke-linecap: round;
+  transition: stroke-dashoffset 250ms linear, stroke var(--dur-2) var(--ease-std);
+}
+.tt-ring.is-warn .tt-ring__run { stroke: #e5384f; }
+.tt-ring.is-warn { animation: tt-pulse 0.9s var(--ease-std) infinite; }
+@keyframes tt-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.07); } }
+
+/* ============================================================ decision timer: slim bar */
+.tt-bar { display: flex; flex-direction: column; gap: 3px; min-width: 0; color: var(--cp-ink, var(--text)); }
+.tt-bar__txt { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; font-size: 0.82em; font-weight: 800; line-height: 1.1; }
+.tt-bar__who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tt-bar__secs { flex: none; font-variant-numeric: tabular-nums; }
+.tt-bar__track { display: block; height: 5px; border-radius: 99px; overflow: hidden; background: rgba(16, 44, 42, 0.14); }
+.tt-bar__fill {
+  display: block; width: 100%; height: 100%; border-radius: 99px; transform-origin: left center; will-change: transform;
+  background: #8aa09b; transition: transform 250ms linear, background var(--dur-2) var(--ease-std);
+}
+.tt-bar.is-mine .tt-bar__fill { background: linear-gradient(90deg, #ffc857, #ff8a3d); }
+.tt-bar.is-warn { color: #b3261e; }
+.tt-bar.is-warn .tt-bar__fill { background: #e5384f; }
+.tt-bar.is-warn .tt-bar__secs { display: inline-block; animation: tt-pulse 0.9s var(--ease-std) infinite; }
+
+/* ============================================================ round badge (top bar) */
+.tb-round { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.tb-round .hg-pill { height: 18px; padding: 0 8px; font-size: 11px; }
+.tb-round__txt {
+  position: relative; overflow: hidden; padding: 0 10px; border-radius: 999px; line-height: 20px; font-weight: 750; white-space: nowrap;
+  color: var(--text); background: rgba(255, 255, 255, 0.07); border: 1px solid var(--line); font-variant-numeric: tabular-nums;
+}
+.tb-round__txt::after {
+  content: ""; position: absolute; left: 0; bottom: 0; height: 2px; width: 100%;
+  transform: scaleX(var(--rs, 0)); transform-origin: left center;
+  background: linear-gradient(90deg, #ffc857, #ff8a3d); transition: transform var(--dur-4) var(--ease-out);
+}
+.tb-round__txt.is-final { color: #ffd7dd; border-color: rgba(255, 93, 115, 0.5); background: rgba(255, 93, 115, 0.14); }
+
+/* ============================================================ turn hand-off: now moments/MomentBanner (moments.css) */
+
+/* ============================================================ card reveal */
+.cr-root { position: absolute; inset: 0; z-index: 9; display: grid; place-items: center; pointer-events: none; }
+.cr-root::before {
+  content: ""; position: absolute; inset: 0; border-radius: 12px; pointer-events: none;
+  background: radial-gradient(circle at 50% 50%, rgba(6, 4, 20, 0.55), rgba(6, 4, 20, 0.2) 70%);
+  animation: cr-fade var(--dur-3) var(--ease-out) backwards;
+}
+.cr-hit {
+  position: relative; width: min(58%, 300px); padding: 0; border: 0; background: none; color: inherit; cursor: pointer; pointer-events: auto;
+  display: flex; flex-direction: column; align-items: center; gap: 8px; font: inherit;
+  animation: cr-pop var(--dur-3) var(--ease-spring) both;
+}
+.cr-hit:focus-visible { outline: 3px solid var(--sky, #4cc9f0); outline-offset: 6px; border-radius: 20px; }
+.cr-root.is-leaving .cr-hit { animation: cr-leave var(--dur-2) var(--ease-in) both; }
+.cr-root.is-leaving::before { animation: cr-fade-out var(--dur-2) var(--ease-in) both; }
+.cr-card { display: block; width: 100%; aspect-ratio: 5 / 7; perspective: 1000px; }
+.cr-card__inner {
+  position: relative; display: block; width: 100%; height: 100%; transform-style: preserve-3d;
+  animation: cr-flip var(--dur-4) var(--ease-out) var(--dur-2) both;
+}
+.cr-face {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border-radius: 18px; backface-visibility: hidden; -webkit-backface-visibility: hidden; overflow: hidden;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5), 0 0 0 3px rgba(255, 255, 255, 0.9);
+}
+.cr-back { transform: rotateY(180deg); gap: 8px; color: var(--cr-accent); background: var(--cr-back); }
+.cr-back::before {
+  content: ""; position: absolute; inset: 10px; border-radius: 12px; border: 2px solid color-mix(in srgb, var(--cr-accent) 70%, transparent);
+  background: repeating-linear-gradient(45deg, transparent 0 9px, color-mix(in srgb, var(--cr-accent) 18%, transparent) 9px 11px);
+}
+.cr-back__mark { position: relative; font-size: clamp(34px, 9vmin, 64px); line-height: 1; }
+.cr-back__name { position: relative; font-family: var(--font-display); font-size: clamp(14px, 3vmin, 20px); font-weight: 900; letter-spacing: 0.12em; text-transform: uppercase; }
+.cr-front {
+  justify-content: flex-start; gap: 6px; padding: 0 14px 14px; text-align: center; color: #1b1d33;
+  background: linear-gradient(180deg, #fffaf0, #fff3dc);
+}
+.cr-front__deck {
+  align-self: stretch; margin: 0 -14px 6px; padding: 10px 8px; font-size: 12px; font-weight: 900; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--cr-accent); background: var(--cr-back);
+}
+.cr-front__who {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 800; color: #4b5563;
+}
+.cr-front__who::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--pc, #8aa09b); }
+.cr-front__title { font-family: var(--font-display); font-size: clamp(17px, 4vmin, 26px); font-weight: 900; line-height: 1.15; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.cr-front__text { font-size: clamp(13px, 2.7vmin, 16px); font-weight: 600; line-height: 1.35; color: #374151; overflow-wrap: anywhere; }
+.cr-front__tone {
+  margin-top: auto; display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px;
+  font-size: 12px; font-weight: 900; letter-spacing: 0.04em; text-transform: uppercase;
+}
+.cr-front__tone i { font-style: normal; font-size: 10px; }
+.cr-root[data-kind="good"] .cr-front__tone { color: #0b5d3b; background: #c9f1dc; }
+.cr-root[data-kind="bad"] .cr-front__tone { color: #8f1224; background: #fbd3da; }
+.cr-root[data-kind="neutral"] .cr-front__tone { color: #3b3a70; background: #e1e0fa; }
+.cr-root[data-deck="luck"] { --cr-back: linear-gradient(160deg, #13805e, #0b4a3a 70%); --cr-accent: #ffc857; }
+.cr-root[data-deck="drama"] { --cr-back: linear-gradient(160deg, #3b2f9e, #1b1650 70%); --cr-accent: #ff8fab; }
+.cr-tap { font-size: 12px; font-weight: 700; color: rgba(255, 255, 255, 0.8); text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6); }
+@keyframes cr-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cr-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes cr-pop { from { opacity: 0; transform: translateY(24px) scale(0.78); } to { opacity: 1; transform: none; } }
+@keyframes cr-leave { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-14px) scale(0.94); } }
+@keyframes cr-flip { from { transform: rotateY(180deg); } to { transform: rotateY(0deg); } }
+/* reduced motion: no flip, the face simply fades in */
+.hg-game[data-rm] .cr-back { display: none; }
+@media (prefers-reduced-motion: reduce) { .cr-back { display: none; } }
+
+/* speech bubble + emote pops: moved to fx.css (src/components/game/turn/SpeechBubble.jsx) */
+
+/* ============================================================ phone action dock */
+.ad {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  padding: 8px max(12px, env(safe-area-inset-right, 0px)) calc(8px + var(--safe-bottom)) max(12px, env(safe-area-inset-left, 0px));
+  display: flex; flex-direction: column; gap: 6px; color: var(--text);
+  background: linear-gradient(180deg, rgba(20, 30, 38, 0.94), rgba(16, 23, 30, 0.98));
+  border-top: 1px solid var(--line-strong); box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.4);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  animation: ad-in var(--dur-3) var(--ease-out) backwards;
+}
+@keyframes ad-in { from { transform: translateY(100%); } to { transform: none; } }
+.ad .tt-bar { color: var(--text); font-size: 13px; }
+.ad .tt-bar__track { background: rgba(255, 255, 255, 0.14); }
+.ad .tt-bar.is-warn { color: #ff9aa9; }
+.ad-main { font-size: 15px; line-height: 1.3; }
+.ad-tools { display: flex; gap: 8px; }
+.ad-tool {
+  position: relative; flex: 1 1 0; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border-radius: 12px; border: 1px solid var(--line-strong); background: rgba(255, 255, 255, 0.06); color: var(--text);
+  font: inherit; font-size: 14px; font-weight: 750; cursor: pointer; transition: background var(--dur-1) var(--ease-std), transform var(--dur-1) var(--ease-std);
+}
+@media (hover: hover) { .ad-tool:hover { background: rgba(255, 255, 255, 0.11); } }
+.ad-tool:active { transform: scale(0.97); }
+.ad-tool:focus-visible { outline: 3px solid var(--sky, #4cc9f0); outline-offset: 2px; }
+.ad-tool__badge {
+  min-width: 18px; padding: 0 5px; border-radius: 99px; font-style: normal; font-size: 11px; font-weight: 900; line-height: 18px; text-align: center;
+  color: #fff; background: #e5384f;
+}
+@media (pointer: coarse) { .ad-tool { min-height: var(--tap, 44px); } }
+
+/* ============================================================ phone Manage / Trade sheet */
+.ms-sheet .hg-seg-wrap { margin-bottom: 12px; }
+.ms-paper {
+  border-radius: 16px; overflow: hidden; color: var(--cp-ink); background: #fffcf3; border: 2px solid var(--cp-line);
+  font-size: 14px; line-height: 1.35;
+}
+
+/* ============================================================ net worth target: chip in the top bar, heads-up toasts */
+.tb-target {
+  display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 0 9px 0 6px; border-radius: 999px; white-space: nowrap;
+  line-height: 20px; font-weight: 750; font-variant-numeric: tabular-nums; color: var(--text);
+  background: rgba(255, 255, 255, 0.07); border: 1px solid var(--line);
+}
+.tb-target .hg-icon { color: var(--gold); }
+.tb-target__short { display: none; }
+/* somebody is at 80% of the target: gold, the icon breathes (opacity only) */
+.tb-target.is-hot { color: var(--gold); border-color: rgba(255, 202, 122, 0.55); background: rgba(255, 200, 87, 0.14); }
+.tb-target.is-hot .hg-icon { animation: tb-target-pulse 1.4s var(--ease-std) infinite; }
+@keyframes tb-target-pulse { 50% { opacity: 0.45; } }
+@media (max-width: 380px) {
+  .tb-target__long { display: none; }
+  .tb-target__short { display: inline; }
+}
+.hg-game--land .tb-target__long { display: none; }
+.hg-game--land .tb-target__short { display: inline; }
+.hg-game--land .tb-target { padding-left: 8px; }
+.hg-game--land .tb-target .hg-icon { display: none; }
+/* portrait phones: the mode name makes room for "Round 7 / 20 · First to ₹50L" */
+.hg-game--phone .hg-top[data-goal] .hg-mode, .hg-game--phone .hg-top[data-goal] .hg-goal-sep { display: none; }
+
+.tw-toasts {
+  position: absolute; z-index: 7; left: 50%; bottom: 10px; translate: -50% 0; width: max-content; max-width: calc(100% - 16px);
+  margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; pointer-events: none;
+}
+.tw-toast {
+  display: flex; align-items: center; justify-content: center; gap: 8px; padding: 8px 14px; border-radius: 999px; font-size: 13px; line-height: 18px; font-weight: 800;
+  color: var(--text); background: rgba(16, 23, 30, 0.95); border: 1px solid rgba(255, 202, 122, 0.55); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  animation: hg-toast 4.6s var(--ease-out) both;
+}
+.tw-toast .hg-icon { color: var(--gold); flex: none; }
+.tw-toast span { min-width: 0; text-align: center; }
+.tw-toast.is-near { border-color: var(--gold); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45), 0 0 18px -2px rgba(255, 202, 122, 0.55); }
+.tw-toast.is-me { border-color: var(--good); }
+
+@media (prefers-reduced-motion: reduce) {
+  .tb-target.is-hot .hg-icon, .tw-toast { animation: none !important; }
+}
+:root[data-motion='reduced'] .tb-target.is-hot .hg-icon, :root[data-motion='reduced'] .tw-toast,
+.hg-game[data-rm] .tb-target.is-hot .hg-icon, .hg-game[data-rm] .tw-toast { animation: none !important; }
+
+/* ============================================================ you are out (resigned or bankrupt): a calm line instead of an action */
+.cp-actions[data-kind='out'] .cp-primary.is-wait { flex-direction: column; justify-content: center; gap: 2px; padding: 6px 12px; text-align: center; }
+.cp-actions[data-kind='out'] .cp-primary.is-wait .cp-btn__label { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.2; }
+.cp-actions[data-kind='out'] .cp-primary.is-wait .cp-btn__sub { font-size: 12px; font-weight: 600; }
+.ad-tools .ad-tool.is-icon:only-child { flex: 1; }

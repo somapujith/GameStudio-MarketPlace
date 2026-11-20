@@ -4,11 +4,12 @@ import { paths } from '@/platform/paths.js';
 import { gameSlug } from '@/platform/game/identity.js';
 import HubIcon from '@/platform/game/HubIcon.jsx';
 import { featured, gameById, liveList } from '@/platform/home/catalog.js';
-import { fmtStat, resolveGameStats, statDefs, statValue } from '@/platform/home/gameStats.js';
+import { fmtStat, resolveGameStats, statDefsWithRating, statValue } from '@/platform/home/gameStats.js';
+import { useAccountProgress } from '@/platform/home/accountProgress.js';
 import { useApi, useApiGate } from '@/platform/home/useApi.js';
 import LeaderTabs from '@/platform/home/LeaderTabs.jsx';
-import Ava from '@/platform/home/Ava.jsx';
-import { useAccount, useProgress, useReducedMotion } from '@/components/shell/hooks.js';
+import Ava, { Title } from '@/platform/home/Ava.jsx';
+import { useAccount, useReducedMotion } from '@/components/shell/hooks.js';
 import { fmtNum } from '@/components/shell/ui.jsx';
 import { CoinIcon } from '@/components/shell/icons.jsx';
 import '@/styles/hubhome.css';
@@ -20,6 +21,7 @@ const OVERALL_COLS = [
   { key: 'wins', label: 'Wins' },
   { key: 'games', label: 'Games' },
 ];
+const isRow = (r) => !!r && typeof r === 'object' && typeof r.name === 'string';
 const PANEL_ID = 'hh2-lb-panel';
 
 function Skeleton() {
@@ -65,7 +67,8 @@ function Notice({ icon, title, children, action }) {
 
 /** The paper scorecard uses account results for the selected game or platform totals. */
 function YourRecord({ game, user, liveGames }) {
-  const { info: li, coins } = useProgress();
+  // server level when signed in: the same number the top bar and Profile show
+  const { level, coins } = useAccountProgress();
   let tiles;
   let title;
   let note = null;
@@ -75,7 +78,7 @@ function YourRecord({ game, user, liveGames }) {
     const wins = per.reduce((n, s) => n + s.wins, 0);
     title = 'Your record';
     tiles = [
-      { label: 'Level', icon: 'podium', value: fmtNum(li.level) },
+      { label: 'Level', icon: 'podium', value: fmtNum(level) },
       { label: 'Games', icon: 'gamepad', value: fmtNum(games) },
       { label: 'Wins', icon: 'trophy', value: fmtNum(wins) },
       { label: 'Coins', icon: 'coins', value: fmtNum(coins) },
@@ -85,7 +88,7 @@ function YourRecord({ game, user, liveGames }) {
     const stats = resolveGameStats({ user, gameId: game.id });
     title = 'Your record';
     tiles = stats ? [
-      ...statDefs(game, 3).map((d) => ({ label: d.label, icon: d.key === 'wins' ? 'trophy' : d.key === 'games' ? 'gamepad' : 'star', value: fmtStat(stats[d.key] ?? (d.key === 'bestScore' ? stats.bestScore : null), d) })),
+      ...statDefsWithRating(game, 3).map((d) => ({ label: d.label, icon: d.key === 'wins' ? 'trophy' : d.key === 'games' ? 'gamepad' : 'star', value: fmtStat(stats[d.key] ?? (d.key === 'bestScore' ? stats.bestScore : null), d) })),
       { label: 'Coins', icon: 'coins', value: fmtNum(coins) },
       { label: 'Win rate', icon: 'target', value: `${stats.games ? Math.round(stats.wins / stats.games * 100) : 0}%` },
     ] : null;
@@ -127,9 +130,10 @@ function ChampionPodium({ rows, cols, isMe }) {
   return <div className="leader-podium"><ol className="leader-podium__players" aria-label="Top three players">
     {rows.slice(0,3).map((row,i)=><li key={`${row.rank}-${row.name}`} className={`leader-champion leader-champion--${i+1}${isMe(row)?' is-me':''}`}>
       {i===0 && <span className="leader-champion__crown" aria-hidden="true"><HubIcon name="crown" size={48} /></span>}
-      <Ava preset={row.avatar} size={i===0?128:94} ring={medals[i]} />
+      <Ava preset={row.avatar} size={i===0?128:94} ring={medals[i]} frame={row.frame} />
       <b className="leader-champion__name" title={row.name}>{row.name}</b>
       {isMe(row) && <span className="leader-you">You</span>}
+      <Title title={row.title} />
       <p className="leader-champion__stats">{cols.slice(0,2).map((c,j)=><span key={c.key}>{j>0 && <span aria-hidden="true"> &middot; </span>}{fmtStat(statValue(row,c.key),c)} {c.label.toLowerCase()}</span>)}</p>
       <span className="hub-sr">Rank {row.rank}</span>
     </li>)}
@@ -141,7 +145,7 @@ function RankingTable({ rows, cols, isMe }) {
   return <div className="leader-ranks" tabIndex={0} role="region" aria-label="Rankings from fourth place, scroll for more columns">
     <table><caption className="hub-sr">Players ranked fourth and below</caption><thead><tr><th scope="col">#</th><th scope="col">Player</th><th scope="col">Level</th>{cols.map(c=><th scope="col" key={c.key}>{c.label}</th>)}</tr></thead>
       <tbody>{rows.map((row,i)=><tr key={`${row.rank}-${row.name}`} className={isMe(row)?'is-me':undefined} style={{'--rank-delay':`${Math.min(i,8)*25}ms`}}>
-        <th scope="row">{row.rank}</th><td><div className="leader-ranks__player"><Ava preset={row.avatar} size={42} /><b title={row.name}>{row.name}</b>{isMe(row)&&<span className="leader-you">You</span>}</div></td>
+        <th scope="row">{row.rank}</th><td><div className="leader-ranks__player"><Ava preset={row.avatar} size={42} frame={row.frame} /><b title={row.name}>{row.name}</b>{isMe(row)&&<span className="leader-you">You</span>}<Title title={row.title} /></div></td>
         <td><span className="leader-ranks__level"><HubIcon name="star" size={18} />Lv {row.level??1}</span></td>{cols.map(c=><td key={c.key}>{fmtStat(statValue(row,c.key),c)}</td>)}
       </tr>)}</tbody>
     </table>
@@ -160,18 +164,23 @@ export default function Leaderboard() {
   const wantedGame = gameById(wanted);
   const gameId = wantedGame && live.some((g) => g.id === wantedGame.id) ? wantedGame.id : 'overall';
   const game = gameId === 'overall' ? null : gameById(gameId);
-  const cols = game ? statDefs(game, 3) : OVERALL_COLS;
+  // the rating column is guaranteed second (the podium shows the first two)
+  const cols = game ? statDefsWithRating(game, 3) : OVERALL_COLS;
 
   const remote = useApi(`/api/leaderboard?game=${encodeURIComponent(gameId)}`, { enabled: ready });
   const state = booting ? 'loading' : !ready ? 'offline' : remote.status === 'idle' ? 'loading' : remote.status;
-  const rows = useMemo(() => (Array.isArray(remote.data?.rows) ? remote.data.rows.filter((r) => r && typeof r.name === 'string') : []), [remote.data]);
+  const rows = useMemo(() => (Array.isArray(remote.data?.rows) ? remote.data.rows.filter(isRow) : []), [remote.data]);
 
   const pick = useCallback((id) => setParams(id === 'overall' ? {} : { game: gameSlug(id) }, { replace: true }), [setParams]);
+  // The server marks the caller's own row (`isMe`, compared by user id) and sends it as `me` even when it is outside
+  // the top N. Rows from an older server without the flag fall back to the name + avatar match.
   const isMe = useCallback(
-    (r) => account && !!user?.name && r.name === user.name && (r.avatar === undefined || Number(r.avatar) === Number(user.avatar)),
+    (r) => (typeof r.isMe === 'boolean' ? r.isMe : account && !!user?.name && r.name === user.name && (r.avatar === undefined || Number(r.avatar) === Number(user.avatar))),
     [account, user],
   );
-  const mine = rows.find(isMe);
+  const inTop = rows.find(isMe) || null;
+  const meRow = isRow(remote.data?.me) ? remote.data.me : null;
+  const mine = inTop || meRow;
   const lead = game || featured();
   const [entered, setEntered] = useState(false);
   const [paused, setPaused] = useState(() => typeof document !== 'undefined' && document.hidden);
@@ -202,18 +211,32 @@ export default function Leaderboard() {
         The leaderboard ranks players by their results in online games.
       </Notice>
     );
-  } else if (state === 'offline' || state === 'error') {
+  } else if (state === 'offline') {
     body = (
       <Notice
         icon="wifiOff"
-        title="Cannot reach the server"
+        title="You are offline"
         action={
-          <button type="button" className="hub-btn hub-btn--primary" onClick={ready ? remote.reload : retry}>
+          <button type="button" className="hub-btn hub-btn--primary" onClick={retry}>
             <HubIcon name="refresh" size={18} /> Try again
           </button>
         }
       >
-        The rankings need a connection. Try again in a moment.
+        The rankings need a connection. Reconnect and try again.
+      </Notice>
+    );
+  } else if (state === 'error') {
+    body = (
+      <Notice
+        icon="refresh"
+        title="Could not load the rankings"
+        action={
+          <button type="button" className="hub-btn hub-btn--primary" onClick={remote.reload}>
+            <HubIcon name="refresh" size={18} /> Try again
+          </button>
+        }
+      >
+        Something went wrong on our side. Try again in a moment.
       </Notice>
     );
   } else if (!rows.length) {
@@ -229,7 +252,7 @@ export default function Leaderboard() {
           ) : null
         }
       >
-        Win an online match to claim the first spot on the board.
+        {game ? `Win an online ${game.name} match to claim the first spot on this board.` : 'Win an online match to claim the first spot on the board.'}
       </Notice>
     );
   } else {
@@ -248,7 +271,7 @@ export default function Leaderboard() {
         <RankingTable rows={rows.slice(3)} cols={cols} isMe={isMe} />
         {account && (
           <p className="leader-standing" aria-live="polite">
-            {mine ? (
+            {mine && mine.rank ? (
               <>
                 You are <b>#{mine.rank}</b> {game ? `in ${game.name}` : 'overall'}.
               </>

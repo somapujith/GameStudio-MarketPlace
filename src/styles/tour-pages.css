@@ -1,0 +1,62 @@
+/* Where the page tours put their "?" button (TourHost). The tour layer itself is styled by tour.css.
+   topbar: the hub top bar's #tour-help-slot; inline: in a bar (the lobby's top bar); corner: floats at the top right of the page. */
+
+.hub-topbar__tour {
+  display: inline-flex;
+  align-items: center;
+}
+.hub-topbar__tour:empty {
+  display: none; /* no tour on this page: no gap in the bar */
+}
+.tourslot {
+  display: inline-flex;
+  align-items: center;
+}
+.hub-page:has(> .tourslot--corner) {
+  position: relative;
+}
+.tourslot--corner {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 6;
+}
+
+/* the hub's chip look (same as "Have a code?"), readable on the light and the dark theme */
+.tourslot .tour-help {
+  color: var(--hub-text, #fff3da);
+  background: var(--hub-surface-2, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--hub-line-2, rgba(255, 202, 122, 0.5));
+}
+.tourslot .tour-help .tour-help__q {
+  color: var(--hub-brand, var(--gold, #ffca7a));
+  font-size: 19px;
+}
+@media (hover: hover) {
+  .tourslot .tour-help:hover {
+    background: var(--hub-surface-3, rgba(255, 202, 122, 0.16));
+    border-color: var(--hub-brand, #ffca7a);
+  }
+}
+@media (max-width: 359px) {
+  .tourslot--topbar .tour-help {
+    min-width: 40px;
+    height: 40px;
+  }
+}
+
+/* the lobby's top bar: back link | ? | leave. The back link gives way (ellipsis) so nothing is pushed off a narrow phone */
+.sr-topbar .tourslot--inline {
+  flex: none;
+  margin-inline: auto 0;
+}
+.sr-topbar:has(.tourslot) .sr-topbar__back {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: none;
+}
+
+/* the host's "Explain the rules" button sits with Reset all / Expand all */
+.tourrules {
+  color: var(--hub-brand, var(--gold, #ffca7a));
+}

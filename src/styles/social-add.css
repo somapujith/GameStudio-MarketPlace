@@ -1,0 +1,404 @@
+/* ==========================================================================
+   social-add.css: "add friends" (AddFriendButton, AddFriendPanel). Prefix fa-.
+   Tokens only (--hub-*, --st-*, --dur-*, --ease-out); motion is transform/opacity and is switched off for
+   [data-motion='reduced'] and prefers-reduced-motion. Reuses sc-card / sc-add / hub-btn from the social + hub styles.
+   ========================================================================== */
+
+.fa-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- the button ---------- */
+.fa-add {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  max-width: 100%;
+}
+.fa-btn {
+  gap: 6px;
+  white-space: nowrap;
+}
+.fa-btn.is-done {
+  color: var(--hub-good);
+  border-color: color-mix(in srgb, var(--hub-good) 45%, transparent);
+  opacity: 1;
+}
+.fa-btn.is-done:disabled {
+  opacity: 1;
+  cursor: default;
+}
+.fa-btn--icon {
+  width: 40px;
+  min-width: 40px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 999px;
+}
+.fa-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: var(--st-t-xs, 12px);
+  font-weight: 800;
+  white-space: nowrap;
+  color: var(--hub-dim);
+  background: var(--hub-surface-2);
+  border: 1px solid var(--hub-line-2);
+}
+.fa-chip--good {
+  color: var(--hub-good);
+  background: color-mix(in srgb, var(--hub-good) 12%, transparent);
+  border-color: color-mix(in srgb, var(--hub-good) 40%, transparent);
+}
+.fa-chip--icon {
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+}
+.fa-chip svg,
+.fa-btn svg {
+  flex: none;
+}
+
+/* error bubble: sits under the button, never shifts the layout */
+.fa-bubble {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 6px);
+  right: 0;
+  width: max-content;
+  max-width: min(240px, 70vw);
+  padding: 8px 10px;
+  border-radius: var(--hub-r-s);
+  font-size: var(--st-t-xs, 12px);
+  font-weight: 700;
+  line-height: 1.35;
+  white-space: normal;
+  color: var(--hub-bad-ink);
+  background: var(--hub-surface);
+  border: 1px solid color-mix(in srgb, var(--hub-bad) 55%, transparent);
+  box-shadow: var(--hub-shadow-s);
+  animation: fa-pop var(--dur-2) var(--ease-out) both;
+}
+.fa-add--compact .fa-bubble {
+  right: -4px;
+}
+@keyframes fa-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------- the panel ---------- */
+.fa-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+.fa-panel--compact {
+  gap: 14px;
+  padding: 0;
+}
+.fa-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.fa-title {
+  margin: 0;
+  font-size: var(--st-t-l, 18px);
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--hub-text);
+}
+.fa-panel--compact .fa-title {
+  font-size: var(--st-t-m, 16px);
+}
+.fa-lede {
+  margin: 0;
+  font-size: var(--st-t-s, 14px);
+  line-height: 1.4;
+  color: var(--hub-dim);
+}
+.fa-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.fa-sec + .fa-sec {
+  padding-top: 16px;
+  border-top: 1px solid var(--hub-line);
+}
+.fa-h3 {
+  margin: 0;
+  font-family: var(--font-hub-body);
+  font-size: var(--st-t-xs, 12px);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--hub-dim);
+}
+.fa-h3 label {
+  cursor: pointer;
+}
+
+/* search field */
+.fa-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.fa-search__icon {
+  position: absolute;
+  left: 14px;
+  color: var(--hub-faint);
+  pointer-events: none;
+}
+.fa-search__input {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0 48px 0 42px;
+  border-radius: 14px;
+  border: 1px solid var(--hub-line-2);
+  background: var(--hub-field);
+  color: var(--hub-text);
+  font: inherit;
+  font-size: 16px; /* no iOS zoom on focus */
+  font-weight: 700;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.fa-search__input::-webkit-search-cancel-button {
+  display: none;
+}
+.fa-search__input::placeholder {
+  color: var(--hub-faint);
+  font-weight: 600;
+}
+.fa-search__input:focus-visible {
+  outline: 3px solid var(--hub-focus);
+  outline-offset: 1px;
+}
+.fa-search__clear {
+  position: absolute;
+  right: 2px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--hub-dim);
+  cursor: pointer;
+  transition:
+    transform var(--dur-1) var(--ease-out),
+    opacity var(--dur-1) var(--ease-out);
+}
+.fa-search__clear:active {
+  transform: scale(0.9);
+}
+.fa-search__clear:focus-visible {
+  outline: 3px solid var(--hub-focus);
+  outline-offset: -2px;
+}
+@media (hover: hover) {
+  .fa-search__clear:hover {
+    color: var(--hub-text);
+  }
+}
+.fa-hint {
+  margin: 0;
+  min-height: 1.3em;
+  font-size: var(--st-t-xs, 12px);
+  color: var(--hub-dim);
+}
+
+/* results + recent rows */
+.fa-results {
+  min-width: 0;
+}
+.fa-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  transition: opacity var(--dur-2) var(--ease-out);
+}
+.fa-list.is-stale {
+  opacity: 0.55;
+}
+.fa-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 60px;
+  padding: 8px 0;
+  animation: fa-in var(--dur-2) var(--ease-out) both;
+}
+.fa-row + .fa-row {
+  border-top: 1px solid var(--hub-line);
+}
+.fa-row__ava {
+  flex: none;
+  display: inline-flex;
+}
+.fa-row__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.fa-row__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--st-t-m, 16px);
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--hub-text);
+}
+.fa-row__sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--st-t-xs, 12px);
+  color: var(--hub-dim);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.fa-row__act {
+  flex: none;
+  display: inline-flex;
+}
+@keyframes fa-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* empty / error state inside the search results */
+.fa-state {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--hub-r-m);
+  border: 1px dashed var(--hub-line-2);
+  font-size: var(--st-t-s, 14px);
+  line-height: 1.45;
+  color: var(--hub-dim);
+}
+.fa-state > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.fa-state strong {
+  color: var(--hub-text);
+  font-size: var(--st-t-m, 16px);
+}
+.fa-state__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--hub-r-s);
+  color: var(--hub-brand-ink);
+  background: var(--hub-brand-soft);
+}
+.fa-state--bad {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  color: var(--hub-bad-ink);
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--hub-bad) 45%, transparent);
+  background: color-mix(in srgb, var(--hub-bad) 8%, transparent);
+}
+
+.fa-more {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--hub-brand-ink);
+  font: inherit;
+  font-size: var(--st-t-s, 14px);
+  font-weight: 800;
+  cursor: pointer;
+}
+.fa-more:focus-visible {
+  outline: 3px solid var(--hub-focus);
+  outline-offset: 0;
+  border-radius: var(--hub-r-s);
+}
+
+/* friend code section reuses .sc-add__*; just keep it flush */
+.fa-code .sc-add__row .hub-btn {
+  min-height: 48px;
+}
+.fa-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--st-t-s, 14px);
+  font-weight: 700;
+  color: var(--hub-good);
+}
+
+@media (max-width: 420px) {
+  .fa-row {
+    gap: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fa-row,
+  .fa-bubble {
+    animation: none;
+  }
+  .fa-list,
+  .fa-search__clear {
+    transition: none;
+  }
+}
+:root[data-motion='reduced'] :is(.fa-row, .fa-bubble) {
+  animation: none !important;
+}
+:root[data-motion='reduced'] :is(.fa-list, .fa-search__clear) {
+  transition: none !important;
+}

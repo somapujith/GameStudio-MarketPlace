@@ -61,6 +61,35 @@ describe('lobbyFields', () => {
   });
 });
 
+describe('dependent fields (hideIf / dependsOn)', () => {
+  const TARGET = {
+    key: 'target', label: 'Target', type: 'segmented', default: 50,
+    options: [{ value: null, label: 'Off', hideIf: { mode: ['hard'] } }, { value: 25, label: '25' }, { value: 50, label: '50' }, { value: 75, label: '75' }],
+    dependsOn: { key: 'mode', defaults: { easy: 50, hard: 25 } },
+  };
+  const MODE = { key: 'mode', label: 'Mode', type: 'segmented', default: 'easy', options: [{ value: 'easy', label: 'Easy' }, { value: 'hard', label: 'Hard' }] };
+  const SCH = [MODE, TARGET];
+
+  it('hideIf drops an option while the other setting has one of the values; the default is marked', () => {
+    expect(fieldOptions(TARGET, { mode: 'easy' }).map((o) => o.label)).toEqual(['Off', '25', '50 (default)', '75']);
+    expect(fieldOptions(TARGET, { mode: 'hard' }).map((o) => o.label)).toEqual(['25 (default)', '50', '75']);
+    expect(fieldOptions(TARGET, { mode: 'unknown' }).map((o) => o.label)).toEqual(['Off', '25', '50', '75']);
+    expect(fieldOptions(TARGET).map((o) => o.label)).toEqual(['Off', '25', '50', '75']); // without the values nothing changes
+    expect(TARGET.options[2].label).toBe('50'); // the schema itself is never rewritten
+  });
+
+  it('a dependent field jumps to the default of the new value unless the same change sets it', () => {
+    const msg = (cur, patch) => settingsMessage(SCH, cur, patch).settings;
+    expect(msg({ mode: 'easy', target: 75 }, { mode: 'hard' }).target).toBe(25);
+    expect(msg({ mode: 'hard', target: 25 }, { mode: 'easy' }).target).toBe(50);
+    expect(msg({ mode: 'easy', target: 75 }, { mode: 'easy' }).target).toBe(75);
+    expect(msg({ mode: 'easy', target: 75 }, { target: null }).target).toBeNull();
+    expect(msg({ mode: 'easy', target: 75 }, { mode: 'hard', target: 50 }).target).toBe(50);
+    expect(msg({ mode: 'easy', target: 75 }, { mode: 'hard', target: 75 }).target).toBe(25); // the old value echoed: a reset
+    expect(msg({ mode: 'easy', target: 75 }, { mode: 'weird' }).target).toBe(75); // no default known: kept
+  });
+});
+
 describe('schemaFields / defaults', () => {
   it('keeps usable fields and skips junk without throwing', () => {
     expect(schemaFields(undefined)).toEqual([]);

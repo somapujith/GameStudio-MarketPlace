@@ -2,143 +2,186 @@
 // (worker/settings.js is the source of truth) or from the engine defaults (shared/engine.js).
 import { describe, expect, it } from 'vitest';
 import * as server from '../../../worker/settings.js';
-import { DEFAULT_SETTINGS, SETTING_LIMITS } from '@shared/index.js';
+import { DEFAULT_SETTINGS, MODES as ENGINE_MODES, RULE_FIELDS, RULE_GROUPS, RULE_KEYS, ruleDefaults, ruleField } from '@shared/index.js';
 import {
-  CASH_PRESETS,
-  GOAL_PRESETS,
   LOBBY_SETTINGS,
+  MODE_IDS,
+  SETTINGS_GROUPS,
   SETTINGS_SCHEMA,
-  SNATCHES_DEFAULT,
-  SNATCHES_MAX,
-  SNATCH_MS_DEFAULT,
-  SNATCH_MS_MAX,
-  SNATCH_MS_MIN,
+  SHORT_LABELS,
   TABLE_RULES,
-  clampGoal,
+  MODES,
+  TARGET_OPTIONS,
+  DEFAULT_TARGET_WORTH,
+  customRuleCount,
   settingsSummary,
+  snatchNote,
 } from './settings.js';
-
-// Snatch settings are engine settings with defaults, not host settings: the lobby schema must never list them.
-const ENGINE_ONLY = ['snatches', 'snatchMs'];
+import { DEFAULT_MAP } from '@shared/maps.js';
+import { fieldOptions, formatValue, resolveSettings, settingsMessage } from '@/components/online/settings.js';
 
 const field = (key) => SETTINGS_SCHEMA.find((f) => f.key === key);
 
 describe('settings schema vs worker/settings.js', () => {
   it('describes exactly the host settings the server accepts', () => {
-    const hostKeys = Object.keys(server.ROOM_DEFAULTS).filter((k) => !ENGINE_ONLY.includes(k));
-    expect(SETTINGS_SCHEMA.map((f) => f.key).sort()).toEqual(hostKeys.sort());
+    // the rooms store the mode and the rules; the map (a picker, not a rule) is stored only when it is not the home map
+    expect(SETTINGS_SCHEMA.map((f) => f.key).sort()).toEqual([...Object.keys(server.ROOM_DEFAULTS), 'map'].sort());
   });
 
   it('uses the server defaults, which are the engine defaults', () => {
-    for (const f of SETTINGS_SCHEMA) {
-      expect(f.default, f.key).toEqual(server.ROOM_DEFAULTS[f.key]);
-    }
-    expect(ENGINE_ONLY.filter((k) => SETTINGS_SCHEMA.some((f) => f.key === k))).toEqual([]);
-    expect(server.ROOM_DEFAULTS.goal).toBe(DEFAULT_SETTINGS.goal);
-    expect(server.ROOM_DEFAULTS.startCash).toBe(DEFAULT_SETTINGS.startCash);
-    expect(server.ROOM_DEFAULTS.maxRounds).toBe(DEFAULT_SETTINGS.maxRounds);
-    expect(server.ROOM_DEFAULTS.dice).toBe(DEFAULT_SETTINGS.dice);
-    expect(server.ROOM_DEFAULTS.auctionOnDecline).toBe(DEFAULT_SETTINGS.auctionOnDecline);
+    for (const f of SETTINGS_SCHEMA) expect(f.default, f.key).toEqual(f.key === 'map' ? DEFAULT_MAP : server.ROOM_DEFAULTS[f.key]);
+    expect(server.ROOM_DEFAULTS).toEqual(DEFAULT_SETTINGS);
   });
 
-  it('goal and start cash limits equal the server (and engine) limits', () => {
-    expect(field('goal').min).toBe(server.GOAL_MIN);
-    expect(field('goal').max).toBe(server.GOAL_MAX);
-    expect(field('goal').min).toBe(SETTING_LIMITS.goal.min);
-    expect(field('goal').max).toBe(SETTING_LIMITS.goal.max);
-    expect(field('startCash').min).toBe(server.START_CASH_MIN);
-    expect(field('startCash').max).toBe(server.START_CASH_MAX);
-  });
-
-  it('round and dice options equal the server lists', () => {
-    expect(field('maxRounds').options.map((o) => o.value)).toEqual(server.ROUND_LIMITS);
+  it('mode and dice options equal the server lists; the modes are the engine modes', () => {
+    expect(field('mode').options.map((o) => o.value)).toEqual(server.MODE_IDS);
     expect(field('dice').options.map((o) => o.value)).toEqual(server.DICE_MODES);
+    expect(MODES).toBe(ENGINE_MODES);
+    expect(field('mode').options.map((o) => o.label)).toEqual(['Standard City Hustle', 'Quick Chai Break', 'Classic Long Game']);
   });
 
-  it('the headline defaults are 70,000 / 50 rounds / 15,000 / lucky / auction on', () => {
-    expect(field('goal').default).toBe(70000);
-    expect(field('maxRounds').default).toBe(50);
-    expect(field('startCash').default).toBe(15000);
-    expect(field('dice').default).toBe('lucky');
-    expect(field('auctionOnDecline').default).toBe(true);
+  it('the win target options are the server list, in order, with the contract labels', () => {
+    const f = field('targetWorth');
+    expect(f.options.map((o) => o.value)).toEqual([...server.TARGET_OPTIONS]);
+    expect(f.options.map((o) => o.label)).toEqual(['Off', '₹25L', '₹30L', '₹40L', '₹50L', '₹75L', '₹1Cr']);
+    expect(f.label).toBe('Win target (net worth)');
+    expect(f.help).toBe(ruleField('targetWorth').help); // the one source of truth: shared/ruleSettings.js
+    expect(f.help).toMatch(/^First player to reach this net worth wins\./);
+    expect(f.default).toBe(DEFAULT_TARGET_WORTH);
+    expect(f.default).toBe(5000000);
+    // the per-mode defaults the schema knows are the engine's (and so the server's)
+    expect(f.dependsOn).toEqual({ key: 'mode', defaults: { standard: 5000000, quick: 5000000, classic: 3000000 } });
+    for (const [mode, def] of Object.entries(f.dependsOn.defaults)) expect(server.normalizeSettings({ mode }).targetWorth).toBe(def);
+    expect(TARGET_OPTIONS).toEqual(server.TARGET_OPTIONS);
   });
 
-  it('every preset the UI offers passes the server validation', () => {
-    expect(GOAL_PRESETS).toEqual([30000, 50000, 70000, 100000]);
-    expect(CASH_PRESETS).toEqual([10000, 15000, 20000, 25000]);
-    for (const f of SETTINGS_SCHEMA) {
-      for (const o of f.options || []) {
-        const res = server.sanitizeSettings({ [f.key]: o.value });
-        expect(res.errors, `${f.key}=${o.value}`).toEqual([]);
-        expect(res.settings[f.key]).toEqual(o.value);
-      }
-      const res = server.sanitizeSettings({ [f.key]: f.default });
-      expect(res.errors, `${f.key} default`).toEqual([]);
+  it('"Off" is offered with a round limit, never for Classic; the default is marked per mode', () => {
+    const f = field('targetWorth');
+    const labels = (mode) => fieldOptions(f, { mode }).map((o) => o.label);
+    expect(labels('standard')).toEqual(['Off', '₹25L', '₹30L', '₹40L', '₹50L (default)', '₹75L', '₹1Cr']);
+    expect(labels('quick')).toEqual(['Off', '₹25L', '₹30L', '₹40L', '₹50L (default)', '₹75L', '₹1Cr']);
+    expect(labels('classic')).toEqual(['₹25L', '₹30L (default)', '₹40L', '₹50L', '₹75L', '₹1Cr']);
+    // what the UI offers for a mode is always accepted by the server as is (nothing is silently rewritten)
+    for (const mode of ['standard', 'quick', 'classic']) {
+      for (const o of fieldOptions(f, { mode })) expect(server.normalizeSettings({ mode, targetWorth: o.value }).targetWorth, `${mode} ${o.label}`).toBe(o.value);
     }
-    expect(server.sanitizeSettings({ goal: field('goal').min }).errors).toEqual([]);
-    expect(server.sanitizeSettings({ goal: field('goal').max }).errors).toEqual([]);
+    expect(formatValue(f, null)).toBe('Off');
+    expect(formatValue(f, 5000000, { compact: true })).toBe('₹50L');
   });
 
-  it('field shapes follow the contract (type, options, range, step)', () => {
+  it('picking another mode resets the target to its default, exactly like the server', () => {
+    const msg = (current, patch) => settingsMessage(SETTINGS_SCHEMA, current, patch).settings;
+    const cur = { mode: 'standard', dice: 'lucky', targetWorth: 4000000 };
+    expect(msg(cur, { mode: 'classic' }).targetWorth).toBe(3000000);
+    expect(msg(cur, { mode: 'quick' }).targetWorth).toBe(5000000);
+    expect(msg(cur, { mode: 'standard' }).targetWorth).toBe(4000000); // the same mode again: no reset
+    expect(msg(cur, { targetWorth: null }).targetWorth).toBeNull();
+    expect(msg(cur, { mode: 'classic', targetWorth: 7500000 }).targetWorth).toBe(7500000);
+    expect(msg({ ...cur, mode: 'classic', targetWorth: null }, { mode: 'standard' }).targetWorth).toBe(5000000);
+    // the full set goes out: the mode and every rule the server stores
+    expect(Object.keys(msg(cur, { mode: 'classic' })).sort()).toEqual([...Object.keys(server.ROOM_DEFAULTS), 'map'].sort());
+    // the server agrees with every combination the lobby can send
+    for (const from of ['standard', 'quick', 'classic']) {
+      for (const to of ['standard', 'quick', 'classic']) {
+        const current = server.normalizeSettings({ mode: from, targetWorth: 4000000 });
+        const sent = msg(current, { mode: to });
+        const stored = server.normalizeSettings(server.mergeSettingsPatch(current, sent));
+        expect(stored.targetWorth, `${from} -> ${to}`).toBe(from === to ? 4000000 : server.normalizeSettings({ mode: to }).targetWorth);
+        expect(stored.targetWorth).toBe(sent.targetWorth);
+      }
+    }
+    // a room from before a rule existed shows the default of ITS mode, exactly what the server stores for it
+    const old = { mode: 'classic', dice: 'fair' };
+    expect(resolveSettings(SETTINGS_SCHEMA, old).targetWorth).toBe(3000000);
+    expect(resolveSettings(SETTINGS_SCHEMA, old)).toEqual({ ...server.normalizeSettings(old), map: DEFAULT_MAP });
+  });
+
+  it('every value the UI offers passes the server validation, as is', () => {
+    for (const f of SETTINGS_SCHEMA) {
+      const offered =
+        f.type === 'toggle'
+          ? [true, false]
+          : f.type === 'stepper'
+            ? [f.min, f.max, f.default, ...(f.options || []).map((o) => o.value)].filter((v) => v !== null)
+            : f.options.map((o) => o.value);
+      for (const value of offered) {
+        const res = server.sanitizeSettings({ [f.key]: value });
+        expect(res.errors, `${f.key}=${value}`).toEqual([]);
+        expect(res.settings[f.key], `${f.key}=${value}`).toEqual(value);
+      }
+    }
+  });
+
+  it('every rule comes from shared/ruleSettings.js: same key, group, range, help and per-mode defaults', () => {
+    for (const r of RULE_FIELDS) {
+      const f = field(r.key);
+      expect(f, r.key).toBeTruthy();
+      expect(f.group).toBe(r.group);
+      expect(f.help).toBe(r.help);
+      expect(f.label).toBe(SHORT_LABELS[r.key] || r.label);
+      if (r.type === 'number') expect([f.min, f.max, f.step]).toEqual([r.min, r.max, r.step]);
+      for (const mode of MODE_IDS) expect(resolveSettings(SETTINGS_SCHEMA, { mode })[r.key], `${r.key} in ${mode}`).toEqual(r.default(mode));
+    }
+    for (const key of Object.keys(SHORT_LABELS)) expect(ruleField(key), `short label for an unknown rule ${key}`).toBeTruthy();
+  });
+
+  it('field shapes follow the contract', () => {
     for (const f of SETTINGS_SCHEMA) {
       expect(['segmented', 'stepper', 'toggle']).toContain(f.type);
       expect(typeof f.label).toBe('string');
       expect('default' in f).toBe(true);
       if (f.type === 'segmented') expect(f.options.length).toBeGreaterThan(1);
-      if (f.type === 'stepper') expect(f.step).toBeGreaterThan(0);
     }
-    expect(field('goal').format).toBe('inr');
   });
 });
 
-describe('snatch constants vs worker/settings.js and the engine', () => {
-  it('mirror the server names and values', () => {
-    expect(SNATCHES_DEFAULT).toBe(server.SNATCHES_DEFAULT);
-    expect(SNATCHES_MAX).toBe(server.SNATCHES_MAX);
-    expect(SNATCH_MS_DEFAULT).toBe(server.SNATCH_MS_DEFAULT);
-    expect(SNATCH_MS_MIN).toBe(server.SNATCH_MS_MIN);
-    expect(SNATCH_MS_MAX).toBe(server.SNATCH_MS_MAX);
-  });
-  it('the defaults are 1 token and a 3 s window, the engine defaults', () => {
-    expect([SNATCHES_DEFAULT, SNATCH_MS_DEFAULT]).toEqual([1, 3000]);
-    expect(DEFAULT_SETTINGS.snatches).toBe(SNATCHES_DEFAULT);
-    expect(DEFAULT_SETTINGS.snatchMs).toBe(SNATCH_MS_DEFAULT);
-    expect(SNATCH_MS_MIN).toBeLessThanOrEqual(SNATCH_MS_DEFAULT);
-    expect(SNATCH_MS_DEFAULT).toBeLessThanOrEqual(SNATCH_MS_MAX);
-    expect(SNATCHES_DEFAULT).toBeLessThanOrEqual(SNATCHES_MAX);
+describe('auction timer in the lobby editor', () => {
+  it('appears as a stepper in the Timers group, after the trade timer, with the shared range', () => {
+    const f = field('auctionSeconds');
+    expect(f).toMatchObject({ group: 'timers', type: 'stepper', unit: 'seconds', min: 10, max: 90, step: 5, default: 20, label: 'Auction timer' });
+    const keys = SETTINGS_SCHEMA.map((x) => x.key);
+    expect(keys.indexOf('auctionSeconds')).toBe(keys.indexOf('tradeSeconds') + 1);
+    expect(LOBBY_SETTINGS).toContain('auctionSeconds');
   });
 });
 
-describe('lobby settings', () => {
-  it('tells the table rules in one line', () => {
-    expect(TABLE_RULES).toBe('Single die - 1 Snatch each - sealed bidding on a tie');
-  });
-  it('shows only the end-cash limit, a real schema key labelled for players', () => {
-    expect(LOBBY_SETTINGS).toEqual(['goal']);
-    for (const k of LOBBY_SETTINGS) expect(field(k)).toBeTruthy();
-    expect(field('goal').label).toBe('End cash limit');
-  });
-});
-
-describe('settingsSummary (manifest.summarize)', () => {
-  it('names the end-cash limit only', () => {
-    expect(settingsSummary({ goal: 70000, maxRounds: 50, startCash: 15000, dice: 'lucky' })).toBe('First to reach ₹70,000 wins');
+describe('lobby line and summary', () => {
+  it('the lobby shows the mode and every host rule, grouped, with the table rules in one line', () => {
+    expect(LOBBY_SETTINGS).toEqual(['mode', ...RULE_KEYS]);
+    expect(SETTINGS_GROUPS.map((g) => g.id)).toEqual(RULE_GROUPS.map((g) => g.id));
+    expect(TABLE_RULES).toBe('One die · 3 business levels per district · Chai, Auto shortcuts and city rush hours');
   });
 
-  it('falls back to the default goal for missing keys', () => {
-    expect(settingsSummary()).toBe('First to reach ₹70,000 wins');
-    expect(settingsSummary({})).toBe('First to reach ₹70,000 wins');
+  it('summarises each mode', () => {
+    expect(settingsSummary({ mode: 'standard' })).toBe('Standard City Hustle · 20 rounds · richest wins · ₹50L target');
+    expect(settingsSummary({ mode: 'quick' })).toBe('Quick Chai Break · 12 rounds · richest wins · ₹50L target');
+    expect(settingsSummary({ mode: 'classic' })).toBe('Classic Long Game · first to ₹30L wins');
+    expect(settingsSummary()).toBe('Standard City Hustle · 20 rounds · richest wins · ₹50L target');
+    expect(settingsSummary({ mode: 'nope' })).toBe('Standard City Hustle · 20 rounds · richest wins · ₹50L target');
+    // the room's own limits, with "Custom rules (N)" whenever a rule differs from the mode's defaults
+    expect(settingsSummary({ mode: 'standard', targetWorth: 3000000 })).toBe('Standard City Hustle · 20 rounds · richest wins · ₹30L target · Custom rules (1)');
+    expect(settingsSummary({ mode: 'standard', targetWorth: null })).toBe('Standard City Hustle · 20 rounds · richest wins · Custom rules (1)');
+    expect(settingsSummary({ mode: 'classic', targetWorth: 10000000 })).toBe('Classic Long Game · first to ₹1Cr wins · Custom rules (1)');
+    expect(settingsSummary({ mode: 'quick', maxRounds: 30, startCash: 3000000 })).toBe('Quick Chai Break · 30 rounds · richest wins · ₹50L target · Custom rules (2)');
   });
 
-  it('uses Indian digit grouping', () => {
-    expect(settingsSummary({ goal: 100000 })).toBe('First to reach ₹1,00,000 wins');
+  it('the mode defaults are not custom: a stock room of any mode carries no tag, a missing key is not a change', () => {
+    for (const mode of MODE_IDS) {
+      expect(customRuleCount({ mode, ...ruleDefaults(mode) }), mode).toBe(0);
+      expect(settingsSummary({ mode, ...ruleDefaults(mode) }), mode).not.toContain('Custom rules');
+    }
+    expect(customRuleCount({ mode: 'standard' })).toBe(0);
+    expect(customRuleCount(undefined)).toBe(0);
+    expect(customRuleCount({ mode: 'standard', turnSeconds: 90, dice: 'fair', snatches: 0 })).toBe(3);
   });
-});
 
-describe('goal helpers', () => {
-  it('clamps to the legal range', () => {
-    expect(clampGoal(5)).toBe(server.GOAL_MIN);
-    expect(clampGoal(5_000_000)).toBe(server.GOAL_MAX);
-    expect(clampGoal('nope')).toBe(70000);
+  it('the Snatch explainer says what the numbers mean, with plurals and the off case', () => {
+    expect(snatchNote({})).toBe('Everyone starts with 1 Snatch button; after someone buys a district the others get 5 seconds to press Snatch.');
+    expect(snatchNote({ snatches: 2, snatchMs: 3000 })).toBe('Everyone starts with 2 Snatch buttons; after someone buys a district the others get 3 seconds to press Snatch.');
+    expect(snatchNote({ snatches: 1, snatchMs: 1000 })).toContain('1 second to press Snatch');
+    expect(snatchNote({ snatches: 0 })).toBe('Snatch is off: nobody gets a Snatch button this game.');
+    const snatch = SETTINGS_GROUPS.find((g) => g.id === 'snatch');
+    expect(typeof snatch.note).toBe('function');
+    expect(SETTINGS_GROUPS.filter((g) => g.id !== 'snatch').every((g) => !g.note)).toBe(true);
   });
 });

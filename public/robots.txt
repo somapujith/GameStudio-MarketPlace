@@ -1,0 +1,16 @@
+# Jalebi Games: the public pages (home, games, about, help, privacy, terms) may be crawled.
+# Private, per-user and per-room screens and the API are not for crawlers.
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /ws/
+Disallow: /play/
+Disallow: /lobby/
+Disallow: /join/
+Disallow: /f/
+Disallow: /profile
+Disallow: /friends
+Disallow: /shop
+Disallow: /login
+
+# The `Sitemap:` line is appended at build time from the public origin (vite.config.js, VITE_SITE_URL).

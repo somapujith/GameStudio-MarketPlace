@@ -1,0 +1,88 @@
+/* ============================================================================================================
+   Table effects that depend on how fast this browser draws (lib/perfMode.js sets <html data-perf="low|high">).
+
+   high  the frame-time check saw a fast renderer (or Settings > Light graphics is off): the lantern string twinkles.
+         Two board-sized layers fading for ever are ~40 ms a frame on a CPU-drawn browser (Brave with hardware acceleration
+         off, Linux Chromium, weak phones), so the twinkle is opt-in by proof and never runs while the speed is unknown.
+   low   a slow renderer (or Settings > Light graphics is on): every DECORATIVE loop stops and the blurs go. Nothing that
+         carries meaning changes: the dice, pawns, timers, the attention pointer, flights, banners and one-shot reveals all
+         still play. Same idea as prefers-reduced-motion, which this never overrides (it only ever removes motion).
+   ============================================================================================================ */
+
+:root[data-perf='high'] .hb-frame__lights::before,
+:root[data-perf='high'] .hb-frame__lights::after {
+  animation-name: hb-twinkle;
+  animation-duration: 2.4s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  animation-direction: alternate;
+}
+:root[data-motion='reduced'][data-perf='high'] .hb-frame__lights::before,
+:root[data-motion='reduced'][data-perf='high'] .hb-frame__lights::after { animation: none; }
+
+/* ---- low: board ---- */
+:root[data-perf='low'] .hb-tile.is-active::after,
+:root[data-perf='low'] .hb-tile__glow,
+:root[data-perf='low'] .hb-tile__brake::after { animation: none !important; }
+:root[data-perf='low'] .hb-flag--pennant .hb-flag__wave,
+:root[data-perf='low'] .hb-flag--bunting .hb-flag__string { animation: none !important; }
+
+/* the active pawn: a static ring and tag (what prefers-reduced-motion shows), no pulsing rings, no bob */
+:root[data-perf='low'] .hb-pawn__beacon i,
+:root[data-perf='low'] .hb-pawn__tagbob { animation: none !important; }
+:root[data-perf='low'] .hb-pawn__beacon i:nth-child(1) { opacity: 0.8; transform: scale(1.32); }
+:root[data-perf='low'] .hb-pawn__beacon i:nth-child(2) { display: none; }
+
+/* ---- low: the die and the roll button ---- */
+:root[data-perf='low'] .cp-die3d__float,
+:root[data-perf='low'] .cp-die3d__shadow,
+:root[data-perf='low'] .cp-die3d__twinkle,
+:root[data-perf='low'] .cp-die3d__halo,
+:root[data-perf='low'] .cp .cp-hero__die::before { animation: none !important; }
+:root[data-perf='low'] .cp .cp-actions[data-kind='roll'] .cp-primary.is-roll::after { animation: none !important; opacity: 0.8; }
+:root[data-perf='low'] .hg-btn--hotel::after { animation: none !important; will-change: auto; }
+
+/* ---- low: pods, avatar tokens, top bar ---- */
+:root[data-perf='low'] .hg-pod.is-turn .hg-pod__btn::after { animation: none !important; opacity: 0.8; }
+:root[data-perf='low'] .hg-pod__goal.is-hot .hg-pod__goalbar i,
+:root[data-perf='low'] .avt__ripple,
+:root[data-perf='low'] .avt.is-turn .avt__core,
+:root[data-perf='low'] .avt__crown,
+:root[data-perf='low'] .hg-pill.is-pulse,
+:root[data-perf='low'] .hg-mb-row.is-turn .hg-mb-arrow,
+:root[data-perf='low'] .hg-mb-row.is-turn .hg-pawndot,
+:root[data-perf='low'] .hg-mb-row.is-turn .hg-mb-ava,
+:root[data-perf='low'] .tb-target.is-hot .tb-target__bar::after,
+:root[data-perf='low'] .tb-target.is-hot .hg-icon,
+:root[data-perf='low'] .nr.is-hot .nr__goal .hg-icon,
+:root[data-perf='low'] .sg--measuring .sg__bar,
+:root[data-perf='low'] .sg__pill--reconnecting { animation: none !important; }
+:root[data-perf='low'] .avt__ripple { display: none; }
+
+/* ---- low: phones ---- */
+:root[data-perf='low'] .pa-primary.is-roll:not(.is-wait) { animation: ph-pop var(--dur-3) var(--ease-spring) both; }
+:root[data-perf='low'] .pa-primary.is-roll:not(.is-wait)::after { animation: none !important; }
+:root[data-perf='low'] .bcard-buy { animation: ph-pop var(--dur-3) var(--ease-spring) 380ms both; }
+:root[data-perf='low'] .bcard-levels__art svg { animation: none !important; }
+
+/* ---- low: the property sheet's ambient loops ---- */
+:root[data-perf='low'] .hg-prop-rays,
+:root[data-perf='low'] .hg-prop-bonus.is-on::after,
+:root[data-perf='low'] .is-owned .hg-prop-ring::after,
+:root[data-perf='low'] .hg-prop-spark,
+:root[data-perf='low'] .hg-prop-glow,
+:root[data-perf='low'] .hg-prop-float,
+:root[data-perf='low'] .hg-prop-shadow,
+:root[data-perf='low'] .hg-setstat.is-full .hg-slot.is-on::before { animation: none !important; }
+
+/* ---- low: no backdrop blur, no layers kept alive for effects (a blur over an animating board is redrawn every frame) ---- */
+:root[data-perf='low'] .hg-backdrop,
+:root[data-perf='low'] .ad,
+:root[data-perf='low'] .hg-prop-chip,
+:root[data-perf='low'] .hg-propsheet .hg-deed-hero > div {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+:root[data-perf='low'] .hg-backdrop { background: rgba(6, 4, 20, 0.78); }
+:root[data-perf='low'] .hb-pawn.is-turn,
+:root[data-perf='low'] .hg-btn--hotel::after { will-change: auto; }

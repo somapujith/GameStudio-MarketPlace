@@ -3,6 +3,9 @@
 /** Every key of getOptions() (rules v2 included) with nothing allowed. */
 const BLANK = Object.freeze({
   roll: false,
+  payTraffic: false, // Hustle rules: pay the traffic fine instead of rolling
+  useChai: false, // Hustle rules: spend a chai break
+  ride: null, // Hustle rules: a ride offer (metro / auto) while it is open
   bail: false,
   buy: false,
   skipBuy: false,
@@ -73,7 +76,9 @@ export function buildResult(view, me, standings) {
   return {
     winner: view.winner ?? null,
     reason: view.winReason ?? null,
-    rounds: Number.isFinite(view.round) ? view.round : null,
+    rounds: Number.isFinite(view.round)
+      ? Math.min(view.round, view.cfg && Number.isFinite(view.cfg.maxRounds) ? view.cfg.maxRounds : view.round)
+      : null,
     maxRounds: view.cfg && Number.isFinite(view.cfg.maxRounds) ? view.cfg.maxRounds : null, // null = unlimited
     standings: rows,
     me: {
@@ -88,3 +93,15 @@ export function buildResult(view, me, standings) {
 
 /** True when `a` and `b` are the same id regardless of number/string typing. */
 export const sameId = (a, b) => a != null && b != null && String(a) === String(b);
+
+/**
+ * A stable fingerprint of a `{t:'room'}` payload, so a frame that repeats the room unchanged (a reconnect echo, a ping that
+ * only re-sent the same seats) does not replace the room object and re-render the whole table for nothing.
+ */
+export function roomKey(room) {
+  try {
+    return JSON.stringify(room);
+  } catch {
+    return null; // not serialisable: never treat it as "the same"
+  }
+}

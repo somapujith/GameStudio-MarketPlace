@@ -1,0 +1,697 @@
+/* ==========================================================================
+   LOBBY INVITE PANEL ("Fill the table")  ·  prefix lp-
+   InvitePanel.jsx (ticket + friends), ShareCard.jsx (the invite ticket), ShareSheet.jsx (share-link sheet), InviteFriends.jsx (friends list).
+   Colours only from tokens (--hub-*, --g-*, --ho-accent). Motion = transform + opacity, --dur-1..3, --ease-out / --ease-spring.
+   ========================================================================== */
+
+.lp,
+.lp-card {
+  --lp-accent: var(--g-accent, var(--ho-accent, var(--hub-brand)));
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  color: var(--hub-text);
+  background: var(--hub-surface);
+  border: 1px solid var(--hub-line);
+  border-top: 2px solid var(--hub-line-2);
+  border-top-color: color-mix(in srgb, var(--lp-accent) 50%, var(--hub-line));
+  border-radius: var(--st-radius-card, 22px);
+  box-shadow: var(--hub-shadow-s);
+}
+.lp:focus {
+  outline: none;
+}
+.lp:focus-visible {
+  outline: 3px solid var(--hub-focus);
+  outline-offset: 2px;
+}
+.lp .st-eyebrow {
+  color: color-mix(in srgb, var(--lp-accent) var(--hub-ink-mix, 60%), var(--hub-text));
+}
+
+/* ---------- header ---------- */
+.lp__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+}
+.lp__titles {
+  min-width: 0;
+}
+.lp__title {
+  margin: 4px 0 0;
+  font-family: var(--font-hub-display);
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--hub-text);
+}
+.lp__seats {
+  flex: none;
+  padding: 6px 11px;
+  border-radius: 999px;
+  font-size: var(--st-t-xs, 0.75rem);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--lp-accent) var(--hub-ink-mix, 60%), var(--hub-text));
+  background: color-mix(in srgb, var(--lp-accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--lp-accent) 30%, var(--hub-line));
+}
+
+.lp-sub {
+  margin: 0;
+  font-size: var(--st-t-xs, 0.75rem);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--hub-dim);
+}
+.lp-friendsec {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.lp-btn:focus-visible,
+.lp-ibtn:focus-visible,
+.lp-addbtn:focus-visible,
+.lp-search__input:focus-visible,
+.lp-link__input:focus-visible {
+  outline: 3px solid var(--hub-focus);
+  outline-offset: 2px;
+}
+
+@keyframes lp-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ---------- friends ---------- */
+.lp-friends {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.lp-friendhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.lp-friendhead__count {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--hub-dim);
+}
+.lp-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--hub-good);
+  box-shadow: 0 0 0 3px rgba(var(--hub-good-rgb), 0.22);
+}
+.lp-addbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: var(--hub-brand-ink);
+  cursor: pointer;
+  transition: transform var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out);
+}
+.lp-addbtn:active {
+  transform: scale(0.96);
+}
+@media (hover: hover) and (pointer: fine) {
+  .lp-addbtn:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+}
+
+.lp-search__input,
+.lp-link__input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid var(--hub-line-2);
+  background: var(--hub-surface-3);
+  color: var(--hub-text);
+  font: inherit;
+  font-size: 1rem; /* 16px keeps iOS from zooming on focus */
+}
+.lp-search__input::placeholder {
+  color: var(--hub-faint);
+}
+
+.lp-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+@media (min-width: 960px) and (min-height: 640px) {
+  .lp-groups {
+    max-height: min(48vh, 440px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-right: 2px;
+  }
+}
+.lp-group {
+  margin: 4px 0 -2px;
+  font-size: var(--st-t-xs, 0.75rem);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--hub-dim);
+}
+.lp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lp-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  padding: 8px 8px 8px 10px;
+  border-radius: 16px;
+  border: 1px solid var(--hub-line);
+  background: rgba(var(--hub-tint), 0.04);
+}
+.lp-row__ava {
+  display: inline-flex;
+}
+.lp-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  transition: opacity var(--dur-2) var(--ease-out);
+}
+.lp-row__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 800;
+  color: var(--hub-text);
+}
+.lp-row__sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8rem;
+  color: var(--hub-dim);
+}
+.lp-row:not(.is-off) .lp-row__sub {
+  color: var(--hub-good);
+}
+.lp-row.is-off .lp-row__ava,
+.lp-row.is-off .lp-row__main {
+  opacity: 0.62;
+}
+
+/* ---------- invite button: Invite -> Sending -> Invited (check); keyed inner span replays an enter on every state ---------- */
+.lp-ibtn {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  min-width: 104px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+  color: var(--hub-on-brand);
+  background: var(--hub-brand-fill);
+  box-shadow: 0 6px 18px -8px var(--hub-brand-glow);
+  transition:
+    transform var(--dur-1) var(--ease-out),
+    background var(--dur-2) var(--ease-out),
+    color var(--dur-2) var(--ease-out),
+    border-color var(--dur-2) var(--ease-out),
+    box-shadow var(--dur-2) var(--ease-out);
+}
+.lp-ibtn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+@media (hover: hover) and (pointer: fine) {
+  .lp-ibtn:hover:not(:disabled) {
+    filter: brightness(1.1);
+  }
+}
+.lp-ibtn:disabled {
+  cursor: default;
+}
+.lp-ibtn__in {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  animation: lp-btn-in var(--dur-2) var(--ease-out) both;
+}
+@keyframes lp-btn-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.lp-ibtn.is-sending {
+  color: var(--hub-dim);
+  background: var(--hub-surface-3);
+  border-color: var(--hub-line-2);
+  box-shadow: none;
+}
+.lp-ibtn.is-sent,
+.lp-ibtn.is-saved {
+  color: var(--hub-good);
+  background: rgba(var(--hub-good-rgb), 0.14);
+  border-color: rgba(var(--hub-good-rgb), 0.45);
+  box-shadow: none;
+}
+.lp-ibtn.is-saved {
+  color: var(--hub-info, var(--hub-good));
+  background: rgba(var(--hub-info-rgb, var(--hub-good-rgb)), 0.14);
+  border-color: rgba(var(--hub-info-rgb, var(--hub-good-rgb)), 0.45);
+}
+.lp-ibtn.is-again {
+  color: var(--hub-text);
+  background: transparent;
+  border-color: var(--hub-line-2);
+  box-shadow: none;
+}
+.lp-ibtn.is-error {
+  color: var(--hub-bad-ink);
+  background: rgba(var(--hub-bad-rgb), 0.12);
+  border-color: rgba(var(--hub-bad-rgb), 0.5);
+  box-shadow: none;
+}
+.lp-ibtn__check {
+  animation: lp-check var(--dur-3) var(--ease-spring) both;
+}
+@keyframes lp-check {
+  from {
+    opacity: 0;
+    transform: scale(0.4) rotate(-12deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.lp-ibtn__spin {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2.5px solid currentColor;
+  border-top-color: transparent;
+  animation: lp-spin 0.8s linear infinite;
+}
+@keyframes lp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- states ---------- */
+.lp-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--hub-line);
+  background: rgba(var(--hub-tint), 0.04);
+}
+.lp-state--empty {
+  border-style: dashed;
+  border-color: var(--hub-line-2);
+}
+.lp-state__title {
+  margin: 0;
+  font-weight: 800;
+  color: var(--hub-text);
+}
+.lp-state__text {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--hub-dim);
+}
+.lp-state[role='alert'] .lp-state__text {
+  color: var(--hub-bad-ink);
+}
+.lp-nomatch {
+  padding: 4px 2px;
+}
+.lp-note {
+  margin: 0;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px dashed var(--hub-line-2);
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: var(--hub-dim);
+}
+.lp-note a {
+  color: var(--hub-brand-ink);
+  font-weight: 800;
+}
+
+.lp-skelrow {
+  pointer-events: none;
+}
+.lp-skel {
+  display: block;
+  background: linear-gradient(100deg, var(--hub-skel) 30%, var(--hub-skel-hi) 50%, var(--hub-skel) 70%);
+  animation: lp-breathe 1.4s ease-in-out infinite alternate;
+}
+.lp-skel--circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+.lp-skel--line {
+  height: 14px;
+  width: 60%;
+  border-radius: 8px;
+}
+.lp-skel--btn {
+  width: 96px;
+  height: 36px;
+  border-radius: 999px;
+}
+@keyframes lp-breathe {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.lp-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- shared bits ---------- */
+.lp-btn {
+  min-height: var(--hub-tap, 44px);
+}
+.lp-label {
+  font-size: var(--st-t-xs, 0.75rem);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--hub-dim);
+}
+.lp-btn.is-done {
+  color: var(--hub-good);
+  border-color: rgba(var(--hub-good-rgb), 0.5);
+}
+.lp-btn.ho-btn--primary.is-done {
+  background: rgba(var(--hub-good-rgb), 0.16);
+  box-shadow: none;
+}
+/* the label/icon of a copy button replays a short enter when it flips to "Copied" (only then, never on first paint) */
+.lp-ticket__swap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.lp-btn.is-done .lp-ticket__swap {
+  animation: lp-btn-in var(--dur-2) var(--ease-out) both;
+}
+.lp-pop {
+  animation: lp-pop var(--dur-2) var(--ease-out) both;
+}
+@keyframes lp-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------- the invite ticket: the one place the code lives ---------- */
+.lp-ticket {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-radius: 20px;
+  border: 1px solid var(--g-line, var(--hub-line-2));
+  background: linear-gradient(160deg, color-mix(in srgb, var(--lp-accent, var(--hub-brand)) 16%, var(--hub-surface-3)), var(--hub-surface-3) 75%);
+  box-shadow: 0 14px 26px -18px var(--g-glow-strong, transparent);
+  outline: 3px solid transparent;
+  outline-offset: 0;
+}
+.lp-ticket__top {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 16px 14px;
+  text-align: center;
+}
+.lp-ticket__code {
+  max-width: 100%;
+  font-family: var(--font-hub-display);
+  font-size: clamp(2.1rem, 10.5vw, 2.9rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--lp-accent, var(--hub-brand)) var(--hub-ink-mix, 60%), var(--hub-text));
+  text-shadow:
+    0 0 14px var(--g-glow-strong, transparent),
+    0 0 32px var(--g-glow, transparent);
+  user-select: all;
+}
+.lp-ticket__hint {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: var(--hub-dim);
+}
+/* the perforation: a dashed line with a notch bitten out of each edge */
+.lp-ticket__tear {
+  position: relative;
+  height: 0;
+  margin-inline: 14px;
+  border-top: 2px dashed var(--hub-line-2);
+}
+.lp-ticket__tear::before,
+.lp-ticket__tear::after {
+  content: '';
+  position: absolute;
+  top: -9px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--hub-surface);
+  border: 1px solid var(--g-line, var(--hub-line-2));
+}
+.lp-ticket__tear::before {
+  left: -23px;
+}
+.lp-ticket__tear::after {
+  right: -23px;
+}
+.lp-ticket__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 14px;
+}
+.lp-ticket__main {
+  grid-column: 1 / -1;
+  min-height: 48px;
+}
+.lp-ticket__actions .lp-btn {
+  min-width: 0;
+  padding-inline: 10px;
+}
+
+/* the lobby points at the ticket after an invite went out: one calm outline pulse (outline only, replays via two names) */
+.lp-ticket.is-lit-0 {
+  animation: lp-lit-0 1s var(--ease-out);
+}
+.lp-ticket.is-lit-1 {
+  animation: lp-lit-1 1s var(--ease-out);
+}
+@keyframes lp-lit-0 {
+  from {
+    outline-color: var(--lp-accent, var(--hub-brand));
+    outline-offset: 0;
+  }
+  to {
+    outline-color: transparent;
+    outline-offset: 7px;
+  }
+}
+@keyframes lp-lit-1 {
+  from {
+    outline-color: var(--lp-accent, var(--hub-brand));
+    outline-offset: 0;
+  }
+  to {
+    outline-color: transparent;
+    outline-offset: 7px;
+  }
+}
+@keyframes lp-lit-calm {
+  from {
+    outline-color: var(--lp-accent, var(--hub-brand));
+  }
+  to {
+    outline-color: transparent;
+  }
+}
+
+/* ---------- share-link sheet ---------- */
+.lp-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.lp-sheet__link {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.lp-sheet__input {
+  font-size: 1rem;
+  text-overflow: ellipsis;
+  color: var(--hub-text);
+}
+.lp-sheet__copy {
+  width: 100%;
+  min-height: 56px;
+}
+.lp-sheet__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 8px;
+}
+.lp-sheet__row .lp-btn {
+  min-width: 0;
+  padding-inline: 10px;
+}
+.lp-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.lp-qr__tile {
+  padding: 6px;
+  line-height: 0;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: var(--hub-shadow-s);
+}
+.lp-qr__hint {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--hub-dim);
+}
+
+/* ---------- reduced motion: no travel, no spin, no spring, no pulse growth; opacity / colour fades only ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .lp-ibtn__in,
+  .lp-btn.is-done .lp-ticket__swap {
+    animation: lp-fade-in var(--dur-1) linear both;
+  }
+  .lp-pop,
+  .lp-ibtn__check,
+  .lp-ibtn__spin,
+  .lp-skel {
+    animation: none;
+  }
+  .lp-ibtn__spin {
+    border-style: dotted;
+  }
+  .lp-ticket.is-lit-0,
+  .lp-ticket.is-lit-1 {
+    animation: lp-lit-calm 1s linear;
+  }
+  .lp-ibtn,
+  .lp-addbtn {
+    transition: none;
+  }
+  .lp-ibtn:active:not(:disabled),
+  .lp-addbtn:active {
+    transform: none;
+  }
+}
+:root[data-motion='reduced'] :is(.lp-ibtn__in, .lp-btn.is-done .lp-ticket__swap) {
+  animation: lp-fade-in var(--dur-1) linear both;
+}
+:root[data-motion='reduced'] :is(.lp-pop, .lp-ibtn__check, .lp-ibtn__spin, .lp-skel) {
+  animation: none;
+}
+:root[data-motion='reduced'] .lp-ibtn__spin {
+  border-style: dotted;
+}
+:root[data-motion='reduced'] :is(.lp-ticket.is-lit-0, .lp-ticket.is-lit-1) {
+  animation: lp-lit-calm 1s linear;
+}
+:root[data-motion='reduced'] :is(.lp-ibtn, .lp-addbtn) {
+  transition: none;
+}
+:root[data-motion='reduced'] :is(.lp-ibtn, .lp-addbtn):active:not(:disabled) {
+  transform: none;
+}

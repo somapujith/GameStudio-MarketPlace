@@ -1,7 +1,7 @@
 // Small data hook for the hub screens. Never throws, never logs: a network failure becomes a status the
 // UI renders ('offline' | 'auth' | 'error'). Results are cached briefly per user so going Home -> Rank ->
 // Home does not flash skeletons.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api.js';
 import { useAuth } from '@/lib/auth.jsx';
 
@@ -27,8 +27,12 @@ export function useApiReady() {
 /**
  * `{ status: 'idle'|'loading'|'ok'|'auth'|'offline'|'error', data, reload }`.
  * `enabled:false` -> 'idle'. Switching `path` resets to 'loading' (no stale rows under a new tab).
+ * `fetcher(opts)` replaces the default `api.get(path, opts)` (e.g. a named helper from lib/api.js); `path` is then
+ * only the cache key.
  */
-export function useApi(path, { enabled = true } = {}) {
+export function useApi(path, { enabled = true, fetcher } = {}) {
+  const fetchRef = useRef(fetcher);
+  fetchRef.current = fetcher;
   const auth = useAuth() || {};
   const uid = auth.user?.id ?? 'anon';
   const cacheKey = `${uid}|${path}`;
@@ -46,7 +50,14 @@ export function useApi(path, { enabled = true } = {}) {
     else setState((s) => (s.key === cacheKey && s.status === 'ok' ? s : { key: cacheKey, status: 'loading', data: null }));
     const ctrl = new AbortController();
     let alive = true;
-    api.get(path, { signal: ctrl.signal, timeout: 10_000 }).then(
+    const opts = { signal: ctrl.signal, timeout: 10_000 };
+    let p;
+    try {
+      p = Promise.resolve(fetchRef.current ? fetchRef.current(opts) : api.get(path, opts));
+    } catch (e) {
+      p = Promise.reject(e);
+    }
+    p.then(
       (data) => {
         cache.set(cacheKey, { at: Date.now(), data });
         if (alive) setState({ key: cacheKey, status: 'ok', data });
@@ -87,4 +98,48 @@ export function useApiGate() {
     }
   }, [refresh]);
   return { booting, ready: !booting && a.reachable !== false, retry };
+}
+
+/** Drop cached responses whose path starts with `prefix` (e.g. after a purchase changes `/api/shop`). */
+export function invalidateApi(prefix) {
+  for (const k of [...cache.keys()]) if (k.slice(k.indexOf('|') + 1).startsWith(prefix)) cache.delete(k);
+}
+
+function prefersReduced() {
+  try {
+    if (document.documentElement.dataset.motion === 'reduced') return true;
+    return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * A number that rolls from its previous value to `value` (ease-out, `ms` long). The first render shows the
+ * value as is (no roll-up on page load unless `fromZero`); reduced motion jumps straight to the new value.
+ */
+export function useCountUp(value, { ms = 700, fromZero = false } = {}) {
+  const target = Math.round(Number(value) || 0);
+  const [shown, setShown] = useState(fromZero ? 0 : target);
+  const cur = useRef(fromZero ? 0 : target);
+  useEffect(() => {
+    const from = cur.current;
+    if (from === target || prefersReduced() || typeof requestAnimationFrame !== 'function') {
+      cur.current = target;
+      setShown(target);
+      return undefined;
+    }
+    let raf = 0;
+    const t0 = performance.now();
+    const step = (t) => {
+      const k = Math.min(1, (t - t0) / ms);
+      const v = Math.round(from + (target - from) * (1 - (1 - k) ** 3));
+      cur.current = v;
+      setShown(v);
+      if (k < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target, ms]);
+  return shown;
 }

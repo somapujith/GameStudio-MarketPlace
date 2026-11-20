@@ -250,3 +250,9 @@ html[data-motion='reduced'] .leader-cinema *,html[data-motion='reduced'] .leader
   .leader-ranks { max-height: max(320px, calc(100svh - var(--topbar-h) - 32px)); overflow: auto; overscroll-behavior: contain; border-radius: 6px; }
   .leader-ranks thead { position: sticky; top: 0; z-index: 1; background: #0b0908; }
 }
+
+/* The site footer (and its tab-bar spacer slot) would push a viewport-fitted leaderboard into scrolling: hide it wherever the page fits the screen
+   (the same ranges as the desktop, tablet and phone fit blocks). */
+@media (min-width:1000px) and (min-height:600px), (min-width:600px) and (max-width:999px) and (min-height:600px), (max-width:599px) and (min-height:640px) {
+  .hub-app:has(.leader-cinema) :is(.xl-footer, .hub-footslot) { display: none; }
+}

@@ -24,6 +24,7 @@ vi.mock('./hub.js', async (importOriginal) => ({
 }));
 
 const { default: worker } = await import('./index.js');
+const { ruleDefaults } = await import('../shared/index.js');
 const { signSession } = await import('./auth.js');
 const { _resetForTests } = await import('./ratelimit.js');
 const roomsdb = await import('./roomsdb.js');
@@ -131,7 +132,7 @@ describe('GET /api/games', () => {
 });
 
 describe('GET /api/rooms/open', () => {
-  const row = { code: 'ABCD23', game_id: 'hyderabad-tycoon', host_name: 'Host', player_count: 2, max_players: 4, settings: { goal: 70000, maxRounds: 50 }, created_at: '2026-10-16T10:00:00Z' };
+  const row = { code: 'ABCD23', game_id: 'hyderabad-tycoon', host_name: 'Host', player_count: 2, max_players: 4, settings: { mode: 'standard', dice: 'lucky', auctionOnDecline: true }, created_at: '2026-10-16T10:00:00Z' };
 
   it('needs no sign-in and returns the documented rows', async () => {
     installDb((text) => (/FROM rooms/.test(text) && /^\s*SELECT/.test(text) ? [row] : undefined));
@@ -145,7 +146,8 @@ describe('GET /api/rooms/open', () => {
           hostName: 'Host',
           players: 2,
           maxPlayers: 4,
-          summary: 'Target ₹70,000 · 50 rounds',
+          summary: 'Standard City Hustle · 20 rounds · richest wins · ₹50L target',
+          customRules: 0,
           createdAt: '2026-10-16T10:00:00.000Z',
         },
       ],
@@ -230,8 +232,8 @@ describe('POST /api/rooms', () => {
       visibility: 'private',
       maxPlayers: 4,
       host: { id: ME, name: 'Me', avatar: 3, guest: false },
-      settings: { goal: 70000, startCash: 15000, maxRounds: 50, dice: 'lucky', auctionOnDecline: true },
     });
+    expect(payload.settings).toEqual({ mode: 'standard', ...ruleDefaults('standard') }); // the Hustle defaults: mode + every host rule, nothing else
     expect(code).toBe(res.json.code);
   });
 
@@ -240,10 +242,34 @@ describe('POST /api/rooms', () => {
     const res = await call('/api/rooms', {
       method: 'POST',
       cookie: await cookieFor(ME),
-      body: { gameId: 'hyderabad-tycoon', visibility: 'public', maxPlayers: 3, settings: { goal: 40000, maxRounds: null } },
+      body: { gameId: 'hyderabad-tycoon', visibility: 'public', maxPlayers: 3, settings: { mode: 'classic', dice: 'fair', goal: 40000, debug: true } },
     });
     expect(res.status).toBe(201);
-    expect(roomCallMock.mock.calls[0][3]).toMatchObject({ visibility: 'public', maxPlayers: 3, settings: { goal: 40000, maxRounds: null } });
+    expect(roomCallMock.mock.calls[0][3]).toMatchObject({ visibility: 'public', maxPlayers: 3 });
+    // validated and normalised: unknown / retired keys never reach the room
+    expect(roomCallMock.mock.calls[0][3].settings).toEqual({ mode: 'classic', ...ruleDefaults('classic'), dice: 'fair' });
+  });
+
+  it('refuses a host rule outside its legal values with 400 and a message naming it', async () => {
+    const cookie = await cookieFor(ME);
+    for (const [settings, text] of [
+      [{ rentPercent: 33 }, /Rent level must be one of/],
+      [{ startCash: 1 }, /Starting cash must be a whole amount/],
+      [{ turnSeconds: 5 }, /Decision timer must be a whole number from 15 to 180 seconds/],
+    ]) {
+      const r = await call('/api/rooms', { method: 'POST', cookie, body: { settings } });
+      expect(r.status, JSON.stringify(settings)).toBe(400);
+      expect(r.json.error).toMatch(text);
+    }
+    expect(roomCallMock).not.toHaveBeenCalled();
+  });
+
+  it('stores every legal host rule it is given, with the defaults filling the rest', async () => {
+    roomCallMock.mockResolvedValue({ status: 201, data: {} });
+    const settings = { startCash: 3000000, passStart: 0, rentPercent: 150, turnSeconds: 15, maxRounds: null, requireFullSet: false, eventEvery: 0, chaiCap: 3, trafficFine: 0 };
+    const res = await call('/api/rooms', { method: 'POST', cookie: await cookieFor(ME), body: { settings } });
+    expect(res.status).toBe(201);
+    expect(roomCallMock.mock.calls[0][3].settings).toEqual({ mode: 'standard', ...ruleDefaults('standard'), ...settings });
   });
 
   it('refuses unknown games and bad input with 400 (the room is never created)', async () => {
@@ -254,8 +280,8 @@ describe('POST /api/rooms', () => {
     for (const body of [
       { visibility: 'friends' },
       { maxPlayers: 9 },
-      { settings: { goal: 5 } },
-      { settings: { maxRounds: 120 } },
+      { settings: { mode: 'marathon' } },
+      { settings: { dice: 'loaded' } },
       { settings: 'x' },
       { gameId: 7 },
     ]) {
@@ -281,7 +307,7 @@ describe('GET /api/rooms/:code', () => {
   it('adds gameId, visibility and settings', async () => {
     roomCallMock.mockResolvedValue({
       status: 200,
-      data: { exists: true, status: 'lobby', players: 2, maxPlayers: 4, hostName: 'Host', isMember: true, gameId: 'hyderabad-tycoon', visibility: 'public', settings: { goal: 70000 } },
+      data: { exists: true, status: 'lobby', players: 2, maxPlayers: 4, hostName: 'Host', isMember: true, gameId: 'hyderabad-tycoon', visibility: 'public', settings: { mode: 'quick' } },
     });
     const res = await call('/api/rooms/abcd23', { cookie: await cookieFor(ME) });
     expect(res.json).toEqual({
@@ -294,7 +320,7 @@ describe('GET /api/rooms/:code', () => {
       isMember: true,
       gameId: 'hyderabad-tycoon',
       visibility: 'public',
-      settings: { goal: 70000 },
+      settings: { mode: 'quick' },
     });
     expect(roomCallMock.mock.calls[0].slice(1)).toEqual(['ABCD23', `/info?member=${ME}`]);
   });
@@ -329,7 +355,7 @@ describe('POST /api/invites', () => {
     expect(res.json).toEqual({ ok: true, delivered: true });
     expect(pushMock).toHaveBeenCalledWith(expect.anything(), FRIEND, {
       t: 'invite',
-      from: { id: ME, name: 'Me', avatar: 3 },
+      from: { id: ME, name: 'Me', avatar: 3, handle: null },
       code: 'ABCD23',
       gameId: 'hyderabad-tycoon',
       gameName: 'Nawabi Raj',
@@ -365,7 +391,8 @@ describe('GET /api/leaderboard', () => {
     expect(res.status).toBe(200);
     expect(q.text).toMatch(/ORDER BY u\.xp DESC/);
     expect(q.params).toEqual([]);
-    expect(res.json.rows[0]).toEqual({ rank: 1, name: 'Teja', avatar: 2, level: 3, wins: 4, games: 9, bestScore: 99000, rating: 1040, bestWorth: 99000 });
+    expect(res.json.rows[0]).toEqual({ rank: 1, name: 'Teja', avatar: 2, level: 3, wins: 4, games: 9, bestScore: 99000, rating: 1040, bestWorth: 99000, frame: null, title: null, isMe: false });
+    expect(res.json.me).toBeNull(); // signed out
     // cached: a second call does not hit the database again
     queryMock.mockClear();
     expect((await call('/api/leaderboard?game=overall')).status).toBe(200);
@@ -437,7 +464,7 @@ describe('GET /api/friends/by-code/:friendCode', () => {
     lookup(null);
     let res = await call('/api/friends/by-code/hyd-fr22', { cookie });
     expect(res.status).toBe(200);
-    expect(res.json).toEqual({ user: { id: FRIEND, name: 'Friend', avatar: 3, level: 1, friendCode: 'HYD-FR22', relation: 'none' } });
+    expect(res.json).toEqual({ user: { id: FRIEND, name: 'Friend', avatar: 3, level: 1, friendCode: 'HYD-FR22', handle: null, relation: 'none' } });
     lookup({ user_id: ME, status: 'pending' });
     expect((await call('/api/friends/by-code/HYD-FR22', { cookie })).json.user.relation).toBe('outgoing');
     lookup({ user_id: FRIEND, status: 'pending' });

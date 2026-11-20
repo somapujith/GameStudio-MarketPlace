@@ -1,0 +1,194 @@
+/* ==========================================================================
+   Andhra Aatalu: the in-game look of the second map ("modern Telugu folk art").
+   Deep indigo, terracotta, turmeric, river green, coastal blue, antique cream.
+
+   EVERY rule is scoped under [data-map='andhra'] (the game root and the board carry it, see GameView / Board), so the
+   Hyderabad map is untouched. Loaded after the other game styles (GameView).
+   Group colours: each collection also gets its own PATTERN on the tile band (stripes, dots, waves, chevrons, hills,
+   diamonds, bars, grid), keyed by the tile's board slot, so groups stay distinguishable without colour.
+
+   Performance: static only. No backdrop-filter, no CSS filter / blur / drop-shadow, no mix-blend-mode, no animation.
+   ========================================================================== */
+
+[data-map='andhra'] {
+  --ah-indigo: #1a1f5e;
+  --ah-indigo-2: #26307a;
+  --ah-terra: #c4553a;
+  --ah-turmeric: #f2b11d;
+  --ah-green: #2f9e6b;
+  --ah-blue: #2b8fc7;
+  --ah-cream: #f6ebd2;
+}
+
+/* ---- the frame: indigo cloth, a turmeric trim and marigold lanterns ---------------------------------------- */
+[data-map='andhra'] .hb-board {
+  --hb-night: #141a56;
+  --hb-paper: #f6ebd2;
+  --hb-gold: #f2b11d;
+  --hb-gold-2: #e8793a;
+  --hb-lantern: #ffc94a;
+}
+[data-map='andhra'] .hb-frame {
+  background:
+    radial-gradient(circle 1.5cqw at 1.2cqw 1.2cqw, #fff6d0 0 18%, rgba(242, 177, 29, 0.95) 34%, rgba(232, 121, 58, 0) 100%),
+    radial-gradient(circle 1.5cqw at calc(100% - 1.2cqw) 1.2cqw, #fff6d0 0 18%, rgba(242, 177, 29, 0.95) 34%, rgba(232, 121, 58, 0) 100%),
+    radial-gradient(circle 1.5cqw at 1.2cqw calc(100% - 1.2cqw), #fff6d0 0 18%, rgba(242, 177, 29, 0.95) 34%, rgba(232, 121, 58, 0) 100%),
+    radial-gradient(circle 1.5cqw at calc(100% - 1.2cqw) calc(100% - 1.2cqw), #fff6d0 0 18%, rgba(242, 177, 29, 0.95) 34%, rgba(232, 121, 58, 0) 100%),
+    linear-gradient(160deg, #232a78 0%, #151a58 55%, #0f1344 100%);
+  box-shadow:
+    0 0 0 1px rgba(242, 177, 29, 0.55),
+    inset 0 0 0 0.25cqw rgba(196, 85, 58, 0.55),
+    inset 0 0 2.6cqw rgba(0, 0, 0, 0.45),
+    0 1.2cqw 3.2cqw rgba(0, 0, 0, 0.5);
+}
+[data-map='andhra'] .hb-frame__lights {
+  --rest: #ffe9a8 0 24%, rgba(242, 150, 40, 0.85) 38%, rgba(232, 121, 58, 0) 100%;
+  --lit: #fffbe8 0 22%, rgba(255, 208, 110, 0.9) 40%, rgba(255, 170, 60, 0) 100%;
+}
+
+/* ---- the middle: the Andhra map sits behind the control panel ---------------------------------------------- */
+[data-map='andhra'] .hb-center {
+  background: #171d58;
+  box-shadow: inset 0 0 0 1px rgba(242, 177, 29, 0.35);
+}
+[data-map='andhra'] .ah-centre {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+/* the Telugu title is a quiet watermark in the clear band left of the dice (below the kite): it never sits under the tab pill
+   or a caption, and the phone (whose caption stack covers the whole middle) keeps only the artwork */
+[data-map='andhra'] .ph .ah-title { display: none; }
+[data-map='andhra'] .ph .hb-center {
+  background: #171d58;
+  box-shadow: inset 0 0 0 1px rgba(242, 177, 29, 0.35);
+}
+
+/* the control panel (desktop) and the caption stack (phone) become an indigo scrim over the map, so the map shows through
+   while the cream text keeps its contrast (indigo at 70% over the lightest land is still ~9:1 for white text) */
+[data-map='andhra'] .cp .cp__in {
+  background:
+    radial-gradient(ellipse 72% 68% at 50% 52%, rgba(12, 16, 66, 0.66) 0%, rgba(12, 16, 66, 0.6) 58%, rgba(12, 16, 66, 0.34) 100%);
+  box-shadow: inset 0 0 0 1px rgba(242, 177, 29, 0.3);
+}
+[data-map='andhra'] .pc { background: radial-gradient(ellipse 80% 72% at 50% 50%, rgba(12, 16, 66, 0.62) 0%, rgba(12, 16, 66, 0.4) 100%); }
+
+/* ---- tiles: antique cream paper, group colour + a pattern per collection ----------------------------------- */
+[data-map='andhra'] .hb-tile { --paper: #f6ebd2; }
+[data-map='andhra'] .hb-tile--property { --paper: color-mix(in srgb, var(--g, #b9835a) 11%, #f7edd4); }
+[data-map='andhra'] .hb-tile.is-owned { --paper: color-mix(in srgb, var(--o) 14%, color-mix(in srgb, var(--g, #b9835a) 9%, #f7edd4)); }
+[data-map='andhra'] .hb-tile--start { --paper: #fbe0ae; --hb-pill: #a8431f; }
+[data-map='andhra'] .hb-tile--traffic { --paper: #f4d4c6; }
+[data-map='andhra'] .hb-tile--chai { --paper: #fbd7de; --hb-pill: #b8284f; }
+[data-map='andhra'] .hb-tile--municipal { --paper: #d9e1f3; --hb-pill: #26307a; }
+[data-map='andhra'] .hb-deck--luck { --paper: #fbe7a8; }
+[data-map='andhra'] .hb-deck--drama { --paper: #f0d3e0; }
+[data-map='andhra'] .hb-deck--drama .hb-tile__card { --card-a: #d9507f; --card-b: #26307a; }
+[data-map='andhra'] .hb-tile--transport { --paper: #dfeaf2; }
+[data-map='andhra'] .hb-tile--auction { --paper: #f7dfae; }
+
+/* collection 1: stripes */
+[data-map='andhra'] :is(.hb-tile[data-tile='1'],
+  .hb-tile[data-tile='3'],
+  .hb-tile[data-tile='4']) :is(.hb-tile__band:not(.hb-tile__band--route), .pt__band) {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0) 50%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Cpath d='M-2 2L2-2M0 12L12 0M10 14L14 10' fill='none' stroke='%23fffaf0' stroke-opacity='.55' stroke-width='1.5' transform='translate(1.2 1.2)'/%3E%3Cpath d='M-2 2L2-2M0 12L12 0M10 14L14 10' fill='none' stroke='%231d1840' stroke-opacity='.42' stroke-width='1.5'/%3E%3C/svg%3E") 0 0 / max(calc(var(--hb-u) * 0.2), 7px) max(calc(var(--hb-u) * 0.2), 7px),
+    var(--g, #8a7a66);
+}
+
+/* collection 2: dots */
+[data-map='andhra'] :is(.hb-tile[data-tile='6'],
+  .hb-tile[data-tile='7'],
+  .hb-tile[data-tile='8']) :is(.hb-tile__band:not(.hb-tile__band--route), .pt__band) {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0) 50%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Cpath d='M3 3h.1M9 9h.1' fill='none' stroke='%23fffaf0' stroke-opacity='.55' stroke-width='3' transform='translate(1.2 1.2)'/%3E%3Cpath d='M3 3h.1M9 9h.1' fill='none' stroke='%231d1840' stroke-opacity='.42' stroke-width='3'/%3E%3C/svg%3E") 0 0 / max(calc(var(--hb-u) * 0.2), 7px) max(calc(var(--hb-u) * 0.2), 7px),
+    var(--g, #8a7a66);
+}
+
+/* collection 3: waves */
+[data-map='andhra'] :is(.hb-tile[data-tile='10'],
+  .hb-tile[data-tile='11'],
+  .hb-tile[data-tile='13']) :is(.hb-tile__band:not(.hb-tile__band--route), .pt__band) {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0) 50%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Cpath d='M0 4q3-3 6 0t6 0M0 10q3-3 6 0t6 0' fill='none' stroke='%23fffaf0' stroke-opacity='.55' stroke-width='1.5' transform='translate(1.2 1.2)'/%3E%3Cpath d='M0 4q3-3 6 0t6 0M0 10q3-3 6 0t6 0' fill='none' stroke='%231d1840' stroke-opacity='.42' stroke-width='1.5'/%3E%3C/svg%3E") 0 0 / max(calc(var(--hb-u) * 0.2), 7px) max(calc(var(--hb-u) * 0.2), 7px),
+    var(--g, #8a7a66);
+}
+
+/* collection 4: chevrons */
+[data-map='andhra'] :is(.hb-tile[data-tile='15'],
+  .hb-tile[data-tile='16'],
+  .hb-tile[data-tile='17']) :is(.hb-tile__band:not(.hb-tile__band--route), .pt__band) {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0) 50%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Cpath d='M0 6L6 1l6 5M0 12L6 7l6 5' fill='none' stroke='%23fffaf0' stroke-opacity='.55' stroke-width='1.5' transform='translate(1.2 1.2)'/%3E%3Cpath d='M0 6L6 1l6 5M0 12L6 7l6 5' fill='none' stroke='%231d1840' stroke-opacity='.42' stroke-width='1.5'/%3E%3C/svg%3E") 0 0 / max(calc(var(--hb-u) * 0.2), 7px) max(calc(var(--hb-u) * 0.2), 7px),
+    var(--g, #8a7a66);
+}
+
+/* collection 5: hills */
+[data-map='andhra'] :is(.hb-tile[data-tile='19'],
+  .hb-tile[data-tile='20'],
+  .hb-tile[data-tile='22']) :is(.hb-tile__band:not(.hb-tile__band--route), .pt__band) {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0) 50%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Cpath d='M1 11L6 3l5 8z' fill='none' stroke='%23fffaf0' stroke-opacity='.55' stroke-width='1.5' transform='translate(1.2 1.2)'/%3E%3Cpath d='M1 11L6 3l5 8z' fill='none' stroke='%231d1840' stroke-opacity='.42' stroke-width='1.5'/%3E%3C/svg%3E") 0 0 / max(calc(var(--hb-u) * 0.2), 7px) max(calc(var(--hb-u) * 0.2), 7px),
+    var(--g, #8a7a66);
+}
+
+/* collection 6: diamonds */
+[data-map='andhra'] :is(.hb-tile[data-tile='24'],
+  .hb-tile[data-tile='25'],
+  .hb-tile[data-tile='26']) :is(.hb-tile__band:not(.hb-tile__band--route), .pt__band) {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0) 50%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Cpath d='M6 1L11 6 6 11 1 6z' fill='none' stroke='%23fffaf0' stroke-opacity='.55' stroke-width='1.5' transform='translate(1.2 1.2)'/%3E%3Cpath d='M6 1L11 6 6 11 1 6z' fill='none' stroke='%231d1840' stroke-opacity='.42' stroke-width='1.5'/%3E%3C/svg%3E") 0 0 / max(calc(var(--hb-u) * 0.2), 7px) max(calc(var(--hb-u) * 0.2), 7px),
+    var(--g, #8a7a66);
+}
+
+/* collection 7: bars */
+[data-map='andhra'] :is(.hb-tile[data-tile='28'],
+  .hb-tile[data-tile='29'],
+  .hb-tile[data-tile='31']) :is(.hb-tile__band:not(.hb-tile__band--route), .pt__band) {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0) 50%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Cpath d='M3 0V12M9 0V12' fill='none' stroke='%23fffaf0' stroke-opacity='.55' stroke-width='2' transform='translate(1.2 1.2)'/%3E%3Cpath d='M3 0V12M9 0V12' fill='none' stroke='%231d1840' stroke-opacity='.42' stroke-width='2'/%3E%3C/svg%3E") 0 0 / max(calc(var(--hb-u) * 0.2), 7px) max(calc(var(--hb-u) * 0.2), 7px),
+    var(--g, #8a7a66);
+}
+
+/* collection 8: grid */
+[data-map='andhra'] :is(.hb-tile[data-tile='33'],
+  .hb-tile[data-tile='34'],
+  .hb-tile[data-tile='35']) :is(.hb-tile__band:not(.hb-tile__band--route), .pt__band) {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.26) 0%, rgba(255, 255, 255, 0) 50%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12'%3E%3Cpath d='M0 6H12M6 0V12' fill='none' stroke='%23fffaf0' stroke-opacity='.55' stroke-width='1.5' transform='translate(1.2 1.2)'/%3E%3Cpath d='M0 6H12M6 0V12' fill='none' stroke='%231d1840' stroke-opacity='.42' stroke-width='1.5'/%3E%3C/svg%3E") 0 0 / max(calc(var(--hb-u) * 0.2), 7px) max(calc(var(--hb-u) * 0.2), 7px),
+    var(--g, #8a7a66);
+}
+
+/* long corner names (Sankranti Fair, Road Toll) get a slightly tighter pill so they are not cut */
+[data-map='andhra'] .hb-tile--corner .hb-pill { letter-spacing: -0.02em; }
+[data-map='andhra'] .hb-tile--chai .hb-pill { font-size: max(calc(var(--hb-u) * 0.115), 5.4px); letter-spacing: -0.03em; }
+
+/* an unowned business keeps the plain pattern; a mortgaged one greys out like every other map */
+[data-map='andhra'] .hb-tile.is-mortgaged :is(.hb-tile__band, .pt__band) { background: #9c968c; }
+
+/* the owner's building art is a flat folk-art token: let it sit on the paper without the Hyderabad plinth shadow */
+[data-map='andhra'] .hb-tile__bldg svg { overflow: visible; }
+
+/* the phone caption stage: the street behind the guide is a row of tiled-roof houses in indigo and terracotta */
+[data-map='andhra'] .city-story__street { border-bottom-color: rgba(242, 177, 29, 0.4); }
+[data-map='andhra'] .city-story__street i { background: repeating-linear-gradient(0deg, transparent 0 9px, rgba(246, 235, 210, 0.3) 10px 12px), #2d3a8a; }
+[data-map='andhra'] .city-story__street i:nth-child(2n) { background-color: #8a3d2e; }
+
+/* sheets and the deed card inherit the postcard look */
+[data-map='andhra'] .location-scene { border-radius: 16px; }
+
+/* phone board: the long Telugu deck words (ADRUSHTAM, KABURLU) sit a little tighter so they stay inside an edge tile */
+[data-map='andhra'] .pt--card .pt__cap { letter-spacing: -0.045em; }

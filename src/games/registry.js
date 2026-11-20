@@ -23,7 +23,7 @@ const MANIFESTS = [tycoon, ...SOON_GAMES];
 const seen = new Set();
 export const GAMES = Object.freeze(
   MANIFESTS.filter((g) => {
-    const ok = !!g && typeof g === 'object' && typeof g.id === 'string' && g.id !== '' && !seen.has(g.id);
+    const ok = !!g && typeof g === 'object' && typeof g.id === 'string' && g.id !== '' && typeof g.name === 'string' && !seen.has(g.id);
     if (ok) seen.add(g.id);
     return ok;
   }),
@@ -49,4 +49,18 @@ export function getCategory(id) {
 export function featuredGame() {
   const live = liveGames();
   return live.find((g) => g.featured) ?? live[0] ?? GAMES[0] ?? null;
+}
+
+/**
+ * "More like this" for a game page: other games, same category first, live before coming soon, catalogue order
+ * as the tie-break. Never contains the game itself.
+ */
+export function relatedGames(game, limit = 6) {
+  if (!game || typeof game !== 'object') return [];
+  const rank = (g) => (g.category === game.category ? 0 : 2) + (isSoon(g) ? 1 : 0);
+  return GAMES.map((g, i) => [g, i])
+    .filter(([g]) => g.id !== game.id)
+    .sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1])
+    .slice(0, Math.max(0, limit))
+    .map(([g]) => g);
 }

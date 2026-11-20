@@ -10,6 +10,10 @@ export const SESSION_DAYS = 30;
 const SESSION_SECONDS = SESSION_DAYS * 24 * 60 * 60;
 const JWT_ISSUER = 'hyderabad-tycoon';
 const JWT_AUDIENCE = 'hyd-web';
+// WebSocket tickets are a different kind of token: same secret and issuer, but a distinct audience so a
+// ticket is never accepted as an API session and a session token is never accepted as a ticket.
+const WS_AUDIENCE = 'hyd-ws';
+export const WS_TICKET_SECONDS = 60;
 
 export const GOOGLE_JWKS_URL = 'https://www.googleapis.com/oauth2/v3/certs';
 export const GOOGLE_ISSUERS = ['accounts.google.com', 'https://accounts.google.com'];
@@ -42,6 +46,36 @@ export async function verifySession(env, token) {
       algorithms: ['HS256'],
       issuer: JWT_ISSUER,
       audience: JWT_AUDIENCE,
+    });
+    if (typeof payload.sub !== 'string') return null;
+    return { uid: payload.sub, guest: payload.guest === true };
+  } catch (err) {
+    if (err instanceof HttpError) throw err;
+    return null;
+  }
+}
+
+/** Issue a short-lived (60 s) WebSocket ticket. Browsers cannot set headers on a WebSocket, so a cross-origin
+ *  client trades its bearer session for one of these and passes it as `?ticket=`. */
+export async function signWsTicket(env, { id, isGuest }) {
+  return new SignJWT({ guest: !!isGuest })
+    .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+    .setSubject(id)
+    .setIssuer(JWT_ISSUER)
+    .setAudience(WS_AUDIENCE)
+    .setIssuedAt()
+    .setExpirationTime(`${WS_TICKET_SECONDS}s`)
+    .sign(secretKey(env));
+}
+
+/** Verify a WebSocket ticket. Resolves to `{ uid, guest }` or null (never throws on a bad token). */
+export async function verifyWsTicket(env, token) {
+  if (!token || typeof token !== 'string' || token.length > 2048) return null;
+  try {
+    const { payload } = await jwtVerify(token, secretKey(env), {
+      algorithms: ['HS256'],
+      issuer: JWT_ISSUER,
+      audience: WS_AUDIENCE,
     });
     if (typeof payload.sub !== 'string') return null;
     return { uid: payload.sub, guest: payload.guest === true };
@@ -172,10 +206,28 @@ export async function createGuestUser(env, { name, avatar } = {}) {
 
 // ---------------------------------------------------------------- Hono middleware
 
-/** Reads the session cookie and exposes `c.get('session')` = `{uid, guest}` | null. */
-export async function sessionMiddleware(c, next) {
+/** The token of an `Authorization: Bearer <token>` header, or null. */
+export function readBearer(header) {
+  if (!header || typeof header !== 'string') return null;
+  const m = /^Bearer\s+(\S+)\s*$/i.exec(header);
+  return m ? m[1] : null;
+}
+
+/**
+ * Resolve the session of a request: `Authorization: Bearer` first (cross-origin clients), then the
+ * httpOnly cookie. When a Bearer header is present it is the only credential considered: a bad or
+ * expired token means "signed out", it never silently falls back to a cookie.
+ */
+export async function sessionFromRequest(c) {
+  const bearer = readBearer(c.req.header('authorization'));
+  if (bearer) return verifySession(c.env, bearer);
   const token = readCookie(c.req.header('cookie'));
-  c.set('session', token ? await verifySession(c.env, token) : null);
+  return token ? verifySession(c.env, token) : null;
+}
+
+/** Reads the bearer token or session cookie and exposes `c.get('session')` = `{uid, guest}` | null. */
+export async function sessionMiddleware(c, next) {
+  c.set('session', await sessionFromRequest(c));
   await next();
 }
 

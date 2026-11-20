@@ -646,7 +646,13 @@ describe('rooms stored by the previous version keep working', () => {
     expect(h.r.hotels).toBeUndefined();
     const host = await h.connect(user(1));
     expect(host.last('room').room).toMatchObject({ gameId: 'hyderabad-tycoon', visibility: 'private', status: 'lobby' });
-    expect(host.last('room').room.settings).toMatchObject({ goal: 70000, passStart: expect.any(Number) });
+    // the old rules' lobby settings (end-cash goal, round limit) give way to the Hustle defaults; dice / auction are kept
+    const settings = host.last('room').room.settings;
+    expect(settings).toMatchObject({ mode: 'standard', dice: 'lucky', passStart: expect.any(Number) });
+    expect(settings).not.toHaveProperty('auctionOnDecline');
+    expect(settings).not.toHaveProperty('goal');
+    // a seat stored before pieces existed gets the first free one when it reconnects to the lobby
+    expect(host.last('room').room.players[0]).toMatchObject({ id: U(1), piece: GAME_ADAPTERS['hyderabad-tycoon'].pieces[0], connected: true });
   });
 
   it('a game in flight keeps its hotel counts and its trade clock', async () => {

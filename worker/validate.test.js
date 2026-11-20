@@ -5,6 +5,7 @@ import {
   parseAvatar,
   sanitizeChat,
   sanitizeEmote,
+  sanitizeVoiceId,
   sanitizeAction,
   isUuid,
   NAME_MAX,
@@ -61,24 +62,44 @@ describe('avatar / uuid / chat / emote', () => {
     expect(sanitizeEmote('emote_hack')).toBe('');
     expect(sanitizeEmote(5)).toBe('');
   });
+
+  it('only catalogue voice lines pass', () => {
+    expect(sanitizeVoiceId('voice-sheru-bhai')).toBe('voice-sheru-bhai');
+    for (const bad of ['voice-nope', 'frame-lake', '', null, undefined, 3, {}, ['voice-sheru-bhai'], 'VOICE-SHERU-BHAI']) {
+      expect(sanitizeVoiceId(bad)).toBe('');
+    }
+  });
 });
 
 describe('sanitizeAction forces the player id and drops everything unexpected', () => {
-  it('parameter-less actions (including rules v2)', () => {
+  it('parameter-less actions (Hustle rules)', () => {
     const simple = [
-      'ROLL', 'PAY_BAIL', 'BUY', 'SKIP_BUY', 'END_TURN', 'RESIGN',
-      'PAY_DEBT', 'USE_JAIL_CARD', 'TRADE_ACCEPT', 'TRADE_REJECT', 'TRADE_CANCEL',
+      'ROLL', 'PAY_TRAFFIC', 'USE_CHAI', 'BUY', 'SKIP_BUY', 'RIDE', 'END_TURN', 'RESIGN',
+      'PAY_DEBT', 'TRADE_ACCEPT', 'TRADE_REJECT', 'TRADE_CANCEL',
     ];
     for (const type of simple) {
-      expect(sanitizeAction({ type, playerId: 'victim', dice: [6, 6], extra: 1 }, 'me')).toEqual({ type, playerId: 'me' });
+      expect(sanitizeAction({ type, playerId: 'victim', dice: [6], shield: true, extra: 1 }, 'me')).toEqual({ type, playerId: 'me' });
     }
+  });
+
+  it('the retired actions are refused', () => {
+    for (const type of ['PAY_BAIL', 'USE_JAIL_CARD', 'PLACE_TRAP']) {
+      expect(sanitizeAction({ type, tile: 3 }, 'me'), type).toBeNull();
+    }
+  });
+
+  it('SNATCH is a plain client action; SNATCH_CLOSE is server-only and never accepted from a client', () => {
+    expect(sanitizeAction({ type: 'SNATCH' }, 'me')).toEqual({ type: 'SNATCH', playerId: 'me' });
+    expect(sanitizeAction({ type: 'SNATCH', playerId: 'someone-else', tile: 3 }, 'me')).toEqual({ type: 'SNATCH', playerId: 'me' });
+    expect(sanitizeAction({ type: 'SNATCH_CLOSE' }, 'me')).toBeNull();
+    expect(sanitizeAction({ type: 'SNATCH_CLOSE', playerId: 'me' }, 'me')).toBeNull();
   });
 
   it('tile actions need a valid tile', () => {
     for (const type of ['UPGRADE', 'MORTGAGE', 'UNMORTGAGE', 'SELL_BUILDING']) {
       expect(sanitizeAction({ type, tile: 5 }, 'me')).toEqual({ type, tile: 5, playerId: 'me' });
-      expect(sanitizeAction({ type, tile: 39 }, 'me')).toEqual({ type, tile: 39, playerId: 'me' }); // the last of the 40 squares
-      expect(sanitizeAction({ type, tile: 40 }, 'me')).toBeNull();
+      expect(sanitizeAction({ type, tile: 35 }, 'me')).toEqual({ type, tile: 35, playerId: 'me' }); // the last of the 36 squares
+      expect(sanitizeAction({ type, tile: 36 }, 'me')).toBeNull();
       expect(sanitizeAction({ type, tile: -1 }, 'me')).toBeNull();
       expect(sanitizeAction({ type, tile: '5' }, 'me')).toBeNull();
       expect(sanitizeAction({ type }, 'me')).toBeNull();
@@ -121,9 +142,85 @@ describe('sanitizeAction forces the player id and drops everything unexpected', 
     for (const b of bad) expect(sanitizeAction(b, 'me')).toBeNull();
   });
 
+  it('TRADE_COUNTER carries only the two sides (the proposer is implied), shape-checked like an offer', () => {
+    expect(sanitizeAction({ type: 'TRADE_COUNTER', give: { cash: 500, tiles: [1] }, get: { tiles: [4] }, to: 'x', junk: 1 }, 'me')).toEqual({
+      type: 'TRADE_COUNTER',
+      give: { cash: 500, tiles: [1] },
+      get: { cash: 0, tiles: [4] },
+      playerId: 'me',
+    });
+    for (const bad of [
+      { type: 'TRADE_COUNTER' },
+      { type: 'TRADE_COUNTER', give: { cash: 0, tiles: [] }, get: { cash: 0, tiles: [] } }, // empty deal
+      { type: 'TRADE_COUNTER', give: { cash: -1, tiles: [] }, get: { cash: 5, tiles: [] } },
+      { type: 'TRADE_COUNTER', give: { cash: 1, tiles: [1, 1] }, get: { cash: 5, tiles: [] } },
+      { type: 'TRADE_COUNTER', give: 'x', get: { cash: 5, tiles: [] } },
+    ]) expect(sanitizeAction(bad, 'me')).toBeNull();
+  });
+
   it('rejects unknown / malformed actions', () => {
     for (const bad of [null, undefined, 'ROLL', [], { type: 'CHEAT' }, { type: 5 }, {}]) {
       expect(sanitizeAction(bad, 'me')).toBeNull();
+    }
+  });
+});
+
+describe('PLAY_POWER (Power Cards)', () => {
+  const uid = 'a1b2c3d4-e5f6-4a7b-8c9d-0123456789ab';
+  const rival = '00000000-0000-4000-8000-000000000002';
+
+  it('accepts a card uid, forces the player id and drops extra properties', () => {
+    expect(sanitizeAction({ type: 'PLAY_POWER', card: uid }, 'me')).toEqual({ type: 'PLAY_POWER', card: uid, playerId: 'me' });
+    expect(sanitizeAction({ type: 'PLAY_POWER', card: uid, playerId: 'victim', id: 'shield', exp: 99, extra: 1 }, 'me')).toEqual({
+      type: 'PLAY_POWER',
+      card: uid,
+      playerId: 'me',
+    });
+  });
+
+  it('keeps a target for swaps', () => {
+    expect(sanitizeAction({ type: 'PLAY_POWER', card: 'c_1-x', target: rival, junk: true }, 'me')).toEqual({
+      type: 'PLAY_POWER',
+      card: 'c_1-x',
+      target: rival,
+      playerId: 'me',
+    });
+  });
+
+  it('trims the card and enforces the length limits (card 40, target 64)', () => {
+    expect(sanitizeAction({ type: 'PLAY_POWER', card: `  ${uid}\n` }, 'me').card).toBe(uid);
+    expect(sanitizeAction({ type: 'PLAY_POWER', card: 'a'.repeat(40) }, 'me').card).toBe('a'.repeat(40));
+    expect(sanitizeAction({ type: 'PLAY_POWER', card: 'a'.repeat(41) }, 'me')).toBeNull();
+    expect(sanitizeAction({ type: 'PLAY_POWER', card: uid, target: 'b'.repeat(64) }, 'me').target).toBe('b'.repeat(64));
+    expect(sanitizeAction({ type: 'PLAY_POWER', card: uid, target: 'b'.repeat(65) }, 'me')).toBeNull();
+  });
+
+  it('rejects a missing, empty, non-string or odd-charset card or target', () => {
+    const bad = [
+      { type: 'PLAY_POWER' },
+      { type: 'PLAY_POWER', card: '' },
+      { type: 'PLAY_POWER', card: '   ' },
+      { type: 'PLAY_POWER', card: 5 },
+      { type: 'PLAY_POWER', card: null },
+      { type: 'PLAY_POWER', card: ['x'] },
+      { type: 'PLAY_POWER', card: { uid } },
+      { type: 'PLAY_POWER', card: 'sh ield' },
+      { type: 'PLAY_POWER', card: 'a/b' },
+      { type: 'PLAY_POWER', card: '<script>' },
+      { type: 'PLAY_POWER', card: 'ünï' },
+      { type: 'PLAY_POWER', card: uid, target: '' },
+      { type: 'PLAY_POWER', card: uid, target: null },
+      { type: 'PLAY_POWER', card: uid, target: 7 },
+      { type: 'PLAY_POWER', card: uid, target: { id: rival } },
+      { type: 'PLAY_POWER', card: uid, target: 'bob smith' },
+      { type: 'PLAY_POWER', card: uid, target: '../x' },
+    ];
+    for (const b of bad) expect(sanitizeAction(b, 'me'), JSON.stringify(b)).toBeNull();
+  });
+
+  it('is the only new action: neighbours stay refused', () => {
+    for (const type of ['PLAY_CARD', 'USE_POWER', 'play_power', 'PLAY_POWER_ALL']) {
+      expect(sanitizeAction({ type, card: uid }, 'me'), type).toBeNull();
     }
   });
 });

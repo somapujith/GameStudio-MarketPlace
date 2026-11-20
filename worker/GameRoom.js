@@ -3,12 +3,22 @@
 // (worker/games/<id>.js, see worker/games/index.js); this class only knows about seats, timers,
 // sockets and persistence.
 //
-// Lobby: players join over WS, ready up, the host edits settings and visibility, kicks, starts
-// (>= adapter.minPlayers). Every seat is a real player: there are no bots.
+// Lobby: players join over WS, pick a piece (when the adapter has `pieces`), the host edits settings
+// and visibility, kicks, starts (>= adapter.minPlayers). Every seat is a real player: there are no bots.
 // Game: the server owns the game state; clients only send intents (`{t:'action'}`), the server forces `playerId`, applies them through the adapter
 // and broadcasts the result. Idle players (45 s) and disconnected players (15 s grace) are
 // played on their behalf by DO alarms. The whole room record lives in DO storage, so eviction/hibernation is safe.
 // A listing row in the `rooms` table is kept in step on a best-effort basis (never breaks a room).
+//
+// Wire additions (docs/HUSTLE_PLAN.md 3.9):
+//   {t:'state', state, events, seq, clock, now}  clock = { deadline: epochMs|null, waitingFor: playerId[] }; now = server epoch ms
+//       deadline = when the server will next act on its own (the 45 s decision timer counted after the
+//       animation, the faster pace for idle / disconnected players, or an adapter timer); null when nothing is due.
+//   {t:'room', room}  room.players[i] = { id, name, avatar, ready, connected, piece, cosmetics, net }
+//       connected stays true through the 15 s reconnect grace (a reload does not flap the seat).
+//       net = { q: 0..4|null, rtt, stale? }: connection strength (netpresence.js), presence data only: in memory, never saved.
+//   client -> {t:'net', rtt}  the member's own measured round-trip time in ms (0..20000); at most one per 2 s is used.
+//   client -> {t:'piece', piece}  lobby only; piece must be in adapter.pieces and not taken.
 import { DurableObject } from 'cloudflare:workers';
 import { getAdapter, DEFAULT_GAME_ID } from './games/index.js';
 import { buildMatchRecord, persistMatch } from './match.js';
@@ -19,15 +29,27 @@ import {
   defaultSanitizeAction,
   DEFAULT_VISIBILITY,
 } from './roomrules.js';
-import { roomRow, rowSignature, upsertRoomRow, deleteRoomRow, hasDb, LISTING_HEARTBEAT_MS } from './roomsdb.js';
-import { sanitizeName, parseAvatar, sanitizeChat, sanitizeEmote, isUuid } from './validate.js';
+import { roomRow, rowSignature, upsertRoomRow, deleteRoomRow, hasDb, loadEquipped, loadOwnedItemIds, LISTING_HEARTBEAT_MS } from './roomsdb.js';
+import { sanitizeName, parseAvatar, sanitizeChat, sanitizeEmote, sanitizeVoiceId, isUuid, parseNetRtt } from './validate.js';
+import { NetPresence, NET_BROADCAST_GAP_MS } from './netpresence.js';
+import { cleanEquipped, isVoiceId, VOICE_LIMITS } from '../shared/cosmetics.js';
+import { DECISION_MS } from '../shared/timing.js';
+import { setUserRoomStatus } from './hub.js';
+import { roomMemberStates, diffStates } from './presence.js';
+import { notifyInviteJoined } from './invitefeedback.js';
 
 // Version of the stored room record. 3 = the 40-square Hyderabad board; a record below it still holds
 // a 28-tile game, which the game adapter's `upgradeRecord` calls off instead of resuming.
 export const ROOM_VERSION = 3;
-export const TURN_MS = 45_000; // human idle limit per decision
-export const GRACE_MS = 15_000; // disconnected human is auto-played after this
-const AUTO_MOVE_DELAY_MS = 900; // pause before an automated move (adapters may shorten it via moveDelayMs)
+export const TURN_MS = DECISION_MS; // human idle limit per decision (shared/timing.js)
+export const GRACE_MS = 30_000; // disconnected human is auto-played after this (long enough to switch apps and come back)
+const AUTO_MOVE_DELAY_MS = 1500; // pause before an automated move (adapters may shorten it via moveDelayMs)
+// A CONNECTED human is never auto-played after a short pause: every decision gets the room's full decision timer (turnMs).
+// Only a player who let AFK_STRIKES decisions run out in a row without doing anything (no action, no reconnect) is treated as
+// away: from then on their window is shortened to AFK_TURN_MS (never below a few seconds). "In a row" counts whole turns. A DISCONNECTED human is played for
+// only after GRACE_MS. Any action or a reconnect clears the strikes. docs/GAME_RULES.md (timers).
+export const AFK_STRIKES = 2;
+export const AFK_TURN_MS = 10_000;
 const LOBBY_GRACE_MS = 60_000; // a disconnected lobby member is dropped after this
 const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
 const ABANDON_MS = 5 * 60 * 1000; // nobody connected for this long -> stop playing the game
@@ -37,6 +59,14 @@ const MAX_MESSAGE_CHARS = 4096;
 const MAX_SOCKETS_PER_USER = 3;
 const PERSIST_BACKOFF_MS = [2_000, 10_000, 30_000, 120_000, 600_000];
 const PERSIST_MAX_ATTEMPTS = 8;
+const HUB_RETRY_MS = 20_000; // a UserHub that was offline for a room-status update is asked again after this
+const COSMETICS_REFRESH_MS = 30_000; // a member's equipped cosmetics are re-read at most this often
+
+// Voice lines (soundboard, docs/CONTRACT.md "Voice lines"): a purchased clip any owner may play at any time, heard by the whole
+// room. Limits are in memory only (a hibernating object forgets them: harmless). Never touches game state, timers or idle logic.
+// The numbers are VOICE_LIMITS in shared/cosmetics.js (the client's cooldown ring reads the same ones); the lobby counts as its own "match".
+const VOICE_OWNED_TTL_MS = 60_000; // a member's owned voice lines are cached this long
+const VOICE_RECHECK_MS = 5000; // a "not owned" answer is re-checked against the database at most this often (a fresh purchase works within seconds)
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
@@ -59,6 +89,14 @@ function shuffled(list) {
 /** WebSocket close codes must be 1000 or 3000-4999 for close(); coerce anything else. */
 const safeCode = (code) => (code === 1000 || (code >= 3000 && code <= 4999) ? code : 1000);
 
+/** The adapter's optional `pieces` hook as a list of ids (strings; `{id}` objects are tolerated). */
+export function pieceIds(adapter) {
+  const list = adapter && adapter.pieces;
+  if (!Array.isArray(list)) return [];
+  const ids = list.map((x) => (typeof x === 'string' ? x : x && typeof x.id === 'string' ? x.id : null));
+  return ids.filter((id, i) => id && ids.indexOf(id) === i);
+}
+
 export class GameRoom extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
@@ -71,6 +109,20 @@ export class GameRoom extends DurableObject {
     this.listingChain = Promise.resolve(); // listing writes run strictly in order
     this.listedSig = null; // signature of the last row written to `rooms`
     this.listedAt = 0;
+    this.voiceOwned = new Map(); // userId -> { ids:Set, at } owned voice lines (one DB read, then cached)
+    this.voiceTimes = new Map(); // userId -> accepted voice timestamps within the burst window
+    this.voiceRoomTimes = []; // accepted voice timestamps of the whole room within the room window
+    this.voiceSeq = new Map(); // userId -> number of voice lines accepted from them (the `seq` field; never reset)
+    this.voiceGame = { key: null, counts: new Map() }; // per-match voice counts
+    this.cosmeticsAt = new Map(); // userId -> when their equipped cosmetics were last read
+    this.cosmeticsJob = Promise.resolve(); // the latest background cosmetics read (tests await it)
+    this.net = new NetPresence(); // connection strength per member: memory only, never stored (netpresence.js)
+    this.netSig = null; // what the last `room` broadcast said about it
+    this.netBroadcastAt = 0; // when the last `room` broadcast went out (net changes are coalesced to one per second)
+    this.netTimer = null;
+    this.netTimerAt = 0;
+    this.hubSent = new Map(); // userId -> { state, ok, at }: the room state last told to that member's UserHub (memory only)
+    this.hubJob = Promise.resolve(); // the latest background hub update (tests await it)
     // Answer heartbeats without waking a hibernating object.
     try {
       ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('{"t":"ping"}', '{"t":"pong"}'));
@@ -106,6 +158,37 @@ export class GameRoom extends DurableObject {
     if (this.room) {
       await this.ctx.storage.put('room', this.room);
       this.syncListing();
+      this.syncHubStatus();
+    }
+  }
+
+  /**
+   * Keep each member's UserHub in step with this room (friends see "In a lobby" / "Playing"): tell the hub when a
+   * member enters, when the room starts, and clear it when they leave or the room finishes / expires. Only changes
+   * are sent. A hub that did not take the update (the user is offline) is retried at most every HUB_RETRY_MS.
+   * Best effort: never throws, never blocks the game.
+   */
+  syncHubStatus(clearAll = false) {
+    const r = this.room;
+    if (!r) return;
+    const now = Date.now();
+    const sent = new Map();
+    for (const [uid, e] of this.hubSent) if (e.ok || now - e.at < HUB_RETRY_MS) sent.set(uid, e.state);
+    const desired = clearAll ? new Map() : roomMemberStates(r, this.connectedIds());
+    const updates = diffStates(sent, desired);
+    if (!updates.length) return;
+    const jobs = updates.map(async ([uid, state]) => {
+      if (state) this.hubSent.set(uid, { state, ok: false, at: now });
+      else this.hubSent.delete(uid);
+      const accepted = await setUserRoomStatus(this.env, uid, state);
+      const e = this.hubSent.get(uid);
+      if (accepted && e && e.state === state) e.ok = true;
+    });
+    this.hubJob = Promise.all(jobs).catch(() => {});
+    try {
+      this.ctx.waitUntil(this.hubJob);
+    } catch {
+      /* no execution context (tests) */
     }
   }
 
@@ -158,10 +241,66 @@ export class GameRoom extends DurableObject {
   withWindowClock(view) {
     const r = this.room;
     const p = view && view.pending;
-    if (!view || view.phase !== 'snatch' || !p || p.type !== 'snatch' || !Number.isFinite(p.ms)) return view;
+    // Same for an open sealed auction (`pending.type` 'auction', window `pending.ms`): the countdown survives a reload.
+    if (!view || (view.phase !== 'snatch' && view.phase !== 'auction') || !p || p.type !== view.phase || !Number.isFinite(p.ms)) return view;
     const d = (typeof this.adapter.deadlines === 'function' ? this.adapter.deadlines(r.state) : [])[0];
-    const startedAt = d ? r.deadlines?.[d.key] ?? r.lastApplyAt + r.animMs : Date.now();
+    const startedAt = d ? this.deadlineStart(d) : Date.now();
     return { ...view, pending: { ...p, remainingMs: Math.max(0, Math.min(p.ms, startedAt + p.ms - Date.now())) } };
+  }
+
+  /** When an adapter timer started counting: when it first appeared (after the animation, or at once for `anchor: 'apply'`). */
+  deadlineStart(d) {
+    const r = this.room;
+    return r.deadlines?.[d.key] ?? (d.anchor === 'apply' ? r.lastApplyAt : r.lastApplyAt + r.animMs);
+  }
+
+  /** Seated players the game is waiting for (adapter.pendingPlayerIds, default the turn player). */
+  waitingIds() {
+    const r = this.room;
+    const a = this.adapter;
+    if (!r || !a || r.status !== 'playing' || !r.state || a.isOver(r.state)) return [];
+    const raw = typeof a.pendingPlayerIds === 'function' ? a.pendingPlayerIds(r.state) || [] : [a.turnPlayerId(r.state)];
+    const out = [];
+    for (const id of raw) if (id != null && !out.includes(id) && r.players.some((p) => p.id === id)) out.push(id);
+    return out;
+  }
+
+  /**
+   * The decision clock sent with every state: `deadline` = when the room will next play a move on its
+   * own (see plan(): the 45 s timer counted after the animation, the shorter pace for idle or
+   * disconnected players, or an adapter timer), `waitingFor` = who the game waits for.
+   */
+  clockView() {
+    const plan = this.plan();
+    return { deadline: plan ? plan.at : null, waitingFor: this.waitingIds() };
+  }
+
+  /** One `state` message (the clock is the same for every viewer). */
+  stateMessage(state, events, clock = this.clockView()) {
+    // `now` = the server's clock at sending: clients correct their countdowns for a wrong device clock (see localClock)
+    return { t: 'state', state, events, seq: this.room.seq, clock, now: Date.now() };
+  }
+
+  /** Pieces nobody (except `exceptId`) holds, in the adapter's order. */
+  freePieces(exceptId) {
+    const taken = new Set(this.room.players.filter((p) => p.id !== exceptId && p.piece).map((p) => p.piece));
+    return pieceIds(this.adapter).filter((id) => !taken.has(id));
+  }
+
+  /**
+   * `connected` as the room shows it: an open socket, or a socket that closed less than GRACE_MS ago
+   * (a reload or a network blip does not flap the seat). Finished rooms and departed seats: live sockets only.
+   */
+  presenceOf(p, sockets, now) {
+    const r = this.room;
+    if (sockets.has(p.id)) return true;
+    if (p.left || r.status === 'finished') return false;
+    const since = r.disc[p.id];
+    return since != null && now - since < GRACE_MS;
+  }
+
+  presenceSignature(view) {
+    return JSON.stringify(view.players.map((p) => [p.id, p.connected]));
   }
 
   /** Settings as the lobby shows them (adapters may complete them with the engine's own defaults). */
@@ -171,9 +310,32 @@ export class GameRoom extends DurableObject {
     return a && typeof a.lobbySettings === 'function' ? a.lobbySettings(s) : s;
   }
 
+  /**
+   * How long a connected human has to act on this room's game, in ms: the adapter's `turnMs(state)` (host rule
+   * `turnSeconds`, kept by the running game in its own config), else the old constant TURN_MS.
+   */
+  turnMs() {
+    const a = this.adapter;
+    const ms = a && typeof a.turnMs === 'function' ? Number(a.turnMs(this.room && this.room.state)) : NaN;
+    return Number.isFinite(ms) && ms >= 1000 ? Math.round(ms) : TURN_MS;
+  }
+
+  /** How many decisions in a row this connected human let run out without acting (0 for anyone who has acted or reconnected since). */
+  idleStrikes(id) {
+    const r = this.room;
+    return (r && r.idle && r.idle[id]) || 0;
+  }
+
+  clearIdle(id) {
+    const r = this.room;
+    if (r.idle) delete r.idle[id];
+    if (r.idleTurn) delete r.idleTurn[id];
+  }
+
   roomView() {
     const r = this.room;
     const connected = this.connectedIds();
+    const now = Date.now();
     return {
       code: r.code,
       status: r.status,
@@ -187,7 +349,10 @@ export class GameRoom extends DurableObject {
         name: p.name,
         avatar: p.avatar,
         ready: !!p.ready,
-        connected: connected.has(p.id),
+        connected: this.presenceOf(p, connected, now),
+        piece: typeof p.piece === 'string' ? p.piece : null,
+        cosmetics: cleanEquipped(p.cosmetics),
+        net: this.net.view(p.id, connected.has(p.id), now),
       })),
     };
   }
@@ -198,21 +363,110 @@ export class GameRoom extends DurableObject {
    */
   broadcastState(events) {
     const r = this.room;
+    const clock = this.clockView();
     let shared = null;
     for (const ws of this.liveSockets()) {
       const uid = ws.deserializeAttachment()?.userId;
       const view = this.viewOf(uid);
       if (view === r.state) {
-        shared ||= JSON.stringify({ t: 'state', state: r.state, events, seq: r.seq });
+        shared ||= JSON.stringify(this.stateMessage(r.state, events, clock));
         this.send(ws, shared);
       } else {
-        this.send(ws, { t: 'state', state: view, events, seq: r.seq });
+        this.send(ws, this.stateMessage(view, events, clock));
       }
     }
   }
 
   broadcastRoom() {
-    this.broadcast({ t: 'room', room: this.roomView() });
+    const room = this.roomView();
+    this.room.presenceSig = this.presenceSignature(room); // kept in the record: survives hibernation
+    this.netSig = NetPresence.signature(room.players); // memory only: net never goes into the record
+    this.netBroadcastAt = Date.now();
+    this.broadcast({ t: 'room', room });
+  }
+
+  /**
+   * A member reported their round-trip time. Everyone else sees it as `net` in the `room` message, but only when a
+   * member's bars (or their staleness) change, at most once per second; the rest is dropped on the floor.
+   */
+  onNet(att, msg) {
+    const r = this.room;
+    if (!r || !r.players.some((p) => p.id === att.userId)) return; // not seated: nothing to show
+    const rtt = parseNetRtt(msg.rtt);
+    if (rtt == null) return;
+    if (!this.net.report(att.userId, rtt, Date.now())) return; // faster than one report per 2 s: ignored
+    this.flushNet();
+  }
+
+  /** Broadcast `room` if the visible net state changed (coalesced), and arm the timer for the next change. */
+  flushNet() {
+    const r = this.room;
+    if (!r || !r.players.length) return;
+    const now = Date.now();
+    if (NetPresence.signature(this.roomView().players) !== this.netSig) {
+      const wait = this.netBroadcastAt + NET_BROADCAST_GAP_MS - now;
+      if (wait > 0) return this.armNetTimer(wait);
+      this.broadcastRoom();
+    }
+    const next = this.net.nextChangeAt(this.connectedIds(), now);
+    if (next != null) this.armNetTimer(next - now);
+  }
+
+  /** One short timer (never longer than NET_LOST_MS): the coalesced broadcast, or a report turning stale / its member lost. */
+  armNetTimer(delay) {
+    const at = Date.now() + delay;
+    if (this.netTimer && this.netTimerAt <= at) return; // an earlier wake-up is pending
+    if (this.netTimer) clearTimeout(this.netTimer);
+    this.netTimerAt = at;
+    this.netTimer = setTimeout(() => {
+      this.netTimer = null;
+      try {
+        this.flushNet();
+      } catch (err) {
+        console.error('net broadcast failed:', err && err.message);
+      }
+    }, Math.max(0, delay));
+  }
+
+  /** Re-broadcast `room` when somebody's `connected` flag changed without an event (their grace ran out). */
+  async broadcastPresenceIfChanged() {
+    const r = this.room;
+    if (!r || !r.players.length) return;
+    if (this.presenceSignature(this.roomView()) === r.presenceSig) return;
+    this.broadcastRoom();
+    await this.save();
+  }
+
+  /**
+   * Read a member's equipped cosmetics (`users.equipped`) in the background. Best effort: on failure
+   * the member keeps what they had (`{}` for a new member). Broadcasts `room` when they changed.
+   */
+  refreshCosmetics(userId) {
+    if (!hasDb(this.env)) return;
+    const now = Date.now();
+    if (now - (this.cosmeticsAt.get(userId) || 0) < COSMETICS_REFRESH_MS) return;
+    this.cosmeticsAt.set(userId, now);
+    const job = (async () => {
+      let equipped;
+      try {
+        equipped = cleanEquipped(await loadEquipped(this.env, userId));
+      } catch (err) {
+        this.cosmeticsAt.delete(userId); // try again on the next connect
+        console.error('cosmetics load failed:', err && err.code ? `${err.code} ${err.message}` : err && err.message);
+        return;
+      }
+      const m = this.room && this.room.players.find((p) => p.id === userId);
+      if (!m || JSON.stringify(cleanEquipped(m.cosmetics)) === JSON.stringify(equipped)) return;
+      m.cosmetics = equipped;
+      await this.save();
+      this.broadcastRoom();
+    })().catch(() => {});
+    this.cosmeticsJob = job;
+    try {
+      this.ctx.waitUntil(job);
+    } catch {
+      /* no execution context (tests) */
+    }
   }
 
   hostName() {
@@ -336,6 +590,7 @@ export class GameRoom extends DurableObject {
       meta: {}, // opaque per-match data the adapter folds events into (see adapter.track)
       deadlines: {}, // adapter timer key -> when it started counting
       afk: {},
+      idle: {}, // consecutive decisions a connected human let run out (see AFK_STRIKES)
       disc: { [host.id]: now }, // the host must connect within LOBBY_GRACE_MS
       banned: {},
       noHumanSince: null,
@@ -402,23 +657,28 @@ export class GameRoom extends DurableObject {
     if (!member) {
       if (r.status !== 'lobby') return this.rejectSocket(4003, 'This game has already started.');
       if (r.players.length >= r.maxPlayers) return this.rejectSocket(4003, 'This room is full.');
-      member = { id: userId, name, avatar, ready: false, guest };
+      member = { id: userId, name, avatar, ready: false, guest, piece: this.freePieces(userId)[0] ?? null, cosmetics: {} };
       r.players.push(member);
       if (!r.hostId) r.hostId = userId;
+      if (!guest) this.inviteJoined = notifyInviteJoined(this.env, r.code, { id: userId, name, avatar }, this.ctx);
     } else {
       // Rejoin: refresh the display identity, clear absence markers.
       member.name = name;
       member.avatar = avatar;
       member.guest = guest;
       member.left = false;
+      if (r.status === 'lobby' && !member.piece) member.piece = this.freePieces(userId)[0] ?? null;
     }
+    this.hubSent.delete(userId); // (re)connecting: make sure their hub hears where they are
     delete r.disc[userId];
     delete r.afk[userId];
+    this.clearIdle(userId); // back at the table: a full decision timer again
     r.noHumanSince = null;
     this.touch();
 
     // Keep a bounded number of sockets per user (stale ones from flaky networks pile up).
     const mine = this.ctx.getWebSockets(userId).filter((ws) => ws.readyState === 1);
+    if (!mine.length) this.net.forget(userId); // a fresh connection starts "measuring", not with the last session's number
     if (mine.length >= MAX_SOCKETS_PER_USER) {
       const oldest = mine.sort(
         (a, b) => (a.deserializeAttachment()?.at || 0) - (b.deserializeAttachment()?.at || 0),
@@ -437,8 +697,9 @@ export class GameRoom extends DurableObject {
 
     await this.save();
     this.broadcastRoom();
-    if (r.state) this.send(server, { t: 'state', state: this.viewOf(userId), events: [], seq: r.seq });
+    if (r.state) this.send(server, this.stateMessage(this.viewOf(userId), []));
     await this.scheduleAlarm();
+    this.refreshCosmetics(userId);
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -468,6 +729,7 @@ export class GameRoom extends DurableObject {
     }
     if (!msg || typeof msg !== 'object' || typeof msg.t !== 'string') return this.sendError(ws, 'Invalid message.');
     if (msg.t === 'ping') return this.send(ws, { t: 'pong' });
+    if (msg.t === 'net') return this.onNet(att, msg); // own gentle limit (1 per 2 s); never an error, never counted as a game message
     if (!this.allowMessage(att.userId)) return this.sendError(ws, 'You are sending messages too fast.');
     if (!this.adapter) return this.sendError(ws, 'This game is no longer available.');
 
@@ -479,6 +741,8 @@ export class GameRoom extends DurableObject {
     switch (msg.t) {
       case 'ready':
         return this.onReady(ws, me, msg);
+      case 'piece':
+        return this.onPiece(ws, me, msg);
       case 'settings':
         return this.onSettings(ws, isHost, msg);
       case 'visibility':
@@ -491,6 +755,8 @@ export class GameRoom extends DurableObject {
         return this.onAction(ws, me, msg);
       case 'chat':
         return this.onChat(ws, me, msg);
+      case 'voice':
+        return this.onVoice(ws, me, msg);
       case 'leave':
         return this.onLeave(ws, me);
       default:
@@ -514,7 +780,9 @@ export class GameRoom extends DurableObject {
   async onDisconnect(ws) {
     const r = this.room;
     if (!r) return;
+    this.net.prune(this.connectedIds()); // whoever has no live socket left is no longer measured
     if (r.players.length && this.reconcileConnections(Date.now())) await this.save();
+    this.syncHubStatus(); // a lobby member whose socket dropped is no longer "at the table"
     this.broadcastRoom();
     await this.scheduleAlarm();
   }
@@ -527,6 +795,20 @@ export class GameRoom extends DurableObject {
     me.ready = msg.ready;
     this.touch();
     return this.save().then(() => this.broadcastRoom());
+  }
+
+  async onPiece(ws, me, msg) {
+    const r = this.room;
+    if (r.status !== 'lobby') return this.sendError(ws, 'Pieces can only be chosen in the lobby.');
+    const ids = pieceIds(this.adapter);
+    if (!ids.length) return this.sendError(ws, 'This game has no pieces to choose from.');
+    if (typeof msg.piece !== 'string' || !ids.includes(msg.piece)) return this.sendError(ws, 'Unknown piece.');
+    if (me.piece === msg.piece) return this.send(ws, { t: 'room', room: this.roomView() });
+    if (r.players.some((p) => p.id !== me.id && p.piece === msg.piece)) return this.sendError(ws, 'That piece is taken.');
+    me.piece = msg.piece;
+    this.touch();
+    await this.save();
+    this.broadcastRoom();
   }
 
   async onSettings(ws, isHost, msg) {
@@ -636,6 +918,7 @@ export class GameRoom extends DurableObject {
           id: p.id,
           name: p.name,
           avatar: p.avatar,
+          ...(typeof p.piece === 'string' && p.piece ? { piece: p.piece } : {}),
         })),
         settings: { ...r.settings },
         seed: crypto.getRandomValues(new Uint32Array(1))[0],
@@ -661,6 +944,8 @@ export class GameRoom extends DurableObject {
     r.deadlines = {};
     this.syncDeadlines(); // a game may start with a timer already running
     r.afk = {};
+    r.idle = {};
+    r.idleTurn = {};
     r.disc = {};
     r.noHumanSince = null;
     this.autoFailures.clear();
@@ -681,6 +966,7 @@ export class GameRoom extends DurableObject {
     const action = typeof a.sanitizeAction === 'function' ? a.sanitizeAction(msg.action, me.id) : defaultSanitizeAction(msg.action, me.id);
     if (!action) return this.sendError(ws, 'Invalid action.');
     delete r.afk[me.id]; // a human who acts is no longer idle
+    this.clearIdle(me.id);
     delete r.disc[me.id];
     const res = await this.applyAndBroadcast(action);
     if (res.error) {
@@ -703,9 +989,10 @@ export class GameRoom extends DurableObject {
       // A sealed press (docs/GAME_RULES.md 9.4): nobody else may learn that it happened, or when. No seq bump, no
       // broadcast; only the presser gets a snapshot so their own button locks. The window's timer is unchanged.
       this.touch();
+      const clock = this.clockView();
       for (const ws of this.liveSockets()) {
         if (ws.deserializeAttachment()?.userId === action.playerId) {
-          this.send(ws, { t: 'state', state: this.viewOf(action.playerId), events: [], seq: r.seq });
+          this.send(ws, this.stateMessage(this.viewOf(action.playerId), [], clock));
         }
       }
       await this.save();
@@ -714,7 +1001,7 @@ export class GameRoom extends DurableObject {
     }
     r.seq += 1;
     r.lastApplyAt = Date.now();
-    r.animMs = typeof a.animationMs === 'function' ? a.animationMs(res.events) : 0;
+    r.animMs = typeof a.animationMs === 'function' ? a.animationMs(res.events, res.state) : 0;
     if (typeof a.track === 'function') r.meta = a.track(r.meta || {}, res.events, r.state) || r.meta || {};
     this.syncDeadlines();
     this.touch();
@@ -738,7 +1025,7 @@ export class GameRoom extends DurableObject {
     const r = this.room;
     const list = typeof this.adapter.deadlines === 'function' ? this.adapter.deadlines(r.state) || [] : [];
     const next = {};
-    for (const d of list) next[d.key] = r.deadlines?.[d.key] ?? r.lastApplyAt + r.animMs;
+    for (const d of list) next[d.key] = this.deadlineStart(d);
     r.deadlines = next;
   }
 
@@ -758,6 +1045,58 @@ export class GameRoom extends DurableObject {
     }
   }
 
+  /** Does this member own voice line `id`? Cached per member; a miss re-reads the database at most every VOICE_RECHECK_MS. Throws if the read fails. */
+  async ownsVoice(userId, id) {
+    const now = Date.now();
+    const c = this.voiceOwned.get(userId);
+    if (c && now - c.at < VOICE_OWNED_TTL_MS && c.ids.has(id)) return true;
+    if (c && now - c.at < VOICE_RECHECK_MS) return false;
+    const bought = await loadOwnedItemIds(this.env, userId);
+    this.voiceOwned.set(userId, { ids: new Set(bought.filter(isVoiceId)), at: Date.now() });
+    return this.voiceOwned.get(userId).ids.has(id);
+  }
+
+  /**
+   * `{t:'voice', id}`: play an owned voice line for everybody in the room (lobby or game, any time, not only on the sender's
+   * turn). Broadcast to EVERY open socket including the sender's: `{t:'voice', from, id, ts, seq}` (seq counts this sender's
+   * accepted lines so their client can drop the echo of an optimistic local play). Nothing is stored; it is not an action:
+   * it never changes the game, resets no timer and clears no idle / afk flag.
+   */
+  async onVoice(ws, me, msg) {
+    const id = sanitizeVoiceId(msg.id);
+    if (!id) return this.sendError(ws, 'Unknown voice line.');
+    let owns = false;
+    try {
+      owns = await this.ownsVoice(me.id, id);
+    } catch (err) {
+      console.error('voice ownership check failed:', err && err.code ? `${err.code} ${err.message}` : err && err.message);
+      return this.sendError(ws, 'Could not check your voice lines. Try again.');
+    }
+    if (!owns) return this.sendError(ws, 'Buy voice lines in the shop (sign in).');
+
+    const L = VOICE_LIMITS;
+    const now = Date.now();
+    const key = (this.room && this.room.matchId) || 'lobby';
+    if (this.voiceGame.key !== key) this.voiceGame = { key, counts: new Map() };
+    const mine = (this.voiceTimes.get(me.id) || []).filter((t) => now - t < L.burstWindowMs);
+    this.voiceRoomTimes = this.voiceRoomTimes.filter((t) => now - t < L.roomWindowMs);
+    if ((this.voiceGame.counts.get(me.id) || 0) >= L.perGame) return this.sendError(ws, 'Voice line limit reached for this game.');
+    if (
+      (mine.length && now - mine[mine.length - 1] < L.cooldownMs) ||
+      mine.length >= L.burst ||
+      this.voiceRoomTimes.length >= L.roomMax
+    ) {
+      return this.sendError(ws, 'Voice lines are limited: wait a few seconds.');
+    }
+    mine.push(now);
+    this.voiceTimes.set(me.id, mine);
+    this.voiceRoomTimes.push(now);
+    this.voiceGame.counts.set(me.id, (this.voiceGame.counts.get(me.id) || 0) + 1);
+    const seq = (this.voiceSeq.get(me.id) || 0) + 1;
+    this.voiceSeq.set(me.id, seq);
+    this.broadcast({ t: 'voice', from: me.id, id, ts: now, seq });
+  }
+
   // ------------------------------------------------------------------ timers (alarms)
 
   /**
@@ -765,7 +1104,7 @@ export class GameRoom extends DurableObject {
    * - the adapter's own timers (`deadlines`, e.g. an unanswered offer is auto-rejected);
    * - every human the game waits for (`pendingPlayerIds`): idle (afk) and disconnected-past-grace
    *   humans are auto-played (`idleAction`) after the same short pause; a connected human gets
-   *   TURN_MS (counted from when the last animation ends), then is flagged idle.
+   *   this room's decision time (`turnMs()`, counted from when the last animation ends), then is flagged idle.
    * The earliest one wins.
    */
   plan() {
@@ -780,11 +1119,12 @@ export class GameRoom extends DurableObject {
 
     const deadlines = typeof a.deadlines === 'function' ? a.deadlines(r.state) || [] : [];
     for (const d of deadlines) {
-      const startedAt = r.deadlines?.[d.key] ?? r.lastApplyAt + r.animMs;
+      const startedAt = this.deadlineStart(d);
       candidates.push({ at: startedAt + d.afterMs, id: d.playerId, action: d.action, timeout: false });
     }
+    const adapterAt = candidates.length ? Math.min(...candidates.map((c) => c.at)) : 0; // when the first adapter timer is due
 
-    const waiting = typeof a.pendingPlayerIds === 'function' ? a.pendingPlayerIds(r.state) : [a.turnPlayerId(r.state)];
+    const waiting =typeof a.pendingPlayerIds === 'function' ? a.pendingPlayerIds(r.state) : [a.turnPlayerId(r.state)];
     for (const id of waiting) {
       const seat = id == null ? null : r.players.find((p) => p.id === id);
       if (!seat) continue;
@@ -792,10 +1132,17 @@ export class GameRoom extends DurableObject {
       if (!action) continue;
       let at;
       let timeout = false;
-      if (r.afk[id]) at = pace(action);
-      else if (r.disc[id] != null) at = Math.max(pace(action), r.disc[id] + GRACE_MS);
-      else {
-        at = r.lastApplyAt + r.animMs + TURN_MS;
+      if (r.disc[id] != null) {
+        // Gone (no socket): played for only once the reconnect grace has run out, however idle they were before.
+        at = Math.max(pace(action), r.disc[id] + GRACE_MS);
+      } else {
+        // Present: the full decision timer for THIS decision, counted from when the last animation ends. Being slow on an
+        // earlier turn never shortens it (a stale idle flag used to auto-roll every later turn after ~1.5 s); only a player
+        // who let AFK_STRIKES decisions run out in a row gets the shorter AFK window.
+        // A running adapter timer (an unanswered trade offer) is the timer for what it waits on: the idle move never
+        // comes before it, so a trade timer longer than the decision timer is not cut short (and nobody is flagged idle).
+        const limit = this.idleStrikes(id) >= AFK_STRIKES ? Math.min(this.turnMs(), AFK_TURN_MS) : this.turnMs();
+        at = Math.max(r.lastApplyAt + r.animMs + limit, adapterAt);
         timeout = true;
       }
       candidates.push({ at, id, action, timeout });
@@ -837,6 +1184,13 @@ export class GameRoom extends DurableObject {
     if (!r) return;
     const now = Date.now();
     const times = [r.lastActivity + ROOM_TTL_MS];
+    // A seat's `connected` flag turns false when its reconnect grace runs out: wake up to tell everyone.
+    if (r.status !== 'finished') {
+      for (const p of r.players) {
+        const end = r.disc[p.id] != null ? r.disc[p.id] + GRACE_MS : null;
+        if (end != null && end > now) times.push(end);
+      }
+    }
     if (r.status === 'finished' && !r.persisted && !r.abandoned && r.persistAt != null) times.push(r.persistAt);
     if (r.status === 'playing') {
       const plan = this.plan();
@@ -884,6 +1238,7 @@ export class GameRoom extends DurableObject {
         }
       }
       this.dropListing(r.code);
+      this.syncHubStatus(true);
       await this.ctx.storage.deleteAlarm();
       await this.ctx.storage.deleteAll();
       this.room = null;
@@ -935,7 +1290,15 @@ export class GameRoom extends DurableObject {
       } else {
         const plan = this.plan();
         if (plan && plan.at <= now + 25) {
-          if (plan.timeout) r.afk[plan.id] = true;
+          if (plan.timeout) {
+            r.afk[plan.id] = true;
+            // One strike per TURN left idle (roll + buy + end turn are three decisions of one turn, not three strikes).
+            const turnKey = r.state && r.state.turnCount;
+            r.idle = r.idle || {};
+            r.idleTurn = r.idleTurn || {};
+            if (turnKey == null || r.idleTurn[plan.id] !== turnKey) r.idle[plan.id] = (r.idle[plan.id] || 0) + 1;
+            r.idleTurn[plan.id] = turnKey ?? null;
+          }
           const res = await this.applyAndBroadcast(plan.action);
           dirty = false;
           if (res.error) await this.handleAutoFailure(plan.id, res.error);
@@ -945,6 +1308,7 @@ export class GameRoom extends DurableObject {
     }
 
     if (dirty) await this.save();
+    if (this.room) await this.broadcastPresenceIfChanged();
     await this.scheduleAlarm();
   }
 

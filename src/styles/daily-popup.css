@@ -1,0 +1,145 @@
+/* ==========================================================================
+   Daily reward popup (src/platform/home/DailyRewardPopup.jsx). Prefix `dp-`.
+   The dialog chrome (backdrop, centred card on desktop, bottom sheet on phones, grip, close X, enter / exit) is the
+   shared Modal; this file only styles what goes inside it and reuses the Home card's classes (.hh2-daily__gift,
+   .hh2-daily__streak, .hh2-daypip, .xh-claim, .xh-gain, .xh-flight) rather than restyling them.
+   Tokens only (--hub-*, --st-*, --dur-*, --ease-out). Motion: transform + opacity, ease-out, under 300 ms;
+   reduced motion (OS setting or the hub switch) keeps a plain fade and drops the wiggle, sheen and stagger.
+   ========================================================================== */
+
+/* the Home card's variables live on .hh2 / .xh-home / .hh2-daily, which the portalled modal is outside of */
+.dp {
+  --hh2-gold: var(--hub-gold);
+  --xh-gold: var(--hub-gold);
+  --xh-ease-out: var(--ease-out);
+  --g-accent: #ffc857;
+  --g-accent-2: #ff9f43;
+  --g-on: #3a2400;
+  --g-glow: rgba(var(--hub-gold-rgb), 0.38);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  color: var(--hub-text);
+}
+.hh-modal__panel.dp-panel {
+  max-width: 440px;
+}
+.hh-modal__panel.dp-panel .hh-modal__title {
+  font-size: var(--st-t-l);
+}
+
+.dp-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.dp-sub {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--st-t-s);
+  line-height: 1.35;
+  color: var(--hub-dim);
+}
+
+.dp-action {
+  position: relative;
+}
+.dp-claim {
+  min-height: 56px;
+}
+.dp-later {
+  min-height: 48px;
+}
+
+.dp-bal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--st-t-s);
+  font-weight: 700;
+  color: var(--hub-faint);
+}
+.dp-bal b {
+  font-variant-numeric: tabular-nums;
+  color: var(--hub-text);
+}
+.dp-bal b.is-rolling {
+  color: var(--hub-gold);
+}
+.dp-err {
+  margin: 0;
+  font-size: var(--st-t-s);
+  font-weight: 700;
+  text-align: center;
+  color: var(--hub-bad);
+}
+
+/* ---------- entrance: the seven days settle in one after another (the card itself uses the Modal's) ---------- */
+.dp .hh2-daypip {
+  animation: dp-pip var(--dur-2) var(--ease-out) both;
+}
+.dp .hh2-daypip:nth-child(1) { animation-delay: 120ms; }
+.dp .hh2-daypip:nth-child(2) { animation-delay: 160ms; }
+.dp .hh2-daypip:nth-child(3) { animation-delay: 200ms; }
+.dp .hh2-daypip:nth-child(4) { animation-delay: 240ms; }
+.dp .hh2-daypip:nth-child(5) { animation-delay: 280ms; }
+.dp .hh2-daypip:nth-child(6) { animation-delay: 320ms; }
+.dp .hh2-daypip:nth-child(7) { animation-delay: 360ms; }
+@keyframes dp-pip {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.94);
+  }
+}
+@keyframes dp-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ---------- narrow phones (360 px): the seven pips need every pixel ---------- */
+@media (max-width: 400px) {
+  .hh-modal__panel.dp-panel {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .dp {
+    gap: 16px;
+  }
+  .dp .hh2-daily__days {
+    gap: 4px;
+  }
+}
+
+/* ---------- reduced motion: a fade, no bounce, no wiggle, no sheen, no stagger ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .hh-modal__panel.dp-panel {
+    animation: dp-fade 160ms ease-out both;
+    transform: none;
+  }
+  .dp .hh2-daypip,
+  .dp .xh-gift--ready,
+  .dp .xh-claim::after,
+  .dp .xh-gain {
+    animation: none;
+  }
+  .dp .xh-claim::after {
+    display: none;
+  }
+}
+:root[data-motion='reduced'] .hh-modal__panel.dp-panel {
+  animation: dp-fade 160ms ease-out both;
+  transform: none;
+}
+:root[data-motion='reduced'] .dp .hh2-daypip,
+:root[data-motion='reduced'] .dp .xh-gift--ready,
+:root[data-motion='reduced'] .dp .xh-claim::after,
+:root[data-motion='reduced'] .dp .xh-gain {
+  animation: none;
+}
+:root[data-motion='reduced'] .dp .xh-claim::after {
+  display: none;
+}

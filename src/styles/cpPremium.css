@@ -1,0 +1,122 @@
+/* The centre of the board, premium pass: a night-market play-mat (indigo / teal with warm lantern light), a clearer hierarchy
+   (caption, then a small plain-words "what to do" line), the Roll button as the hero, consistent primary actions, a premium
+   segmented tab control, a landed-tile chip that springs in. Loaded after controlpanel.css; every rule is scoped under `.cp`
+   (the phone dock / paper sheets keep their own look). Motion: transform / opacity only, tokens --dur-* / --ease-*;
+   controlpanel.css already stills every animation inside `.cp` under reduced motion. */
+
+/* ---------------------------------------------------------------- the mat */
+.cp .cp__in {
+  background:
+    radial-gradient(75% 38% at 50% 0%, rgba(255, 200, 87, 0.11), transparent 72%),
+    radial-gradient(60% 40% at 50% 100%, rgba(76, 201, 240, 0.07), transparent 70%),
+    linear-gradient(180deg, #0c2b3b 0%, #0a2630 52%, #071d25 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 211, 107, 0.2), inset 0 0 3.4cqmin rgba(0, 0, 0, 0.5);
+}
+/* a few lanterns glowing in the dark: soft bokeh, static (the lamp under the die does the breathing) */
+.cp .cp-mat::before {
+  background:
+    radial-gradient(circle at 9% 14%, rgba(255, 200, 87, 0.16) 0 2.2%, transparent 2.6%),
+    radial-gradient(circle at 92% 20%, rgba(255, 138, 61, 0.13) 0 1.8%, transparent 2.3%),
+    radial-gradient(circle at 15% 86%, rgba(76, 201, 240, 0.1) 0 1.6%, transparent 2.1%),
+    radial-gradient(circle at 86% 90%, rgba(255, 200, 87, 0.12) 0 2%, transparent 2.5%),
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 12px),
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 12px);
+}
+/* the thrown die (and its result numeral) rises over the tab bar and the event ribbon, never behind them */
+.cp .cp-hero { z-index: 6; }
+.cp .cp-tabs { z-index: 3; }
+.cp .cp-hero__die::before { animation: cp-lamp 4.2s var(--ease-std) infinite; }
+@keyframes cp-lamp { 50% { opacity: 0.62; } }
+
+/* ---------------------------------------------------------------- tabs: a premium segmented control */
+.cp .cp-tabs {
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.28));
+  border-color: rgba(255, 202, 122, 0.24);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.cp .cp-tabs__thumb {
+  background: linear-gradient(180deg, rgba(255, 224, 138, 0.3), rgba(255, 182, 90, 0.14));
+  box-shadow: inset 0 0 0 1px rgba(255, 202, 122, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 0 14px -2px rgba(255, 200, 87, 0.4);
+}
+.cp .cp-tab { font-weight: 800; letter-spacing: 0.01em; }
+.cp .cp-tab.is-on { color: #fff8e6; text-shadow: 0 0 10px rgba(255, 200, 87, 0.35); }
+
+/* ---------------------------------------------------------------- hierarchy: caption, then the plain-words line */
+.cp .cp-status { font-weight: 850; }
+.cp .cp-status.is-mine { text-shadow: 0 0 18px rgba(255, 200, 87, 0.38), 0 2px 0 rgba(0, 0, 0, 0.35); }
+.cp-todo {
+  margin: 0; max-width: 100%; text-align: center; text-wrap: balance;
+  color: var(--cp-ink-2); font-size: clamp(11.5px, 2.45cqmin, 15px); font-weight: 650; line-height: 1.3;
+  animation: cp-status-in var(--dur-3) var(--ease-out) 60ms backwards;
+}
+.cp__in:not([data-tab='buy']) .cp-todo { display: none; }
+@container cp (max-height: 400px) { .cp .cp-todo { display: none; } }
+@container cp (max-width: 420px) { .cp .cp-todo { font-size: clamp(11px, 3.4cqmin, 12.5px); } }
+
+/* ---------------------------------------------------------------- primary actions: one family */
+.cp .cp-primary:not(.is-wait) {
+  min-height: max(52px, 10.6cqmin);
+  border-radius: 17px;
+  font-weight: 850;
+  letter-spacing: 0.01em;
+}
+.cp .cp-primary.cp-btn--gold {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0) 52%), linear-gradient(180deg, #ffdc82, #ffb83f);
+  box-shadow: 0 4px 0 #a8670e, 0 12px 26px -6px rgba(255, 170, 60, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+.cp .cp-primary.cp-btn--green {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 52%), linear-gradient(180deg, #25a666, #178049);
+  box-shadow: 0 4px 0 #0a4627, 0 12px 26px -6px rgba(61, 220, 151, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+.cp .cp-primary.cp-btn--blue {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 52%), linear-gradient(180deg, #3592c8, #1f6f9e);
+  box-shadow: 0 4px 0 #11405c, 0 12px 26px -6px rgba(76, 201, 240, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+.cp .cp-primary.cp-btn--gold:active:not(:disabled), .cp .cp-primary.cp-btn--green:active:not(:disabled), .cp .cp-primary.cp-btn--blue:active:not(:disabled) {
+  transform: translateY(3px) scale(0.995);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+.cp .cp-primary.cp-btn--dark:not(.is-wait) { border-color: rgba(255, 202, 122, 0.4); background: rgba(255, 202, 122, 0.1); color: #ffe9c4; }
+/* ROLL is the hero: bigger, with a gold halo that breathes for as long as it is your move (opacity only) */
+.cp .cp-primary.is-roll { min-height: max(58px, 12cqmin); font-size: 1.5em; letter-spacing: 0.05em; text-transform: uppercase; }
+.cp .cp-actions[data-kind='roll'] .cp-primary.is-roll::after {
+  inset: -4px; border-radius: 21px;
+  box-shadow: 0 0 0 3px rgba(255, 214, 120, 0.6), 0 0 30px 6px rgba(255, 186, 60, 0.5);
+  animation: cp-breathe 2.6s var(--ease-std) infinite;
+}
+@keyframes cp-breathe { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+/* the keyboard hint: a little keycap */
+.cp .cp-kbd {
+  padding: 0 0.6em; border: 1px solid currentColor; border-radius: 6px; background: rgba(0, 0, 0, 0.14);
+  box-shadow: 0 2px 0 currentColor; font-size: 0.62em; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.8;
+}
+/* a new primary (Roll -> Buy -> End turn ...) springs in; three copies so a change between neighbours restarts the animation */
+.cp .cp-primary.is-roll, .cp .cp-primary.is-skip { animation: cp-primary-a var(--dur-3) var(--ease-spring) backwards; }
+.cp .cp-primary.is-buy, .cp .cp-primary.is-chai { animation: cp-primary-b var(--dur-3) var(--ease-spring) backwards; }
+.cp .cp-primary.is-end, .cp .cp-primary.is-pay { animation: cp-primary-c var(--dur-3) var(--ease-spring) backwards; }
+@keyframes cp-primary-a { from { opacity: 0; transform: translateY(10px) scale(0.95); } }
+@keyframes cp-primary-b { from { opacity: 0; transform: translateY(10px) scale(0.95); } }
+@keyframes cp-primary-c { from { opacity: 0; transform: translateY(10px) scale(0.95); } }
+/* secondary choices (End turn, Pass, Ride): quiet glass, same radius family */
+.cp .cp-actions__sec .cp-btn { border-radius: 14px; }
+.cp .cp-actions__sec .cp-btn--paper { border-color: rgba(255, 255, 255, 0.24); background: rgba(255, 255, 255, 0.09); }
+.cp .cp-wide { border-radius: 14px; }
+
+/* ---------------------------------------------------------------- the tile in play: springs in, its colour bar grows */
+.cp .cp-landed {
+  border-color: rgba(255, 202, 122, 0.22);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(0, 0, 0, 0.3));
+  box-shadow: 0 6px 16px -8px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  animation: cp-landed-in var(--dur-3) var(--ease-spring) backwards;
+}
+.cp .cp-landed__chip { transform-origin: center bottom; animation: cp-chip-grow var(--dur-3) var(--ease-out) 120ms backwards; }
+.cp .cp-landed.is-buying { border-color: rgba(255, 202, 122, 0.7); background: linear-gradient(180deg, rgba(255, 202, 122, 0.16), rgba(255, 202, 122, 0.06)); }
+@keyframes cp-landed-in { from { opacity: 0; transform: translateY(12px) scale(0.93); } }
+@keyframes cp-chip-grow { from { transform: scaleY(0.2); } }
+
+/* ---------------------------------------------------------------- activity lines: a tone dot in front, fresh lines fade in */
+.cp .cp-clog__line::before {
+  content: ''; display: inline-block; width: 0.42em; height: 0.42em; margin-right: 0.55em; vertical-align: 0.1em;
+  border-radius: 50%; background: var(--lc); opacity: 0.85;
+}
+.cp .cp-clog__line.is-fresh { animation-duration: var(--dur-4); }

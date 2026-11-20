@@ -10,12 +10,28 @@ export const FRIEND_CODE_BODY = 4;
 
 const ALLOWED = new Set(CODE_ALPHABET);
 
-/** Pull a code out of whatever was pasted: "abc 234", "https://x.dev/join/abc234?x=1", "ABC-234" … */
+const safeDecode = (v) => {
+  try {
+    return decodeURIComponent(v);
+  } catch {
+    return v;
+  }
+};
+
+/**
+ * The code-bearing part of a pasted link: `?code=ABC234`, or the last path segment of `/join/ABC234`. A bare `/join`
+ * or a link with no path (`https://x.dev`) carries no code, so it yields ''. Anything else comes back trimmed (typing).
+ */
 function stripUrl(raw) {
   let s = String(raw ?? '').trim();
-  if (/^https?:\/\//i.test(s) || s.includes('/')) {
+  const isLink = /^https?:\/\//i.test(s);
+  if (isLink || s.includes('/') || s.includes('?')) {
+    const q = s.match(/[?&](?:code|room)=([^&#\s]*)/i);
+    if (q) return safeDecode(q[1]);
+    if (isLink) s = s.replace(/^https?:\/\/[^/?#]*/i, '');
     s = s.split(/[?#]/)[0].replace(/\/+$/, '');
     s = s.slice(s.lastIndexOf('/') + 1);
+    if (/^join$/i.test(s)) s = '';
   }
   return s;
 }
@@ -30,8 +46,60 @@ export function normalizeRoomCode(raw) {
   return out;
 }
 
+/**
+ * The look-alike characters (O, I, 0, 1) found in what was typed or pasted, so the join screen can say why they
+ * disappeared. Links and other text with a slash are not checked. -> unique, in the order typed.
+ */
+export function rejectedChars(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s || s.includes('/')) return [];
+  const out = [];
+  for (const ch of s.toUpperCase()) if (/[A-Z0-9]/.test(ch) && !ALLOWED.has(ch) && !out.includes(ch)) out.push(ch);
+  return out;
+}
+
 export function isRoomCode(code) {
   return typeof code === 'string' && code.length === ROOM_CODE_LENGTH && [...code].every((c) => ALLOWED.has(c));
+}
+
+/** Is this just a code someone typed or copied bare ("abc 234", "ab-c2-34"), not a sentence or a link? */
+export function isPlainCodeText(raw) {
+  const s = String(raw ?? '').trim();
+  if (!/^[A-Za-z0-9\s-]*$/.test(s)) return false;
+  const tokens = s.split(/[\s-]+/).filter(Boolean);
+  return tokens.length <= 3 && tokens.every((t) => t.length <= 6) && s.replace(/[\s-]/g, '').length <= 12;
+}
+
+/**
+ * Find the room code in whatever was copied: a bare code in any case or spacing, a link (`/join/ABC234`,
+ * `/join?code=ABC234`, the whole invite URL), or the invite message ("Room code: ABC234 ..."). Used for paste
+ * (button, long-press, link opened). Returns up to 6 valid characters, or '' when there is no code to be found.
+ * Look-alike characters (O I 0 1) never count, so "ABC-0O1" does not turn into a code by accident.
+ */
+export function extractRoomCode(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s) return '';
+  const link = s.match(/\/join\/([A-Za-z0-9%-]+)/i) || s.match(/[?&](?:code|room)=([A-Za-z0-9%-]+)/i);
+  if (link) return normalizeRoomCode(safeDecode(link[1]));
+  const labelled = s.match(/\bcode\b(?:\s+is)?\W{0,3}([A-Za-z0-9]{3}[ -]?[A-Za-z0-9]{3})(?![A-Za-z0-9])/i);
+  if (labelled) {
+    const c = normalizeRoomCode(labelled[1]);
+    if (isRoomCode(c)) return c;
+  }
+  if (isPlainCodeText(s)) return normalizeRoomCode(s);
+  // an upper-case token inside a longer message: "ABC234" or "ABC 234"
+  const token = s.match(/(?:^|[^A-Za-z0-9])([A-HJ-NP-Z2-9]{3})[ -]?([A-HJ-NP-Z2-9]{3})(?![A-Za-z0-9])/);
+  return token ? token[1] + token[2] : '';
+}
+
+/** The room code in a query string (`?code=ABC234`), or ''. `search` is `location.search` or a URLSearchParams. */
+export function codeFromSearch(search) {
+  try {
+    const params = search instanceof URLSearchParams ? search : new URLSearchParams(String(search ?? ''));
+    return normalizeRoomCode(params.get('code') || params.get('room') || '');
+  } catch {
+    return '';
+  }
 }
 
 /**
@@ -156,20 +224,33 @@ export function friendShareText(friendCode, origin) {
 }
 
 /**
- * Can the current user enter this room? `info` is GET /api/rooms/:code.
- * Returns a human message when not, or null when fine. Players already in the room may always come back
+ * Why the current user cannot enter this room, as a kind: 'missing' | 'finished' | 'playing' | 'full', or null
+ * when they can. `info` is GET /api/rooms/:code. Players already in the room may always come back
  * (reconnect to a running game, rejoin a full lobby).
  */
-export function roomProblem(info, myId) {
-  if (!info || info.exists === false) return 'No room with that code. Check it and try again.';
+export function roomProblemKind(info, myId) {
+  if (!info || info.exists === false) return 'missing';
   if (info.isMember === true) return null;
   const players = Array.isArray(info.players) ? info.players : null;
   if (players && myId != null && players.some((p) => p && p.id != null && String(p.id) === String(myId))) return null;
-  if (info.status === 'finished') return 'That game has already ended.';
-  if (info.status === 'playing') return 'That game has already started.';
+  if (info.status === 'finished') return 'finished';
+  if (info.status === 'playing') return 'playing';
   const count = players ? players.length : Number(info.players);
-  if (Number.isFinite(count) && Number.isFinite(info.maxPlayers) && info.maxPlayers > 0 && count >= info.maxPlayers) return 'That room is full.';
+  if (Number.isFinite(count) && Number.isFinite(info.maxPlayers) && info.maxPlayers > 0 && count >= info.maxPlayers) return 'full';
   return null;
+}
+
+const PROBLEM_TEXT = {
+  missing: 'No room with that code. Check it and try again.',
+  finished: 'That game has already ended.',
+  playing: 'That game has already started.',
+  full: 'That room is full.',
+};
+
+/** Can the current user enter this room? A human message when not, or null when fine (see `roomProblemKind`). */
+export function roomProblem(info, myId) {
+  const kind = roomProblemKind(info, myId);
+  return kind ? PROBLEM_TEXT[kind] : null;
 }
 
 /** Player count from a room-info payload (`players` is a count over HTTP, a list elsewhere). */

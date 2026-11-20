@@ -113,10 +113,38 @@ function createStore(key, normalize) {
 // Settings
 // ---------------------------------------------------------------------------------------------
 
+export const THEMES = Object.freeze(['system', 'dark', 'light']);
+export const PLAYBACK_SPEEDS = Object.freeze([0.75, 1, 1.5, 2]);
+/** Phone board camera: 'auto' (moves by itself + pinch) | 'manual' (pinch only) | 'off' (no camera, no gestures). */
+export const BOARD_CAMERAS = Object.freeze(['auto', 'manual', 'off']);
+/** Table effects: 'auto' (a frame-time check turns the decorative loops off on slow-rendering browsers) | 'lite' (always off) | 'full' (always on). */
+export const GRAPHICS_MODES = Object.freeze(['auto', 'lite', 'full']);
+
 export const DEFAULT_APP_SETTINGS = Object.freeze({
   sfx: true,
+  /** Master volume 0..1 (everything). */
   volume: 0.8,
+  /** Sound-effects fader 0..1, on top of the master volume. */
+  sfxVolume: 1,
+  /** Optional quiet night-market bed under the game (off by default; needs `sfx`). */
+  ambient: false,
   reducedMotion: false,
+  /** Hub colour theme ('system' follows the OS). Game screens keep their own theme. */
+  theme: 'system',
+  /** In-game animation speed multiplier (1 = normal; higher = faster playback). */
+  playbackSpeed: 1,
+  /** Short vibrations on your turn, rent paid, etc. (phones that support navigator.vibrate). */
+  haptics: true,
+  /** Zoom of the board on phone-sized screens (see BOARD_CAMERAS). Wide boards never zoom. */
+  boardCamera: 'auto',
+  /** Shake the phone to roll the die on your turn (needs motion access on iOS). Off until the player turns it on. */
+  shakeToRoll: false,
+  /** Decorative table effects (see GRAPHICS_MODES and lib/perfMode.js). */
+  graphics: 'auto',
+  /** Hear the voice lines other players (and you) play at the table. */
+  voiceLines: true,
+  /** Voice-line volume 0..1, on top of the master volume. */
+  voiceVolume: 1,
 });
 
 /** Unknown keys (e.g. the voice/subtitle settings of older builds) are ignored, never an error. */
@@ -125,7 +153,17 @@ function normalizeSettings(p) {
   return {
     sfx: src.sfx === undefined ? DEFAULT_APP_SETTINGS.sfx : !!src.sfx,
     volume: clamp(num(src.volume, DEFAULT_APP_SETTINGS.volume), 0, 1),
+    sfxVolume: clamp(num(src.sfxVolume, DEFAULT_APP_SETTINGS.sfxVolume), 0, 1),
+    ambient: src.ambient === undefined ? DEFAULT_APP_SETTINGS.ambient : !!src.ambient,
     reducedMotion: !!src.reducedMotion,
+    theme: THEMES.includes(src.theme) ? src.theme : DEFAULT_APP_SETTINGS.theme,
+    playbackSpeed: PLAYBACK_SPEEDS.includes(Number(src.playbackSpeed)) ? Number(src.playbackSpeed) : DEFAULT_APP_SETTINGS.playbackSpeed,
+    haptics: src.haptics === undefined ? DEFAULT_APP_SETTINGS.haptics : !!src.haptics,
+    boardCamera: BOARD_CAMERAS.includes(src.boardCamera) ? src.boardCamera : DEFAULT_APP_SETTINGS.boardCamera,
+    shakeToRoll: src.shakeToRoll === true,
+    graphics: GRAPHICS_MODES.includes(src.graphics) ? src.graphics : DEFAULT_APP_SETTINGS.graphics,
+    voiceLines: src.voiceLines === undefined ? DEFAULT_APP_SETTINGS.voiceLines : !!src.voiceLines,
+    voiceVolume: clamp(num(src.voiceVolume, DEFAULT_APP_SETTINGS.voiceVolume), 0, 1),
   };
 }
 
@@ -152,15 +190,19 @@ export function useSettings() {
 // Level curve and profile
 // ---------------------------------------------------------------------------------------------
 
-/** Total XP at which `level` starts (level 1 = 0, 2 = 100, 3 = 300, 4 = 600, ...). */
-export const xpForLevel = (level) => 50 * level * (level - 1);
+// Same curve as the server (worker/xp.js `xpToNext`): level L -> L+1 costs 100 + (L - 1) * 50 XP.
+/** Total XP at which `level` starts (level 1 = 0, 2 = 100, 3 = 250, 4 = 450, ...). */
+export const xpForLevel = (level) => {
+  const n = Math.max(0, level - 1);
+  return 100 * n + 25 * n * (n - 1);
+};
 /** XP needed to go from `level` to `level + 1`. */
-export const xpNeeded = (level) => 100 * level;
+export const xpNeeded = (level) => 100 + (Math.max(1, level) - 1) * 50;
 
 /** `pct` is 0..100 (progress inside the current level). */
 export function levelInfo(xp) {
   const x = Math.max(0, Math.floor(num(xp, 0)));
-  let level = Math.max(1, Math.floor((1 + Math.sqrt(1 + (4 * x) / 50)) / 2));
+  let level = 1;
   while (xpForLevel(level + 1) <= x) level += 1;
   while (level > 1 && xpForLevel(level) > x) level -= 1;
   const into = x - xpForLevel(level);

@@ -1,0 +1,289 @@
+/* ============================================================ property sheet: header, stage, stats, odds, slots
+   PropertySheet.jsx. The deed card itself lives in deed.css. --band (set inline) is the collection colour; --ink /
+   --b1 / --b2 / --pill / --emb come from bandTones(): ink and band stops that keep AA contrast.
+   Motion: transform / opacity only, durations --dur-1..4, easings --ease-*. Everything below is from-only keyframes
+   (the resting state is the final state), so switching animation off for reduced motion leaves a finished layout. */
+
+@keyframes hg-prop-in { from { opacity: 0; transform: translate3d(0, 14px, 0) scale(0.985); } }
+@keyframes hg-prop-rise { from { opacity: 0; transform: translate3d(0, 22px, 0) scale(0.86); } }
+@keyframes hg-prop-pop { from { opacity: 0; transform: scale(0.7); } }
+@keyframes hg-prop-float { 0%, 100% { transform: translate3d(0, 0, 0); } 50% { transform: translate3d(0, -5px, 0); } }
+@keyframes hg-prop-shadow { 0%, 100% { transform: scale(1); opacity: 0.5; } 50% { transform: scale(0.88); opacity: 0.34; } }
+@keyframes hg-prop-spin { to { transform: rotate(360deg); } }
+@keyframes hg-prop-breathe { 0%, 100% { opacity: 0.72; } 50% { opacity: 1; } }
+@keyframes hg-prop-twinkle { 0%, 100% { opacity: 0; transform: scale(0.3) rotate(0deg); } 50% { opacity: 1; transform: scale(1) rotate(45deg); } }
+@keyframes hg-prop-sonar { 0% { opacity: 0.55; transform: scale(0.86); } 100% { opacity: 0; transform: scale(1.34); } }
+@keyframes hg-prop-sweep { from { transform: translate3d(-130%, 0, 0) skewX(-18deg); } to { transform: translate3d(330%, 0, 0) skewX(-18deg); } }
+@keyframes hg-prop-fill { from { transform: scaleX(1); } }
+@keyframes hg-prop-die { from { transform: translate3d(0, 0, 0) rotate(-540deg); } }
+
+/* the whole sheet settles in section by section (the base sheet fade is replaced) */
+.hg-sheet-root.is-open .hg-propsheet .hg-sheet-body { animation: none; }
+.hg-sheet-root.is-open .hg-propsheet .hg-sheet-body > * { animation: hg-prop-in var(--dur-3) var(--ease-out) backwards; }
+.hg-sheet-root.is-open .hg-propsheet .hg-sheet-body > :nth-child(1) { animation-delay: 40ms; }
+.hg-sheet-root.is-open .hg-propsheet .hg-sheet-body > :nth-child(2) { animation-delay: 110ms; }
+.hg-sheet-root.is-open .hg-propsheet .hg-sheet-body > :nth-child(3) { animation-delay: 180ms; }
+.hg-sheet-root.is-open .hg-propsheet .hg-sheet-body > :nth-child(4) { animation-delay: 250ms; }
+.hg-sheet-root.is-open .hg-propsheet .hg-sheet-body > :nth-child(5) { animation-delay: 320ms; }
+.hg-sheet-root.is-open .hg-propsheet .hg-sheet-body > :nth-child(6) { animation-delay: 390ms; }
+.hg-propsheet .hg-sheet-body { padding-top: 12px; }
+
+/* ---------------------------------------------------------------- header: an embossed collection plate */
+.hg-propsheet .hg-prop-band {
+  position: relative; isolation: isolate; overflow: hidden; margin: 0 14px; padding: 10px 58px 10px 10px; border-radius: 20px;
+  grid-template-columns: 54px minmax(0, 1fr); grid-template-areas: "icon titles" "icon type"; column-gap: 12px; row-gap: 5px;
+  color: var(--ink);
+  background:
+    radial-gradient(90% 170% at 0% 0%, var(--hl, rgba(255, 255, 255, 0.06)), transparent 62%),
+    linear-gradient(118deg, var(--b1, var(--band)), var(--b2, var(--band)));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 -2px 0 rgba(0, 0, 0, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.12), 0 10px 22px rgba(0, 0, 0, 0.38);
+}
+/* jaali lattice, only on the right where there is no text */
+.hg-propsheet .hg-prop-band::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: 0.5;
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.13) 0 1px, transparent 1px 11px),
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.13) 0 1px, transparent 1px 11px);
+  -webkit-mask-image: linear-gradient(90deg, transparent 52%, #000 100%); mask-image: linear-gradient(90deg, transparent 52%, #000 100%);
+}
+/* one soft light sweep when the sheet opens */
+.hg-propsheet .hg-prop-band::after {
+  content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 34%; z-index: -1; pointer-events: none; opacity: 0.9;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.34), transparent);
+  transform: translate3d(-130%, 0, 0) skewX(-18deg);
+}
+.hg-sheet-root.is-open .hg-propsheet .hg-prop-band::after { animation: hg-prop-sweep 1.1s var(--ease-std) 0.45s backwards; }
+
+.hg-propsheet .hg-prop-icon {
+  position: relative; width: 54px; height: 54px; border-radius: 50%; overflow: visible;
+  background: radial-gradient(circle at 32% 26%, #fffdf4, #f1e7cc 72%);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.6), 0 0 0 4px rgba(0, 0, 0, 0.16), 0 5px 10px rgba(0, 0, 0, 0.32), inset 0 -3px 5px rgba(120, 90, 30, 0.18);
+}
+.hg-propsheet .hg-prop-icon > svg { display: block; }
+.hg-propsheet .hg-prop-titles .hg-kicker {
+  margin: 0 0 1px; font-size: 10.5px; font-weight: 800; letter-spacing: 0.3em; text-transform: uppercase; color: var(--ink); opacity: 1;
+}
+.hg-propsheet .hg-prop-titles h2 {
+  font-size: 23px; line-height: 1.08; letter-spacing: -0.015em; color: var(--ink); text-wrap: balance;
+  text-shadow: 0 1px 0 var(--emb, transparent);
+}
+.hg-propsheet .hg-prop-type {
+  display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 999px; font-size: 10.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--ink); background: var(--pill, rgba(0, 0, 0, 0.24)); border: 1px solid color-mix(in srgb, var(--ink) 24%, transparent);
+}
+
+/* ---------------------------------------------------------------- stage: a little Hyderabad diorama under its skyline */
+.hg-propsheet .hg-prop-stage {
+  --art: clamp(138px, 46vw, 212px); /* no container units (iOS 15, old WebView): the viewport stands in */
+  position: relative; isolation: isolate; overflow: hidden; container-type: inline-size;
+  display: flex; flex-direction: column; align-items: center; margin: 0 0 14px; padding: 10px; border-radius: 24px;
+  background:
+    radial-gradient(64% 52% at 50% 52%, color-mix(in srgb, var(--band) 46%, transparent), transparent 72%),
+    linear-gradient(180deg, color-mix(in srgb, var(--band) 24%, #101923) 0%, #0d141c 100%);
+  border: 1px solid color-mix(in srgb, var(--band) 42%, rgba(255, 255, 255, 0.12));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 -26px 40px rgba(0, 0, 0, 0.28), 0 12px 26px rgba(0, 0, 0, 0.34);
+}
+.hg-prop-sky {
+  position: absolute; left: 0; right: 0; bottom: 56px; z-index: -1; width: 100%; height: 92px; pointer-events: none;
+  color: color-mix(in srgb, var(--band) 30%, transparent);
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 40%); mask-image: linear-gradient(180deg, transparent, #000 40%);
+}
+.hg-prop-rays {
+  position: absolute; left: 50%; top: 42%; z-index: -1; width: 150%; aspect-ratio: 1; margin-left: -75%; margin-top: -75%; pointer-events: none; opacity: 0.55;
+  background: repeating-conic-gradient(from 0deg, color-mix(in srgb, var(--band) 40%, transparent) 0 6deg, transparent 6deg 18deg);
+  -webkit-mask-image: radial-gradient(circle, #000 0, rgba(0, 0, 0, 0.5) 24%, transparent 50%); mask-image: radial-gradient(circle, #000 0, rgba(0, 0, 0, 0.5) 24%, transparent 50%);
+  animation: hg-prop-spin 80s linear infinite;
+}
+.hg-prop-glow {
+  position: absolute; left: 50%; top: 56%; z-index: -1; width: 70%; aspect-ratio: 1.5; margin-left: -35%; margin-top: -22%; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--band) 60%, #fff 12%), transparent);
+  opacity: 0.55; animation: hg-prop-breathe 5s var(--ease-std) infinite;
+}
+.hg-prop-chips { position: absolute; z-index: 4; inset: 10px 10px auto; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 6px; pointer-events: none; }
+.hg-prop-chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; font-size: 10.5px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text);
+  background: rgba(8, 12, 20, 0.62); border: 1px solid rgba(255, 255, 255, 0.16); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.hg-prop-bonus { position: relative; color: var(--text-dim); }
+.hg-prop-bonus .hg-icon { flex: none; }
+.hg-prop-bonus.is-on { isolation: isolate; color: #2a1b00; border-color: rgba(255, 233, 160, 0.9); background: linear-gradient(180deg, #ffe9a3, var(--gold) 55%, var(--gold-2)); }
+.hg-prop-bonus.is-on::after {
+  content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; pointer-events: none; opacity: 0;
+  box-shadow: 0 0 18px 3px rgba(255, 200, 87, 0.85); animation: hg-prop-breathe 2.2s var(--ease-std) infinite;
+}
+
+.hg-prop-diorama { position: relative; flex: none; width: var(--art); height: calc(var(--art) * 0.9); margin: 14px 0 0; }
+.hg-prop-float { position: absolute; inset: 0; animation: hg-prop-float 5.4s var(--ease-std) infinite; }
+.hg-prop-pop { position: absolute; inset: 0; animation: hg-prop-rise var(--dur-3) var(--ease-spring) 0.12s backwards; transform-origin: 50% 80%; }
+.hg-prop-pop > svg { position: absolute; left: 0; top: -9%; width: 100%; height: auto; aspect-ratio: 1; display: block; overflow: visible; filter: drop-shadow(0 10px 8px rgba(0, 0, 0, 0.35)); }
+.hg-prop-pedestal {
+  position: absolute; left: 50%; top: 4%; display: grid; place-items: center; width: 74%; aspect-ratio: 1; margin-left: -37%; border-radius: 50%;
+  background: radial-gradient(circle at 34% 26%, rgba(255, 255, 255, 0.95), rgba(240, 230, 204, 0.9) 70%);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--band) 60%, transparent), 0 14px 22px rgba(0, 0, 0, 0.4), inset 0 -8px 14px rgba(120, 90, 30, 0.2);
+}
+.hg-prop-pedestal > svg { display: block; }
+.is-special .hg-prop-pop > svg { top: 6%; left: 50%; width: 62%; margin-left: -31%; height: auto; aspect-ratio: 5 / 7; }
+.hg-prop-shadow {
+  position: absolute; left: 12%; right: 12%; bottom: 4%; height: 13%; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(0, 0, 0, 0.6), transparent); animation: hg-prop-shadow 5.4s var(--ease-std) infinite;
+}
+/* the lot: a dashed outline when it is for sale, the owner's colour (with a sonar ping) once it is taken */
+.hg-prop-ring {
+  position: absolute; left: 9%; right: 9%; bottom: 7%; height: 25%; border-radius: 50%; pointer-events: none;
+  border: 2px dashed color-mix(in srgb, var(--band) 70%, #fff); opacity: 0.55;
+}
+.is-owned .hg-prop-ring { border: 2px solid var(--pc); opacity: 0.9; background: radial-gradient(closest-side, color-mix(in srgb, var(--pc) 22%, transparent), transparent 70%); }
+.is-owned .hg-prop-ring::after {
+  content: ''; position: absolute; inset: -2px; border-radius: 50%; border: 2px solid var(--pc); opacity: 0; animation: hg-prop-sonar 3.2s var(--ease-out) infinite;
+}
+.is-special .hg-prop-ring { display: none; }
+.hg-prop-spark {
+  position: absolute; z-index: 1; width: 11px; height: 11px; pointer-events: none; opacity: 0; background: #fff;
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); animation: hg-prop-twinkle 3.6s var(--ease-std) infinite;
+}
+.hg-prop-spark.s1 { left: 21%; top: 36%; animation-delay: 0.4s; }
+.hg-prop-spark.s2 { right: 19%; top: 30%; width: 8px; height: 8px; animation-delay: 1.6s; }
+.hg-prop-spark.s3 { right: 31%; top: 52%; width: 7px; height: 7px; animation-delay: 2.6s; }
+/* mortgaged: the diorama goes grey under hazard hatching */
+.is-mort .hg-prop-pop { filter: grayscale(0.9) brightness(0.78); }
+.is-mort .hg-prop-ring, .is-mort .hg-prop-spark, .is-mort .hg-prop-rays { display: none; }
+.is-mort::after {
+  content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.045) 0 8px, transparent 8px 18px);
+}
+
+/* the three numbers, on frosted glass along the foot of the stage */
+.hg-propsheet .hg-deed-hero {
+  position: relative; z-index: 3; width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 4px 0 0;
+}
+.hg-propsheet .hg-deed-hero > div {
+  min-width: 0; padding: 7px 9px 8px; border-radius: 15px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.05)); border: 1px solid rgba(255, 255, 255, 0.16);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 6px 14px rgba(0, 0, 0, 0.22);
+  transition: transform var(--dur-2) var(--ease-out), background var(--dur-2) var(--ease-std);
+}
+.hg-propsheet .hg-deed-hero > div > span { display: block; font-size: 10px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim); white-space: nowrap; }
+.hg-propsheet .hg-deed-hero b { display: flex; align-items: center; gap: 6px; min-height: 26px; margin-top: 1px; overflow: hidden; font-family: var(--font-display); font-size: clamp(14.5px, 4.4vw, 19px); letter-spacing: -0.01em; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.hg-propsheet .hg-deed-hero b.is-dim { color: var(--text-faint); font-family: var(--font-body); font-size: 14px; font-weight: 700; }
+.hg-propsheet .hg-deed-hero b.is-gold { color: var(--gold); text-shadow: 0 0 14px rgba(255, 200, 87, 0.35); }
+.hg-propsheet .hg-deed-hero .is-owner.is-open { background: rgba(255, 255, 255, 0.03); border-style: dashed; border-color: rgba(255, 255, 255, 0.26); box-shadow: none; }
+.hg-propsheet .hg-deed-hero .hg-owner { font-family: var(--font-body); font-size: 14px; gap: 6px; }
+.hg-owner-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.hg-count { font-variant-numeric: tabular-nums; }
+@media (hover: hover) {
+  .hg-propsheet .hg-deed-hero > div:hover { transform: translate3d(0, -2px, 0); background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.08)); }
+}
+
+/* ---------------------------------------------------------------- lore plaque */
+.hg-propsheet .hg-prop-lore { position: relative; margin: 0 0 14px; padding: 1px 0 1px 14px; }
+.hg-propsheet .hg-prop-lore::before {
+  content: ''; position: absolute; left: 0; top: 2px; bottom: 2px; width: 4px; border-radius: 4px;
+  background: linear-gradient(180deg, var(--band), color-mix(in srgb, var(--band) 20%, transparent));
+}
+.hg-propsheet .hg-deed-identity { margin: 0 0 4px; padding: 0; border: 0; font-size: 14.5px; font-weight: 800; line-height: 1.3; color: var(--text); }
+.hg-propsheet .hg-lore { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text-dim); }
+.hg-propsheet .hg-heritage { display: block; margin-top: 5px; font-style: normal; font-size: 11.5px; line-height: 1.4; color: var(--text-faint); }
+
+/* ---------------------------------------------------------------- landing chance */
+.hg-propsheet .hg-odds {
+  position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 4px 9px; margin: 0 0 12px; padding: 11px 13px 13px; border-radius: 18px;
+  background: linear-gradient(180deg, rgba(76, 201, 240, 0.13), rgba(76, 201, 240, 0.04)); border: 1px solid rgba(76, 201, 240, 0.3);
+}
+.hg-propsheet .hg-odds > .hg-icon { color: var(--sky); }
+.hg-propsheet .hg-odds b { font-size: 16px; }
+.hg-propsheet .hg-odds > i {
+  position: relative; grid-column: 1 / -1; display: block; flex: none; height: 10px; margin-top: 6px; border-radius: 99px; overflow: visible; container-type: inline-size;
+  background: linear-gradient(90deg, #4cc9f0, #55d6c2 28%, #ffd23f 62%, #ff9f43 82%, #ff5d73);
+}
+/* the unfilled part is a cover that shrinks away (transform only) */
+.hg-propsheet .hg-odds > i::after {
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 100%; border-radius: 0 99px 99px 0; transform-origin: right center;
+  background: #1e2b36; box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
+  transform: scaleX(calc(1 - var(--f, 0))); animation: hg-prop-fill var(--dur-4) var(--ease-out) 0.3s backwards;
+}
+.hg-propsheet .hg-odds > i em { display: none; }
+.hg-propsheet .hg-odds > i u {
+  position: absolute; z-index: 1; left: 0; top: 50%; width: 24px; height: 24px; margin-top: -12px; display: grid; place-items: center; text-decoration: none; border-radius: 8px;
+  color: #3a2300; background: linear-gradient(180deg, #fff0b5, var(--gold)); box-shadow: 0 2px 0 #b5760f, 0 4px 10px rgba(0, 0, 0, 0.4);
+  transform: translate3d(calc(var(--f, 0) * (100cqw - 24px)), 0, 0); animation: hg-prop-die var(--dur-4) var(--ease-out) 0.3s backwards;
+}
+
+/* ---------------------------------------------------------------- the collection as three real slots */
+.hg-propsheet .hg-setstat {
+  display: grid; gap: 10px; margin: 0 0 12px; padding: 12px; border-radius: 18px; font-size: 13px; line-height: 1.4;
+  background: rgba(255, 255, 255, 0.045); border: 1px solid var(--line); color: var(--text-dim);
+}
+.hg-propsheet .hg-setstat.is-full { background: linear-gradient(180deg, rgba(61, 220, 151, 0.14), rgba(61, 220, 151, 0.05)); border-color: rgba(61, 220, 151, 0.42); color: var(--good); }
+.hg-propsheet .hg-setstat b { color: var(--text); }
+.hg-propsheet .hg-setstat.is-full b { color: var(--good); }
+.hg-slots { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); grid-auto-flow: column; gap: 8px; }
+.hg-slot {
+  position: relative; isolation: isolate; min-height: 54px; min-width: 0; display: grid; align-content: center; justify-items: center; gap: 1px; padding: 7px 6px; border-radius: 14px; text-align: center;
+  border: 1.5px dashed rgba(255, 255, 255, 0.3); background: rgba(255, 255, 255, 0.03); color: var(--text-dim);
+  animation: hg-prop-pop var(--dur-3) var(--ease-spring) backwards; transition: transform var(--dur-2) var(--ease-out);
+}
+.hg-slot:nth-child(1) { animation-delay: 0.36s; }
+.hg-slot:nth-child(2) { animation-delay: 0.44s; }
+.hg-slot:nth-child(3) { animation-delay: 0.52s; }
+.hg-slot-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 800; line-height: 1.2; }
+.hg-slot-sub { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.85; }
+.hg-slot.is-on {
+  border: 1.5px solid color-mix(in srgb, var(--pc) 70%, #fff); color: var(--pi);
+  background: linear-gradient(160deg, var(--pf, var(--pc)), var(--pt, var(--pc))); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 -2px 0 rgba(0, 0, 0, 0.16);
+}
+.hg-slot.is-on::before {
+  content: ''; position: absolute; inset: -1px; z-index: -1; border-radius: inherit; pointer-events: none; box-shadow: 0 0 16px 2px var(--pc); opacity: 0.5;
+}
+.hg-setstat.is-full .hg-slot.is-on::before { animation: hg-prop-breathe 2.4s var(--ease-std) infinite; }
+.hg-slot.is-mort { border-style: dashed; filter: saturate(0.55); }
+.hg-slot.is-here { outline: 2px solid var(--band); outline-offset: 2px; }
+.hg-slot.is-here::after {
+  content: ''; position: absolute; left: 50%; top: -9px; width: 10px; height: 10px; margin-left: -5px; background: var(--band);
+  clip-path: polygon(50% 100%, 0 0, 100% 0); pointer-events: none;
+}
+@media (hover: hover) { .hg-slot:hover { transform: translate3d(0, -2px, 0); } }
+.hg-propsheet .hg-setstat-txt { display: block; }
+
+.hg-propsheet .hg-deed-level { display: flex; align-items: center; gap: 10px; margin: 0 2px 4px; font-size: 13px; color: var(--text-dim); }
+
+@supports (width: 1cqw) { .hg-propsheet .hg-prop-stage { --art: clamp(138px, 50cqw, 212px); } }
+
+/* ---------------------------------------------------------------- phones on their side: the sheet is only ~350px tall, keep the art small */
+@media (orientation: landscape) and (max-height: 520px) {
+  .hg-propsheet .hg-prop-stage { --art: clamp(88px, 28vh, 120px); margin-bottom: 10px; padding: 8px; }
+}
+
+/* ---------------------------------------------------------------- narrow phones */
+@media (max-width: 380px) {
+  .hg-propsheet .hg-prop-band { margin-inline: 10px; padding-right: 54px; }
+  .hg-propsheet .hg-sheet-body { padding-inline: 14px; }
+  .hg-propsheet .hg-prop-titles h2 { font-size: 21px; }
+  .hg-propsheet .hg-deed-hero { gap: 5px; }
+  .hg-propsheet .hg-deed-hero > div { padding: 6px 7px 7px; border-radius: 13px; }
+  .hg-propsheet .hg-deed-hero b { font-size: 14px; }
+  .hg-slot-name { font-size: 11.5px; }
+}
+
+/* ---------------------------------------------------------------- reduced motion: OS, in-game switch, hub switch */
+@media (prefers-reduced-motion: reduce) {
+  .hg-propsheet *, .hg-propsheet *::before, .hg-propsheet *::after { animation: none !important; transition: none !important; }
+}
+:root[data-motion='reduced'] .hg-propsheet *, :root[data-motion='reduced'] .hg-propsheet *::before, :root[data-motion='reduced'] .hg-propsheet *::after,
+.hg-sheet-root[data-rm] .hg-propsheet *, .hg-sheet-root[data-rm] .hg-propsheet *::before, .hg-sheet-root[data-rm] .hg-propsheet *::after,
+.hg-game[data-rm] .hg-propsheet *, .hg-game[data-rm] .hg-propsheet *::before, .hg-game[data-rm] .hg-propsheet *::after { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) { .hg-prop-bonus.is-on::after { opacity: 0.55 !important; } }
+:root[data-motion='reduced'] .hg-prop-bonus.is-on::after, .hg-sheet-root[data-rm] .hg-prop-bonus.is-on::after, .hg-game[data-rm] .hg-prop-bonus.is-on::after { opacity: 0.55 !important; }
+
+/* ---------------------------------------------------------------- footer actions: long labels wrap instead of running off the sheet */
+.hg-propsheet .hg-sheet-foot .hg-btn { min-width: 0; max-width: 100%; white-space: normal; text-align: center; line-height: 1.15; }
+.hg-propsheet .hg-sheet-foot .hg-btn--lg { padding-block: 8px; font-size: clamp(15px, 4.4vw, 18px); }
+.hg-propsheet .hg-sheet-foot .hg-sheet-subactions .hg-btn { flex: 1 1 150px; padding-block: 5px; font-size: 13.5px; }
+.hg-propsheet .hg-sheet-foot .hg-hint { justify-content: center; text-align: center; }
+
+/* hover lifts are movement too: none of them under reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .hg-propsheet .hg-deed-hero > div:hover, .hg-slot:hover, .hg-deed:hover, .hg-deed-table tr:hover .hg-deed-thumb { transform: none !important; }
+}
+:root[data-motion='reduced'] .hg-propsheet .hg-deed-hero > div:hover, :root[data-motion='reduced'] .hg-slot:hover, :root[data-motion='reduced'] .hg-deed:hover, :root[data-motion='reduced'] .hg-deed-table tr:hover .hg-deed-thumb,
+.hg-sheet-root[data-rm] .hg-propsheet .hg-deed-hero > div:hover, .hg-sheet-root[data-rm] .hg-slot:hover, .hg-sheet-root[data-rm] .hg-deed:hover, .hg-sheet-root[data-rm] .hg-deed-table tr:hover .hg-deed-thumb,
+.hg-game[data-rm] .hg-propsheet .hg-deed-hero > div:hover, .hg-game[data-rm] .hg-slot:hover, .hg-game[data-rm] .hg-deed:hover, .hg-game[data-rm] .hg-deed-table tr:hover .hg-deed-thumb { transform: none !important; }

@@ -2,6 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   CODE_ALPHABET,
   normalizeRoomCode,
+  extractRoomCode,
+  isPlainCodeText,
+  codeFromSearch,
   isRoomCode,
   normalizeFriendCode,
   isFriendCode,
@@ -37,6 +40,75 @@ describe('normalizeRoomCode', () => {
     expect(normalizeRoomCode(undefined)).toBe('');
     expect(normalizeRoomCode(12345)).toBe('2345');
     expect(normalizeRoomCode('   ')).toBe('');
+  });
+});
+
+describe('normalizeRoomCode: links', () => {
+  it('reads ?code= and /join?code= links, a bare /join carries no code', () => {
+    expect(normalizeRoomCode('/join?code=abc234')).toBe('ABC234');
+    expect(normalizeRoomCode('https://x.dev/join?code=ABC234&utm=1')).toBe('ABC234');
+    expect(normalizeRoomCode('https://x.dev/join')).toBe('');
+    expect(normalizeRoomCode('https://x.dev/')).toBe('');
+    expect(normalizeRoomCode('https://x.dev')).toBe('');
+  });
+});
+
+describe('extractRoomCode', () => {
+  it('reads a bare code in any case, with spaces or dashes', () => {
+    expect(extractRoomCode('ABC234')).toBe('ABC234');
+    expect(extractRoomCode('  abc234  ')).toBe('ABC234');
+    expect(extractRoomCode('abc 234')).toBe('ABC234');
+    expect(extractRoomCode('ABC-234')).toBe('ABC234');
+  });
+  it('reads invite links: path, query, old and full URLs', () => {
+    expect(extractRoomCode('https://kingpin.dev/join/abc234')).toBe('ABC234');
+    expect(extractRoomCode('https://kingpin.dev/join/ABC234?utm_source=wa#x')).toBe('ABC234');
+    expect(extractRoomCode('https://kingpin.dev/join?code=abc234')).toBe('ABC234');
+    expect(extractRoomCode('/join/ABC234/')).toBe('ABC234');
+    expect(extractRoomCode('/join/AB%20C234')).toBe('ABC234');
+  });
+  it('finds the code inside a pasted invite message', () => {
+    const msg = 'Come play Ludo Lanes with me on Jalebi Games!\nRoom code: ABC234\nhttps://kingpin.dev/join/ABC234';
+    expect(extractRoomCode(msg)).toBe('ABC234');
+    expect(extractRoomCode('Room code: xyz789 see you there')).toBe('XYZ789');
+    expect(extractRoomCode('the code is KJ4 7MN, hurry')).toBe('KJ47MN');
+    expect(extractRoomCode('Join me! Table ABC 234 is open')).toBe('ABC234');
+  });
+  it('look-alike characters never count as part of a code', () => {
+    expect(extractRoomCode('0O1I')).toBe('');
+    expect(extractRoomCode('ABC-0O1')).toBe('ABC');
+    expect(extractRoomCode('Room code: ABC0O1')).toBe('');
+  });
+  it('gives up on text without a code', () => {
+    expect(extractRoomCode('')).toBe('');
+    expect(extractRoomCode(null)).toBe('');
+    expect(extractRoomCode('Hello there, are you coming to the game tonight?')).toBe('');
+    expect(extractRoomCode('https://kingpin.dev/')).toBe('');
+  });
+});
+
+describe('isPlainCodeText', () => {
+  it('is true for a code someone typed, false for sentences and links', () => {
+    expect(isPlainCodeText('abc 234')).toBe(true);
+    expect(isPlainCodeText('ab-c2-34')).toBe(true);
+    expect(isPlainCodeText('')).toBe(true);
+    expect(isPlainCodeText('Room code: ABC234')).toBe(false);
+    expect(isPlainCodeText('https://x.dev/join/ABC234')).toBe(false);
+  });
+});
+
+describe('codeFromSearch', () => {
+  it('reads ?code= and ?room=', () => {
+    expect(codeFromSearch('?code=abc234')).toBe('ABC234');
+    expect(codeFromSearch('code=ABC-234&x=1')).toBe('ABC234');
+    expect(codeFromSearch('?room=xyz789')).toBe('XYZ789');
+    expect(codeFromSearch(new URLSearchParams('code=kj47mn'))).toBe('KJ47MN');
+  });
+  it('is empty when there is no usable code', () => {
+    expect(codeFromSearch('')).toBe('');
+    expect(codeFromSearch('?host=1')).toBe('');
+    expect(codeFromSearch(undefined)).toBe('');
+    expect(codeFromSearch('?code=0O1I')).toBe('');
   });
 });
 
@@ -172,5 +244,20 @@ describe('roomProblem', () => {
     expect(roomProblem(room({ players: [{ id: 'me' }, { id: 'b' }], maxPlayers: 2 }), 'me')).toBeNull();
     expect(roomProblem(room({ players: 4, maxPlayers: 4 }), 'me')).toMatch(/full/);
     expect(roomProblem(room({ players: 2, maxPlayers: 4 }), 'me')).toBeNull();
+  });
+});
+
+import { roomProblemKind } from './codes.js';
+
+describe('roomProblemKind', () => {
+  const room = (over = {}) => ({ exists: true, status: 'lobby', players: 1, maxPlayers: 4, ...over });
+  it('names each blocked state so the join page can explain it', () => {
+    expect(roomProblemKind(room(), 'me')).toBeNull();
+    expect(roomProblemKind(null, 'me')).toBe('missing');
+    expect(roomProblemKind(room({ exists: false }), 'me')).toBe('missing');
+    expect(roomProblemKind(room({ status: 'finished' }), 'me')).toBe('finished');
+    expect(roomProblemKind(room({ status: 'playing' }), 'me')).toBe('playing');
+    expect(roomProblemKind(room({ players: 4 }), 'me')).toBe('full');
+    expect(roomProblemKind(room({ status: 'playing', isMember: true }), 'me')).toBeNull();
   });
 });

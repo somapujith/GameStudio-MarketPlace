@@ -1,20 +1,24 @@
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { GROUPS } from '@shared/board.js';
-import { createGame, getOptions } from '@shared/index.js';
+import { GROUPS, TILES } from '@shared/board.js';
 import EventBanner, { EVENT_EMOJI, eventInfo } from './EventBanner.jsx';
 import ControlPanel from './ControlPanel.jsx';
 
 const html = (node) => renderToString(node).replaceAll('<!-- -->', '');
 const banner = (event) => html(createElement(EventBanner, { session: { view: { event } } }));
 
+// group ids that exist on whichever board is loaded (the Hustle board names them bazaar ... newcity)
+const G = Object.keys(GROUPS);
+const g1 = G[0];
+const g2 = G[1];
+
 const EVENTS = {
-  monsoon: { id: 'monsoon', title: 'Monsoon rains', text: 'Pink rents are halved this round.', kind: 'group', group: 'pink', mult: 0.5, round: 5 },
-  ipl: { id: 'ipl', title: 'IPL fever', text: 'Orange rents double this round.', kind: 'group', group: 'orange', mult: 2, round: 10 },
-  metro_strike: { id: 'metro_strike', title: 'Metro strike', text: 'Stations pay no rent this round.', kind: 'transport', round: 15 },
-  tax_holiday: { id: 'tax_holiday', title: 'Tax holiday', text: 'Property tax and the challan cost nothing.', kind: 'tax', round: 20 },
-  bonalu: { id: 'bonalu', title: 'Bonalu', text: 'Everyone gets a festival gift.', kind: 'gift', amount: 500, round: 25 },
+  rush_hour: { id: 'rush_hour', title: 'Hyderabad Rush Hour', text: 'Cyberabad office traffic: rents x1.5 this round.', kind: 'group', group: g1, mult: 1.5, round: 3 },
+  biryani_boom: { id: 'biryani_boom', title: 'Biryani boom', text: 'Upgraded food spots pay double this round.', kind: 'groups', groups: [g1, g2], mult: 2, round: 6 },
+  wedding_season: { id: 'wedding_season', title: 'Wedding season', text: 'Everyone pays 30,000 for gifts.', kind: 'all', amount: 30000, round: 9 },
+  festival: { id: 'festival', title: 'Bonalu festive bonus', text: 'Every player gets 50,000.', kind: 'gift', amount: 50000, round: 12 },
+  monsoon: { id: 'monsoon', title: 'Monsoon', text: 'Half rent on the lakefront this round.', kind: 'group', group: g2, mult: 0.5, round: 15 },
 };
 
 describe('<EventBanner>', () => {
@@ -33,49 +37,51 @@ describe('<EventBanner>', () => {
       expect(out).toContain(EVENT_EMOJI[id]);
       expect(out).toContain(`>${ev.title}<`);
       expect(out).toContain(ev.text);
-      expect(out).toContain('role="status"');
     });
   }
 
-  it('has a distinct emoji per event id', () => {
+  it('has a distinct emoji per Hustle event id', () => {
     expect(new Set(Object.values(EVENT_EMOJI)).size).toBe(5);
     expect(Object.keys(EVENT_EMOJI).sort()).toEqual(Object.keys(EVENTS).sort());
   });
 
-  it('adds a colour chip and the multiplier for group events only', () => {
-    const rain = banner(EVENTS.monsoon);
-    expect(rain).toContain('cp-event__chip');
-    expect(rain).toContain(GROUPS.pink.color);
-    expect(rain).toContain('x0.5');
-    const ipl = banner(EVENTS.ipl);
-    expect(ipl).toContain(GROUPS.orange.color);
-    expect(ipl).toContain('x2');
-    for (const id of ['metro_strike', 'tax_holiday', 'bonalu']) expect(banner(EVENTS[id])).not.toContain('cp-event__chip');
+  it('adds a colour chip (with the multiplier) per affected collection', () => {
+    const rush = eventInfo(EVENTS.rush_hour);
+    expect(rush.chips).toHaveLength(1);
+    expect(rush.chips[0].color).toBe(GROUPS[g1].color);
+    expect(rush.chips[0].mult).toBe('x1.5');
+    expect(banner(EVENTS.rush_hour)).toContain(GROUPS[g1].color);
+    const boom = eventInfo(EVENTS.biryani_boom);
+    expect(boom.chips.map((c) => c.name)).toEqual([GROUPS[g1].name, GROUPS[g2].name]);
+    expect(banner(EVENTS.monsoon)).toContain('x0.5');
   });
 
-  it('keys the strip by event id + round so a new event is announced once, and re-renders are not', () => {
-    expect(eventInfo(EVENTS.ipl).key).toBe('ipl:10');
-    expect(eventInfo({ ...EVENTS.ipl, round: 15 }).key).not.toBe(eventInfo(EVENTS.ipl).key);
-    expect(eventInfo(EVENTS.ipl).key).toBe(eventInfo({ ...EVENTS.ipl }).key);
+  it('shows the amount for money events without collections', () => {
+    const w = eventInfo(EVENTS.wedding_season);
+    expect(w.chips).toEqual([expect.objectContaining({ name: '₹30,000', amount: true })]);
+    expect(banner(EVENTS.festival)).toContain('₹50,000');
+  });
+
+  it('keys the strip by event id + round so a new event is announced once', () => {
+    expect(eventInfo(EVENTS.rush_hour).key).toBe('rush_hour:3');
+    expect(eventInfo({ ...EVENTS.rush_hour, round: 6 }).key).not.toBe(eventInfo(EVENTS.rush_hour).key);
     expect(eventInfo(null)).toBeNull();
   });
 
-  it('keeps the one-liner in the DOM (hidden visually, not removed) so the compact layout still announces it', () => {
-    const out = banner(EVENTS.tax_holiday);
-    expect(out).toContain('cp-event__text');
-    expect(out).toContain('title="Tax holiday. Property tax and the challan cost nothing."');
-  });
-
-  it('sits in the control panel above the tabs while view.event is set, and is gone without one', () => {
-    const s = createGame({ players: [{ id: 'me', name: 'Nithin' }, { id: 'rav', name: 'Ravi' }], seed: 7 });
-    s.event = EVENTS.monsoon;
+  it('sits in the control panel as a slim ribbon above the die while view.event is set, and is gone without one', () => {
+    const n = TILES.length;
+    const view = {
+      phase: 'roll', turn: 0, round: 3, players: [{ id: 'me', name: 'Nithin', cash: 1500000, pos: 0, color: '#ff4d6d', avatar: 0 }],
+      owners: Array(n).fill(null), levels: Array(n).fill(0), mortgaged: Array(n).fill(false), cfg: { maxRounds: 20 }, event: EVENTS.monsoon,
+    };
     const session = {
-      mode: 'online', me: 'me', view: s, busy: false, rolling: false, result: null, options: getOptions(s, 'me'), log: [], dispatch: () => {},
-      display: { players: s.players, owners: s.owners, levels: s.levels, mortgaged: s.mortgaged, turn: s.turn, round: s.round, dice: s.dice, phase: s.phase, cfg: s.cfg },
+      mode: 'online', me: 'me', view, busy: false, rolling: false, result: null, options: { roll: true }, log: [], dispatch: () => {},
+      display: { players: view.players, owners: view.owners, levels: view.levels, mortgaged: view.mortgaged, turn: 0, round: 3, dice: [], phase: 'roll', cfg: view.cfg },
     };
     const out = html(createElement(ControlPanel, { session, onOpenTile: () => {}, onOpenTrade: () => {} }));
-    expect(out.indexOf('Monsoon rains')).toBeGreaterThan(-1);
-    expect(out.indexOf('Monsoon rains')).toBeLessThan(out.indexOf('role="tablist"'));
+    expect(out.indexOf('Monsoon')).toBeGreaterThan(-1);
+    expect(out.indexOf('Monsoon')).toBeGreaterThan(out.indexOf('role="tablist"'));
+    expect(out.indexOf('Monsoon')).toBeLessThan(out.indexOf('class="cp-dice'));
     delete session.view.event;
     expect(html(createElement(ControlPanel, { session }))).not.toContain('cp-event__title');
   });

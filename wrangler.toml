@@ -8,15 +8,19 @@
 #                  npx wrangler secret put GOOGLE_CLIENT_ID    (the OAuth *Web* client id, not a secret per se)
 # Only non-secret values belong in [vars] below.
 
-name = "gamehub" # must match the Worker name in the Cloudflare dashboard (workers.dev URL = gamehub.<subdomain>.workers.dev)
+name = "gamestudio-marketplace" # must match the Worker name in the Cloudflare dashboard (workers.dev URL = gamestudio-marketplace.<subdomain>.workers.dev)
 main = "worker/index.js"
 compatibility_date = "2026-10-01"
 compatibility_flags = ["nodejs_compat"]
-workers_dev = true # https://gamehub.<your-subdomain>.workers.dev (add a [[routes]] block for a custom domain)
+workers_dev = true # https://gamestudio-marketplace.<your-subdomain>.workers.dev (add a [[routes]] block for a custom domain)
 
 # Non-secret configuration only.
 [vars]
 APP_NAME = "Jalebi Games"
+# OPTIONAL: origins of a SPA hosted OUTSIDE this Worker (e.g. on Vercel), comma-separated, exact origins (no "*").
+# Those pages get CORS headers + bearer-token sign-in + WebSocket tickets. Empty/absent = same-origin only.
+# The SPA is built with VITE_API_ORIGIN=<this Worker's URL>. See docs/DEPLOY.md.
+ALLOWED_ORIGINS = "https://gamestudio-lac.vercel.app"
 
 # The Vite build output (`npm run build`). /api/* and /ws/* always run the Worker first;
 # every other path is served from the bundle, with SPA fallback to index.html for client

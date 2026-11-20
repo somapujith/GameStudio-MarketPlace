@@ -25,10 +25,12 @@ vi.mock('./match.js', async (importOriginal) => {
   };
 });
 
-const { GameRoom, TURN_MS, GRACE_MS } = await import('./GameRoom.js');
+const { GameRoom, TURN_MS, GRACE_MS, AFK_STRIKES, AFK_TURN_MS } = await import('./GameRoom.js');
 const { pendingActors, estimateAnimMs, autoMove, TRADE_MS } = await import('./games/hyderabad-tycoon.js');
 const { persistMatch } = await import('./match.js');
 const engine = await import('../shared/index.js');
+const { ANIM_MS, MAX_ANIM_MS } = await import('../shared/timing.js');
+const { PIECES, MUNICIPAL_TILE } = await import('../shared/board.js');
 
 // ---- fakes ---------------------------------------------------------------------------
 
@@ -177,10 +179,17 @@ afterEach(() => {
 // FakeSocket for server is the second of each pair; accepted ones are recorded in ctx.sockets.
 
 describe('pure helpers', () => {
-  it('estimateAnimMs adds up dice + steps and is capped', () => {
+  it('estimateAnimMs adds up dice + steps from shared/timing.js and is capped', () => {
     expect(estimateAnimMs([])).toBe(0);
-    expect(estimateAnimMs([{ type: 'dice' }, { type: 'move', path: [1, 2, 3] }])).toBe(900 + 170 * 3);
-    expect(estimateAnimMs([{ type: 'move', path: new Array(500).fill(1) }])).toBeLessThanOrEqual(6000);
+    expect(estimateAnimMs([{ type: 'dice' }, { type: 'move', path: [1, 2, 3] }])).toBe(ANIM_MS.dice + ANIM_MS.afterDice + ANIM_MS.step * 3);
+    expect(estimateAnimMs([{ type: 'move', path: new Array(500).fill(1) }])).toBe(MAX_ANIM_MS);
+    // with the post-action state, a plain hand-off is told apart from a new round and from the final round
+    const s = engine.createGame({ players: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }], seed: 1 });
+    const first = s.players[0].id;
+    const second = s.players[1].id;
+    expect(estimateAnimMs([{ type: 'turn', player: second, round: 1 }], s)).toBe(ANIM_MS.turn);
+    expect(estimateAnimMs([{ type: 'turn', player: first, round: 2 }], s)).toBe(Math.max(ANIM_MS.round, ANIM_MS.turn));
+    expect(estimateAnimMs([{ type: 'turn', player: first, round: s.cfg.maxRounds }], s)).toBe(ANIM_MS.finalRound);
   });
 
   it('pendingActors: turn player / auction bidders / debtor / trade recipient', () => {
@@ -221,11 +230,12 @@ describe('lobby', () => {
 
   it('rejects a bad init (settings are validated again inside the room)', async () => {
     const h = new Harness();
-    const res = await h.init(user(1), { maxRounds: 120 });
+    const res = await h.init(user(1), { mode: 'marathon' });
     expect(res.status).toBe(400);
-    expect((await res.json()).error).toMatch(/Round limit/);
+    expect((await res.json()).error).toMatch(/Mode must be one of/);
     const h2 = new Harness();
-    expect((await h2.init(user(1), { goal: 5 })).status).toBe(400);
+    expect((await h2.init(user(1), { dice: 'loaded' })).status).toBe(400);
+    expect(h2.room.room).toBeNull();
   });
 
   it('unknown rooms close with 4004', async () => {
@@ -245,24 +255,61 @@ describe('lobby', () => {
     const h = new Harness();
     await h.init();
     const host = await h.connect(user(1));
-    expect(host.last('room').room.settings).toMatchObject({ goal: 70000, startCash: 15000, maxRounds: 50, dice: 'lucky', auctionOnDecline: true });
+    expect(host.last('room').room.settings).toMatchObject({ mode: 'standard', startCash: 1500000, maxRounds: 20, targetWorth: 5000000, dice: 'lucky' });
+    expect(host.last('room').room.settings).not.toHaveProperty('goal');
+    expect(host.last('room').room.settings).not.toHaveProperty('auctionOnDecline');
     const guest = await h.connect(user(2));
 
-    await h.say(guest, { t: 'settings', settings: { goal: 30000 } });
+    await h.say(guest, { t: 'settings', settings: { mode: 'quick' } });
     expect(guest.last('error').message).toMatch(/host/);
 
-    for (const bad of [{ goal: 5 }, { maxRounds: 120 }, { maxRounds: 0 }, { maxRounds: '30' }, { startCash: 1 }, { dice: 'loaded' }, { auctionOnDecline: 'yes' }]) {
+    for (const bad of [{ mode: 'marathon' }, { mode: 3 }, { mode: null }, { dice: 'loaded' }, { maxPlayers: 9 }]) {
       const before = host.of('error').length;
       await h.say(host, { t: 'settings', settings: bad });
       expect(host.of('error').length, JSON.stringify(bad)).toBe(before + 1);
     }
-    expect(h.room.room.settings).toMatchObject({ goal: 70000, maxRounds: 50 });
+    expect(h.room.room.settings).toEqual({ mode: 'standard', ...engine.ruleDefaults('standard') });
 
-    await h.say(host, { t: 'settings', settings: { goal: 100000, maxRounds: null, startCash: 20000, dice: 'fair', auctionOnDecline: false, debug: true } });
+    // only the mode and the host rules reach the room: retired or engine-only keys are dropped
+    await h.say(host, { t: 'settings', settings: { mode: 'quick', dice: 'fair', auctionOnDecline: false, debug: true, goal: 100000, seed: 1 } });
     const s = host.last('room').room.settings;
-    expect(s).toMatchObject({ goal: 100000, maxRounds: null, startCash: 20000, dice: 'fair', auctionOnDecline: false });
+    expect(s).toMatchObject({ mode: 'quick', startCash: 2000000, maxRounds: 12, targetWorth: 5000000, dice: 'fair' });
+    expect(s).not.toHaveProperty('auctionOnDecline'); // the retired pass-auction rule is dropped silently
     expect(s.debug).toBeUndefined();
-    expect(guest.last('room').room.settings.maxRounds).toBeNull();
+    expect(s.goal).toBeUndefined();
+    expect(guest.last('room').room.settings.mode).toBe('quick');
+    await h.say(host, { t: 'settings', settings: { mode: 'classic' } });
+    // switching the mode resets the win target to that mode's default (classic: 30 lakh); the other picks are kept
+    expect(guest.last('room').room.settings).toMatchObject({ mode: 'classic', maxRounds: null, targetWorth: 3000000, dice: 'fair' });
+  });
+
+  it('the win target: only the listed values, a mode switch resets it, classic can never be "off"', async () => {
+    const h = new Harness();
+    await h.init();
+    const host = await h.connect(user(1));
+    const target = () => host.last('room').room.settings.targetWorth;
+    expect(target()).toBe(5000000);
+    await h.say(host, { t: 'settings', settings: { targetWorth: 3000000 } });
+    expect(target()).toBe(3000000);
+    await h.say(host, { t: 'settings', settings: { targetWorth: null } }); // off is fine with a round limit
+    expect(target()).toBeNull();
+    await h.say(host, { t: 'settings', settings: { targetWorth: 123456 } }); // not on the list: the mode default, no error
+    expect(target()).toBe(5000000);
+    expect(host.of('error')).toHaveLength(0);
+    // the lobby sends every setting: a mode change arrives with the old target and still resets it
+    await h.say(host, { t: 'settings', settings: { mode: 'standard', dice: 'lucky', targetWorth: 7500000 } });
+    expect(target()).toBe(7500000);
+    await h.say(host, { t: 'settings', settings: { mode: 'classic', dice: 'lucky', targetWorth: 7500000 } });
+    expect(host.last('room').room.settings).toMatchObject({ mode: 'classic', targetWorth: 3000000 });
+    await h.say(host, { t: 'settings', settings: { mode: 'classic', dice: 'lucky', targetWorth: null } });
+    expect(target()).toBe(3000000); // no round limit: never without a target
+    await h.say(host, { t: 'settings', settings: { targetWorth: 4000000 } });
+    expect(target()).toBe(4000000);
+    await h.say(host, { t: 'settings', settings: { mode: 'quick', dice: 'lucky', targetWorth: 4000000 } });
+    expect(host.last('room').room.settings).toMatchObject({ mode: 'quick', targetWorth: 5000000 });
+    // a mode change together with a deliberate new target keeps that target
+    await h.say(host, { t: 'settings', settings: { mode: 'classic', dice: 'lucky', targetWorth: 2500000 } });
+    expect(host.last('room').room.settings).toMatchObject({ mode: 'classic', targetWorth: 2500000 });
   });
 
   it('kick, ready, capacity and start rules', async () => {
@@ -416,29 +463,31 @@ describe('game start', () => {
 
 
   it('passes the normalised settings to the engine (state.cfg matches room.settings)', async () => {
-    const h = await startedGame({ goal: 50000, startCash: 20000, maxRounds: 30, dice: 'fair', auctionOnDecline: false });
+    const h = await startedGame({ mode: 'quick', dice: 'fair', targetWorth: 4000000 });
     const cfg = h.state.cfg;
-    expect(cfg).toMatchObject({ goal: 50000, startCash: 20000, maxRounds: 30 });
-    expect(h.state.players.every((p) => p.cash === 20000)).toBe(true);
-    // rules v2 settings are forwarded too (once the engine knows them)
-    if ('dice' in cfg) expect(cfg.dice).toBe('fair');
-    if ('auctionOnDecline' in cfg) expect(cfg.auctionOnDecline).toBe(false);
+    expect(cfg).toMatchObject({ mode: 'quick', startCash: 2000000, maxRounds: 12, targetWorth: 4000000, dice: 'fair' });
+    expect(h.state.players.every((p) => p.cash === 2000000)).toBe(true);
+    // the pieces picked in the lobby are the pieces the engine plays with
+    const seats = h.host.last('room').room.players;
+    expect(new Set(seats.map((p) => p.piece)).size).toBe(2);
+    for (const p of h.state.players) expect(p.piece).toBe(seats.find((x) => x.id === p.id).piece);
+    expect(seats.every((p) => PIECES.some((x) => x.id === p.piece))).toBe(true);
     // what the lobby showed is exactly what the engine runs with
     expect(h.host.last('room').room.settings).toEqual(h.state.cfg);
     expect(h.host.last('room').room.status).toBe('playing');
     expect(h.host.last('state')).toMatchObject({ seq: 1, events: [] });
   });
 
-  it('unlimited rounds stay unlimited', async () => {
-    const h = await startedGame({ maxRounds: null });
-    expect(h.room.room.settings.maxRounds).toBeNull();
-    const m = h.state.cfg.maxRounds;
-    expect(m === null || m === Infinity || m === undefined).toBe(true);
+  it('classic mode has no round limit (the room and the engine agree)', async () => {
+    const h = await startedGame({ mode: 'classic' });
+    expect(h.room.room.settings.mode).toBe('classic');
+    expect(h.state.cfg.maxRounds).toBeNull();
+    expect(h.host.last('room').room.settings.maxRounds).toBeNull();
   });
 
   it('locks settings and joining once started; members can rejoin', async () => {
     const h = await startedGame();
-    await h.say(h.host, { t: 'settings', settings: { goal: 30000 } });
+    await h.say(h.host, { t: 'settings', settings: { mode: 'quick' } });
     expect(h.host.last('error').message).toMatch(/locked/);
     const res = await h.room.fetch({
       url: 'https://x/ws',
@@ -479,7 +528,7 @@ describe('game flow', () => {
   });
 
   it('plays a whole game on its own (both players idle, so the server plays for them) and persists exactly once', async () => {
-    const h = await startedGame({ goal: 12000, maxRounds: 30, startCash: 5000 });
+    const h = await startedGame({ mode: 'quick' }); // 12 rounds
     let steps = 0;
     while (h.room.room.status === 'playing' && steps < 6000) {
       await h.tick();
@@ -492,14 +541,15 @@ describe('game flow', () => {
     expect(h.room.room.persisted).toBe(true);
     expect(persistMatch).toHaveBeenCalledTimes(1);
     const rec = persisted[0];
-    expect(rec).toMatchObject({ roomCode: 'ABCD23', playerCount: 2, maxRounds: 30, goal: 12000 });
+    expect(rec).toMatchObject({ roomCode: 'ABCD23', playerCount: 2, maxRounds: 12, goal: null, diceMode: 'lucky' });
     expect(rec.id).toBe(h.room.room.matchId);
     expect(rec.players).toHaveLength(2);
     expect(rec.players.map((p) => p.rank).sort()).toEqual([1, 2]);
     expect(rec.players.every((p) => p.is_bot === false)).toBe(true);
     expect(rec.users.map((u) => u.user_id).sort()).toEqual([U(1), U(2)]); // every seat is a real user with stats / xp
-    expect(['net_worth', 'last_standing', 'rounds']).toContain(rec.winReason);
-    if (rec.winReason === 'rounds') expect(rec.rounds).toBeLessThanOrEqual(30);
+    expect(['last_standing', 'target', 'rounds']).toContain(rec.winReason);
+    expect(rec.rounds).toBeLessThanOrEqual(12);
+    expect(rec.winnerId).toBe(rec.players.find((p) => p.rank === 1).user_id); // standings agree with the winner
     // seq only ever went up, and the room told everyone it finished
     const seqs = h.host.of('state').map((m) => m.seq);
     expect([...seqs].sort((a, b) => a - b)).toEqual(seqs);
@@ -509,9 +559,31 @@ describe('game flow', () => {
     expect(persistMatch).toHaveBeenCalledTimes(1);
   });
 
+  it('ends on the net-worth target: the win event says target, the room finishes and the match is stored with that reason', async () => {
+    const h = await startedGame({ mode: 'quick', targetWorth: 2500000 });
+    expect(h.state.cfg.targetWorth).toBe(2500000);
+    await toHumanTurn(h, h.host);
+    h.state.players.find((p) => p.id === U(1)).cash = 9000000; // a fortune: over the 25 lakh target
+    await h.say(h.host, { t: 'action', action: { type: 'ROLL' } });
+    expect(h.state).toMatchObject({ phase: 'over', winner: U(1), winReason: 'target' });
+    expect(h.room.room.status).toBe('finished');
+    const win = h.host.last('state').events.find((e) => e.type === 'win');
+    expect(win).toMatchObject({ player: U(1), reason: 'target' });
+    expect(win.worth).toBeGreaterThanOrEqual(2500000);
+    for (let i = 0; i < 5 && !h.room.room.persisted; i += 1) await h.tick();
+    expect(persistMatch).toHaveBeenCalledTimes(1);
+    const rec = persisted[0];
+    expect(rec).toMatchObject({ winReason: 'target', winnerId: U(1), maxRounds: 12, playerCount: 2 });
+    expect(rec.players.find((p) => p.user_id === U(1)).rank).toBe(1);
+    expect(rec.players.find((p) => p.user_id === U(1)).final_worth).toBeGreaterThanOrEqual(2500000);
+    expect(rec.users.find((u) => u.user_id === U(1))).toMatchObject({ won: 1 });
+    expect(rec.users.find((u) => u.user_id === U(2))).toMatchObject({ won: 0 });
+    expect(h.host.last('room').room.status).toBe('finished');
+  });
+
   it('retries a failed persist with backoff and still writes once', async () => {
     persistMatch.mockRejectedValueOnce(new Error('neon down'));
-    const h = await startedGame({ goal: 10000, startCash: 5000, maxRounds: 30 });
+    const h = await startedGame({ mode: 'quick' });
     let steps = 0;
     while (h.room.room.status === 'playing' && steps < 6000) {
       await h.tick();
@@ -543,9 +615,103 @@ describe('game flow', () => {
     await h.tick();
     expect(h.room.room.seq).toBeGreaterThan(seq);
     expect(h.room.room.afk[U(1)]).toBe(true);
-    // idle humans move fast afterwards; acting yourself clears the flag
+    // acting yourself clears the flag (and the strikes)
     await h.say(h.host, { t: 'action', action: { type: 'END_TURN' } });
     expect(h.room.room.afk[U(1)]).toBeUndefined();
+    expect(h.room.room.idle[U(1)]).toBeUndefined();
+  });
+
+  // ---- "the roll goes by itself": a present human who was slow once is NOT auto-played on later turns ----
+
+  it('a connected human who let a turn run out gets a FULL decision timer on their next turn (never the 1.5 s pace)', async () => {
+    const h = await startedGame();
+    await toHumanTurn(h, h.host);
+    const firstTurn = h.state.turnCount;
+    // the human does nothing: the server plays their whole turn, then everyone else's, until it is their roll again
+    let guard = 0;
+    while (guard < 600 && !(h.state.turnCount > firstTurn && h.state.phase === 'roll' && h.state.players[h.state.turn].id === U(1) && !h.state.trade)) {
+      await h.tick();
+      guard += 1;
+    }
+    expect(h.state.turnCount).toBeGreaterThan(firstTurn);
+    expect(h.room.room.afk[U(1)]).toBe(true); // they did time out once
+    expect(h.room.room.idle[U(1)]).toBe(1); // one whole turn (roll + buy / end turn are one strike, not three)
+    const r = h.room.room;
+    const plan = h.room.plan();
+    expect(plan.id).toBe(U(1));
+    expect(plan.action.type).toBe('ROLL');
+    expect(plan.timeout).toBe(true);
+    expect(plan.at - r.lastApplyAt).toBe(r.animMs + TURN_MS); // not max(1500, animMs)
+    expect(h.room.clockView().deadline).toBe(plan.at); // the countdown the client shows is the same
+    // an alarm a few seconds in does nothing: the player is not rolled for
+    const seq = r.seq;
+    vi.setSystemTime(r.lastApplyAt + r.animMs + 5000);
+    await h.room.alarm();
+    expect(r.seq).toBe(seq);
+  });
+
+  it('a present human who has let AFK_STRIKES turns run out in a row gets the shorter AFK window, still never 1.5 s', async () => {
+    const h = await startedGame();
+    await toHumanTurn(h, h.host);
+    const r = h.room.room;
+    r.idle[U(1)] = AFK_STRIKES;
+    r.afk[U(1)] = true;
+    const plan = h.room.plan();
+    expect(plan.timeout).toBe(true);
+    expect(plan.at - r.lastApplyAt).toBe(r.animMs + Math.min(TURN_MS, AFK_TURN_MS));
+    expect(plan.at - r.lastApplyAt).toBeGreaterThanOrEqual(r.animMs + 5000);
+    // one deliberate action puts them back on the full timer
+    await h.say(h.host, { t: 'action', action: { type: 'ROLL' } });
+    expect(r.idle[U(1)]).toBeUndefined();
+    expect(r.afk[U(1)]).toBeUndefined();
+  });
+
+  it('a reconnect clears the idle strikes and the flag', async () => {
+    const h = await startedGame();
+    await toHumanTurn(h, h.host);
+    const r = h.room.room;
+    r.idle[U(1)] = 5;
+    r.idleTurn = { [U(1)]: 3 };
+    r.afk[U(1)] = true;
+    await h.close(h.host);
+    const back = await h.connect(user(1));
+    expect(back).toBeTruthy();
+    expect(r.idle[U(1)]).toBeUndefined();
+    expect(r.idleTurn[U(1)]).toBeUndefined();
+    expect(r.afk[U(1)]).toBeUndefined();
+  });
+
+  it('a flaky connection never speeds an auto-move up: a slow human who drops is still given the whole grace', async () => {
+    const h = await startedGame();
+    await toHumanTurn(h, h.host);
+    const r = h.room.room;
+    r.afk[U(1)] = true; // flagged idle earlier
+    r.idle[U(1)] = 5;
+    await h.close(h.host); // a blip: the socket closes
+    const dropped = r.disc[U(1)];
+    const plan = h.room.plan();
+    expect(plan.at).toBeGreaterThanOrEqual(dropped + GRACE_MS); // not "1.5 s because the flag was set"
+    const seq = r.seq;
+    vi.setSystemTime(dropped + 5000);
+    await h.room.alarm();
+    expect(r.seq).toBe(seq);
+    // back within the grace: no auto-play at all, and a full timer
+    await h.connect(user(1));
+    const plan2 = h.room.plan();
+    expect(plan2.timeout).toBe(true);
+    expect(plan2.at - r.lastApplyAt).toBe(r.animMs + TURN_MS);
+  });
+
+  it('a human who is truly gone (past the grace) is still played for at the short pace', async () => {
+    const h = await startedGame();
+    await toHumanTurn(h, h.host);
+    const r = h.room.room;
+    await h.close(h.host);
+    vi.setSystemTime(r.disc[U(1)] + GRACE_MS + 1000);
+    const plan = h.room.plan();
+    expect(plan.timeout).toBe(false);
+    expect(plan.at).toBeLessThanOrEqual(Date.now() + 5000);
+    expect(plan.action.type).toBe('ROLL');
   });
 
   it('a disconnected human is auto-played after the 15 s grace, and reconnecting stops it', async () => {
@@ -649,14 +815,27 @@ describe('rules v2: trades and debts', () => {
     expect(h.room.plan().at).toBeGreaterThan(Date.now());
   });
 
-  it('an idle recipient is rejected without waiting 30 s', async () => {
+  it('a recipient who is gone (disconnected past the grace) is rejected without waiting for the trade timer', async () => {
     for (const [from, to] of [[U(2), U(1)], [U(1), U(2)]]) {
       const h = await withState((s) => ({ trade: offer(s, from, to) }));
       h.room.room.deadlines = { 'trade:trade-1': Date.now() };
-      h.room.room.afk[to] = true;
+      h.room.room.disc[to] = Date.now() - 10 * 60_000;
       const plan = h.room.plan();
       expect(plan.action).toEqual({ type: 'TRADE_REJECT', playerId: to });
       expect(plan.at).toBeLessThan(Date.now() + 5000);
+    }
+  });
+
+  it('a connected recipient who was slow before still gets the whole trade timer', async () => {
+    for (const [from, to] of [[U(2), U(1)], [U(1), U(2)]]) {
+      const h = await withState((s) => ({ trade: offer(s, from, to) }));
+      const startedAt = Date.now();
+      h.room.room.deadlines = { 'trade:trade-1': startedAt };
+      h.room.room.afk[to] = true;
+      h.room.room.idle = { [to]: 5 };
+      const plan = h.room.plan();
+      expect(plan.action).toEqual({ type: 'TRADE_REJECT', playerId: to });
+      expect(plan.at).toBeGreaterThanOrEqual(startedAt + TRADE_MS);
     }
   });
 
@@ -669,9 +848,9 @@ describe('rules v2: trades and debts', () => {
     expect(plan.action).toEqual({ type: 'TRADE_CANCEL', playerId: U(1) });
   });
 
-  it('an idle turn player who made an offer takes it back', async () => {
+  it('a turn player who made an offer and is gone takes it back', async () => {
     const h = await withState((s) => ({ trade: offer(s, U(1), U(2)) }));
-    h.room.room.afk[U(1)] = true;
+    h.room.room.disc[U(1)] = Date.now() - 10 * 60_000;
     const plan = h.room.plan();
     expect(plan.action).toEqual({ type: 'TRADE_CANCEL', playerId: U(1) });
   });
@@ -699,7 +878,7 @@ describe('rules v2: trades and debts', () => {
     const from = h.state.players[h.state.turn].id;
     const to = from === U(1) ? U(2) : U(1);
     const sockFrom = from === U(1) ? a : b;
-    r.state.owners[1] = to; // the recipient owns Miyapur
+    r.state.owners[1] = to; // the recipient owns Sultan Bazaar
     await h.say(sockFrom, { t: 'action', action: { type: 'TRADE_OFFER', to, give: { cash: 100, tiles: [] }, get: { cash: 0, tiles: [1] } } });
     expect(h.state.trade).toMatchObject({ from, to });
     const tradeKey = `trade:${h.state.trade.id}`;
@@ -733,6 +912,86 @@ describe('rules v2: trades and debts', () => {
     expect(a.last('state').events.some((e) => e.type === 'trade_done')).toBe(true);
   });
 
+  it('REAL ENGINE: a counter-offer replaces the offer in one step, with a fresh timer for the original proposer', async () => {
+    const h = new Harness();
+    await h.init(user(1), {}, 2);
+    const a = await h.connect(user(1));
+    const b = await h.connect(user(2));
+    await h.say(a, { t: 'start' });
+    const r = h.room.room;
+    const from = h.state.players[h.state.turn].id;
+    const to = from === U(1) ? U(2) : U(1);
+    const sockFrom = from === U(1) ? a : b;
+    const sockTo = to === U(1) ? a : b;
+    r.state.owners[1] = to;
+    await h.say(sockFrom, { t: 'action', action: { type: 'TRADE_OFFER', to, give: { cash: 100, tiles: [] }, get: { cash: 0, tiles: [1] } } });
+    const firstId = h.state.trade.id;
+    const firstKey = `trade:${firstId}`;
+    expect(Object.keys(r.deadlines)).toEqual([firstKey]);
+
+    // the recipient answers with a changed deal (a TRADE_COUNTER carries no `to`: the proposer is implied)
+    await h.say(sockTo, { t: 'action', action: { type: 'TRADE_COUNTER', give: { cash: 0, tiles: [1] }, get: { cash: 5000, tiles: [] }, to: 'ignored' } });
+    expect(h.state.trade).toMatchObject({ from: to, to: from, counters: 1 });
+    expect(h.state.trade.id).not.toBe(firstId);
+    const evs = a.last('state').events.map((e) => e.type);
+    expect(evs).toEqual(['trade_countered', 'trade_offer']); // never a rejected / empty moment in between
+    expect(Object.keys(r.deadlines)).toEqual([`trade:${h.state.trade.id}`]); // the old timer is gone, a new one runs
+    const plan = h.room.plan();
+    expect(plan.action).toEqual({ type: 'TRADE_REJECT', playerId: from }); // now the original proposer is the one to answer
+
+    // the proposer accepts: the deal goes through the right way round
+    await h.say(sockFrom, { t: 'action', action: { type: 'TRADE_ACCEPT' } });
+    expect(h.state.trade).toBeNull();
+    expect(h.state.owners[1]).toBe(from);
+  });
+
+  it('REAL ENGINE: trade actions are never dropped for an animation, and a refused one is reported with its reason', async () => {
+    const h = new Harness();
+    await h.init(user(1), {}, 2);
+    const a = await h.connect(user(1));
+    const b = await h.connect(user(2));
+    await h.say(a, { t: 'start' });
+    const r = h.room.room;
+    const from = h.state.players[h.state.turn].id;
+    const to = from === U(1) ? U(2) : U(1);
+    const sockFrom = from === U(1) ? a : b;
+    const sockTo = to === U(1) ? a : b;
+    r.state.owners[1] = to;
+    r.animMs = 20_000; // the table is still animating the last move
+    r.lastApplyAt = Date.now();
+    // while I am not on turn: an exact reason, not silence
+    await h.say(sockTo, { t: 'action', action: { type: 'TRADE_OFFER', to: from, give: { cash: 100, tiles: [] }, get: { cash: 0, tiles: [] } } });
+    expect(sockTo.last('error').message).toMatch(/turn/i);
+    // the player on turn: applied at once, mid-animation
+    await h.say(sockFrom, { t: 'action', action: { type: 'TRADE_OFFER', to, give: { cash: 100, tiles: [] }, get: { cash: 0, tiles: [1] } } });
+    expect(h.state.trade).toMatchObject({ from, to });
+    // and answered at once too
+    await h.say(sockTo, { t: 'action', action: { type: 'TRADE_ACCEPT' } });
+    expect(h.state.trade).toBeNull();
+    expect(h.state.owners[1]).toBe(from);
+  });
+
+  it('REAL ENGINE: while deciding about the district I landed on, I can still trade', async () => {
+    const h = new Harness();
+    await h.init(user(1), {}, 2);
+    const a = await h.connect(user(1));
+    const b = await h.connect(user(2));
+    await h.say(a, { t: 'start' });
+    const r = h.room.room;
+    const from = h.state.players[h.state.turn].id;
+    const to = from === U(1) ? U(2) : U(1);
+    const sockFrom = from === U(1) ? a : b;
+    const sockTo = to === U(1) ? a : b;
+    r.state.owners[1] = to;
+    r.state.phase = 'buy';
+    r.state.pending = { type: 'buy', tile: 3, price: 70000 };
+    await h.say(sockFrom, { t: 'action', action: { type: 'TRADE_OFFER', to, give: { cash: 100, tiles: [] }, get: { cash: 0, tiles: [1] } } });
+    expect(h.state.trade).toMatchObject({ from, to });
+    await h.say(sockTo, { t: 'action', action: { type: 'TRADE_REJECT' } });
+    expect(h.state.trade).toBeNull();
+    expect(h.state.phase).toBe('buy'); // the district is still waiting for my decision
+  });
+
   it('REAL ENGINE: the 45 s timer resolves a debt for an idle human (mortgages, then pays)', async () => {
     const h = new Harness();
     await h.init(user(1), {}, 2);
@@ -744,13 +1003,13 @@ describe('rules v2: trades and debts', () => {
     st.cfg.debug = true; // test-only: lets the harness force the dice (the real server never sets it)
     st.turn = st.players.findIndex((p) => p.id === U(1));
     const me = st.players[st.turn];
-    me.cash = 300;
-    me.pos = 35;
+    me.cash = 10_000;
+    me.pos = MUNICIPAL_TILE - 3;
     for (const t of [1, 3, 6]) st.owners[t] = U(1);
-    const res = await h.room.applyAndBroadcast({ type: 'ROLL', playerId: U(1), dice: [3] }); // 35 + 3 lands on the ORR toll (1,000)
+    const res = await h.room.applyAndBroadcast({ type: 'ROLL', playerId: U(1), dice: [3] }); // lands on Municipal Charges (40,000)
     expect(res.error).toBeUndefined();
     expect(h.state.phase).toBe('debt');
-    expect(h.state.debt).toMatchObject({ player: U(1) });
+    expect(h.state.debt).toMatchObject({ player: U(1), amount: 40_000, reason: 'tax' });
     const plan = h.room.plan();
     expect(plan.timeout).toBe(true);
     expect(plan.at).toBe(r.lastApplyAt + r.animMs + TURN_MS);
@@ -770,16 +1029,23 @@ describe('rules v2: trades and debts', () => {
     expect(r.afk[U(1)]).toBe(true);
   });
 
-  it('every contract action type passes the allow-list (engine decides legality)', async () => {
+  it('every contract action type passes the allow-list (engine decides legality); retired ones do not', async () => {
     const h = await startedGame();
     for (const a of [
-      { type: 'MORTGAGE', tile: 1 }, { type: 'UNMORTGAGE', tile: 1 }, { type: 'SELL_BUILDING', tile: 1 },
-      { type: 'PAY_DEBT' }, { type: 'USE_JAIL_CARD' }, { type: 'TRADE_ACCEPT' }, { type: 'TRADE_REJECT' }, { type: 'TRADE_CANCEL' },
-      { type: 'TRADE_OFFER', to: 'x', give: { cash: 1, tiles: [] }, get: { cash: 0, tiles: [2] } },
+      { type: 'PAY_TRAFFIC' }, { type: 'USE_CHAI' }, { type: 'SKIP_BUY' }, { type: 'RIDE' }, { type: 'END_TURN' },
+      { type: 'UPGRADE', tile: 1 }, { type: 'MORTGAGE', tile: 1 }, { type: 'UNMORTGAGE', tile: 1 }, { type: 'SELL_BUILDING', tile: 1 },
+      { type: 'PAY_DEBT' }, { type: 'BID', amount: 0 }, { type: 'TRADE_ACCEPT' }, { type: 'TRADE_REJECT' }, { type: 'TRADE_CANCEL' },
+      { type: 'TRADE_OFFER', to: 'x', give: { cash: 1, tiles: [] }, get: { cash: 0, tiles: [2] } }, { type: 'SNATCH' },
     ]) {
+      const before = h.host.of('error').length;
       await h.say(h.host, { t: 'action', action: a });
       // never "Invalid action" (that is the allow-list's message); the engine may refuse for its own reasons
-      expect(h.host.last('error')?.message).not.toBe('Invalid action.');
+      if (h.host.of('error').length > before) expect(h.host.last('error').message, a.type).not.toBe('Invalid action.');
+    }
+    // SNATCH_CLOSE is server-only; Shield, Traps and jail are gone from the Hustle rules
+    for (const type of ['SNATCH_CLOSE', 'PLACE_TRAP', 'PAY_BAIL', 'USE_JAIL_CARD']) {
+      await h.say(h.host, { t: 'action', action: { type, tile: 1 } });
+      expect(h.host.last('error').message, type).toBe('Invalid action.');
     }
   });
 });
@@ -851,10 +1117,10 @@ describe('debt phase: the debtor acts even when it is not their turn', () => {
     const st = h.room.room.state;
     st.cfg.debug = true; // test-only: lets the harness force the dice
     st.turn = st.players.findIndex((p) => p.id === U(1));
-    st.players[st.turn].cash = 300;
-    st.players[st.turn].pos = 35;
+    st.players[st.turn].cash = 10_000;
+    st.players[st.turn].pos = MUNICIPAL_TILE - 3;
     for (const t of [1, 3, 6]) st.owners[t] = U(1);
-    const res = await h.room.applyAndBroadcast({ type: 'ROLL', playerId: U(1), dice: [3] }); // 35 + 3 lands on the ORR toll (1,000)
+    const res = await h.room.applyAndBroadcast({ type: 'ROLL', playerId: U(1), dice: [3] }); // lands on Municipal Charges (40,000)
     expect(res.error).toBeUndefined();
     expect(h.state.phase).toBe('debt');
     expect(h.state.debt.player).toBe(U(1));
@@ -903,5 +1169,184 @@ describe('debt phase: the debtor acts even when it is not their turn', () => {
     }
     expect(h.state.phase).not.toBe('debt');
     expect(r.afk[U(1)]).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Host rules (shared/ruleSettings.js): the room stores them, shows them to everyone, locks them at the start and runs
+// the game, the decision timer and the trade timer with them.
+// ---------------------------------------------------------------------------------------------------------------
+describe('host rules in a room', () => {
+  const RULES = engine.RULE_KEYS;
+
+  it('every rule is part of the room view for the host AND the guests, with the defaults filled in', async () => {
+    const h = new Harness();
+    await h.init();
+    const host = await h.connect(user(1));
+    const guest = await h.connect(user(2));
+    for (const ws of [host, guest]) {
+      const s = ws.last('room').room.settings;
+      expect(Object.keys(s).sort()).toEqual(['mode', ...RULES].sort());
+      expect(s).toEqual({ mode: 'standard', ...engine.ruleDefaults('standard') });
+    }
+    const custom = { startCash: 3000000, passStart: 0, rentPercent: 150, trafficFine: 0, turnSeconds: 25, tradeSeconds: 30, requireFullSet: false, eventEvery: 0, chaiCap: 3, snatches: 0 };
+    await h.say(host, { t: 'settings', settings: custom });
+    expect(host.of('error')).toHaveLength(0);
+    for (const ws of [host, guest]) expect(ws.last('room').room.settings).toEqual({ mode: 'standard', ...engine.ruleDefaults('standard'), ...custom });
+    expect(h.room.room.settings).toEqual({ mode: 'standard', ...engine.ruleDefaults('standard'), ...custom });
+  });
+
+  it('a bad rule value is refused with the rule named, and nothing changes', async () => {
+    const h = new Harness();
+    await h.init();
+    const host = await h.connect(user(1));
+    const before = structuredClone(h.room.room.settings);
+    for (const [bad, text] of [
+      [{ startCash: 1 }, /Starting cash must be/], [{ passStart: 123 }, /Salary for passing START must be/], [{ rentPercent: 80 }, /Rent level must be one of/],
+      [{ trafficFine: -1 }, /Traffic Jam fine must be/], [{ turnSeconds: 10 }, /Decision timer must be/], [{ tradeSeconds: 500 }, /Trade offer timer must be/],
+      [{ maxRounds: 7 }, /Round limit must be one of/], [{ requireFullSet: 'no' }, /Full set needed to upgrade must be true or false/],
+      [{ eventEvery: 1 }, /City events must be one of/], [{ chaiCap: 9 }, /Chai tokens a player can hold must be/], [{ snatchMs: 100 }, /Snatch timer must be/],
+      [{ startCash: 3000000, rentPercent: 80 }, /Rent level/],
+    ]) {
+      const n = host.of('error').length;
+      await h.say(host, { t: 'settings', settings: bad });
+      expect(host.of('error').length, JSON.stringify(bad)).toBe(n + 1);
+      expect(host.last('error').message).toMatch(text);
+      expect(h.room.room.settings, JSON.stringify(bad)).toEqual(before);
+    }
+  });
+
+  it('only the host can change them, and only in the lobby', async () => {
+    const h = await startedGame({ turnSeconds: 30 });
+    const guest = h.p2;
+    await h.say(guest, { t: 'settings', settings: { rentPercent: 200 } });
+    expect(guest.last('error').message).toBe('Only the host can change settings.');
+    await h.say(h.host, { t: 'settings', settings: { rentPercent: 200 } });
+    expect(h.host.last('error').message).toBe('Settings are locked once the game starts.');
+    expect(h.room.room.settings.rentPercent).toBe(100);
+    expect(h.state.cfg.rentPercent).toBe(100);
+  });
+
+  it('another mode resets only startCash / maxRounds / targetWorth; every other customised rule is kept', async () => {
+    const h = new Harness();
+    await h.init();
+    const host = await h.connect(user(1));
+    const custom = { startCash: 3000000, maxRounds: 30, targetWorth: 4000000, passStart: 100000, rentPercent: 200, turnSeconds: 20, requireFullSet: false, chaiCap: 2, dice: 'fair', snatches: 2 };
+    await h.say(host, { t: 'settings', settings: custom });
+    expect(host.last('room').room.settings).toMatchObject(custom);
+    await h.say(host, { t: 'settings', settings: { mode: 'quick' } });
+    expect(host.last('room').room.settings).toMatchObject({ mode: 'quick', startCash: 2000000, maxRounds: 12, targetWorth: 5000000 });
+    expect(host.last('room').room.settings).toMatchObject({ passStart: 100000, rentPercent: 200, turnSeconds: 20, requireFullSet: false, chaiCap: 2, dice: 'fair', snatches: 2 });
+    // the lobby echoes everything with the new mode: the three mode rules are not "changed" by an echo
+    await h.say(host, { t: 'settings', settings: { ...host.last('room').room.settings, mode: 'classic' } });
+    expect(host.last('room').room.settings).toMatchObject({ mode: 'classic', startCash: 1500000, maxRounds: null, targetWorth: 3000000, rentPercent: 200 });
+    // classic is never without a target, even when asked
+    await h.say(host, { t: 'settings', settings: { targetWorth: null } });
+    expect(host.last('room').room.settings.targetWorth).toBe(3000000);
+    // a custom win target of any legal amount
+    await h.say(host, { t: 'settings', settings: { targetWorth: 12500000 } });
+    expect(host.last('room').room.settings.targetWorth).toBe(12500000);
+  });
+
+  it('a room stored before the rules existed shows the defaults of its mode and starts a game with them', async () => {
+    const h = new Harness();
+    await h.init();
+    const host = await h.connect(user(1));
+    await h.connect(user(2));
+    h.room.room.settings = { mode: 'quick', dice: 'fair', auctionOnDecline: false, targetWorth: 4000000 }; // what an older room has stored
+    expect(h.room.roomView().settings).toEqual({ ...engine.ruleDefaults('quick'), mode: 'quick', dice: 'fair', targetWorth: 4000000 }); // the old auctionOnDecline is dropped
+    await h.say(host, { t: 'start' });
+    expect(h.state.cfg).toMatchObject({ mode: 'quick', startCash: 2000000, maxRounds: 12, turnSeconds: 60, tradeSeconds: 45, rentPercent: 100, requireFullSet: true, eventEvery: 3, dice: 'fair', targetWorth: 4000000 });
+    expect(h.state.players.every((p) => p.cash === 2000000)).toBe(true);
+  });
+
+  it('the game runs with the rules the host set: cash, salary, rent level, upgrades, events', async () => {
+    const h = await startedGame({ startCash: 3000000, passStart: 50000, rentPercent: 150, requireFullSet: false, eventEvery: 2, chaiCap: 2, trafficFine: 40000, targetWorth: null, snatches: 0 });
+    expect(h.state.cfg).toMatchObject({ startCash: 3000000, passStart: 50000, rentPercent: 150, requireFullSet: false, eventEvery: 2, chaiCap: 2, trafficFine: 40000, targetWorth: null, snatches: 0 });
+    expect(h.state.players.map((p) => p.cash)).toEqual([3000000, 3000000]);
+    // every client gets the config in its (redacted) view of the state
+    for (const ws of [h.host, h.p2]) expect(ws.last('state').state.cfg).toMatchObject({ startCash: 3000000, rentPercent: 150, requireFullSet: false });
+    expect(engine.previewRent({ ...h.state, owners: h.state.owners.map((o, i) => (i === 3 ? U(2) : o)) }, 3)).toBe(10500); // 7,000 at 150%
+  });
+});
+
+describe('the decision and trade timers follow the room', () => {
+  async function withTrade(settings) {
+    const h = await startedGame(settings);
+    h.room.room.state.trade = { id: 'trade-1', from: U(2), to: U(1), give: { cash: 100, tiles: [] }, get: { cash: 0, tiles: [1] } };
+    h.room.room.lastApplyAt = Date.now();
+    h.room.room.animMs = 0;
+    return h;
+  }
+
+  it('a 15 s decision timer: nothing before 15 s, then the server plays the idle move for the human', async () => {
+    const h = await startedGame({ turnSeconds: 15 });
+    expect(h.state.cfg.turnSeconds).toBe(15);
+    await toHumanTurn(h, h.host);
+    const r = h.room.room;
+    const seq = r.seq;
+    const plan = h.room.plan();
+    expect(plan.timeout).toBe(true);
+    expect(plan.at - r.lastApplyAt).toBe(r.animMs + 15_000);
+    expect(h.room.turnMs()).toBe(15_000);
+    // the clock every client sees is the same deadline
+    expect(h.host.last('state').clock).toMatchObject({ deadline: plan.at, waitingFor: [U(1)] });
+    vi.setSystemTime(r.lastApplyAt + r.animMs + 14_000);
+    await h.room.alarm();
+    expect(r.seq).toBe(seq); // 14 s: still the human's turn
+    await h.tick();
+    expect(r.seq).toBeGreaterThan(seq); // 15 s: the idle roll was played
+    expect(r.afk[U(1)]).toBe(true);
+  });
+
+  it('a 120 s decision timer waits two minutes; the default room still waits 60 s (TURN_MS)', async () => {
+    const slow = await startedGame({ turnSeconds: 120 });
+    await toHumanTurn(slow, slow.host);
+    expect(slow.room.plan().at - slow.room.room.lastApplyAt).toBe(slow.room.room.animMs + 120_000);
+    const stock = await startedGame();
+    await toHumanTurn(stock, stock.host);
+    expect(TURN_MS).toBe(60_000);
+    expect(stock.room.plan().at - stock.room.room.lastApplyAt).toBe(stock.room.room.animMs + TURN_MS);
+  });
+
+  it('a game stored without turnSeconds (before the rule existed) keeps the old 60 s', async () => {
+    const h = await startedGame({ turnSeconds: 15 });
+    await toHumanTurn(h, h.host);
+    delete h.room.room.state.cfg.turnSeconds;
+    expect(h.room.turnMs()).toBe(TURN_MS);
+    expect(h.room.plan().at - h.room.room.lastApplyAt).toBe(h.room.room.animMs + TURN_MS);
+  });
+
+  it('an adapter without a turnMs hook gets TURN_MS', async () => {
+    const h = await startedGame({ turnSeconds: 15 });
+    const real = h.room.adapter;
+    h.room.adapter = { ...real, turnMs: undefined };
+    expect(h.room.turnMs()).toBe(TURN_MS);
+    h.room.adapter = { ...real, turnMs: () => NaN };
+    expect(h.room.turnMs()).toBe(TURN_MS);
+  });
+
+  it('the trade offer is auto-rejected after the room tradeSeconds, not a fixed 45 s', async () => {
+    for (const tradeSeconds of [15, 45, 120]) {
+      const h = await withTrade({ tradeSeconds });
+      const r = h.room.room;
+      const tradeAt = Date.now();
+      r.deadlines = { 'trade:trade-1': tradeAt };
+      const plan = h.room.plan();
+      expect(plan.action).toEqual({ type: 'TRADE_REJECT', playerId: U(1) });
+      expect(plan.at, `${tradeSeconds} s`).toBe(tradeAt + tradeSeconds * 1000);
+      expect(plan.timeout).toBe(false);
+    }
+  });
+
+  it('the trade timer plays out: at tradeSeconds the offer is rejected for the human', async () => {
+    const h = await withTrade({ tradeSeconds: 20 });
+    const r = h.room.room;
+    r.deadlines = { 'trade:trade-1': Date.now() };
+    vi.setSystemTime(Date.now() + 19_000);
+    await h.room.alarm();
+    expect(h.state.trade).not.toBeNull();
+    await h.tick();
+    expect(h.state.trade).toBeNull();
   });
 });

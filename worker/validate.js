@@ -1,5 +1,6 @@
 // Input validation / sanitising. Pure functions, no Worker APIs: easy to unit-test.
 import { BOARD_SIZE } from '../shared/board.js';
+import { isVoiceId } from '../shared/cosmetics.js';
 
 export const NAME_MAX = 24;
 export const AVATAR_MAX = 11;
@@ -43,6 +44,8 @@ export function parseAvatar(v) {
 
 // Room/engine settings live in ./settings.js (strict, shared by the routes and GameRoom).
 export { sanitizeSettings, parseMaxPlayers, MAX_PLAYERS_MIN, MAX_PLAYERS_MAX } from './settings.js';
+// `{t:'net', rtt}` (connection strength report): rtt must be a finite number 0..20000 (see netpresence.js).
+export { parseNetRtt } from './netpresence.js';
 
 export const EMOTES = ['emote_mass', 'emote_cheer', 'emote_shock', 'emote_laugh', 'emote_thanks', 'emote_hurry', 'emote_taunt'];
 
@@ -57,23 +60,32 @@ export function sanitizeChat(input) {
 /** Emote key if it is on the allow-list (default: the Tycoon soundboard keys), else ''. */
 export const sanitizeEmote = (v, allowed = EMOTES) => (typeof v === 'string' && allowed.includes(v) ? v : '');
 
-// Actions that carry no parameters besides the (server-forced) player id.
+/** Voice line id from a `{t:'voice', id}` message if it is in the catalogue (shared/cosmetics.js), else ''. */
+export const sanitizeVoiceId = (v) => (isVoiceId(v) ? v : '');
+
+// Actions that carry no parameters besides the (server-forced) player id (docs/HUSTLE_PLAN.md 3.7).
 const SIMPLE_ACTIONS = new Set([
   'ROLL',
-  'PAY_BAIL',
+  'PAY_TRAFFIC',
+  'USE_CHAI',
+  'BUY',
   'SKIP_BUY',
+  'RIDE',
   'END_TURN',
   'RESIGN',
   'PAY_DEBT',
-  'USE_JAIL_CARD',
   'TRADE_ACCEPT',
   'TRADE_REJECT',
   'TRADE_CANCEL',
-  'SNATCH', // SNATCH_CLOSE is deliberately absent: only the room's timer may close the window
+  'SNATCH', // sealed press during a Snatch window (SNATCH_CLOSE and AUCTION_CLOSE are server-only and never allowed from a client)
 ]);
 // Actions that carry a single tile id.
-const TILE_ACTIONS = new Set(['UPGRADE', 'MORTGAGE', 'UNMORTGAGE', 'SELL_BUILDING', 'PLACE_TRAP']);
+const TILE_ACTIONS = new Set(['UPGRADE', 'MORTGAGE', 'UNMORTGAGE', 'SELL_BUILDING']);
 const MAX_MONEY = 100_000_000;
+// PLAY_POWER ids: a card uid / a player id (uuids, bot ids): letters, digits, underscore, hyphen.
+const ID_RE = /^[A-Za-z0-9_-]+$/;
+const POWER_CARD_MAX = 40;
+const POWER_TARGET_MAX = 64;
 
 const isTile = (t) => Number.isInteger(t) && t >= 0 && t < BOARD_SIZE;
 
@@ -89,7 +101,7 @@ function sanitizeTradeSide(side) {
 }
 
 /**
- * Action types a client may send (docs/CONTRACT.md sections 3 and 3c), and how to build the
+ * Action types a client may send (docs/GAME_RULES.md 8.5), and how to build the
  * clean engine action: `playerId` is forced, unknown fields are dropped, numbers are checked.
  * Whether the action is *legal right now* is the engine's job (applyAction validates).
  * Keep this list in sync with the contract when the engine gains actions.
@@ -99,7 +111,6 @@ export function sanitizeAction(input, playerId) {
   const type = input.type;
   if (typeof type !== 'string') return null;
   if (SIMPLE_ACTIONS.has(type)) return { type, playerId };
-  if (type === 'BUY') return input.shield === true ? { type, shield: true, playerId } : { type, playerId }; // Buy + Shield
   if (TILE_ACTIONS.has(type)) return isTile(input.tile) ? { type, tile: input.tile, playerId } : null;
   switch (type) {
     case 'BID': {
@@ -116,7 +127,97 @@ export function sanitizeAction(input, playerId) {
       if (!give.cash && !give.tiles.length && !get.cash && !get.tiles.length) return null; // empty deal
       return { type, to, give, get, playerId };
     }
+    case 'TRADE_COUNTER': {
+      // the recipient's changed deal: same shape as an offer without `to` (the proposer is implied); give leaves the sender
+      const give = sanitizeTradeSide(input.give);
+      const get = sanitizeTradeSide(input.get);
+      if (!give || !get) return null;
+      if (!give.cash && !give.tiles.length && !get.cash && !get.tiles.length) return null;
+      return { type, give, get, playerId };
+    }
+    case 'PLAY_POWER': {
+      // Power Cards (docs/POWER_CARDS.md section 2): `card` is the hand card's uid, `target` a rival's player id (swap
+      // only). Whether the card, the target and the moment are legal is the engine's job.
+      const card = typeof input.card === 'string' ? input.card.trim() : '';
+      if (!card || card.length > POWER_CARD_MAX || !ID_RE.test(card)) return null;
+      if (input.target === undefined) return { type, card, playerId };
+      const target = input.target;
+      if (typeof target !== 'string' || !target || target.length > POWER_TARGET_MAX || !ID_RE.test(target)) return null;
+      return { type, card, target, playerId };
+    }
     default:
       return null;
   }
+}
+
+// ---- Usernames ("@handles") ----
+export const HANDLE_MIN = 3;
+export const HANDLE_MAX = 20;
+export const HANDLE_RULES = `Usernames are ${HANDLE_MIN}-${HANDLE_MAX} characters: letters, numbers and single underscores, starting with a letter.`;
+
+// Names nobody may claim (exact match, after lowercasing).
+export const RESERVED_HANDLES = new Set([
+  'admin',
+  'administrator',
+  'support',
+  'gamehub',
+  'kingpin',
+  'system',
+  'moderator',
+  'mod',
+  'help',
+  'official',
+  'staff',
+  'root',
+  'owner',
+  'team',
+  'security',
+  'service',
+  'null',
+  'undefined',
+  'anonymous',
+  'guest',
+  'everyone',
+  'hyd',
+  'hydtycoon',
+]);
+
+// Easily extended: a handle containing any of these (underscores dropped, common digit look-alikes
+// folded to letters) is refused as reserved. Keep it to clear profanity / brand impersonation so
+// innocent names are not caught by accident.
+export const BLOCKED_HANDLE_WORDS = ['gamehub', 'kingpin', 'fuck', 'shit', 'cunt', 'nigg', 'faggot', 'rapist', 'nazi', 'hitler'];
+
+const HANDLE_RE = /^[a-z][a-z0-9_]*$/;
+const LEET = { 0: 'o', 1: 'i', 3: 'e', 4: 'a', 5: 's', 7: 't' };
+
+/** True when a (lowercase) handle is reserved or contains a blocked word. */
+export function isReservedHandle(h) {
+  if (RESERVED_HANDLES.has(h)) return true;
+  const folded = h.replace(/_/g, '').replace(/[013457]/g, (d) => LEET[d]);
+  return BLOCKED_HANDLE_WORDS.some((w) => folded.includes(w));
+}
+
+/**
+ * Lenient lookup form of a handle typed by a user: trims, drops one leading "@", lowercases.
+ * Returns '' unless the result has the shape of a handle (no reserved check: lookups just miss).
+ */
+export function normalizeHandle(input) {
+  if (typeof input !== 'string') return '';
+  const h = input.trim().replace(/^@/, '').toLowerCase();
+  if (h.length < HANDLE_MIN || h.length > HANDLE_MAX || !HANDLE_RE.test(h) || h.includes('__')) return '';
+  return h;
+}
+
+/**
+ * Strict handle validation for claiming one. Accepts uppercase / a leading "@" and stores lowercase.
+ * `{ ok:true, value }` or `{ ok:false, reason:'invalid'|'reserved', error }`.
+ */
+export function validateHandle(input) {
+  if (typeof input !== 'string') return { ok: false, reason: 'invalid', error: 'Username must be text.' };
+  const h = input.trim().replace(/^@/, '').toLowerCase();
+  if (h.length < HANDLE_MIN || h.length > HANDLE_MAX || !HANDLE_RE.test(h) || h.includes('__')) {
+    return { ok: false, reason: 'invalid', error: HANDLE_RULES };
+  }
+  if (isReservedHandle(h)) return { ok: false, reason: 'reserved', error: 'That username is not available.' };
+  return { ok: true, value: h };
 }

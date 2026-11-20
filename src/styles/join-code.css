@@ -1,0 +1,440 @@
+/* Room-code entry (CodeInput v2) and the join flow's own pieces. Prefix: jc-
+   One real <input> sits over the boxes; boxes are display only, grouped 3 + 3 with a dot between.
+   Tokens only (--hub-*, --st-*, --dur-*, --ease-out). Motion: transform + opacity (and colour) only, and every
+   animation has a reduced-motion twin at the end of this file. */
+
+.jc {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 2px;
+}
+.jc__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.jc__field {
+  position: relative;
+  cursor: text;
+}
+.jc__input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  font-size: 16px; /* 16px or more: iOS does not zoom the page when it is focused */
+  cursor: text;
+}
+
+/* boxes: [ABC] . [234] */
+.jc__boxes {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(8px, 3vw, 16px);
+  pointer-events: none;
+}
+.jc__group {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(5px, 1.8vw, 10px);
+}
+.jc__sep {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--hub-line-2);
+  transition: background-color var(--dur-2) var(--ease-out);
+}
+.jc__box {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1 / 1.2;
+  max-height: 80px;
+  border-radius: 14px;
+  border: 2px solid var(--hub-line-2);
+  background: var(--hub-field);
+  font-family: var(--font-hub-display, var(--font-display));
+  font-weight: 800;
+  font-size: clamp(1.45rem, 7.4vw, 2.2rem);
+  color: var(--hub-gold);
+  transition:
+    border-color var(--dur-2) var(--ease-out),
+    box-shadow var(--dur-2) var(--ease-out);
+}
+.jc__box.has-char {
+  border-color: rgba(var(--hub-gold-rgb), 0.6);
+}
+.jc__ch {
+  display: block;
+  animation: jc-land var(--dur-1) var(--ease-out) both;
+}
+.jc.is-focused .jc__box.is-active {
+  border-color: var(--hub-gold);
+  box-shadow: 0 0 0 3px rgba(var(--hub-gold-rgb), 0.3);
+}
+
+/* states */
+.jc--checking .jc__box {
+  border-color: var(--hub-info);
+}
+.jc--ok .jc__box {
+  border-color: var(--hub-good);
+  transition-delay: calc(var(--i, 0) * 28ms);
+}
+.jc--ok .jc__sep {
+  background: var(--hub-good);
+}
+.jc--error .jc__box {
+  border-color: var(--hub-bad);
+}
+.jc--error .jc__boxes {
+  animation: jc-shake var(--dur-3) var(--ease-out) 1 both;
+}
+.jc.is-disabled {
+  opacity: 0.75;
+}
+
+/* the calm check: draws itself in a corner badge once the code is confirmed */
+.jc__check {
+  position: absolute;
+  top: -12px;
+  right: -6px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--hub-good);
+  color: var(--hub-surface);
+  box-shadow: 0 4px 10px -4px rgba(var(--hub-good-rgb), 0.8);
+  opacity: 0;
+  transform: scale(0.8);
+  transition:
+    opacity var(--dur-2) var(--ease-out),
+    transform var(--dur-2) var(--ease-out);
+}
+.jc__check-svg path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset var(--dur-3) var(--ease-out) 120ms;
+}
+.jc--ok .jc__check {
+  opacity: 1;
+  transform: none;
+}
+.jc--ok .jc__check-svg path {
+  stroke-dashoffset: 0;
+}
+
+/* tools: Paste, Clear */
+.jc__tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+.jc__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 12px;
+  border: 1px solid var(--hub-line-2);
+  background: var(--hub-surface-2, transparent);
+  color: var(--hub-text);
+  font-family: inherit;
+  font-size: var(--st-t-s, 0.9rem);
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-1) var(--ease-out),
+    border-color var(--dur-1) var(--ease-out),
+    transform var(--dur-1) var(--ease-out);
+}
+.jc__btn--quiet {
+  margin-left: auto;
+  border-color: transparent;
+  background: transparent;
+  color: var(--hub-dim);
+}
+.jc__btn:active {
+  transform: scale(0.97);
+}
+.jc__btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.jc__btn:focus-visible {
+  outline: 2px solid var(--ho-accent, var(--hub-gold));
+  outline-offset: 2px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .jc__btn:not(:disabled):hover {
+    border-color: var(--hub-gold);
+  }
+  .jc__btn--quiet:not(:disabled):hover {
+    color: var(--hub-text);
+  }
+}
+
+/* one line of feedback under the boxes (aria-live) */
+.jc__msg {
+  margin: 0;
+  min-height: 0;
+  font-size: var(--st-t-s, 0.9rem);
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--hub-dim);
+}
+.jc__msg:not(:empty) {
+  min-height: 1.4em;
+}
+.jc__msg.is-error {
+  color: var(--hub-bad-ink, var(--hub-bad));
+}
+.jc__msg.is-ok {
+  color: var(--hub-good);
+}
+
+@keyframes jc-land {
+  from {
+    opacity: 0.2;
+    transform: scale(0.82);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes jc-shake {
+  20%,
+  60% {
+    transform: translateX(-6px);
+  }
+  40%,
+  80% {
+    transform: translateX(6px);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+/* reduced motion: keep the colour change, drop the movement (shake, pop, press, check scale) */
+@media (prefers-reduced-motion: reduce) {
+  .jc__ch,
+  .jc--error .jc__boxes {
+    animation: none;
+  }
+  .jc--ok .jc__box {
+    transition-delay: 0ms;
+  }
+  .jc__check {
+    transform: none;
+  }
+  .jc__check-svg path {
+    transition: none;
+  }
+  .jc__btn:active {
+    transform: none;
+  }
+}
+:root[data-motion='reduced'] .jc__ch,
+:root[data-motion='reduced'] .jc--error .jc__boxes {
+  animation: none;
+}
+:root[data-motion='reduced'] .jc--ok .jc__box {
+  transition-delay: 0ms;
+}
+:root[data-motion='reduced'] .jc__check {
+  transform: none;
+}
+:root[data-motion='reduced'] .jc__check-svg path {
+  transition: none;
+}
+:root[data-motion='reduced'] .jc__btn:active {
+  transform: none;
+}
+
+/* ---------- "You're invited": the landing for people who open the host's link ---------- */
+.jc-invite {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.jc-invite__title {
+  margin: 0;
+  font-size: var(--st-t-l, 1.25rem);
+  line-height: 1.2;
+  color: var(--hub-text);
+  text-wrap: balance;
+}
+.jc-invite__game {
+  font-weight: 600;
+  color: var(--hub-dim);
+}
+.jc-invite__generic {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: var(--hub-r-m);
+  background: var(--hub-surface);
+  border: 1px dashed var(--hub-line-2);
+  font-size: var(--st-t-s, 0.9rem);
+  color: var(--hub-dim);
+}
+.jc-invite__paths {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+  border-radius: var(--st-radius-card, 18px);
+  background: var(--hub-surface);
+  border: 1px solid var(--hub-line-2);
+  box-shadow: var(--hub-shadow-s, none);
+}
+.jc-invite__paths .ho-or {
+  margin: 8px 0;
+}
+.jc-invite__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--st-t-s, 0.9rem);
+  font-weight: 600;
+  color: var(--hub-dim);
+}
+.jc-invite__foot {
+  margin: 0;
+  text-align: center;
+  font-size: var(--st-t-s, 0.9rem);
+  line-height: 1.8;
+  color: var(--hub-dim);
+}
+.jc-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 6px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 800;
+  color: var(--hub-brand-ink, var(--hub-text));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.jc-link:focus-visible {
+  outline: 2px solid var(--ho-accent, var(--hub-gold));
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.jc-path {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.jc-path__title {
+  font-family: var(--font-hub-display, inherit);
+  font-size: var(--st-m, 1.05rem);
+  color: var(--hub-text);
+}
+.jc-path__sub {
+  font-size: var(--st-t-s, 0.9rem);
+  line-height: 1.4;
+  color: var(--hub-dim);
+}
+.jc-path__error {
+  font-size: var(--st-t-s, 0.9rem);
+  font-weight: 600;
+  color: var(--hub-bad-ink, var(--hub-bad));
+}
+.jc-path__go {
+  min-height: 48px;
+}
+.jc-field__label {
+  margin-top: 4px;
+  font-size: var(--st-t-xs, 0.75rem);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--hub-dim);
+}
+.jc-field {
+  min-height: 48px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid var(--hub-line-2);
+  background: var(--hub-field);
+  color: var(--hub-text);
+  font: inherit;
+  font-size: 16px;
+  transition:
+    border-color var(--dur-1) var(--ease-out),
+    box-shadow var(--dur-1) var(--ease-out);
+}
+.jc-field:focus-visible {
+  outline: none;
+  border-color: var(--hub-gold);
+  box-shadow: 0 0 0 3px rgba(var(--hub-gold-rgb), 0.3);
+}
+.jc-field[aria-invalid] {
+  border-color: var(--hub-bad);
+}
+.jc-field:disabled {
+  opacity: 0.7;
+}
+
+.jc-pill {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: var(--st-t-xs, 0.75rem);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.jc-pill--open {
+  color: var(--hub-good);
+  background: rgba(var(--hub-good-rgb), 0.14);
+  border: 1px solid rgba(var(--hub-good-rgb), 0.4);
+}
+
+/* ---------- "Have a code?" sheet (top bar) ---------- */
+.jc-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 4px;
+}
+.jc-sheet__hint {
+  margin: 0;
+  font-size: var(--st-t-s, 0.9rem);
+  line-height: 1.45;
+  color: var(--hub-dim);
+}
+.jc-sheet .jc {
+  margin-block: 6px 0;
+}

@@ -39,3 +39,52 @@ export function fmtStat(value, def) {
   if (value === null || value === undefined || !Number.isFinite(Number(value))) return '—';
   return def?.format === 'inr' ? compactINR(value) : NF.format(Math.round(Number(value)));
 }
+
+/**
+ * Stat columns for a game with `rating` guaranteed in second place (the first column is the ranking stat, the
+ * second the one phones still show), then the manifest's other stats up to `max`.
+ */
+export function statDefsWithRating(game, max = 3) {
+  const all = Array.isArray(game?.stats) && game.stats.length ? game.stats : statDefs(null, 3);
+  const rating = all.find((d) => d.key === 'rating') || { key: 'rating', label: 'Rating' };
+  const rest = all.filter((d) => d.key !== 'rating');
+  return (rest.length ? [rest[0], rating, ...rest.slice(1)] : [rating]).slice(0, Math.max(1, max));
+}
+
+const ORD = ['th', 'st', 'nd', 'rd'];
+/** 1 -> '1st', 2 -> '2nd', 11 -> '11th', 23 -> '23rd'. */
+export function ordinal(n) {
+  const v = Math.abs(Math.round(Number(n) || 0));
+  const m = v % 100;
+  return `${v}${(m >= 11 && m <= 13) || !ORD[v % 10] ? 'th' : ORD[v % 10]}`;
+}
+
+/**
+ * Result chip for a finished match: `{ text, tone: 'win'|'podium'|'loss' }`.
+ * Won -> 'Won'; otherwise '2nd of 4' (or just '2nd' when the player count is unknown).
+ */
+export function matchResult(m) {
+  const rank = Math.round(Number(m?.rank) || 0);
+  const count = Math.round(Number(m?.playerCount) || (Array.isArray(m?.players) ? m.players.length : 0));
+  if (m?.won || rank === 1) return { text: 'Won', tone: 'win' };
+  if (!rank) return { text: 'Finished', tone: 'loss' };
+  const text = count > 1 ? `${ordinal(rank)} of ${count}` : ordinal(rank);
+  return { text, tone: rank <= 3 && count > 3 ? 'podium' : 'loss' };
+}
+
+const RTF = typeof Intl !== 'undefined' && Intl.RelativeTimeFormat ? new Intl.RelativeTimeFormat('en', { numeric: 'auto' }) : null;
+const DF = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short' });
+
+/** '5 min ago', 'yesterday', '3 days ago', then a short date ('12 Nov'). Unknown / invalid -> ''. */
+export function relTime(when, now = Date.now()) {
+  const t = typeof when === 'number' ? when : Date.parse(when);
+  if (!Number.isFinite(t)) return '';
+  const s = Math.round((t - now) / 1000);
+  const a = Math.abs(s);
+  if (a < 45) return 'just now';
+  if (!RTF) return DF.format(new Date(t));
+  if (a < 3600) return RTF.format(Math.round(s / 60), 'minute');
+  if (a < 86400) return RTF.format(Math.round(s / 3600), 'hour');
+  if (a < 7 * 86400) return RTF.format(Math.round(s / 86400), 'day');
+  return DF.format(new Date(t));
+}

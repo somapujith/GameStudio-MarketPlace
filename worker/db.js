@@ -1,5 +1,6 @@
 // Neon HTTP driver wrapper. Parameterised queries only: never build SQL from user input.
 import { neon } from '@neondatabase/serverless';
+import './neonLocal.js';
 
 const clients = new Map();
 

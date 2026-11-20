@@ -3,11 +3,20 @@ import { Link } from 'react-router-dom';
 import { BRAND } from '@/platform/brand.js';
 import { paths } from '@/platform/paths.js';
 import { useReducedMotion } from '@/components/shell/hooks.js';
+import { getGamesLive } from '@/lib/api.js';
+import { useLoad } from '@/components/shell/home/useLoad.js';
+import { openTablesById } from '@/components/shell/home/homeModel.js';
+import { useLive } from './store/live.js';
 import { featured, groupByCategory, orderedGames } from './catalog.js';
 import CategoryChips from './CategoryChips.jsx';
 import GameCard from './GameCard.jsx';
 
-/** Live text and controls over the cinematic Hyderabad release artwork. */
+const fetchLive = (opts) => getGamesLive(opts);
+
+/**
+ * Live text and controls over the cinematic Hyderabad release artwork, with the game shelf underneath. Each tile
+ * carries its live open-table count (from Home's shared live data, or its own poll when used standalone).
+ */
 export default function Hero() {
   const game = featured();
   const games = useMemo(orderedGames, []);
@@ -16,6 +25,11 @@ export default function Hero() {
   const [selected, setSelected] = useState(game?.id || games[0]?.id);
   const cards = useRef({});
   const reduced = useReducedMotion();
+  const shared = useLive();
+  // Standalone (outside Home's provider) the hero asks for the counts itself.
+  const own = useLoad('games-live', fetchLive, { enabled: !shared, pollMs: 30_000 });
+  const counts = shared ? shared.gamesLive : own;
+  const tables = shared?.perGame ?? (counts.status === 'ok' ? openTablesById(counts.data?.games) : {});
   const active = groups.some((group) => group.id === category) ? category : 'all';
   const shown = active === 'all' ? games : groups.find((group) => group.id === active)?.games || [];
   const activeId = shown.some((item) => item.id === selected) ? selected : shown[0]?.id;
@@ -26,7 +40,7 @@ export default function Hero() {
   };
 
   return (
-    <section className="street-hero film-hero" aria-label={BRAND.name}>
+    <section className="street-hero film-hero" aria-label={BRAND.name} data-tour="home-hero">
       <img className="film-hero__scene" src="/art/cinematic/hero.webp" alt="" width="2048" height="1024" fetchPriority="high" decoding="async" />
       <div className="film-hero__shade" aria-hidden="true" />
       <div className="street-hero__message film-hero__message">
@@ -37,10 +51,10 @@ export default function Hero() {
           <a className="street-hero__explore film-explore" href="#games">EXPLORE GAMES <span aria-hidden="true">&#8594;</span></a>
         </div>
       </div>
-      <div id="games" className="film-hero__arcade" tabIndex={-1}>
+      <div id="games" className="film-hero__arcade" tabIndex={-1} data-tour="home-play">
         <h2 className="hub-sr">Choose your game</h2>
         <ul className="film-shelf" aria-label="Games" style={{ gridTemplateColumns: shown.map((_, i) => i === 0 ? '1.3fr' : 'minmax(0, 1fr)').join(' ') }}>
-          {shown.map((item) => <li key={item.id} ref={(node) => { cards.current[item.id] = node; }} onFocus={() => setSelected(item.id)}><GameCard game={item} selected={activeId === item.id} /></li>)}
+          {shown.map((item) => <li key={item.id} ref={(node) => { cards.current[item.id] = node; }} onFocus={() => setSelected(item.id)}><GameCard game={item} selected={activeId === item.id} tables={tables[item.id] || 0} /></li>)}
         </ul>
         <div className="film-hero__shelf-tools">
           <div className="film-dots" role="group" aria-label="Choose a game tile">

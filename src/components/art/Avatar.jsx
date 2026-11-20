@@ -2,6 +2,7 @@
 // Each preset only changes skin tone, hair, headwear, clothing and accessories. No real people.
 import { memo, useId } from 'react';
 import { PAL, darken, lighten } from './palette.js';
+import '@/styles/avatar.css';
 
 const INK = '#1b1340';
 
@@ -47,7 +48,7 @@ const Head = ({ skin }) => (
 );
 
 const Eyes = ({ lash }) => (
-  <g>
+  <g className="av-eyes">
     <ellipse cx="43" cy="47.4" rx="2" ry="2.6" fill={INK} />
     <ellipse cx="57" cy="47.4" rx="2" ry="2.6" fill={INK} />
     <circle cx="43.7" cy="46.4" r=".8" fill="#fff" />
@@ -561,7 +562,10 @@ function AvatarBase({ preset = 0, size = 48, ring, className, title }) {
       <g clipPath={`url(#${uid}c)`}>
         <rect width="100" height="100" fill={bg} />
         <circle cx="26" cy="22" r="40" fill={bg2} opacity=".55" />
-        <Layers i={n} />
+        {/* the bust is drawn 10% smaller, anchored at the shoulders, so tall headwear (chef hat, turban) is not cropped by the circle */}
+        <g transform="translate(50 100) scale(.9) translate(-50 -100)">
+          <Layers i={n} />
+        </g>
       </g>
       {ringColor && <circle cx="50" cy="50" r="47.4" fill="none" stroke={ringColor} strokeWidth="5.2" />}
       {ringColor && <circle cx="50" cy="50" r="44.6" fill="none" stroke="#1b1340" strokeOpacity=".25" strokeWidth="1" />}

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { getOptions as tycoonGetOptions, standings as tycoonStandings } from '@shared/index.js';
 import * as presenterModule from '@/lib/session/usePresenter.js';
 import { useAuth } from '@/lib/auth.jsx';
+import { useSettings } from '@/lib/storage.js';
 import { buildResult } from '@/components/online/gameHelpers.js';
 import { gateOptions } from '@/lib/session/gateOptions.js';
 import { useRoomConnection } from '@/components/online/useRoomConnection.js';
@@ -12,6 +13,23 @@ import { paths } from '@/platform/paths.js';
 const usePresenter = presenterModule.usePresenter || presenterModule.default;
 
 const ACTION_TIMEOUT = 5000; // re-enable the UI if the server never answers an action
+const EMPTY = Object.freeze([]);
+
+/** `{ [playerId]: { frame?, dice?, title? } }` from the room players. Pure; exported for tests. */
+export function cosmeticsMap(players) {
+  const out = {};
+  for (const p of Array.isArray(players) ? players : []) {
+    if (p && p.id != null && p.cosmetics && typeof p.cosmetics === 'object') out[String(p.id)] = p.cosmetics;
+  }
+  return out;
+}
+
+/** `{ deadline, waitingFor }` with a finite deadline, else null. Pure; exported for tests. */
+export function normalizeClock(raw) {
+  const deadline = Number(raw?.deadline);
+  if (!raw || !Number.isFinite(deadline) || deadline <= 0) return null;
+  return { deadline, waitingFor: Array.isArray(raw.waitingFor) ? raw.waitingFor.map(String) : [] };
+}
 
 // Socket + room state for ONE room code (no game in it) lives in components/online/useRoomConnection.js and is
 // re-exported here, because game plugins (Nawabi Raj) import it from this module:
@@ -30,9 +48,16 @@ export { useRoomConnection };
  * (events: []) and goes through `reset()` so nothing is animated twice.
  *
  * `session.view` is ALWAYS the latest authoritative state (set the moment a message arrives); the presenter's delayed
- * copy is `session.display`. `session.options` come from `view` too. The one place they are not blanked while the
- * presenter is busy is the snatch window (phase 'snatch'): it runs in real time, so a SNATCH press must never wait
- * for an animation or for another request.
+ * copy is `session.display`. `session.options` come from `view` too and are blank while the presenter animates.
+ *
+ * Hustle additions (docs/HUSTLE_PLAN.md 3.9):
+ *  - session.clock        { deadline: epochMs|null, waitingFor: playerId[] } from the latest `{t:'state'}` (null until one has it)
+ *  - session.roomPlayers  the `{t:'room'}` players ({ id, name, connected, piece, cosmetics }), [] before the room arrives
+ *  - session.cosmetics    { [playerId]: { frame?, dice?, title? } } built from them; session.room = the raw room
+ *  - session.card / handoff / flights  the presenter's card reveal, turn hand-off and coin flights (null / null / [])
+ *  - session.power        the presenter's current power-card moment (draw / play / shield / double / expire), null between moments;
+ *                         `session.options.power` (the hand's playable cards) passes through gateOptions like the other options
+ *  - the presenter plays back at the `playbackSpeed` setting
  *
  * `useOnlineGame(code, { getOptions, standings })`: the two engine calls that are specific to a game.
  *  - getOptions(view, meId) -> the allowed actions for `session.options`. Defaults to the Tycoon engine for now.
@@ -45,14 +70,18 @@ export function useOnlineGame(code, { getOptions = tycoonGetOptions, standings =
   const { user } = useAuth();
   const me = user ? String(user.id) : '';
   const navigate = useNavigate();
-  const presenter = usePresenter({ meId: me, initialState: null }); // the first server snapshot arrives via reset()
+  const [settings] = useSettings();
+  const speed = Number(settings?.playbackSpeed) > 0 ? Number(settings.playbackSpeed) : 1;
+  // the first server snapshot arrives via reset()
+  const presenter = usePresenter({ meId: me, initialState: null, speed });
   const presenterRef = useRef(presenter);
   const [awaiting, setAwaiting] = useState(false);
   const awaitTimer = useRef(null);
   const busyRef = useRef(false);
   const awaitingRef = useRef(false);
   const viewRef = useRef(null);
-  const snatchSent = useRef(null); // key of the snatch window I already pressed in (the press is sealed: no event)
+  const snatchSent = useRef(null); // key of the snatch window I already pressed in (the press is sealed: no event comes back)
+  const [clock, setClock] = useState(null);
 
   useEffect(() => {
     presenterRef.current = presenter;
@@ -69,8 +98,9 @@ export function useOnlineGame(code, { getOptions = tycoonGetOptions, standings =
   useEffect(() => () => clearTimeout(awaitTimer.current), []);
 
   const onState = useCallback(
-    ({ state, events, fresh }) => {
+    ({ state, events, fresh, clock: nextClock }) => {
       clearAwaiting();
+      if (nextClock !== undefined) setClock(normalizeClock(nextClock));
       const p = presenterRef.current;
       if (fresh) p.reset(state);
       else p.enqueue(events, state);
@@ -80,10 +110,10 @@ export function useOnlineGame(code, { getOptions = tycoonGetOptions, standings =
 
   const conn = useRoomConnection(code, { onState });
   const { room, view, chat, connection, send, leave, fatal, error, errorId } = conn;
-  useEffect(() => {
-    viewRef.current = view;
-    if (!view || view.phase !== 'snatch') snatchSent.current = null; // the window is over: the next one starts fresh
-  }, [view]);
+  // the connection may also expose the last clock itself
+  const liveClock = conn.clock !== undefined ? normalizeClock(conn.clock) : clock;
+  const roomPlayers = useMemo(() => (Array.isArray(room?.players) ? room.players : EMPTY), [room]);
+  const cosmetics = useMemo(() => cosmeticsMap(roomPlayers), [roomPlayers]);
 
   // a rejected action or a dropped connection releases the "waiting for the server" lock
   useEffect(() => {
@@ -93,24 +123,35 @@ export function useOnlineGame(code, { getOptions = tycoonGetOptions, standings =
     if (connection !== 'open') clearAwaiting();
   }, [connection, clearAwaiting]);
 
+  useEffect(() => {
+    viewRef.current = view;
+    if (!view || view.phase !== 'snatch') snatchSent.current = null; // the window is over: the next one starts fresh
+  }, [view]);
+
   const dispatch = useCallback(
     (action) => {
       if (!action || typeof action !== 'object' || !me) return;
       if (action.type === 'SNATCH') {
-        // Real-time window, sealed press: ignore animations and pending requests, but never press twice.
+        // Real-time window, sealed press: ignore animations and pending requests (the window must never wait behind the
+        // presenter's queue), but never press twice in one window.
         const v = viewRef.current;
-        const key = v && v.pending ? `${v.pending.tile}:${v.pending.buyer}:${v.round}:${v.turn}` : 'snatch';
+        const key = v && v.pending ? `${v.pending.tile}:${v.pending.buyer}:${v.turnCount ?? v.round}` : 'snatch';
         if (snatchSent.current === key) return;
         if (send({ t: 'action', action: { ...action, playerId: me } }, { queue: false })) snatchSent.current = key;
         return;
       }
-      if (busyRef.current || awaitingRef.current) return;
+      // A trade is a talk between players, not a move on the animated table: its actions never wait for the presenter
+      // (the server judges them against the latest state; it never drops one for an animation). A request of mine that is
+      // still in flight does block, so nothing is sent twice. Returns whether the action was sent.
+      const isTrade = typeof action.type === 'string' && action.type.startsWith('TRADE_');
+      if ((busyRef.current && !isTrade) || awaitingRef.current) return false;
       const ok = send({ t: 'action', action: { ...action, playerId: me } }, { queue: false });
-      if (!ok) return;
+      if (!ok) return false;
       awaitingRef.current = true;
       setAwaiting(true);
       clearTimeout(awaitTimer.current);
       awaitTimer.current = setTimeout(() => setAwaiting(false), ACTION_TIMEOUT);
+      return true;
     },
     [me, send],
   );
@@ -127,6 +168,8 @@ export function useOnlineGame(code, { getOptions = tycoonGetOptions, standings =
     [send],
   );
 
+  /** Soundboard: ask the room to play one of my voice lines. Returns whether it was sent (the server checks ownership and limits). */
+  const sendVoice = useCallback((id) => (typeof id === 'string' && id ? send({ t: 'voice', id }, { queue: false }) : false), [send]);
   const sendRoom = useCallback((msg, opts) => send(msg, opts), [send]);
 
   const busy = !!presenter.busy;
@@ -141,7 +184,7 @@ export function useOnlineGame(code, { getOptions = tycoonGetOptions, standings =
         real = null;
       }
     }
-    // blank while animating / awaiting the server / offline, except the snatch buttons (see gateOptions)
+    // blank while animating / awaiting the server / offline (see gateOptions)
     return gateOptions(real, view, { busy, awaiting, connection });
   }, [view, me, busy, awaiting, connection, getOptions]);
 
@@ -163,17 +206,31 @@ export function useOnlineGame(code, { getOptions = tycoonGetOptions, standings =
       rolling: presenter.rolling,
       bubble: presenter.bubble,
       stageTile: presenter.stageTile,
+      lastCash: presenter.lastCash ?? display?.lastCash ?? null,
       log: presenter.log,
+      card: presenter.card ?? null,
+      handoff: presenter.handoff ?? null,
+      auctionResult: presenter.auctionResult ?? null,
+      power: presenter.power ?? null,
+      flights: presenter.flights ?? EMPTY,
+      clock: liveClock,
+      roomPlayers,
+      cosmetics,
+      room,
       options,
       dispatch,
       chat,
       sendChat,
+      sendVoice,
       result,
       connection,
       restart,
       quit: leave,
     }),
-    [me, view, display, busy, presenter.rolling, presenter.bubble, presenter.stageTile, presenter.log, options, dispatch, chat, sendChat, result, connection, restart, leave],
+    [
+      me, view, display, busy, presenter.rolling, presenter.bubble, presenter.stageTile, presenter.lastCash, presenter.log, presenter.card, presenter.handoff, presenter.auctionResult, presenter.power,
+      presenter.flights, liveClock, roomPlayers, cosmetics, room, options, dispatch, chat, sendChat, sendVoice, result, connection, restart, leave,
+    ],
   );
 
   let status;

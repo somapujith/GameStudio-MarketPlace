@@ -1,0 +1,281 @@
+/* Nawabi Raj game screen on phones.
+   .hg-game--phone  portrait phone (< 600px wide): top bar / opponents row(s) / board / [wallet bar + action dock]
+   .hg-game--land   a phone on its side (landscape, <= 520px tall): [opponents | board | wallet bar + dock]
+   Both are `.hg-game--compact`: the game is one fixed, non-scrolling frame. The bottom stack (wallet + dock) is IN the
+   flow, so nothing can sit behind the iOS Safari bar / Android gesture bar and the dock never overlaps the table; only
+   the table area scrolls (inside itself) when six players on a short screen do not fit.
+   Viewport units: `vh` first, `dvh` after it (older WebKit / WebView keep the `vh` line). The frame itself is
+   `position: fixed; inset: 0`, which is always exactly the visible area, so it needs neither. */
+
+/* ============================================================ page chrome while the game is up */
+html.hg-playing, html.hg-playing body {
+  overflow: hidden;
+  overscroll-behavior: none;          /* Android Chrome pull-to-refresh / glow, iOS 16+ rubber band */
+  -webkit-text-size-adjust: 100%;     /* iOS inflates text when the phone is turned */
+  text-size-adjust: 100%;
+  -webkit-touch-callout: none;
+}
+html.hg-playing { height: 100%; }
+
+/* ============================================================ shared: compact frame */
+.hg-game--compact {
+  overflow: hidden;
+  --hg-gap: 6px;
+  -webkit-text-size-adjust: 100%;
+}
+.hg-game--compact .hg-table {
+  flex: 1 1 0; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none;
+}
+.hg-game--compact .hg-table::-webkit-scrollbar { display: none; }
+
+/* the bottom stack: wallet bar + action dock. In flow: its height is reported as --hg-dock (GameView). */
+.hg-bottom {
+  position: relative; z-index: 30; flex: none; display: flex; flex-direction: column; gap: 6px;
+  padding: 8px 10px max(10px, var(--safe-bottom));
+  background: #121b23; background: linear-gradient(180deg, #17222b, #10171e);
+  border-top: 1px solid var(--line-strong); box-shadow: 0 -10px 24px rgba(0, 0, 0, 0.35);
+}
+.hg-game--compact .hg-pods.hg-pods--me { display: block; flex: none; list-style: none; margin: 0; padding: 0; overflow: visible; }
+
+/* ============================================================ portrait phone */
+.hg-game--phone { --hg-top: calc(50px + var(--safe-top)); --hg-pad: 8px; --hg-oppH: 56px; }
+.hg-game--phone .hg-top { min-height: var(--hg-top); padding: calc(var(--safe-top) + 3px) 10px 3px; }
+.hg-game--phone .hg-table {
+  display: flex; flex-direction: column; gap: 8px; padding: 2px var(--hg-pad) 8px;
+  --hg-oppH: 56px;
+}
+.hg-game--phone .hg-table[data-opp='3'] { --hg-oppH: 72px; }
+.hg-game--phone .hg-table[data-opp='4'] { --hg-oppH: 118px; }
+.hg-game--phone .hg-table[data-opp='5'] { --hg-oppH: 134px; }
+.hg-game--phone .hg-table[data-opp='0'] { --hg-oppH: 0px; }
+.hg-game--phone .hg-pods { display: grid; flex: none; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.hg-game--phone .hg-boardcol { flex: 1 0 auto; display: flex; align-items: center; justify-content: center; width: 100%; }
+/* the board is as wide as the screen unless the height runs out: top bar, opponents, wallet + dock and gaps come off */
+.hg-game--phone .hg-boardwrap {
+  --hg-avail-h: calc(100vh - var(--hg-top) - var(--hg-oppH) - var(--hg-dock, 200px) - 26px);
+  width: min(100%, max(236px, var(--hg-avail-h)));
+}
+@supports (height: 100dvh) {
+  .hg-game--phone .hg-boardwrap { --hg-avail-h: calc(100dvh - var(--hg-top) - var(--hg-oppH) - var(--hg-dock, 200px) - 26px); }
+}
+
+/* ============================================================ landscape phone */
+.hg-game--land {
+  --hg-top: 0px; --hg-pad: 8px; --hg-vt: max(6px, var(--safe-top)); --hg-vb: max(6px, var(--safe-bottom));
+  --hg-rcol: clamp(184px, 28vw, 250px);
+  --hg-board: min(
+    calc(100vh - var(--hg-vt) - var(--hg-vb)),
+    calc(100vw - 172px - var(--hg-rcol) - 20px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))
+  );
+  display: grid; flex-direction: initial; align-items: stretch;
+  grid-template-columns: minmax(0, 1fr) var(--hg-rcol); grid-template-rows: minmax(0, 1fr); column-gap: 8px;
+  padding-top: var(--hg-vt); padding-bottom: var(--hg-vb);
+}
+@supports (height: 100dvh) {
+  .hg-game--land {
+    --hg-board: min(
+      calc(100dvh - var(--hg-vt) - var(--hg-vb)),
+      calc(100vw - 172px - var(--hg-rcol) - 20px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))
+    );
+  }
+}
+/* the top bar dissolves: back + round sit above the opponents, the menu button above the wallet */
+.hg-game--land .hg-top { display: contents; }
+.hg-game--land .hg-top > .hg-roundbtn:first-child { position: absolute; z-index: 5; left: calc(env(safe-area-inset-left, 0px) + 8px); top: var(--hg-vt); }
+.hg-game--land .hg-top > .hg-roundbtn:last-child { position: absolute; z-index: 5; right: calc(env(safe-area-inset-right, 0px) + 8px); top: var(--hg-vt); }
+.hg-game--land .hg-top-mid {
+  position: absolute; z-index: 4; left: calc(env(safe-area-inset-left, 0px) + 60px); top: var(--hg-vt); min-height: 44px; justify-content: center; align-items: flex-start;
+}
+.hg-game--land .hg-table-title, .hg-game--land .hg-mode, .hg-game--land .hg-goal-sep { display: none; }
+.hg-game--land .hg-goal { justify-content: flex-start; }
+.hg-game--land .hg-top-mid .hg-goal { padding-left: 0; border-left: 0; }
+.hg-game--land .hg-table {
+  grid-column: 1; grid-row: 1; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr) var(--hg-board); column-gap: 8px; align-items: center; padding: 0;
+}
+.hg-game--land .hg-pods {
+  grid-column: 1; grid-row: 1; align-self: stretch; display: flex; flex-direction: column; justify-content: center; gap: 5px; min-height: 0; padding: 50px 0 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none;
+}
+.hg-game--land .hg-pods::-webkit-scrollbar { display: none; }
+.hg-game--land .hg-boardcol { grid-column: 2; grid-row: 1; width: var(--hg-board); }
+.hg-game--land .hg-boardwrap { width: var(--hg-board); }
+.hg-game--land .hg-bottom {
+  grid-column: 2; grid-row: 1; align-self: end; max-height: 100%; overflow-y: auto; overscroll-behavior: contain;
+  border: 1px solid var(--line-strong); border-radius: 18px; padding: 8px; gap: 6px;
+}
+.hg-game--land .hg-table { grid-column: 1; }
+/* the frame is a 2-column grid; the board's grid lives in .hg-table (column 1 of the frame is wider than the pods + board need) */
+.hg-game--land .hg-table { margin-left: auto; margin-right: 0; width: 100%; }
+
+/* ============================================================ compact pods (portrait cards, landscape column, wallet bar) */
+.hg-game--compact .hg-pod { container-type: normal; grid-area: auto; align-self: auto; }
+.hg-game--compact .hg-pod[data-cell] { grid-area: auto; align-self: auto; }
+.hg-game--compact .hg-pod__btn {
+  --ava: 36px;
+  min-height: 56px; padding: 6px 8px; gap: 0 8px; border-radius: 14px; align-content: center;
+  grid-template-columns: auto minmax(0, 1fr); grid-template-areas: 'ava name' 'ava cash';
+  box-shadow: 0 6px 14px -10px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+.hg-game--compact .hg-pod__btn::before { display: none; }
+.hg-game--compact .hg-pod__who { display: contents; }
+.hg-game--compact .hg-pod__ava { grid-area: ava; position: relative; margin: -4px; }
+.hg-game--compact .hg-pod__name { grid-area: name; align-self: end; font-size: 13px; line-height: 16px; gap: 4px; }
+.hg-game--compact .hg-pod__name b { font-weight: 800; }
+.hg-game--compact .hg-pod__sub { display: contents; }
+.hg-game--compact .hg-pod__worth, .hg-game--compact .hg-pod__title, .hg-game--compact .hg-pod__out, .hg-game--compact .hg-pod__lbl { display: none; }
+.hg-game--compact .hg-pod__cash { grid-area: cash; align-self: start; }
+.hg-game--compact .hg-pod__amt {
+  font-size: calc(18px * var(--fitc, 1)); font-weight: 850; letter-spacing: -0.02em; line-height: 1.1; color: var(--text); text-shadow: none;
+}
+.hg-game--compact .hg-pod.is-out .hg-pod__amt { color: var(--text-faint); }
+.hg-game--compact .hg-pod .hg-money.is-up { text-shadow: none; }
+.hg-game--compact .hg-pod .hg-money.is-down { text-shadow: none; }
+.hg-game--compact .hg-pod .hg-delta { right: 0; top: -2px; bottom: auto; font-size: 13px; }
+.hg-game--compact .avt__ripple { display: none; }
+
+/* narrow card (3 per row): avatar + name on top, the cash under it across the full width */
+.hg-game--phone .hg-pod[data-cell='narrow'] .hg-pod__btn { grid-template-areas: 'ava name' 'cash cash'; gap: 2px 6px; padding: 6px 7px 7px; min-height: 0; align-content: start; }
+.hg-game--phone .hg-pod[data-cell='narrow'] .hg-pod__name { align-self: center; }
+.hg-game--phone .hg-pod[data-cell='narrow'] .hg-pod__amt { font-size: calc(16px * var(--fitc, 1)); }
+.hg-game--phone .hg-pod[data-cell='narrow'] .hg-pod__cash { align-self: center; }
+.hg-game--phone .hg-pod[data-cell='wide'], .hg-game--phone .hg-pod[data-cell='narrow'] { min-width: 0; }
+.hg-game--phone .hg-pod[data-cell='wide'] { grid-column: span 3; }
+.hg-game--phone .hg-pod[data-cell='narrow'] { grid-column: span 2; }
+.hg-game--phone .hg-table[data-opp='1'] .hg-pod[data-cell='wide'] { grid-column: span 6; }
+
+/* a pod you can see at a glance: whose turn, who leads, who is out */
+.hg-game--compact .hg-pod.is-turn .hg-pod__btn { border-color: var(--pc); background: linear-gradient(180deg, color-mix(in srgb, var(--pc) 22%, #243543), color-mix(in srgb, var(--pc) 10%, var(--surface))); }
+.hg-game--compact .hg-pod__btn::after { box-shadow: 0 0 0 2px var(--pc), 0 0 16px -2px var(--pc); }
+.hg-game--compact .hg-pod__turn {
+  position: absolute; z-index: 2; top: -8px; right: 10px; padding: 0 8px; border-radius: 999px; font-size: 11px; line-height: 16px; letter-spacing: 0.07em;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+}
+.hg-game--compact .hg-pod.is-out .hg-pod__btn { opacity: 0.55; }
+/* connection strength: the bars stay in the name row; their "Offline" / "Reconnecting…" pill moves onto the card's top-left edge
+   (the "Turn" pill owns the right edge and is hidden while a player is offline), so no card gets wider or taller */
+.hg-game--compact .hg-pod .sg__pill { position: absolute; z-index: 2; top: -8px; left: 10px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45); }
+.hg-game--compact .hg-pod.has-pill .hg-pod__name { flex-wrap: nowrap; }
+
+/* chai / traffic: round badges on the avatar (the button's label says it in words) */
+.hg-pod__badges { position: absolute; left: -3px; bottom: -3px; z-index: 3; display: flex; gap: 2px; }
+.hg-pod__badges .hg-chai, .hg-pod__badges .hg-traffic {
+  width: 18px; height: 18px; padding: 0; justify-content: center; border-radius: 50%; box-shadow: 0 0 0 2px #1d2a35;
+}
+.hg-pod__badges .hg-chai { background: #4a3517; color: #ffcf8a; }
+.hg-pod__badges .hg-traffic { background: #5a1c27; color: #ffb4bf; }
+.hg-pod__badges .hg-chai > span, .hg-pod__badges .hg-traffic > span { display: none; }
+.hg-pod__badges svg { width: 12px; height: 12px; }
+
+/* ---- wallet bar: your pod, full width above the dock ---- */
+.hg-pod[data-cell='wallet'] { width: 100%; }
+.hg-pod[data-cell='wallet'] .hg-pod__btn {
+  --ava: 44px; min-height: 60px; padding: 7px 12px 7px 10px; gap: 0 10px; border-radius: 16px; border: 2px solid var(--gold);
+  grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: 'ava name cash' 'ava sub cash'; align-content: center;
+  background:
+    radial-gradient(130% 140% at 0% 0%, color-mix(in srgb, var(--pc) 30%, transparent), transparent 62%),
+    linear-gradient(180deg, #2c3d4b, #1c2a35);
+  box-shadow: 0 0 0 1px rgba(255, 202, 122, 0.22), 0 8px 18px -12px rgba(255, 177, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+.hg-pod[data-cell='wallet'].is-turn .hg-pod__btn { border-color: var(--gold); }
+.hg-pod[data-cell='wallet'] .hg-pod__name { align-self: end; font-size: 15px; line-height: 18px; }
+.hg-pod[data-cell='wallet'] .hg-pod__you { display: inline-block; font-size: 10px; line-height: 15px; }
+.hg-pod[data-cell='wallet'] .hg-pod__sub { display: flex; grid-area: sub; align-self: start; align-items: center; gap: 6px; min-width: 0; max-height: 16px; font-size: 12px; line-height: 16px; flex-wrap: wrap; overflow: hidden; }
+.hg-pod[data-cell='wallet'] .hg-pod__worth { display: inline; flex: none; white-space: nowrap; color: var(--text-dim); }
+.hg-pod[data-cell='wallet'] .hg-pod__turn { position: static; flex: none; padding: 0 7px; box-shadow: none; }
+.hg-pod[data-cell='wallet'] .hg-pod__out { display: inline; }
+.hg-pod[data-cell='wallet'] .hg-pod__cash { grid-area: cash; align-self: center; align-items: flex-end; text-align: right; }
+.hg-pod[data-cell='wallet'] .hg-pod__lbl { display: block; font-size: 11px; line-height: 12px; letter-spacing: 0.14em; }
+.hg-pod[data-cell='wallet'] .hg-pod__amt {
+  font-size: calc(clamp(22px, 7.2vw, 30px) * var(--fit, 1)); font-weight: 900; line-height: 1.05; letter-spacing: -0.02em; color: var(--gold);
+  text-shadow: 0 0 18px rgba(255, 202, 122, 0.4), 0 2px 0 rgba(0, 0, 0, 0.4);
+}
+.hg-pod[data-cell='wallet'].is-out .hg-pod__amt { color: var(--text-faint); text-shadow: none; font-size: 22px; }
+
+/* landscape column cards */
+.hg-game--land .hg-pod[data-cell='side'] .hg-pod__btn { min-height: 52px; }
+.hg-game--land .hg-pod[data-cell='side'] .hg-pod__amt { font-size: calc(17px * var(--fitc, 1)); }
+.hg-game--land .hg-pod[data-cell='wallet'] .hg-pod__btn {
+  min-height: 56px; padding: 5px 10px 5px 8px; gap: 0 8px; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: 'ava name' 'ava cash';
+}
+.hg-game--land .hg-pod[data-cell='wallet'] .hg-pod__name { font-size: 14px; line-height: 16px; align-self: end; }
+.hg-game--land .hg-pod[data-cell='wallet'] .hg-pod__cash { align-self: start; align-items: flex-start; text-align: left; }
+.hg-game--land .hg-pod[data-cell='wallet'] .hg-pod__lbl { display: none; }
+.hg-game--land .hg-pod[data-cell='wallet'] .hg-pod__amt { font-size: calc(clamp(20px, 3.2vw, 26px) * var(--fit, 1)); }
+.hg-game--land .hg-pod[data-cell='wallet'] .hg-pod__sub { display: contents; }
+.hg-game--land .hg-pod[data-cell='wallet'] .hg-pod__worth { display: none; }
+.hg-game--land .hg-pod[data-cell='wallet'] .hg-pod__turn { position: absolute; top: -8px; right: 10px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45); }
+
+/* ============================================================ the dock inside the bottom stack */
+.hg-bottom .ad { position: static; padding: 0; background: none; border: 0; box-shadow: none; animation: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+/* ============================================================ chat tray (phones) */
+.ct { position: fixed; inset: 0; z-index: 36; pointer-events: none; }
+.ct[hidden] { display: none; }
+.ct-scrim { position: absolute; inset: 0; pointer-events: auto; background: rgba(6, 4, 20, 0.28); }
+.ct-card {
+  position: absolute; pointer-events: auto; user-select: text; -webkit-user-select: text;
+  left: calc(env(safe-area-inset-left, 0px) + 8px); right: calc(env(safe-area-inset-right, 0px) + 8px);
+  bottom: calc(max(var(--hg-kb, 0px), var(--kb-inset, 0px), var(--hg-dock, 0px)) + 8px);
+  max-height: calc(100vh - max(var(--hg-kb, 0px), var(--kb-inset, 0px), var(--hg-dock, 0px)) - var(--safe-top) - 24px);
+  overflow-y: auto; overscroll-behavior: contain; padding: 6px 12px 4px; border-radius: 18px;
+  background: var(--surface); border: 1px solid var(--line-strong); box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.5);
+  animation: ct-in var(--dur-2) var(--ease-out) both;
+}
+@supports (height: 100dvh) {
+  .ct-card { max-height: calc(100dvh - max(var(--hg-kb, 0px), var(--kb-inset, 0px), var(--hg-dock, 0px)) - var(--safe-top) - 24px); }
+}
+.ct-card .table-chat { margin: 0; }
+.ct-card .table-chat__reacts { padding: 8px 40px 8px 0; }
+.ct-card .table-chat__composer { border-top: 0; padding-top: 0; }
+.ct-x {
+  position: absolute; z-index: 2; top: 2px; right: 2px; width: 44px; height: 44px; display: grid; place-items: center; padding: 0; cursor: pointer;
+  border: 0; border-radius: 50%; background: transparent; color: var(--text-dim); touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+@keyframes ct-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.hg-game--land .ct-card { left: auto; width: calc(var(--hg-rcol, 220px) + 8px); }
+
+/* landscape: the three dock tools share a ~220px column: labels only, the chat button stays an icon */
+.hg-game--land .ad-tools { gap: 6px; }
+.hg-game--land .ad-tool { padding: 0 6px; font-size: 13px; gap: 4px; }
+.hg-game--land .ad-tool:not(.is-icon) svg { display: none; }
+.hg-game--land .ad-tool.is-icon { flex: 0 0 44px; }
+/* a narrow column: long button labels ("Buy Monda Market") wrap instead of being cut off */
+.hg-game--land .cp-actions.is-dock .cp-btn__label { white-space: normal; text-align: center; line-height: 1.1; }
+.hg-game--land .cp-actions.is-dock .cp-btn--lg { font-size: 16px; min-height: 48px; padding: 4px 8px; }
+.hg-game--land .cp-actions.is-dock .cp-btn__main { flex-wrap: wrap; row-gap: 2px; }
+
+/* ============================================================ net worth target on phones */
+/* No extra row where it can be avoided (the board's height budget is tight on small phones):
+   - wide cards / side column / wallet bar: the bar + percentage sit in the second column UNDER the cash, the avatar spans all rows
+   - narrow cards (3 per row): the percentage fills the free line under the name, the bar is a slim line along the card's bottom edge */
+.hg-game--compact .hg-pod.has-goal .hg-pod__btn { grid-template-areas: 'ava name' 'ava cash' 'ava goal'; }
+.hg-game--compact .hg-pod__goal { margin-top: 2px; gap: 6px; }
+.hg-game--compact .hg-pod__goalbar { height: 5px; }
+.hg-game--compact .hg-pod__goal.is-lead .hg-pod__goalbar { height: 6px; }
+.hg-game--compact .hg-pod__goalpct { font-size: 11px; line-height: 12px; }
+.hg-game--phone .hg-pod[data-cell='narrow'].has-goal .hg-pod__btn { grid-template-areas: 'ava name' 'ava pct' 'cash cash'; padding-bottom: 10px; }
+.hg-game--phone .hg-pod[data-cell='narrow'] .hg-pod__goal { display: contents; }
+.hg-game--phone .hg-pod[data-cell='narrow'] .hg-pod__goalpct { grid-area: pct; align-self: start; }
+.hg-game--phone .hg-pod[data-cell='narrow'] .hg-pod__goalbar {
+  position: absolute; z-index: 1; left: 10px; right: 10px; bottom: 4px; height: 3px;
+}
+.hg-game--phone .hg-pod[data-cell='narrow'] .hg-pod__goal.is-lead .hg-pod__goalbar { height: 4px; }
+.hg-game--phone .hg-table[data-goal] { --hg-oppH: 64px; }
+.hg-game--phone .hg-table[data-goal][data-opp='3'] { --hg-oppH: 74px; }
+.hg-game--phone .hg-table[data-goal][data-opp='4'] { --hg-oppH: 134px; }
+.hg-game--phone .hg-table[data-goal][data-opp='5'] { --hg-oppH: 143px; }
+.hg-game--phone .hg-table[data-goal][data-opp='0'] { --hg-oppH: 0px; }
+/* your wallet bar: "Worth ₹11L of ₹50L" over a clearer bar, under the name, beside the big cash figure. The "your turn" pill moves up
+   onto the card's top edge (like the opponents' cards) so the bar does not make the wallet taller. */
+.hg-pod[data-cell='wallet'].has-goal .hg-pod__btn { grid-template-areas: 'ava name cash' 'ava goal cash'; row-gap: 0; }
+.hg-pod[data-cell='wallet'] .hg-pod__goal { margin-top: 4px; gap: 3px; }
+.hg-pod[data-cell='wallet'] .hg-pod__goalbar { height: 7px; }
+.hg-pod[data-cell='wallet'] .hg-pod__goal.is-lead .hg-pod__goalbar { height: 8px; }
+.hg-pod[data-cell='wallet'] .hg-pod__goalpct, .hg-pod[data-cell='wallet'] .hg-pod__goalhead b { font-size: 12px; line-height: 14px; }
+.hg-pod[data-cell='wallet'].has-goal .hg-pod__worth { display: none; }
+.hg-game--phone .hg-pod[data-cell='wallet'].has-goal .hg-pod__sub { display: contents; }
+.hg-game--phone .hg-pod[data-cell='wallet'].has-goal .hg-pod__turn { position: absolute; top: -9px; left: 64px; right: auto; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45); }
+.hg-game--phone .hg-pod[data-cell='wallet'] .hg-pod__goalhead b { display: none; }
+.hg-game--land .hg-pod[data-cell='wallet'].has-goal .hg-pod__btn { grid-template-areas: 'ava name' 'ava cash' 'ava goal'; }
+.hg-game--land .hg-pod[data-cell='wallet'] .hg-pod__goallbl { font-size: 11px; }

@@ -1,12 +1,24 @@
-import { useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useScrollLock } from '@/lib/useScrollLock.js';
 import { Icon } from './icons.jsx';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+const LEAVE_MS = 200; // keep in step with `.hh-modal.is-leaving` in x-shell.css
+
+function motionReduced() {
+  try {
+    return document.documentElement.dataset.motion === 'reduced' || (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  } catch {
+    return true;
+  }
+}
+
 /**
- * Accessible dialog: portal, focus trap, Esc / backdrop to close, scroll lock, focus restore.
- * Bottom sheet on phones, centred card on desktop.
+ * Accessible dialog: portal, focus trap, Esc / backdrop to close, scroll lock (iOS-safe), focus restore.
+ * Bottom sheet on phones, centred card on desktop. Closing plays a short exit (200 ms, transform + opacity) unless
+ * motion is reduced; the dialog stays mounted for that moment but is inert (focus is already restored).
  */
 export default function Modal({ open, onClose, title, children, actions, tone = 'default', dismissible = true, className = '' }) {
   const titleId = useId();
@@ -14,12 +26,32 @@ export default function Modal({ open, onClose, title, children, actions, tone = 
   const last = useRef(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  useScrollLock(open); // iOS-safe, reference counted (src/lib/scrollLock.js)
+  const [mounted, setMounted] = useState(open);
+  const [leaving, setLeaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      setLeaving(false);
+      return undefined;
+    }
+    if (!mounted) return undefined;
+    if (motionReduced()) {
+      setMounted(false);
+      return undefined;
+    }
+    setLeaving(true);
+    const t = setTimeout(() => {
+      setMounted(false);
+      setLeaving(false);
+    }, LEAVE_MS);
+    return () => clearTimeout(t);
+  }, [open, mounted]);
 
   useEffect(() => {
     if (!open) return undefined;
     last.current = document.activeElement;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     const first = panel.current?.querySelector('[data-autofocus]') || panel.current?.querySelector(FOCUSABLE);
     (first || panel.current)?.focus?.();
 
@@ -48,14 +80,13 @@ export default function Modal({ open, onClose, title, children, actions, tone = 
     document.addEventListener('keydown', onKey, true);
     return () => {
       document.removeEventListener('keydown', onKey, true);
-      document.body.style.overflow = prevOverflow;
       last.current?.focus?.();
     };
   }, [open, dismissible]);
 
-  if (!open) return null;
+  if (!open && !mounted) return null;
   return createPortal(
-    <div className="hh-modal" onMouseDown={(e) => e.target === e.currentTarget && dismissible && onClose?.()}>
+    <div className={`hh-modal${leaving && !open ? ' is-leaving' : ''}`} onMouseDown={(e) => e.target === e.currentTarget && dismissible && onClose?.()}>
       <div ref={panel} className={`hh-modal__panel hh-modal__panel--${tone} ${className}`.trim()} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <span className="hh-modal__grip" aria-hidden="true" />
         {dismissible && (

@@ -1,0 +1,129 @@
+/* AvatarToken: the player's avatar as a game piece. Motion = transform / opacity only; every animation is switched
+   off under reduced motion (media query, :root[data-motion='reduced'] and .hg-game[data-rm]). */
+
+.avt {
+  --pc: #8aa09b;
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: calc(var(--sz) + 8px);
+  height: calc(var(--sz) + 8px);
+}
+.avt__core {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--sz);
+  height: var(--sz);
+  border-radius: 50%;
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.45));
+}
+.avt__rim { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.avt__face {
+  position: absolute;
+  inset: 7.5%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--pc);
+}
+.avt__face--framed { position: static; inset: auto; width: 100%; height: 100%; }
+.avt__face > svg { display: block; }
+/* sits the face into the rim: a hairline, a soft shade at the bottom and a light edge at the top */
+.avt__face::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(8, 14, 22, 0.4), inset 0 -9px 12px -8px rgba(0, 0, 0, 0.4), inset 0 6px 10px -7px rgba(255, 255, 255, 0.3);
+}
+
+/* ---------- decision timer: an arc outside the rim ---------- */
+.avt__timer { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
+.avt__timer-track { fill: none; stroke: rgba(255, 255, 255, 0.14); stroke-width: 2.6; }
+.avt__timer-run {
+  fill: none;
+  stroke: var(--gold, #ffca7a);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 3px rgba(255, 202, 122, 0.7));
+  transition: stroke-dashoffset 250ms linear, stroke var(--dur-2) var(--ease-std);
+}
+.avt__timer.is-warn .avt__timer-run { stroke: #ff5d73; filter: drop-shadow(0 0 4px rgba(255, 93, 115, 0.8)); }
+.avt__timer.is-warn { animation: avt-warn 0.9s var(--ease-std) infinite; }
+@keyframes avt-warn { 50% { transform: scale(1.07); } }
+/* touch screens: no glow filter on the draining arc (it is re-rasterised every 250ms on phone GPUs) */
+@media (hover: none) { .avt__timer-run, .avt__timer.is-warn .avt__timer-run { filter: none; } }
+
+/* ---------- whose turn: two ripples leave the rim, the token hops gently ---------- */
+.avt__ripple {
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  border: 2px solid var(--pc);
+  opacity: 0;
+  pointer-events: none;
+  animation: avt-ripple 2.4s var(--ease-out) infinite;
+}
+.avt__ripple--2 { animation-delay: 1.2s; }
+@keyframes avt-ripple {
+  from { transform: scale(0.95); opacity: 0.7; }
+  to { transform: scale(1.55); opacity: 0; }
+}
+.avt.is-turn .avt__core { animation: avt-bob 1.8s ease-in-out infinite; }
+@keyframes avt-bob { 50% { transform: translateY(-2px) scale(1.04); } }
+
+/* ---------- cash moved: a quick reaction ---------- */
+.avt__flash {
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+}
+.avt.is-up .avt__flash { box-shadow: 0 0 0 3px #3ddc97, 0 0 16px 2px rgba(61, 220, 151, 0.7); animation: avt-flash 0.9s var(--ease-out) both; }
+.avt.is-down .avt__flash { box-shadow: 0 0 0 3px #ff5d73, 0 0 16px 2px rgba(255, 93, 115, 0.7); animation: avt-flash 0.9s var(--ease-out) both; }
+@keyframes avt-flash { 0% { opacity: 0; } 20% { opacity: 1; } 100% { opacity: 0; } }
+.avt.is-up .avt__core { animation: avt-hop 0.7s var(--ease-spring) both; }
+.avt.is-down .avt__core { animation: avt-shake 0.5s ease-in-out both; }
+@keyframes avt-hop { 30% { transform: translateY(-7px) scale(1.08); } 60% { transform: translateY(0) scale(0.97); } 100% { transform: none; } }
+@keyframes avt-shake { 20% { transform: translateX(-3px) rotate(-4deg); } 45% { transform: translateX(3px) rotate(4deg); } 70% { transform: translateX(-2px) rotate(-2deg); } 100% { transform: none; } }
+
+/* ---------- leader: a floating crown ---------- */
+.avt__crown {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: calc(var(--sz) * -0.16);
+  color: var(--gold, #ffca7a);
+  transform: translateX(-50%) rotate(-10deg);
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55));
+  animation: avt-crown 2.6s ease-in-out infinite;
+}
+@keyframes avt-crown { 50% { transform: translateX(-50%) translateY(-2px) rotate(-6deg); } }
+
+/* ---------- presence / state ---------- */
+.avt__dot {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #9aa5ad;
+  box-shadow: 0 0 0 2px var(--surface, #1b2731);
+  animation: hg-pulse 1.4s ease-in-out infinite;
+}
+.avt.is-offline .avt__face { filter: grayscale(0.7); opacity: 0.7; }
+.avt.is-out .avt__face { filter: grayscale(1); opacity: 0.55; }
+
+@media (prefers-reduced-motion: reduce) {
+  .avt *, .avt { animation: none !important; transition: none !important; }
+  .avt__ripple { display: none; }
+}
+:root[data-motion='reduced'] .avt *, :root[data-motion='reduced'] .avt,
+.hg-game[data-rm] .avt *, .hg-game[data-rm] .avt { animation: none !important; transition: none !important; }
+:root[data-motion='reduced'] .avt__ripple, .hg-game[data-rm] .avt__ripple { display: none; }

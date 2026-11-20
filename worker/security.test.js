@@ -74,7 +74,10 @@ describe('public/_headers', () => {
 
   it('the production index.html needs no inline script (CSP script-src has no unsafe-inline)', () => {
     const html = readFileSync(resolve(root, 'index.html'), 'utf8');
-    const inline = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)].filter((m) => m[1].trim());
+    const inline = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)].filter(
+      // JSON-LD is a data block the browser never executes, so CSP script-src does not apply to it
+      (m) => m[1].trim() && !/type=["']application\/ld\+json/i.test(m[0]),
+    );
     expect(inline).toHaveLength(0);
   });
 });

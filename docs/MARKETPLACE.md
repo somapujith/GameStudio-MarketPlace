@@ -17,7 +17,7 @@ Stack is unchanged: React 19 + Vite 8 (plain JS/JSX, no TypeScript), Cloudflare 
 8. Verify your work: syntax-check with `node_modules/.bin/esbuild <files> --loader:.js=jsx --log-level=warning --outdir=<scratchpad>`; run `npx vitest run <your tests>`; once everything exists `npx vite build` must pass. Final report <=200 words: what you built, public exports, deviations, known gaps.
 
 ## 1. Product flow
-**Navigation** (Plato-style): bottom tab bar on phones, left rail >=900 px: **Games** `/` · **Friends** `/friends` · **Rank** `/leaderboard` · **Profile** `/profile`. A thin top bar shows the Jalebi Games logo, a "Have a code?" action, coins and the profile chip. Game screens (`/play/**`) have no hub chrome.
+**Navigation** (Plato-style): bottom tab bar on phones, left rail >=900 px: **Arcade** `/` · **Browse** `/games` (and `/search`) · **The Adda** `/friends` · **Leaderboard** `/leaderboard` · **Profile** `/profile` (also lit on `/shop` and `/login`). A thin top bar shows the Jalebi Games logo, a "Have a code?" action, coins and the profile chip. Game screens (`/play/**`) have no hub chrome.
 
 **Games home `/`** (top to bottom): featured **hero** (the featured game's cover, name, tagline, a big "Play now" button; rotates if several games are live) -> **Friends online** strip (+ invite) -> **category chips** and one horizontal snap-scroll row per category that has games (Board, Card, Arcade, Social, Word, Sports; `coming_soon` games appear dimmed with a "Soon" badge and a local "Notify me" toggle) -> **Top players** teaser -> **daily reward**. Image-led cards: 16:9 cover, title, one-line tagline, player count, "Play" pill; accent colour from the game's `theme`.
 
@@ -25,21 +25,32 @@ Stack is unchanged: React 19 + Vite 8 (plain JS/JSX, no TypeScript), Cloudflare 
 
 **Rooms:** create (always private; the API still accepts `visibility: 'public'`) -> `/lobby/:code` (header "Room ABC123", invite block with code / copy link / WhatsApp / QR, the **seat grid** for `room.maxPlayers` seats with a live "2 of 4 joined", the host's **end-cash limit** (the `goal` setting, shown read-only to guests), **Start game**, and friends to invite for signed-in players; humans only, no bots, no ready toggle) -> `/play/:gameId/online/:code`. Guests can host, join by code and play; friends, leaderboard and public tables listing need nothing extra (listing is public; hosting a public room needs a signed-in or guest session).
 
-**Friends `/friends`:** your friend code and **friend link** (`/f/HYD-XXXX` opens an "Add <name>?" screen), requests and friends listed separately, online dots, **Invite to game** (pick game, then room). **Rank `/leaderboard`:** tabs Overall + one per game (`?game=`). **Profile `/profile`:** avatar and name, level/XP/coins, per-game stats, badges (derived from stats), and all settings (the old Settings page), account/login.
+**The Adda `/friends`:** your friend code and **friend link** (`/f/HYD-XXXX` opens an "Add <name>?" screen), requests and friends listed separately, online dots, **Invite to game** (pick game, then room). **Rank `/leaderboard`:** tabs Overall + one per game (`?game=`). **Profile `/profile`:** avatar and name, level/XP/coins, per-game stats, badges (derived from stats), and all settings (the old Settings page), account/login.
 
 **Legacy URLs** (keep working, preserve `location.state`): see `LEGACY_REDIRECTS` in `src/platform/paths.js`, plus `/game/online/:code` -> `paths.online(DEFAULT, code)` where DEFAULT is `BRAND.defaultGameId`. Links to the removed bots, open tables, story and campaign screens (`/game/offline`, `/play/:id/offline`, `/games/:id/play|tables|x/*`) land on the game page.
 
 **Visual language (hub):** dark neutral navy hub, vivid per-game accent colours carried by cover art; generous rounded corners (18-24 px), soft shadows, big friendly type, snap-scrolling card rows, pill buttons, subtle motion. Game screens keep each game's own theme. Hub pages must not look like the Tycoon dashboard any more.
 
-## 2. Routes (owner: platform-core, in `src/App.jsx`)
-| Path | Screen |
-|---|---|
-| `/` | Games home (platform-home) |
-| `/games/:gameId` | Game detail (platform-core) |
-| `/play/:gameId/online/:code` | generic `OnlineGame` dispatcher (online) -> `manifest.loaders.onlineGame` |
-| `/lobby/:code`, `/join`, `/join/:code`, `/f/:code`, `/friends`, `/login` | online |
-| `/leaderboard`, `/profile` | platform-home |
-Unknown `:gameId` or `coming_soon` game -> friendly "not available" state, never a crash.
+## 2. Routes (owner: platform-core, in `src/App.jsx`; every URL is built by `paths` in `src/platform/paths.js`)
+Hub routes render inside `AppShell` (top bar, left rail / bottom tab bar, footer). `/play/**` and `/lobby/:code` are full screen with no hub chrome. Unknown paths show the hub 404.
+| Path | `paths` helper | Screen |
+|---|---|---|
+| `/` | `hub()` | Home storefront: hero, live strip, rails, top players, daily reward, resume |
+| `/games` | `games()` | Browse the catalogue (filters, sort) |
+| `/search?q=` | `search(q)` | Search the catalogue |
+| `/games/:gameId` | `game(id)` | Game detail (store listing, create a table); unknown or coming-soon ids show a friendly state, never a crash |
+| `/about` | `about()` | About Jalebi Games: what it is, how it works, the catalogue |
+| `/help` | `help()` | Help centre: searchable FAQ (tables, codes, friends, reconnecting, install, coins, reporting) |
+| `/privacy` | `privacy()` | Privacy: what is stored, cookies and storage, processors, retention, rights |
+| `/terms` | `terms()` | Terms of use |
+| `/leaderboard?game=` | `leaderboard(id?)` | Leaderboard: Overall + one tab per game |
+| `/profile`, `/shop`, `/login?next=` | `profile()`, `shop()`, `login(next)` | Account: profile + settings, cosmetics shop, sign-in |
+| `/friends`, `/f/:friendCode` | `friends()`, `friendLink(code)` | The Adda (friends) and the add-a-friend link screen |
+| `/join`, `/join/:code` | `join(code?)` | Join a table by room code |
+| `/lobby/:code` | `lobby(code)` | Lobby (full screen) |
+| `/play/:gameId/online/:code` | `online(id, code)` | Generic `OnlineGame` dispatcher -> `manifest.loaders.onlineGame` (full screen) |
+
+The legal and help pages (`/about`, `/help`, `/privacy`, `/terms`) are static and indexable (`public/robots.txt`); per-user and per-room routes are disallowed for crawlers. Legacy URLs: see `LEGACY_REDIRECTS` in `paths.js` (`/play`, `/campaign`, `/story`, `/settings`) and section 1.
 
 ## 3. Frontend game plugin (`src/games/<id>/manifest.js`)
 `src/games/registry.js` (platform-core) imports each manifest eagerly and exports `GAMES` (ordered), `getGame(id) -> manifest|null`, `liveGames()`, `comingSoonGames()`, `CATEGORIES = [{id,label,icon}]` (board, card, arcade, social, word, sports), `featuredGame()`. **A manifest module must stay tiny (no engine, no React pages):** heavy code is behind `loaders`.
@@ -68,10 +79,24 @@ export default {
   stats: [{ key: 'wins', label: 'Wins' }],  // which user_game_stats fields to highlight
 };
 ```
+**Optional store-listing fields** (all optional; every reader tolerates their absence, nothing is shown that is missing):
+| Field | Type | Used for |
+|---|---|---|
+| `publisher` | string | "By ..." line on the game page (the teasers use `Jalebi Games`) |
+| `version` | string | version shown in the game's facts (e.g. `'1.0'`) |
+| `released` | ISO date `'2026-11-15'` | "Released" fact; never invent a date |
+| `ageRating` | string, e.g. `'12+'` | age chip; must match your own assessment |
+| `languages` | string[] | e.g. `['English']` |
+| `platforms` | string[] | e.g. `['Phone','Tablet','Desktop']` |
+| `tags` | string[] | search and chips (e.g. `['Dice race','Classic']`) |
+| `highlights` | `[{ icon, title, text }]` | "Why you'll like it" tiles; `icon` is a `HubIcon` name |
+| `howToPlay` | `[{ icon?, title, text }]` | short numbered "How to play" steps |
+| `gallery` | `[{ kind: 'cover'|'scene'|'board', caption, focus? }]` | screenshot strip built from the game's own art |
+
 Coming-soon manifests only need `id,name,tagline,category,status,players,duration,theme,art` (no loaders). **Placeholder coming-soon games** (platform-core writes the manifests under `src/games/_soon/`): "Ludo Lanes" (board, 2-4), "Carrom Club" (sports, 2-4), "Tambola Night" (social, 2-20), "Word Rush" (word, 2-6). They are teasers the owner can rename or delete; their art comes from the art agent (`ComingSoonCover({ id })`).
 
 ## 4. Settings schema (host settings, lobby + server)
-Fields render in the lobby for the host (others see `summarize(settings)`); a manifest's optional `lobbySettings` lists the keys the lobby shows, the rest keep their defaults: `{ key, label, type: 'segmented'|'stepper'|'toggle', options?: [{value,label}], min?, max?, step?, default, format?: 'inr'|'number'|'text', help? }`. The same defaults/limits live server-side in the adapter's `validateSettings`, which is the source of truth. A shared `visibility` ('private'|'public') and `maxPlayers` exist for every game and are NOT in the schema.
+Fields render in the lobby for the host (others see `summarize(settings)`); a manifest's optional `lobbySettings` lists the keys the lobby shows, the rest keep their defaults: `{ key, label, type: 'segmented'|'stepper'|'toggle', options?: [{value,label,hideIf?}], min?, max?, step?, default, format?: 'inr'|'number'|'text', help?, dependsOn? }` (`option.hideIf: { otherKey: [values] }` hides an option while another setting has one of those values; `dependsOn: { key, defaults: { [value]: fieldValue } }` resets the field to the default for the new value when `key` changes, and marks that option "(default)"; Nawabi Raj uses both for its win target). The same defaults/limits live server-side in the adapter's `validateSettings`, which is the source of truth. A shared `visibility` ('private'|'public') and `maxPlayers` exist for every game and are NOT in the schema.
 
 ## 5. Server game adapter (`worker/games/<id>.js`, registry `worker/games/index.js`)
 `GameRoom` must contain no Tycoon knowledge: it talks only to an adapter.
@@ -90,7 +115,7 @@ export default {
   redact(state, viewerId) -> state,               // hide secrets before sending (Tycoon: other players' sealed bids)
 };
 ```
-Optional hooks (all have harmless defaults; the authoritative list is the header of `worker/games/index.js`): `defaultMaxPlayers`, `pendingPlayerIds(state)` (every player the game waits for), `sanitizeAction(raw, playerId)` (client-action allow-list), `lobbySettings(settings)`, `summarize(settings)`, `animationMs(events)`, `startAnimMs`, `moveDelayMs(action)`, `resignAction(state, playerId)` (what leaving a running game does), `track(meta, events, state)`, `emotes`, `upgradeRecord(record)`.
+Optional hooks (all have harmless defaults; the authoritative list is the header of `worker/games/index.js`): `defaultMaxPlayers`, `pendingPlayerIds(state)` (every player the game waits for), `sanitizeAction(raw, playerId)` (client-action allow-list), `lobbySettings(settings)`, `mergeSettings(current, patch)` (what a host's patch makes of the current settings before `validateSettings`; Tycoon resets the win target when the mode changes), `summarize(settings)`, `customRules(settings)` (how many host rules differ from the stock rules: open tables carry it as `customRules`), `turnMs(state)` (the decision time in ms, default 60 s), `animationMs(events)`, `startAnimMs`, `moveDelayMs(action)`, `resignAction(state, playerId)` (what leaving a running game does), `track(meta, events, state)`, `emotes`, `upgradeRecord(record)`.
 The Tycoon adapter wraps `shared/index.js` and `worker/mask.js`, `worker/settings.js`, `worker/validate.js`. `getAdapter(id)` returns null for unknown ids; the Worker answers 400 `unknown game`.
 
 ## 6. Database (additive only; `db/schema.sql`, applied by `scripts/migrate.js`)
@@ -98,6 +123,8 @@ The Tycoon adapter wraps `shared/index.js` and `worker/mask.js`, `worker/setting
 - `user_game_stats(user_id uuid REFERENCES users(id) ON DELETE CASCADE, game_id text, games int NOT NULL DEFAULT 0, wins int NOT NULL DEFAULT 0, best_score int NOT NULL DEFAULT 0, rating int NOT NULL DEFAULT 1000, extra jsonb NOT NULL DEFAULT '{}', updated_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (user_id, game_id))`. Backfill once from existing `users` columns / `match_players` for `hyderabad-tycoon` (idempotent: `INSERT ... ON CONFLICT DO NOTHING`).
 - `rooms(code text PRIMARY KEY, game_id text NOT NULL, host_id uuid, host_name text, visibility text NOT NULL DEFAULT 'private', status text NOT NULL DEFAULT 'lobby', player_count int NOT NULL DEFAULT 1, max_players int NOT NULL DEFAULT 4, settings jsonb NOT NULL DEFAULT '{}', created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now())` + index on `(visibility, status, game_id, updated_at DESC)`. The room Durable Object upserts its row on create / join / leave / settings / start / finish and removes it on expiry; rows older than 24 h are ignored by queries. This table only powers listings; the Durable Object stays the source of truth.
 - `users.xp/coins/level` stay platform-wide. Per-game numbers live in `user_game_stats`; the existing `users.games/wins/best_worth/rent_earned` columns keep being updated for Tycoon so the live (old) version keeps working during the rollout.
+
+Shop voice lines need no migration: they are ordinary `user_items` rows (kind `voice` in `shared/cosmetics.js`, owned-only, played in rooms with `{t:'voice', id}`; `CONTRACT.md` 9b). The audio files are static assets in `public/audio/voice/`.
 
 ## 7. API additions (everything existing stays backward compatible; missing `gameId` means `hyderabad-tycoon`)
 - `GET /api/games` -> `{ games:[{ id, name, minPlayers, maxPlayers, openTables:number }] }`

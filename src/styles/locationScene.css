@@ -1,0 +1,33 @@
+/* Layered location postcards. Details animate briefly, then the illustration rests. */
+.location-scene { display: block; width: 100%; height: auto; aspect-ratio: 20 / 11; overflow: hidden; border-radius: 16px; flex: none; }
+.location-scene :is(.ls-business, .ls-expansion, .ls-awning, .ls-steam, .ls-water, .ls-light, .ls-vehicle, .ls-boat, .ls-cycle, .ls-hammer, .ls-banner) { transform-box: fill-box; transform-origin: center; }
+.location-scene.is-animated .ls-business { animation: ls-settle var(--dur-4, 600ms) var(--ease-out) backwards; }
+.location-scene.is-animated .ls-expansion { animation: ls-build var(--dur-4, 600ms) var(--ease-out) backwards; transform-origin: center bottom; }
+.location-scene.is-animated .ls-awning { animation: ls-awning var(--dur-4, 600ms) var(--ease-out) backwards; transform-origin: center top; }
+.location-scene.is-animated .ls-steam { animation: ls-steam 1800ms var(--ease-out) 2; }
+.location-scene.is-animated .ls-water { animation: ls-water 2400ms var(--ease-std) 2; }
+.location-scene.is-animated .ls-light { animation: ls-light 1800ms var(--ease-out) 2; }
+.location-scene.is-animated .ls-vehicle { animation: ls-arrive 1200ms var(--ease-out) backwards; }
+.location-scene.is-animated .ls-boat { animation: ls-boat 3200ms var(--ease-std) 1; }
+.location-scene.is-animated .ls-cycle { animation: ls-arrive 1600ms var(--ease-out) backwards; }
+.location-scene.is-animated .ls-hammer { animation: ls-hammer var(--dur-4, 600ms) var(--ease-out) 2; transform-origin: 80% 100%; }
+.location-scene.is-animated .ls-banner { animation: ls-banner 1800ms var(--ease-std) 2; transform-origin: left center; }
+@keyframes ls-settle { from { transform: translateY(8px); opacity: .6; } }
+@keyframes ls-build { from { transform: translateY(9px) scaleY(.92); opacity: .6; } }
+@keyframes ls-awning { from { transform: scaleY(.92) rotate(-2deg); } }
+@keyframes ls-steam { 0% { transform: translateY(4px); opacity: 0; } 25% { opacity: .7; } 100% { transform: translateY(-10px); opacity: 0; } }
+@keyframes ls-water { 0%, 100% { transform: translateX(0); opacity: .7; } 50% { transform: translateX(7px); opacity: .4; } }
+@keyframes ls-light { 0% { opacity: .25; } 35%, 100% { opacity: 1; } }
+@keyframes ls-arrive { from { transform: translateX(38px); opacity: .3; } }
+@keyframes ls-boat { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(12px) translateY(-1px); } }
+@keyframes ls-hammer { 0%, 100% { transform: rotate(0); } 40% { transform: rotate(-18deg); } 65% { transform: rotate(6deg); } }
+@keyframes ls-banner { 0%, 100% { transform: skewY(0); } 50% { transform: skewY(-6deg) scaleX(.96); } }
+
+/* A full-width postcard replaces the old floating generic model; figures keep their own clear row. */
+.hg-propsheet .hg-prop-stage.has-location { padding: 0 0 10px; gap: 0; }
+.hg-propsheet .has-location > .location-scene { border-radius: 22px 22px 0 0; }
+.hg-propsheet .has-location > .hg-prop-chips { top: 9px; left: 8px; right: 8px; }
+.hg-propsheet .has-location > .hg-deed-hero { width: calc(100% - 20px); margin: 10px 10px 0; }
+.hg-propsheet .has-location.is-mort > .location-scene { filter: grayscale(.85) brightness(.8); }
+:root[data-motion='reduced'] .location-scene *, .hg-game[data-rm] .location-scene *, .location-scene:not(.is-animated) * { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { .location-scene * { animation: none !important; } }

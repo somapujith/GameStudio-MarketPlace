@@ -1,79 +1,259 @@
-// Tap any tile: a Monopoly-style TITLE DEED. Property: rent by building level, mortgage value, building prices and the
-// full-set note. Station / utility: rent by number owned. Corners, cards and taxes: the rule in a line or two.
-// Also the owner and set progress, landing odds, the mortgaged face, and the owner's Build / Sell / Mortgage
-// actions (+ Buy/Skip when the purchase is pending).
+// Tap any square. A district opens its DEED: a diorama of the business you run there (or would open), the three
+// numbers a player needs (price, rent, owner), lore with the heritage note, the title deed itself (rent ladder of the
+// three themed businesses with the current one lit, full-set x1.5 on the first, city-event modifier, upgrade cost,
+// mortgage line), the landing chance, the collection as three real slots, and the owner's actions from
+// session.options (Upgrade to <next> / Sell <current> / Mortgage / Unmortgage), plus Buy / Skip while that purchase
+// is pending. Special squares (START, transport, cards, Traffic Jam, Chai Adda, Municipal Charges, Bazaar Auction)
+// show their rule on the same stage + deed paper.
+// Motion is transform / opacity only (property.css, deed.css) and is switched off for reduced motion.
+import { useLayoutEffect, useRef } from 'react';
 import '@/styles/deed.css';
-import { Avatar, TileIcon } from '@/components/art/index.js';
-import {
-  BAIL_FINE, GROUPS, GROUP_TILES, HOTEL_LEVEL, LEVEL_NAMES, MAX_LEVEL, PASS_START, SET_BONUS, TILES, TRANSPORT_RENT, UTILITY_MULT,
-  isBuyable, mortgageValue, rentFor, setMultiplier, taxDue, unmortgageCost, upgradeCost,
-} from '@shared/board.js';
+import '@/styles/sheets.css';
+import '@/styles/property.css';
+import { TileIcon } from '@/components/art/index.js';
+import LocationScene from '@/components/art/LocationScene.jsx';
+import { TILES } from '@shared/board.js';
 import { formatINR } from '@shared/format.js';
+import { wordsOf } from '@/lib/mapWords.js';
 import Sheet from './ui/Sheet.jsx';
 import Button from './ui/Button.jsx';
 import Icon from './ui/Icon.jsx';
-import { LevelPips, SetDots } from './ui/TileChip.jsx';
+import PlayerToken, { artPart } from './ui/PlayerToken.jsx';
+import { LevelPips } from './ui/TileChip.jsx';
 import {
-  DEFAULT_CFG, KISMET_DECKS, canUpgradeSafe, diceSum, landingOddsSafe, previewRentSafe, tileAccent, tileTypeLabel, useHeld,
-  useStateLike, worthOf,
+  CHAI_CAP, CHAI_MIN_RENT, DEFAULT_CFG, MAX_LEVEL, MUNICIPAL_BASE, MUNICIPAL_PER_LEVEL, PASS_START_AMOUNT, SET_BONUS_MULT,
+  TRAFFIC_FINE, canUpgradeSafe, collectionOf, deckOf, diceSum, eventModifier, fareOf, groupTiles, isBuyableTile,
+  landingOddsSafe, levelNameOf, mortgageOf, motionMs, nextStop, previewRentSafe, rentLadder, scaleRent, tileAccent, tileTypeLabel,
+  unmortgageOf, upgradeCostOf, useHeld, useReducedMotion, useStateLike,
 } from './ui/helpers.js';
 
 const X = '×';
-const GO_TO_JAIL = 30;
+export const HERITAGE_NOTE = 'A fictional venture in the precinct, not the landmark itself.';
+const fmtMult = (m) => `${X}${Number.isInteger(m) ? m : m.toFixed(1).replace(/\.0$/, '')}`;
 
-/** One line of a deed table: label (+ optional dim note) on the left, amount on the right. */
-function DeedRow({ label, note, value, small, current = false, hotel = false }) {
-  return (
-    <tr className={`${current ? 'is-current' : ''}${hotel ? ' is-hotel' : ''}`}>
-      <th scope="row">{label}{note ? <em>{note}</em> : null}</th>
-      <td>{value}{small ? <small>{small}</small> : null}</td>
-    </tr>
-  );
+/* ------------------------------------------------------------------ colour helpers (pure, tested) */
+
+const FALLBACK_COLOR = '#3b2d8f';
+const DARK_INK = '#14161f';
+const LIGHT_INK = '#ffffff';
+const NIGHT = '#0a0f1a';
+const isHex = (c) => /^#[0-9a-f]{6}$/i.test(String(c || ''));
+const hexRgb = (h) => {
+  const n = parseInt(String(h).slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+const toHex = (rgb) => `#${rgb.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('')}`;
+/** Mix `a` toward `b` by `t` (0..1). */
+export const mixHex = (a, b, t) => {
+  const A = hexRgb(a);
+  const B = hexRgb(b);
+  return toHex(A.map((v, i) => v + (B[i] - v) * t));
+};
+const relLum = (hex) => {
+  const [r, g, b] = hexRgb(hex).map((v) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+/** WCAG contrast ratio of two #rrggbb colours (1..21). */
+export function contrastRatio(a, b) {
+  const la = relLum(a);
+  const lb = relLum(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+/** White or near-black, whichever reads better on `hex` (a player colour chip, for instance). */
+export const bestInk = (hex) => (contrastRatio(hex, LIGHT_INK) >= contrastRatio(hex, DARK_INK) ? LIGHT_INK : DARK_INK);
+
+/**
+ * Header tones for a collection colour. White ink is used when a slightly deeper shade of the colour reaches
+ * WCAG AA (4.5:1) with it, otherwise near-black ink on the colour itself; either way the whole band
+ * (`from` -> `to`) stays at AA or better under the title, kicker and pill text.
+ */
+export function bandTones(color) {
+  const c = isHex(color) ? color : FALLBACK_COLOR;
+  for (let t = 0; t <= 0.18; t += 0.03) {
+    const base = mixHex(c, NIGHT, t);
+    if (contrastRatio(base, LIGHT_INK) >= 4.5) {
+      return { ink: LIGHT_INK, from: base, to: mixHex(base, NIGHT, 0.34), pill: 'rgba(5, 8, 18, 0.32)', emboss: 'rgba(0, 0, 0, 0.38)', hl: 'rgba(255, 255, 255, 0.05)' };
+    }
+  }
+  let base = c;
+  for (let t = 0.03; t <= 0.9 && contrastRatio(base, DARK_INK) < 4.5; t += 0.03) base = mixHex(c, LIGHT_INK, t);
+  return { ink: DARK_INK, from: mixHex(base, LIGHT_INK, 0.2), to: base, pill: 'rgba(255, 255, 255, 0.42)', emboss: 'rgba(255, 255, 255, 0.55)', hl: 'rgba(255, 255, 255, 0.3)' };
 }
 
-/** The loan line at the bottom of every buyable deed. */
-function MortgageLine({ tile, mine }) {
-  return (
-    <p className="hg-deed-line">
-      <span>Mortgage value</span>
-      <b>{formatINR(mortgageValue(tile))}</b>
-      {mine ? <small>unmortgage {formatINR(unmortgageCost(tile))}</small> : null}
-    </p>
-  );
+/** `c` nudged (darker for white ink, lighter for dark ink) until `ink` reads on it at AA (4.5:1). */
+function readableOn(c, ink) {
+  const toward = ink === LIGHT_INK ? NIGHT : LIGHT_INK;
+  let out = c;
+  for (let t = 0.04; t <= 0.9 && contrastRatio(out, ink) < 4.5; t += 0.04) out = mixHex(c, toward, t);
+  return out;
 }
 
-/** What a non-buyable square does, as a headline rule plus an optional second sentence. */
-function specialText(tile, cfg, state, me) {
-  const passStart = cfg.passStart ?? PASS_START;
-  const bail = cfg.bailFine ?? BAIL_FINE;
+/** Fill colours of an owner's slot: the chip stays AA with its ink from edge to edge. */
+export function slotTones(color) {
+  const c = isHex(color) ? color : FALLBACK_COLOR;
+  const ink = bestInk(c);
+  const base = readableOn(c, ink);
+  return ink === LIGHT_INK
+    ? { ink, from: base, to: mixHex(base, NIGHT, 0.28) }
+    : { ink, from: mixHex(base, LIGHT_INK, 0.3), to: base };
+}
+
+/** Landing odds -> meter fill (a quarter chance fills the bar) and the label ("<1" below half a percent). */
+export function oddsMeter(p) {
+  if (p == null || !Number.isFinite(p)) return null;
+  return {
+    fill: Math.min(1, Math.max(0, p * 4)),
+    pct: p > 0 && p < 0.005 ? '<1' : String(Math.round(p * 100)),
+  };
+}
+
+/** Steps of a count-up from `from` to `to` (round numbers for big amounts so digits do not flicker). */
+export function countSteps(from, to, n = 12) {
+  const step = Math.abs(to) >= 10000 ? 1000 : 1;
+  const out = [];
+  for (let i = 1; i <= n; i++) {
+    const k = 1 - (1 - i / n) ** 3;
+    out.push(i === n ? to : Math.round((from + (to - from) * k) / step) * step);
+  }
+  return out;
+}
+
+/* ------------------------------------------------------------------ squares */
+
+/** What a non-district square does: a headline rule plus an optional second sentence. */
+export function squareRule(tile, { cfg = {}, state = null, me = null } = {}) {
+  const passStart = cfg.passStart ?? PASS_START_AMOUNT;
+  const w = wordsOf(); // the active map (the one applyMap gave the tile names): chai token / festival token, auction tile ...
   switch (tile.type) {
     case 'start':
-      return { rule: `Collect ${formatINR(passStart)} each time you pass.`, note: 'Landing exactly on START pays it too.' };
-    case 'tax': {
-      if (!tile.taxPercent) return { rule: `Pay ${formatINR(tile.taxFlat)}.`, note: 'Toll gate, speed camera, challan: the money goes to the bank.' };
-      const mine = state.players?.find((p) => p.id === me && !p.bankrupt);
-      const worth = mine ? worthOf(state, me) : null;
+      return { rule: `Collect ${formatINR(passStart)} every time you pass or land on START.`, note: 'Once per move. Moving backwards never pays.' };
+    case 'transport': {
+      const to = nextStop(tile);
       return {
-        rule: `Pay ${formatINR(tile.taxFlat)}, or ${tile.taxPercent}% of your total worth if that is less.`,
-        note: worth != null ? `Your worth is ${formatINR(worth)}, so this square would cost you ${formatINR(taxDue(tile, worth))} right now.` : null,
+        rule: `Pay ${formatINR(fareOf(tile))} to ride ahead to ${to ? to.name : 'the next stop'}.`,
+        note: `Optional, offered when you land here. Passing START on the way still pays your salary.${w.isDefault ? ' "Meter kharab hai, saab!"' : ''}`,
       };
     }
-    case 'kismet': {
-      const deck = KISMET_DECKS[tile.deck] || KISMET_DECKS.chance;
-      return { rule: `Draw a ${deck.name} card.`, note: 'Cards can pay you, bill you, move your pawn or send you straight to jail.' };
+    case 'card': {
+      const deck = deckOf(tile);
+      return { rule: `Draw a ${deck ? deck.name : 'city'} card.`, note: deck?.blurb || null };
     }
-    case 'jail':
+    case 'traffic': {
+      const fine = cfg.trafficFine ?? TRAFFIC_FINE;
       return {
-        rule: 'Just visiting: nothing happens.',
-        note: `If you are sent here you leave by rolling a six, paying ${formatINR(bail)} bail or using a Get Out of Jail Free card.`,
+        rule: 'Stuck in traffic! Your turn ends here.',
+        note: `Next turn: pay ${formatINR(fine)}, spend a ${w.chaiToken}, or wait it out (no move that turn).`,
       };
-    case 'parking':
-      return { rule: 'Rest stop: nothing happens.', note: 'No rent, no fine, no prize. Just chai and biryani.' };
-    case 'gotojail':
-      return { rule: 'Go straight to Chanchalguda Jail.', note: 'Do not pass START and do not collect the salary.' };
+    }
+    case 'chai':
+      return {
+        rule: `Grab a ${w.chaiToken} (you can hold ${cfg.chaiCap ?? CHAI_CAP}).`,
+        note: `It halves your next rent of ${formatINR(CHAI_MIN_RENT)} or more by itself, or gets you out of traffic.`,
+      };
+    case 'municipal': {
+      const mine = state?.players?.find((p) => p.id === me && !p.bankrupt);
+      let levels = 0;
+      if (mine) state.owners.forEach((o, i) => { if (o === me) levels += state.levels?.[i] || 0; });
+      return {
+        rule: `Pay ${formatINR(MUNICIPAL_BASE)} + ${formatINR(MUNICIPAL_PER_LEVEL)} per upgrade level you own.`,
+        note: mine ? `You own ${levels} upgrade level${levels === 1 ? '' : 's'}: this square would cost you ${formatINR(MUNICIPAL_BASE + levels * MUNICIPAL_PER_LEVEL)} now.` : null,
+      };
+    }
+    case 'auction':
+      return {
+        rule: `${w.auctionTile}: a random unowned district goes under the hammer.`,
+        note: 'Everyone, you included, places one sealed bid. The minimum is half its price. Nothing left unowned? Nothing happens.',
+      };
     default:
       return { rule: tile.lore || '', note: null };
   }
+}
+
+/* ------------------------------------------------------------------ small pieces */
+
+/**
+ * A rupee amount that counts up when the sheet opens (and eases to a new value if it changes). The markup always
+ * carries the final text (SSR, tests, screen readers); the count is a DOM-level tween on top of it, skipped for
+ * reduced motion.
+ */
+function CountUp({ value }) {
+  const ref = useRef(null);
+  const shown = useRef(null);
+  const reduced = useReducedMotion();
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const to = Number(value) || 0;
+    if (!el) return undefined;
+    const from = shown.current == null ? 0 : shown.current;
+    if (reduced || from === to) {
+      el.textContent = formatINR(to);
+      shown.current = to;
+      return undefined;
+    }
+    const steps = countSteps(from, to);
+    const total = motionMs('--dur-4', 600);
+    el.textContent = formatINR(from);
+    let timer = 0;
+    let raf = 0;
+    const t0 = performance.now() + 170; // let the sheet slide in first
+    const tick = (now) => {
+      const k = Math.min(1, Math.max(0, (now - t0) / total));
+      const i = k <= 0 ? -1 : Math.min(steps.length - 1, Math.floor(k * steps.length));
+      if (i >= 0) {
+        el.textContent = formatINR(steps[i]);
+        shown.current = steps[i];
+      }
+      if (k < 1) raf = requestAnimationFrame(tick);
+      else { el.textContent = formatINR(to); shown.current = to; }
+    };
+    timer = setTimeout(() => { raf = requestAnimationFrame(tick); }, 0);
+    return () => { clearTimeout(timer); cancelAnimationFrame(raf); };
+  }, [value, reduced]);
+  return <span ref={ref} className="hg-count">{formatINR(value)}</span>;
+}
+
+/** Landing-chance meter: a gradient bar that fills (a quarter chance = full) with a die riding its tip. */
+function OddsMeter({ p }) {
+  const m = oddsMeter(p);
+  if (!m) return null;
+  return (
+    <div className="hg-odds" role="status" style={{ '--f': m.fill.toFixed(3) }}>
+      <Icon name="dice" size={18} />
+      <span>Chance to land here next roll: <b>{m.pct}%</b></span>
+      <i aria-hidden="true">
+        <em />
+        <u><Icon name="dice" size={14} /></u>
+      </i>
+    </div>
+  );
+}
+
+/** The collection as real slots: owned ones are filled with the owner's colour and glow, missing ones are dashed. */
+function SetSlots({ tile, setIds, state, me }) {
+  const taken = setIds.filter((t) => state.owners?.[t]).length;
+  return (
+    <ol className="hg-slots" role="img" aria-label={`${taken} of ${setIds.length} owned`}>
+      {setIds.map((t) => {
+        const T = TILES[t];
+        const o = state.players.find((pl) => pl.id === state.owners?.[t]) || null;
+        const mort = !!state.mortgaged?.[t];
+        const st = o ? slotTones(o.color) : null;
+        return (
+          <li
+            key={t}
+            className={`hg-slot${o ? ' is-on' : ''}${t === tile.id ? ' is-here' : ''}${mort ? ' is-mort' : ''}`}
+            style={st ? { '--pc': o.color, '--pi': st.ink, '--pf': st.from, '--pt': st.to } : undefined}
+          >
+            <span className="hg-slot-name">{T?.short || T?.name}</span>
+            <span className="hg-slot-sub">{o ? (o.id === me ? 'You' : o.name) : 'Open'}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
 }
 
 export default function PropertySheet({ session, tileId, onClose }) {
@@ -85,232 +265,248 @@ export default function PropertySheet({ session, tileId, onClose }) {
 
   let body = null;
   let footer = null;
-  let trapBlock = null;
   let header = null;
 
   if (tile) {
-    const { color, ink } = tileAccent(tile);
+    const { color } = tileAccent(tile);
+    const tones = bandTones(color);
     const cfg = { ...DEFAULT_CFG, ...(session.view?.cfg || {}) };
-    const group = tile.group ? GROUPS[tile.group] : null;
-    const buyable = isBuyable(tile);
-    const ownerId = buyable ? state.owners[tile.id] : null;
+    const district = tile.type === 'property';
+    const buyable = isBuyableTile(tile);
+    const coll = district ? collectionOf(tile) : null;
+    const ownerId = buyable ? state.owners?.[tile.id] : null;
     const owner = ownerId ? state.players.find((p) => p.id === ownerId) : null;
-    const level = state.levels[tile.id] || 0;
-    const mine = ownerId === me;
+    const level = state.levels?.[tile.id] || 0;
+    const mine = !!ownerId && ownerId === me;
     const mortgaged = buyable && !!state.mortgaged?.[tile.id];
     const pend = session.view?.pending;
     const buyingThis = !!o.buy && pend?.type === 'buy' && pend.tile === tile.id;
     const skippingThis = !!o.skipBuy && pend?.type === 'buy' && pend.tile === tile.id;
 
-    const setIds = group ? GROUP_TILES[tile.group] : tile.type === 'transport' || tile.type === 'utility'
-      ? TILES.filter((t) => t.type === tile.type).map((t) => t.id) : [];
-    const size = setIds.length;
+    const setIds = district ? groupTiles(tile.group) : [];
     const ownedInSet = owner ? setIds.filter((t) => state.owners[t] === owner.id).length : 0;
-    const fullSet = !!owner && size > 0 && ownedInSet === size;
-    const mult = owner && tile.type === 'property' ? setMultiplier(ownedInSet, size) : 1;
+    const fullSet = !!owner && setIds.length > 0 && ownedInSet === setIds.length;
+    const baseLadder = district ? rentLadder(tile) : []; // the printed rents; every figure below is round(rent x multipliers x the table's rent level), like the engine
+    const ladder = district ? rentLadder(tile, state.cfg) : [];
+    const ev = district ? eventModifier(state, tile) : null;
+    const rentNow = buyable && ownerId && !mortgaged ? previewRentSafe(state, tile.id, diceSum(session)) : 0;
     const youOrName = owner ? (owner.id === me ? 'You' : owner.name) : '';
 
-    const rentNow = buyable && ownerId && !mortgaged ? previewRentSafe(state, tile.id, diceSum(session)) : 0;
-    const nextLevel = Math.min(MAX_LEVEL, level + 1);
     const buildOpt = o.upgrade?.find((u) => u.tile === tile.id);
     const sellOpt = o.sellBuilding?.find((u) => u.tile === tile.id);
     const mortOpt = o.mortgage?.find((u) => u.tile === tile.id);
     const unmortOpt = o.unmortgage?.find((u) => u.tile === tile.id);
-    const up = mine && tile.type === 'property' ? canUpgradeSafe(session.view, me, tile.id) : null;
+    const up = mine && district ? canUpgradeSafe(session.view, me, tile.id) : null;
     const canBuild = !!buildOpt && !session.busy;
-    const isHotelStep = nextLevel === HOTEL_LEVEL && level < MAX_LEVEL;
+    const topLevel = level >= MAX_LEVEL;
+    const nextName = levelNameOf(tile, Math.min(MAX_LEVEL, level + 1));
 
     const odds = o.roll ? landingOddsSafe(session.view, me) : null;
     const p = odds ? odds[tile.id] : null;
-    const oddsPct = p == null ? null : p > 0 && p < 0.005 ? '<1' : String(Math.round(p * 100));
 
-    const typeLabel = tileTypeLabel(tile);
-    const unit = tile.type === 'transport' ? 'station' : 'utility';
+    const BuildingArt = district ? artPart('BuildingArt') : null;
+    const CardBack = tile.type === 'card' ? artPart('CardBack') : null;
+    const stageLevel = owner ? level : 0;
+    const slab = mixHex(color, '#241a5c', 0.5);
+    const bandVars = {
+      '--band': color, '--ink': tones.ink, '--b1': tones.from, '--b2': tones.to, '--pill': tones.pill, '--emb': tones.emboss, '--hl': tones.hl,
+    };
 
     header = (
-      <div className="hg-prop-band" data-drag="" style={{ '--band': color, '--ink': ink }}>
-        <span className="hg-prop-icon"><TileIcon tile={tile} size={44} /></span>
+      <div className="hg-prop-band" data-drag="" style={bandVars}>
+        <span className="hg-prop-icon">
+          {CardBack ? <CardBack deck={tile.deck} size={34} /> : <TileIcon tile={tile} size={40} />}
+        </span>
         <div className="hg-prop-titles">
-          <p className="hg-kicker hg-deed-kicker">{buyable ? 'Title deed' : tile.corner ? 'Corner' : 'Square'}</p>
+          <p className="hg-kicker hg-deed-kicker">{district ? coll?.name || 'District' : tile.corner ? 'Corner' : 'Square'}</p>
           <h2>{tile.name}</h2>
         </div>
-        <span className="hg-prop-type">{typeLabel}</span>
+        <span className="hg-prop-type">
+          {district ? (owner ? levelNameOf(tile, level) : 'District for sale') : tileTypeLabel(tile)}
+        </span>
+      </div>
+    );
+
+    /* ---- the stage: the business you run here (or would open), under a Hyderabad skyline ---- */
+    const stage = (
+      <div
+        className={`hg-prop-stage has-location${district ? '' : ' is-special'}${owner ? ' is-owned' : ''}${mortgaged ? ' is-mort' : ''}${fullSet ? ' is-set' : ''}`}
+        style={{ '--band': color, ...(owner ? { '--pc': owner.color } : null) }}
+      >
+        <LocationScene key={`${tile.id}-${stageLevel}`} tile={tile} level={stageLevel} animated={!mortgaged} />
+        {district ? (
+          <div className="hg-prop-chips">
+            <span className="hg-prop-chip">
+              {owner ? `Level ${level + 1} of ${ladder.length}` : `Opens as ${levelNameOf(tile, 0)}`}
+            </span>
+            {owner && !mortgaged ? (
+              fullSet ? (
+                <span className="hg-prop-chip hg-prop-bonus is-on"><Icon name="spark" size={13} />Set bonus {fmtMult(SET_BONUS_MULT)}</span>
+              ) : (
+                <span className="hg-prop-chip hg-prop-bonus"><Icon name="lock" size={13} />Set bonus {fmtMult(SET_BONUS_MULT)}</span>
+              )
+            ) : null}
+          </div>
+        ) : null}
+        {district ? (
+          <div className="hg-deed-hero">
+            <div className="is-price"><span>Price</span><b><CountUp value={tile.price} /></b></div>
+            {owner ? (
+              <div className="is-rent">
+                <span>Rent now</span>
+                <b className={mortgaged ? 'is-dim' : 'is-gold'}>{mortgaged ? 'None' : <CountUp value={rentNow} />}</b>
+              </div>
+            ) : (
+              <div className="is-rent"><span>Base rent</span><b><CountUp value={ladder[0] || 0} /></b></div>
+            )}
+            <div className={`is-owner${owner ? '' : ' is-open'}`}>
+              <span>Owner</span>
+              {owner ? (
+                <b className="hg-owner" style={{ '--pc': owner.color }}>
+                  <PlayerToken player={owner} size={22} />
+                  <span className="hg-owner-name">{owner.id === me ? 'You' : owner.name}</span>
+                </b>
+              ) : (
+                <b className="is-dim">Unowned</b>
+              )}
+            </div>
+          </div>
+        ) : null}
       </div>
     );
 
     /* ---- the deed card itself ---- */
+    const deedNo = district ? `No. ${String(tile.id).padStart(3, '0')}` : `Sq. ${String(tile.id).padStart(2, '0')}`;
+    const deedTop = (
+      <div className="hg-deed-top">
+        <span className="hg-deed-top-t"><i aria-hidden="true" />{district ? 'Title deed' : 'Square rule'}</span>
+        <span className="hg-deed-no">{deedNo}</span>
+      </div>
+    );
     let deed = null;
-    if (buyable && mortgaged) {
+    if (district && mortgaged) {
       deed = (
-        <div className="hg-deed hg-deed--mortgaged" style={{ '--band': color }}>
-          <b className="hg-deed-mname">{tile.name}</b>
-          <span className="hg-deed-dot" aria-hidden="true">&bull;</span>
-          <b className="hg-deed-stamp">Mortgaged</b>
-          <p>for {formatINR(mortgageValue(tile))}</p>
-          <span className="hg-deed-dot" aria-hidden="true">&bull;</span>
-          <em>
-            Collects no rent{tile.type === 'property' ? ' and cannot be built on' : ''}.
-            {mine ? ` Pay ${formatINR(unmortgageCost(tile))} to unmortgage.` : ''}
-          </em>
-        </div>
-      );
-    } else if (tile.type === 'property') {
-      deed = (
-        <div className="hg-deed" style={{ '--band': color }}>
-          <table className="hg-deed-table" aria-label="Rent by building">
-            <tbody>
-              {Array.from({ length: MAX_LEVEL + 1 }, (_, i) => (
-                <DeedRow
-                  key={i}
-                  label={i === 0 ? 'RENT' : i === HOTEL_LEVEL ? 'With HOTEL' : `With ${i} house${i > 1 ? 's' : ''}`}
-                  note={i > 0 && i < HOTEL_LEVEL ? `(${LEVEL_NAMES[i]})` : null}
-                  value={formatINR(rentFor(tile, i))}
-                  small={i === 0 && mult > 1 && level === 0 ? `${X}${mult} as a full set` : null}
-                  current={!!owner && level === i}
-                  hotel={i === HOTEL_LEVEL}
-                />
-              ))}
-            </tbody>
-          </table>
-          <div className="hg-deed-foot">
-            <MortgageLine tile={tile} mine={mine} />
-            <p className="hg-deed-line"><span>Houses cost</span><b>{formatINR(upgradeCost(tile))}</b><span>each</span></p>
-            <p className="hg-deed-line"><span>Hotel costs</span><b>{formatINR(upgradeCost(tile))}</b><span>plus 4 houses</span></p>
-            <p className="hg-deed-note">
-              If a player owns ALL the lots of a colour group, the rent is doubled ({X}{SET_BONUS.full}) on unimproved lots in that group.
-              Only a full set can build.
-            </p>
+        <div className="hg-deed hg-deed--mortgaged" style={bandVars}>
+          {deedTop}
+          <div className="hg-deed-mbody">
+            <b className="hg-deed-mname">{tile.name}</b>
+            <b className="hg-deed-stamp">Mortgaged</b>
+            <p>for {formatINR(mortgageOf(tile))}</p>
+            <em>
+              Collects no rent and cannot be upgraded.
+              {mine ? ` Pay ${formatINR(unmortgageOf(tile))} to unmortgage.` : ''}
+            </em>
           </div>
         </div>
       );
-    } else if (tile.type === 'transport') {
+    } else if (district) {
+      const BuildingThumb = BuildingArt;
       deed = (
-        <div className="hg-deed" style={{ '--band': color }}>
-          <table className="hg-deed-table" aria-label="Rent by stations owned">
-            <tbody>
-              {TRANSPORT_RENT.slice(1).map((rent, i) => (
-                <DeedRow
-                  key={i}
-                  label={i === 0 ? 'RENT' : `If ${i + 1} stations are owned`}
-                  note={i === 0 ? '(1 station owned)' : null}
-                  value={formatINR(rent)}
-                  current={!!owner && ownedInSet === i + 1}
-                />
-              ))}
-            </tbody>
-          </table>
-          <div className="hg-deed-foot">
-            <MortgageLine tile={tile} mine={mine} />
-          </div>
-        </div>
-      );
-    } else if (tile.type === 'utility') {
-      deed = (
-        <div className="hg-deed" style={{ '--band': color }}>
-          <table className="hg-deed-table" aria-label="Rent by utilities owned">
-            <tbody>
-              {[1, 2].map((n) => (
-                <DeedRow
-                  key={n}
-                  label={n === 1 ? '1 utility owned' : 'Both utilities owned'}
-                  note={`(dice ${X} ${UTILITY_MULT[n]})`}
-                  value={`${X} ${UTILITY_MULT[n]}`}
-                  small={`${formatINR(UTILITY_MULT[n])} to ${formatINR(6 * UTILITY_MULT[n])} for a roll of 1 to 6`}
-                  current={!!owner && ownedInSet === n}
-                />
-              ))}
-            </tbody>
-          </table>
-          <div className="hg-deed-foot">
-            <p className="hg-deed-note">
-              If one utility is owned, the rent is {UTILITY_MULT[1]} times the amount shown on the dice. If both are owned, it is {UTILITY_MULT[2]} times.
+        <div className="hg-deed" style={bandVars}>
+          {deedTop}
+          {ev ? (
+            <p className={`hg-deed-event${ev.mult < 1 ? ' is-down' : ''}`} role="status">
+              <Icon name="spark" size={14} />
+              <span><b>{ev.title}</b>: rent {fmtMult(ev.mult)}{ev.upgradedOnly ? ' on upgraded businesses' : ''} this round</span>
             </p>
-            <MortgageLine tile={tile} mine={mine} />
+          ) : null}
+          <table className="hg-deed-table hg-deed-ladder" aria-label="Rent by business">
+            <tbody>
+              {ladder.map((rent, i) => {
+                const current = !!owner && level === i;
+                const built = !!owner && i < level;
+                const setLine = i === 0 ? (
+                  fullSet
+                    ? `Full set: ${fmtMult(SET_BONUS_MULT)} = ${formatINR(scaleRent(baseLadder[i] * SET_BONUS_MULT, state.cfg))}`
+                    : `${fmtMult(SET_BONUS_MULT)} with the full set`
+                ) : null;
+                const evLine = ev && (!ev.upgradedOnly || i > 0)
+                  ? `${ev.title}: ${formatINR(scaleRent(baseLadder[i] * (i === 0 && fullSet ? SET_BONUS_MULT : 1) * ev.mult, state.cfg))}` : null;
+                return (
+                  <tr key={i} className={current ? 'is-current' : built ? 'is-built' : owner ? 'is-next' : ''}>
+                    <th scope="row" aria-current={current ? 'true' : undefined}>
+                      <span className="hg-deed-name">
+                        <span className="hg-deed-thumb" aria-hidden="true">
+                          {BuildingThumb ? <BuildingThumb theme={coll?.theme} group={tile.group} level={i} color={color} size={58} slab={slab} /> : null}
+                        </span>
+                        <span className="hg-deed-lvltxt">
+                          <small>Level {i + 1}</small>
+                          <b>{levelNameOf(tile, i)}</b>
+                        </span>
+                      </span>
+                    </th>
+                    <td>
+                      <span className="hg-deed-rent">{formatINR(rent)}</span>
+                      {setLine ? <small className={fullSet ? 'is-on' : ''}>{setLine}</small> : null}
+                      {evLine ? <small className="is-event">{evLine}</small> : null}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="hg-deed-foot">
+            <p className="hg-deed-line"><span>Upgrade</span><b>{formatINR(upgradeCostOf(tile))}</b><small>each step</small></p>
+            <p className="hg-deed-line">
+              <span>Mortgage value</span><b>{formatINR(mortgageOf(tile))}</b>
+              {mine ? <small>lift for {formatINR(unmortgageOf(tile))}</small> : null}
+            </p>
           </div>
         </div>
       );
     } else {
-      const sp = specialText(tile, cfg, state, me);
+      const sp = squareRule(tile, { cfg, state, me });
       deed = (
-        <div className="hg-deed hg-deed--special" style={{ '--band': color }}>
-          <p className="hg-deed-rule">{sp.rule}</p>
-          {sp.note ? <p className="hg-deed-note">{sp.note}</p> : null}
+        <div className="hg-deed hg-deed--special" style={bandVars}>
+          {deedTop}
+          <div className="hg-deed-sbody">
+            <p className="hg-deed-rule">{sp.rule}</p>
+            {sp.note ? <p className="hg-deed-note">{sp.note}</p> : null}
+          </div>
         </div>
       );
     }
 
     body = (
       <>
-        <p className="hg-lore">{tile.lore}</p>
+        {stage}
+
+        {tile.lore || district ? (
+          <div className="hg-prop-lore" style={{ '--band': color }}>
+            {district && coll?.identity ? <p className="hg-deed-identity">{coll.identity}</p> : null}
+            {tile.lore ? (
+              <p className="hg-lore">
+                {tile.lore}
+                {district ? <small className="hg-heritage">{HERITAGE_NOTE}</small> : null}
+              </p>
+            ) : district ? <p className="hg-lore"><small className="hg-heritage">{HERITAGE_NOTE}</small></p> : null}
+          </div>
+        ) : null}
 
         {deed}
 
-        {buyable ? (
-          <div className="hg-prop-facts">
-            <div><span>Price</span><b>{formatINR(tile.price)}</b></div>
-            <div>
-              <span>Owner</span>
-              {owner ? (
-                <b className="hg-owner" style={{ '--pc': owner.color }}>
-                  <span className="hg-owner-av"><Avatar preset={owner.avatar} size={22} /></span>
-                  {owner.id === me ? 'You' : owner.name}
-                </b>
-              ) : (
-                <b className="is-dim">Unowned</b>
-              )}
-            </div>
-            {tile.type === 'property' ? (
-              <div>
-                <span>Building</span>
-                <b className="hg-prop-level">
-                  {owner ? <LevelPips level={level} color={color} /> : null}
-                  {owner ? LEVEL_NAMES[level] : '—'}
-                </b>
-              </div>
-            ) : null}
-            {owner ? (
-              <div><span>Rent now</span><b className={mortgaged ? 'is-dim' : 'is-gold'}>{mortgaged ? 'None' : formatINR(rentNow)}</b></div>
-            ) : (
-              <div>
-                <span>Rent</span>
-                <b>{tile.type === 'property' ? formatINR(rentFor(tile, 0)) : tile.type === 'transport' ? formatINR(TRANSPORT_RENT[1]) : `dice ${X} ${UTILITY_MULT[1]}`}</b>
-              </div>
-            )}
-          </div>
-        ) : null}
+        <OddsMeter p={p} />
 
-        {oddsPct != null ? (
-          <div className="hg-odds" role="status">
-            <Icon name="dice" size={18} />
-            <span>Chance to land here next roll: <b>{oddsPct}%</b></span>
-            <i aria-hidden="true"><em style={{ width: `${Math.min(100, Math.round((p || 0) * 100 * 4))}%` }} /></i>
-          </div>
-        ) : null}
-
-        {tile.type === 'property' && owner ? (
+        {district ? (
           <div className={`hg-setstat${fullSet ? ' is-full' : ''}`} style={{ '--sc': color }}>
-            <SetDots owned={ownedInSet} total={size} color={color} />
-            <span>
-              <b>{ownedInSet}/{size} {group.name}</b>
+            <SetSlots tile={tile} setIds={setIds} state={state} me={me} />
+            <span className="hg-setstat-txt">
+              <b>{coll?.name}</b>
               {' · '}
-              {fullSet
-                ? `${X}${SET_BONUS.full} rent on empty plots, ${youOrName} can build here`
-                : `${size - ownedInSet} more for the full set`}
+              {!owner
+                ? `${setIds.filter((t) => state.owners[t]).length}/${setIds.length} owned`
+                : fullSet
+                  ? `${youOrName} own${owner.id === me ? '' : 's'} the full set: first businesses pay ${fmtMult(SET_BONUS_MULT)}`
+                  : `${youOrName} own${owner.id === me ? '' : 's'} ${ownedInSet}/${setIds.length}`}
             </span>
           </div>
         ) : null}
 
-        {buyable && tile.type !== 'property' && size > 1 && owner ? (
-          <div className={`hg-setstat${fullSet ? ' is-full' : ''}`}>
-            <Icon name={fullSet ? 'check' : 'info'} size={16} />
-            <span>
-              {fullSet ? `${youOrName} own${owner.id === me ? '' : 's'} every ${unit}` : `${ownedInSet}/${size} ${unit}s owned by ${owner.id === me ? 'you' : owner.name}`}
-            </span>
-          </div>
-        ) : null}
-
-        {up && !up.ok && !buyingThis && !mortgaged ? (
-          <p className="hg-hint"><Icon name="info" size={14} /> {level >= MAX_LEVEL ? `Fully built: ${LEVEL_NAMES[MAX_LEVEL]}` : up.reason}</p>
+        {owner && district && !mortgaged ? (
+          <p className="hg-deed-level">
+            <LevelPips level={level} color={color} tile={tile} />
+            <span>{topLevel ? `Top business: ${levelNameOf(tile, level)}` : `${levelNameOf(tile, level)} · next: ${nextName}`}</span>
+          </p>
         ) : null}
       </>
     );
@@ -318,36 +514,24 @@ export default function PropertySheet({ session, tileId, onClose }) {
     const sub = (sellOpt || mortOpt || unmortOpt) ? (
       <div className="hg-sheet-subactions">
         {sellOpt ? (
-          <Button variant="dark" size="sm" onClick={() => session.dispatch({ type: 'SELL_BUILDING', tile: tile.id })}>
-            Sell building +{formatINR(sellOpt.refund)}
+          <Button variant="dark" size="sm" disabled={session.busy} onClick={() => session.dispatch({ type: 'SELL_BUILDING', tile: tile.id })}>
+            Sell {levelNameOf(tile, level)} +{formatINR(sellOpt.refund ?? Math.round(upgradeCostOf(tile) / 2))}
           </Button>
         ) : null}
         {mortOpt ? (
-          <Button variant="dark" size="sm" onClick={() => session.dispatch({ type: 'MORTGAGE', tile: tile.id })}>
-            Mortgage +{formatINR(mortOpt.value)}
+          <Button variant="dark" size="sm" disabled={session.busy} onClick={() => session.dispatch({ type: 'MORTGAGE', tile: tile.id })}>
+            Mortgage +{formatINR(mortOpt.value ?? mortgageOf(tile))}
           </Button>
         ) : null}
         {unmortOpt ? (
-          <Button variant="green" size="sm" onClick={() => session.dispatch({ type: 'UNMORTGAGE', tile: tile.id })}>
-            Unmortgage {formatINR(unmortOpt.cost)}
+          <Button variant="green" size="sm" disabled={session.busy} onClick={() => session.dispatch({ type: 'UNMORTGAGE', tile: tile.id })}>
+            Unmortgage {formatINR(unmortOpt.cost ?? unmortgageOf(tile))}
           </Button>
         ) : null}
       </div>
     ) : null;
 
-    // traps (docs/GAME_RULES.md 13.4): view.traps is already redacted to my own
-    const myTrapHere = (session.view?.traps || []).some((t) => t.tile === tile.id && t.owner === me);
-    const canTrapHere = !myTrapHere && !!o.trap && tile.id !== GO_TO_JAIL && !session.busy;
-    trapBlock = myTrapHere ? (
-      <p className="hg-trapnote is-set" role="status"><Icon name="warn" size={18} /> Your trap is set here</p>
-    ) : canTrapHere ? (
-      <div className="hg-trapbox">
-        <Button variant="gold" size="lg" className="hg-trap-btn" onClick={() => { session.dispatch({ type: 'PLACE_TRAP', tile: tile.id }); onClose?.(); }}>
-          <Icon name="warn" size={20} /> Set trap here
-        </Button>
-        <span className="hg-hint">Hidden. The first rival to land here is thrown in jail.</span>
-      </div>
-    ) : null;
+    const ride = tile.type === 'transport' && o.ride && state.players.find((pl) => pl.id === me)?.pos === tile.id ? o.ride : null;
 
     if (buyingThis || skippingThis) {
       footer = (
@@ -355,33 +539,40 @@ export default function PropertySheet({ session, tileId, onClose }) {
           {skippingThis ? <Button variant="dark" onClick={() => { session.dispatch({ type: 'SKIP_BUY' }); onClose?.(); }}>Skip</Button> : null}
           {buyingThis ? (
             <Button variant="green" size="lg" onClick={() => { session.dispatch({ type: 'BUY' }); onClose?.(); }}>
-              Buy for {formatINR(pend.price)}
+              Buy for {formatINR(pend.price ?? tile.price)}
             </Button>
           ) : (
             <span className="hg-hint is-warn">Not enough cash to buy</span>
           )}
         </div>
       );
-    } else if (mine && tile.type === 'property' && !mortgaged) {
+    } else if (ride) {
+      const to = TILES[ride.to] || nextStop(tile);
+      footer = (
+        <div className="hg-sheet-actions">
+          <Button variant="gold" size="lg" disabled={session.busy} onClick={() => { session.dispatch({ type: 'RIDE' }); onClose?.(); }}>
+            Ride to {to?.name || 'the next stop'} &middot; {formatINR(ride.fare ?? fareOf(tile))}
+          </Button>
+        </div>
+      );
+    } else if (mine && district && !mortgaged) {
       footer = (
         <div className="hg-sheet-actions">
           <Button
             variant={canBuild ? 'gold' : 'dark'}
             size="lg"
-            className={canBuild && isHotelStep ? 'hg-btn--hotel' : ''}
+            className={canBuild && level + 1 === MAX_LEVEL ? 'hg-btn--hotel' : ''}
             disabled={!canBuild}
             onClick={() => session.dispatch({ type: 'UPGRADE', tile: tile.id })}
           >
             <Icon name="upgrade" size={20} />
-            {level >= MAX_LEVEL
-              ? `Fully built: ${LEVEL_NAMES[MAX_LEVEL]}`
-              : isHotelStep
-                ? <>Build hotel &middot; {formatINR(upgradeCost(tile))}</>
-                : <>Upgrade to {LEVEL_NAMES[nextLevel]} &middot; {formatINR(upgradeCost(tile))}</>}
+            {topLevel
+              ? `Top business: ${levelNameOf(tile, level)}`
+              : <>Upgrade to {nextName} &middot; {formatINR(buildOpt?.cost ?? upgradeCostOf(tile))}</>}
           </Button>
-          {!canBuild && level < MAX_LEVEL ? (
+          {!canBuild && !topLevel ? (
             <span className="hg-hint">
-              {session.busy ? 'Wait for the action to finish' : up?.ok ? 'You can build during your turn' : up?.reason}
+              {session.busy ? 'Wait for the action to finish' : up && !up.ok && up.reason ? up.reason : 'You can upgrade on your turn'}
             </span>
           ) : null}
           {sub}
@@ -391,8 +582,6 @@ export default function PropertySheet({ session, tileId, onClose }) {
       footer = <div className="hg-sheet-actions">{sub}</div>;
     }
   }
-
-  if (trapBlock) footer = <>{footer}{trapBlock}</>;
 
   return (
     <Sheet

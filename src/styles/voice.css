@@ -1,0 +1,136 @@
+/* Voice lines: the soundboard pads (desktop chat card, phone reactions panel), the speaker marks on the table and the shop
+   card art. Performance rule: nothing here uses backdrop-filter, filter, blend modes or big shadows; every animation moves
+   transform / opacity only. Reduced motion (prefers-reduced-motion, :root[data-motion='reduced'], .hg-game[data-rm]) turns
+   all of it into plain static marks. */
+
+/* ---------- soundboard ---------- */
+.table-chat { position: relative; }
+.vl-pop {
+  position: absolute; z-index: 30; left: 0; right: 0; bottom: calc(100% + 4px);
+  border-radius: 16px; background: var(--surface-2, #1a1f52); border: 1px solid rgba(255, 200, 87, 0.35);
+  padding: 8px 10px 10px; box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35);
+  animation: vl-rise 180ms var(--ease-out, ease-out) both; transform-origin: 50% 100%;
+}
+.vl-phone { grid-column: 1 / -1; padding: 4px 4px 6px; border-top: 1px solid rgba(255, 255, 255, 0.08); margin-top: 2px; text-align: left; }
+.vl-board { display: grid; gap: 6px; min-width: 0; color: var(--text, #f4eee2); }
+.vl-board__title { margin: 0; font: 800 12px/1.2 var(--font-body, inherit); letter-spacing: 0.06em; text-transform: uppercase; color: var(--gold, #f6c453); }
+.vl-board__sub { font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--text-faint, #a79f90); margin-left: 4px; }
+.vl-pads { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; }
+.vl-board--phone .vl-pads { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.vl-pad {
+  position: relative; overflow: hidden; isolation: isolate;
+  display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 10px; row-gap: 0; align-items: center;
+  min-height: 56px; min-width: 0; padding: 8px 12px 8px 8px; text-align: left; text-decoration: none; cursor: pointer;
+  color: var(--text, #f4eee2); font: inherit; border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06); border: 1.5px solid rgba(255, 200, 87, 0.45);
+  transition: transform 120ms var(--ease-out, ease-out), opacity 120ms linear;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+.vl-pad__art { grid-row: 1 / 3; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: rgba(0, 0, 0, 0.28); border: 2px solid var(--gold, #f6c453); }
+.vl-pad__name { min-width: 0; font-weight: 800; font-size: 14px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; align-self: end; }
+.vl-pad__sub { min-width: 0; font-size: 11px; line-height: 1.25; color: var(--text-faint, #a79f90); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; align-self: start; }
+.vl-pad:hover:not(:disabled) { border-color: var(--gold, #f6c453); }
+.vl-pad:active:not(:disabled):not(.is-locked) { transform: scale(0.95); }
+.vl-pad:focus-visible, .vl-link:focus-visible, .vl-toggle:focus-visible { outline: 2px solid var(--gold, #f6c453); outline-offset: 2px; }
+.vl-pad:disabled { cursor: default; }
+.vl-pad.is-cooling { opacity: 0.8; }
+.vl-pad.is-cooling .vl-pad__sub { color: var(--gold, #f6c453); font-weight: 800; }
+/* the cooldown drains across the pad: scaleX 1 -> 0 on a full-size layer behind the text */
+.vl-pad__cd {
+  position: absolute; inset: 0; z-index: -1; background: rgba(255, 200, 87, 0.28); transform-origin: 0 50%;
+  animation: vl-drain var(--vl-cd, 3000ms) linear both;
+}
+.vl-pad.is-locked { border-style: dashed; border-color: rgba(255, 255, 255, 0.22); background: rgba(255, 255, 255, 0.03); }
+.vl-pad.is-locked .vl-pad__art { border-color: rgba(255, 255, 255, 0.22); background: rgba(0, 0, 0, 0.18); }
+.vl-pad.is-locked .vl-pad__name { color: var(--text-faint, #a79f90); }
+.vl-pad.is-locked .vl-pad__sub { white-space: normal; }
+.vl-pad__lock { position: absolute; top: 5px; right: 6px; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; color: var(--text-faint, #a79f90); background: rgba(0, 0, 0, 0.35); }
+.vl-coin { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: -1px; background: #ffc857; border: 1.5px solid #e08a00; box-sizing: border-box; }
+.vl-hint { margin: 0; font-size: 12.5px; line-height: 1.4; color: var(--text-faint, #a79f90); }
+.vl-link { display: inline; padding: 0; min-height: 0; border: 0; background: none; font: inherit; font-weight: 800; color: var(--gold, #f6c453); text-decoration: underline; cursor: pointer; }
+.vl-toggle { color: var(--gold, #f6c453); }
+.vl-toggle.is-open { background: rgba(255, 200, 87, 0.16); border-color: var(--gold, #f6c453); }
+.vl-line { display: inline-flex; align-items: center; gap: 4px; vertical-align: middle; }
+.vl-tiger, .vl-cat, .vl-emoji { flex: none; display: inline-block; vertical-align: middle; }
+
+/* ---------- on the table: who is speaking ---------- */
+.vl-bubble {
+  position: fixed; z-index: 41; translate: -50% 0; max-width: calc(var(--half, 130px) * 2);
+  display: flex; align-items: center; gap: 7px; padding: 6px 12px 6px 7px; border-radius: 16px; pointer-events: none;
+  font-size: 13px; font-weight: 800; line-height: 1.25; color: #2a1a05; background: #fff4d6; overflow-wrap: anywhere;
+  border: 2px solid color-mix(in srgb, var(--pc, #f6c453) 75%, #2a1a05); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  transform-origin: calc(50% + var(--tail, 0px)) 100%; animation: vl-pop 260ms var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)) both;
+}
+.vl-bubble.is-below { transform-origin: calc(50% + var(--tail, 0px)) 0; }
+.vl-bubble__text { min-width: 0; }
+.vl-ring {
+  position: fixed; z-index: 39; pointer-events: none; border-radius: 16px; border: 2px solid var(--pc, #f6c453); box-sizing: border-box;
+  animation: vl-ring 900ms ease-out infinite;
+}
+.vl-eq {
+  position: fixed; z-index: 42; pointer-events: none; display: flex; align-items: flex-end; justify-content: center; gap: 2px;
+  width: 22px; height: 18px; padding: 3px 0; box-sizing: border-box; border-radius: 9px; background: var(--gold, #f6c453);
+}
+.vl-eq i { display: block; width: 3px; height: 12px; border-radius: 2px; background: #3a2300; transform-origin: 50% 100%; animation: vl-bar 620ms ease-in-out infinite alternate; }
+.vl-eq i:nth-child(2) { animation-duration: 480ms; animation-delay: -160ms; }
+.vl-eq i:nth-child(3) { animation-duration: 560ms; animation-delay: -320ms; }
+
+/* ---------- shop card ---------- */
+.vl-medal {
+  position: relative; display: grid; place-items: center; width: 76px; height: 76px; border-radius: 50%;
+  background: radial-gradient(circle at 50% 38%, #3b2a14, #1b130a 75%); border: 3px solid var(--hub-gold, var(--gold, #f6c453)); box-sizing: border-box;
+}
+.vl-medal::after { content: ''; position: absolute; inset: 4px; border-radius: 50%; border: 1px solid rgba(255, 224, 138, 0.35); pointer-events: none; }
+.vl-medal.is-locked { border-color: var(--hub-line-2, rgba(255, 255, 255, 0.28)); background: var(--hub-surface-2, #20242c); }
+.vl-medal__lock { position: absolute; right: -4px; bottom: -4px; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; color: var(--hub-dim, #a79f90); background: var(--hub-surface-3, #2a2f38); border: 1px solid var(--hub-line-2, rgba(255, 255, 255, 0.28)); }
+.vl-medal.is-playing { animation: vl-beat 700ms ease-in-out infinite alternate; }
+.vl-art { display: grid; place-items: center; width: 100%; aspect-ratio: 4 / 3; min-height: 96px; border-radius: 12px; border: 1px solid var(--rc, var(--hub-line-2, rgba(255, 255, 255, 0.2))); background: rgba(255, 255, 255, 0.03); }
+.vl-cap { margin: 0; font-size: 12px; line-height: 1.35; color: var(--hub-dim, var(--text-faint, #a79f90)); }
+.vl-play { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.vl-shopnote { margin: 0 0 12px; }
+
+/* ---------- settings ---------- */
+.vl-volume { display: grid; gap: 4px; }
+
+@keyframes vl-rise { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes vl-drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@keyframes vl-pop { 0% { opacity: 0; transform: scale(0.7); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes vl-ring { 0% { opacity: 0.9; transform: scale(1); } 100% { opacity: 0; transform: scale(1.12); } }
+@keyframes vl-bar { from { transform: scaleY(0.25); } to { transform: scaleY(1); } }
+@keyframes vl-beat { from { transform: scale(1); } to { transform: scale(1.06); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .vl-pop, .vl-bubble, .vl-ring, .vl-eq i, .vl-medal.is-playing { animation: none !important; }
+  .vl-pad__cd { animation-duration: 0.001ms !important; }
+  .vl-pad { transition: none; }
+}
+:root[data-motion='reduced'] .vl-pop, :root[data-motion='reduced'] .vl-bubble, :root[data-motion='reduced'] .vl-ring,
+:root[data-motion='reduced'] .vl-eq i, :root[data-motion='reduced'] .vl-medal.is-playing,
+.hg-game[data-rm] .vl-pop, .hg-game[data-rm] .vl-bubble, .hg-game[data-rm] .vl-ring, .hg-game[data-rm] .vl-eq i, .hg-game[data-rm] .vl-medal.is-playing { animation: none !important; }
+:root[data-motion='reduced'] .vl-pad__cd, .hg-game[data-rm] .vl-pad__cd { animation-duration: 0.001ms !important; }
+:root[data-motion='reduced'] .vl-pad, .hg-game[data-rm] .vl-pad { transition: none; }
+/* the speaker ring and the equaliser are fixed overlays outside .hg-game: keep them static, but still visible */
+:root[data-motion='reduced'] .vl-ring { opacity: 0.85; }
+
+/* the shop has a fourth tab now: the filter chips drop under the tabs instead of squeezing "Voice lines" off the row */
+.sa-shop .sa-shop__bar { grid-template-columns: minmax(0, 1fr); }
+.sa-shop .xp-kindtabs { flex-wrap: wrap; }
+
+/* the lock sits on the pad's art, not over the title; very narrow phones get one pad per row so no title is cut */
+.vl-pad__lock { top: 4px; right: auto; left: 32px; width: 16px; height: 16px; }
+.vl-pad.is-locked { padding-left: 8px; }
+@media (max-width: 359px) {
+  .vl-board--phone .vl-pads { grid-template-columns: minmax(0, 1fr); }
+  .vl-board--phone .vl-pad { min-height: 52px; }
+}
+
+/* the phone panel is .pcb-emoji, whose `button` rules (48px emoji cells, no border, centred) must not squash the pads */
+.pcb-emoji .vl-pad {
+  height: auto; min-height: 56px; padding: 8px 12px 8px 8px; border: 1.5px solid rgba(255, 200, 87, 0.45); background: rgba(255, 255, 255, 0.06);
+  font-size: 14px; border-radius: 14px; place-items: center start; animation: none; text-align: left;
+}
+.pcb-emoji .vl-pad .vl-pad__art { justify-self: center; }
+.pcb-emoji .vl-pad.is-locked { border: 1.5px dashed rgba(255, 255, 255, 0.22); background: rgba(255, 255, 255, 0.03); }
+.pcb-emoji .vl-pad.is-cooling { opacity: 0.85; }
+.pcb-emoji .vl-pad:disabled:not(.is-cooling) { opacity: 0.5; }

@@ -75,8 +75,22 @@
   --z-sheet: 60;
   --z-modal: 70;
 
+  /* motion language (hub + game): short, springy, purposeful. Reduced motion collapses them (global.css). */
+  --dur-1: 120ms; /* press, hover, toggle */
+  --dur-2: 220ms; /* small enter / exit, chips, toasts */
+  --dur-3: 360ms; /* sheets, cards, page enter */
+  --dur-4: 600ms; /* celebrations, hand-offs */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-std: cubic-bezier(0.4, 0, 0.2, 1);
+
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  /* keyboard variables are published by src/lib/viewport.js (0 when the keyboard is closed) */
+  --kb-inset: 0px;
 
   color-scheme: dark;
 }

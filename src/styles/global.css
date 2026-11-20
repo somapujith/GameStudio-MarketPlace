@@ -154,7 +154,7 @@ code {
   --jalebi-nav-size: 88px;
   --tabbar-h: 64px;
   --maxw: 1100px;
-  --glass: linear-gradient(155deg, rgba(58, 47, 140, 0.72), rgba(29, 22, 80, 0.8));
+  --glass: linear-gradient(155deg, rgba(58, 47, 140, 0.92), rgba(29, 22, 80, 0.95));
   --glass-line: rgba(255, 255, 255, 0.14);
   --grad-gold: linear-gradient(180deg, #ffe08a 0%, var(--gold) 46%, var(--gold-2) 100%);
   --grad-saffron: linear-gradient(180deg, #ffb27a 0%, var(--saffron) 50%, #ee6a1c 100%);
@@ -214,8 +214,10 @@ code {
   text-align: center;
   white-space: nowrap;
 }
-.btn:hover:not(:disabled) {
-  filter: brightness(1.08);
+@media (hover: hover) {
+  .btn:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
 }
 .btn:active:not(:disabled) {
   transform: translateY(3px);
@@ -255,15 +257,11 @@ code {
   --btn-bg: rgba(255, 255, 255, 0.16);
   --btn-edge: rgba(0, 0, 0, 0.3);
   border-color: rgba(255, 255, 255, 0.3);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
 }
 .btn--glass-quiet {
   --btn-bg: rgba(11, 8, 32, 0.4);
   --btn-edge: rgba(0, 0, 0, 0.35);
   border-color: rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
 }
 .btn--sm {
   padding: 0 14px;
@@ -299,8 +297,10 @@ code {
   border: 1px solid var(--line);
   transition: background 0.2s, transform 0.12s var(--ease), color 0.2s;
 }
-.hh-iconbtn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.16);
+@media (hover: hover) {
+  .hh-iconbtn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.16);
+  }
 }
 .hh-iconbtn:active:not(:disabled) {
   transform: scale(0.92);
@@ -324,8 +324,6 @@ code {
   background: var(--glass);
   border: 1px solid var(--glass-line);
   box-shadow: var(--shadow-1), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
 }
 
 .chip,
@@ -372,6 +370,8 @@ code {
 }
 .hh-toggle__text {
   flex: 1;
+  align-self: stretch; /* the label fills the whole 60px row: a bigger tap area */
+  justify-content: center;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -466,8 +466,10 @@ code {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.hh-seg__opt:hover:not(.is-on):not(:disabled) {
-  background: rgba(255, 255, 255, 0.07);
+@media (hover: hover) {
+  .hh-seg__opt:hover:not(.is-on):not(:disabled) {
+    background: rgba(255, 255, 255, 0.07);
+  }
 }
 .hh-seg__opt:active:not(:disabled) {
   transform: scale(0.97);
@@ -524,8 +526,9 @@ code {
   border-radius: inherit;
   background: linear-gradient(90deg, var(--teal), var(--lime) 45%, var(--gold));
   box-shadow: 0 0 12px rgba(141, 224, 90, 0.5);
-  transition: width 0.8s var(--ease);
-  min-width: 6px;
+  width: 100%;
+  transform-origin: left center; /* fill = transform: scaleX(pct) set inline (XpBar in shell/ui.jsx) */
+  transition: transform 0.8s var(--ease);
 }
 
 /* ---------- avatars & coins ---------- */
@@ -598,6 +601,7 @@ code {
   font-size: calc(var(--sz) * 0.5);
   line-height: 1;
   color: var(--ink);
+  background: radial-gradient(circle at 35% 30%, #fff 0, var(--mc) 55%, var(--mc) 100%);
   background: radial-gradient(circle at 35% 30%, #fff 0, var(--mc) 55%, color-mix(in srgb, var(--mc) 70%, #000) 100%);
   border: 2px solid rgba(255, 255, 255, 0.55);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
@@ -618,9 +622,8 @@ code {
 .hh-skel {
   display: inline-block;
   max-width: 100%;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.16) 50%, rgba(255, 255, 255, 0.06) 100%);
-  background-size: 200% 100%;
-  animation: hh-shimmer 1.4s linear infinite;
+  background: rgba(255, 255, 255, 0.12);
+  animation: hh-breathe 1.4s var(--ease-std) infinite alternate;
 }
 
 .hh-empty {
@@ -893,9 +896,7 @@ code {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  background: rgba(7, 14, 20, 0.76);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background: rgba(7, 14, 20, 0.86);
   animation: hh-fade 0.2s ease;
 }
 .hh-modal__panel {
@@ -949,9 +950,9 @@ code {
 
 /* ---------- keyframes ---------- */
 
-@keyframes hh-shimmer {
+@keyframes hh-breathe {
   to {
-    background-position: -200% 0;
+    opacity: 0.45;
   }
 }
 @keyframes hh-fade {
@@ -1088,9 +1089,11 @@ code {
     white-space: nowrap;
     transition: background 0.2s, color 0.2s;
   }
-  .hh-topnav__link:hover {
-    color: var(--text);
-    background: rgba(255, 255, 255, 0.08);
+  @media (hover: hover) {
+    .hh-topnav__link:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.08);
+    }
   }
   .hh-topnav__link.is-active {
     color: var(--ink);
@@ -1140,10 +1143,184 @@ h1, h2, h3, h4 { letter-spacing: -.025em; }
 .btn--primary { --btn-edge: transparent; --btn-fg: #102d2b; border-color: transparent; text-shadow: none; }
 .btn--ghost { box-shadow: none; }
 .btn--lg { min-height: 50px; }
-.hh-avring { box-shadow: none; padding: 2px; background: #4d6b72; width: calc(var(--sz) + 6px); height: calc(var(--sz) + 6px); }
+.hh-avring {
+  padding: 3px;
+  width: calc(var(--sz) + 8px);
+  height: calc(var(--sz) + 8px);
+  /* a glossy gradient rim: lit top-left, shaded bottom-right, with a hairline gap before the face */
+  background: linear-gradient(135deg, #b4f5e9 0%, #55d6c2 48%, #23867b 100%);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+.hh-avring > svg:first-child { box-shadow: 0 0 0 1.5px rgba(8, 14, 22, 0.65); }
+.hh-avring--good { background: linear-gradient(135deg, #c4f8dd 0%, #3ddc97 50%, #178a5b 100%); }
+.hh-avring--dim { background: linear-gradient(135deg, #7d8f96, #4d6b72); box-shadow: none; }
 .hh-avring__dot--on { box-shadow: none; }
 .hh-seg__opt.is-on { background: var(--teal); box-shadow: none; }
 .hh-modal__panel { background: var(--surface); }
 .hh-empty__icon { color: var(--teal); border-color: rgba(85,214,194,.2); background: rgba(85,214,194,.08); }
 .hh-empty__title { font-size: 17px; }
 .hh-empty__text { font-size: 13px; line-height: 1.65; }
+
+/* ==========================================================================
+   Hub theming (owner: theme). Hub screens speak --hub-* (hub.css); the shared widgets above still speak the
+   Tycoon tokens (tokens.css). Inside the hub chrome, and everywhere while the light theme is on (the app only
+   sets data-theme='light' on hub routes, game routes are always 'dark'), the Tycoon names point at the hub
+   palette, so modals, toasts, toggles, cards and error/loading screens match the page around them.
+   ========================================================================== */
+.hub-app,
+:root[data-theme='light'] {
+  --bg-0: var(--hub-bg);
+  --bg-1: var(--hub-bg-2);
+  --bg-2: var(--hub-surface-2);
+  --surface: var(--hub-surface);
+  --surface-2: var(--hub-surface-2);
+  --surface-3: var(--hub-surface-3);
+  --line: var(--hub-line);
+  --line-strong: var(--hub-line-2);
+  --text: var(--hub-text);
+  --text-dim: var(--hub-dim);
+  --text-faint: var(--hub-faint);
+  --cream: var(--hub-text);
+  --gold: var(--hub-gold);
+  --good: var(--hub-good);
+  --bad: var(--hub-bad);
+  --rose: var(--hub-bad);
+  --sky: var(--hub-info);
+  --glass: var(--hub-surface);
+  --glass-line: var(--hub-line);
+  --grad-indigo: linear-gradient(160deg, var(--hub-surface-3), var(--hub-surface-2) 70%);
+  --shadow-1: var(--hub-shadow-s);
+  --shadow-2: var(--hub-shadow);
+  /* the shell accent (teal "grad-gold") becomes the hub violet; text on it flips to white */
+  --grad-gold: var(--hub-brand-fill);
+  --teal: var(--hub-brand);
+}
+:is(.hub-app, :root[data-theme='light']) :is(.btn--primary, .hh-iconbtn.is-on, .hh-pageheader__icon, .hh-seg__opt.is-on, .hh-skip) {
+  --btn-fg: var(--hub-on-brand);
+  --btn-edge: transparent;
+  color: var(--hub-on-brand);
+  box-shadow: none;
+}
+
+/* ---------- light theme: page, focus, selection, scrollbars, code ---------- */
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+:root[data-theme='light'],
+:root[data-theme='light'] body {
+  background-color: var(--hub-bg);
+  background-image: none;
+}
+:root[data-theme='light'] :focus-visible {
+  outline-color: var(--hub-focus);
+}
+:root[data-theme='light'] ::selection {
+  background: rgba(var(--hub-brand-rgb), 0.22);
+  color: var(--hub-text);
+}
+:root[data-theme='light'] * {
+  scrollbar-color: var(--hub-scroll) transparent;
+}
+:root[data-theme='light'] ::-webkit-scrollbar-thumb {
+  background-color: var(--hub-scroll);
+}
+:root[data-theme='light'] code {
+  background: rgba(var(--hub-tint), 0.07);
+}
+.hub-app :focus-visible {
+  outline-color: var(--hub-focus);
+}
+
+/* ---------- light theme: shared widgets that assumed a dark page ---------- */
+@media (hover: hover) {
+  :root[data-theme='light'] :is(.btn--ghost, .hh-iconbtn, .chip, .hh-pill, .hh-toggle__icon, .hh-medal--plain, .hh-seg__opt:hover:not(.is-on)) {
+    --btn-bg: rgba(var(--hub-tint), 0.05);
+    background-color: rgba(var(--hub-tint), 0.06);
+  }
+}
+@media (hover: hover) {
+  :root[data-theme='light'] .hh-iconbtn:hover:not(:disabled) {
+    background-color: rgba(var(--hub-tint), 0.11);
+  }
+}
+:root[data-theme='light'] .btn {
+  border-color: var(--hub-line-2);
+}
+:root[data-theme='light'] .hh-switch {
+  background: rgba(var(--hub-tint), 0.14);
+}
+:root[data-theme='light'] .hh-switch[aria-checked='true'] {
+  background: var(--hub-brand-fill);
+}
+:root[data-theme='light'] .hh-seg,
+:root[data-theme='light'] .hh-xp__track {
+  background: rgba(var(--hub-tint), 0.05);
+}
+:root[data-theme='light'] .hh-skel {
+  background: var(--hub-skel-hi);
+}
+:root[data-theme='light'] .hh-error__detail {
+  background: rgba(var(--hub-tint), 0.06);
+  color: var(--hub-bad-ink);
+}
+:root[data-theme='light'] .hh-avring--dim {
+  background: rgba(var(--hub-tint), 0.18);
+}
+:root[data-theme='light'] .hh-avring__dot {
+  border-color: var(--hub-surface);
+}
+
+/* dialogs + toasts float above hub pages: hub surfaces, softer scrim, sheet shadow */
+:root[data-theme='light'] .hh-modal {
+  background: var(--hub-overlay);
+}
+:root[data-theme='light'] .hh-modal__panel {
+  background: var(--hub-surface);
+  border-color: var(--hub-line-2);
+  box-shadow: var(--hub-shadow-l);
+}
+:root[data-theme='light'] .hh-toast {
+  color: var(--hub-text);
+  background: var(--hub-glass-2);
+  border-color: var(--hub-line-2);
+  box-shadow: var(--hub-shadow);
+}
+:root[data-theme='light'] .hh-toast--gold {
+  border-color: rgba(var(--hub-gold-rgb), 0.55);
+}
+:root[data-theme='light'] .hh-toast--gold .hh-icon {
+  color: var(--hub-gold);
+}
+.hub-app .hh-modal__panel,
+.hub-app .hh-toast {
+  color: var(--hub-text);
+}
+
+/* ---------- reduced motion: route view-transitions too (they are not matched by *) ---------- */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
+:root[data-motion='reduced']::view-transition-group(*),
+:root[data-motion='reduced']::view-transition-old(*),
+:root[data-motion='reduced']::view-transition-new(*) {
+  animation: none !important;
+}
+
+/* ---------- slow-render switch ----------
+   A frame-time sampler sets data-perf='low' on <html> (hub screens) or on the game root (.hg-game) when frames take
+   too long (software rendering, e.g. Brave without hardware acceleration, or a weak phone). Decorative loops stop and
+   the layers they kept alive go away; loaders, the first-run tour ring and anything that carries meaning stay. */
+:root[data-perf='low'] :is(.st-live, .sr-conn__dot, .xh-live-dot, .hh2-eyebrow__dot, .xl-hero)::after,
+[data-perf='low'] :is(.st-live, .sr-conn__dot, .xh-live-dot, .hh2-eyebrow__dot, .xl-hero)::after,
+:root[data-perf='low'] :is(.xh-resume.is-playing .xh-resume__cta, .xh-gift--ready, .hh2-daily.is-ready .hh2-daily__gift, .xs-cel__rays, .hub-nf__lantern, .xs-coins__dot),
+[data-perf='low'] :is(.xh-resume.is-playing .xh-resume__cta, .xh-gift--ready, .hh2-daily.is-ready .hh2-daily__gift, .xs-cel__rays, .hub-nf__lantern, .xs-coins__dot) {
+  animation: none !important;
+}
+:root[data-perf='low'] :is(.st-skel, .hub-skel, .hh-skel),
+[data-perf='low'] :is(.st-skel, .hub-skel, .hh-skel) {
+  animation: none !important;
+}

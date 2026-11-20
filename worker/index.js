@@ -1,8 +1,19 @@
 // Jalebi Games - Cloudflare Worker entry.
-// Same-origin API (no CORS), cookie sessions, WebSocket upgrades forwarded to Durable
-// Objects, everything else served from the static bundle (ASSETS).
+// Same-origin API (cookie sessions), WebSocket upgrades forwarded to Durable Objects, everything
+// else served from the static bundle (ASSETS). OPTIONAL cross-origin mode (SPA hosted elsewhere,
+// e.g. Vercel): set ALLOWED_ORIGINS and clients use bearer tokens + WebSocket tickets (see cors.js).
 import { Hono } from 'hono';
-import { sessionMiddleware, isSameOrigin, isSecureRequest, currentUser } from './auth.js';
+import {
+  sessionMiddleware,
+  sessionFromRequest,
+  readBearer,
+  verifySession,
+  verifyWsTicket,
+  isSameOrigin,
+  isSecureRequest,
+  currentUser,
+} from './auth.js';
+import { corsMiddleware, allowedOrigin } from './cors.js';
 import { apiSecurityHeaders } from './security.js';
 import { HttpError } from './db.js';
 import { normalizeRoomCode } from './codes.js';
@@ -11,11 +22,15 @@ import configRoutes from './routes/config.js';
 import authRoutes from './routes/auth.js';
 import meRoutes from './routes/me.js';
 import friendRoutes from './routes/friends.js';
+import blockRoutes from './routes/blocks.js';
 import roomRoutes from './routes/rooms.js';
 import inviteRoutes from './routes/invites.js';
 import leaderboardRoutes from './routes/leaderboard.js';
 import gameRoutes from './routes/games.js';
 import healthRoutes from './routes/health.js';
+import shopRoutes from './routes/shop.js';
+import pushRoutes from './routes/push.js';
+import wsTicketRoutes from './routes/wsTicket.js';
 
 export { GameRoom } from './GameRoom.js';
 export { UserHub } from './UserHub.js';
@@ -24,6 +39,10 @@ const app = new Hono();
 
 // ---- API ---------------------------------------------------------------------------
 const api = new Hono();
+
+// CORS for allowlisted origins only (no-op unless ALLOWED_ORIGINS is set). First, so a preflight is answered
+// before security headers, the CSRF guard, authentication and rate limiting.
+api.use('*', corsMiddleware);
 
 // Security headers on every API response (static assets get theirs from public/_headers).
 api.use('*', async (c, next) => {
@@ -35,13 +54,22 @@ api.use('*', async (c, next) => {
   }
 });
 
-// CSRF defence in depth (cookies are SameSite=Lax): refuse cross-origin state changes.
+// Public sign-in endpoints (rate limited in routes/auth.js): an allowlisted origin may call them without a token.
+const PUBLIC_AUTH_PATHS = new Set(['/api/auth/guest', '/api/auth/google']);
+
+// CSRF defence in depth (cookies are SameSite=Lax): refuse cross-origin state changes. The only exception is an
+// allowlisted origin (ALLOWED_ORIGINS, the cross-origin SPA): it may call the public sign-in endpoints, or any
+// endpoint when it carries a valid bearer token (a token a foreign page cannot obtain or attach by itself).
 api.use('*', async (c, next) => {
   const m = c.req.method;
-  if (m !== 'GET' && m !== 'HEAD' && m !== 'OPTIONS' && !isSameOrigin(c.req.header('origin'), c.req.url)) {
-    return c.json({ error: 'Cross-origin request refused.' }, 403);
+  const origin = c.req.header('origin');
+  if (m === 'GET' || m === 'HEAD' || m === 'OPTIONS' || isSameOrigin(origin, c.req.url)) return next();
+  if (allowedOrigin(c.env, origin)) {
+    if (PUBLIC_AUTH_PATHS.has(new URL(c.req.url).pathname)) return next();
+    const bearer = readBearer(c.req.header('authorization'));
+    if (bearer && (await verifySession(c.env, bearer))) return next();
   }
-  await next();
+  return c.json({ error: 'Cross-origin request refused.' }, 403);
 });
 
 // Health first: it must answer even when secrets are missing (no session parsing).
@@ -53,10 +81,14 @@ api.route('/config', configRoutes);
 api.route('/auth', authRoutes);
 api.route('/me', meRoutes);
 api.route('/friends', friendRoutes);
+api.route('/blocks', blockRoutes);
 api.route('/games', gameRoutes);
 api.route('/rooms', roomRoutes);
 api.route('/invites', inviteRoutes);
 api.route('/leaderboard', leaderboardRoutes);
+api.route('/shop', shopRoutes);
+api.route('/push', pushRoutes);
+api.route('/ws-ticket', wsTicketRoutes);
 api.notFound((c) => c.json({ error: 'Not found.' }, 404));
 
 app.route('/api', api);
@@ -101,17 +133,33 @@ function closedSocket(code, reason) {
   return new Response(null, { status: 101, webSocket: client });
 }
 
+/**
+ * WebSocket upgrades: when the browser sends an Origin it must be the Worker's own origin (or loopback in dev)
+ * or an allowlisted origin. Clients without an Origin header (non-browser) are unaffected.
+ */
 async function wsGuard(c, next) {
   if ((c.req.header('upgrade') || '').toLowerCase() !== 'websocket') {
     return c.json({ error: 'Expected a WebSocket upgrade.' }, 426);
   }
-  if (!isSameOrigin(c.req.header('origin'), c.req.url)) {
+  const origin = c.req.header('origin');
+  if (!isSameOrigin(origin, c.req.url) && !allowedOrigin(c.env, origin)) {
     return c.json({ error: 'Cross-origin request refused.' }, 403);
   }
   await next();
 }
 
-app.get('/ws/room/:code', wsGuard, sessionMiddleware, async (c) => {
+/**
+ * Identity of a WebSocket upgrade: a `?ticket=` (cross-origin clients; see POST /api/ws-ticket), else a bearer
+ * header or the session cookie. A ticket that is present but invalid means "signed out" (no cookie fallback).
+ * The ticket never leaves this function: the Durable Object only sees the identity headers set in forwardRequest.
+ */
+async function wsSession(c, next) {
+  const ticket = c.req.query('ticket');
+  c.set('session', ticket ? await verifyWsTicket(c.env, ticket) : await sessionFromRequest(c));
+  await next();
+}
+
+app.get('/ws/room/:code', wsGuard, wsSession, async (c) => {
   const user = await currentUser(c);
   if (!user) return closedSocket(4001, 'Please sign in first.');
   const code = normalizeRoomCode(c.req.param('code'));
@@ -119,7 +167,7 @@ app.get('/ws/room/:code', wsGuard, sessionMiddleware, async (c) => {
   return roomStub(c.env, code).fetch(forwardRequest(c.req.raw, user, { 'X-Room-Code': code }));
 });
 
-app.get('/ws/user', wsGuard, sessionMiddleware, async (c) => {
+app.get('/ws/user', wsGuard, wsSession, async (c) => {
   const user = await currentUser(c);
   if (!user) return closedSocket(4001, 'Please sign in first.');
   return userHubStub(c.env, user.id).fetch(forwardRequest(c.req.raw, user));

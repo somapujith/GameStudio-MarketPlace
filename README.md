@@ -29,15 +29,31 @@ Browser ──HTTPS──► Cloudflare Worker (worker/index.js, Hono)
 5. **Start**: the host's button needs at least 2 players ("Start with 3 players", "Table full - start!"). Everyone else sees "Waiting for the host to start..." and is taken to the board (`/play/:gameId/online/:code`) when the room status becomes `playing`.
 6. **Game over**: podium and stats; "New room, same settings" creates a fresh private room (a game cannot restart in the same room).
 
-Other screens: `/` Home (hero, friends, browse by category, top players, daily reward) · `/join[/:code]` · `/friends`, `/f/:code` · `/leaderboard` · `/profile` · `/login`. Old links to the retired bots / open tables / story / campaign screens (`/play`, `/campaign`, `/story`, `/games/:id/play|tables|x/*`, `/play/:id/offline`) redirect to the game page.
+Other screens are in the route table below. Old links to the retired bots / open tables / story / campaign screens (`/play`, `/campaign`, `/story`, `/games/:id/play|tables|x/*`, `/play/:id/offline`) redirect to the game page.
 Without `GOOGLE_CLIENT_ID` the Google button is hidden (`/api/config` returns `googleClientId: null`); "Play as guest" always works. Guests can host, join and play rooms and read the leaderboard, but cannot use friends, get invites or appear in the rankings.
+
+## Routes
+
+| Path | Screen |
+|---|---|
+| `/` | Home storefront (hero, live strip, category rails, top players, daily reward, resume) |
+| `/games`, `/search?q=` | Browse the catalogue (filters, sort) and search it |
+| `/games/:gameId` | Game page: store listing, how many players, Create table |
+| `/about`, `/help`, `/privacy`, `/terms` | About, searchable Help centre, Privacy, Terms (static, indexable) |
+| `/join`, `/join/:code` | Join a table with a room code |
+| `/lobby/:code` | Lobby (full screen): invite, seats, host settings, Start |
+| `/play/:gameId/online/:code` | The game (full screen, no hub chrome) |
+| `/friends`, `/f/:friendCode` | The Adda (friends) and the add-a-friend link |
+| `/leaderboard`, `/profile`, `/shop`, `/login` | Leaderboard, profile + settings, cosmetics shop, sign-in |
+
+Old links to the retired bots / open tables / story / campaign screens (`/play`, `/campaign`, `/story`, `/settings`, `/games/:id/play|tables|x/*`, `/play/:id/offline`) redirect. Every URL is built by `paths` in `src/platform/paths.js`; the full table with helpers is in [`docs/MARKETPLACE.md`](docs/MARKETPLACE.md) section 2. Public pages also ship `public/robots.txt`, a web app manifest with shortcuts, a service worker (push + branded offline page) and Open Graph / Twitter card metadata in `index.html`.
 
 ## Nawabi Raj in 60 seconds
 
 * **One die.** Everyone starts with ₹15,000 at the airport (START) and walks clockwise around 40 squares. Roll one die; **a six rolls again**. Passing or landing on START pays ₹2,000. Dice are *lucky* by default (a small, disclosed help for whoever is behind) or *fair*.
-* **Buy, build, collect.** Buy a free property, station or utility; skip it and a sealed-bid auction opens. A full colour set doubles base rent and lets you build (Kirana, Apartments, Mall, Tower, Hotel). Mortgage, sell buildings, trade with other players, draw Nawab ka Farman / Hyderabadi Khazana cards, pay GHMC tax.
+* **Buy, build, collect.** Buy a free property, station or utility; pass and it simply stays free (there is no auction, so Snatch cannot be dodged). A full colour set doubles base rent and lets you build (Kirana, Apartments, Mall, Tower, Hotel). Mortgage, sell buildings, trade with other players, draw Nawab ka Farman / Hyderabadi Khazana cards, pay GHMC tax.
 * **Jail.** Go to Jail, a card or a trap sends you to Chanchalguda Jail: roll a six, pay ₹500 bail or use a Get Out of Jail Free card; a failed roll costs one turn.
-* **Short of cash?** The debt phase lets you mortgage and sell to pay; if you still cannot, you are bankrupt and your assets go to the creditor (or the bank). You can also resign.
+* **Short of cash?** The debt phase lets you mortgage and sell to pay; if you still cannot, you are bankrupt: the bank takes ALL your cash and districts, and only the amount you owe is paid to the player you owe, by the bank, up to what your assets were worth. You can also resign (same rule).
 * **Win** by reaching the end cash limit in net worth first, by being the last player standing, or by being richest when the round limit (50 by default) runs out.
 * **Five features on top:**
   * **Snatch**: everyone starts with a Snatch token; when someone buys a property the others get a 3-second window to grab it for free (the buyer still pays). Several snatchers bid in sealed bidding.
@@ -45,6 +61,8 @@ Without `GOOGLE_CLIENT_ID` the Google button is hidden (`/api/config` returns `g
   * **Tokens**: earn more (max 3) every third lap and by landing on the Irani Chai & Biryani Break square.
   * **City events**: every fifth round a random event (monsoon, IPL night, metro strike, tax holiday, Bonalu gift) changes rents, taxes or cash for that round.
   * **Traps**: each player secretly places one trap before rolling; the first other player to land on it goes straight to jail.
+
+* **Two maps, one board.** The host picks the map in the lobby: **Charminar Chaos** (the Hyderabad map, the default) or **Andhra Aatalu** (ఆంధ్ర ఆటలు), a skin built from `Andhra_Empire_Game_Concept.md`: same 36 tiles, prices and rules, other names, collections, card decks (Mana Adrushtam, Oori Kaburlu) and city events. See `docs/GAME_RULES.md` section 15; `node scripts/simulate.js --map andhra` plays bots on it.
 
 The complete rules, state machine and wire protocol are in [`docs/GAME_RULES.md`](docs/GAME_RULES.md).
 
@@ -54,7 +72,10 @@ The complete rules, state machine and wire protocol are in [`docs/GAME_RULES.md`
 |---|---|
 | [`docs/GAME_RULES.md`](docs/GAME_RULES.md) | Current rules, phases, bankruptcy / winning, the WebSocket protocol, events, timers, redaction, known discrepancies |
 | [`docs/MARKETPLACE.md`](docs/MARKETPLACE.md) | Marketplace contract: hub flow, routes, game manifest, settings schema, server adapter, database and API additions |
-| [`docs/ADDING_A_GAME.md`](docs/ADDING_A_GAME.md) | How to add the next game as a plugin |
+| [`docs/ADDING_A_GAME.md`](docs/ADDING_A_GAME.md) | How to add the next game as a plugin (including the optional store-listing manifest fields) |
+| [`docs/LAUNCH_CHECKLIST.md`](docs/LAUNCH_CHECKLIST.md) | Everything a public launch needs: legal review, env vars, OAuth consent screen, public origin / SEO, PWA, monitoring, smoke test |
+| [`docs/DEPLOY.md`](docs/DEPLOY.md) | Deploy modes (single Worker, or SPA on Vercel + Worker), build-time variables, headers, troubleshooting |
+| [`docs/STOREFRONT_REDESIGN.md`](docs/STOREFRONT_REDESIGN.md) | Brief and design direction of the storefront redesign |
 | [`docs/CONTRACT.md`](docs/CONTRACT.md) | Historical build contract of the original app (engine, backend, DB); outdated where it mentions bots, voices, two dice or the 28-tile board |
 | [`hyderabad-monopoly.md`](hyderabad-monopoly.md) | Board spec: tiles, prices, rents |
 
@@ -127,6 +148,8 @@ Changes to authorized origins can take a few minutes to apply.
 | `JWT_SECRET` | `.dev.vars` / `wrangler secret` | yes | HS256 key for the `hyd_session` cookie (≥ 16 chars; use 48+ random bytes) |
 | `GOOGLE_CLIENT_ID` | `.dev.vars` / `wrangler secret` | no (public id) | audience check for Google ID tokens; also sent to the browser by `/api/config` |
 | `APP_NAME` | `wrangler.toml [vars]` | no | display name returned by `/api/config` (`Jalebi Games`) |
+| `VITE_CONTACT_EMAIL` | build environment | no | contact address shown on Help / Privacy / Terms; unset = no contact line (see `docs/DEPLOY.md`) |
+| `VITE_API_ORIGIN` | build environment | no | only for the split Vercel + Worker mode (see `docs/DEPLOY.md`) |
 
 ## Deploying to Cloudflare (first time)
 
@@ -209,7 +232,6 @@ Every room has two shared settings that are not part of any game: `visibility` (
 | `startCash` | integer 5,000 – 100,000 | 15,000 |
 | `maxRounds` | exactly `30`, `50` or `null` (unlimited) | 50 |
 | `dice` | `'lucky'` or `'fair'` | `'lucky'` |
-| `auctionOnDecline` | boolean | `true` |
 | `snatches` (Snatch tokens each player starts with; 0 switches tokens, Shield and Snatch off) | integer 0 – 3 | 1 |
 | `snatchMs` (length of the Snatch window) | integer 1,000 – 10,000 | 3,000 |
 | `maxPlayers` | integer 2 – 6 (also accepted inside `settings`) | 4 |
@@ -236,7 +258,7 @@ Every message, field, error string, event, timer and redaction rule is specified
 
 ## Database
 
-`db/schema.sql` (idempotent, additive only): `users`, `friendships` (one row per pair, enforced by a unique index on `(LEAST, GREATEST)`), `matches` (`game_id` (default `hyderabad-tycoon`), `rounds`, `goal`, `max_rounds` (NULL = unlimited), `dice_mode`, `win_reason` incl. `'rounds'`), `match_players` (`hotels_built`, ranks, final worth), `user_game_stats` (`games`, `wins`, `best_score`, `rating`, `extra` per user and game) and `rooms` (the listing behind open tables and "continue playing"; a room's Durable Object keeps its row in step and deletes it on expiry, queries ignore rows older than 24 h). `node scripts/migrate.js` applies it statement by statement (it refuses anything that is not `CREATE … IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`, plus the one-time `user_game_stats` backfill, an `INSERT … ON CONFLICT DO NOTHING`) and prints only table names and row counts.
+`db/schema.sql` (idempotent, additive only): `users`, `friendships` (one row per pair, enforced by a unique index on `(LEAST, GREATEST)`), `matches` (`game_id` (default `hyderabad-tycoon`), `rounds`, `goal`, `max_rounds` (NULL = unlimited), `dice_mode`, `win_reason`: `'last_standing'`, `'target'` (net-worth win target) or `'rounds'`), `match_players` (`hotels_built`, ranks, final worth), `user_game_stats` (`games`, `wins`, `best_score`, `rating`, `extra` per user and game) and `rooms` (the listing behind open tables and "continue playing"; a room's Durable Object keeps its row in step and deletes it on expiry, queries ignore rows older than 24 h). `node scripts/migrate.js` applies it statement by statement (it refuses anything that is not `CREATE … IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`, plus the one-time `user_game_stats` backfill, an `INSERT … ON CONFLICT DO NOTHING`) and prints only table names and row counts.
 
 * **Stats.** When a game ends, one atomic statement (guarded by `ON CONFLICT (id) DO NOTHING`, so a retry never counts twice) writes the match with its `game_id` and `match_players`, adds `xp` / `coins` (platform-wide, same formula for every game), upserts `user_game_stats` and - for Nawabi Raj only - keeps the legacy `users.games` / `wins` / `best_worth` / `rent_earned` columns up to date, so the previous version of the app keeps working during a rollout. Matches played on the previous version are not added to `user_game_stats`.
 * **Rating** (`worker/rating.js`): Elo-style, new players start at 1000. For every player in a match: `actual = (N - rank) / (N - 1)`, `expected = 1 / (1 + 10^((opponentAverage - own) / 400))` where `opponentAverage` is the mean rating of the other seats, `delta = round(24 * (actual - expected))`, `rating = max(100, rating + delta)`.

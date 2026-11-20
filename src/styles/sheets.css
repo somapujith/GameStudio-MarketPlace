@@ -1,0 +1,213 @@
+/* ============================================================ G-SHEETS: Hustle sheets and dialogs
+   Builds on the sheet base in game.css. Motion: sheets enter with --dur-3 / --ease-out and leave with --ease-in,
+   rewards pop with --ease-spring; transform / opacity only; everything collapses under reduced motion. */
+
+/* ---------------------------------------------------------------- sheet motion (tokens) */
+.hg-sheet-root[data-variant][data-desktop] > .hg-sheet { transition: transform var(--dur-3) var(--ease-out), opacity var(--dur-2) var(--ease-out); }
+.hg-sheet-root[data-variant][data-desktop]:not(.is-open) > .hg-sheet { transition-duration: 260ms, 200ms; transition-timing-function: var(--ease-in), var(--ease-in); }
+.hg-sheet-root > .hg-backdrop { transition: opacity var(--dur-2) var(--ease-std); }
+
+/* a player's piece / avatar in a ring */
+.hg-token { flex: none; }
+.hg-token > svg, .hg-token > span { display: block; }
+
+/* ---------------------------------------------------------------- auction */
+.hg-auction-why {
+  display: flex; align-items: flex-start; gap: 8px; margin: 0 0 12px; padding: 9px 12px; border-radius: 14px;
+  font-size: 13px; line-height: 1.4; background: rgba(255, 255, 255, 0.06); color: var(--text-dim);
+}
+.hg-auction-why .hg-icon { flex: none; margin-top: 1px; }
+.hg-auction-why.is-bazaar { background: rgba(255, 138, 61, 0.13); color: var(--text); }
+.hg-auction-why.is-bazaar .hg-icon { color: var(--saffron); }
+.hg-auction .hg-auction-facts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.hg-auction .hg-auction-facts small { display: block; font-size: 11px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hg-auction .hg-auction-facts b { font-size: clamp(14px, 4vw, 18px); white-space: nowrap; }
+.hg-bidrow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; margin: 4px 0 10px; }
+.hg-bidrow .hg-btn { min-width: 56px; padding: 0 10px; }
+.hg-bidrow .hg-range { margin: 0; width: 100%; }
+.hg-bidchips { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
+.hg-bidchip {
+  min-height: var(--tap, 44px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  padding: 6px 8px; border-radius: 14px; cursor: pointer; font: inherit; color: var(--text);
+  background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line);
+  transition: transform var(--dur-1) var(--ease-out), background var(--dur-1) var(--ease-std);
+}
+.hg-bidchip span { font-size: 13px; font-weight: 800; color: var(--gold); }
+.hg-bidchip b { font-size: 11.5px; font-weight: 600; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+@media (hover: hover) { .hg-bidchip:hover:not(:disabled) { background: rgba(255, 200, 87, 0.12); } }
+.hg-bidchip:active:not(:disabled) { transform: scale(0.96); }
+.hg-bidchip.is-on { border-color: var(--gold); background: rgba(255, 200, 87, 0.16); }
+.hg-bidchip:disabled { opacity: 0.45; cursor: not-allowed; }
+.hg-bidchip:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.hg-auction-form .hg-auction-others { margin-bottom: 14px; }
+.hg-auction-ostate { display: inline-flex !important; align-items: center; gap: 4px; }
+.hg-auction-ostate small { font-size: 11.5px; font-weight: 700; }
+.hg-auction-others li.is-done .hg-icon { animation: hg-pop var(--dur-2) var(--ease-spring) both; }
+
+/* ---------------------------------------------------------------- trade: see trade.css (TradeSheet) */
+
+/* ---------------------------------------------------------------- debt */
+.hg-debt-short { display: inline-flex; align-items: center; gap: 4px; }
+.hg-debt-plan {
+  display: flex; align-items: flex-start; gap: 6px; margin: 10px 0 0; padding: 9px 12px; border-radius: 12px;
+  font-size: 13px; line-height: 1.45; background: rgba(255, 200, 87, 0.1); border: 1px solid rgba(255, 200, 87, 0.26); color: var(--text);
+}
+.hg-debt-plan .hg-icon { flex: none; margin-top: 2px; color: var(--gold); }
+.hg-debt-row.is-suggested { box-shadow: inset 3px 0 0 var(--gold); background: rgba(255, 200, 87, 0.07); }
+.hg-debt-tip {
+  margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-style: normal; font-size: 10.5px; font-weight: 800;
+  letter-spacing: 0.04em; text-transform: uppercase; background: rgba(255, 200, 87, 0.2); color: var(--gold);
+}
+.hg-debt-who .hg-token { padding: 2px; }
+
+/* ---------------------------------------------------------------- player + stats */
+.hg-ps-piece { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 1px 0 0; font-size: 12.5px; color: var(--text-dim); }
+.hg-worth { margin: 4px 0 6px; padding: 12px; border-radius: 16px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); }
+.hg-worth-total { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.hg-worth-total span { font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); }
+.hg-worth-total b { font-family: var(--font-display); font-size: 24px; color: var(--good); font-variant-numeric: tabular-nums; }
+.hg-worth-bar { display: flex; height: 8px; margin: 8px 0; border-radius: 99px; overflow: hidden; background: rgba(255, 255, 255, 0.08); }
+.hg-worth-bar i { display: block; height: 100%; transform-origin: left; animation: hg-grow var(--dur-3) var(--ease-out) both; }
+.hg-worth-bar i.is-cash, .hg-worth-parts .is-cash dt::before, .hg-pod-split .is-cash::before, .hg-over-legend .is-cash::before { background: var(--gold); }
+.hg-worth-bar i.is-land, .hg-worth-parts .is-land dt::before, .hg-pod-split .is-land::before, .hg-over-legend .is-land::before { background: var(--sky); }
+.hg-worth-bar i.is-up, .hg-worth-parts .is-up dt::before, .hg-pod-split .is-up::before, .hg-over-legend .is-up::before { background: var(--violet); }
+.hg-worth-parts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; }
+.hg-worth-parts > div { min-width: 0; }
+.hg-worth-parts > div.is-debt { grid-column: 1 / -1; }
+.hg-worth-parts dt { display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; color: var(--text-dim); }
+.hg-worth-parts dt::before { content: ''; width: 8px; height: 8px; border-radius: 3px; flex: none; }
+.hg-worth-parts .is-debt dt::before { background: var(--bad); }
+.hg-worth-parts dd { margin: 1px 0 0; font-family: var(--font-display); font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hg-worth-parts .is-debt dd { color: var(--bad); }
+.hg-worth.is-compact { margin: 10px 0; padding: 10px; }
+.hg-worth.is-compact .hg-worth-total b { font-size: 19px; }
+.hg-stats--grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (min-width: 480px) { .hg-stats--grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.hg-stats--grid dd { font-size: 15px; }
+.hg-setcard.is-full { background: rgba(61, 220, 151, 0.07); }
+
+/* ---------------------------------------------------------------- my properties (Manage tab) */
+.hg-mp { display: grid; gap: 10px; }
+.hg-mp-empty { display: grid; gap: 2px; padding: 12px 14px; border-radius: 14px; background: rgba(255, 255, 255, 0.05); font-size: 13px; color: var(--text-dim); }
+.hg-mp-empty b { font-size: 15px; color: var(--text); }
+.hg-mp-sets { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.hg-mp-set { border-radius: 14px; background: rgba(255, 255, 255, 0.035); border: 1px solid var(--line); overflow: hidden; }
+.hg-mp-set.is-mine { background: rgba(255, 255, 255, 0.06); }
+.hg-mp-set.is-full { border-color: color-mix(in srgb, var(--sc) 60%, transparent); }
+.hg-mp-head { display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 6px 10px; font-size: 13.5px; }
+.hg-mp-chip { width: 6px; align-self: stretch; border-radius: 3px; background: var(--sc); flex: none; }
+.hg-mp-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hg-mp-set:not(.is-mine) .hg-mp-name { color: var(--text-dim); font-weight: 600; }
+.hg-mp-count { font-size: 12px; font-weight: 800; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.hg-mp-tag { padding: 2px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 800; white-space: nowrap; }
+.hg-mp-tag.is-full { background: rgba(61, 220, 151, 0.16); color: var(--good); animation: hg-pop var(--dur-2) var(--ease-spring) both; }
+.hg-mp-props { list-style: none; margin: 0; padding: 0 8px 8px; display: grid; gap: 6px; }
+.hg-mp-prop { display: grid; gap: 6px; padding: 6px 8px; border-radius: 12px; background: rgba(0, 0, 0, 0.18); }
+.hg-mp-prop.is-mort { opacity: 0.8; border: 1px dashed var(--line-strong); }
+.hg-mp-main {
+  display: grid; gap: 2px; width: 100%; min-height: var(--tap, 44px); padding: 2px; text-align: left; cursor: pointer;
+  background: none; border: 0; border-radius: 8px; color: var(--text); font: inherit;
+}
+.hg-mp-main:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.hg-mp-pname { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 700; }
+.hg-mp-flag { padding: 1px 6px; border-radius: 6px; font-style: normal; font-size: 10.5px; font-weight: 800; background: rgba(229, 72, 77, 0.18); color: var(--bad); }
+.hg-mp-meta { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
+.hg-mp-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.hg-mp-acts .hg-btn { flex: 1 1 auto; }
+.hg-mp-why { margin: 0; font-size: 12px; color: var(--text-faint); }
+.hg-setdots i { transition: transform var(--dur-2) var(--ease-spring); }
+.hg-setdots i.is-on { transform: scaleY(1.15); }
+
+/* ---------------------------------------------------------------- rules */
+.hg-rules-pitch { margin: 8px 0 2px; font-size: 14px; line-height: 1.5; color: var(--text); }
+.hg-rules-modes, .hg-rules-steps, .hg-rule-list, .hg-rules-colls { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.hg-rules-modes li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; padding: 7px 10px; border-radius: 10px; background: rgba(255, 255, 255, 0.05); font-size: 13px; }
+.hg-rules-modes li span { color: var(--text-dim); }
+.hg-rules-modes li.is-on { background: rgba(255, 200, 87, 0.12); box-shadow: inset 3px 0 0 var(--gold); }
+.hg-rules-steps { counter-reset: step; }
+.hg-rules-steps li { position: relative; padding-left: 26px; font-size: 14px; line-height: 1.45; color: var(--text-dim); counter-increment: step; }
+.hg-rules-steps li::before {
+  content: counter(step); position: absolute; left: 0; top: 1px; width: 19px; height: 19px; display: grid; place-items: center;
+  border-radius: 6px; background: rgba(255, 200, 87, 0.16); color: var(--gold); font-size: 11px; font-weight: 900;
+}
+.hg-rules-steps li b, .hg-rule-list li b { color: var(--text); }
+.hg-rule-list li { position: relative; padding-left: 14px; font-size: 13.5px; line-height: 1.45; color: var(--text-dim); }
+.hg-rule-list li::before { content: ''; position: absolute; left: 2px; top: 8px; width: 5px; height: 5px; border-radius: 50%; background: var(--gold); }
+.hg-rules .hg-rules-ladder { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.hg-rules-colls { grid-template-columns: minmax(0, 1fr); margin-top: 10px; }
+@media (min-width: 520px) { .hg-rules-colls { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.hg-rules-colls li { display: grid; grid-template-columns: 10px minmax(0, 1fr); column-gap: 8px; padding: 6px 8px; border-radius: 10px; background: rgba(255, 255, 255, 0.04); font-size: 12.5px; }
+.hg-rules-colls li i { grid-row: span 2; width: 10px; border-radius: 3px; background: var(--sc); }
+.hg-rules-colls li span { color: var(--text-dim); font-size: 11.5px; }
+.hg-rules-formula { padding: 8px 10px; border-radius: 10px; background: rgba(61, 220, 151, 0.1); border: 1px solid rgba(61, 220, 151, 0.24); color: var(--text) !important; }
+
+/* ---------------------------------------------------------------- game over */
+.hg-over-head.is-won .hg-over-title { background: linear-gradient(180deg, #fff0b5, var(--gold) 60%, var(--saffron)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hg-over .hg-pod { animation: hg-pop var(--dur-3) var(--ease-spring) both; }
+.hg-over .hg-pod.p1 { animation-delay: 240ms; }
+.hg-over .hg-pod.p2 { animation-delay: 120ms; }
+.hg-over .hg-pod.p3 { animation-delay: 0ms; }
+.hg-pod-av .hg-token { border-radius: 50%; overflow: hidden; }
+.hg-pod-split { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 6px; font-size: 10.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.hg-pod-split i, .hg-over-legend span { display: inline-flex; align-items: center; gap: 3px; font-style: normal; }
+.hg-pod-split i::before, .hg-over-legend span::before { content: ''; width: 6px; height: 6px; border-radius: 2px; }
+.hg-over-legend { display: flex; justify-content: center; gap: 12px; margin: 0 0 4px; font-size: 11px; color: var(--text-faint); }
+.hg-over-rest small { font-weight: 500; color: var(--bad); }
+.hg-moments { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.hg-moment {
+  display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 10px; border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line); box-shadow: inset 3px 0 0 var(--pc, var(--line-strong));
+  animation: hg-pop var(--dur-2) var(--ease-spring) both;
+}
+.hg-moment:nth-child(2) { animation-delay: 60ms; }
+.hg-moment:nth-child(3) { animation-delay: 120ms; }
+.hg-moment:nth-child(4) { animation-delay: 180ms; }
+.hg-moment:nth-child(5) { animation-delay: 240ms; }
+.hg-moment:nth-child(6) { animation-delay: 300ms; }
+.hg-moment.is-me { background: rgba(255, 200, 87, 0.1); }
+.hg-moment-ico { font-size: 20px; line-height: 1; }
+.hg-moment-txt { display: grid; min-width: 0; }
+.hg-moment-txt small { font-size: 10.5px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-dim); }
+.hg-moment-txt b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* gold coin shower: the confetti pieces become round, gold coins */
+.hg-coinshower i { border-radius: 50% !important; height: var(--s) !important; width: var(--s) !important; background: radial-gradient(circle at 35% 30%, #fff3c4, var(--gold) 45%, #c98a12) !important; box-shadow: inset 0 0 0 1px rgba(120, 72, 0, 0.45); }
+
+/* ---------------------------------------------------------------- set celebration */
+.hg-setwin { animation: hg-pop var(--dur-4) var(--ease-spring) both; }
+.hg-setwin em { display: block; margin-top: 3px; font-size: 12px; font-style: normal; color: var(--text-faint); }
+.hg-settoasts { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: max-content; max-width: 92%; margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.hg-settoast {
+  display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 999px; font-size: 13px;
+  background: rgba(16, 23, 30, 0.94); border: 1px solid color-mix(in srgb, var(--sc) 70%, transparent);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  animation: hg-toast 2.8s var(--ease-out) both;
+}
+.hg-settoast b { color: var(--pc, var(--text)); }
+.hg-settoast-dot { width: 10px; height: 10px; border-radius: 3px; background: var(--sc); flex: none; }
+
+/* ---------------------------------------------------------------- keyframes */
+@keyframes hg-pop { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: none; } }
+@keyframes hg-grow { from { transform: scaleX(0); } to { transform: none; } }
+@keyframes hg-toast {
+  0% { opacity: 0; transform: translate3d(0, -10px, 0) scale(0.96); }
+  10% { opacity: 1; transform: none; }
+  88% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translate3d(0, -6px, 0); }
+}
+
+/* ---------------------------------------------------------------- reduced motion (OS, in-game switch, hub switch) */
+@media (prefers-reduced-motion: reduce) {
+  .hg-sheet-root[data-variant][data-desktop] > .hg-sheet, .hg-sheet-root > .hg-backdrop, .hg-bidchip, .hg-setdots i { transition: none !important; }
+  .hg-mp-tag.is-full, .hg-moment, .hg-over .hg-pod, .hg-worth-bar i, .hg-setwin, .hg-settoast,
+  .hg-auction-others li.is-done .hg-icon { animation: none !important; }
+  .hg-coinshower { display: none; }
+}
+:root[data-motion='reduced'] .hg-sheet-root[data-variant][data-desktop] > .hg-sheet, :root[data-motion='reduced'] .hg-sheet-root > .hg-backdrop,
+:root[data-motion='reduced'] .hg-bidchip, :root[data-motion='reduced'] .hg-setdots i { transition: none !important; }
+:root[data-motion='reduced'] .hg-mp-tag.is-full, :root[data-motion='reduced'] .hg-moment,
+:root[data-motion='reduced'] .hg-over .hg-pod, :root[data-motion='reduced'] .hg-worth-bar i, :root[data-motion='reduced'] .hg-setwin,
+:root[data-motion='reduced'] .hg-settoast, :root[data-motion='reduced'] .hg-celebrate-in,
+:root[data-motion='reduced'] .hg-auction-others li.is-done .hg-icon { animation: none !important; }
+:root[data-motion='reduced'] .hg-coinshower, :root[data-motion='reduced'] .hg-confetti { display: none; }
+.hg-sheet-root[data-rm] .hg-coinshower { display: none; }

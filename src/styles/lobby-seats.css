@@ -1,0 +1,585 @@
+/* ---------------------------------------------------------------------------------------------------------------
+   Lobby seats ("Around the table"). Prefix `lt-` / `lt__`.
+   >= 480px of card width (container query, so it follows the card, not the window): the seats sit around an oval
+   felt table, each at (cos, sin) of its angle, positioned with CSS custom props set from seatLayout.js:
+       --cx / --cy  unit-circle position of the seat      --lt-w / --lt-h  seat box       --lt-aspect  table width / height
+   Narrower: a tidy 2-column grid of the same seat tiles (no ring).
+   Motion: transform + opacity (+ the `translate` property) only. Durations/easings are the tokens.css set.
+   Reduced motion (media query or :root[data-motion='reduced']): opacity-only fades, no ambient loops.
+   Colours: tokens only; the seat colour arrives as --lt-seat (inline, from the game's playerColors).
+   --------------------------------------------------------------------------------------------------------------- */
+
+.lt {
+  --lt-accent: var(--g-accent, var(--ho-accent, var(--hub-brand)));
+  --lt-ink: color-mix(in srgb, var(--lt-accent) var(--hub-ink-mix, 100%), var(--hub-text));
+  --lt-bg: var(--hub-surface-2);
+  position: relative;
+  min-width: 0;
+  padding: 18px;
+  container-type: inline-size;
+  color: var(--hub-text);
+  background: var(--hub-surface);
+  border: 1px solid var(--hub-line);
+  border-top: 2px solid color-mix(in srgb, var(--lt-accent) 50%, var(--hub-line));
+  border-radius: var(--st-radius-card, 24px);
+  box-shadow: var(--hub-shadow-s);
+}
+
+/* ---------- header: one line ---------- */
+.lt__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.lt__title {
+  margin: 0;
+  min-width: 0;
+  font-family: var(--font-hub-display);
+  font-size: var(--st-t-l, 1.25rem);
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+}
+.lt__count {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: var(--st-t-s, 0.85rem);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--lt-ink);
+  background: color-mix(in srgb, var(--lt-accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--lt-accent) 32%, var(--hub-line-2));
+  transition:
+    color var(--dur-2) var(--ease-out),
+    background-color var(--dur-2) var(--ease-out),
+    border-color var(--dur-2) var(--ease-out);
+}
+.lt__count.is-full {
+  color: var(--hub-good);
+  background: rgba(var(--hub-good-rgb), 0.14);
+  border-color: rgba(var(--hub-good-rgb), 0.5);
+}
+
+/* ---------- the table + seats: grid by default (phones) ---------- */
+.lt__table {
+  position: relative;
+}
+.lt__felt {
+  display: none;
+}
+.lt__seats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lt-seat {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px 8px 10px;
+  text-align: center;
+  background: var(--lt-bg);
+  border: 1px solid var(--hub-line);
+  border-radius: 18px;
+  animation: lt-in var(--dur-3) var(--ease-spring) var(--lt-d, 0ms) backwards;
+  transition:
+    opacity var(--dur-2) var(--ease-out),
+    transform var(--dur-2) var(--ease-out),
+    translate var(--dur-3) var(--ease-out),
+    border-color var(--dur-2) var(--ease-out);
+}
+.lt-seat.is-me {
+  border-color: color-mix(in srgb, var(--lt-accent) 55%, var(--hub-line));
+}
+/* leaving: the seat keeps its place for the lobby's 260ms window, fades and shrinks; a seat that comes back reverses from where it is */
+.lt-seat.is-leaving {
+  opacity: 0;
+  transform: scale(0.9);
+  pointer-events: none;
+  animation: none;
+}
+.lt-seat.is-leaving .lt-seat__avatar {
+  animation: none;
+}
+
+.lt-seat__avatar {
+  position: relative;
+  flex: none;
+  display: block;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lt-seat, var(--lt-accent)) 60%, transparent);
+  animation: lt-pop var(--dur-3) var(--ease-spring) calc(var(--lt-d, 0ms) + 70ms) backwards;
+  transition: opacity var(--dur-2) var(--ease-out);
+}
+.lt-seat.is-away .lt-seat__avatar {
+  opacity: 0.55;
+}
+.lt-seat__dot {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--hub-surface);
+  background: var(--hub-faint);
+  transition: background-color var(--dur-2) var(--ease-out);
+}
+.lt-seat__dot.is-on {
+  background: var(--hub-good);
+}
+.lt-seat__piece {
+  position: absolute;
+  left: -8px;
+  bottom: -4px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--hub-surface);
+  border: 1px solid var(--hub-line-2);
+}
+.lt-seat__piece svg {
+  display: block;
+}
+
+.lt-seat__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+}
+.lt-seat__name {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.lt-seat.is-me .lt-seat__name {
+  color: var(--lt-ink);
+}
+.lt-seat.is-away .lt-seat__name {
+  color: var(--hub-dim);
+}
+.lt-seat__pieceline {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  color: var(--hub-dim);
+}
+.lt-seat__pieceline.is-none {
+  color: var(--hub-faint);
+}
+.lt-seat__pieceline > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lt-seat__title {
+  display: inline-flex;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 0.7rem;
+}
+/* the loadout chips (dice / trail / board, components/art/Loadout.jsx): one row, never wider than the seat; none equipped = no box at all */
+.lt-seat__loadout {
+  flex-wrap: nowrap; /* three 26px chips + gaps = 86px, inside the 104px seat; the glow of a legendary ring must not be clipped */
+}
+.lt-seat__tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 20px;
+  margin-top: 2px;
+}
+.lt-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.64rem;
+  font-weight: 800;
+  line-height: 1.6;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.lt-tag--host {
+  color: var(--hub-on-gold);
+  background: var(--hub-gold-fill);
+}
+.lt-tag--me {
+  color: var(--hub-info);
+  background: rgba(var(--hub-info-rgb), 0.16);
+}
+.lt-seat__away {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.64rem;
+  font-weight: 800;
+  line-height: 1.6;
+  letter-spacing: 0.04em;
+  color: var(--hub-bad-ink);
+  background: rgba(var(--hub-bad-rgb), 0.14);
+}
+
+/* ---------- corner actions: host-only remove (left), add friend (right) ---------- */
+.lt-seat__acts {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  left: 6px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.lt-seat__acts > * {
+  pointer-events: auto;
+}
+.lt-seat__friend {
+  margin-left: auto;
+}
+.lt-seat__friend:empty {
+  display: none;
+}
+.lt-seat__remove,
+.lt-seat__friend :is(button, a) {
+  position: relative;
+}
+/* 28px to look at, 44px to hit */
+.lt-seat__remove::after,
+.lt-seat__friend :is(button, a)::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+.lt-seat__remove {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--hub-line-2);
+  background: var(--hub-surface);
+  color: var(--hub-dim);
+  cursor: pointer;
+  transition:
+    color var(--dur-1) var(--ease-out),
+    background-color var(--dur-1) var(--ease-out),
+    border-color var(--dur-1) var(--ease-out),
+    transform var(--dur-1) var(--ease-out);
+}
+.lt-seat__remove:active {
+  transform: scale(0.92);
+}
+@media (hover: hover) and (pointer: fine) {
+  .lt-seat__remove:hover {
+    color: var(--hub-bad-ink);
+    background: rgba(var(--hub-bad-rgb), 0.14);
+    border-color: rgba(var(--hub-bad-rgb), 0.5);
+  }
+}
+.lt-seat__remove:focus-visible,
+.lt-seat__invite:focus-visible {
+  outline: 3px solid var(--hub-focus);
+  outline-offset: 2px;
+}
+
+/* ---------- an open seat: a dashed "+" slot that invites ---------- */
+.lt-seat--empty {
+  padding: 0;
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--hub-line-2);
+  animation: lt-fade var(--dur-2) var(--ease-out) backwards;
+}
+.lt-seat__invite {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 14px 8px 10px;
+  font: inherit;
+  color: var(--hub-dim);
+  background: none;
+  border: 0;
+  border-radius: 18px;
+  text-align: center;
+}
+button.lt-seat__invite {
+  cursor: pointer;
+}
+.lt-seat--empty .lt-seat__body {
+  gap: 1px;
+}
+.lt-seat__slot {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  color: var(--lt-ink);
+  border: 2px dashed color-mix(in srgb, var(--lt-accent) 55%, var(--hub-line-2));
+  background: color-mix(in srgb, var(--lt-accent) 7%, transparent);
+  animation: lt-breathe 3.6s var(--ease-std) calc(var(--i, 0) * -700ms) infinite alternate;
+}
+.lt-seat__slot svg {
+  transition: transform var(--dur-1) var(--ease-out);
+}
+.lt-seat__name--open {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--hub-dim);
+}
+.lt-seat__cta {
+  font-size: 0.74rem;
+  font-weight: 800;
+  color: var(--lt-ink);
+}
+@media (hover: hover) and (pointer: fine) {
+  button.lt-seat__invite:hover .lt-seat__slot {
+    border-style: solid;
+    background: color-mix(in srgb, var(--lt-accent) 16%, transparent);
+  }
+  button.lt-seat__invite:hover .lt-seat__slot svg {
+    transform: scale(1.18);
+  }
+}
+button.lt-seat__invite:active .lt-seat__slot svg {
+  transform: scale(0.9);
+}
+
+/* ---------- the ring (a card >= 480px wide) ---------- */
+@container (min-width: 480px) {
+  @supports (width: 1cqw) {
+    .lt__table {
+      container-type: size; /* its own size is what the seats' cqw / cqh are measured against */
+      width: 100%;
+      max-width: 760px;
+      margin-inline: auto;
+      aspect-ratio: var(--lt-aspect, 1.6);
+    }
+    .lt__table[data-n='2'] {
+      max-width: 560px;
+    }
+    .lt__felt {
+      position: absolute;
+      /* the rim passes just outside the seat centres, so people sit ON the table edge */
+      inset: calc(var(--lt-h) / 2 - 14px) calc(var(--lt-w) / 2 - 14px);
+      display: grid;
+      place-content: center;
+      justify-items: center;
+      gap: 2px;
+      border-radius: 50%;
+      text-align: center;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse at 50% 32%, color-mix(in srgb, var(--lt-accent) 26%, var(--hub-surface-2)) 0%, color-mix(in srgb, var(--lt-accent) 9%, var(--hub-surface)) 68%, var(--hub-surface) 100%);
+      box-shadow:
+        inset 0 0 0 1px color-mix(in srgb, var(--lt-accent) 28%, var(--hub-line-2)),
+        inset 0 -16px 34px -14px rgba(var(--hub-tint), 0.1),
+        0 10px 30px -18px color-mix(in srgb, var(--lt-accent) 60%, transparent);
+    }
+    .lt__felt::before {
+      /* the inner stitching */
+      content: '';
+      position: absolute;
+      inset: 12px;
+      border-radius: 50%;
+      border: 1px dashed color-mix(in srgb, var(--lt-accent) 26%, var(--hub-line));
+    }
+    .lt__tally {
+      position: relative;
+      font-family: var(--font-hub-display);
+      font-size: clamp(1.5rem, 6cqw, 2.4rem);
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -0.02em;
+      font-variant-numeric: tabular-nums;
+      color: var(--lt-ink);
+    }
+    .lt__tally-n {
+      display: inline-block;
+      animation: lt-tick var(--dur-3) var(--ease-spring) backwards;
+    }
+    .lt__tally-max {
+      color: var(--hub-faint);
+      font-weight: 700;
+    }
+    .lt__label {
+      position: relative;
+      font-size: 0.66rem;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--hub-faint);
+    }
+
+    .lt__seats {
+      position: absolute;
+      inset: 0;
+      display: block;
+    }
+    .lt-seat {
+      --lt-bg: transparent;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: var(--lt-w);
+      padding: 0;
+      background: none;
+      border-color: transparent;
+      /* centre on the table, then move by (cx, cy) of the free half-width / half-height */
+      translate: calc(-50% + var(--cx, 0) * (50cqw - var(--lt-w) / 2)) calc(-50% + var(--cy, 0) * (50cqh - var(--lt-h) / 2));
+    }
+    .lt-seat.is-me {
+      border-color: transparent;
+    }
+    .lt-seat--empty {
+      border-style: solid;
+    }
+    .lt-seat__invite {
+      padding: 0;
+    }
+    .lt-seat__acts {
+      top: 0;
+      left: 0;
+      right: 0;
+    }
+    /* 7-8 seats: the seat box is shorter, so the piece-name line is dropped (the badge and its screen-reader text stay) */
+    .lt__table[data-n='7'] .lt-seat__pieceline,
+    .lt__table[data-n='8'] .lt-seat__pieceline {
+      display: none;
+    }
+    /* 7-8 seats: tighter stack and at most two loadout chips (the seat box is 104 x 96) */
+    .lt__table[data-n='7'] .lt-seat,
+    .lt__table[data-n='8'] .lt-seat {
+      gap: 4px;
+    }
+    .lt__table[data-n='7'] .lt-seat__loadout .lo-chip:nth-of-type(n + 3),
+    .lt__table[data-n='8'] .lt-seat__loadout .lo-chip:nth-of-type(n + 3) {
+      display: none;
+    }
+  }
+}
+
+/* ---------- motion ---------- */
+@keyframes lt-in {
+  from {
+    opacity: 0;
+    transform: scale(0.86) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes lt-pop {
+  from {
+    transform: scale(0.55);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes lt-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes lt-tick {
+  from {
+    opacity: 0.25;
+    transform: translateY(8px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes lt-breathe {
+  from {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  to {
+    transform: scale(1.05);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lt-seat {
+    animation: lt-fade var(--dur-1) linear 0ms backwards;
+    transition: opacity var(--dur-1) linear;
+  }
+  .lt-seat.is-leaving {
+    transform: none;
+  }
+  .lt-seat__avatar,
+  .lt-seat__slot {
+    animation: none;
+  }
+  .lt-seat__slot svg {
+    transition: none;
+  }
+  .lt__tally-n {
+    animation: lt-fade var(--dur-1) linear backwards;
+  }
+}
+:root[data-motion='reduced'] .lt-seat {
+  animation: lt-fade var(--dur-1) linear 0ms backwards;
+  transition: opacity var(--dur-1) linear;
+}
+:root[data-motion='reduced'] .lt-seat.is-leaving {
+  transform: none;
+}
+:root[data-motion='reduced'] .lt-seat__avatar,
+:root[data-motion='reduced'] .lt-seat__slot {
+  animation: none;
+}
+:root[data-motion='reduced'] .lt-seat__slot svg {
+  transition: none;
+}
+:root[data-motion='reduced'] .lt__tally-n {
+  animation: lt-fade var(--dur-1) linear backwards;
+}

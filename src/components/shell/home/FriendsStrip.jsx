@@ -1,11 +1,18 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { paths } from '@/platform/paths.js';
+import { useUserEvents } from '@/lib/auth.jsx';
+import { presenceOf } from '@/components/online/friendsModel.js';
+import { StatusText, statusText } from '@/platform/social/PresenceBits.jsx';
 import HubIcon from '@/platform/game/HubIcon.jsx';
 import Ava from '@/platform/home/Ava.jsx';
 import { useApi, useApiGate } from '@/platform/home/useApi.js';
+import { useLive } from '@/platform/home/store/live.js';
 import { useAccount } from '../hooks.js';
 import { BRAND } from '@/platform/brand.js';
 import IndiaArt from '@/components/art/IndiaArt.jsx';
+import FriendSheet from './FriendSheet.jsx';
+import Framed from './Framed.jsx';
 import '@/platform/home/adda.css';
 
 /** A friendly inline message with an optional action, used for every non-list state of the strip. */
@@ -24,15 +31,35 @@ function Prompt({ icon, title, children, action, quiet }) {
   );
 }
 
-/** Home > "Friends online" strip. Signed-out and guest players get a sign-in prompt; network trouble degrades quietly. */
+/**
+ * Home > "The Adda" strip: friends online (online first, cosmetic frames). Tapping a friend opens a quick-action sheet
+ * (invite to a table / view friends). Signed-out and guest players get a sign-in prompt; network trouble degrades quietly.
+ */
 export default function FriendsStrip() {
+  const [picked, setPicked] = useState(null);
   const { account, guest, loading } = useAccount();
   const { ready } = useApiGate();
-  const remote = useApi('/api/friends', { enabled: ready && account });
+  const shared = useLive();
+  const own = useApi('/api/friends', { enabled: ready && account && !shared });
+  const remote = shared ? shared.friends : own;
   const { data, reload } = remote;
   // `ready` is false while auth boots and when the API is unreachable (static dev); treat the latter as offline.
   const status = account && !ready && !loading ? 'offline' : remote.status;
-  const friends = Array.isArray(data?.friends) ? data.friends : [];
+  // live presence pushes (online / in a lobby / playing) on top of the loaded list
+  const [live, setLive] = useState({});
+  useUserEvents((msg) => {
+    if (msg && msg.t === 'presence' && msg.userId != null) setLive((m) => ({ ...m, [msg.userId]: presenceOf(msg) }));
+  }, ['presence']);
+  useEffect(() => setLive({}), [data]); // a fresh answer from the server wins over older pushes
+  const loaded = Array.isArray(data?.friends) ? data.friends : [];
+  const friends = useMemo(
+    () =>
+      loaded.map((f) => {
+        const { code, gameId, ...rest } = f;
+        return { ...rest, ...presenceOf(live[f.id] ? live[f.id] : f) };
+      }),
+    [loaded, live],
+  );
   const incoming = Array.isArray(data?.incoming) ? data.incoming.length : 0;
   const sorted = [...friends].sort((a, b) => Number(!!b.online) - Number(!!a.online));
   const online = friends.filter((f) => f.online).length;
@@ -111,10 +138,19 @@ export default function FriendsStrip() {
         </li>
         {sorted.slice(0, 14).map((f) => (
           <li key={f.id}>
-            <Link to={paths.friends()} className={`hh2-friend ${f.online ? 'is-online' : ''}`} aria-label={`${f.name}, ${f.online ? 'online' : 'offline'}`}>
-              <Ava preset={f.avatar} size={56} dot={f.online ? 'on' : 'off'} />
+            <button
+              type="button"
+              className={`hh2-friend xh-friend ${f.online ? 'is-online' : ''}`}
+              aria-haspopup="dialog"
+              aria-label={`${f.name}, ${statusText(f).toLowerCase()}. Quick actions`}
+              onClick={() => setPicked(f)}
+            >
+              <Framed frame={f.equipped?.frame} size={56}>
+                <Ava preset={f.avatar} size={56} dot={f.online ? 'on' : 'off'} />
+              </Framed>
               <span className="hh2-friend__name">{f.name}</span>
-            </Link>
+              {(f.status === 'lobby' || f.status === 'playing') && <StatusText friend={f} className="pr-cap" />}
+            </button>
           </li>
         ))}
       </ul>
@@ -123,7 +159,7 @@ export default function FriendsStrip() {
 
   const showCount = account && status === 'ok' && friends.length > 0;
   return (
-    <section className="hub-section hh2-friends adda-space" aria-labelledby="hh2-friends-h">
+    <section data-tour="home-friends" className="hub-section hh2-friends adda-space" aria-labelledby="hh2-friends-h">
       <div className="hub-section__head">
         <h2 id="hh2-friends-h" className="hub-section__title">
           The Adda
@@ -151,6 +187,7 @@ export default function FriendsStrip() {
         </div>
         <IndiaArt art="gully-cricket" className="adda-space__art" />
       </div>
+      {picked && <FriendSheet friend={picked} onClose={() => setPicked(null)} />}
     </section>
   );
 }

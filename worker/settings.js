@@ -1,63 +1,69 @@
-// Pre-game room settings (docs/CONTRACT.md sections 3b + 3c). Everything from a client is
-// untrusted: the host may only choose the winning target, the round limit, the start cash,
-// the dice mode and whether a declined property goes to auction.
-// Pure functions - shared by POST /api/rooms and the GameRoom Durable Object.
+// Pre-game room settings for Nawabi Raj (Hyderabad Hustle rules, docs/GAME_RULES.md section 2). Everything from
+// a client is untrusted: the host may choose the mode and every host rule of shared/ruleSettings.js (money, timers,
+// board rules, Snatch), plus the room's seat count. Pure functions - shared by POST /api/rooms and the GameRoom
+// Durable Object.
 
 import * as engine from '../shared/index.js';
 
 export const MAX_PLAYERS_MIN = 2;
 export const MAX_PLAYERS_MAX = 6;
 
-// Ranges come from the engine's SETTING_LIMITS so the server can never accept a value the engine
-// would clamp. Fallbacks match the contract.
-const LIMITS = engine.SETTING_LIMITS || {};
-export const GOAL_MIN = LIMITS.goal?.min ?? 10_000;
-export const GOAL_MAX = LIMITS.goal?.max ?? 1_000_000;
-export const START_CASH_MIN = LIMITS.startCash?.min ?? 5_000;
-export const START_CASH_MAX = LIMITS.startCash?.max ?? 100_000;
-/** The only round limits accepted: 30, 50 or `null` (= unlimited). */
-export const ROUND_LIMITS = [30, 50, null];
+/** The only modes accepted (engine MODES). */
+export const MODE_IDS = Object.freeze([...engine.MODE_IDS]);
 /** The only dice modes accepted. */
-export const DICE_MODES = ['lucky', 'fair'];
-/** Snatch (docs/GAME_RULES.md section 9): tokens each player starts with, and how long the window stays open. */
-export const SNATCHES_DEFAULT = LIMITS.snatches ? engine.DEFAULT_SETTINGS.snatches : 1;
-export const SNATCHES_MAX = LIMITS.snatches?.max ?? 3;
-export const SNATCH_MS_DEFAULT = engine.DEFAULT_SETTINGS?.snatchMs ?? 3000;
-export const SNATCH_MS_MIN = LIMITS.snatchMs?.min ?? 1000;
-export const SNATCH_MS_MAX = LIMITS.snatchMs?.max ?? 10_000;
+export const DICE_MODES = Object.freeze(['lucky', 'fair']);
+/** The preset win targets the lobby offers (`null` = off). Any amount of engine TARGET_RANGE is accepted too. */
+export const TARGET_OPTIONS = engine.TARGET_OPTIONS;
 
-/** What a room starts with when the host picks nothing: the engine's own defaults. */
-const D = engine.DEFAULT_SETTINGS || {};
-export const ROOM_DEFAULTS = Object.freeze({
-  goal: D.goal ?? 70_000,
-  startCash: D.startCash ?? 15_000,
-  maxRounds: D.maxRounds === undefined ? 50 : D.maxRounds,
-  dice: D.dice ?? 'lucky',
-  auctionOnDecline: D.auctionOnDecline ?? true,
-  snatches: D.snatches ?? SNATCHES_DEFAULT,
-  snatchMs: D.snatchMs ?? SNATCH_MS_DEFAULT,
-});
+/** What a room starts with when the host picks nothing: the standard mode with every rule at its default. */
+const D = engine.DEFAULT_SETTINGS;
+export const ROOM_DEFAULTS = Object.freeze({ mode: D.mode, ...engine.ruleDefaults(D.mode) });
 
-const SETTING_KEYS = Object.keys(ROOM_DEFAULTS);
+/** Rules that follow the mode: picking another mode resets them to that mode's defaults (see mergeSettingsPatch). */
+export const MODE_BOUND_RULES = Object.freeze(['startCash', 'maxRounds', 'targetWorth']);
+
+/** The maps a room may pick (shared/maps.js). The map is a lobby setting, not a host rule: it is stored only when it is not the default. */
+export const MAP_OPTIONS = Object.freeze([...engine.MAP_IDS]);
+
+/** Every key a room stores: `mode`, the rule keys and (for a non-default map) `map`. */
+const SETTING_KEYS = ['mode', ...engine.RULE_KEYS, 'map'];
 
 /** Room seats: integer 2..6, else null. */
 export function parseMaxPlayers(v) {
   return Number.isInteger(v) && v >= MAX_PLAYERS_MIN && v <= MAX_PLAYERS_MAX ? v : null;
 }
 
-const isInt = (v) => typeof v === 'number' && Number.isInteger(v);
+const UNIT_TEXT = { seconds: 'seconds', milliseconds: 'milliseconds' };
+
+/** "Starting cash must be a whole amount from ₹5,00,000 to ₹10,00,00,000." - one clear message per bad rule. */
+function ruleError(field) {
+  const money = field.unit === 'rupees';
+  const fmt = money ? engine.formatINR : (v) => String(v);
+  if (field.type === 'boolean') return `${field.label} must be true or false.`;
+  if (field.type === 'choice') {
+    const opts = field.options.map((o) => (o.value === null ? 'null' : String(o.value))).join(', ');
+    return `${field.label} must be one of ${opts}.`;
+  }
+  const unit = UNIT_TEXT[field.unit] ? ` ${UNIT_TEXT[field.unit]}` : '';
+  const what = money ? 'a whole amount' : 'a whole number';
+  const step = field.step > 1 ? ` in steps of ${fmt(field.step)}` : '';
+  return `${field.label} must be ${what} from ${fmt(field.min)} to ${fmt(field.max)}${unit}${step}.`;
+}
 
 /**
  * Validate a (partial) settings object from a client.
  *
  * Returns `{ settings, maxPlayers?, errors }`:
- *  - `settings` only contains keys that were present AND valid (`goal`, `startCash`,
- *    `maxRounds`, `dice`, `auctionOnDecline`, `snatches`, `snatchMs`). `maxRounds: null` (unlimited) is a valid
- *    value, so test with `in`.
- *  - unknown keys (e.g. `debug`, `seed`, or echoed engine defaults) are ignored;
+ *  - `settings` only contains keys that were present AND valid: `mode`, `map` ('hyderabad' | 'andhra', shared/maps.js; not a rule)
+ *    and the rule keys of shared/ruleSettings.js
+ *    (startCash passStart targetWorth rentPercent trafficFine turnSeconds tradeSeconds auctionSeconds maxRounds dice
+ *    requireFullSet eventEvery chaiCap snatches snatchMs snatchCardCap);
+ *  - `targetWorth` is never an error: anything but `null` or a legal amount (and `null` for the classic mode, which
+ *    always keeps a target) becomes the default of the mode in this same input (the standard mode when it carries none);
+ *  - every other rule outside its legal values is an error naming the rule and its range;
+ *  - unknown keys (e.g. `debug`, `seed`, the retired `goal` and the retired `auctionOnDecline`, whatever its value) are ignored;
  *  - `maxPlayers` (2..6) is accepted as a convenience for the room seats;
- *  - `errors` holds one clear message per bad value. A missing key / `undefined` means
- *    "leave it alone / use the default".
+ *  - `errors` holds one clear message per bad value. A missing key / `undefined` means "leave it alone".
  */
 export function sanitizeSettings(input) {
   const settings = {};
@@ -67,42 +73,27 @@ export function sanitizeSettings(input) {
   if (typeof input !== 'object' || Array.isArray(input)) return { settings, errors: ['Settings must be an object.'] };
   const has = (k) => Object.prototype.hasOwnProperty.call(input, k) && input[k] !== undefined;
 
-  if (has('goal')) {
-    const v = input.goal;
-    if (!isInt(v) || v < GOAL_MIN || v > GOAL_MAX) {
-      errors.push(`Winning target must be a whole number between ${GOAL_MIN} and ${GOAL_MAX}.`);
-    } else settings.goal = v;
+  if (has('mode')) {
+    const v = input.mode;
+    if (typeof v === 'string' && MODE_IDS.includes(v)) settings.mode = v;
+    else errors.push(`Mode must be one of ${MODE_IDS.map((m) => `'${m}'`).join(', ')}.`);
   }
-  if (has('startCash')) {
-    const v = input.startCash;
-    if (!isInt(v) || v < START_CASH_MIN || v > START_CASH_MAX) {
-      errors.push(`Start cash must be a whole number between ${START_CASH_MIN} and ${START_CASH_MAX}.`);
-    } else settings.startCash = v;
-  }
-  if (has('maxRounds')) {
-    const v = input.maxRounds;
-    if (v === null || v === 30 || v === 50) settings.maxRounds = v;
-    else errors.push('Round limit must be 30, 50 or unlimited (null).');
+  if (has('map')) {
+    const v = input.map;
+    if (typeof v === 'string' && MAP_OPTIONS.includes(v)) settings.map = v;
+    else errors.push(`Map must be one of ${MAP_OPTIONS.map((m) => `'${m}'`).join(', ')}.`);
   }
   if (has('dice')) {
     const v = input.dice;
     if (typeof v === 'string' && DICE_MODES.includes(v)) settings.dice = v;
     else errors.push("Dice must be 'lucky' or 'fair'.");
   }
-  if (has('auctionOnDecline')) {
-    const v = input.auctionOnDecline;
-    if (typeof v === 'boolean') settings.auctionOnDecline = v;
-    else errors.push('Auction on decline must be true or false.');
-  }
-  if (has('snatches')) {
-    const v = input.snatches;
-    if (isInt(v) && v >= 0 && v <= SNATCHES_MAX) settings.snatches = v;
-    else errors.push(`Snatch tokens must be a whole number between 0 and ${SNATCHES_MAX}.`);
-  }
-  if (has('snatchMs')) {
-    const v = input.snatchMs;
-    if (isInt(v) && v >= SNATCH_MS_MIN && v <= SNATCH_MS_MAX) settings.snatchMs = v;
-    else errors.push(`Snatch window must be between ${SNATCH_MS_MIN} and ${SNATCH_MS_MAX} ms.`);
+  if (has('targetWorth')) settings.targetWorth = engine.resolveTarget(settings.mode ?? D.mode, input.targetWorth);
+  for (const field of engine.RULE_FIELDS) {
+    const key = field.key;
+    if (key === 'dice' || key === 'targetWorth' || !has(key)) continue;
+    if (engine.isRuleValue(field, input[key])) settings[key] = input[key];
+    else errors.push(ruleError(field));
   }
   if (has('maxPlayers')) {
     const mp = parseMaxPlayers(input.maxPlayers);
@@ -112,19 +103,50 @@ export function sanitizeSettings(input) {
   return { settings, maxPlayers, errors };
 }
 
-/** Full, normalised settings: defaults filled in under any valid overrides. */
+/**
+ * Full, normalised settings: the mode's defaults filled in under any valid overrides, so every rule key is present
+ * (a room stored before a rule existed gets its default). The win target always follows the final mode: a missing or
+ * unusable one is that mode's default.
+ */
 export function normalizeSettings(partial) {
-  const out = { ...ROOM_DEFAULTS };
-  if (partial && typeof partial === 'object') {
-    // Re-validate defensively: only known keys with valid values can ever get through.
-    const { settings } = sanitizeSettings(partial);
-    for (const k of SETTING_KEYS) if (k in settings) out[k] = settings[k];
-  }
+  const { settings } = partial && typeof partial === 'object' ? sanitizeSettings(partial) : { settings: {} };
+  // Re-validated defensively: only known keys with valid values can ever get through.
+  const mode = settings.mode ?? D.mode;
+  const out = { mode, ...engine.ruleDefaults(mode) };
+  for (const k of SETTING_KEYS) if (k in settings) out[k] = settings[k];
+  out.targetWorth = engine.resolveTarget(mode, settings.targetWorth);
+  if (out.map === undefined || out.map === engine.DEFAULT_MAP) delete out.map; // the default map is never stored (an absent map IS Hyderabad)
   return out;
 }
 
-/** One-line summary, e.g. "Target 70000 / 50 rounds / Start 15000" (for logs). */
+/**
+ * The settings a host's patch produces over the room's current ones (before validation): `{ ...current, ...patch }`,
+ * except that picking another mode resets the mode-bound rules (startCash, maxRounds, targetWorth) to that mode's
+ * defaults - each unless the same message also changes that rule itself. Every other customised rule is kept.
+ * (The client may send every setting, so a mode change can arrive together with the unchanged old values: a value
+ * equal to the current one does not count as a change.)
+ */
+export function mergeSettingsPatch(current, patch) {
+  const cur = current && typeof current === 'object' ? current : {};
+  const p = patch && typeof patch === 'object' ? patch : {};
+  const merged = { ...cur, ...p };
+  const modeChanged = p.mode !== undefined && p.mode !== (cur.mode ?? D.mode);
+  if (modeChanged) {
+    const was = engine.ruleDefaults(cur.mode ?? D.mode); // a stored room may lack the key: it then ran with the old mode's default
+    for (const k of MODE_BOUND_RULES) {
+      const changed = p[k] !== undefined && p[k] !== (k in cur ? cur[k] : was[k]);
+      if (!changed) delete merged[k]; // normalize fills the new mode's default
+    }
+  }
+  return merged;
+}
+
+/** One-line summary for logs, e.g. "standard / lucky dice / target ₹50L", plus "/ +N custom rules". */
 export function describeSettings(s) {
   const n = normalizeSettings(s);
-  return `Target ${n.goal} / ${n.maxRounds === null ? 'unlimited rounds' : `${n.maxRounds} rounds`} / Start ${n.startCash} / ${n.dice} dice`;
+  const target = n.targetWorth == null ? 'no target' : `target ${engine.compactINR(n.targetWorth)}`;
+  const shown = new Set(['dice', 'targetWorth']);
+  const more = engine.customRuleKeys(n, n.mode).filter((k) => !shown.has(k)).length;
+  const map = engine.mapOf(n).id === engine.DEFAULT_MAP ? '' : ` / ${engine.mapOf(n).name} map`;
+  return `${n.mode}${map} / ${n.dice} dice / ${target}${more ? ` / +${more} custom rule${more === 1 ? '' : 's'}` : ''}`;
 }

@@ -24,12 +24,19 @@ export function roomVisibility(room) {
  *  - `{ kind: 'ok' }`                      render the route game's page
  *  - `{ kind: 'redirect', to }`            the room belongs to another game: go to paths.online(thatGame, code)
  *  - `{ kind: 'missing' }`                 the server says there is no such room
+ *  - `{ kind: 'ended' | 'started' }`       the lookup says you are NOT seated (`isMember === false`) and the match is over /
+ *                                          already running: there is nothing for you to join. Seated players (and any lookup
+ *                                          without `isMember`) always go through, so the game's own page can show the result.
  */
 export function resolveOnlineRoute({ gameId, code, room }) {
   if (room && room.exists === false) return { kind: 'missing' };
   if (!room) return { kind: 'ok' };
   const actual = roomGameId(room);
   if (normalizeGameId(actual) !== normalizeGameId(gameId)) return { kind: 'redirect', to: paths.online(actual, code) };
+  if (room.isMember === false) {
+    if (room.status === 'finished') return { kind: 'ended', gameId: actual };
+    if (room.status === 'playing') return { kind: 'started', gameId: actual };
+  }
   return { kind: 'ok' };
 }
 

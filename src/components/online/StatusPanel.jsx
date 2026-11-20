@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { HubMark } from '@/components/art/hub/HubMark.jsx';
 import '@/styles/online.css';
+import '@/styles/store-rooms.css';
 
 function LoadingMark() {
   return <span className="jalebi-loader jalebi-loader--small" aria-hidden="true"><HubMark size={48} /></span>;
@@ -8,14 +9,15 @@ function LoadingMark() {
 
 /**
  * Centered card for terminal / gating states (signed out, kicked, room gone, error, loading).
- * `actions`: [{ label, to?, onClick?, primary? }]
+ * `actions`: [{ label, to?, onClick?, primary? }]. `eyebrow` = the small signage line above the title.
  */
-export default function StatusPanel({ icon = 'i', tone = 'info', title, body, actions = [], busy = false, children }) {
+export default function StatusPanel({ icon = 'i', tone = 'info', eyebrow, title, body, actions = [], busy = false, children }) {
   return (
-    <div className="ho-status" role={tone === 'bad' ? 'alert' : 'status'} aria-busy={busy || undefined}>
+    <div className={`ho-status sr-status sr-status--${tone}`} role={tone === 'bad' ? 'alert' : 'status'} aria-busy={busy || undefined}>
       <div className={`ho-status__icon ho-status__icon--${tone}`} aria-hidden="true">
         {busy ? <LoadingMark /> : icon}
       </div>
+      {eyebrow && <span className="st-eyebrow sr-status__eyebrow">{eyebrow}</span>}
       <h1 className="ho-status__title">{title}</h1>
       {body && <p className="ho-status__body">{body}</p>}
       {children}

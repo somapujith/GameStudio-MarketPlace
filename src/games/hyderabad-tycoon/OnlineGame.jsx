@@ -6,6 +6,7 @@ import GameView from '@/components/game/GameView.jsx';
 import { useAuth } from '@/lib/auth.jsx';
 import { useOnlineGame } from '@/lib/session/useOnlineGame.js';
 import { isRoomCode, normalizeRoomCode } from '@/components/online/codes.js';
+import { useApplyMap } from '@/components/online/useApplyMap.js';
 import StatusPanel from '@/components/online/StatusPanel.jsx';
 import { useToasts } from '@/components/online/Toasts.jsx';
 import { paths } from '@/platform/paths.js';
@@ -43,6 +44,9 @@ function OnlineGameInner({ code }) {
   const navigate = useNavigate();
   const { push, node } = useToasts();
   const { room, session, status, error, errorId, fatal } = useOnlineGame(code);
+  // the table's map (state.cfg.map once the game runs, the room's settings before): applied before the board paints, and
+  // the screen is keyed by it so the names / colours switch with the map; leaving the game gives the default names back
+  const map = useApplyMap((session.view && session.view.cfg) || (room && room.settings) || null);
 
   // rejected actions ("not your turn", ...) show as a toast
   useEffect(() => {
@@ -101,7 +105,7 @@ function OnlineGameInner({ code }) {
 
   return (
     <>
-      <GameView session={session} onExit={exit} />
+      {map.ready ? <GameView key={map.id} session={session} onExit={exit} /> : null}
       {session.connection !== 'open' && (
         <div className="ho-conn" role="status" aria-live="polite">
           <span className="ho-spinner" aria-hidden="true" />

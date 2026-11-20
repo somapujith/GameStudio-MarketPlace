@@ -120,6 +120,14 @@ export function rowToOpenRoom(r, lookup = getAdapter) {
   } catch {
     summary = undefined;
   }
+  // How many host rules differ from the game's stock rules (0 = a stock table; the home page says "Custom rules" above 0).
+  let customRules = 0;
+  try {
+    const n = adapter && adapter.customRules ? Number(adapter.customRules(r.settings || {})) : 0;
+    customRules = Number.isInteger(n) && n > 0 ? n : 0;
+  } catch {
+    customRules = 0;
+  }
   const out = {
     code: r.code,
     gameId: r.game_id,
@@ -127,8 +135,12 @@ export function rowToOpenRoom(r, lookup = getAdapter) {
     players: r.player_count,
     maxPlayers: r.max_players,
     createdAt: new Date(r.created_at).toISOString(),
+    customRules,
   };
   if (summary) out.summary = summary;
+  // A table on a non-default map says which one (Nawabi Raj: settings.map, shared/maps.js; absent = the default map).
+  const map = r.settings && typeof r.settings === 'object' ? r.settings.map : undefined;
+  if (typeof map === 'string' && map && map.length <= 32) out.map = map;
   return out;
 }
 
@@ -211,4 +223,32 @@ export async function listMyRooms(env, userId) {
   const q = buildMyRoomsQuery(userId);
   const rows = await query(env, q.text, q.params);
   return rows.map(rowToMyRoom);
+}
+
+// ---------------------------------------------------------------- member cosmetics
+
+export const EQUIPPED_SQL = 'SELECT equipped FROM users WHERE id = $1::uuid';
+
+export const OWNED_ITEMS_SQL = 'SELECT item_id FROM user_items WHERE user_id = $1::uuid';
+
+/** Ids of the items a user has bought (`user_items`; free items are not rows). Throws on failure. */
+export async function loadOwnedItemIds(env, userId) {
+  if (!hasDb(env) || !isUuid(userId)) return [];
+  const rows = await query(env, OWNED_ITEMS_SQL, [userId]);
+  return rows.map((r) => r.item_id);
+}
+
+/** A user's equipped cosmetics (raw `users.equipped`; callers clean it). Throws on failure. */
+export async function loadEquipped(env, userId) {
+  if (!hasDb(env) || !isUuid(userId)) return {};
+  const rows = await query(env, EQUIPPED_SQL, [userId]);
+  const raw = rows[0] && rows[0].equipped;
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  }
+  return raw && typeof raw === 'object' ? raw : {};
 }

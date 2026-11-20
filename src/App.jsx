@@ -1,12 +1,18 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
-import { AuthProvider } from '@/lib/auth.jsx';
+import { AuthProvider, useAuth } from '@/lib/auth.jsx';
 import { AppShell, ErrorBoundary, ToastProvider } from '@/components/shell/index.js';
+import { CelebrationHost } from '@/components/shell/celebrate.js';
+import { ScrollManager } from '@/components/shell/scroll.js';
 import { useSettings } from '@/components/shell/stores.js';
+import { isGameRoute, ThemeSync } from '@/components/shell/theme.js';
+import { ViewTransitionBridge } from '@/components/shell/transitions.js';
 import { BRAND } from '@/platform/brand.js';
 import { LEGACY_REDIRECTS, paths } from '@/platform/paths.js';
 import PageLoading from '@/platform/game/PageLoading.jsx';
 import '@/styles/hub.css';
+import '@/styles/mobile.css';
+import '@/styles/store.css';
 import '@/styles/jalebi.css';
 import '@/styles/jalebi-layout.css';
 
@@ -26,7 +32,14 @@ function page(loader, name) {
 const Home = page(() => import('@/pages/Home.jsx'), 'Home');
 const Leaderboard = page(() => import('@/pages/Leaderboard.jsx'), 'Leaderboard');
 const Profile = page(() => import('@/pages/Profile.jsx'), 'Profile');
+const Shop = page(() => import('@/pages/Shop.jsx'), 'Shop');
 const GameDetail = page(() => import('@/pages/GameDetail.jsx'), 'GameDetail');
+const Games = page(() => import('@/pages/Games.jsx'), 'Games');
+const Search = page(() => import('@/pages/Search.jsx'), 'Search');
+const About = page(() => import('@/pages/About.jsx'), 'About');
+const Help = page(() => import('@/pages/Help.jsx'), 'Help');
+const Privacy = page(() => import('@/pages/Privacy.jsx'), 'Privacy');
+const Terms = page(() => import('@/pages/Terms.jsx'), 'Terms');
 const NotFound = page(() => import('@/pages/NotFound.jsx'), 'NotFound');
 
 // Rooms, friends, accounts
@@ -48,12 +61,37 @@ function MotionSync() {
   return null;
 }
 
-/** Scroll to the top on navigation (not on hash changes). */
-function ScrollTop() {
+/**
+ * Keeps the signed-in user's numbers fresh (coins, XP, level, daily): re-reads /api/me when leaving a game
+ * screen (a finished match changed them) and when the tab becomes visible again (at most once a minute).
+ */
+function UserRefresh() {
+  const { user, refresh } = useAuth();
   const { pathname } = useLocation();
+  const wasGame = useRef(isGameRoute(pathname));
+  const last = useRef(0);
+  const signedIn = !!user;
+
   useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [pathname]);
+    const inGame = isGameRoute(pathname);
+    if (wasGame.current && !inGame && signedIn) {
+      last.current = Date.now();
+      refresh?.();
+    }
+    wasGame.current = inGame;
+  }, [pathname, signedIn, refresh]);
+
+  useEffect(() => {
+    if (!signedIn) return undefined;
+    const onVis = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - last.current < 60000) return;
+      if (isGameRoute(window.location.pathname)) return;
+      last.current = Date.now();
+      refresh?.();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [signedIn, refresh]);
   return null;
 }
 
@@ -87,8 +125,14 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <MotionSync />
-        <ScrollTop />
+        <ThemeSync />
+        <ScrollManager />
+        <ViewTransitionBridge />
+        <UserRefresh />
         <ToastProvider>
+          <ErrorBoundary silent>
+            <CelebrationHost />
+          </ErrorBoundary>
           <ErrorBoundary fullscreen>
             <Suspense fallback={<PageLoading fullscreen />}>
               <Routes>
@@ -105,17 +149,25 @@ export default function App() {
 
                 {/* Game screen: full screen, no hub chrome */}
                 <Route path="/play/:gameId/online/:code" element={<OnlineGame />} />
+                {/* Lobby: full screen (renders its own header), hub theme */}
+                <Route path="/lobby/:code" element={<Lobby />} />
 
                 {/* Hub screens */}
                 <Route element={<AppShell />}>
                   <Route index element={<Home />} />
+                  <Route path="/games" element={<Games />} />
+                  <Route path="/search" element={<Search />} />
                   <Route path="/games/:gameId" element={<GameDetail />} />
+                  <Route path="/about" element={<About />} />
+                  <Route path="/help" element={<Help />} />
+                  <Route path="/privacy" element={<Privacy />} />
+                  <Route path="/terms" element={<Terms />} />
                   <Route path="/leaderboard" element={<Leaderboard />} />
                   <Route path="/profile" element={<Profile />} />
+                  <Route path="/shop" element={<Shop />} />
                   <Route path="/friends" element={<Friends />} />
                   <Route path="/f/:code" element={<FriendLink />} />
                   <Route path="/login" element={<Login />} />
-                  <Route path="/lobby/:code" element={<Lobby />} />
                   <Route path="/join" element={<JoinRoom />} />
                   <Route path="/join/:code" element={<JoinRoom />} />
                   <Route path="*" element={<NotFound />} />

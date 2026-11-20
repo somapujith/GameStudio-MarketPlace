@@ -45,7 +45,7 @@ export function XpBar({ level, into, need, pct, compact = false }) {
         aria-valuemax={100}
         aria-valuenow={Math.round(pct)}
       >
-        <i style={{ width: `${pct}%` }} />
+        <i style={{ transform: `scaleX(${Math.max(4, Math.min(100, pct)) / 100})` }} />
       </div>
     </div>
   );

@@ -1,0 +1,204 @@
+/* ---- the pawn whose turn it is: beacon, bigger piece, name tag (Pawn.jsx + board/PawnBeacon.jsx) ---------------------
+   Everything here belongs to the ACTIVE pawn only (`.hb-pawn.is-turn`); the other pawns are untouched and animate
+   nothing. One looping beacon (two rings, transform + opacity) and one gentle bob on the tag; `will-change` only on the
+   active pawn. All parts are children of the pawn, so they follow it while it moves and scale with the board camera.
+
+   --k  how much bigger the active piece is drawn (desktop 1.35, phone discs 1.5: they start at ~20px)
+   --d  the pawn's own size (board.css), --hb-u one edge tile                                                          */
+
+.hb-pawn.is-turn {
+  --k: 1.35;
+  --lift: calc(var(--d) * 0.05);
+  will-change: transform;
+}
+.ph .hb-pawn.is-turn {
+  --k: 1.5;
+  --pin: max(calc(var(--hb-u) * 0.74), 22px);
+}
+.ph .hb-pawn.is-turn.is-me { --pin: max(calc(var(--hb-u) * 0.84), 25px); }
+
+/* a bigger, slightly lifted piece: it grows from its feet (individual `scale` / `translate` compose with the hop's transform) */
+.hb-pawn.is-turn .hb-pawn__hop {
+  scale: var(--k);
+  translate: 0 calc(var(--lift) * -1);
+  transform-origin: 50% 100%;
+  transition: scale 0.24s cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+.hb-pawn.is-turn .hb-pawn__shadow { scale: var(--k); }
+
+/* ---- the beacon: ground glow + white selection ring + two expanding rings -------------------------------------- */
+
+.hb-pawn__beacon {
+  --R: calc(var(--d) * var(--k, 1.35));
+  --bk: var(--c);
+  position: absolute;
+  left: 50%;
+  top: calc(100% - var(--R) * 0.5 - var(--lift, 0px));
+  width: calc(var(--R) * 1.3);
+  height: calc(var(--R) * 1.3);
+  translate: -50% -50%;
+  pointer-events: none;
+}
+.hb-pawn.is-me .hb-pawn__beacon { --bk: #fff1b0; }
+.hb-pawn.is-me .hb-pawn__beacon i { border-color: #fff8d8; }
+
+/* the soft glow on the ground (static) */
+.hb-pawn__beacon::before {
+  content: '';
+  position: absolute;
+  inset: -34%;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--bk) 80%, transparent) 0%, color-mix(in srgb, var(--bk) 38%, transparent) 46%, transparent 74%);
+}
+/* the selection ring around the piece: white with a dark outline, so it reads on light and on dark tile faces (static) */
+.hb-pawn__beacon::after {
+  content: '';
+  position: absolute;
+  inset: 7%;
+  border-radius: 50%;
+  border: max(2px, calc(var(--d) * 0.045)) solid #fff;
+  box-shadow: 0 0 0 1.5px rgba(12, 9, 38, 0.78), inset 0 0 0 1.5px rgba(12, 9, 38, 0.3), 0 0 calc(var(--d) * 0.3) color-mix(in srgb, var(--bk) 70%, transparent);
+}
+/* the two rings that breathe out of it (the only loop on a piece): a colour ring with a dark hairline either side */
+.hb-pawn__beacon i {
+  position: absolute;
+  inset: 7%;
+  border-radius: 50%;
+  border: max(3px, calc(var(--d) * 0.075)) solid color-mix(in srgb, var(--bk) 78%, #fff);
+  box-shadow: 0 0 0 1.5px rgba(12, 9, 38, 0.7), inset 0 0 0 1.5px rgba(12, 9, 38, 0.5);
+  opacity: 0;
+  animation: hb-bk-ring 1.7s cubic-bezier(0.2, 0.6, 0.35, 1) infinite;
+}
+.hb-pawn__beacon i:nth-child(2) { animation-delay: -0.85s; }
+
+.ph .hb-pawn__beacon::after { display: none; } /* the disc carries its own white rim (phoneboard.css) */
+.ph .hb-pawn__beacon i { inset: 12%; }
+
+/* ---- the name tag -------------------------------------------------------------------------------------------- */
+
+/* sits on the pawn's hop box; counter-scaled so the tag stays its own size while the piece grows by --k */
+.hb-pawn__tag {
+  position: absolute;
+  left: 50%;
+  z-index: 3;
+  width: max-content;
+  pointer-events: none;
+  translate: calc(var(--ptr, 50%) * -1) 0;
+  scale: calc(1 / var(--k, 1));
+}
+.hb-pawn__tag.is-above { bottom: calc(100% + var(--d) * 0.1); transform-origin: var(--ptr, 50%) 100%; --bob: -2.5px; }
+.hb-pawn__tag.is-below { top: calc(100% + var(--d) * 0.16); transform-origin: var(--ptr, 50%) 0; --bob: 2.5px; }
+.hb-pawn__tag.is-pin.is-above { bottom: calc(100% + var(--d) * 0.06 + var(--pin) * 0.22); }
+.hb-pawn__tag.is-pin.is-below { top: calc(100% + var(--d) * 0.12 + var(--pin) * 0.22); }
+
+.hb-pawn__tagbob {
+  position: relative;
+  display: block;
+  animation: hb-bk-bob 0.9s ease-in-out infinite alternate;
+}
+
+/* desktop: a pill with the first name */
+.hb-pawn__pill {
+  position: relative;
+  display: block;
+  max-width: calc(var(--hb-u) * 2.3);
+  padding: 0.16em 0.62em 0.2em;
+  border-radius: 999px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--c) 78%, #fff), var(--c) 70%);
+  color: var(--tc, #fff);
+  font: 800 clamp(10px, calc(var(--hb-u) * 0.17), 12.5px) / 1.2 var(--font-body, 'Segoe UI', system-ui, sans-serif);
+  letter-spacing: 0.015em;
+  box-shadow: 0 0 0 1.5px #fff, 0 0 0 2.6px rgba(12, 9, 38, 0.82), 0 4px 9px rgba(5, 4, 24, 0.5);
+}
+.hb-pawn__tag.is-you .hb-pawn__pill {
+  background: linear-gradient(180deg, #fffdf0, #ffd864 90%);
+  color: #2b1c00;
+  letter-spacing: 0.08em;
+  box-shadow: 0 0 0 1.5px var(--c), 0 0 0 3px #fff, 0 0 0 4.1px rgba(12, 9, 38, 0.82), 0 4px 10px rgba(5, 4, 24, 0.55);
+}
+/* the pointer: half hidden behind the pill, the rest is a little triangle with the same white + dark outline */
+.hb-pawn__nib {
+  position: absolute;
+  left: var(--ptr, 50%);
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  background: var(--c);
+  rotate: 45deg;
+}
+.hb-pawn__tag.is-above .hb-pawn__nib { bottom: -3.5px; border-right: 1.5px solid #fff; border-bottom: 1.5px solid #fff; box-shadow: 1.2px 1.2px 0 0.4px rgba(12, 9, 38, 0.82); }
+.hb-pawn__tag.is-below .hb-pawn__nib { top: -3.5px; border-left: 1.5px solid #fff; border-top: 1.5px solid #fff; box-shadow: -1.2px -1.2px 0 0.4px rgba(12, 9, 38, 0.82); }
+.hb-pawn__tag.is-you .hb-pawn__nib { background: #ffd864; }
+.hb-pawn__pill { z-index: 1; }
+.hb-pawn__tag.is-pin .hb-pawn__nib { display: none; }
+
+/* phone: a compact teardrop pin with the avatar / initial (or YOU) */
+.hb-pawn__pin {
+  position: relative;
+  display: block;
+  width: var(--pin, 24px);
+  height: var(--pin, 24px);
+}
+.hb-pawn__drop {
+  position: absolute;
+  inset: 0;
+  border-radius: 50% 50% 50% 0;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--c) 70%, #fff), var(--c) 65%);
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1.4px rgba(12, 9, 38, 0.85), 0 3px 7px rgba(5, 4, 24, 0.55);
+}
+.hb-pawn__tag.is-above .hb-pawn__drop { rotate: -45deg; }
+.hb-pawn__tag.is-below .hb-pawn__drop { rotate: 135deg; }
+.hb-pawn__tag.is-you .hb-pawn__drop {
+  background: linear-gradient(145deg, #fffdf0, #ffd864 85%);
+  border-color: var(--c);
+  box-shadow: 0 0 0 1.5px #fff, 0 0 0 2.8px rgba(12, 9, 38, 0.85), 0 3px 8px rgba(5, 4, 24, 0.55);
+}
+.hb-pawn__pin-in {
+  position: absolute;
+  inset: 13%;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  overflow: hidden;
+  color: var(--tc, #fff);
+  font: 900 calc(var(--pin, 24px) * 0.5) / 1 var(--font-body, 'Segoe UI', system-ui, sans-serif);
+}
+.hb-pawn__pin-in b { font: inherit; }
+.hb-pawn__tag.is-avatar .hb-pawn__pin-in { background: #fff; inset: 15%; }
+.hb-pawn__ava { display: block; width: 100% !important; height: 100% !important; }
+.hb-pawn__tag.is-you .hb-pawn__pin-in { color: #2b1c00; font-size: calc(var(--pin, 24px) * 0.32); letter-spacing: 0; inset: 8%; }
+
+/* ---- motion ---------------------------------------------------------------------------------------------------- */
+
+@keyframes hb-bk-ring {
+  0%   { transform: scale(0.84); opacity: 1; }
+  45%  { opacity: 0.85; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+@keyframes hb-bk-bob {
+  from { transform: translateY(0); }
+  to   { transform: translateY(var(--bob, -2.5px)); }
+}
+
+/* reduced motion: a static ring + tag, nothing pulses or bobs */
+@media (prefers-reduced-motion: reduce) {
+  .hb-pawn__beacon i,
+  .hb-pawn__tagbob { animation: none !important; }
+  .hb-pawn__beacon i:nth-child(1) { opacity: 0.8; transform: scale(1.32); }
+  .hb-pawn__beacon i:nth-child(2) { display: none; }
+  .hb-pawn.is-turn .hb-pawn__hop { transition: none; }
+}
+:root[data-motion='reduced'] .hb-pawn__beacon i,
+:root[data-motion='reduced'] .hb-pawn__tagbob,
+.hg-game[data-rm] .hb-pawn__beacon i,
+.hg-game[data-rm] .hb-pawn__tagbob { animation: none !important; }
+:root[data-motion='reduced'] .hb-pawn__beacon i:nth-child(1),
+.hg-game[data-rm] .hb-pawn__beacon i:nth-child(1) { opacity: 0.8; transform: scale(1.32); }
+:root[data-motion='reduced'] .hb-pawn__beacon i:nth-child(2),
+.hg-game[data-rm] .hb-pawn__beacon i:nth-child(2) { display: none; }
+:root[data-motion='reduced'] .hb-pawn.is-turn .hb-pawn__hop,
+.hg-game[data-rm] .hb-pawn.is-turn .hb-pawn__hop { transition: none; }

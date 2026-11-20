@@ -1,18 +1,97 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
+    <!-- viewport-fit=cover lets the app paint under the notch / home indicator; the shell pads itself with env(safe-area-inset-*).
+         Zoom stays enabled on purpose (accessibility). -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#0b0908" />
+    <!-- Browser chrome colour: the OS scheme picks one until the app's own theme setting takes over (theme.js updates both). -->
+    <meta name="theme-color" content="#0b0908" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f7f1e6" media="(prefers-color-scheme: light)" />
+    <meta name="color-scheme" content="dark light" />
+
+    <title>Jalebi Games</title>
     <meta name="description" content="Jalebi Games. Gully made. Game ready. Multiplayer games with a Hyderabadi street spirit. Pick your game, bring your people, and go full on." />
+    <meta name="application-name" content="Jalebi Games" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Jalebi Games" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <!-- Social sharing. __SITE_URL__ is the public origin: vite.config.js fills it from VITE_SITE_URL at build / dev time
+         (see docs/LAUNCH_CHECKLIST.md, "Public origin"). Facebook / WhatsApp / LinkedIn need ABSOLUTE image URLs. -->
+    <link rel="canonical" href="__SITE_URL__/" />
+    <meta property="og:url" content="__SITE_URL__/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Jalebi Games" />
+    <meta property="og:title" content="Jalebi Games · Gully made. Game ready." />
+    <meta property="og:description" content="Multiplayer games with a Hyderabadi street spirit. Create a table, share the room code and play in seconds. Free, in your browser, guests welcome." />
+    <meta property="og:locale" content="en" />
+    <meta property="og:image" content="__SITE_URL__/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Jalebi Games: pick a game, share a room code, play together. Nawabi Raj is the first game." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Jalebi Games · Gully made. Game ready." />
+    <meta name="twitter:description" content="Multiplayer games with a Hyderabadi street spirit. Create a table, share the room code and play in seconds. Free, in your browser, guests welcome." />
+    <meta name="twitter:image" content="__SITE_URL__/og-image.png" />
+    <meta name="twitter:image:alt" content="Jalebi Games: pick a game, share a room code, play together. Nawabi Raj is the first game." />
+
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="/icons/jalebi-192.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <title>Jalebi Games</title>
+
+    <!-- Structured data (no ratings or counts: only facts that are true of the product). -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "name": "Jalebi Games",
+            "url": "__SITE_URL__/",
+            "description": "A marketplace of multiplayer games you play in the browser with friends.",
+            "inLanguage": "en"
+          },
+          {
+            "@type": "WebApplication",
+            "name": "Jalebi Games",
+            "url": "__SITE_URL__/",
+            "description": "Create a table, share the room code and play online multiplayer games with friends in your browser. Nawabi Raj is the first game.",
+            "applicationCategory": "GameApplication",
+            "operatingSystem": "Any",
+            "browserRequirements": "Requires JavaScript and a modern web browser",
+            "inLanguage": "en",
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "INR" }
+          }
+        ]
+      }
+    </script>
+
+    <!-- Paint the right page colour before the bundle's CSS arrives (no white flash / rubber-band showing white). -->
+    <style>
+      html { background: #0b0908; }
+      @media (prefers-color-scheme: light) { html { background: #f7f1e6; } }
+    </style>
+    <noscript>
+      <style>
+        .nojs { display: block !important; color: #e9ecf8; }
+        .nojs p { color: #aab3cf; }
+        @media (prefers-color-scheme: light) { .nojs { color: #1b2140; } .nojs p { color: #4a5272; } }
+      </style>
+    </noscript>
   </head>
   <body>
     <div id="root"></div>
+    <div class="nojs" style="display: none; max-width: 32rem; margin: 15vh auto 0; padding: 0 1.25rem; font: 16px/1.6 system-ui, -apple-system, 'Segoe UI', sans-serif; text-align: center">
+      <h1 style="font-size: 1.6rem; margin: 0 0 0.5rem">Jalebi Games needs JavaScript</h1>
+      <p style="margin: 0">
+        Jalebi Games runs live multiplayer games in your browser, so it cannot work with JavaScript switched off. Please turn it on for this site and reload the page.
+      </p>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

@@ -1,0 +1,196 @@
+/* ---------------------------------------------------------------------------------------------------------------
+   Loadout chips (components/art/Loadout.jsx). Prefix `lo-`.
+   A player's equipped dice skin / pawn trail / board theme as small labelled chips, each ringed in its rarity colour
+   (--rarity-* from hub.css: legendary = gold, epic = violet). Chips are display only, so no 44px targets.
+   `--lo-px` (inline) is the art size; the chip box is the art + 2 x 4px (padding + ring).
+   Placement helpers for the seats / results sit at the bottom ("where it is shown").
+   Motion: opacity + translate only, a short stagger (--i is each chip's index). Reduced motion (media query,
+   :root[data-motion='reduced'], .hg-game[data-rm], .hg-sheet-root[data-rm]): a plain fade, no movement.
+   --------------------------------------------------------------------------------------------------------------- */
+
+.lo {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  vertical-align: middle;
+}
+.lo--row {
+  gap: 6px;
+}
+
+.lo-chip {
+  --lo-c: var(--rarity-common);
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px;
+  border-radius: 10px;
+  color: var(--hub-text);
+  background: color-mix(in srgb, var(--lo-c) 12%, var(--hub-surface-3));
+  border: 1.5px solid color-mix(in srgb, var(--lo-c) 62%, transparent);
+  animation: lo-in var(--dur-2) var(--ease-out) calc(var(--lo-d, 0ms) + var(--i, 0) * 55ms) backwards;
+}
+.lo-chip.is-rare {
+  --lo-c: var(--rarity-rare);
+}
+.lo-chip.is-epic {
+  --lo-c: var(--rarity-epic);
+}
+.lo-chip.is-legendary {
+  --lo-c: var(--rarity-legendary);
+  border-color: var(--lo-c);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--lo-c) 28%, transparent),
+    0 0 10px -2px color-mix(in srgb, var(--lo-c) 60%, transparent);
+}
+.lo-chip__art {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--lo-px, 18px);
+  height: var(--lo-px, 18px);
+  overflow: hidden;
+  border-radius: 7px;
+}
+.lo-chip__art > * {
+  max-width: 100%;
+  max-height: 100%;
+}
+.lo-chip__name {
+  min-width: 0;
+  padding-right: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.lo-title {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  animation: lo-in var(--dur-2) var(--ease-out) calc(var(--lo-d, 0ms) + var(--i, 0) * 55ms) backwards;
+}
+
+@keyframes lo-in {
+  from {
+    opacity: 0;
+    translate: 0 5px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes lo-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ---------- where it is shown ---------- */
+
+/* lobby seat: the chips follow the seat's own entrance (--lt-d is its delay) */
+.lt-seat .lo {
+  --lo-d: calc(var(--lt-d, 0ms) + 170ms);
+  margin-top: 2px;
+}
+
+/* results podium: they land just after the player's step drops in (--wd = when the avatar block drops) */
+.mo-pod .lo {
+  --lo-d: calc(var(--wd, 0ms) + 380ms);
+  margin-top: 2px;
+}
+.mo-pod .lo--row {
+  gap: 4px;
+}
+.mo-pod.p1 .lo-chip__name {
+  font-size: 0.76rem;
+}
+/* three podium columns are ~100px wide on a phone: names would not fit, the ringed art (and the tooltip) says it */
+/* the sheet is about 410px wide at every window size, so the podium columns are always too narrow for a name: art + tooltip + aria-label only */
+.mo-pod .lo-chip__name {
+  display: none;
+}
+.mo-pod .lo-chip {
+  padding: 2px;
+}
+.mo-pod__title {
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+/* a legendary frame / title on the winner: a soft gold rim around their block (it drops in with the block) */
+.mo-pod.p1.is-legend .mo-pod__who {
+  padding: 8px 4px 6px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--rarity-legendary) 12%, transparent), transparent 70%);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--rarity-legendary) 45%, transparent),
+    0 0 26px -10px var(--rarity-legendary);
+}
+
+/* ranks 4+: title and chips under the name */
+.mo-over-rest .lo-rest__who {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+.mo-over-rest li .lo-rest__who b {
+  flex: none;
+  max-width: 100%;
+}
+.lo-rest__cos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+.lo-rest__cos:empty {
+  display: none;
+}
+.mo-over-rest .lo {
+  --lo-d: calc(var(--d, 0ms) + 220ms);
+  justify-content: flex-start;
+}
+
+/* profile header: under the title */
+.xp-pro__loadout {
+  display: flex;
+  margin-top: 4px;
+  justify-content: flex-start;
+}
+
+/* ---------- reduced motion: opacity only ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .lo-chip,
+  .lo-title {
+    animation: lo-fade var(--dur-1) linear backwards;
+  }
+}
+:root[data-motion='reduced'] .lo-chip,
+:root[data-motion='reduced'] .lo-title,
+.hg-game[data-rm] .lo-chip,
+.hg-game[data-rm] .lo-title,
+.hg-sheet-root[data-rm] .lo-chip,
+.hg-sheet-root[data-rm] .lo-title {
+  animation: lo-fade var(--dur-1) linear backwards;
+}
