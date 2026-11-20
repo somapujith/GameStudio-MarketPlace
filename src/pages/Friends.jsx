@@ -23,6 +23,23 @@ import {
   removeOutgoing,
 } from '@/components/online/friendsModel.js';
 import '@/styles/online.css';
+import IndiaArt from '@/components/art/IndiaArt.jsx';
+import '@/platform/home/adda.css';
+
+function AddaMasthead({ heading = true, children }) {
+  const Title = heading ? 'h1' : 'p';
+  return (
+    <header className="adda-route-head">
+      <div>
+        <p className="adda-kicker">Your people. Your table.</p>
+        <Title className="ho-h1 adda-route-head__title">The Adda</Title>
+        <p className="ho-muted">Add people once, then invite them to any game.</p>
+        {children}
+      </div>
+      <IndiaArt art="gully-cricket" className="adda-route-head__art" />
+    </header>
+  );
+}
 
 function Dot({ online }) {
   return <span className={`ho-dot ho-row__dot ${online ? 'is-on' : 'is-off'}`} role="img" aria-label={online ? 'Online' : 'Offline'} />;
@@ -46,7 +63,8 @@ export default function Friends() {
   const { user, loading } = useAuth();
   if (loading) {
     return (
-      <div className="ho-page">
+      <div className="ho-page adda-friends-page">
+        <AddaMasthead />
         <Loading text="Loading friends..." />
       </div>
     );
@@ -54,7 +72,8 @@ export default function Friends() {
   if (!user || user.isGuest) {
     const here = paths.friends() + (typeof window !== 'undefined' ? window.location.search : '');
     return (
-      <div className="ho-page">
+      <div className="ho-page adda-friends-page">
+        <AddaMasthead heading={false} />
         <StatusPanel
           icon="👥"
           title={user ? 'Friends are for Google accounts' : 'Sign in to add friends'}
@@ -67,7 +86,13 @@ export default function Friends() {
             { label: user ? 'Sign in with Google' : 'Sign in', to: paths.login(here), primary: true },
             { label: 'Join a room with a code', to: paths.join() },
           ]}
-        />
+        >
+          <ol className="adda-steps" aria-label="How the Adda works">
+            <li><b>1</b><span>Share your friend link</span></li>
+            <li><b>2</b><span>They add you in one tap</span></li>
+            <li><b>3</b><span>Invite them to any game</span></li>
+          </ol>
+        </StatusPanel>
       </div>
     );
   }
@@ -235,14 +260,25 @@ function FriendsInner({ user }) {
   if (legacyAdd) return <Navigate to={paths.friendLink(legacyAdd)} replace />;
 
   return (
-    <div className="ho-page ho-friends">
-      <header className="ho-head">
-        <div>
-          <h1 className="ho-h1">Friends</h1>
-          <p className="ho-muted">Add people once, then invite them to any game.</p>
-        </div>
-        {data && d.friends.length > 0 && <span className="ho-pill">{online} online</span>}
-      </header>
+    <div className="ho-page ho-friends adda-friends-page">
+      <AddaMasthead>
+        {data && (
+          <dl className="adda-stats">
+            <div>
+              <dt>Friends</dt>
+              <dd>{d.friends.length}</dd>
+            </div>
+            <div className={online > 0 ? 'is-live' : undefined}>
+              <dt>Online</dt>
+              <dd>{online}</dd>
+            </div>
+            <div className={d.incoming.length > 0 ? 'is-hot' : undefined}>
+              <dt>Requests</dt>
+              <dd>{d.incoming.length}</dd>
+            </div>
+          </dl>
+        )}
+      </AddaMasthead>
 
       {room && (
         <div className="ho-banner ho-banner--info" role="status">
@@ -257,7 +293,7 @@ function FriendsInner({ user }) {
 
       <div className="ho-grid">
         <div className="ho-col">
-          <section className="ho-card ho-mycode" aria-label="Your friend link">
+          <section className="ho-card ho-mycode adda-pass" aria-label="Your friend link">
             <span className="ho-eyebrow">Your friend code</span>
             <div className="ho-bigcode ho-bigcode--friend" aria-label={`Your friend code ${user.friendCode}`}>
               {user.friendCode || '...'}
@@ -293,7 +329,7 @@ function FriendsInner({ user }) {
             <p className="ho-help">Anyone who opens your link can add you in one tap. No account needed to look.</p>
           </section>
 
-          <section className="ho-card" aria-label="Add a friend by code">
+          <section className="ho-card adda-add" aria-label="Add a friend by code">
             <h2 className="ho-h2">Add by code</h2>
             <form onSubmit={submitAdd} noValidate className="ho-addform">
               <label className="ho-field__label" htmlFor="ho-add-code">
@@ -346,7 +382,7 @@ function FriendsInner({ user }) {
           ) : (
             <>
               {(!data || d.incoming.length > 0) && (
-                <section className="ho-card" aria-label="Friend requests">
+                <section className="ho-card adda-requests" aria-label="Friend requests">
                   <div className="ho-card__head">
                     <h2 className="ho-h2">Requests</h2>
                     {d.incoming.length > 0 && <span className="ho-count">{d.incoming.length}</span>}
@@ -379,7 +415,7 @@ function FriendsInner({ user }) {
                 </section>
               )}
 
-              <section className="ho-card" aria-label="Your friends">
+              <section className="ho-card adda-friends" aria-label="Your friends">
                 <div className="ho-card__head">
                   <h2 className="ho-h2">Your friends</h2>
                   {data && d.friends.length > 0 && <span className="ho-count">{d.friends.length}</span>}
@@ -388,11 +424,21 @@ function FriendsInner({ user }) {
                   <SkeletonRows />
                 ) : d.friends.length === 0 ? (
                   <p className="ho-empty">
-                    No friends yet. Share your friend link above, or add a friend by code. Friends show up here with a green dot when they are online, and you can invite them to any game.
+                    No friends yet. Share your friend link, or add a friend by code. Friends show up here with a green dot when they are online, and you can invite them to any game.
                   </p>
                 ) : (
+                  [
+                    { key: 'on', label: 'Online', list: d.friends.filter((f) => f.online) },
+                    { key: 'off', label: 'Offline', list: d.friends.filter((f) => !f.online) },
+                  ]
+                    .filter((g) => g.list.length > 0)
+                    .map((g) => (
+                  <div key={g.key} className={`adda-group adda-group--${g.key}`}>
+                  <h3 className="adda-group__head">
+                    {g.label} <span>{g.list.length}</span>
+                  </h3>
                   <ul className="ho-list">
-                    {d.friends.map((f) => {
+                    {g.list.map((f) => {
                       const st = invited[f.id];
                       return (
                         <li key={f.id} className="ho-row">
@@ -440,11 +486,13 @@ function FriendsInner({ user }) {
                       );
                     })}
                   </ul>
+                  </div>
+                    ))
                 )}
               </section>
 
               {data && d.outgoing.length > 0 && (
-                <section className="ho-card" aria-label="Sent requests">
+                <section className="ho-card adda-sent" aria-label="Sent requests">
                   <div className="ho-card__head">
                     <h2 className="ho-h2">Sent requests</h2>
                     <span className="ho-count">{d.outgoing.length}</span>

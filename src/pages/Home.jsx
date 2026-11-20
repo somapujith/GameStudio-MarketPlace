@@ -1,49 +1,23 @@
-import { useMemo, useState } from 'react';
-import { BRAND } from '@/platform/brand.js';
-import { groupByCategory } from '@/platform/home/catalog.js';
 import Hero from '@/platform/home/Hero.jsx';
-import CategoryChips from '@/platform/home/CategoryChips.jsx';
-import CategoryRow from '@/platform/home/CategoryRow.jsx';
 import TopPlayers from '@/platform/home/TopPlayers.jsx';
 import FriendsStrip from '@/components/shell/home/FriendsStrip.jsx';
 import DailyReward from '@/components/shell/home/DailyReward.jsx';
+import IndiaArt from '@/components/art/IndiaArt.jsx';
 import '@/styles/hubhome.css';
+import '@/platform/home/street-home.css';
 
-/** `/` — the Games home: hero, friends, browse by category, top players, daily reward. */
+const CITY_PRINTS = [['mumbai', 'MUMBAI', 'Gateway of India'], ['jaipur', 'JAIPUR', 'Hawa Mahal'], ['chennai', 'CHENNAI', 'Chennai Central'], ['kolkata', 'KOLKATA', 'Howrah Bridge']];
+
 export default function Home() {
-  const groups = useMemo(groupByCategory, []);
-  const [cat, setCat] = useState('all');
-  const active = groups.some((g) => g.id === cat) ? cat : 'all';
-  const shown = active === 'all' ? groups : groups.filter((g) => g.id === active);
-
   return (
-    <div className="hub-page hh2 hh2-home">
-      <h1 className="hub-sr">{BRAND.name}</h1>
+    <div className="hub-page hh2 hh2-home street-home film-home">
       <Hero />
-      <FriendsStrip />
-
-      <section className="hub-section hh2-browse" aria-labelledby="hh2-browse-h">
-        <div className="hub-section__head">
-          <h2 id="hh2-browse-h" className="hub-section__title">
-            Browse games
-          </h2>
-        </div>
-        {groups.length > 1 && <CategoryChips cats={groups} value={active} onChange={setCat} />}
-        {groups.length === 0 ? (
-          <p className="hub-muted">New games are on the way. Check back soon.</p>
-        ) : (
-          <div className="hh2-cats" data-single={shown.length === 1 ? 'true' : 'false'}>
-            {shown.map((g) => (
-              <CategoryRow key={g.id} cat={g} games={g.games} />
-            ))}
-          </div>
-        )}
+      <section className="street-prints film-section" aria-labelledby="street-prints-title">
+        <div className="street-prints__intro"><p className="street-home__eyebrow">Postcards from the gully</p><h2 id="street-prints-title">LOCAL COLOUR.<br /><span>ALL OVER.</span></h2><p>Landmarks in ink. A little piece of home.</p></div>
+        <div className="street-prints__collection">{CITY_PRINTS.map(([art, city, landmark]) => <figure className={`street-print street-print--${art}`} key={art}><IndiaArt art={art} className="street-print__art" decorative /><figcaption><b>{city}</b><span>{landmark}</span></figcaption></figure>)}</div>
       </section>
-
-      <div className="hh2-duo">
-        <TopPlayers />
-        <DailyReward />
-      </div>
+      <FriendsStrip />
+      <section className="street-legends film-section" aria-labelledby="street-legends-title"><header className="street-legends__head"><p className="street-home__eyebrow">Good games deserve good company</p><h2 id="street-legends-title">GULLY <span>LEGENDS.</span></h2></header><div className="hh2-duo street-legends__content"><TopPlayers /><DailyReward /></div></section>
     </div>
   );
 }

@@ -81,7 +81,7 @@ export default function SettingsSection() {
           <Toggle
             icon={<Icon name="sparkle" size={20} />}
             label="Reduce motion"
-            hint="Calmer animations: no auto-rotating banner, twinkling stars or coin bursts."
+            hint="Keep it still: pause mascot expressions, cursor tracking, poster entrances and coin bursts."
             checked={settings.reducedMotion}
             onChange={(v) => update({ reducedMotion: v })}
           />

@@ -98,15 +98,15 @@ describe('sharing', () => {
     expect(joinLink('ABC234', '')).toBe('/join/ABC234');
   });
   it('builds the invite message (names the game) and the wa.me link', () => {
-    const t = inviteText('ABC234', 'Hyderabad Tycoon', 'https://h.dev');
-    expect(t).toContain('Hyderabad Tycoon');
+    const t = inviteText('ABC234', 'Nawabi Raj', 'https://h.dev');
+    expect(t).toContain('Nawabi Raj');
     expect(t).toContain('Jalebi Games');
     expect(t).toContain('ABC234');
     expect(t).toContain('https://h.dev/join/ABC234');
     const m = inviteMessage('ABC234', 'Ludo Lanes', 'https://h.dev');
     expect(m).toEqual({ title: 'Ludo Lanes', text: expect.stringContaining('Ludo Lanes'), url: 'https://h.dev/join/ABC234' });
     expect(m.text).not.toContain('https://');
-    const u = whatsappUrl('ABC234', 'Hyderabad Tycoon', 'https://h.dev');
+    const u = whatsappUrl('ABC234', 'Nawabi Raj', 'https://h.dev');
     expect(u.startsWith('https://wa.me/?text=')).toBe(true);
     expect(decodeURIComponent(u.slice('https://wa.me/?text='.length))).toBe(t);
   });

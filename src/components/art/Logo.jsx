@@ -1,11 +1,11 @@
-// Brand: Charminar mark in a gold badge + "Hyderabad Tycoon" lockup.
+// Brand: Charminar mark in a gold badge + "Nawabi Raj" lockup.
 import { memo } from 'react';
 import { PAL } from './palette.js';
 import { CharminarFront } from './marks.jsx';
 
 function BrandMarkBase({ size = 40, className, title }) {
   const s = 0.7;
-  const label = title === undefined ? undefined : title || 'Hyderabad Tycoon';
+  const label = title === undefined ? undefined : title || 'Nawabi Raj';
   return (
     <svg
       className={className}
@@ -38,7 +38,7 @@ function LogoBase({ size = 40, compact = false, className, style }) {
     <span
       className={className}
       role="img"
-      aria-label="Hyderabad Tycoon"
+      aria-label="Nawabi Raj"
       style={{ display: 'inline-flex', alignItems: 'center', gap: size * 0.24, lineHeight: 1, ...style }}
     >
       <BrandMark size={size} />
@@ -54,7 +54,7 @@ function LogoBase({ size = 40, compact = false, className, style }) {
             textShadow: `0 ${Math.max(1, size * 0.05)}px 0 #b8741a, 0 ${size * 0.09}px ${size * 0.14}px rgba(0,0,0,.4)`,
           }}
         >
-          Tycoon
+          Raj
         </span>
       ) : (
         <span aria-hidden="true" style={{ display: 'inline-flex', flexDirection: 'column', gap: size * 0.02 }}>
@@ -71,7 +71,7 @@ function LogoBase({ size = 40, compact = false, className, style }) {
               paddingLeft: '.1em',
             }}
           >
-            Hyderabad
+            Nawabi
           </span>
           <span
             style={{
@@ -85,7 +85,7 @@ function LogoBase({ size = 40, compact = false, className, style }) {
               textShadow: `0 ${Math.max(1, size * 0.05)}px 0 #b8741a, 0 ${size * 0.09}px ${size * 0.16}px rgba(0,0,0,.45)`,
             }}
           >
-            Tycoon
+            Raj
           </span>
         </span>
       )}

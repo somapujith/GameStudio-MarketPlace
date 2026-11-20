@@ -4,7 +4,7 @@ import { BRAND } from '@/platform/brand.js';
 import { HubBackdrop } from '@/platform/game/hubArt.jsx';
 import PageLoading from '@/platform/game/PageLoading.jsx';
 import ErrorBoundary from './ErrorBoundary.jsx';
-import TabBar, { TopNav } from './TabBar.jsx';
+import TabBar from './TabBar.jsx';
 import TopBar from './nav/TopBar.jsx';
 import { useGlobalClickSfx } from './hooks.js';
 
@@ -29,8 +29,8 @@ function useBaseTitle(pathname) {
 }
 
 /**
- * Hub chrome (a layout route): soft backdrop, top bar (logo, "Have a code?", coins, profile chip), bottom
- * tab bar on phones, left rail from 900 px. Game screens (/play/**) are rendered outside it.
+ * Label masthead with horizontal navigation and a bottom bar on smaller screens.
+ * Game screens (/play/**) are rendered outside the platform chrome.
  */
 export default function AppShell() {
   const { pathname } = useLocation();
@@ -38,7 +38,7 @@ export default function AppShell() {
   useBaseTitle(pathname);
 
   return (
-    <div className="hub-app">
+    <div className={`hub-app${pathname === '/' ? ' hub-app--home' : ''}`}>
       <a className="hh-skip" href="#main">
         Skip to content
       </a>
@@ -50,7 +50,6 @@ export default function AppShell() {
       <TopBar />
 
       <div className="hub-body">
-        <TopNav />
         <main id="main" className="hub-main" tabIndex={-1}>
           <div className="hub-container">
             <ErrorBoundary key={pathname}>

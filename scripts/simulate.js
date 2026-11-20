@@ -1,4 +1,4 @@
-// Bot-only simulation of Hyderabad Tycoon: checks engine invariants and prints balance stats.
+// Bot-only simulation of Nawabi Raj: checks engine invariants and prints balance stats.
 //
 //   node scripts/simulate.js [--games 150] [--players 2,3,4] [--seed 1] [--varied] [--humans 0]
 //                            [--rounds 30,50,unlimited] [--unlimited] [--set goal=60000,startCash=12000]

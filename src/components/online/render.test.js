@@ -147,7 +147,7 @@ describe('JoinRoom', () => {
     expect(html).toContain('Enter the 6-character code');
     expect(html).not.toContain('Pick a game');
     expect(html).not.toContain('Create private room');
-    expect(html).toContain('/games/hyderabad-tycoon'); // "Want your own table? Create one."
+    expect(html).toContain('/games/nawabi-raj'); // "Want your own table? Create one."
   });
   it('shows the six boxes for a signed-in user', () => {
     const html = page('/join', h(JoinRoom), { user: guest });
@@ -218,7 +218,7 @@ describe('SettingsPanel (schema renderer)', () => {
     expect(html).toContain('Table rules');
     expect(html).toContain('Single die - 1 Snatch each - sealed bidding on a tie');
     expect(html).not.toContain('>Game settings<'); // a single field is its own title
-    expect(html).not.toContain('Hyderabad Tycoon'); // the panel itself carries no game name
+    expect(html).not.toContain('Nawabi Raj'); // the panel itself carries no game name
   });
   it('a game without lobbySettings shows every setting of its schema', () => {
     const all = { ...tycoon, lobbySettings: undefined };
@@ -315,7 +315,7 @@ describe('small components', () => {
     const html = renderToString(h(StaticRouter, { location: '/friends' }, h(InviteToGameSheet, { friend: { id: 'f1', name: 'Mira' }, onClose() {} })));
     expect(html).toContain('role="dialog"');
     expect(html).toContain('Invite Mira');
-    expect(html).toContain('Hyderabad Tycoon');
+    expect(html).toContain('Nawabi Raj');
   });
   it('InviteBanner (outside a router) renders nothing when empty and a portal-less SSR is safe', () => {
     expect(renderToString(h(InviteBanner, { items: [], onDismiss() {} }))).toBe('');

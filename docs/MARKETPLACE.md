@@ -1,10 +1,10 @@
 # Jalebi Games marketplace — build contract
 
-Jalebi Games is a small **games marketplace** (reference: https://platoapp.com — a hub with a featured game, image-led cards grouped by category, a leaderboard, a People tab with friend links, public rooms, no-signup guest play, coins and profiles). **Hyderabad Tycoon is the first game, as a plugin.** More games will be added later, so nothing outside `src/games/<id>/`, `worker/games/<id>.js` and `shared/` (that game's rules) may know about Tycoon.
+Jalebi Games is a small **games marketplace** (reference: https://platoapp.com — a hub with a featured game, image-led cards grouped by category, a leaderboard, a People tab with friend links, public rooms, no-signup guest play, coins and profiles). **Nawabi Raj is the first game, as a plugin.** More games will be added later, so nothing outside `src/games/<id>/`, `worker/games/<id>.js` and `shared/` (that game's rules) may know about Tycoon.
 
 Stack is unchanged: React 19 + Vite 8 (plain JS/JSX, no TypeScript), Cloudflare Worker (Hono) + Durable Objects, Neon Postgres, Google login + guests.
 
-> **Status.** Sections 1-8 describe the product as built (flow, routes, manifest, settings schema, adapter, database, API). Sections 0 and 9 are the **historical** orchestration rules of the multi-agent build. The game itself (rules, WebSocket protocol, events, timers, redaction) is specified in [`GAME_RULES.md`](GAME_RULES.md); the engine and backend history in [`CONTRACT.md`](CONTRACT.md). Hyderabad Tycoon is humans only (no bots), has no ready toggle, voice, story, campaign or offline mode, and is English only.
+> **Status.** Sections 1-8 describe the product as built (flow, routes, manifest, settings schema, adapter, database, API). Sections 0 and 9 are the **historical** orchestration rules of the multi-agent build. The game itself (rules, WebSocket protocol, events, timers, redaction) is specified in [`GAME_RULES.md`](GAME_RULES.md); the engine and backend history in [`CONTRACT.md`](CONTRACT.md). Nawabi Raj is humans only (no bots), has no ready toggle, voice, story, campaign or offline mode, and is English only.
 
 ## 0. Rules for every agent **[historical: how the build was organised]**
 1. **Work only in `A:\Coding\Projects\GameHub-marketplace`** (git branch `marketplace`). Never read-modify files in `A:\Coding\Projects\GameHub` (that is `main`; it auto-deploys to production and another session may be editing it). `node_modules` is a junction to the main folder's, and `.dev.vars` is a local copy; never print or copy secrets.
@@ -47,7 +47,7 @@ Unknown `:gameId` or `coming_soon` game -> friendly "not available" state, never
 ```js
 export default {
   id: 'hyderabad-tycoon',                  // url-safe, never changes, also the server adapter id
-  name: 'Hyderabad Tycoon',
+  name: 'Nawabi Raj',
   tagline: 'Buy Dilsukhnagar to Banjara Hills',  // one line, <= 48 chars
   description: '...',                       // 1-2 sentences
   category: 'board',                        // CATEGORIES id

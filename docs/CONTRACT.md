@@ -1,4 +1,4 @@
-# Hyderabad Tycoon — build contract
+# Nawabi Raj — build contract
 
 A Hyderabad-themed Monopoly-style business game. Mobile-first, desktop-friendly.
 Reference screenshot: `photo_2026-10-16_15-04-12.jpg` in the repo root (read it with your image reader).

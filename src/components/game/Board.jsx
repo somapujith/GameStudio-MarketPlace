@@ -53,8 +53,8 @@ const CenterBrand = memo(function CenterBrand() {
   return (
     <div className="hb-center__brand" aria-hidden="true">
       <div className="hb-center__banner">
-        <span>Hyderabad</span>
-        <b>Tycoon</b>
+        <span>Nawabi</span>
+        <b>Raj</b>
       </div>
     </div>
   );

@@ -1,14 +1,14 @@
 {
   "name": "Jalebi Games",
   "short_name": "Jalebi Games",
-  "description": "A little marketplace of multiplayer games. Pick a game, grab your friends, and play in seconds.",
+  "description": "Gully made. Game ready. Multiplayer games with a Hyderabadi street spirit.",
   "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#0a0f1f",
-  "theme_color": "#0a0f1f",
+  "background_color": "#0b0908",
+  "theme_color": "#0b0908",
   "categories": ["games", "entertainment"],
   "icons": [
     { "src": "/icons/jalebi-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },

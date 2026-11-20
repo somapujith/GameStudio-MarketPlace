@@ -1,0 +1,72 @@
+/* An independent label masthead and a wide, editorial canvas. */
+.hub-app .hub-body { display: block; }
+.hub-app .hub-container { max-width: 1600px; }
+.hub-app--home .hub-container { max-width: none; padding: 0; }
+.hub-app--home .hub-main { padding-top: 0; }
+.hub-app .hub-topbar__inner { max-width: 1664px; margin-inline: auto; gap: 24px; }
+.hub-app .hub-topbar__logo { margin-right: 0; }
+.hub-app .hub-topbar__end { margin-left: auto; }
+.label-nav { display: none; align-items: center; justify-content: center; gap: clamp(18px, 2.5vw, 40px); margin-inline: auto; }
+.label-nav__link { display: flex; align-items: center; min-height: 44px; border-bottom: 2px solid transparent; font: 750 14px/1.2 var(--font-body); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+.label-nav__link:hover,
+.label-nav__link.is-active { color: var(--brand-orange); border-bottom-color: var(--brand-orange); }
+.hub-app .hub-userchip__meta small { color: var(--hub-dim); }
+.platform-print { pointer-events: none; }
+.street-hero__signature .jalebi-logo { padding: 6px; background: var(--brand-charcoal); }
+.platform-art-heading { display: grid; grid-template-columns: minmax(0, 1fr) minmax(130px, 230px); align-items: center; gap: clamp(18px, 4vw, 56px); }
+.platform-art-heading .india-art { width: 100%; max-width: 230px; justify-self: end; transform: rotate(5deg); }
+.platform-art-heading__copy { min-width: 0; }
+.platform-art-heading__copy > p { max-width: 42ch; color: var(--hub-dim); margin-top: 12px; }
+.hub-app .ho-login { max-width: 1120px; }
+.hub-app .ho-login > .ho-hero { overflow: visible; }
+.hub-app .ho-login .ho-hero__inner { display: grid; grid-template-columns: minmax(0, 1fr) 170px; align-items: center; gap: 20px; }
+.ho-login__identity { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; }
+.ho-login__print { width: 170px; transform: rotate(5deg); }
+.hub-app .ho-login__card { width: 100%; max-width: 740px; margin-inline: auto; }
+.hub-app .hub-404 { position: relative; }
+.hub-404__print { width: min(220px, 50vw); margin: 0 auto 16px; transform: rotate(-5deg); }
+.hub-quick__print { width: min(210px, 100%); margin-inline: auto; transform: rotate(4deg); }
+.hub-quick__collage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.8fr); align-items: center; gap: clamp(24px, 4vw, 72px); width: min(960px, 100%); margin: auto; }
+.hub-app .hub-quick__collage .hub-quick__card { max-width: none; }
+@media (min-width: 1000px) {
+  .label-nav { display: flex; }
+  .hub-app .hub-tabbar { display: none; }
+  .hub-app .hub-topbar__end { margin-left: 0; }
+  .hub-app .ho-login { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 48px; align-items: start; }
+  .hub-app .ho-login .ho-hero__inner { display: flex; flex-direction: column; align-items: flex-start; }
+  .ho-login__print { width: min(300px, 90%); align-self: center; margin-top: 24px; }
+}
+@media (max-width: 999px) {
+  :root { --tabbar-h: 64px; }
+  .hub-app .hub-tabbar { display: block; }
+  .hub-app .hub-main { padding-bottom: calc(88px + var(--safe-bottom)); }
+  .hub-app .hub-topbar__inner { gap: 8px; }
+  .hub-app .hub-topbar__end { gap: 8px; }
+}
+@media (max-width: 599px) {
+  .hub-app .hub-topbar__inner { padding-inline: 16px; }
+  .hub-app .ho-login .ho-hero__inner { grid-template-columns: minmax(0, 1fr) 100px; gap: 12px; }
+  .ho-login__print { width: 100px; }
+  .platform-art-heading { grid-template-columns: minmax(0, 1fr) 105px; gap: 12px; }
+  .hub-quick__collage { display: block; }
+  .hub-quick__print { width: 130px; margin: 0 auto 20px; }
+  .hub-app .hub-tab__label { font-size: 10px; letter-spacing: 0; }
+}
+/* Cinematic masthead, following the supplied print reference. */
+:root { --topbar-h: 96px; --jalebi-nav-size: 78px; }
+.hub-app .hub-topbar { background: #0b0908 url('/art/cinematic/grain.svg') repeat; border-bottom: 1px solid #49341c; }
+.hub-app .hub-topbar__inner { gap: 20px; padding-inline: clamp(22px,3.4vw,58px); }
+.hub-app .hub-topbar__logo { padding-right: 0; border-right: 0; border-radius: 0; }
+.hub-app .hub-topbar__logo .jalebi-logo__descriptor { color: #f8e6c8; font: 850 .18em/1.2 var(--font-body); letter-spacing: .2em; gap: .2em; text-transform: uppercase; }
+.hub-app .hub-topbar__logo .jalebi-logo__descriptor > span:last-child { color: inherit; font-size: 1em; letter-spacing: .2em; }
+.label-nav { gap: clamp(12px,2vw,34px); }
+.label-nav__link { position: relative; justify-content: center; padding: 8px 16px; min-height: 48px; border: 0; font: 400 clamp(20px,1.6vw,28px)/1 var(--font-poster); letter-spacing: .025em; }
+.label-nav__link:hover { color: #ff6400; border: 0; }
+.label-nav__link.is-active { color: #0b0908; background: #ff6400 url('/art/cinematic/grain.svg'); border: 0; transform: rotate(-2deg) skewX(-8deg); clip-path: polygon(7% 3%,97% 0,96% 13%,100% 15%,95% 87%,88% 90%,87% 97%,0 100%,4% 88%,0 88%); padding-inline: 30px; }
+.hub-app .hub-codebtn { border: 1px solid #dac59c; border-radius: 3px; box-shadow: inset 0 0 0 3px #0b0908, inset 0 0 0 4px #877050; color: #f8e6c8; font: 400 18px/1 var(--font-poster); letter-spacing: .03em; padding-inline: 15px; }
+.hub-app .hub-coins { border: 0; border-right: 1px solid #96794c; border-radius: 0; padding-inline: 10px 20px; color: #f3b52d; font-size: 18px; }
+.hub-app .hub-userchip { border: 1px solid #b6a17a; border-radius: 7px; }
+.hub-app--home .hub-backdrop__shade { background-image: url('/art/cinematic/grain.svg'); background-size: 200px; }
+@media(max-width:1199px) and (min-width:1000px) { .label-nav { gap: 5px; } .label-nav__link { font-size: 21px; padding-inline: 10px; } .label-nav__link.is-active { padding-inline: 20px; } .hub-app .hub-topbar__inner { gap: 10px; padding-inline: 22px; } .hub-app .hub-codebtn { padding-inline: 12px; } }
+@media(max-width:699px) { :root { --topbar-h: 88px; --jalebi-nav-size: 68px; } .hub-app .hub-topbar__logo { padding-right: 0; border-right: 0; } .hub-app .hub-topbar__logo .jalebi-logo__descriptor { display: none; } .hub-app .hub-codebtn { font-size: 15px; } .hub-app .hub-coins { padding-inline: 6px; font-size: 14px; } .hub-app .hub-topbar__inner { gap: 8px; padding-inline: 16px; } }
+@media(max-width:359px) { :root { --jalebi-nav-size: 62px; } .hub-app .hub-topbar__end { gap: 6px; } }

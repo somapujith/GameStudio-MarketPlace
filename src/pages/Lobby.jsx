@@ -4,7 +4,7 @@ import { createRoom, errorMessage } from '@/lib/api.js';
 import { useAuth } from '@/lib/auth.jsx';
 import { paths } from '@/platform/paths.js';
 import { useRoomConnection } from '@/components/online/useRoomConnection.js';
-import { joinedLabel, joinedPercent, startState } from '@/components/online/lobbyModel.js';
+import { joinedLabel, startState } from '@/components/online/lobbyModel.js';
 import { resolveSettings } from '@/components/online/settings.js';
 import { sameId } from '@/components/online/gameHelpers.js';
 import { isRoomCode, normalizeRoomCode } from '@/components/online/codes.js';
@@ -192,6 +192,8 @@ function LobbyInner({ code, user }) {
         </div>
       )}
 
+      <div className="ho-lobby__cols">
+        <div className="ho-col ho-lobby__side ho-lobby__side--people">
       <ShareCard code={code} gameName={gName} onNotify={push} />
       {user.isGuest && (
         <p className="ho-help ho-qguest">
@@ -206,8 +208,10 @@ function LobbyInner({ code, user }) {
             {joinedLabel(joined, maxPlayers)}
           </span>
         </div>
-        <div className="ho-progress" role="progressbar" aria-label="Seats taken" aria-valuemin={0} aria-valuemax={maxPlayers} aria-valuenow={Math.min(joined, maxPlayers)}>
-          <span style={{ width: `${joinedPercent(joined, maxPlayers)}%` }} />
+        <div className="ho-progress ho-progress--seats" role="progressbar" aria-label="Seats taken" aria-valuemin={0} aria-valuemax={maxPlayers} aria-valuenow={Math.min(joined, maxPlayers)}>
+          {Array.from({ length: maxPlayers }, (_, i) => (
+            <span key={i} className={i < joined ? 'is-on' : undefined} />
+          ))}
         </div>
         <ul className="ho-seatgrid">
           {players.map((p, i) => (
@@ -227,8 +231,10 @@ function LobbyInner({ code, user }) {
         </ul>
       </section>
 
+        </div>
+
+        <div className="ho-col ho-lobby__side ho-lobby__side--control">
       <SettingsPanel game={game} settings={room.settings} isHost={isHost} disabled={!open} errorId={errorId} onSend={(msg) => send(msg, { queue: false })} />
-      <p className="ho-help ho-rules">Table rules: single die &middot; 1 Snatch each &middot; sealed bidding on a tie</p>
 
       <section className="ho-card ho-startcard" aria-label="Start">
         {isHost ? (
@@ -248,6 +254,8 @@ function LobbyInner({ code, user }) {
       </section>
 
       {!user.isGuest && <InviteFriends code={code} gameName={gName} onNotify={push} />}
+        </div>
+      </div>
 
       <ConfirmDialog
         open={confirm?.kind === 'leave'}

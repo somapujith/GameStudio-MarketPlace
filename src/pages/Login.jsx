@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { AVATAR_PRESETS, Avatar } from '@/components/art/index.js';
 import { HubLogo } from '@/components/art/hub/index.js';
+import IndiaArt from '@/components/art/IndiaArt.jsx';
 import { errorMessage } from '@/lib/api.js';
 import { GoogleButton, useAuth } from '@/lib/auth.jsx';
 import { loadProfile } from '@/lib/storage.js';
@@ -76,8 +77,11 @@ export default function Login() {
       <header className="ho-hero ho-hero--hub">
         <div className="ho-hero__glow" aria-hidden="true" />
         <div className="ho-hero__inner">
-          <HubLogo size={96} />
-          <p className="ho-hero__tag">{BRAND.tagline} Pick a game, grab your friends, and play in seconds.</p>
+          <div className="ho-login__identity">
+            <HubLogo size={96} />
+            <p className="ho-hero__tag">{BRAND.tagline} Pick a game, grab your friends, and play in seconds.</p>
+          </div>
+          <IndiaArt art="chennai" className="ho-login__print" decorative />
         </div>
       </header>
 

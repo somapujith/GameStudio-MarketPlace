@@ -1,17 +1,20 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { paths } from '@/platform/paths.js';
+import { gameSlug } from '@/platform/game/identity.js';
 import HubIcon from '@/platform/game/HubIcon.jsx';
 import { featured, gameById, liveList } from '@/platform/home/catalog.js';
-import { fmtStat, resolveGameStats, statDefs } from '@/platform/home/gameStats.js';
+import { fmtStat, resolveGameStats, statDefs, statValue } from '@/platform/home/gameStats.js';
 import { useApi, useApiGate } from '@/platform/home/useApi.js';
-import PageHead from '@/platform/home/PageHead.jsx';
 import LeaderTabs from '@/platform/home/LeaderTabs.jsx';
-import Podium from '@/platform/home/Podium.jsx';
-import RankRow from '@/platform/home/RankRow.jsx';
-import { useAccount, useProgress } from '@/components/shell/hooks.js';
+import Ava from '@/platform/home/Ava.jsx';
+import { useAccount, useProgress, useReducedMotion } from '@/components/shell/hooks.js';
 import { fmtNum } from '@/components/shell/ui.jsx';
+import { CoinIcon } from '@/components/shell/icons.jsx';
 import '@/styles/hubhome.css';
+import '@/platform/home/leaderboard-cinema.css';
+import '@/platform/home/leaderboard-tablet.css';
+import '@/platform/home/leaderboard-phone.css';
 
 const OVERALL_COLS = [
   { key: 'wins', label: 'Wins' },
@@ -60,7 +63,7 @@ function Notice({ icon, title, children, action }) {
   );
 }
 
-/** "Your record" under the board: the selected game's numbers, or platform totals on the Overall tab. */
+/** The paper scorecard uses account results for the selected game or platform totals. */
 function YourRecord({ game, user, liveGames }) {
   const { info: li, coins } = useProgress();
   let tiles;
@@ -68,17 +71,24 @@ function YourRecord({ game, user, liveGames }) {
   let note = null;
   if (!game) {
     const per = liveGames.map((g) => resolveGameStats({ user, gameId: g.id })).filter(Boolean);
+    const games = per.reduce((n, s) => n + s.games, 0);
+    const wins = per.reduce((n, s) => n + s.wins, 0);
     title = 'Your record';
     tiles = [
-      { label: 'Level', value: fmtNum(li.level) },
-      { label: 'Games', value: fmtNum(per.reduce((n, s) => n + s.games, 0)) },
-      { label: 'Wins', value: fmtNum(per.reduce((n, s) => n + s.wins, 0)) },
-      { label: 'Coins', value: fmtNum(coins) },
+      { label: 'Level', icon: 'podium', value: fmtNum(li.level) },
+      { label: 'Games', icon: 'gamepad', value: fmtNum(games) },
+      { label: 'Wins', icon: 'trophy', value: fmtNum(wins) },
+      { label: 'Coins', icon: 'coins', value: fmtNum(coins) },
+      { label: 'Win rate', icon: 'target', value: `${games ? Math.round(wins / games * 100) : 0}%` },
     ];
   } else {
     const stats = resolveGameStats({ user, gameId: game.id });
-    title = `Your ${game.name} record`;
-    tiles = stats ? statDefs(game, 4).map((d) => ({ label: d.label, value: fmtStat(stats[d.key] ?? (d.key === 'bestScore' ? stats.bestScore : null), d) })) : null;
+    title = 'Your record';
+    tiles = stats ? [
+      ...statDefs(game, 3).map((d) => ({ label: d.label, icon: d.key === 'wins' ? 'trophy' : d.key === 'games' ? 'gamepad' : 'star', value: fmtStat(stats[d.key] ?? (d.key === 'bestScore' ? stats.bestScore : null), d) })),
+      { label: 'Coins', icon: 'coins', value: fmtNum(coins) },
+      { label: 'Win rate', icon: 'target', value: `${stats.games ? Math.round(stats.wins / stats.games * 100) : 0}%` },
+    ] : null;
     if (!tiles) {
       note = (
         <p className="hub-muted">
@@ -91,15 +101,16 @@ function YourRecord({ game, user, liveGames }) {
     }
   }
   return (
-    <section className="hub-panel hh2-record" aria-labelledby="hh2-rec-h">
-      <h2 id="hh2-rec-h" className="hub-section__title">
+    <section className="leader-record" aria-labelledby="hh2-rec-h">
+      <span className="leader-record__eyes" aria-hidden="true"><i /><i /></span>
+      <h2 id="hh2-rec-h">
         {title}
       </h2>
       {tiles && (
-        <dl className="hub-stats">
-          {tiles.map((t) => (
-            <div key={t.label} className="hub-stats__tile">
-              <dt>{t.label}</dt>
+        <dl className="leader-record__stats">
+          {tiles.map((t, i) => (
+            <div key={t.label} className={i > 2 ? 'leader-record__wide' : undefined}>
+              <dt>{t.icon === 'coins' ? <CoinIcon size={23} /> : <HubIcon name={t.icon} size={23} />}{t.label}</dt>
               <dd>{t.value}</dd>
             </div>
           ))}
@@ -110,15 +121,44 @@ function YourRecord({ game, user, liveGames }) {
   );
 }
 
+/** Reading order remains first, second, third; the stage places the winner in the middle. */
+function ChampionPodium({ rows, cols, isMe }) {
+  const medals = ['#ffcf68', '#f3dcc0', '#df9b56'];
+  return <div className="leader-podium"><ol className="leader-podium__players" aria-label="Top three players">
+    {rows.slice(0,3).map((row,i)=><li key={`${row.rank}-${row.name}`} className={`leader-champion leader-champion--${i+1}${isMe(row)?' is-me':''}`}>
+      {i===0 && <span className="leader-champion__crown" aria-hidden="true"><HubIcon name="crown" size={48} /></span>}
+      <Ava preset={row.avatar} size={i===0?128:94} ring={medals[i]} />
+      <b className="leader-champion__name" title={row.name}>{row.name}</b>
+      {isMe(row) && <span className="leader-you">You</span>}
+      <p className="leader-champion__stats">{cols.slice(0,2).map((c,j)=><span key={c.key}>{j>0 && <span aria-hidden="true"> &middot; </span>}{fmtStat(statValue(row,c.key),c)} {c.label.toLowerCase()}</span>)}</p>
+      <span className="hub-sr">Rank {row.rank}</span>
+    </li>)}
+  </ol><div className="leader-platform" aria-hidden="true"><img src="/art/cinematic/podium-stage.webp" width="1100" height="366" alt="" />{rows.slice(0,3).map((row,i)=><span key={row.rank} className={`leader-platform__rank leader-platform__rank--${i+1}`}>{row.rank}</span>)}</div></div>;
+}
+
+function RankingTable({ rows, cols, isMe }) {
+  if(!rows.length) return null;
+  return <div className="leader-ranks" tabIndex={0} role="region" aria-label="Rankings from fourth place, scroll for more columns">
+    <table><caption className="hub-sr">Players ranked fourth and below</caption><thead><tr><th scope="col">#</th><th scope="col">Player</th><th scope="col">Level</th>{cols.map(c=><th scope="col" key={c.key}>{c.label}</th>)}</tr></thead>
+      <tbody>{rows.map((row,i)=><tr key={`${row.rank}-${row.name}`} className={isMe(row)?'is-me':undefined} style={{'--rank-delay':`${Math.min(i,8)*25}ms`}}>
+        <th scope="row">{row.rank}</th><td><div className="leader-ranks__player"><Ava preset={row.avatar} size={42} /><b title={row.name}>{row.name}</b>{isMe(row)&&<span className="leader-you">You</span>}</div></td>
+        <td><span className="leader-ranks__level"><HubIcon name="star" size={18} />Lv {row.level??1}</span></td>{cols.map(c=><td key={c.key}>{fmtStat(statValue(row,c.key),c)}</td>)}
+      </tr>)}</tbody>
+    </table>
+  </div>;
+}
+
 /** `/leaderboard` — Overall + one tab per live game (`?game=`), podium for the top three, rows for the rest. */
 export default function Leaderboard() {
   const [params, setParams] = useSearchParams();
   const { account, guest, signedIn, user } = useAccount();
+  const reduced = useReducedMotion();
   const { booting, ready, retry } = useApiGate();
   const live = useMemo(liveList, []);
 
   const wanted = params.get('game') || 'overall';
-  const gameId = wanted !== 'overall' && live.some((g) => g.id === wanted) ? wanted : 'overall';
+  const wantedGame = gameById(wanted);
+  const gameId = wantedGame && live.some((g) => g.id === wantedGame.id) ? wantedGame.id : 'overall';
   const game = gameId === 'overall' ? null : gameById(gameId);
   const cols = game ? statDefs(game, 3) : OVERALL_COLS;
 
@@ -126,13 +166,25 @@ export default function Leaderboard() {
   const state = booting ? 'loading' : !ready ? 'offline' : remote.status === 'idle' ? 'loading' : remote.status;
   const rows = useMemo(() => (Array.isArray(remote.data?.rows) ? remote.data.rows.filter((r) => r && typeof r.name === 'string') : []), [remote.data]);
 
-  const pick = useCallback((id) => setParams(id === 'overall' ? {} : { game: id }, { replace: true }), [setParams]);
+  const pick = useCallback((id) => setParams(id === 'overall' ? {} : { game: gameSlug(id) }, { replace: true }), [setParams]);
   const isMe = useCallback(
     (r) => account && !!user?.name && r.name === user.name && (r.avatar === undefined || Number(r.avatar) === Number(user.avatar)),
     [account, user],
   );
   const mine = rows.find(isMe);
   const lead = game || featured();
+  const [entered, setEntered] = useState(false);
+  const [paused, setPaused] = useState(() => typeof document !== 'undefined' && document.hidden);
+  useEffect(() => {
+    const change = () => setPaused(document.hidden);
+    document.addEventListener('visibilitychange', change);
+    return () => document.removeEventListener('visibilitychange', change);
+  }, []);
+  useEffect(() => {
+    if(state !== 'ok' || entered) return undefined;
+    const timer = setTimeout(() => setEntered(true), 700);
+    return () => clearTimeout(timer);
+  }, [state, entered]);
 
   let body;
   if (state === 'loading') body = <Skeleton />;
@@ -192,16 +244,10 @@ export default function Leaderboard() {
             </Link>
           </div>
         )}
-        <Podium rows={rows} cols={cols} isMe={isMe} />
-        {rows.length > 3 && (
-          <ol className="hh2-lb__list" start={4} aria-label="Ranks 4 and below">
-            {rows.slice(3).map((r) => (
-              <RankRow key={`${r.rank}-${r.name}`} row={r} cols={cols} me={isMe(r)} />
-            ))}
-          </ol>
-        )}
+        <ChampionPodium rows={rows} cols={cols} isMe={isMe} />
+        <RankingTable rows={rows.slice(3)} cols={cols} isMe={isMe} />
         {account && (
-          <p className="hh2-lb__standing" aria-live="polite">
+          <p className="leader-standing" aria-live="polite">
             {mine ? (
               <>
                 You are <b>#{mine.rank}</b> {game ? `in ${game.name}` : 'overall'}.
@@ -216,15 +262,17 @@ export default function Leaderboard() {
   }
 
   return (
-    <div className="hub-page hh2 hh2-lbpage">
-      <PageHead title="Leaderboard" sub="See who is winning across every game." icon={<HubIcon name="podium" size={26} />} />
-      <LeaderTabs games={live} value={gameId} onChange={pick} panelId={PANEL_ID} />
-      <div className="hh2-lbgrid">
-        <section id={PANEL_ID} role="tabpanel" aria-labelledby={`hh2-tab-${gameId}`} aria-busy={state === 'loading'} className="hh2-lb">
+    <div className="hub-page hh2 leader-cinema" data-state={state==='ok'&&rows.length?'populated':state} data-intro={!entered&&!reduced?'true':undefined} data-reduced={reduced?'':undefined} data-paused={paused?'':undefined}>
+      <img className="leader-cinema__scene" src="/art/cinematic/leaderboard-scene.webp" width="2048" height="1024" alt="" fetchPriority="high" decoding="async" />
+      <header className="leader-intro">
+        <HubIcon className="leader-intro__crown" name="crown" size={45} />
+        <h1>Leaderboard</h1><p>See who&rsquo;s winning across every game.</p>
+        <LeaderTabs games={live} value={gameId} onChange={pick} panelId={PANEL_ID} />
+      </header>
+        <section id={PANEL_ID} role="tabpanel" aria-labelledby={`hh2-tab-${gameId}`} aria-busy={state === 'loading'} className="leader-board">
           {body}
         </section>
         <YourRecord game={game} user={user} liveGames={live} />
-      </div>
     </div>
   );
 }

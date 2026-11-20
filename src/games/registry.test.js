@@ -10,7 +10,8 @@ describe('game registry', () => {
   });
 
   it('getGame returns the manifest or null for unknown ids', () => {
-    expect(getGame('hyderabad-tycoon')?.name).toBe('Hyderabad Tycoon');
+    expect(getGame('hyderabad-tycoon')?.name).toBe('Nawabi Raj');
+    expect(getGame('nawabi-raj')).toBe(getGame('hyderabad-tycoon'));
     expect(getGame('nope')).toBeNull();
     expect(getGame(undefined)).toBeNull();
     expect(getGame('')).toBeNull();

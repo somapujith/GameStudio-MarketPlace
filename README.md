@@ -1,6 +1,6 @@
-# Jalebi Games: Hyderabad Tycoon
+# Jalebi Games: Nawabi Raj
 
-Jalebi Games is a small online games marketplace; **Hyderabad Tycoon** is its first (and so far only live) game: a Monopoly-style
+Jalebi Games is a small online games marketplace; **Nawabi Raj** is its first (and so far only live) game: a Monopoly-style
 property game on a 40-square Hyderabad board, for 2-6 friends, played in a private room. React 19 + Vite on the front, one Cloudflare Worker
 (Hono) with Durable Objects for real-time rooms, Neon Postgres for accounts / friends / match history, Google Sign-In or guest play.
 
@@ -32,7 +32,7 @@ Browser ──HTTPS──► Cloudflare Worker (worker/index.js, Hono)
 Other screens: `/` Home (hero, friends, browse by category, top players, daily reward) · `/join[/:code]` · `/friends`, `/f/:code` · `/leaderboard` · `/profile` · `/login`. Old links to the retired bots / open tables / story / campaign screens (`/play`, `/campaign`, `/story`, `/games/:id/play|tables|x/*`, `/play/:id/offline`) redirect to the game page.
 Without `GOOGLE_CLIENT_ID` the Google button is hidden (`/api/config` returns `googleClientId: null`); "Play as guest" always works. Guests can host, join and play rooms and read the leaderboard, but cannot use friends, get invites or appear in the rankings.
 
-## Hyderabad Tycoon in 60 seconds
+## Nawabi Raj in 60 seconds
 
 * **One die.** Everyone starts with ₹15,000 at the airport (START) and walks clockwise around 40 squares. Roll one die; **a six rolls again**. Passing or landing on START pays ₹2,000. Dice are *lucky* by default (a small, disclosed help for whoever is behind) or *fair*.
 * **Buy, build, collect.** Buy a free property, station or utility; skip it and a sealed-bid auction opens. A full colour set doubles base rent and lets you build (Kirana, Apartments, Mall, Tower, Hotel). Mortgage, sell buildings, trade with other players, draw Nawab ka Farman / Hyderabadi Khazana cards, pay GHMC tax.
@@ -201,7 +201,7 @@ Friend codes are `HYD-XXXX` and room codes 6 characters, both from `ABCDEFGHJKLM
 
 ### Room settings (validated server-side, in the route *and* again in the room)
 
-Every room has two shared settings that are not part of any game: `visibility` (`private` by default; the app always creates private rooms, `public` is still accepted by the API) and `maxPlayers` (within the game's `minPlayers..maxPlayers`; also accepted inside `settings`). Everything else belongs to the game and is validated by its adapter (`validateSettings`, the source of truth). Hyderabad Tycoon:
+Every room has two shared settings that are not part of any game: `visibility` (`private` by default; the app always creates private rooms, `public` is still accepted by the API) and `maxPlayers` (within the game's `minPlayers..maxPlayers`; also accepted inside `settings`). Everything else belongs to the game and is validated by its adapter (`validateSettings`, the source of truth). Nawabi Raj:
 
 | Setting | Accepted | Default |
 |---|---|---|
@@ -238,7 +238,7 @@ Every message, field, error string, event, timer and redaction rule is specified
 
 `db/schema.sql` (idempotent, additive only): `users`, `friendships` (one row per pair, enforced by a unique index on `(LEAST, GREATEST)`), `matches` (`game_id` (default `hyderabad-tycoon`), `rounds`, `goal`, `max_rounds` (NULL = unlimited), `dice_mode`, `win_reason` incl. `'rounds'`), `match_players` (`hotels_built`, ranks, final worth), `user_game_stats` (`games`, `wins`, `best_score`, `rating`, `extra` per user and game) and `rooms` (the listing behind open tables and "continue playing"; a room's Durable Object keeps its row in step and deletes it on expiry, queries ignore rows older than 24 h). `node scripts/migrate.js` applies it statement by statement (it refuses anything that is not `CREATE … IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS`, plus the one-time `user_game_stats` backfill, an `INSERT … ON CONFLICT DO NOTHING`) and prints only table names and row counts.
 
-* **Stats.** When a game ends, one atomic statement (guarded by `ON CONFLICT (id) DO NOTHING`, so a retry never counts twice) writes the match with its `game_id` and `match_players`, adds `xp` / `coins` (platform-wide, same formula for every game), upserts `user_game_stats` and - for Hyderabad Tycoon only - keeps the legacy `users.games` / `wins` / `best_worth` / `rent_earned` columns up to date, so the previous version of the app keeps working during a rollout. Matches played on the previous version are not added to `user_game_stats`.
+* **Stats.** When a game ends, one atomic statement (guarded by `ON CONFLICT (id) DO NOTHING`, so a retry never counts twice) writes the match with its `game_id` and `match_players`, adds `xp` / `coins` (platform-wide, same formula for every game), upserts `user_game_stats` and - for Nawabi Raj only - keeps the legacy `users.games` / `wins` / `best_worth` / `rent_earned` columns up to date, so the previous version of the app keeps working during a rollout. Matches played on the previous version are not added to `user_game_stats`.
 * **Rating** (`worker/rating.js`): Elo-style, new players start at 1000. For every player in a match: `actual = (N - rank) / (N - 1)`, `expected = 1 / (1 + 10^((opponentAverage - own) / 400))` where `opponentAverage` is the mean rating of the other seats, `delta = round(24 * (actual - expected))`, `rating = max(100, rating + delta)`.
 * **Rollout order.** Migrate first, then deploy (the deploy workflow does exactly that): the new Worker needs the new columns and tables, while the previous Worker ignores them, so the migration is safe to run ahead of time and rolling the code back needs no database change.
 

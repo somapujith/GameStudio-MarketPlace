@@ -4,6 +4,9 @@ import HubIcon from '@/platform/game/HubIcon.jsx';
 import Ava from '@/platform/home/Ava.jsx';
 import { useApi, useApiGate } from '@/platform/home/useApi.js';
 import { useAccount } from '../hooks.js';
+import { BRAND } from '@/platform/brand.js';
+import IndiaArt from '@/components/art/IndiaArt.jsx';
+import '@/platform/home/adda.css';
 
 /** A friendly inline message with an optional action, used for every non-list state of the strip. */
 function Prompt({ icon, title, children, action, quiet }) {
@@ -120,10 +123,10 @@ export default function FriendsStrip() {
 
   const showCount = account && status === 'ok' && friends.length > 0;
   return (
-    <section className="hub-section hh2-friends" aria-labelledby="hh2-friends-h">
+    <section className="hub-section hh2-friends adda-space" aria-labelledby="hh2-friends-h">
       <div className="hub-section__head">
         <h2 id="hh2-friends-h" className="hub-section__title">
-          Friends online
+          The Adda
           {showCount && <span className="hub-pill hub-pill--good hh2-pill-gap">{online} online</span>}
         </h2>
         {account && (
@@ -132,7 +135,22 @@ export default function FriendsStrip() {
           </Link>
         )}
       </div>
-      {body}
+      <div className="adda-space__layout">
+        <div className="adda-table">
+          <p className="adda-kicker">Good company. Better games.</p>
+          {!friends.length && !loading && (
+            <div className="adda-table__seats" aria-hidden="true">
+              {[0, 1, 2, 3].map((seat) => <span key={seat}><HubIcon name="plus" size={18} /> Empty seat</span>)}
+            </div>
+          )}
+          {body}
+          <div className="adda-table__actions">
+            <Link to={paths.game(BRAND.defaultGameId)} className="hub-btn hub-btn--primary">Create a table</Link>
+            <Link to={paths.join()} className="hub-btn hub-btn--soft">Join with a code <HubIcon name="chevR" size={16} /></Link>
+          </div>
+        </div>
+        <IndiaArt art="gully-cricket" className="adda-space__art" />
+      </div>
     </section>
   );
 }

@@ -35,7 +35,7 @@ function TopBar({ session, onBack, onMenu }) {
         <Icon name="back" size={22} strokeWidth={2.4} />
       </button>
       <div className="hg-top-mid">
-        <span className="hg-table-title">HYDERABAD TYCOON</span>
+        <span className="hg-table-title">NAWABI RAJ</span>
         <p className="hg-goal">
           <span>Win at <b>{formatINR(goal)}</b> net worth</span>
           <span className="hg-goal-sep" aria-hidden="true">&middot;</span>
@@ -110,7 +110,7 @@ export default function GameView({ session, onExit }) {
       data-wide={wide ? '' : undefined}
       data-rm={reduced ? '' : undefined}
     >
-      <h1 className="hg-sr">Hyderabad Tycoon</h1>
+      <h1 className="hg-sr">Nawabi Raj</h1>
       <p className="hg-sr" role="status" aria-live="polite" aria-atomic="true">{snatchNote}</p>
       <TopBar session={session} onBack={() => setConfirm(true)} onMenu={() => setMenu(true)} />
 

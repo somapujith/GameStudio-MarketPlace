@@ -1,4 +1,4 @@
-// Hyderabad Tycoon host settings: presets, limits, the lobby schema (docs/MARKETPLACE.md section 4)
+// Nawabi Raj host settings: presets, limits, the lobby schema (docs/MARKETPLACE.md section 4)
 // and the one-line summary. Pure (no React), so the manifest stays tiny and tests run in node.
 //
 // The server is the source of truth: values here MUST equal worker/settings.js (enforced by

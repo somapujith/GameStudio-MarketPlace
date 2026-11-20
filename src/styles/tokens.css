@@ -1,32 +1,38 @@
-/* Shared visual language: a warm Hyderabad social lounge. */
+/* Jalebi Games: street ink, warm paper, freshly fried orange. */
 :root {
-  /* night-Hyderabad palette */
-  --bg-0: #10171e;
-  --bg-1: #141e27;
-  --bg-2: #192630;
-  --surface: #1b2731;
-  --surface-2: #22313b;
-  --surface-3: #30434d;
+  --brand-orange: #ff6400;
+  --brand-charcoal: #0b0908;
+  --brand-paper: #f8e6c8;
+  --brand-red: #b63122;
+  --brand-yellow: #f3ab24;
+  --font-poster: Impact, Haettenschweiler, 'Arial Narrow', sans-serif;
+  /* A warm, readable ramp with orange reserved for identity and action. */
+  --bg-0: #0b0908;
+  --bg-1: #201d18;
+  --bg-2: #29251e;
+  --surface: #25211b;
+  --surface-2: #302a22;
+  --surface-3: #40362a;
   --line: rgba(255, 255, 255, 0.12);
   --line-strong: rgba(255, 255, 255, 0.24);
 
-  --text: #f5f7f7;
-  --text-dim: #b4c3ca;
-  --text-faint: #91a4af;
+  --text: #f8e6c8;
+  --text-dim: #c6b89e;
+  --text-faint: #ac9d83;
 
   --gold: #ffca7a;
   --gold-2: #ffb65a;
-  --saffron: #ffab57;
+  --saffron: #ff6400;
   --teal: #55d6c2;
   --rose: #ff5d73;
   --lime: #8de05a;
   --sky: #4cc9f0;
   --violet: #9b7bff;
 
-  --cream: #fff7e6;
-  --cream-2: #f3e6c8;
-  --ink: #102c2a;
-  --ink-dim: #3d5557;
+  --cream: #f8e6c8;
+  --cream-2: #e2ceaa;
+  --ink: #211b15;
+  --ink-dim: #594837;
 
   --good: #3ddc97;
   --bad: #ff5d73;
@@ -40,12 +46,12 @@
   --p5: #b794f6;
   --p6: #ff9f43;
 
-  --font-display: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-display: 'Bahnschrift SemiCondensed', 'Arial Narrow', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --font-body: 'Segoe UI', system-ui, -apple-system, sans-serif;
 
   --radius-s: 8px;
-  --radius-m: 14px;
-  --radius-l: 22px;
+  --radius-m: 6px;
+  --radius-l: 10px;
   --radius-pill: 999px;
 
   --shadow-1: 0 2px 8px rgba(0, 0, 0, 0.35);

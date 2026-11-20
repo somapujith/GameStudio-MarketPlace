@@ -31,7 +31,7 @@
 //              track(meta, events, state)   fold events into an opaque per-match `meta` kept in the room record
 //              emotes                       whitelist for `{t:'chat', emote}` (default: none)
 //
-//   `result().legacy` is only for Hyderabad Tycoon: when present, the old users.games / wins /
+//   `result().legacy` is only for Nawabi Raj: when present, the old users.games / wins /
 //   best_worth / rent_earned columns and the matches goal / max_rounds / dice_mode columns are
 //   kept up to date for the previous version of the app.
 import hyderabadTycoon from './hyderabad-tycoon.js';

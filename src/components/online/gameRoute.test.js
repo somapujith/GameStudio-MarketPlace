@@ -31,9 +31,13 @@ describe('resolveOnlineRoute (the dispatcher redirect logic)', () => {
   it('renders the route game when the room belongs to it', () => {
     expect(resolveOnlineRoute({ gameId: 'hyderabad-tycoon', code: 'ABC234', room: { exists: true, gameId: 'hyderabad-tycoon' } })).toEqual({ kind: 'ok' });
   });
+  it('accepts the Nawabi Raj slug for existing rooms without redirecting', () => {
+    expect(resolveOnlineRoute({ gameId: 'nawabi-raj', code: 'ABC234', room: { exists: true, gameId: 'hyderabad-tycoon' } })).toEqual({ kind: 'ok' });
+    expect(resolveOnlineRoute({ gameId: 'nawabi-raj', code: 'ABC234', room: { exists: true } })).toEqual({ kind: 'ok' });
+  });
   it('treats a room without gameId as the default game (old rooms, old servers)', () => {
     expect(resolveOnlineRoute({ gameId: DEFAULT_GAME_ID, code: 'ABC234', room: { exists: true } })).toEqual({ kind: 'ok' });
-    expect(resolveOnlineRoute({ gameId: 'ludo-lanes', code: 'ABC234', room: { exists: true } })).toEqual({ kind: 'redirect', to: '/play/hyderabad-tycoon/online/ABC234' });
+    expect(resolveOnlineRoute({ gameId: 'ludo-lanes', code: 'ABC234', room: { exists: true } })).toEqual({ kind: 'redirect', to: '/play/nawabi-raj/online/ABC234' });
   });
   it("redirects to the room's own game when the URL names another one", () => {
     expect(resolveOnlineRoute({ gameId: 'hyderabad-tycoon', code: 'ABC234', room: { exists: true, gameId: 'ludo-lanes' } })).toEqual({
@@ -42,7 +46,7 @@ describe('resolveOnlineRoute (the dispatcher redirect logic)', () => {
     });
   });
   it('redirects even from an unknown game id (the room decides)', () => {
-    expect(resolveOnlineRoute({ gameId: 'nope', code: 'XYZ789', room: { exists: true, gameId: 'hyderabad-tycoon' } }).to).toBe('/play/hyderabad-tycoon/online/XYZ789');
+    expect(resolveOnlineRoute({ gameId: 'nope', code: 'XYZ789', room: { exists: true, gameId: 'hyderabad-tycoon' } }).to).toBe('/play/nawabi-raj/online/XYZ789');
   });
   it('escapes ids in the redirect', () => {
     expect(resolveOnlineRoute({ gameId: 'a', code: 'ABC234', room: { gameId: 'we ird/id' } }).to).toBe('/play/we%20ird%2Fid/online/ABC234');

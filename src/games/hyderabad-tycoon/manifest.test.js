@@ -9,7 +9,7 @@ const { default: manifest } = await import('./manifest.js');
 describe('hyderabad-tycoon manifest', () => {
   it('has the contract fields', () => {
     expect(manifest.id).toBe('hyderabad-tycoon');
-    expect(manifest.name).toBe('Hyderabad Tycoon');
+    expect(manifest.name).toBe('Nawabi Raj');
     expect(manifest.tagline).toBe('Buy Dilsukhnagar to Banjara Hills');
     expect(manifest.tagline.length).toBeLessThanOrEqual(48);
     expect(manifest.description).toMatch(/one die/i);

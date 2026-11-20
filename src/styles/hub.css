@@ -29,26 +29,26 @@
    ========================================================================== */
 
 :root {
-  --hub-bg: #0a0f1f;
-  --hub-bg-2: #0e1530;
-  --hub-surface: #131a33;
-  --hub-surface-2: #1a2347;
-  --hub-surface-3: #243060;
-  --hub-line: rgba(150, 168, 255, 0.13);
-  --hub-line-2: rgba(150, 168, 255, 0.24);
-  --hub-text: #f3f5ff;
-  --hub-dim: #b0b9dc;
-  --hub-faint: #8190ba;
-  --hub-brand: #7b6dff;
-  --hub-brand-2: #5b4cf0;
-  --hub-brand-soft: rgba(123, 109, 255, 0.18);
+  --hub-bg: var(--brand-charcoal);
+  --hub-bg-2: #211d18;
+  --hub-surface: #25211b;
+  --hub-surface-2: #302a22;
+  --hub-surface-3: #40362a;
+  --hub-line: rgba(242, 229, 201, .16);
+  --hub-line-2: rgba(242, 229, 201, .3);
+  --hub-text: var(--brand-paper);
+  --hub-dim: #c6b89e;
+  --hub-faint: #ac9d83;
+  --hub-brand: var(--brand-orange);
+  --hub-brand-2: #db5b08;
+  --hub-brand-soft: rgba(255, 122, 26, .12);
   --hub-good: #3ddc97;
   --hub-warn: #ffb347;
   --hub-bad: #ff6b81;
-  --hub-r-s: 12px;
-  --hub-r-m: 16px;
-  --hub-r-l: 20px;
-  --hub-r-xl: 26px;
+  --hub-r-s: 3px;
+  --hub-r-m: 6px;
+  --hub-r-l: 8px;
+  --hub-r-xl: 10px;
   --hub-shadow: 0 16px 40px rgba(3, 6, 20, 0.5);
   --hub-shadow-s: 0 6px 18px rgba(3, 6, 20, 0.35);
   --hub-gutter: 16px;

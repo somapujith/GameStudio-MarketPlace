@@ -1,4 +1,4 @@
-// Server adapter for Hyderabad Tycoon (docs/MARKETPLACE.md section 5). Everything the generic
+// Server adapter for Nawabi Raj (docs/MARKETPLACE.md section 5). Everything the generic
 // GameRoom / persistence code needs to know about this game lives here: it wraps the rules engine
 // (shared/index.js) and the Tycoon-only helpers worker/{mask,settings,validate}.js.
 import * as engine from '../../shared/index.js';
@@ -103,7 +103,7 @@ const hotelsBuilt = (p, meta) => {
 
 const adapter = {
   id: ID,
-  name: 'Hyderabad Tycoon',
+  name: 'Nawabi Raj',
   minPlayers: MAX_PLAYERS_MIN,
   maxPlayers: MAX_PLAYERS_MAX,
   defaultMaxPlayers: 4,

@@ -1,4 +1,4 @@
-// Hyderabad Tycoon: the first Jalebi Games plugin. Keep this file TINY: no engine, no pages, no React
+// Nawabi Raj: the first Jalebi Games plugin. Keep this file TINY: no engine, no pages, no React
 // components except the two art components. Everything heavy is behind `loaders` (code-split).
 // Contract: docs/MARKETPLACE.md section 3. How to add the next game: docs/ADDING_A_GAME.md.
 import { TycoonCover, TycoonIcon } from '@/components/art/hub/index.js';
@@ -7,7 +7,7 @@ import { LOBBY_SETTINGS, SETTINGS_SCHEMA, TABLE_RULES, settingsSummary } from '.
 
 export default {
   id: GAME_ID,
-  name: 'Hyderabad Tycoon',
+  name: 'Nawabi Raj',
   tagline: 'Buy Dilsukhnagar to Banjara Hills',
   description:
     'Roll one die, buy and build your way around a board of Hyderabad localities. Collect rent, rise to Hotels and out-earn your friends in a private room. Spend your Snatch to grab a property the moment someone buys it.',

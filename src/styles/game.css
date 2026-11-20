@@ -1,4 +1,4 @@
-/* Hyderabad Tycoon: game screen panels. Owned by gameui-panels. All selectors are .hg- prefixed.
+/* Nawabi Raj: game screen panels. Owned by gameui-panels. All selectors are .hg- prefixed.
    Board internals live in board.css (gameui-board) and are never restyled here. */
 
 .hg-game, .hg-game *, .hg-game *::before, .hg-game *::after,

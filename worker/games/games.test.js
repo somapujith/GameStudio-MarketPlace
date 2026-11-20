@@ -6,7 +6,7 @@ import { maskStateFor } from '../mask.js';
 import * as engine from '../../shared/index.js';
 
 describe('registry', () => {
-  it('knows Hyderabad Tycoon and nothing else by default', () => {
+  it('knows Nawabi Raj and nothing else by default', () => {
     expect(DEFAULT_GAME_ID).toBe('hyderabad-tycoon');
     expect(getAdapter('hyderabad-tycoon')).toBe(tycoon);
     expect(Object.keys(GAME_ADAPTERS)).toEqual(['hyderabad-tycoon']);
@@ -19,7 +19,7 @@ describe('registry', () => {
   });
 
   it('listGames is the public, function-free description', () => {
-    expect(listGames()).toEqual([{ id: 'hyderabad-tycoon', name: 'Hyderabad Tycoon', minPlayers: 2, maxPlayers: 6 }]);
+    expect(listGames()).toEqual([{ id: 'hyderabad-tycoon', name: 'Nawabi Raj', minPlayers: 2, maxPlayers: 6 }]);
     expect(() => JSON.stringify(listGames())).not.toThrow();
   });
 

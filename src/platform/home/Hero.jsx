@@ -1,178 +1,54 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { paths } from '@/platform/paths.js';
 import { BRAND } from '@/platform/brand.js';
-import HubIcon from '@/platform/game/HubIcon.jsx';
+import { paths } from '@/platform/paths.js';
 import { useReducedMotion } from '@/components/shell/hooks.js';
-import { categoryLabel, featured, liveList } from './catalog.js';
-import { GameCover } from './GameArt.jsx';
-import { playersLabel, themeVars } from './gameTheme.js';
+import { featured, groupByCategory, orderedGames } from './catalog.js';
+import CategoryChips from './CategoryChips.jsx';
+import GameCard from './GameCard.jsx';
 
-const INTERVAL_MS = 7000;
-const SWIPE_PX = 50;
-
-function Slide({ game, active, index, total }) {
-  const live = game.status === 'live';
-  const players = playersLabel(game.players);
-  const feats = Array.isArray(game.features) ? game.features.slice(0, 3) : [];
-  return (
-    <article
-      className={`hh2-hero__slide ${active ? 'is-active' : ''}`}
-      style={themeVars(game)}
-      role="group"
-      aria-roledescription="slide"
-      aria-label={`${index + 1} of ${total}: ${game.name}`}
-      aria-hidden={active ? undefined : true}
-      inert={!active}
-    >
-      <GameCover game={game} className="hh2-hero__art" />
-      <div className="hh2-hero__body">
-        <p className="hub-eyebrow hh2-hero__eyebrow">
-          <span className="hh2-eyebrow__dot" aria-hidden="true" />
-          Featured{game.category ? ` · ${categoryLabel(game.category)}` : ''}
-        </p>
-        <h2 className="hh2-hero__title">{game.name}</h2>
-        {game.tagline && <p className="hh2-hero__tag">{game.tagline}</p>}
-        <ul className="hh2-hero__meta" aria-label="Game details">
-          {players && (
-            <li className="hub-pill hh2-glass">
-              <HubIcon name="users" size={14} /> {players}
-            </li>
-          )}
-          {game.duration && (
-            <li className="hub-pill hh2-glass">
-              <HubIcon name="clock" size={14} /> {game.duration}
-            </li>
-          )}
-          {feats.map((f) => (
-            <li key={f} className="hub-pill hh2-glass hh2-hero__feat">
-              {f}
-            </li>
-          ))}
-        </ul>
-        <div className="hh2-hero__cta">
-          {live ? (
-            <>
-              <Link to={paths.game(game.id)} className="hub-btn hub-btn--accent hub-btn--lg">
-                <HubIcon name="play" size={18} /> Play now
-              </Link>
-            </>
-          ) : (
-            <Link to={paths.game(game.id)} className="hub-btn hub-btn--soft hub-btn--lg">
-              <HubIcon name="bell" size={18} /> Coming soon
-            </Link>
-          )}
-        </div>
-      </div>
-    </article>
-  );
-}
-
-/** Featured-game hero. Rotates through the live games (pauses on hover / focus / touch, with a pause button). */
+/** Live text and controls over the cinematic Hyderabad release artwork. */
 export default function Hero() {
+  const game = featured();
+  const games = useMemo(orderedGames, []);
+  const groups = useMemo(groupByCategory, []);
+  const [category, setCategory] = useState('all');
+  const [selected, setSelected] = useState(game?.id || games[0]?.id);
+  const cards = useRef({});
   const reduced = useReducedMotion();
-  const slides = useMemo(() => {
-    const out = [];
-    const f = featured();
-    if (f) out.push(f);
-    liveList().forEach((g) => {
-      if (!out.some((x) => x.id === g.id)) out.push(g);
-    });
-    return out;
-  }, []);
-  const total = slides.length;
-  const many = total > 1;
-
-  const [index, setIndex] = useState(0);
-  const [held, setHeld] = useState(false);
-  const [paused, setPaused] = useState(false);
-  const [tabHidden, setTabHidden] = useState(false);
-  const touchX = useRef(null);
-
-  const running = many && !reduced && !held && !paused && !tabHidden;
-
-  useEffect(() => {
-    if (!running) return undefined;
-    const t = setTimeout(() => setIndex((n) => (n + 1) % total), INTERVAL_MS);
-    return () => clearTimeout(t);
-  }, [running, index, total]);
-
-  useEffect(() => {
-    const onVis = () => setTabHidden(document.hidden);
-    document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
-  }, []);
-
-  const go = useCallback((n) => setIndex(((n % total) + total) % total), [total]);
-
-  if (!total) {
-    return (
-      <section className="hh2-hero hh2-hero--empty" aria-label="Featured game">
-        <h2 className="hh2-hero__title">{BRAND.name}</h2>
-        <p className="hh2-hero__tag">{BRAND.tagline}</p>
-      </section>
-    );
-  }
+  const active = groups.some((group) => group.id === category) ? category : 'all';
+  const shown = active === 'all' ? games : groups.find((group) => group.id === active)?.games || [];
+  const activeId = shown.some((item) => item.id === selected) ? selected : shown[0]?.id;
+  const selectCard = (id) => {
+    setSelected(id);
+    cards.current[id]?.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: reduced ? 'auto' : 'smooth' });
+    cards.current[id]?.querySelector('a')?.focus({ preventScroll: true });
+  };
 
   return (
-    <section
-      className="hh2-hero"
-      aria-roledescription={many ? 'carousel' : undefined}
-      aria-label="Featured games"
-      onPointerEnter={(e) => e.pointerType === 'mouse' && setHeld(true)}
-      onPointerLeave={() => setHeld(false)}
-      onFocus={() => setHeld(true)}
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget)) setHeld(false);
-      }}
-      onTouchStart={(e) => {
-        touchX.current = e.touches[0]?.clientX ?? null;
-      }}
-      onTouchEnd={(e) => {
-        const x0 = touchX.current;
-        touchX.current = null;
-        const x1 = e.changedTouches[0]?.clientX;
-        if (!many || x0 == null || x1 == null || Math.abs(x1 - x0) < SWIPE_PX) return;
-        go(index + (x1 < x0 ? 1 : -1));
-      }}
-    >
-      <div className="hh2-hero__stage" aria-live={running ? 'off' : 'polite'}>
-        {slides.map((g, i) => (
-          <Slide key={g.id} game={g} index={i} total={total} active={i === index} />
-        ))}
-      </div>
-
-      {many && (
-        <div className="hh2-hero__nav">
-          <div className="hh2-dots" role="group" aria-label="Choose a featured game">
-            {slides.map((g, i) => (
-              <button
-                key={g.id}
-                type="button"
-                className={`hh2-dot ${i === index ? 'is-on' : ''}`}
-                aria-label={`Show ${g.name}`}
-                aria-current={i === index ? 'true' : undefined}
-                onClick={() => go(i)}
-              >
-                <i />
-              </button>
-            ))}
-          </div>
-          {!reduced && (
-            <button
-              type="button"
-              className="hh2-dotpause"
-              onClick={() => setPaused((p) => !p)}
-              aria-pressed={paused}
-              aria-label={paused ? 'Resume rotation' : 'Pause rotation'}
-            >
-              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false" fill="currentColor">
-                {paused ? <path d="M3 1.8v10.4L12 7z" /> : <path d="M3 1.5h2.6v11H3zM8.4 1.5H11v11H8.4z" />}
-              </svg>
-            </button>
-          )}
+    <section className="street-hero film-hero" aria-label={BRAND.name}>
+      <img className="film-hero__scene" src="/art/cinematic/hero.webp" alt="" width="2048" height="1024" fetchPriority="high" decoding="async" />
+      <div className="film-hero__shade" aria-hidden="true" />
+      <div className="street-hero__message film-hero__message">
+        <h1 className="street-hero__headline film-hero__headline"><span>GULLY MADE.</span><span>GAME READY.</span></h1>
+        <p className="film-hero__tagline">GAMES FROM HYDERABAD<br />FOR YOUR GANG.<span aria-hidden="true" /></p>
+        <div className="street-hero__actions film-hero__actions">
+          {game && <Link to={paths.game(game.id)} className="street-hero__play film-ticket"><span aria-hidden="true">&#9654;</span>{game.status === 'live' ? 'PLAY NOW' : 'EXPLORE GAME'}</Link>}
+          <a className="street-hero__explore film-explore" href="#games">EXPLORE GAMES <span aria-hidden="true">&#8594;</span></a>
         </div>
-      )}
+      </div>
+      <div id="games" className="film-hero__arcade" tabIndex={-1}>
+        <h2 className="hub-sr">Choose your game</h2>
+        <ul className="film-shelf" aria-label="Games" style={{ gridTemplateColumns: shown.map((_, i) => i === 0 ? '1.3fr' : 'minmax(0, 1fr)').join(' ') }}>
+          {shown.map((item) => <li key={item.id} ref={(node) => { cards.current[item.id] = node; }} onFocus={() => setSelected(item.id)}><GameCard game={item} selected={activeId === item.id} /></li>)}
+        </ul>
+        <div className="film-hero__shelf-tools">
+          <div className="film-dots" role="group" aria-label="Choose a game tile">
+            {shown.map((item) => <button key={item.id} type="button" className={activeId === item.id ? 'is-active' : ''} aria-label={`Show ${item.name} tile`} aria-pressed={activeId === item.id} onClick={() => selectCard(item.id)}><span /></button>)}
+          </div>
+          <details className="film-filter"><summary>Browse by category</summary><CategoryChips cats={groups} value={active} onChange={setCategory} /></details>
+        </div>
+      </div>
     </section>
   );
 }

@@ -3,6 +3,7 @@ import { Navigate, useParams } from 'react-router-dom';
 import { getRoom } from '@/lib/api.js';
 import { useAuth } from '@/lib/auth.jsx';
 import { paths } from '@/platform/paths.js';
+import { normalizeGameId } from '@/platform/game/identity.js';
 import { isRoomCode, normalizeRoomCode } from '@/components/online/codes.js';
 import { gameOf, gameName, loadOnlineGame, loadedOnlineGame } from '@/components/online/games.js';
 import { knownRoomGame, lookupResult, resolveOnlineRoute } from '@/components/online/gameRoute.js';
@@ -19,7 +20,8 @@ function Screen({ children }) {
  * `manifest.loaders.onlineGame` and renders it with nothing but the route params (the plugin reads `useParams()`).
  */
 export default function OnlineGame() {
-  const { gameId, code: rawCode } = useParams();
+  const { gameId: routeGameId, code: rawCode } = useParams();
+  const gameId = normalizeGameId(routeGameId);
   const code = normalizeRoomCode(rawCode || '');
   const { user, loading } = useAuth();
 

@@ -4,6 +4,7 @@
 // To add a game: create src/games/<id>/manifest.js and add one import + one entry to MANIFESTS below.
 import tycoon from './hyderabad-tycoon/manifest.js';
 import { SOON_GAMES } from './_soon/index.js';
+import { normalizeGameId } from '@/platform/game/identity.js';
 
 /** Browse categories. `icon` is the id handed to the hub art kit's `<CategoryIcon id=... />`. */
 export const CATEGORIES = [
@@ -32,7 +33,7 @@ const BY_ID = new Map(GAMES.map((g) => [g.id, g]));
 
 /** Manifest for an id, or null (unknown ids are normal: URLs come from users). */
 export function getGame(id) {
-  return BY_ID.get(String(id ?? '')) ?? null;
+  return BY_ID.get(normalizeGameId(String(id ?? ''))) ?? null;
 }
 
 const isSoon = (g) => g.status === 'coming_soon';

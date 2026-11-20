@@ -7,7 +7,7 @@ A game is three small pieces that share one **id** (url-safe, lowercase, never c
 3. **Server adapter** in `worker/games/<id>.js`: the only place the Worker learns the rules.
 
 Nothing else may know the game: the hub, lobby, `GameRoom`, leaderboard and database are generic.
-**Hyderabad Tycoon is the reference**: copy its shape (`src/games/hyderabad-tycoon/`, `worker/games/hyderabad-tycoon.js`). The full contract is `docs/MARKETPLACE.md` (sections 3, 4, 5). The wire protocol every game gets for free (room messages, `state` / `events` / `seq`, timers, reconnect, redaction hook) is `docs/GAME_RULES.md` section 8; its rules sections are Tycoon's own.
+**Nawabi Raj is the reference**: copy its shape (`src/games/hyderabad-tycoon/`, `worker/games/hyderabad-tycoon.js`). The full contract is `docs/MARKETPLACE.md` (sections 3, 4, 5). The wire protocol every game gets for free (room messages, `state` / `events` / `seq`, timers, reconnect, redaction hook) is `docs/GAME_RULES.md` section 8; its rules sections are Tycoon's own.
 
 ## 1. Folder layout
 

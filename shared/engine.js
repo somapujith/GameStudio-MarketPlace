@@ -1,4 +1,4 @@
-// Hyderabad Tycoon rules engine (rules v2). Pure + deterministic: runs in the browser AND the Cloudflare Worker.
+// Nawabi Raj rules engine (rules v2). Pure + deterministic: runs in the browser AND the Cloudflare Worker.
 //
 //   createGame({ players, settings?, seed? })  -> state
 //   applyAction(state, action)                 -> { state, events, error? }   (never mutates `state`)

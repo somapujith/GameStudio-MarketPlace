@@ -1,6 +1,6 @@
 // GameRoom must be game-agnostic: this file defines a trivial second game ("Counter Race") inside
 // the test, registers it as an adapter and drives the Durable Object through the same code paths
-// Hyderabad Tycoon uses. Nothing here knows about properties, dice or auctions.
+// Nawabi Raj uses. Nothing here knows about properties, dice or auctions.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 vi.mock('cloudflare:workers', () => ({
@@ -637,7 +637,7 @@ describe('rooms stored by the previous version keep working', () => {
     ...over,
   });
 
-  it('a record without gameId / visibility is a private Hyderabad Tycoon room', async () => {
+  it('a record without gameId / visibility is a private Nawabi Raj room', async () => {
     const ctx = makeCtx();
     ctx.store.set('room', oldRecord());
     const h = await new Harness({}, ctx).loaded();

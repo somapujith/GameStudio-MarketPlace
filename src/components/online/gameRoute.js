@@ -3,6 +3,7 @@
 // dispatcher compares the URL's game with the room's and redirects when they differ.
 import BRAND from '@/platform/brand.js';
 import { paths } from '@/platform/paths.js';
+import { normalizeGameId } from '@/platform/game/identity.js';
 
 /** Rooms created before the marketplace have no `gameId`: they are the first game. */
 export const DEFAULT_GAME_ID = BRAND.defaultGameId;
@@ -28,7 +29,7 @@ export function resolveOnlineRoute({ gameId, code, room }) {
   if (room && room.exists === false) return { kind: 'missing' };
   if (!room) return { kind: 'ok' };
   const actual = roomGameId(room);
-  if (actual !== gameId) return { kind: 'redirect', to: paths.online(actual, code) };
+  if (normalizeGameId(actual) !== normalizeGameId(gameId)) return { kind: 'redirect', to: paths.online(actual, code) };
   return { kind: 'ok' };
 }
 

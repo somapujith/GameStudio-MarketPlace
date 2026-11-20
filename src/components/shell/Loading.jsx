@@ -1,19 +1,13 @@
 import { HubMark } from '@/components/art/hub/index.js';
 
 /** Branded loading screen (Suspense fallback). `inline` fills only its container. */
-export default function Loading({ label = 'Loading…', inline = false }) {
+export default function Loading({ label = 'Cooking up your next round…', inline = false }) {
   return (
-    <div className={`hh-loading ${inline ? 'hh-loading--inline' : ''}`} role="status" aria-live="polite">
-      <div className="hh-loading__mark">
-        <span className="hh-loading__halo" aria-hidden="true" />
-        <HubMark size={72} />
+    <div className={`hh-loading jalebi-loading ${inline ? 'hh-loading--inline' : ''}`} role="status" aria-live="polite">
+      <div className="jalebi-loader" aria-hidden="true">
+        <HubMark size={96} />
       </div>
-      <div className="hh-loading__dots" aria-hidden="true">
-        <i />
-        <i />
-        <i />
-      </div>
-      <p className="hh-loading__label">{label}</p>
+      <p className="jalebi-loader__caption">{label}</p>
     </div>
   );
 }

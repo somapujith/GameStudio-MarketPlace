@@ -1,4 +1,4 @@
-// Hyderabad Tycoon cover (16:9) + app icon, drawn for the hub: an isometric Charminar diorama on a Monopoly-style board
+// Nawabi Raj cover (16:9) + app icon, drawn for the hub: an isometric Charminar diorama on a Monopoly-style board
 // ring, under a warm night skyline, with coins and a die in front. The left third of the cover is deliberately calm so
 // card/hero text can sit on it. Repeated parts (minarets, chhatris, arch faces) are drawn once and <use>d to keep the SVG small.
 import { memo } from 'react';

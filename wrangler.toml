@@ -1,4 +1,4 @@
-# Jalebi Games (a games marketplace; Hyderabad Tycoon is its first game) - one Cloudflare Worker:
+# Jalebi Games (a games marketplace; Nawabi Raj is its first game) - one Cloudflare Worker:
 # static React app + /api + /ws + Durable Objects.
 #
 # SECRETS are never stored in this file:

@@ -5,6 +5,7 @@ import { claimDaily, dailyRewardFor, todayKey, useProfile } from '../stores.js';
 import { useReducedMotion } from '../hooks.js';
 import { playSfx } from '../sound.js';
 import { useToast } from '../Toast.jsx';
+import '@/platform/home/adda.css';
 
 function yesterdayKey() {
   const d = new Date();
@@ -69,7 +70,8 @@ export default function DailyReward() {
   const todaysCoins = dailyRewardFor(curStreak);
 
   return (
-    <section className={`hub-panel hh2-daily ${claimedToday ? 'is-claimed' : 'is-ready'}`} aria-labelledby="hh2-daily-h">
+    <section className={`hub-panel hh2-daily adda-ticket ${claimedToday ? 'is-claimed' : 'is-ready'}`} aria-labelledby="hh2-daily-h">
+      <p className="adda-ticket__serial">Jalebi Games / Daily admission</p>
       <div className="hh2-daily__glow" aria-hidden="true" />
       <div className="hh2-daily__head">
         <span className="hh2-daily__gift" aria-hidden="true">

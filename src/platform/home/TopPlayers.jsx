@@ -4,6 +4,8 @@ import HubIcon from '@/platform/game/HubIcon.jsx';
 import { fmtNum } from '@/components/shell/ui.jsx';
 import Ava from './Ava.jsx';
 import { useApi, useApiGate } from './useApi.js';
+import IndiaArt from '@/components/art/IndiaArt.jsx';
+import './adda.css';
 
 const MEDAL = ['#ffd24d', '#d9deea', '#e09a5b'];
 
@@ -31,10 +33,10 @@ export default function TopPlayers() {
     body = (
       <ol className="hh2-top">
         {rows.map((r, i) => (
-          <li key={`${r.rank}-${r.name}`} className="hh2-top__item">
+          <li key={`${r.rank}-${r.name}`} className={`hh2-top__item adda-podium__place adda-podium__place--${i + 1}`}>
             <Link to={paths.leaderboard()} className="hh2-top__link" aria-label={`Rank ${r.rank}: ${r.name}, level ${r.level}, ${r.wins} wins`}>
               <span className="hh2-top__av">
-                <Ava preset={r.avatar} size={56} ring={MEDAL[i]} />
+                <Ava preset={r.avatar} size={i === 0 ? 82 : 56} ring={MEDAL[i]} />
                 <i className="hh2-top__rank" style={{ '--mc': MEDAL[i] }}>
                   {r.rank}
                 </i>
@@ -73,16 +75,19 @@ export default function TopPlayers() {
   }
 
   return (
-    <section className="hub-panel hh2-topplayers" aria-labelledby="hh2-top-h" aria-busy={state === 'loading'}>
+    <section className="hub-panel hh2-topplayers adda-legends" aria-labelledby="hh2-top-h" aria-busy={state === 'loading'}>
       <div className="hub-panel__head">
-        <h2 id="hh2-top-h" className="hub-section__title">
-          Top players
-        </h2>
+        <h3 id="hh2-top-h" className="hub-section__title">
+          The podium
+        </h3>
         <Link to={paths.leaderboard()} className="hub-section__more">
           Leaderboard
         </Link>
       </div>
-      {body}
+      <div className="adda-legends__layout">
+        <div className="adda-legends__board">{body}</div>
+        <IndiaArt art="mumbai" className="adda-legends__art" />
+      </div>
     </section>
   );
 }

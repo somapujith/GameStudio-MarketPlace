@@ -1,4 +1,4 @@
-# Hyderabad Tycoon: game rules, state machine and wire protocol
+# Nawabi Raj: game rules, state machine and wire protocol
 
 This is the authoritative description of the game as it is built. It is the contract between the rules engine
 (`shared/engine.js`), the room server (`worker/GameRoom.js`, `worker/games/hyderabad-tycoon.js`, `worker/validate.js`,

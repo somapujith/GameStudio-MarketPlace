@@ -1,5 +1,10 @@
 import { Link } from 'react-router-dom';
+import { HubMark } from '@/components/art/hub/HubMark.jsx';
 import '@/styles/online.css';
+
+function LoadingMark() {
+  return <span className="jalebi-loader jalebi-loader--small" aria-hidden="true"><HubMark size={48} /></span>;
+}
 
 /**
  * Centered card for terminal / gating states (signed out, kicked, room gone, error, loading).
@@ -9,7 +14,7 @@ export default function StatusPanel({ icon = 'i', tone = 'info', title, body, ac
   return (
     <div className="ho-status" role={tone === 'bad' ? 'alert' : 'status'} aria-busy={busy || undefined}>
       <div className={`ho-status__icon ho-status__icon--${tone}`} aria-hidden="true">
-        {busy ? <span className="ho-spinner ho-spinner--lg" /> : icon}
+        {busy ? <LoadingMark /> : icon}
       </div>
       <h1 className="ho-status__title">{title}</h1>
       {body && <p className="ho-status__body">{body}</p>}
@@ -33,11 +38,11 @@ export default function StatusPanel({ icon = 'i', tone = 'info', title, body, ac
   );
 }
 
-/** Spinner + caption used while something loads. */
+/** Branded spiral + caption used while something loads. */
 export function Loading({ text = 'Loading...' }) {
   return (
     <div className="ho-loading" role="status" aria-live="polite">
-      <span className="ho-spinner ho-spinner--lg" aria-hidden="true" />
+      <LoadingMark />
       <span>{text}</span>
     </div>
   );

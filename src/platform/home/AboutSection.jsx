@@ -14,7 +14,7 @@ export default function AboutSection() {
         <HubIcon name="info" size={18} /> About &amp; credits
       </h2>
       <p>
-        <b>{BRAND.name}</b> is a small, fan-made and non-commercial marketplace of multiplayer games. Pick a game, grab your friends and play in seconds.
+        <b>{BRAND.name}</b> brings a Hyderabadi street spirit to multiplayer games. A fan-made, non-commercial place to play. Bring your people. Ek aur round?
       </p>
       {gameCredits.map((g) => (
         <div key={g.id} className="hh2-about__game">
@@ -24,7 +24,7 @@ export default function AboutSection() {
           ))}
         </div>
       ))}
-      <p className="hub-muted">Built with React and Vite. Fonts: Noto Sans (SIL Open Font License). Featuring the Jalebi Games mascot and logo.</p>
+      <p className="hub-muted">Built with React and Vite. System fonts. Original Jalebi Games logo and mascot. Made with masala.</p>
     </section>
   );
 }

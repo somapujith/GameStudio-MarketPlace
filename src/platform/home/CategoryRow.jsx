@@ -45,13 +45,13 @@ export default function CategoryRow({ cat, games }) {
   };
 
   return (
-    <section className="hub-section hh2-catrow" aria-labelledby={id} data-count={games.length}>
+    <section className="hub-section hh2-catrow street-category" aria-labelledby={id} data-count={games.length}>
       <div className="hub-section__head">
         <h3 id={id} className="hub-section__title hh2-catrow__title">
           <CatIcon cat={cat} size={22} />
           {cat.label}
-          <span className="hub-pill" aria-label={`${games.length} game${games.length === 1 ? '' : 's'}`}>
-            {games.length}
+          <span className="hub-pill street-category__count" aria-label={`${games.length} game${games.length === 1 ? '' : 's'}`}>
+            {String(games.length).padStart(2, '0')}
           </span>
         </h3>
         <div className="hh2-arrows" data-over={edge.over ? 'true' : 'false'}>
@@ -63,7 +63,7 @@ export default function CategoryRow({ cat, games }) {
           </button>
         </div>
       </div>
-      <ul className="hub-row hh2-rail" ref={rail} aria-label={`${cat.label} games`}>
+      <ul className="hub-row hh2-rail street-catalog__rail" ref={rail} aria-label={`${cat.label} games`}>
         {games.map((g) => (
           <li key={g.id}>
             <GameCard game={g} />

@@ -7,6 +7,8 @@ import { BRAND } from '@/platform/brand.js';
 import { LEGACY_REDIRECTS, paths } from '@/platform/paths.js';
 import PageLoading from '@/platform/game/PageLoading.jsx';
 import '@/styles/hub.css';
+import '@/styles/jalebi.css';
+import '@/styles/jalebi-layout.css';
 
 /**
  * Lazy page loader that tolerates default OR named exports (several pages are written by other agents;

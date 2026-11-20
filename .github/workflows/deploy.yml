@@ -1,4 +1,4 @@
-# Deploys Hyderabad Tycoon to Cloudflare Workers on every push to main.
+# Deploys Jalebi Games to Cloudflare Workers on every push to main.
 #
 # Repository secrets (Settings -> Secrets and variables -> Actions). All five are required:
 #   CLOUDFLARE_API_TOKEN   API token created from the "Edit Cloudflare Workers" template

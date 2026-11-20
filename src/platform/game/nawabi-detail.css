@@ -1,0 +1,93 @@
+/* A Hyderabad cinema poster and an old invitation ticket, with real room controls. */
+.hub-app:has(.nawabi-page) .hub-container { max-width: none; padding: 0; }
+.hub-app:has(.nawabi-page) .hub-main { padding-top: 0; }
+.nawabi-page.hub-page {
+  position: relative; isolation: isolate; display: block; min-height: calc(100svh - var(--topbar-h));
+  padding: 30px clamp(22px,3.5vw,60px) 36px; overflow: hidden;
+  color: #f8e6c8; background: #100e0b;
+}
+.nawabi-page__scene { position: absolute; z-index: -3; inset: 0; width: 100%; height: 100%; max-width: none; object-fit: cover; object-position: center bottom; }
+.nawabi-page::before { content: ''; position: absolute; z-index: -2; inset: 0; pointer-events: none; background: linear-gradient(90deg,#08060422,transparent 55%),linear-gradient(0deg,#08060433,transparent 25%); }
+.nawabi-page .hub-back { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin: 0 0 4px; color: #f8e6c8; font-size: 17px; font-weight: 750; }
+.nawabi-layout { display: grid; grid-template-columns: minmax(0,1.25fr) minmax(0,1fr); align-items: center; gap: 20px; }
+.nawabi-poster { display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; min-width: 0; min-height: max(600px,calc(100svh - 230px)); padding: 4px 0 12px; }
+.nawabi-poster__identity { position: relative; width: 74%; padding-top: 85px; }
+.nawabi-poster__crown { position: absolute; top: 0; left: 29%; color: #ffbd21; width: clamp(62px,6vw,100px); height: auto; transform: rotate(-9deg); }
+.nawabi-poster__title { display: flex; flex-direction: column; align-items: flex-start; margin: 0; font: italic 900 clamp(85px,7vw,142px)/.83 Georgia,'Times New Roman',serif; letter-spacing: -.075em; text-transform: uppercase; transform: rotate(-8deg); transform-origin: left center; text-shadow: 3px 4px 0 #2c160b; }
+.nawabi-poster__title > span,.nawabi-poster__title > strong { display: block; white-space: nowrap; mask-image: url('/art/cinematic/ink-wear.svg'); mask-size: 240px; }
+.nawabi-poster__title > strong { margin-left: 24px; color: #ff6400; font-size: 1.95em; line-height: .98; font-weight: 900; letter-spacing: -.08em; }
+.nawabi-poster__pitch { position: relative; z-index: 0; width: fit-content; margin: 8px 0 0; padding: 13px 20px; font: 800 clamp(14px,1.35vw,23px)/1.4 var(--font-body); color: #17100a; transform: rotate(-6deg); }
+.nawabi-poster__pitch::before { content: ''; position: absolute; z-index: -1; inset: 0 -12px; background: #f5d49a url('/art/cinematic/grain.svg'); clip-path: polygon(3% 3%,97% 0,95% 7%,100% 8%,97% 16%,99% 23%,97% 31%,100% 35%,97% 48%,99% 60%,97% 68%,100% 76%,96% 79%,97% 95%,2% 100%,4% 94%,0 93%,3% 83%,0 80%,3% 68%,0 65%,3% 48%,0 44%,3% 30%,0 26%,4% 16%,0 13%); }
+.nawabi-poster__facts { display: flex; align-items: center; margin: 36px 0 0; padding: 13px 20px; border: 2px solid #e6b65f; outline: 1px solid #b08643; outline-offset: -6px; border-radius: 15px 6px; background: #0a0907ed; box-shadow: 0 5px 14px #0009; }
+.nawabi-poster__facts > div { display: flex; align-items: center; gap: 13px; padding-inline: 8px 22px; }
+.nawabi-poster__facts > div + div { border-left: 1px solid #ae8643; padding-left: 22px; padding-right: 4px; }
+.nawabi-poster__facts .hub-icon { color: #eeb761; }
+.nawabi-poster__facts > div > div { display: flex; flex-direction: column-reverse; }
+.nawabi-poster__facts dt { font: 400 18px/1.3 var(--font-poster); }
+.nawabi-poster__facts dd { margin: 0; font: 400 27px/1.15 var(--font-poster); white-space: nowrap; }
+.nawabi-ticket { position: relative; min-width: 0; padding: clamp(28px,3.1vw,52px); background: #f9dfb1 url('/art/cinematic/nawabi-paper.webp') center/100% 100% no-repeat; color: #100d08; border-radius: 8px; box-shadow: 9px 12px 0 #412a10a0,0 20px 50px #0009; outline: 1px solid #a77133; }
+.nawabi-ticket::before { content: ''; position: absolute; inset: 11px; border: 1px solid #b8402466; pointer-events: none; }
+.nawabi-ticket__head { position: relative; padding-bottom: clamp(30px,3vw,48px); }
+.nawabi-ticket__head > p { margin: 0 0 10px; font: 400 clamp(14px,1.4vw,22px)/1.3 var(--font-poster); letter-spacing: .15em; text-transform: uppercase; }
+.nawabi-ticket__head h2 { margin: 0; font: italic 400 clamp(43px,4.3vw,74px)/1.05 var(--font-poster); letter-spacing: .005em; text-transform: uppercase; }
+.nawabi-ticket__swash { position: absolute; width: 29%; height: 11px; bottom: 20px; left: 31%; border-top: 8px solid #ef5c05; border-radius: 50%; transform: rotate(-3deg); }
+.nawabi-ticket__step h3 { margin: 0 0 17px; font: 800 clamp(17px,1.65vw,27px)/1.3 var(--font-body); letter-spacing: -.02em; }
+.nawabi-ticket__seats { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 11px; }
+.nawabi-ticket__seats button { display: grid; place-items: center; min-height: clamp(60px,5vw,85px); padding: 8px; border: 1.5px solid #30281c; border-radius: 10px; color: #100d08; font: 400 clamp(30px,2.7vw,44px)/1 var(--font-poster); background: #fff1d322; }
+.nawabi-ticket__seats button.is-on { color: #fff1d3; border-color: #f3680c; background: #f56400; box-shadow: inset 0 0 12px #ed4b0b55; }
+.nawabi-ticket__create { display: flex; align-items: center; justify-content: center; gap: 18px; width: 100%; min-height: clamp(72px,5.7vw,96px); margin-top: 30px; padding: 12px 16px; background: #ff6400; color: #fff0cf; border: 1px solid #ed8d27; border-radius: 13px; box-shadow: 0 7px 0 #100d08; font: 400 clamp(26px,2.6vw,44px)/1.1 var(--font-poster); text-transform: uppercase; }
+.nawabi-ticket__create:disabled,.nawabi-ticket__seats button:disabled { cursor: wait; opacity: .7; }
+.nawabi-ticket__dice { flex: none; width: 47px; height: auto; }
+.nawabi-ticket__or { display: flex; align-items: center; gap: 20px; margin: 32px 16px 22px; font: 400 23px/1.3 var(--font-poster); text-transform: uppercase; }
+.nawabi-ticket__or span { height: 1px; background: #9f7648; flex: 1; }
+.nawabi-ticket__join { display: flex; align-items: center; justify-content: center; gap: 18px; width: calc(100% - 24px); min-height: 58px; margin-inline: auto; padding: 9px; border: 1.5px solid #30281c; border-radius: 10px; font: 400 clamp(21px,1.9vw,32px)/1.2 var(--font-poster); text-transform: uppercase; color: #100d08; background: #fff1d311; }
+.nawabi-ticket__hint { max-width: 40ch; margin: 15px auto 0; color: #68503a; font: 650 clamp(12px,1.1vw,17px)/1.5 var(--font-body); text-align: center; }
+.nawabi-ticket :is(button,[role='radio']):focus-visible { outline: 3px solid #16100a; outline-offset: 4px; }
+@media (hover:hover) { .nawabi-ticket__seats button:not(.is-on):hover,.nawabi-ticket__join:hover { background: #edbd7066; } .nawabi-ticket__create:not(:disabled):hover { background: #e95400; } }
+@media (min-width:1800px) { .nawabi-layout { max-width: 1800px; margin-inline: auto; } }
+@media (max-width:1099px) and (min-width:800px) {
+  .nawabi-layout { grid-template-columns: minmax(0,1fr) minmax(0,1.1fr); gap: 18px; }
+  .nawabi-poster__title { font-size: 8vw; }
+  .nawabi-ticket { padding: 27px; }
+  .nawabi-ticket__seats { gap: 7px; }
+  .nawabi-ticket__head h2 { font-size: 45px; }
+  .nawabi-poster__facts { padding: 12px; }
+  .nawabi-poster__facts > div { gap: 8px; padding-inline: 4px 12px; }
+  .nawabi-poster__facts > div + div { padding-left: 12px; }
+  .nawabi-poster__facts .hub-icon { width: 28px; }
+  .nawabi-poster__facts dd { font-size: 24px; }
+  .nawabi-ticket__create { font-size: 29px; gap: 10px; }
+  .nawabi-ticket__dice { width: 37px; }
+}
+@media (max-width:799px) {
+  .nawabi-page.hub-page { padding: 16px 20px 30px; }
+  .nawabi-page__scene { height: 590px; object-position: 27% bottom; }
+  .nawabi-layout { grid-template-columns: minmax(0,1fr); gap: 30px; }
+  .nawabi-poster { min-height: 455px; padding: 4px 0 0; }
+  .nawabi-poster__identity { width: 75%; padding-top: 40px; }
+  .nawabi-poster__crown { width: 65px; }
+  .nawabi-poster__title { font-size: clamp(74px,13vw,100px); }
+  .nawabi-poster__pitch { font-size: 14px; padding-inline: 13px; }
+  .nawabi-poster__facts { margin-top: 40px; padding: 12px 15px; }
+  .nawabi-poster__facts .hub-icon { width: 32px; }
+  .nawabi-poster__facts > div { gap: 10px; padding-right: 18px; }
+  .nawabi-poster__facts > div + div { padding-left: 18px; padding-right: 5px; }
+  .nawabi-ticket { padding: 32px 25px; }
+  .nawabi-ticket__head h2 { font-size: clamp(40px,8vw,59px); }
+  .nawabi-ticket__seats { gap: 8px; }
+  .nawabi-ticket__create { font-size: 30px; min-height: 76px; gap: 12px; }
+  .nawabi-ticket__join { width: 100%; font-size: 26px; }
+}
+@media (max-width:359px) {
+  .nawabi-page.hub-page { padding-inline: 16px; }
+  .nawabi-poster__title { font-size: 66px; }
+  .nawabi-poster__pitch { font-size: 12px; }
+  .nawabi-poster__facts { padding-inline: 10px; }
+  .nawabi-poster__facts > div { padding-inline: 4px 12px; }
+  .nawabi-poster__facts > div + div { padding-left: 12px; }
+  .nawabi-ticket { padding: 29px 20px; }
+  .nawabi-ticket__head h2 { font-size: 36px; }
+  .nawabi-ticket__create { font-size: 25px; gap: 8px; padding-inline: 9px; }
+  .nawabi-ticket__dice { width: 35px; }
+  .nawabi-ticket__join { font-size: 22px; }
+}

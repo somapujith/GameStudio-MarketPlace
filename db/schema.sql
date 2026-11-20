@@ -1,4 +1,4 @@
--- Hyderabad Tycoon schema. Idempotent: safe to run any number of times
+-- Nawabi Raj schema. Idempotent: safe to run any number of times
 -- (`node scripts/migrate.js`). Only CREATE ... IF NOT EXISTS statements.
 -- Statements are separated by semicolons at the end of a line; keep it that way
 -- (the migration script splits on ";" - no procedural blocks / dollar quoting here).

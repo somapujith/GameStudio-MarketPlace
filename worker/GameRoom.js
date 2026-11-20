@@ -87,7 +87,7 @@ export class GameRoom extends DurableObject {
 
   /**
    * Pick the adapter of the loaded room and fill in fields that rooms created by older versions
-   * lack (they were all Hyderabad Tycoon rooms, private, without per-match meta or deadlines).
+   * lack (they were all Nawabi Raj rooms, private, without per-match meta or deadlines).
    */
   bindAdapter() {
     const r = this.room;

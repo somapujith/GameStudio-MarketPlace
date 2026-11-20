@@ -14,7 +14,7 @@ const usePresenter = presenterModule.usePresenter || presenterModule.default;
 const ACTION_TIMEOUT = 5000; // re-enable the UI if the server never answers an action
 
 // Socket + room state for ONE room code (no game in it) lives in components/online/useRoomConnection.js and is
-// re-exported here, because game plugins (Hyderabad Tycoon) import it from this module:
+// re-exported here, because game plugins (Nawabi Raj) import it from this module:
 //   const { room, view, chat, connection, error, errorId, fatal, send, leave } = useRoomConnection(code, { onState, onChat });
 export { useRoomConnection };
 

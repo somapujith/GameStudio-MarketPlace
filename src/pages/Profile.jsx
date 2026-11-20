@@ -9,6 +9,8 @@ import AccountSection from '@/platform/home/AccountSection.jsx';
 import AboutSection from '@/platform/home/AboutSection.jsx';
 import { useAccount, useProgress } from '@/components/shell/hooks.js';
 import '@/styles/hubhome.css';
+import IndiaArt from '@/components/art/IndiaArt.jsx';
+import '@/platform/home/adda.css';
 
 /** `/profile` — avatar and name, level / XP / coins, per-game stats, badges, settings (the old Settings page) and account. */
 export default function Profile() {
@@ -25,9 +27,12 @@ export default function Profile() {
   }, [hash]);
 
   return (
-    <div className="hub-page hh2 hh2-profilepage">
+    <div className="hub-page hh2 hh2-profilepage adda-profile-page">
       <h1 className="hub-sr">Your profile</h1>
-      <ProfileHeader />
+      <div className="adda-profile-intro">
+        <ProfileHeader />
+        <IndiaArt art="kolkata" className="adda-profile-intro__art" />
+      </div>
       <GameStatCards games={games} user={user} />
       <BadgeGrid games={games} user={user} level={level} />
       <SettingsSection />
