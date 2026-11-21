@@ -26,6 +26,7 @@ import {
 } from '@/platform/browse/filters.js';
 import { getStoredView, setStoredView } from '@/platform/browse/storage.js';
 import '@/styles/store-browse.css';
+import '@/platform/browse/publisher-catalog.css';
 
 const CAT_IDS = CATEGORIES.map((c) => c.id);
 
@@ -61,8 +62,8 @@ export default function Games() {
   return (
     <div className="hub-page bw-page st-scope">
       <header className="bw-head st-reveal">
-        <span className="st-eyebrow">The catalogue</span>
-        <h1 className="bw-title">Browse all games</h1>
+        <span className="st-eyebrow">Jalebi Games / The catalogue</span>
+        <h1 className="bw-title">The games<span aria-hidden="true">.</span></h1>
         <p className="bw-sub">
           {GAMES.some((g) => g.status !== 'coming_soon') && <i className="st-live" aria-hidden="true" />}
           {catalogueSummary(GAMES)}

@@ -102,7 +102,7 @@ function useJumpLinks() {
     const sec = document.getElementById(a.getAttribute('href').slice(1));
     if (!sec) return;
     e.preventDefault();
-    const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const reduce = document.documentElement.dataset.motion === 'reduced' || (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
     sec.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
     sec.querySelector('h2')?.focus({ preventScroll: true });
   }, []);
@@ -120,7 +120,7 @@ function useGameMeta(game, soon) {
 }
 
 /**
- * A playable game's listing: the poster-style quick start (cinema poster + invitation ticket with seats, map,
+ * A playable game's listing: framed release artwork and quick start with seats, map,
  * Create table, Join with a code and Share, using the private-room host and code-join flows), then About, Maps,
  * How to play, Gallery, Open tables, Leaderboard, Game details and More like this. A phone bar offers Create table
  * once the ticket has scrolled away.
@@ -147,15 +147,19 @@ function LiveDetail({ game }) {
     <>
       <div className="hub-page hub-detail nawabi-page" onClick={jump}>
         <GameTour game={game} />
-        <img className="nawabi-page__scene" src="/art/cinematic/nawabi-setup.webp" width="2048" height="1024" alt="" fetchPriority="high" decoding="async" />
         <Crumbs game={game} />
         <div className="nawabi-layout">
           <section className="nawabi-poster" aria-label={`About ${game.name}`}>
             <div className="nawabi-poster__identity">
+              <p className="nawabi-poster__edition"><span>01 / THE JALEBI COLLECTION</span><span className="nawabi-poster__available"><i aria-hidden="true" /> PLAYABLE NOW</span></p>
               <Crown />
               <h1 className="nawabi-poster__title" aria-label={game.name}><span>{game.name.split(' ').slice(0, -1).join(' ')}</span><strong>{game.name.split(' ').at(-1)}</strong></h1>
-              <p className="nawabi-poster__pitch">Buy landmarks, build your empire,<br />and rule the city.</p>
+              <p className="nawabi-poster__pitch">{game.tagline}</p>
             </div>
+            <figure className="nawabi-poster__art">
+              <img className="nawabi-page__scene" src="/art/cinematic/nawabi-setup.webp" width="2048" height="1024" alt="" fetchPriority="high" decoding="async" />
+              <figcaption><span>{game.name} / Jalebi Games</span><span>Multiplayer. In your browser.</span></figcaption>
+            </figure>
             <dl className="nawabi-poster__facts">
               <div><HubIcon name="users" size={40} /><div><dt>Players</dt><dd>{game.players.min} &ndash; {game.players.max}</dd></div></div>
               <div><HubIcon name="clock" size={40} /><div><dt>Minutes</dt><dd>{game.duration.replace(/\s*min$/, '')}</dd></div></div>
@@ -165,9 +169,8 @@ function LiveDetail({ game }) {
           </section>
           <section className="nawabi-ticket" ref={panelRef} aria-labelledby="nawabi-create-title" data-tour="game-panel">
             <header className="nawabi-ticket__head">
-              <p>Play {game.name}</p>
+              <p><span className="nawabi-ticket__index">01</span> Your next game starts here</p>
               <h2 id="nawabi-create-title">Create a table</h2>
-              <span className="nawabi-ticket__swash" aria-hidden="true" />
             </header>
             <div className="nawabi-ticket__step" data-tour="game-seats">
               <h3 id="hub-seats-h">
@@ -197,7 +200,7 @@ function LiveDetail({ game }) {
             )}
 
             <button type="button" className="nawabi-ticket__create" data-tour="game-create" onClick={create} disabled={busy || (authLoading && !user)} aria-busy={busy || undefined}>
-              <TableDice />{copy.label}<HubIcon name="arrowR" size={32} />
+              <span className="nawabi-ticket__create-label"><TableDice />{copy.label}</span><span className="nawabi-ticket__launch" aria-hidden="true"><HubIcon name="arrowR" size={26} /></span>
             </button>
             {copy.signedOut && !copy.offline && (
               <Link to={paths.login(paths.game(game.id))} className="nawabi-ticket__signin">

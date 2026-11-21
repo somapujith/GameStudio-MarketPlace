@@ -1,4 +1,4 @@
-// Dense list row: icon, name, tagline, facts, action. Used by the list view and by search results.
+// Dense list row: cover sleeve, name, tagline, facts, action. Used by the list view and search results.
 import { forwardRef } from 'react';
 import { Link } from 'react-router-dom';
 import { getCategory } from '@/games/registry.js';
@@ -8,13 +8,16 @@ import { themeVars } from '@/platform/home/gameTheme.js';
 import Highlight from './Highlight.jsx';
 import { Facts, StatusBadge, isSoon } from './GameBits.jsx';
 import { ArrowIcon } from './icons.jsx';
+import { publisherArt } from './publisherArt.js';
+import './publisher-catalog.css';
 
 const BrowseRow = forwardRef(function BrowseRow({ game, query = '', index = 0, onOpen, onKeyDown }, ref) {
   const soon = isSoon(game);
   const cat = getCategory(game.category);
+  const art = publisherArt(game);
   return (
     <article className={`bw-row bw-in ${soon ? 'is-soon' : ''}`} style={{ ...themeVars(game), '--i': Math.min(index, 7) }}>
-      <GameIcon game={game} size={60} className="bw-row__icon" />
+      {art ? <span className="bw-row__sleeve" aria-hidden="true"><img src={art.src} alt="" width="120" height="120" loading="lazy" /><span>{art.number}</span></span> : <GameIcon game={game} size={60} className="bw-row__icon" />}
       <div className="bw-row__body">
         <div className="bw-row__top">
           {cat && <span className="bw-card__eyebrow">{cat.label}</span>}
@@ -34,8 +37,8 @@ const BrowseRow = forwardRef(function BrowseRow({ game, query = '', index = 0, o
         <Facts game={game} tags={2} />
       </div>
       <span className="bw-act bw-row__act" aria-hidden="true">
-        {soon ? 'Details' : 'Play'}
-        <ArrowIcon width={16} height={16} />
+        <span>{soon ? 'Explore game' : 'Play now'}</span>
+        <span className="bw-act__arrow"><ArrowIcon width={19} height={19} /></span>
       </span>
     </article>
   );

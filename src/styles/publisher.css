@@ -1,0 +1,62 @@
+/* Shared controls for the publishing site. Gameplay keeps its own control language. */
+.hub-app, .hh-modal {
+  --publisher-rule: var(--hub-line-2, var(--line-strong));
+}
+.hub-app:not(.hub-app--home) { --font-hub-display: 'Bricolage Grotesque Variable', sans-serif; --font-hub-body: 'Plus Jakarta Sans Variable', sans-serif; --font-poster: 'Bricolage Grotesque Variable', sans-serif; }
+.hub-app:not(.hub-app--home) .hub-backdrop { background: var(--hub-bg); }
+.hub-app:not(.hub-app--home) .hub-backdrop .hub-backdrop__shade { background: none; }
+.hub-app:not(.hub-app--home) .hub-footslot { background: var(--hub-bg); }
+.hub-app :is(.hub-btn, .ho-btn), .hh-modal .hub-btn {
+  position: relative;
+  min-height: 46px;
+  border-radius: 3px;
+  font: 800 11px/1.3 var(--font-hub-body);
+  letter-spacing: .065em;
+  text-transform: uppercase;
+  transition: transform 120ms var(--ease-out), box-shadow 120ms var(--ease-out), background-color 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+.hub-app :is(.hub-btn--primary, .hub-btn--accent, .ho-btn--primary), .hh-modal .hub-btn--primary {
+  color: var(--brand-charcoal);
+  background: var(--brand-orange);
+  border: 1px solid var(--brand-orange);
+  box-shadow: 0 4px 0 #823700;
+}
+.hub-app :is(.hub-btn--soft, .ho-btn--ghost) {
+  background: transparent;
+  color: var(--hub-text);
+  border: 1px solid var(--publisher-rule);
+  box-shadow: 0 3px 0 var(--hub-line);
+}
+.hub-app :is(.hub-btn, .ho-btn):active:not(:disabled, [aria-disabled='true'], .is-disabled), .hh-modal .hub-btn:active:not(:disabled, [aria-disabled='true'], .is-disabled) {
+  transform: translateY(3px);
+  box-shadow: 0 0 0 transparent;
+}
+.hub-app :is(.hub-btn, .ho-btn):is(:disabled, [aria-disabled='true'], .is-disabled), .hh-modal .hub-btn:is(:disabled, [aria-disabled='true'], .is-disabled) { box-shadow: none; transform: none; opacity: .5; }
+.hub-app:not(.hub-app--home) :is(.hub-h1, .hub-section__title, .ho-h1, .ho-status__title) { font-family: var(--font-hub-display); font-weight: 800; letter-spacing: -.045em; text-transform: none; }
+.hub-app:not(.hub-app--home) :is(.hub-panel, .ho-card, .ho-status) { border-radius: 6px; box-shadow: none; }
+.hub-app :is(input, select, textarea):focus-visible { outline: 2px solid var(--brand-orange); outline-offset: 3px; }
+.hub-app :is(.hub-chip, .hh-seg__opt) { transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease; }
+.hub-app .film-ticket { position: relative; isolation: isolate; overflow: hidden; transition: transform 120ms var(--ease-out); }
+.hub-app .film-ticket::after { content: ''; position: absolute; inset: -30% auto -30% -50%; width: 25%; background: rgba(255,255,255,.35); transform: skewX(-20deg) translateX(0); pointer-events: none; transition: transform 220ms var(--ease-out); }
+.hub-app .film-ticket > span, .hub-app .film-explore > span { transition: transform 160ms var(--ease-out); }
+.hub-app .film-ticket:active { transform: scale(.97); }
+.hub-app .film-explore:active { transform: skewX(-5deg) scale(.97); }
+@media (hover: hover) and (pointer: fine) {
+  .hub-app :is(.hub-btn--primary, .hub-btn--accent, .ho-btn--primary):hover:not(:active, :disabled, [aria-disabled='true'], .is-disabled), .hh-modal .hub-btn--primary:hover:not(:active, :disabled, [aria-disabled='true'], .is-disabled) { background: var(--brand-paper); border-color: var(--brand-paper); box-shadow: 0 4px 0 #8f8069; transform: translateY(-1px); }
+  .hub-app :is(.hub-btn--soft, .ho-btn--ghost):hover:not(:active, :disabled, [aria-disabled='true'], .is-disabled) { border-color: var(--brand-orange); color: var(--hub-brand-ink); transform: translateY(-1px); }
+  .hub-app .film-ticket:hover::after { transform: skewX(-20deg) translateX(750%); }
+  .hub-app .film-ticket:hover > span, .hub-app .film-explore:hover > span { transform: translateX(3px); }
+  .hub-app .film-ticket:hover:active { transform: scale(.97); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hub-app :is(.hub-btn, .ho-btn), .hh-modal .hub-btn { transition: none; transform: none !important; }
+  .hub-app :is(.film-ticket, .film-ticket::after, .film-ticket > span, .film-explore > span) { transition: none; }
+  .hub-app .film-ticket::after { display: none; }
+  .hub-app .film-ticket { transform: none !important; }
+  .hub-app .film-explore:active { transform: skewX(-5deg); }
+  .hub-app .film-explore > span { transform: none !important; }
+}
+html[data-motion='reduced'] :is(.hub-app .hub-btn, .hub-app .ho-btn, .hh-modal .hub-btn) { transition: none; transform: none !important; }
+html[data-motion='reduced'] .hub-app :is(.film-ticket, .film-ticket > span, .film-explore > span) { transition: none; transform: none !important; }
+html[data-motion='reduced'] .hub-app .film-ticket::after { display: none; }
+html[data-motion='reduced'] .hub-app .film-explore:active { transform: skewX(-5deg); }

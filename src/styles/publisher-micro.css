@@ -1,0 +1,137 @@
+/* Small arcade controls. The original home composition and typography stay intact. */
+:root[data-route='hub'] .hh-modal .hh-modal__panel,
+:root[data-route='hub'] .xs-pal .xs-pal__panel {
+  border: 1px solid var(--hub-line-2);
+  border-top: 3px solid var(--brand-orange);
+  border-radius: 5px;
+  background: var(--hub-surface);
+  color: var(--hub-text);
+  box-shadow: 6px 6px 0 color-mix(in srgb, var(--hub-text) 12%, transparent);
+}
+:root[data-route='hub'] .hh-modal .hh-modal__title {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--hub-line);
+}
+:root[data-route='hub'] .xs-pal :is(.xs-pal__item, .xs-pal__ico, .xs-pal__soon) { border-radius: 3px; }
+:root[data-route='hub'] .xs-pal .xs-pal__item { transition: none; }
+:root[data-route='hub'] .xs-pal .xs-pal__item.is-active {
+  background: var(--hub-brand-soft);
+  box-shadow: inset 3px 0 0 var(--hub-brand-ink);
+}
+:root[data-route='hub'] .xs-pal .xs-pal__bar:focus-within {
+  box-shadow: inset 0 -2px 0 var(--brand-orange);
+}
+:root[data-route='hub'] .xs-pal .xs-pal__go { transition: none; }
+:root[data-route='hub'] :is(.xs-pal__clear, .xs-pal__close, .hh-modal__close, .jc__btn, .xs-toast__action, .xs-toast__close) {
+  border-radius: 3px;
+  transition: transform 120ms var(--ease-out), box-shadow 120ms var(--ease-out), background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+:root[data-route='hub'] :is(.xs-pal__close, .jc__btn) {
+  border: 1px solid var(--hub-line-2);
+  background: var(--hub-surface-2);
+  color: var(--hub-text);
+  box-shadow: 0 3px 0 var(--hub-line);
+}
+:root[data-route='hub'] .jc .jc__box {
+  border-radius: 4px;
+  background: var(--hub-field);
+  color: var(--hub-text);
+  box-shadow: 0 3px 0 var(--hub-line);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+:root[data-route='hub'] .jc:not(.jc--checking, .jc--ok, .jc--error) .jc__box.has-char {
+  border-color: var(--hub-brand-ink);
+}
+:root[data-route='hub'] .jc:not(.jc--checking, .jc--ok, .jc--error).is-focused .jc__box.is-active {
+  border-color: var(--hub-brand-ink);
+  box-shadow: 0 3px 0 var(--hub-brand-ink), 0 0 0 2px var(--hub-brand-soft);
+}
+:root[data-route='hub'] .xs-toast {
+  border-radius: 4px;
+  border-left: 4px solid var(--hub-brand-ink);
+  background: var(--hub-surface-2);
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--hub-text) 12%, transparent);
+}
+:root[data-route='hub'] .hh-toast--good.xs-toast { border-left-color: var(--hub-good); }
+:root[data-route='hub'] .hh-toast--bad.xs-toast { border-left-color: var(--hub-bad); }
+:root[data-route='hub'] .hh-toast--gold.xs-toast { border-left-color: var(--hub-gold); }
+:root[data-route='hub'] .xs-toast__action {
+  color: var(--brand-charcoal);
+  background: var(--brand-orange);
+  box-shadow: 0 2px 0 #823700;
+}
+.hub-app .hh-toggle .hh-switch {
+  border-radius: 5px;
+  background: var(--hub-surface-3);
+  border: 1px solid var(--hub-line-2);
+  box-shadow: inset 0 2px 0 var(--hub-line);
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+.hub-app .hh-toggle .hh-switch i {
+  border-radius: 3px;
+  background: var(--hub-text);
+  box-shadow: 0 2px 0 color-mix(in srgb, var(--hub-text) 20%, transparent);
+  transition: transform 220ms var(--ease-out), background-color 160ms ease;
+}
+.hub-app .hh-toggle .hh-switch[aria-checked='true'] { background: var(--brand-orange); border-color: var(--brand-orange); }
+.hub-app .hh-toggle .hh-switch[aria-checked='true'] i { background: var(--brand-charcoal); }
+:root[data-route='hub'] .hub-app .hh-seg {
+  border-radius: 5px;
+  border: 1px solid var(--hub-line-2);
+  background: var(--hub-surface-2);
+}
+:root[data-route='hub'] .hub-app .hh-seg .hh-seg__opt {
+  border-radius: 3px;
+  color: var(--hub-dim);
+  transition: transform 120ms var(--ease-out), background-color 160ms ease, color 160ms ease, box-shadow 120ms var(--ease-out);
+}
+:root[data-route='hub'] .hub-app .hh-seg .hh-seg__opt.is-on {
+  background: var(--brand-orange);
+  color: var(--brand-charcoal);
+  box-shadow: 0 2px 0 #823700;
+}
+.hub-app .hub-tabbar .hub-tab__icon {
+  transition: transform 120ms var(--ease-out), color 160ms ease, background-color 160ms ease;
+}
+:root[data-route='hub'] :is(.xs-pal__clear, .xs-pal__close, .hh-modal__close, .jc__btn, .xs-toast__action, .xs-toast__close):focus-visible,
+.hub-app :is(.hh-switch, .hh-seg__opt, .hub-tab):focus-visible {
+  outline: 2px solid var(--hub-focus);
+  outline-offset: 4px;
+}
+@media (hover: hover) and (pointer: fine) {
+  :root[data-route='hub'] :is(.xs-pal__clear, .xs-pal__close, .hh-modal__close, .jc__btn, .xs-toast__close):hover:not(:active, :disabled, [aria-disabled='true'], .is-disabled) {
+    color: var(--hub-brand-ink);
+    border-color: var(--hub-brand-ink);
+    background: var(--hub-brand-soft);
+    transform: translateY(-1px);
+  }
+  :root[data-route='hub'] .xs-toast__action:hover:not(:active, :disabled, [aria-disabled='true']) {
+    color: var(--brand-charcoal);
+    background: var(--brand-paper);
+    transform: translateY(-1px);
+  }
+  :root[data-route='hub'] .hub-app .hh-seg .hh-seg__opt:hover:not(.is-on, :disabled, [aria-disabled='true']) { background: var(--hub-brand-soft); color: var(--hub-text); }
+  .hub-app .hub-tabbar .hub-tab:hover:not(:active) .hub-tab__icon { transform: translateY(-2px); }
+}
+:root[data-route='hub'] :is(.xs-pal__clear, .xs-pal__close, .hh-modal__close, .jc__btn, .xs-toast__action, .xs-toast__close):active:not(:disabled, [aria-disabled='true'], .is-disabled),
+:root[data-route='hub'] .hub-app .hh-seg .hh-seg__opt:active:not(:disabled, [aria-disabled='true']) {
+  transform: translateY(2px);
+  box-shadow: none;
+}
+.hub-app .hub-tabbar .hub-tab:active .hub-tab__icon { transform: translateY(2px) scale(.94); }
+:root[data-route='hub'] :is(.xs-pal__clear, .xs-pal__close, .hh-modal__close, .jc__btn, .xs-toast__action, .xs-toast__close):is(:disabled, [aria-disabled='true'], .is-disabled),
+.hub-app .hh-toggle .hh-switch:is(:disabled, [aria-disabled='true']),
+:root[data-route='hub'] .hub-app .hh-seg .hh-seg__opt:is(:disabled, [aria-disabled='true']) {
+  transform: none;
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: .5;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-route='hub'] :is(.xs-pal__clear, .xs-pal__close, .hh-modal__close, .jc__btn, .xs-toast__action, .xs-toast__close),
+  .hub-app :is(.hh-seg__opt, .hub-tab__icon) { transform: none !important; transition: none; }
+  .hub-app .hh-toggle .hh-switch i { transition: none; }
+}
+html[data-motion='reduced'][data-route='hub'] :is(.xs-pal__clear, .xs-pal__close, .hh-modal__close, .jc__btn, .xs-toast__action, .xs-toast__close),
+html[data-motion='reduced'] .hub-app :is(.hh-seg__opt, .hub-tab__icon) { transform: none !important; transition: none; }
+html[data-motion='reduced'] .hub-app .hh-toggle .hh-switch i { transition: none; }
