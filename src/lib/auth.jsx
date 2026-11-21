@@ -3,6 +3,7 @@ import { api, errorMessage, isSuspendedError, onSuspended } from './api.js';
 import { openUserSocket } from './socket.js';
 import { isCrossOrigin } from './config.js';
 import { clearToken } from './token.js';
+import { clearRef, googleSignInBody, readRef } from './referral.js';
 import { InviteBanner } from '@/components/online/InviteBanner.jsx';
 import { paths } from '@/platform/paths.js';
 import { isSuspendedClose, suspension } from '@/platform/notifications/suspendedModel.js';
@@ -182,9 +183,11 @@ export function AuthProvider({ children }) {
       setAuthError(null);
       setSigningIn(true);
       try {
-        await api.post('/api/auth/google', { credential });
+        // a remembered referral (docs/ENGAGEMENT.md section 2) rides along; the server uses it only for a new account
+        await api.post('/api/auth/google', googleSignInBody(credential, readRef()));
         const u = await refresh();
         if (!u) throw new Error(sessionNotAccepted());
+        clearRef();
         return u;
       } catch (e) {
         setAuthError(errorMessage(e, 'Google sign-in failed. Please try again.'));

@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/auth.jsx';
 import { errorMessage } from '@/lib/api.js';
 import { LIMITS, PERMS, getAdminUser, reasonError, revokeItem } from '@/lib/adminApi.js';
 import { cosmeticById } from '@shared/cosmetics.js';
+import { ACHIEVEMENTS, achievementById } from '@shared/achievements.js';
 import { paths } from '@/platform/paths.js';
 import useDocTitle from '@/platform/game/useDocTitle.js';
 import { useToasts } from '@/components/online/Toasts.jsx';
@@ -39,9 +40,72 @@ function CopyId({ label, value }) {
   );
 }
 
+/** The user's unlocked achievements, newest first (catalogue icons). */
+export function UserAchievements({ achievements = [], now = Date.now() }) {
+  return (
+    <Card title="Achievements" meta={`${achievements.length} of ${ACHIEVEMENTS.length} unlocked`} flush>
+      {achievements.length ? (
+        <ul className="adm-achlist">
+          {achievements.map((a) => {
+            const cat = achievementById(a.id);
+            return (
+              <li key={a.id} className="adm-achlist__row">
+                <span className={`adm-ach__icon adm-ach__icon--${cat?.category || 'play'}`} aria-hidden="true">
+                  <AdmIcon name={cat?.icon || 'star'} size={16} />
+                </span>
+                <span className="adm-ach__text">
+                  <b>{a.name || cat?.name || a.id}</b>
+                  {cat?.description ? <span className="adm-faint">{cat.description}</span> : null}
+                </span>
+                <time className="adm-achlist__when" dateTime={a.unlockedAt} title={fmtDateTime(a.unlockedAt)}>
+                  {fmtDate(a.unlockedAt)}
+                  <span className="adm-faint">{relTime(a.unlockedAt, now)}</span>
+                </time>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <Empty icon="star" title="No achievements yet" />
+      )}
+    </Card>
+  );
+}
+
+/** Who referred this user, and the people they invited (rewarded = the invitee finished a first match). */
+export function UserReferral({ referral, now = Date.now() }) {
+  const r = referral || { referrer: null, invitedCount: 0, invited: [] };
+  const invited = r.invited || [];
+  const rewarded = invited.filter((x) => x.rewarded).length;
+  return (
+    <Card title="Referrals" meta={`${fmtNum(r.invitedCount)} invited${invited.length ? ` · ${rewarded} rewarded` : ''}`} flush>
+      <p className="adm-refby">
+        <span className="adm-label">Referred by</span>
+        {r.referrer ? <Link to={paths.admin(`users/${r.referrer.id}`)}>{r.referrer.name}</Link> : <span className="adm-faint">nobody: signed up without a friend link</span>}
+      </p>
+      {invited.length ? (
+        <ul className="adm-reflist">
+          {invited.map((x) => (
+            <li key={x.id} className="adm-reflist__row">
+              <Link to={paths.admin(`users/${x.id}`)}>{x.name}</Link>
+              <time className="adm-faint" dateTime={x.joinedAt} title={fmtDateTime(x.joinedAt)}>
+                {`joined ${relTime(x.joinedAt, now)}`}
+              </time>
+              {x.rewarded ? <Badge tone="good">Rewarded</Badge> : <Badge>No match yet</Badge>}
+            </li>
+          ))}
+          {r.invitedCount > invited.length ? <li className="adm-reflist__more adm-faint">{`Latest ${invited.length} of ${fmtNum(r.invitedCount)}.`}</li> : null}
+        </ul>
+      ) : (
+        <p className="adm-faint adm-reflist__none">Has not invited anyone yet.</p>
+      )}
+    </Card>
+  );
+}
+
 /** Everything on the page below the access check, for a loaded GET /users/:id answer. Pure apart from form state. */
 export function UserDetailView({ detail, can, selfId, onRequest, onRevoke, now = Date.now() }) {
-  const { user, items = [], friends, matches = [], actions = [], notifications = [], rooms = [] } = detail;
+  const { user, items = [], friends, matches = [], actions = [], notifications = [], rooms = [], achievements = [], referral = null } = detail;
   const owned = items.map((i) => i.id);
   const winRate = user.games ? Math.round(((user.wins || 0) / user.games) * 100) : 0;
   const equipped = Object.entries(user.equipped || {}).filter(([, v]) => v);
@@ -82,8 +146,7 @@ export function UserDetailView({ detail, can, selfId, onRequest, onRevoke, now =
             <StatTile label="Daily streak" value={fmtNum(user.dailyStreak)} />
             <StatTile label="Best worth" value={fmtNum(user.bestWorth)} />
             <StatTile label="Rent earned" value={fmtNum(user.rentEarned)} />
-            <StatTile label="Friends" value={fmtNum(friends?.count ?? 0)} />
-            <StatTile label="Joined" value={fmtDate(user.createdAt)} sub={`seen ${relTime(user.lastSeen, now)}`} />
+            <StatTile label="Friends" value={fmtNum(friends?.count ?? 0)} sub={referral ? `${fmtNum(referral.invitedCount)} invited` : undefined} />            <StatTile label="Joined" value={fmtDate(user.createdAt)} sub={`seen ${relTime(user.lastSeen, now)}`} />
           </div>
 
           {rooms.length ? (
@@ -153,6 +216,11 @@ export function UserDetailView({ detail, can, selfId, onRequest, onRevoke, now =
               <Empty icon="gift" title="No items yet" />
             )}
           </Card>
+
+          <div className="adm-detail__pair">
+            <UserAchievements achievements={achievements} now={now} />
+            <UserReferral referral={referral} now={now} />
+          </div>
 
           <Card title="Recent matches" meta={`latest ${matches.length}`} flush>
             {matches.length ? (
@@ -245,7 +313,7 @@ export function UserDetailView({ detail, can, selfId, onRequest, onRevoke, now =
         </div>
 
         <aside className="adm-detail__side" aria-label="Actions" id="adm-user-actions">
-          <UserActions user={user} owned={owned} can={can} selfId={selfId} onRequest={onRequest} />
+          <UserActions user={user} owned={owned} unlocked={achievements} can={can} selfId={selfId} onRequest={onRequest} />
         </aside>
       </div>
     </>

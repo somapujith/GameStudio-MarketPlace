@@ -1,0 +1,86 @@
+/* Leaderboard, Season tab (docs/ENGAGEMENT.md section 3). Loaded after leaderboard-cinema / -tablet / -phone.css.
+   The season card reuses the "Your record" paper box (.leader-record) and its spot in every layout, so the page keeps
+   fitting the viewport; only its inside changes. The standings table has no Level column, so its third column
+   (Points) must stay visible where the other tabs hide the third column. */
+
+/* ---- standings table: # | Player | Points | Wins | Games */
+.leader-ranks--season :is(th, td):nth-child(3) { display: table-cell !important; }
+.leader-ranks--season tbody td:nth-child(3) { color: #ffcf68; }
+.leader-ranks--season tbody td:nth-child(n+3) { white-space: nowrap; }
+
+/* ---- the season card */
+.leader-season__kicker { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0 0 8px; font-size: 13px; font-weight: 800; }
+.leader-season__status {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 2px; color: #fff0d3; background: #100d08;
+  font: 400 14px/1 var(--font-poster); letter-spacing: .07em; text-transform: uppercase; transform: skewX(-8deg);
+}
+.leader-season__status--active { background: #b63122; }
+.leader-season__status--active::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #ffcf68; box-shadow: 0 0 0 0 #ffcf6888; animation: leader-season-live 1.8s ease-out infinite; }
+@keyframes leader-season-live { to { box-shadow: 0 0 0 7px #ffcf6800; } }
+.leader-season__count { color: #5d2a0a; font-variant-numeric: tabular-nums; }
+.leader-cinema .leader-season h2 { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.leader-season__tiers {
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(78px, 1fr); gap: 6px; margin: 0; padding: 0 0 2px;
+  list-style: none; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: #aa8552 transparent;
+}
+.leader-season__tier {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-width: 0; min-height: 76px;
+  padding: 6px 4px; border: 1px solid #aa8552; border-radius: 8px; background: #fff2da22; text-align: center;
+}
+.leader-season__tier:first-child { background: #ffcf6840; border-color: #c98a1d; }
+.leader-season__tier > b { font: 400 clamp(17px, 1.6vw, 22px)/1 var(--font-poster); }
+.leader-season__prize { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 6px; }
+.leader-season__coins { display: inline-flex; align-items: center; gap: 3px; font-size: 13px; font-weight: 850; font-variant-numeric: tabular-nums; }
+.leader-season__item { display: grid; place-items: center; width: 30px; height: 30px; color: #7a2c0d; }
+.leader-season__item > * { max-width: 30px; max-height: 30px; }
+.leader-season__rules { margin: 0; font-size: 14px; font-weight: 650; line-height: 1.4; color: #3b2a1a; }
+.leader-season__tiers:focus-visible { outline: 2px solid #100d08; outline-offset: 2px; }
+
+/* desktop fit: the card sits where the record tiles were; keep it about as tall */
+@media (min-width: 1000px) and (min-height: 600px) {
+  .leader-cinema .leader-season h2 { margin-bottom: clamp(10px, 1.6vh, 18px); font-size: clamp(22px, 3.2vh, 36px); }
+  .leader-season__kicker { margin-bottom: clamp(4px, .8vh, 8px); }
+  .leader-season__tier { min-height: clamp(56px, 8.4vh, 86px); padding: 4px 2px; }
+}
+/* tablets */
+@media (min-width: 600px) and (max-width: 999px) {
+  .leader-cinema .leader-season h2 { margin-bottom: 8px; font-size: clamp(22px, 2.4vh, 30px); }
+  .leader-season__kicker { margin-bottom: 4px; font-size: 12px; }
+  .leader-season__tiers { grid-auto-columns: minmax(64px, 1fr); }
+  .leader-season__tier { min-height: clamp(48px, 5vh, 62px); padding: 3px 2px; gap: 2px; }
+  .leader-season__item { width: 24px; height: 24px; }
+  .leader-season__item > * { max-width: 24px; max-height: 24px; }
+  .leader-ranks--season thead th:nth-child(3) { width: 72px; }
+  @media (orientation: landscape) { .leader-ranks--season thead th:nth-child(3) { width: 58px; } }
+}
+/* phones: the card is the one-row strip at the bottom: name + countdown on the left, the tiers on the right */
+@media (max-width: 599px) {
+  .leader-season { align-items: center; }
+  .leader-season__head { display: flex; flex-direction: column; flex: 0 1 auto; min-width: 0; }
+  .leader-season__head .leader-season__kicker { order: 2; margin: 3px 0 0; font-size: 11px; white-space: nowrap; }
+  .leader-season__head .leader-season__status { display: none; }
+  .leader-cinema .leader-season h2 { width: auto; max-width: 8em; margin: 0; font-size: 18px; line-height: .95; white-space: normal; overflow: visible; }
+  .leader-season__tiers { flex: 1 1 auto; min-width: 0; grid-auto-columns: minmax(54px, 1fr); gap: 4px; }
+  .leader-season__tier { min-height: 0; padding: 3px 2px 2px; gap: 1px; border-radius: 6px; }
+  .leader-season__tier > b { font-size: 14px; }
+  .leader-season__coins { font-size: 11px; }
+  .leader-season__coins svg { width: 12px; height: 12px; }
+  .leader-season__prize { flex-wrap: nowrap; gap: 3px; }
+  .leader-season__item { width: 16px; height: 16px; }
+  .leader-season__item > * { max-width: 16px; max-height: 16px; }
+  .leader-season__item svg { width: 16px; height: 16px; }
+  .leader-season__rules { font-size: 12px; line-height: 1.3; }
+  .leader-ranks--season thead th:nth-child(3) { min-width: 50px; }
+}
+
+@media (prefers-reduced-motion: reduce) { .leader-season__status--active::before { animation: none; } }
+:root[data-motion='reduced'] .leader-season__status--active::before { animation: none; }
+
+/* Framed avatars (an equipped frame: Ava's kit branch) are drawn at a fixed pixel size by AvatarFrame, so they ignored
+   the viewport-scaled --sz the podium and rankings set and overflowed the stage on phones and tablets. Make the frame
+   follow --sz like a plain avatar does; the face keeps its 78% share of the ring. */
+.leader-cinema .hh2-ava--kit { width: var(--sz); height: var(--sz); }
+.leader-cinema .hh2-ava--kit > [data-frame] { width: 100% !important; height: 100% !important; }
+.leader-cinema .hh2-ava--kit > [data-frame] > svg { width: 100%; height: 100%; }
+.leader-cinema .hh2-ava--kit > [data-frame] > span:first-child { width: 78% !important; height: 78% !important; }
+.leader-cinema .hh2-ava--kit > [data-frame] > span:first-child > * { width: 100% !important; height: 100% !important; }

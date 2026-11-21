@@ -35,7 +35,8 @@ const num = (n) => (Number.isFinite(Number(n)) ? Number(n) : 0);
 export function viewFilter(items, view, balance) {
   const list = Array.isArray(items) ? items : [];
   if (view === 'owned') return list.filter((x) => x.owned);
-  if (view === 'afford') return list.filter((x) => !x.owned && Number.isFinite(balance) && balance >= x.price);
+  // only what can be bought right now: reward items and off-sale limited items (`available: false`) are never "affordable"
+  if (view === 'afford') return list.filter((x) => !x.owned && x.available !== false && Number.isFinite(balance) && balance >= x.price);
   return list;
 }
 

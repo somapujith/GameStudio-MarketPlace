@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { cosmeticById } from '@shared/cosmetics.js';
+import { achievementById } from '@shared/achievements.js';
+import HubIcon from '@/platform/game/HubIcon.jsx';
 import { buzz } from '@/lib/haptics.js';
 import Modal from '@/components/shell/Modal.jsx';
 import { CoinIcon, Icon } from '@/components/shell/icons.jsx';
@@ -18,6 +20,7 @@ import {
   GIFT_POPUP_RECHECK_MS,
   collectAnnouncement,
   collectLabel,
+  giftContext,
   giftFrom,
   giftHeadline,
   giftRewards,
@@ -27,6 +30,7 @@ import {
 } from './notificationsModel.js';
 import '@/styles/x-home.css'; // .xh-claim / .xh-gain / .xh-flight (the shared claim moment)
 import '@/styles/notifications.css';
+import '@/styles/engagement.css'; // .gp-art--badge / .gp-tag (achievement, season and referral gifts)
 
 const TEAM = `${BRAND.name} team`;
 const fmt = (n) => Number(n).toLocaleString('en-IN');
@@ -38,9 +42,20 @@ const wavedFor = (uid) => {
   return waved.get(uid);
 };
 
-/** The art for one gift: the item itself when we know it (shop renderer), else a coin pile, an XP star or a parcel. */
+/**
+ * The art for one gift: an unlocked achievement's badge (its catalogue icon on a medal), else the item itself when we
+ * know it (shop renderer), else a coin pile, an XP star or a parcel.
+ */
 export function GiftArt({ gift, avatar }) {
   const d = gift?.data || {};
+  if (gift?.kind === 'achievement') {
+    const ach = achievementById(d.achievementId);
+    return (
+      <span className="gp-art gp-art--badge is-new">
+        <HubIcon name={ach?.icon || 'medal'} size={30} strokeWidth={2.2} />
+      </span>
+    );
+  }
   const item = d.itemId ? cosmeticById(d.itemId) : null;
   if (item) {
     return (
@@ -70,14 +85,21 @@ export function GiftArt({ gift, avatar }) {
   );
 }
 
-/** One gift in the stack: art, title, body and the reward chips. */
+/** One gift in the stack: art, what it is for (badge / season placing / referral), title, body and the reward chips. */
 function GiftRow({ gift, avatar }) {
   const item = gift.data?.itemId ? cosmeticById(gift.data.itemId) : null;
   const rewards = giftRewards(gift, item?.name || '');
+  const ctx = giftContext(gift);
   return (
-    <li className="gp-gift">
+    <li className={`gp-gift${gift.kind === 'achievement' ? ' gp-gift--badge' : ''}`}>
       <GiftArt gift={gift} avatar={avatar} />
       <div className="gp-gift__text">
+        {ctx && (
+          <span className={`gp-tag gp-tag--${ctx.kind}`}>
+            {ctx.kind === 'achievement' ? <Icon name="medal" size={13} /> : ctx.kind === 'season' ? <Icon name="trophy" size={13} /> : <Icon name="users" size={13} />}
+            {ctx.label}
+          </span>
+        )}
         <b className="gp-gift__title">{gift.title}</b>
         {gift.body && <p className="gp-gift__body">{gift.body}</p>}
         {rewards.length > 0 && (
@@ -86,7 +108,7 @@ function GiftRow({ gift, avatar }) {
               <li key={r.kind} className={`gp-reward gp-reward--${r.kind}`}>
                 {r.kind === 'coins' && <CoinIcon size={14} />}
                 {r.kind === 'xp' && <Icon name="star" size={13} />}
-                {r.kind === 'item' && <Icon name="sparkle" size={13} />}
+                {r.kind === 'item' && (item && item.kind !== 'title' ? <span className="gp-reward__art" aria-hidden="true"><Preview item={item} size={18} avatar={avatar} /></span> : <Icon name="sparkle" size={13} />)}
                 <span>{r.label}</span>
                 {r.kind === 'item' && item && <small>{item.kind === 'dice' ? 'dice skin' : item.kind}</small>}
               </li>
@@ -106,11 +128,12 @@ export function GiftCard({ gifts = [], avatar, collected = false, gain = null, r
   const totals = giftTotals(gifts);
   const from = gifts.length ? giftFrom(gifts[0], TEAM) : TEAM;
   const several = gifts.length > 1;
+  const badges = gifts.length > 0 && gifts.every((g) => g.kind === 'achievement');
   return (
     <div className="gp" data-collected={collected ? '' : undefined}>
       <div className="gp-head">
         <span className={`gp-ribbon${collected ? '' : ' is-ready'}`} aria-hidden="true">
-          <Icon name="gift" size={28} />
+          <Icon name={badges ? 'medal' : 'gift'} size={28} />
         </span>
         <p className="gp-from">
           <span>From</span> <b>{from}</b>
@@ -287,7 +310,7 @@ export default function GiftPopup({ onActiveChange }) {
   const count = stack.length;
   return (
     <>
-      <Modal open={up} onClose={close} title={giftHeadline(count)} className="hub-sheet gp-panel">
+      <Modal open={up} onClose={close} title={giftHeadline(count, stack)} className="hub-sheet gp-panel">
         <GiftCard
           gifts={stack}
           avatar={user?.avatar}

@@ -6,12 +6,19 @@ import { paths } from '@/platform/paths.js';
 import { useAdmin } from './hooks.js';
 import { AdmIcon, RoleChip, UserAvatar } from './ui.jsx';
 
-/** Sidebar sections, in order. `perm` hides an entry the role cannot use. */
+/**
+ * Sidebar sections, in order. `perm` hides an entry the role cannot use. Events, seasons, achievements and referrals
+ * are readable by all staff; their writes are admin only and gated on the page.
+ */
 export const ADMIN_NAV = [
   { to: '', label: 'Dashboard', icon: 'home', end: true },
   { to: 'users', label: 'Users', icon: 'users' },
   { to: 'rooms', label: 'Live tables', icon: 'table' },
   { to: 'matches', label: 'Matches', icon: 'trophy' },
+  { to: 'events', label: 'Events', icon: 'sparkle' },
+  { to: 'seasons', label: 'Seasons', icon: 'crown' },
+  { to: 'achievements', label: 'Achievements', icon: 'medal' },
+  { to: 'referrals', label: 'Referrals', icon: 'share' },
   { to: 'grants', label: 'Grants', icon: 'gift', perm: PERMS.bulk },
   { to: 'announcements', label: 'Announcements', icon: 'bell' },
   { to: 'audit', label: 'Audit log', icon: 'book' },

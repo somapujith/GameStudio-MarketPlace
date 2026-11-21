@@ -12,10 +12,15 @@ import Ava, { Title } from '@/platform/home/Ava.jsx';
 import { useAccount, useReducedMotion } from '@/components/shell/hooks.js';
 import { fmtNum } from '@/components/shell/ui.jsx';
 import { CoinIcon } from '@/components/shell/icons.jsx';
+import { getCurrentSeason } from '@/lib/api.js';
+import SeasonCard from '@/platform/engagement/SeasonCard.jsx';
+import { useNow } from '@/platform/engagement/useNow.jsx';
+import { SEASON_COLS, seasonCountdown, seasonRowToBoard, seasonStanding, seasonStatusAt } from '@/platform/engagement/engagementModel.js';
 import '@/styles/hubhome.css';
 import '@/platform/home/leaderboard-cinema.css';
 import '@/platform/home/leaderboard-tablet.css';
 import '@/platform/home/leaderboard-phone.css';
+import '@/platform/home/leaderboard-season.css';
 
 const OVERALL_COLS = [
   { key: 'wins', label: 'Wins' },
@@ -23,6 +28,9 @@ const OVERALL_COLS = [
 ];
 const isRow = (r) => !!r && typeof r === 'object' && typeof r.name === 'string';
 const PANEL_ID = 'hh2-lb-panel';
+/** `?tab=season`: the current season's points race (docs/ENGAGEMENT.md section 3). */
+const SEASON_TAB = 'season';
+const EXTRA_TABS = [{ id: SEASON_TAB, label: 'Season', icon: 'trophy' }];
 
 function Skeleton() {
   return (
@@ -140,19 +148,23 @@ function ChampionPodium({ rows, cols, isMe }) {
   </ol><div className="leader-platform" aria-hidden="true"><img src="/art/cinematic/podium-stage.webp" width="1100" height="366" alt="" />{rows.slice(0,3).map((row,i)=><span key={row.rank} className={`leader-platform__rank leader-platform__rank--${i+1}`}>{row.rank}</span>)}</div></div>;
 }
 
-function RankingTable({ rows, cols, isMe }) {
+/** `season`: the season table has no Level column (its third column is Points, which the fit layouts keep visible). */
+function RankingTable({ rows, cols, isMe, season = false }) {
   if(!rows.length) return null;
-  return <div className="leader-ranks" tabIndex={0} role="region" aria-label="Rankings from fourth place, scroll for more columns">
-    <table><caption className="hub-sr">Players ranked fourth and below</caption><thead><tr><th scope="col">#</th><th scope="col">Player</th><th scope="col">Level</th>{cols.map(c=><th scope="col" key={c.key}>{c.label}</th>)}</tr></thead>
+  return <div className={`leader-ranks${season?' leader-ranks--season':''}`} tabIndex={0} role="region" aria-label="Rankings from fourth place, scroll for more columns">
+    <table><caption className="hub-sr">{season?'Season standings from fourth place':'Players ranked fourth and below'}</caption><thead><tr><th scope="col">#</th><th scope="col">Player</th>{!season&&<th scope="col">Level</th>}{cols.map(c=><th scope="col" key={c.key}>{c.label}</th>)}</tr></thead>
       <tbody>{rows.map((row,i)=><tr key={`${row.rank}-${row.name}`} className={isMe(row)?'is-me':undefined} style={{'--rank-delay':`${Math.min(i,8)*25}ms`}}>
         <th scope="row">{row.rank}</th><td><div className="leader-ranks__player"><Ava preset={row.avatar} size={42} frame={row.frame} /><b title={row.name}>{row.name}</b>{isMe(row)&&<span className="leader-you">You</span>}<Title title={row.title} /></div></td>
-        <td><span className="leader-ranks__level"><HubIcon name="star" size={18} />Lv {row.level??1}</span></td>{cols.map(c=><td key={c.key}>{fmtStat(statValue(row,c.key),c)}</td>)}
+        {!season&&<td><span className="leader-ranks__level"><HubIcon name="star" size={18} />Lv {row.level??1}</span></td>}{cols.map(c=><td key={c.key}>{fmtStat(statValue(row,c.key),c)}</td>)}
       </tr>)}</tbody>
     </table>
   </div>;
 }
 
-/** `/leaderboard` — Overall + one tab per live game (`?game=`), podium for the top three, rows for the rest. */
+/**
+ * `/leaderboard` — Overall + one tab per live game (`?game=`) + the Season race (`?tab=season`), podium for the top
+ * three, rows for the rest. On the Season tab the season card (status, countdown, prize tiers) takes the record's spot.
+ */
 export default function Leaderboard() {
   const [params, setParams] = useSearchParams();
   const { account, guest, signedIn, user } = useAccount();
@@ -160,18 +172,31 @@ export default function Leaderboard() {
   const { booting, ready, retry } = useApiGate();
   const live = useMemo(liveList, []);
 
+  const seasonOn = params.get('tab') === SEASON_TAB;
+  const now = useNow();
   const wanted = params.get('game') || 'overall';
   const wantedGame = gameById(wanted);
   const gameId = wantedGame && live.some((g) => g.id === wantedGame.id) ? wantedGame.id : 'overall';
   const game = gameId === 'overall' ? null : gameById(gameId);
   // the rating column is guaranteed second (the podium shows the first two)
-  const cols = game ? statDefsWithRating(game, 3) : OVERALL_COLS;
+  const cols = seasonOn ? SEASON_COLS : game ? statDefsWithRating(game, 3) : OVERALL_COLS;
+  const tab = seasonOn ? SEASON_TAB : gameId;
 
-  const remote = useApi(`/api/leaderboard?game=${encodeURIComponent(gameId)}`, { enabled: ready });
+  const remote = useApi(seasonOn ? '/api/seasons/current' : `/api/leaderboard?game=${encodeURIComponent(gameId)}`, {
+    enabled: ready,
+    fetcher: seasonOn ? getCurrentSeason : undefined,
+  });
   const state = booting ? 'loading' : !ready ? 'offline' : remote.status === 'idle' ? 'loading' : remote.status;
-  const rows = useMemo(() => (Array.isArray(remote.data?.rows) ? remote.data.rows.filter(isRow) : []), [remote.data]);
+  const season = seasonOn && remote.data?.season && typeof remote.data.season === 'object' ? remote.data.season : null;
+  const rows = useMemo(() => {
+    if (seasonOn) return Array.isArray(remote.data?.standings) ? remote.data.standings.map(seasonRowToBoard).filter(Boolean) : [];
+    return Array.isArray(remote.data?.rows) ? remote.data.rows.filter(isRow) : [];
+  }, [remote.data, seasonOn]);
 
-  const pick = useCallback((id) => setParams(id === 'overall' ? {} : { game: gameSlug(id) }, { replace: true }), [setParams]);
+  const pick = useCallback(
+    (id) => setParams(id === SEASON_TAB ? { tab: SEASON_TAB } : id === 'overall' ? {} : { game: gameSlug(id) }, { replace: true }),
+    [setParams],
+  );
   // The server marks the caller's own row (`isMe`, compared by user id) and sends it as `me` even when it is outside
   // the top N. Rows from an older server without the flag fall back to the name + avatar match.
   const isMe = useCallback(
@@ -179,7 +204,7 @@ export default function Leaderboard() {
     [account, user],
   );
   const inTop = rows.find(isMe) || null;
-  const meRow = isRow(remote.data?.me) ? remote.data.me : null;
+  const meRow = seasonOn ? seasonStanding(remote.data?.me) : isRow(remote.data?.me) ? remote.data.me : null;
   const mine = inTop || meRow;
   const lead = game || featured();
   const [entered, setEntered] = useState(false);
@@ -239,6 +264,32 @@ export default function Leaderboard() {
         Something went wrong on our side. Try again in a moment.
       </Notice>
     );
+  } else if (seasonOn && !season) {
+    body = (
+      <Notice icon="trophy" title="No season right now">
+        Seasons are points races with prizes for the top players: 3 points a win, 1 a game. The next one shows up here.
+      </Notice>
+    );
+  } else if (seasonOn && !rows.length) {
+    const cd = seasonCountdown(season, now);
+    const upcoming = seasonStatusAt(season, now) === 'scheduled';
+    body = (
+      <Notice
+        icon="trophy"
+        title={upcoming ? `${season.name} is coming` : 'No points yet'}
+        action={
+          lead ? (
+            <Link to={paths.game(lead.id)} className="hub-btn hub-btn--primary">
+              <HubIcon name="play" size={16} /> Play {lead.name}
+            </Link>
+          ) : null
+        }
+      >
+        {upcoming
+          ? `${cd ? `${cd.text}. ` : ''}Every online match you finish in the season counts: 3 points a win, 1 a game.`
+          : 'Finish an online match to put the first points on the board: 3 points a win, 1 a game.'}
+      </Notice>
+    );
   } else if (!rows.length) {
     body = (
       <Notice
@@ -268,10 +319,18 @@ export default function Leaderboard() {
           </div>
         )}
         <ChampionPodium rows={rows} cols={cols} isMe={isMe} />
-        <RankingTable rows={rows.slice(3)} cols={cols} isMe={isMe} />
+        <RankingTable rows={rows.slice(3)} cols={cols} isMe={isMe} season={seasonOn} />
         {account && (
           <p className="leader-standing" aria-live="polite">
-            {mine && mine.rank ? (
+            {seasonOn ? (
+              mine && mine.rank ? (
+                <>
+                  You are <b>#{mine.rank}</b> this season with {fmtNum(mine.points ?? 0)} {Number(mine.points) === 1 ? 'point' : 'points'}.
+                </>
+              ) : (
+                <>Finish an online match this season to get ranked.</>
+              )
+            ) : mine && mine.rank ? (
               <>
                 You are <b>#{mine.rank}</b> {game ? `in ${game.name}` : 'overall'}.
               </>
@@ -285,17 +344,21 @@ export default function Leaderboard() {
   }
 
   return (
-    <div className="hub-page hh2 leader-cinema" data-state={state==='ok'&&rows.length?'populated':state} data-intro={!entered&&!reduced?'true':undefined} data-reduced={reduced?'':undefined} data-paused={paused?'':undefined}>
+    <div className={`hub-page hh2 leader-cinema${seasonOn ? ' leader-cinema--season' : ''}`} data-state={state==='ok'&&rows.length?'populated':state} data-intro={!entered&&!reduced?'true':undefined} data-reduced={reduced?'':undefined} data-paused={paused?'':undefined}>
       <img className="leader-cinema__scene" src="/art/cinematic/leaderboard-scene.webp" width="2048" height="1024" alt="" fetchPriority="high" decoding="async" />
       <header className="leader-intro">
         <HubIcon className="leader-intro__crown" name="crown" size={45} />
         <h1>Leaderboard</h1><p>See who&rsquo;s winning across every game.</p>
-        <LeaderTabs games={live} value={gameId} onChange={pick} panelId={PANEL_ID} />
+        <LeaderTabs games={live} value={tab} onChange={pick} panelId={PANEL_ID} extra={EXTRA_TABS} />
       </header>
-        <section id={PANEL_ID} role="tabpanel" aria-labelledby={`hh2-tab-${gameId}`} aria-busy={state === 'loading'} className="leader-board">
+        <section id={PANEL_ID} role="tabpanel" aria-labelledby={`hh2-tab-${tab}`} aria-busy={state === 'loading'} className="leader-board">
           {body}
         </section>
-        <YourRecord game={game} user={user} liveGames={live} />
+        {seasonOn ? (
+          state === 'ok' ? <SeasonCard season={season} now={now} avatar={user?.avatar} /> : null
+        ) : (
+          <YourRecord game={game} user={user} liveGames={live} />
+        )}
     </div>
   );
 }

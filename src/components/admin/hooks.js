@@ -1,17 +1,18 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { can } from '@/lib/adminApi.js';
+import { can, canAdminWrite } from '@/lib/adminApi.js';
 
 /**
- * The console's session: `{ me: { role, name, permissions } | null, meError, can(perm), reloadMe }`.
+ * The console's session: `{ me: { role, name, permissions } | null, meError, can(perm), adminWrite, reloadMe }`.
+ * `adminWrite` = the admin-only writes (events, seasons, payouts, achievement grants).
  * `me` is null until GET /api/admin/me answers, so every gated action starts hidden.
  */
-export const AdminContext = createContext({ me: null, meError: null, can: () => false, reloadMe: () => {} });
+export const AdminContext = createContext({ me: null, meError: null, can: () => false, adminWrite: false, reloadMe: () => {} });
 
 export const useAdmin = () => useContext(AdminContext);
 
 /** Build the context value from a `me` answer. */
 export function adminValue(me, { meError = null, reloadMe = () => {} } = {}) {
-  return { me, meError, can: (perm) => can(me, perm), reloadMe };
+  return { me, meError, can: (perm) => can(me, perm), adminWrite: canAdminWrite(me), reloadMe };
 }
 
 /**

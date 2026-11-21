@@ -15,6 +15,11 @@ import Matches from './Matches.jsx';
 import Grants from './Grants.jsx';
 import Announcements from './Announcements.jsx';
 import Audit from './Audit.jsx';
+import Events from './Events.jsx';
+import Seasons from './Seasons.jsx';
+import SeasonDetail from './SeasonDetail.jsx';
+import Achievements from './Achievements.jsx';
+import Referrals from './Referrals.jsx';
 import '@/styles/admin.css';
 
 function ConsoleNotFound() {
@@ -52,6 +57,11 @@ export function AdminRoutes() {
       <Route path="users/:id" element={<UserDetail />} />
       <Route path="rooms" element={<Rooms />} />
       <Route path="matches" element={<Matches />} />
+      <Route path="events" element={<Events />} />
+      <Route path="seasons" element={<Seasons />} />
+      <Route path="seasons/:id" element={<SeasonDetail />} />
+      <Route path="achievements" element={<Achievements />} />
+      <Route path="referrals" element={<Referrals />} />
       <Route path="grants" element={<Grants />} />
       <Route path="announcements" element={<Announcements />} />
       <Route path="audit" element={<Audit />} />

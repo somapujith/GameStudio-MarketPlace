@@ -37,7 +37,19 @@ export const AUDIT_ACTIONS = Object.freeze([
   'announcement.create',
   'announcement.update',
   'announcement.delete',
+  // docs/ENGAGEMENT.md
+  'event.create',
+  'event.update',
+  'event.delete',
+  'season.create',
+  'season.update',
+  'season.payout',
+  'achievement.grant',
 ]);
+
+/** Event kinds and coin-boost multipliers (docs/ENGAGEMENT.md section 3). */
+export const EVENT_KINDS = Object.freeze(['coin_boost', 'limited_shop']);
+export const MULTIPLIERS = Object.freeze([1.5, 2, 2.5, 3]);
 
 /** Contract limits (docs/ADMIN.md "Admin API"). */
 export const LIMITS = Object.freeze({
@@ -56,6 +68,16 @@ export const LIMITS = Object.freeze({
   usersPageSize: 25,
   matchesPageSize: 20,
   actionsPageSize: 50,
+  // docs/ENGAGEMENT.md "Admin API"
+  eventNameMax: 60,
+  eventDescriptionMax: 200,
+  eventMaxDays: 31,
+  limitedItemsMax: 20,
+  seasonNameMax: 60,
+  rankMax: 1000,
+  prizeCoinsMax: 100_000,
+  tiersMax: 20,
+  standingsTop: 100,
 });
 
 /** Is this signed-in user staff (moderator or admin)? Guests never are. */
@@ -67,6 +89,12 @@ export function isStaff(user) {
 export function can(me, perm) {
   return !!me && Array.isArray(me.permissions) && me.permissions.includes(perm);
 }
+
+/**
+ * May `me` use the admin-only writes (events, seasons, payouts, achievement grants: `requireAdmin` on the Worker)?
+ * Judged by the admin-only permission keys, so it is false until GET /api/admin/me answers.
+ */
+export const canAdminWrite = (me) => can(me, PERMS.economy) && can(me, PERMS.roles);
 
 function qs(params) {
   const q = new URLSearchParams();
@@ -100,7 +128,7 @@ export function listUsers({ q, filter, sort, page, pageSize } = {}, opts) {
   );
 }
 
-/** GET /api/admin/users/:id -> { user, items, friends, matches, actions, notifications, rooms } */
+/** GET /api/admin/users/:id -> { user, items, friends, matches, actions, notifications, rooms, achievements, referral } */
 export const getAdminUser = (id, opts) => api.get(`/api/admin/users/${enc(id)}`, opts);
 
 /** GET /api/admin/rooms -> { rooms: [...] } (updated in the last 24 h) */
@@ -167,6 +195,36 @@ export const createAnnouncement = (fields, opts) => api.post('/api/admin/announc
 export const updateAnnouncement = (id, fields, opts) => api.patch(`/api/admin/announcements/${enc(id)}`, fields, opts);
 /** DELETE /api/admin/announcements/:id -> { ok: true } */
 export const deleteAnnouncement = (id, opts) => api.del(`/api/admin/announcements/${enc(id)}`, opts);
+
+// ---- events, seasons, achievements, referrals (docs/ENGAGEMENT.md "Admin API") ----------------------------------
+
+/** GET /api/admin/events -> { events: (LiveEvent & { active, createdAt, live })[] } (newest start first, at most 200) */
+export const listEvents = (opts) => api.get('/api/admin/events', opts);
+/** POST /api/admin/events { kind, name, description?, startsAt, endsAt, active?, config } -> { event } */
+export const createEvent = (fields, opts) => api.post('/api/admin/events', fields, opts);
+/** PATCH /api/admin/events/:id (any subset) -> { event } */
+export const updateEvent = (id, fields, opts) => api.patch(`/api/admin/events/${enc(id)}`, fields, opts);
+/** DELETE /api/admin/events/:id -> { ok: true } */
+export const deleteEvent = (id, opts) => api.del(`/api/admin/events/${enc(id)}`, opts);
+
+/** GET /api/admin/seasons -> { seasons: (Season & { createdAt, paidAt })[] } */
+export const listSeasons = (opts) => api.get('/api/admin/seasons', opts);
+/** POST /api/admin/seasons { name, startsAt, endsAt, prizeTiers } -> { season } */
+export const createSeason = (fields, opts) => api.post('/api/admin/seasons', fields, opts);
+/** PATCH /api/admin/seasons/:id (any subset; 409 after the payout) -> { season } */
+export const updateSeason = (id, fields, opts) => api.patch(`/api/admin/seasons/${enc(id)}`, fields, opts);
+/** GET /api/admin/seasons/:id/standings -> { season, standings (top 100), prizesPreview } */
+export const getSeasonStandings = (id, opts) => api.get(`/api/admin/seasons/${enc(id)}/standings`, opts);
+/** POST /api/admin/seasons/:id/payout { confirm: true } -> { paid } (409 not ended / already paid) */
+export const payoutSeason = (id, opts) => api.post(`/api/admin/seasons/${enc(id)}/payout`, { confirm: true }, opts);
+
+/** GET /api/admin/achievements -> { achievements: [{ id, name, unlocked }], members } */
+export const getAchievementStats = (opts) => api.get('/api/admin/achievements', opts);
+/** POST /api/admin/users/:id/achievements { achievementId, reason } -> { unlocked: true } (409 already unlocked) */
+export const grantAchievement = (id, { achievementId, reason }, opts) => api.post(`/api/admin/users/${enc(id)}/achievements`, { achievementId, reason }, opts);
+
+/** GET /api/admin/referrals -> { top, recent, totals: { invited, rewarded, coinsPaid } } */
+export const getReferrals = (opts) => api.get('/api/admin/referrals', opts);
 
 // ---- validators (pure; return '' when valid, else a short message) ---------------------------------------------
 
@@ -268,4 +326,9 @@ export default {
   listMatches,
   listActions,
   listAnnouncements,
+  listEvents,
+  listSeasons,
+  getSeasonStandings,
+  getAchievementStats,
+  getReferrals,
 };

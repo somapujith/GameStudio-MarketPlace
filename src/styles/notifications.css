@@ -98,6 +98,25 @@
     height: 38px;
   }
 }
+/* The narrowest phones (360-379 px) with a page tour's "?" in the row were still 22 px too wide (the profile chip hung
+   off the edge): side padding, gaps and the square buttons give a few px each, every button stays 34 px or more. */
+@media (max-width: 379px) {
+  .hub-app .hub-topbar__inner[data-fit='3']:has(.nt-bell):has(.tour-help) {
+    gap: 3px;
+    padding-inline: 10px;
+  }
+  .hub-app .hub-topbar__inner[data-fit='3']:has(.nt-bell):has(.tour-help) .hub-topbar__end {
+    gap: 3px;
+  }
+  .hub-app .hub-topbar__inner[data-fit='3']:has(.nt-bell):has(.tour-help) :is(.hub-search, .hub-codebtn) {
+    width: 36px;
+    min-width: 36px;
+  }
+  .hub-app .hub-topbar__inner[data-fit='3']:has(.nt-bell):has(.tour-help) :is(.nt-bell, .tour-help) {
+    width: 34px;
+    min-width: 34px;
+  }
+}
 
 /* ---------- inbox: dropdown on wide screens ---------- */
 .nt-pop {
@@ -231,6 +250,11 @@
 .nt-item--message .nt-item__icon {
   color: var(--brand-charcoal);
   background: var(--brand-paper);
+}
+.nt-item--achievement .nt-item__icon {
+  color: var(--brand-charcoal);
+  background: radial-gradient(circle at 35% 30%, #ffd77a, var(--brand-yellow) 60%, #c9780f);
+  border-radius: 50%;
 }
 .nt-item__text {
   display: flex;

@@ -215,7 +215,7 @@ export const getMyMatches = (limit = 20, opts) => api.get(`/api/me/matches?limit
 /** GET /api/shop -> { items: [{ ...cosmetic, owned, equipped }], coins, equipped: { frame?, dice?, title? } }. */
 export const getShop = (opts) => api.get('/api/shop', opts);
 
-/** POST /api/shop/buy { itemId } -> { coins, owned: itemId[] } ; 402 not enough coins, 409 already owned. */
+/** POST /api/shop/buy { itemId } -> { coins, owned: itemId[] } ; 402 not enough coins, 409 already owned or 'Not available right now.' (a limited / reward item). */
 export const buyCosmetic = (itemId, opts) => api.post('/api/shop/buy', { itemId }, opts);
 
 /** POST /api/shop/equip { kind, itemId|null } -> { equipped }. */
@@ -254,6 +254,20 @@ export function markNotificationsRead(ids, opts) {
 
 /** GET /api/announcements -> { announcements: Announcement[] } (public; live ones only, newest first, at most 3). */
 export const getAnnouncements = (opts) => api.get('/api/announcements', opts);
+
+// ---- achievements, referrals, events and seasons (contract: docs/ENGAGEMENT.md, "Player API") ----------------------
+
+/** GET /api/achievements -> { achievements: Achievement[], unlocked, total } (session optional: progress null signed out). */
+export const getAchievements = (opts) => api.get('/api/achievements', opts);
+
+/** GET /api/me/referrals -> { code, link (a site path), invited, rewarded, coinsEarned, recent: [{ name, avatar, joinedAt, rewarded }] } (members). */
+export const getMyReferrals = (opts) => api.get('/api/me/referrals', opts);
+
+/** GET /api/events/live -> { events: LiveEvent[], coinMultiplier } (public, cached 60 s). */
+export const getLiveEvents = (opts) => api.get('/api/events/live', opts);
+
+/** GET /api/seasons/current -> { season|null, standings: SeasonRow[] (top 50), me: { rank, points, wins, games }|null }. */
+export const getCurrentSeason = (opts) => api.get('/api/seasons/current', opts);
 
 /** Best human message for anything thrown by `api.*` (or anything else). */
 export function errorMessage(err, fallback = 'Something went wrong') {

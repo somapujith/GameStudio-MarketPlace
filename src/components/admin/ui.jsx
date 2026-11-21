@@ -276,3 +276,23 @@ export function RefreshButton({ onClick, busy, label = 'Refresh' }) {
     </button>
   );
 }
+
+/** A "read only" line for staff whose role cannot use a screen's writes: says what is locked and why. */
+export function ReadOnlyNote({ children }) {
+  return (
+    <p className="adm-readonly" role="note">
+      <HubIcon name="lock" size={15} />
+      <span>{children}</span>
+    </p>
+  );
+}
+
+/** A small horizontal meter (0-100), e.g. an unlock rate. The number is shown next to it, so the bar is decorative. */
+export function Meter({ value, tone }) {
+  const v = Math.max(0, Math.min(100, Number(value) || 0));
+  return (
+    <span className={cx('adm-meter', tone && `adm-meter--${tone}`)} aria-hidden="true">
+      <span className="adm-meter__fill" style={{ width: `${v > 0 ? Math.max(v, 1.5) : 0}%` }} />
+    </span>
+  );
+}

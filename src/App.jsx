@@ -11,6 +11,7 @@ import { BRAND } from '@/platform/brand.js';
 import { LEGACY_REDIRECTS, paths } from '@/platform/paths.js';
 import { isStaff } from '@/lib/adminApi.js';
 import PageLoading from '@/platform/game/PageLoading.jsx';
+import RefCapture from '@/platform/engagement/RefCapture.jsx';
 import '@/styles/hub.css';
 import '@/styles/mobile.css';
 import '@/styles/store.css';
@@ -153,6 +154,7 @@ export default function App() {
         <ScrollManager />
         <ViewTransitionBridge />
         <UserRefresh />
+        <RefCapture />
         <ToastProvider>
           <ErrorBoundary silent>
             <CelebrationHost />

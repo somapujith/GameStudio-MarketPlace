@@ -10,6 +10,7 @@ import {
   adjustXp,
   amountError,
   banUser,
+  grantAchievement,
   grantItem,
   maxLenError,
   nameError,
@@ -21,7 +22,9 @@ import {
   unbanUser,
 } from '@/lib/adminApi.js';
 import { cosmeticById } from '@shared/cosmetics.js';
-import { ROLE_LABEL, fmtNum, itemGroups } from './model.js';
+import { rewardOf } from '@shared/achievements.js';
+import { ROLE_LABEL, fmtNum, itemGroups, prizeText } from './model.js';
+import { grantAchievementCopy, grantableAchievements } from './engagementModel.js';
 import { Card, Field } from './ui.jsx';
 
 const len = (s) => [...String(s ?? '')].length;
@@ -38,6 +41,8 @@ export function actionRules({ can, selfId, target }) {
   const roleBlocked = !can(PERMS.roles) ? 'Admins only.' : self ? 'You cannot change your own role.' : target?.isGuest ? 'Guests cannot have a role.' : '';
   return {
     economy: can(PERMS.economy),
+    // admin only (requireAdmin): unlock an achievement by hand, which pays its reward
+    grantAchievement: can(PERMS.economy) && can(PERMS.roles),
     moderate,
     moderateBlocked,
     roles: can(PERMS.roles),
@@ -410,8 +415,59 @@ function RoleForm({ user, onRequest }) {
   );
 }
 
-/** The whole panel. `onRequest(spec, reset?)`. */
-export default function UserActions({ user, owned = [], can, selfId, onRequest }) {
+/** Unlock an achievement by hand (admins). It pays the reward exactly like a real unlock. */
+function GrantAchievementForm({ user, unlocked, onRequest }) {
+  const [achievementId, setAchievementId] = useState('');
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const options = grantableAchievements(unlocked);
+  const pickErr = achievementId && options.some((a) => a.id === achievementId) ? '' : 'Pick an achievement.';
+  const reasonErr = reasonError(reason);
+  if (!options.length) return <p className="adm-faint adm-form__note">Every achievement is already unlocked.</p>;
+  const submit = (e) => {
+    e.preventDefault();
+    setTried(true);
+    if (pickErr || reasonErr) return;
+    const copy = grantAchievementCopy(achievementId, user.name);
+    const name = options.find((a) => a.id === achievementId)?.name || achievementId;
+    onRequest(
+      {
+        title: copy.title,
+        body: `${copy.body} Reason: “${reason.trim()}”. They get the unlock notification.`,
+        confirmLabel: 'Unlock',
+        run: () => grantAchievement(user.id, { achievementId, reason: reason.trim() }),
+        done: () => `${name} unlocked for ${user.name}.`,
+      },
+      () => {
+        setAchievementId('');
+        setReason('');
+        setTried(false);
+      },
+    );
+  };
+  return (
+    <form className="adm-form" onSubmit={submit} noValidate>
+      <h3 className="adm-form__title">Grant achievement</h3>
+      <Field label="Achievement" error={tried ? pickErr : ''} hint={`${options.length} not unlocked yet · the reward is paid too`}>
+        <select className="adm-input adm-select" value={achievementId} onChange={(e) => setAchievementId(e.target.value)}>
+          <option value="">Choose an achievement…</option>
+          {options.map((a) => (
+            <option key={a.id} value={a.id}>
+              {`${a.name} · ${prizeText(rewardOf(a))}`}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <ReasonField value={reason} onChange={setReason} show={tried || reason !== ''} />
+      <button type="submit" className="adm-btn adm-btn--primary">
+        Grant achievement
+      </button>
+    </form>
+  );
+}
+
+/** The whole panel. `onRequest(spec, reset?)`. `unlocked` = the user's achievements (`[{ id }]` or ids). */
+export default function UserActions({ user, owned = [], unlocked = [], can, selfId, onRequest }) {
   const rules = actionRules({ can, selfId, target: user });
   if (!rules.economy && !rules.moderate && !rules.roles) return null;
   return (
@@ -423,6 +479,11 @@ export default function UserActions({ user, owned = [], can, selfId, onRequest }
             <XpForm user={user} onRequest={onRequest} />
             <GrantItemForm user={user} owned={owned} onRequest={onRequest} />
           </div>
+        </Card>
+      ) : null}
+      {rules.grantAchievement ? (
+        <Card title="Achievements" meta="admin">
+          <GrantAchievementForm user={user} unlocked={unlocked} onRequest={onRequest} />
         </Card>
       ) : null}
       {rules.moderate ? (

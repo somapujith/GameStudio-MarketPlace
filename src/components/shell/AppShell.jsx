@@ -8,6 +8,7 @@ import { NoticeSlot } from '@/components/online/InviteBanner.jsx';
 import { useSocialCounts, withSocialBadge } from '@/platform/social/useSocialCounts.js';
 import { useTitleCount } from '@/platform/social/useTitleCount.js';
 import AnnouncementBar from '@/platform/notifications/AnnouncementBar.jsx';
+import LiveEventBar from '@/platform/engagement/LiveEventBar.jsx';
 import SuspendedScreen, { SuspendedStrip } from '@/platform/notifications/SuspendedScreen.jsx';
 import { NotificationsProvider } from '@/platform/notifications/useNotifications.jsx';
 import { isPublicPath } from '@/platform/notifications/suspendedModel.js';
@@ -104,7 +105,7 @@ function useRouteFocus(pathname, mainRef) {
  * nav and the tab bar. Game screens (/play/**) and the lobby (/lobby/:code, full screen with its own header) are
  * rendered outside the platform chrome.
  * Admin features for players (docs/ADMIN.md): the notifications bell (TopBar), the announcement strip under the top
- * bar, the gift popup (it goes first; the daily popup is not even mounted while a gift popup is up, so the two never
+ * bar, the live-event strip (docs/ENGAGEMENT.md: coin boost, limited shop), the gift popup (it goes first; the daily popup is not even mounted while a gift popup is up, so the two never
  * show together) and, for a suspended account, the full-page suspended screen in place of everything except the
  * public pages (Help, Privacy, Terms, About), which keep the shell with a slim "suspended" strip.
  */
@@ -138,7 +139,14 @@ export default function AppShell() {
 
         <TopBar badges={badges} />
         <OfflineBanner />
-        {suspended ? <SuspendedStrip /> : <AnnouncementBar />}
+        {suspended ? (
+          <SuspendedStrip />
+        ) : (
+          <>
+            <AnnouncementBar />
+            <LiveEventBar />
+          </>
+        )}
 
         <div className="hub-body">
           <main id="main" ref={mainRef} className="hub-main" tabIndex={-1}>

@@ -6,6 +6,8 @@ import { featured, liveList } from '@/platform/home/catalog.js';
 import ProfileHeader from '@/platform/home/ProfileHeader.jsx';
 import GameStatCards, { RecentMatches } from '@/platform/home/GameStatCards.jsx';
 import BadgeGrid from '@/platform/home/BadgeGrid.jsx';
+import AchievementsGrid from '@/platform/engagement/AchievementsGrid.jsx';
+import ReferralCard from '@/platform/engagement/ReferralCard.jsx';
 import SettingsSection from '@/platform/home/SettingsSection.jsx';
 import AccountSection from '@/platform/home/AccountSection.jsx';
 import AboutSection from '@/platform/home/AboutSection.jsx';
@@ -22,6 +24,8 @@ import '@/platform/home/adda.css';
 const JUMPS = [
   { id: 'games', label: 'Games' },
   { id: 'matches', label: 'Matches' },
+  { id: 'achievements', label: 'Achievements' },
+  { id: 'invite', label: 'Invite' },
   { id: 'badges', label: 'Badges' },
   { id: 'settings', label: 'Settings' },
   { id: 'account', label: 'Account' },
@@ -48,7 +52,7 @@ function ProfileSkeleton() {
   );
 }
 
-/** `/profile`: identity (level ring, coins, streak, daily reward), per-game stats, recent matches, badges, settings, account. */
+/** `/profile`: identity (level ring, coins, streak, daily reward), per-game stats, recent matches, achievements, the invite card, badges, settings, account. */
 export default function Profile() {
   const { hash } = useLocation();
   const { user, signedIn, loading } = useAccount();
@@ -102,6 +106,8 @@ export default function Profile() {
         <GameStatCards games={games} user={user} />
         <RecentMatches signedIn={signedIn} lead={lead} />
       </div>
+      <AchievementsGrid />
+      <ReferralCard />
       <BadgeGrid games={games} user={user} level={level} />
       <SettingsSection />
       <HandleField />

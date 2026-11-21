@@ -31,7 +31,7 @@ function KindIcon({ kind }) {
 /** One notification row: kind icon, team label (messages), title, body, gift rewards, relative time, unread dot. */
 export function InboxItem({ n, now = Date.now() }) {
   const item = n.data?.itemId ? cosmeticById(n.data.itemId) : null;
-  const rewards = n.kind === 'gift' ? giftRewards(n, item?.name || '') : [];
+  const rewards = n.kind === 'gift' || n.kind === 'achievement' ? giftRewards(n, item?.name || '') : [];
   const when = relativeTime(n.createdAt, now);
   return (
     <li className={`nt-item nt-item--${n.kind}${n.read ? '' : ' is-unread'}`}>

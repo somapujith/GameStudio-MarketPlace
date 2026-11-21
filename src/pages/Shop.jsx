@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { COSMETICS, COSMETIC_KINDS, EQUIPPABLE_KINDS, FREE_COSMETICS, cleanEquipped, cosmeticById } from '@shared/cosmetics.js';
+import { COSMETICS, COSMETIC_KINDS, EQUIPPABLE_KINDS, FREE_COSMETICS, cleanEquipped, cosmeticById, sourceOf } from '@shared/cosmetics.js';
+import { unlockHintFor } from '@shared/achievements.js';
 import { buyCosmetic, equipCosmetic, errorMessage, getShop } from '@/lib/api.js';
+import { useUserEvents } from '@/lib/auth.jsx';
+import { formatCountdown, isUnavailableError, shopItemMode, spokenCountdown } from '@/platform/engagement/engagementModel.js';
+import { Countdown, useNow } from '@/platform/engagement/useNow.jsx';
 import { paths } from '@/platform/paths.js';
 import HubIcon from '@/platform/game/HubIcon.jsx';
 import { featured } from '@/platform/home/catalog.js';
@@ -20,6 +24,7 @@ import '@/styles/x-profile.css';
 import '@/styles/hubMoments.css';
 import '@/styles/store-account.css';
 import '@/styles/shop-shine.css';
+import '@/styles/engagement.css';
 import {
   RARITY_FILTERS,
   RARITY_LABEL,
@@ -54,13 +59,28 @@ const SLOT = {
   board: { label: 'Board theme', none: 'Classic board' },
 };
 
-/** Catalogue merged with the server's view (`owned`, `equipped`, price). Unknown server ids are ignored. */
-function mergeItems(serverItems, owned) {
+/**
+ * Catalogue merged with the server's view (`owned`, `equipped`, price, and docs/ENGAGEMENT.md's `source`, `available`,
+ * `availableUntil`, `unlockHint`). Unknown server ids are ignored. Before the server answers, reward items are locked and
+ * limited items are off sale (the catalogue's own hint), so nothing shows a Buy button it would refuse.
+ */
+export function mergeItems(serverItems, owned) {
   const byId = new Map((Array.isArray(serverItems) ? serverItems : []).filter((x) => x && typeof x.id === 'string').map((x) => [x.id, x]));
   return COSMETICS.map((c) => {
     const s = byId.get(c.id);
     const price = Number.isFinite(Number(s?.price)) ? Number(s.price) : c.price;
-    return { ...c, price, rarity: s?.rarity || c.rarity, owned: owned.has(c.id) || price === 0 };
+    const source = sourceOf(s?.source ? s : c);
+    const available = typeof s?.available === 'boolean' ? s.available : source === 'shop';
+    return {
+      ...c,
+      price,
+      rarity: s?.rarity || c.rarity,
+      source,
+      available,
+      availableUntil: available && typeof s?.availableUntil === 'string' ? s.availableUntil : null,
+      unlockHint: typeof s?.unlockHint === 'string' ? s.unlockHint : unlockHintFor(c, { live: available }),
+      owned: owned.has(c.id) || (price === 0 && source === 'shop'),
+    };
   });
 }
 
@@ -107,14 +127,31 @@ function KindTabs({ value, onChange, counts }) {
   );
 }
 
-export function ItemCard({ item, i, equipped, selected, coins, signedIn, offline, busy, buying, fresh, avatar, preview, onSelect, onBuy, onEquip }) {
+export function ItemCard({ item, i, equipped, selected, coins, signedIn, offline, busy, buying, fresh, avatar, preview, now = Date.now(), onSelect, onBuy, onEquip }) {
   const isVoice = item.kind === 'voice';
   const isEquipped = !isVoice && equipped[item.kind] === item.id;
   const known = Number.isFinite(coins);
-  const short = signedIn && !item.owned && known && coins < item.price ? item.price - coins : 0;
-  const affordable = signedIn && !item.owned && !short;
+  // limited event items, achievement and season rewards (docs/ENGAGEMENT.md): never a Buy button the server would refuse
+  const sale = shopItemMode(item);
+  const buyable = sale.mode === 'shop' || sale.mode === 'limited';
+  const short = buyable && signedIn && !item.owned && known && coins < item.price ? item.price - coins : 0;
+  const affordable = buyable && signedIn && !item.owned && !short;
+  const leftMs = sale.mode === 'limited' && sale.until ? Date.parse(sale.until) - now : null;
   let action;
-  if (item.owned && isVoice) {
+  if (sale.mode === 'locked') {
+    action = (
+      <p className="jg-shop-hint">
+        <HubIcon name="lock" size={15} strokeWidth={2.4} />
+        <span>{sale.hint}</span>
+      </p>
+    );
+  } else if (sale.mode === 'offsale') {
+    action = (
+      <button type="button" className="hub-btn hub-btn--sm hub-btn--soft" disabled aria-label={`${item.name}: on sale during events`}>
+        On sale during events
+      </button>
+    );
+  } else if (item.owned && isVoice) {
     // voice lines are owned-only (no equip): the action is the preview, which only owners get
     const on = preview?.playingId === item.id;
     action = (
@@ -160,12 +197,29 @@ export function ItemCard({ item, i, equipped, selected, coins, signedIn, offline
     );
   }
   const legendary = item.rarity === 'legendary';
-  const stateCls = isEquipped ? 'is-equipped' : item.owned ? 'is-owned' : short ? 'is-locked' : affordable ? 'is-afford' : '';
+  const stateCls = isEquipped
+    ? 'is-equipped'
+    : item.owned
+      ? 'is-owned'
+      : sale.mode === 'locked'
+        ? 'is-reward'
+        : sale.mode === 'offsale'
+          ? 'is-offsale'
+          : short
+            ? 'is-locked'
+            : affordable
+              ? 'is-afford'
+              : '';
   return (
     <li
       className={`xp-item xp-item--${item.rarity} ${stateCls} ${selected ? 'is-sel' : ''} ${fresh ? 'is-fresh' : ''}`.replace(/\s+/g, ' ').trim()}
       style={{ '--i': Math.min(i, 12) }}
     >
+      {sale.mode === 'limited' && (
+        <span className="jg-shop-ribbon" aria-hidden="true">
+          Limited
+        </span>
+      )}
       {legendary && (
         <span className="xz-glints" aria-hidden="true">
           <i />
@@ -182,7 +236,7 @@ export function ItemCard({ item, i, equipped, selected, coins, signedIn, offline
           <span className="hub-moment-preview">
             <Preview item={item} size={76} avatar={avatar} shine={legendary} />
           </span>
-          {short > 0 && (
+          {(short > 0 || sale.mode === 'locked') && (
             <span className="sa-lock" aria-hidden="true">
               <HubIcon name="lock" size={14} strokeWidth={2.4} />
             </span>
@@ -202,6 +256,10 @@ export function ItemCard({ item, i, equipped, selected, coins, signedIn, offline
             </span>
           ) : item.owned ? (
             <span className="xp-state">{item.price === 0 ? 'Free' : 'Owned'}</span>
+          ) : sale.mode === 'locked' ? (
+            <span className="jg-shop-source">
+              <HubIcon name={item.source === 'season' ? 'trophy' : 'medal'} size={13} /> {item.source === 'season' ? 'Season prize' : 'Achievement reward'}
+            </span>
           ) : isVoice ? (
             <span className={`xp-price ${affordable ? 'is-afford' : ''}`}>
               <HubIcon name="lock" size={12} strokeWidth={2.6} /> Locked · <CoinIcon size={14} /> {fmtNum(item.price)}
@@ -212,6 +270,17 @@ export function ItemCard({ item, i, equipped, selected, coins, signedIn, offline
             </span>
           )}
         </span>
+        {sale.mode === 'limited' && (
+          <span className="jg-shop-until">
+            <span className="sr-only">Limited: </span>
+            <HubIcon name="clock" size={12} strokeWidth={2.6} />
+            {leftMs != null && leftMs > 0 ? (
+              <Countdown text={`Ends in ${formatCountdown(leftMs)}`} spoken={`On sale for ${spokenCountdown(leftMs)}`} />
+            ) : (
+              'Limited time'
+            )}
+          </span>
+        )}
       </div>
       <div className="xp-item__act">{action}</div>
     </li>
@@ -339,7 +408,11 @@ export default function Shop() {
   const progress = useProgress();
   const daily = useDaily();
   const { booting, ready, retry } = useApiGate();
-  const res = useApi('/api/shop', { enabled: ready && signedIn, fetcher: getShop });
+  // signed out too: the server says which limited items are on sale right now (owned = free items only)
+  const res = useApi('/api/shop', { enabled: ready, fetcher: getShop });
+  // an item granted live (an achievement, a season prize, a gift) shows up as owned in an open shop
+  useUserEvents(() => res.reload(), ['items']);
+  const now = useNow();
 
   const kind = parseKind(params.get('kind'));
   const rarity = parseRarity(params.get('rarity'));
@@ -381,7 +454,7 @@ export default function Shop() {
   const vault = useMemo(() => vaultItems(items), [items]);
   const vaultTotals = useMemo(() => vaultCount(items), [items]);
   const offline = !booting && (!ready || res.status === 'offline' || res.status === 'error');
-  const loading = booting || (ready && signedIn && res.status === 'loading');
+  const loading = booting || (ready && res.status === 'loading' && !res.data);
 
   const [sel, setSel] = useState(null);
   const avatar = signedIn && user?.avatar != null ? Number(user.avatar) : profile.avatar;
@@ -398,6 +471,7 @@ export default function Shop() {
 
   const openBuy = (item) => {
     if (item.kind !== 'voice') setSel(item.id);
+    if (!['shop', 'limited'].includes(shopItemMode(item).mode)) return;
     const short = Number.isFinite(balance) && balance < item.price;
     setDialog({ item, phase: short ? 'poor' : 'confirm' });
   };
@@ -436,7 +510,14 @@ export default function Shop() {
       }
       Promise.resolve(auth.refresh?.()).catch(() => {});
     } catch (e) {
-      if (e?.status === 409) {
+      if (isUnavailableError(e)) {
+        // a limited item went off sale between the page load and the tap: nothing was charged
+        setOwned(before.owned);
+        setCoins(before.coins);
+        toast(`${item.name} is not on sale right now. You were not charged.`, { tone: 'info' });
+        invalidateApi('/api/shop');
+        res.reload();
+      } else if (e?.status === 409) {
         setCoins(before.coins);
         toast(`You already own ${item.name}.`, { tone: 'info' });
         invalidateApi('/api/shop');
@@ -501,6 +582,7 @@ export default function Shop() {
     fresh: fresh === item.id,
     avatar,
     preview: item.kind === 'voice' ? preview : null,
+    now,
     onSelect: (id) => setSel((s) => (s === id ? null : id)),
     onBuy: openBuy,
     onEquip: doEquip,

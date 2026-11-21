@@ -121,13 +121,21 @@ export const ACTION_LABEL = {
   'announcement.create': 'Announcement +',
   'announcement.update': 'Announcement edit',
   'announcement.delete': 'Announcement −',
+  'event.create': 'Event +',
+  'event.update': 'Event edit',
+  'event.delete': 'Event −',
+  'season.create': 'Season +',
+  'season.update': 'Season edit',
+  'season.payout': 'Season payout',
+  'achievement.grant': 'Achievement',
 };
 
 /** Colour family of an action chip. */
 export function actionTone(action) {
-  if (action === 'ban' || action === 'item.revoke' || action === 'announcement.delete') return 'bad';
+  if (action === 'ban' || action === 'item.revoke' || action === 'announcement.delete' || action === 'event.delete') return 'bad';
   if (action === 'unban') return 'good';
-  if (action === 'coins' || action === 'xp' || action === 'item.grant' || action === 'grant.bulk') return 'gold';
+  if (action === 'coins' || action === 'xp' || action === 'item.grant' || action === 'grant.bulk' || action === 'season.payout' || action === 'achievement.grant') return 'gold';
+  if (action === 'event.create' || action === 'season.create') return 'info';
   if (action === 'role') return 'info';
   return 'plain';
 }
@@ -135,18 +143,143 @@ export function actionTone(action) {
 const signed = (n) => (Number(n) > 0 ? `+${fmtNum(n)}` : fmtNum(n));
 const AUDIENCE_LABEL = { ids: 'selected users', members: 'all members', active7d: 'active in last 7 days' };
 
+// ---- prizes, ranks and event effects (shared by the engagement screens and the audit log) -----------------------
+
+/** 1 -> "1st", 2 -> "2nd", 11 -> "11th", 23 -> "23rd". */
+export function ordinal(n) {
+  const v = Math.trunc(Number(n));
+  if (!Number.isFinite(v)) return String(n ?? '');
+  const t = Math.abs(v) % 100;
+  const suffix = t >= 11 && t <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' }[Math.abs(v) % 10] || 'th');
+  return `${v}${suffix}`;
+}
+
+/** A rank range: "1st", "4th–10th". */
+export const rankRange = (from, to) => (Number(from) === Number(to) ? ordinal(from) : `${ordinal(from)}–${ordinal(to)}`);
+
+/** A cosmetic kind as a noun ("title", "frame", "voice line"). */
+export const KIND_WORD = { frame: 'frame', dice: 'dice', trail: 'trail', board: 'board', title: 'title', voice: 'voice line' };
+
+/** `{ coins?, itemId?, itemName? }` -> "6,000 coins + Season Champion title" ("no prize" when empty). */
+export function prizeText({ coins, itemId, itemName: name } = {}) {
+  const parts = [];
+  if (Number(coins) > 0) parts.push(`${fmtNum(coins)} ${Number(coins) === 1 ? 'coin' : 'coins'}`);
+  if (itemId) {
+    const item = cosmeticById(itemId);
+    parts.push(item ? `${name || item.name} ${KIND_WORD[item.kind] || item.kind}` : name || itemId);
+  }
+  return parts.length ? parts.join(' + ') : 'no prize';
+}
+
+/** Prize tiers -> one line each, by rank: ["1st: 6,000 coins + Season Champion title", "2nd–3rd: 3,000 coins"]. */
+export function tierSummary(tiers) {
+  return (Array.isArray(tiers) ? tiers : [])
+    .filter((t) => t && Number.isFinite(Number(t.fromRank)) && Number.isFinite(Number(t.toRank)))
+    .slice()
+    .sort((a, b) => Number(a.fromRank) - Number(b.fromRank))
+    .map((t) => `${rankRange(t.fromRank, t.toRank)}: ${prizeText(t)}`);
+}
+
+export const EVENT_KIND_LABEL = { coin_boost: 'Coin boost', limited_shop: 'Limited shop' };
+
+/** "×2 coins" / "×1.5 coins" for a multiplier. */
+export const multiplierText = (m) => `×${Number(m)} coins`;
+
+/** What an event does: "×2 coins", "Limited shop: Diwali Diya, Festive Diya". */
+export function eventEffectText(kind, config) {
+  const c = config && typeof config === 'object' ? config : {};
+  if (kind === 'coin_boost') return multiplierText(c.multiplier ?? 1);
+  if (kind === 'limited_shop') {
+    const ids = Array.isArray(c.itemIds) ? c.itemIds : [];
+    return ids.length ? `Limited shop: ${ids.map((id) => itemName(id)).join(', ')}` : 'Limited shop: no items';
+  }
+  return String(kind || 'event');
+}
+
+const windowText = (s, e) => `${fmtDateTime(s)} → ${fmtDateTime(e)}`;
+const asObj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+const prizesText = (tiers) => {
+  const lines = tierSummary(tiers);
+  return lines.length ? lines.join('; ') : 'none';
+};
+
+/** Field-by-field "before → after" lines of an event.update / season.update entry. */
+function changeParts(action, d) {
+  const before = asObj(d.before);
+  const after = asObj(d.after);
+  const changed = Array.isArray(d.changed) ? d.changed : [];
+  const isEvent = action === 'event.update';
+  const fmt = {
+    name: ['Name', (v) => String(v ?? '–')],
+    description: ['Description', (v) => (v ? String(v) : '–')],
+    kind: ['Kind', (v) => EVENT_KIND_LABEL[v] || String(v ?? '–')],
+    startsAt: ['Starts', fmtDateTime],
+    endsAt: ['Ends', fmtDateTime],
+    active: ['Active', (v) => (v ? 'on' : 'off')],
+    config: ['Effect', null],
+    prizeTiers: ['Prizes', prizesText],
+  };
+  const parts = [];
+  for (const k of changed) {
+    const [label, f] = fmt[k] || [k, (v) => (v == null ? '–' : typeof v === 'object' ? JSON.stringify(v) : String(v))];
+    if (k === 'config' && isEvent) {
+      parts.push({ k: label, v: `${eventEffectText(before.kind, before.config)} → ${eventEffectText(after.kind, after.config)}` });
+      continue;
+    }
+    const b = f(before[k]);
+    const a = f(after[k]);
+    parts.push({ k: label, v: b === a ? a : `${b} → ${a}` });
+  }
+  if (!changed.length) parts.push({ k: 'Changed', v: 'nothing' });
+  return parts;
+}
+
+/** The engagement actions (events, seasons): readable parts, or null for any other action. */
+function engagementParts(entry, d) {
+  const a = entry && entry.action;
+  if (a === 'event.create' || a === 'event.delete') {
+    const parts = [{ k: 'Event', v: String(d.name ?? '–') }, { k: 'Effect', v: eventEffectText(d.kind, d.config) }];
+    if (d.startsAt || d.endsAt) parts.push({ k: 'Window', v: windowText(d.startsAt, d.endsAt) });
+    if (d.active === false) parts.push({ k: 'State', v: 'off' });
+    return parts;
+  }
+  if (a === 'event.update' || a === 'season.update') {
+    const name = asObj(d.after).name ?? asObj(d.before).name;
+    return [{ k: a === 'event.update' ? 'Event' : 'Season', v: String(name ?? '–') }, ...changeParts(a, d)];
+  }
+  if (a === 'season.create') {
+    const parts = [{ k: 'Season', v: String(d.name ?? '–') }];
+    if (d.startsAt || d.endsAt) parts.push({ k: 'Window', v: windowText(d.startsAt, d.endsAt) });
+    parts.push({ k: 'Prizes', v: prizesText(d.prizeTiers) });
+    return parts;
+  }
+  if (a === 'season.payout') {
+    const parts = [{ k: 'Season', v: String(d.name ?? '–') }, { k: 'Winners paid', v: fmtNum(d.paid ?? 0) }];
+    if (d.ranked !== undefined) parts.push({ k: 'Ranked', v: fmtNum(d.ranked) });
+    if (Array.isArray(d.prizeTiers)) parts.push({ k: 'Prizes', v: prizesText(d.prizeTiers) });
+    return parts;
+  }
+  return null;
+}
+
 /**
  * `details` -> readable parts: `[{ k, v }]`. Known keys get labels and formats (amount signed, before → after),
  * anything else is shown as `key: value` so nothing is hidden.
  */
 export function detailParts(entry) {
   const d = entry && entry.details && typeof entry.details === 'object' ? entry.details : {};
+  const engagement = engagementParts(entry, d);
+  if (engagement) return d.reason ? [...engagement, { k: 'Reason', v: String(d.reason), reason: true }] : engagement;
   const parts = [];
   const used = new Set(['reason']);
   const take = (k) => {
     used.add(k);
     return d[k];
   };
+  if (d.achievementId !== undefined) {
+    const id = take('achievementId');
+    parts.push({ k: 'Achievement', v: String(take('achievementName') || id) });
+  }
   if (d.amount !== undefined) parts.push({ k: entry.action === 'xp' ? 'XP' : 'Amount', v: signed(take('amount')) });
   if (d.before !== undefined || d.after !== undefined) {
     const fmt = (v) => (typeof v === 'number' ? fmtNum(v) : v == null || v === '' ? '–' : String(v));

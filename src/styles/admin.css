@@ -2027,6 +2027,679 @@
 }
 
 /* ---------- wide screens ---------- */
+/* ==========================================================================
+   Engagement screens (docs/ENGAGEMENT.md): events, seasons, achievements, referrals, and their user-detail parts.
+   ========================================================================== */
+.adm-stack {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+.adm-badge--warn {
+  color: var(--adm-orange);
+  background: var(--adm-orange-soft);
+}
+.adm-readonly {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px dashed var(--adm-line-2);
+  border-left: 3px solid var(--adm-teal);
+  border-radius: 3px;
+  background: rgba(85, 214, 194, 0.06);
+  color: var(--adm-dim);
+  font-size: 13px;
+}
+.adm-readonly svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--adm-teal);
+}
+.adm-formerror {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 9px 12px;
+  border: 1px solid rgba(255, 107, 125, 0.45);
+  border-radius: 3px;
+  background: rgba(255, 107, 125, 0.08);
+  color: var(--adm-bad);
+  font-size: 13px;
+  font-weight: 600;
+}
+.adm-formerror svg {
+  flex: none;
+  margin-top: 2px;
+}
+.adm-seg-field.is-bad > legend {
+  color: var(--adm-bad);
+}
+.adm-seg__btn svg {
+  margin-right: 6px;
+}
+.adm-seg--big .adm-seg__btn {
+  min-width: 64px;
+  min-height: 40px;
+  justify-content: center;
+  font: 400 19px/1 var(--adm-poster);
+  letter-spacing: 0.04em;
+}
+.adm-switch__note {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* meter (unlock rates) */
+.adm-meter {
+  position: relative;
+  display: inline-block;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 60px;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--adm-surface-2);
+  box-shadow: inset 0 0 0 1px var(--adm-line);
+}
+.adm-meter__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--adm-orange), var(--adm-yellow));
+}
+.adm-rate {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 150px;
+}
+.adm-rate__n {
+  flex: none;
+  min-width: 44px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  text-align: right;
+}
+
+/* item art (shop renderer) */
+.adm-itemart {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  border: 1px solid var(--adm-line-2);
+  border-radius: 3px;
+  background: radial-gradient(circle at 50% 40%, rgba(255, 255, 255, 0.07), rgba(0, 0, 0, 0.25));
+  overflow: hidden;
+}
+.adm-itemart[data-rarity='epic'] {
+  border-color: rgba(197, 140, 255, 0.55);
+}
+.adm-itemart[data-rarity='legendary'] {
+  border-color: rgba(243, 171, 36, 0.65);
+}
+.adm-itemart > * {
+  max-width: 100%;
+  max-height: 100%;
+}
+.adm-itempick {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.adm-itempick__btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 60px;
+  padding: 6px 10px 6px 6px;
+  border: 1px solid var(--adm-line-2);
+  border-radius: 3px;
+  background: var(--adm-bg);
+  color: var(--adm-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.adm-itempick__btn:hover {
+  border-color: rgba(255, 100, 0, 0.6);
+}
+.adm-itempick__btn.is-on {
+  border-color: var(--adm-orange);
+  background: var(--adm-orange-soft);
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.35);
+}
+.adm-itempick__text {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+  font-size: 13px;
+}
+.adm-itempick__text b,
+.adm-itempick__text span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.adm-itempick__text span {
+  font-size: 11.5px;
+}
+.adm-itempick__tick {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--adm-line-2);
+  border-radius: 2px;
+  color: var(--adm-faint);
+}
+.adm-itempick__btn.is-on .adm-itempick__tick {
+  border-color: var(--adm-orange);
+  background: var(--adm-orange);
+  color: var(--adm-bg);
+}
+
+/* events list */
+.adm-evts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.adm-evt {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px 12px;
+  padding: 14px;
+  border-bottom: 1px solid var(--adm-line);
+}
+.adm-evt:last-child {
+  border-bottom: 0;
+}
+.adm-evt.is-editing {
+  background: var(--adm-orange-soft);
+}
+.adm-evt--ended .adm-evt__main,
+.adm-evt--off .adm-evt__main {
+  opacity: 0.72;
+}
+.adm-evt__icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 3px;
+  background: var(--adm-surface-2);
+  color: var(--adm-dim);
+}
+.adm-evt--live .adm-evt__icon--coin_boost {
+  background: rgba(243, 171, 36, 0.16);
+  color: var(--adm-yellow);
+}
+.adm-evt--live .adm-evt__icon--limited_shop {
+  background: var(--adm-orange-soft);
+  color: var(--adm-orange);
+}
+.adm-evt__main {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.adm-evt__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.adm-evt__name {
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.adm-evt__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  font-size: 12px;
+}
+.adm-evt__kind {
+  color: var(--adm-dim);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.adm-evt__effect {
+  font-weight: 800;
+}
+.adm-evt__effect.is-boost {
+  color: var(--adm-yellow);
+  font: 400 17px/1 var(--adm-poster);
+  letter-spacing: 0.03em;
+}
+.adm-evt__desc {
+  margin: 0;
+  color: var(--adm-dim);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.adm-evt__items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.adm-evt__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 10px 2px 2px;
+  border: 1px solid var(--adm-line-2);
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.adm-evt__btns {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* seasons */
+.adm-seasonform__top {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 12px 14px;
+}
+.adm-tiers {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.adm-tiers > legend {
+  margin-bottom: 8px;
+  padding: 0;
+}
+.adm-tiers__list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.adm-tier {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) 30px;
+  align-items: end;
+  gap: 6px 10px;
+  padding: 10px;
+  border: 1px solid var(--adm-line-2);
+  border-left: 3px solid var(--adm-orange);
+  border-radius: 3px;
+  background: var(--adm-bg);
+}
+.adm-tier.is-bad {
+  border-color: rgba(255, 107, 125, 0.55);
+  border-left-color: var(--adm-bad);
+}
+.adm-tier__n {
+  align-self: center;
+  color: var(--adm-orange);
+  font: 400 22px/1 var(--adm-poster);
+  text-align: center;
+}
+.adm-tier__fields {
+  display: grid;
+  grid-template-columns: 84px 84px minmax(96px, 120px) minmax(0, 1fr);
+  gap: 8px 10px;
+  min-width: 0;
+}
+.adm-tier__f {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.adm-tier__f .adm-input {
+  min-height: 34px;
+  padding: 6px 8px;
+}
+.adm-tier__f .adm-select {
+  width: 100%;
+}
+.adm-tier__x {
+  width: 30px;
+  height: 34px;
+}
+.adm-tier__x:hover {
+  color: var(--adm-bad);
+}
+.adm-tier__err {
+  grid-column: 2 / -1;
+}
+.adm-tiers__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+.adm-tiersum {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px dashed var(--adm-line-2);
+  border-radius: 3px;
+}
+.adm-tiersum__list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+.adm-tiersum__list li {
+  position: relative;
+  padding-left: 16px;
+}
+.adm-tiersum__list li::before {
+  content: '';
+  position: absolute;
+  top: 0.55em;
+  left: 2px;
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  background: var(--adm-orange);
+  transform: rotate(45deg);
+}
+.adm-season__name,
+.adm-season__window,
+.adm-season__prizes {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.adm-season__name a {
+  font-weight: 800;
+}
+.adm-season__name .adm-faint,
+.adm-season__window .adm-faint,
+.adm-season__prizes .adm-faint {
+  font-size: 12px;
+}
+.adm-td-prizes {
+  min-width: 200px;
+}
+.adm-season__btns {
+  display: inline-flex;
+  gap: 6px;
+}
+.adm-season-head__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  font-size: 13px;
+}
+.adm-payout__body {
+  display: grid;
+  gap: 12px;
+}
+.adm-payout__sum {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.adm-payout__sum > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--adm-line);
+  border-radius: 3px;
+  background: var(--adm-bg);
+}
+.adm-payout__sum dt {
+  color: var(--adm-faint);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.adm-payout__sum dd {
+  margin: 0;
+  font: 400 22px/1 var(--adm-poster);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.adm-payout__why {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0;
+}
+.adm-payout__why svg {
+  flex: none;
+  margin-top: 2px;
+}
+.adm-tiers__edit {
+  margin-top: 12px !important;
+}
+@media (max-width: 1179.98px) {
+  .adm-detail--season .adm-detail__side {
+    order: -1;
+  }
+}
+.adm-tablewrap--tall {
+  max-height: 560px;
+  overflow-y: auto;
+}
+.adm-tablewrap--tall thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #191612;
+}
+.adm-table--tight td {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+.adm-td-rank {
+  width: 1%;
+  color: var(--adm-orange);
+  font: 400 17px/1 var(--adm-poster);
+}
+.adm-td-prize {
+  min-width: 170px;
+  color: var(--adm-yellow);
+  font-size: 12.5px;
+}
+.adm-table--standings .adm-td-user {
+  min-width: 170px;
+}
+.adm-table--standings tr.is-top1 .adm-td-rank {
+  color: var(--adm-yellow);
+}
+
+/* achievements */
+.adm-ach {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.adm-ach__icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--adm-orange-soft);
+  color: var(--adm-orange);
+  box-shadow: inset 0 0 0 1px rgba(255, 100, 0, 0.35);
+}
+.adm-ach__icon--streak {
+  background: rgba(243, 171, 36, 0.14);
+  color: var(--adm-yellow);
+  box-shadow: inset 0 0 0 1px rgba(243, 171, 36, 0.35);
+}
+.adm-ach__icon--collection {
+  background: rgba(197, 140, 255, 0.12);
+  color: var(--adm-violet);
+  box-shadow: inset 0 0 0 1px rgba(197, 140, 255, 0.35);
+}
+.adm-ach__icon--social {
+  background: rgba(85, 214, 194, 0.12);
+  color: var(--adm-teal);
+  box-shadow: inset 0 0 0 1px rgba(85, 214, 194, 0.35);
+}
+.adm-ach__text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.adm-ach__text .adm-faint {
+  font-size: 12px;
+}
+.adm-ach__reward {
+  color: var(--adm-yellow);
+  font-size: 12.5px;
+}
+.adm-table--ach .adm-td-wide {
+  min-width: 260px;
+}
+.adm-td-rate {
+  width: 22%;
+}
+
+/* referrals */
+.adm-refs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.adm-refs__nums {
+  display: grid;
+  flex: none;
+  justify-items: end;
+  gap: 1px;
+  font-size: 12px;
+}
+.adm-refs__nums b {
+  color: var(--adm-orange);
+  font: 400 18px/1 var(--adm-poster);
+}
+.adm-refline {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+}
+.adm-refline__arrow {
+  color: var(--adm-orange);
+}
+
+/* user detail: achievements + referral */
+.adm-detail__pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 18px;
+  align-items: start;
+}
+.adm-achlist,
+.adm-reflist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.adm-achlist {
+  max-height: 360px;
+  overflow-y: auto;
+}
+.adm-achlist__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--adm-line);
+}
+.adm-achlist__row:last-child,
+.adm-reflist__row:last-child {
+  border-bottom: 0;
+}
+.adm-achlist__row .adm-ach__icon {
+  width: 30px;
+  height: 30px;
+}
+.adm-achlist__row .adm-ach__text {
+  flex: 1;
+}
+.adm-achlist__when {
+  display: grid;
+  flex: none;
+  justify-items: end;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.adm-refby {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--adm-line);
+  font-size: 13px;
+}
+.adm-refby a,
+.adm-reflist__row a {
+  font-weight: 700;
+}
+.adm-reflist {
+  max-height: 300px;
+  overflow-y: auto;
+}
+.adm-reflist__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--adm-line);
+  font-size: 13px;
+}
+.adm-reflist__row time {
+  font-size: 12px;
+}
+.adm-reflist__row .adm-badge {
+  margin-left: auto;
+}
+.adm-reflist__more,
+.adm-reflist__none {
+  margin: 0;
+  padding: 8px 14px;
+  font-size: 12px;
+}
+
 @media (min-width: 900px) {
   .adm-charts {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2337,4 +3010,104 @@
 :root[data-motion='reduced'] .adm-modal__box,
 :root[data-motion='reduced'] .adm-skel {
   animation: none !important;
+}
+
+/* ---------- engagement screens: responsive ---------- */
+@media (min-width: 1180px) {
+  .adm-refs {
+    grid-template-columns: minmax(300px, 0.8fr) minmax(0, 1.2fr);
+  }
+}
+@media (max-width: 899.98px) {
+  .adm-tier__fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .adm-tier__f--item {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 719.98px) {
+  .adm-evt {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .adm-evt__btns {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+  .adm-tier {
+    grid-template-columns: 20px minmax(0, 1fr) 30px;
+    gap: 6px 8px;
+    padding: 8px;
+  }
+  .adm-tier__x {
+    align-self: start;
+  }
+  .adm-tier__err {
+    grid-column: 1 / -1;
+  }
+  .adm-table--cards td.adm-td-prizes,
+  .adm-table--cards td.adm-td-rate {
+    grid-column: 1 / -1;
+  }
+  .adm-table--cards td.adm-td-prizes > span {
+    justify-items: end;
+    text-align: right;
+  }
+  .adm-table--cards .adm-rate {
+    flex: 1;
+    min-width: 0;
+    max-width: 260px;
+    margin-left: auto;
+  }
+  .adm-table--ach .adm-td-wide,
+  .adm-td-prizes {
+    min-width: 0;
+  }
+  .adm-table--seasons td.adm-td-wide,
+  .adm-table--ach td.adm-td-wide,
+  .adm-table--refs td.adm-td-wide {
+    justify-content: flex-start;
+    text-align: left;
+  }
+  .adm-table--seasons td.adm-td-wide::before,
+  .adm-table--ach td.adm-td-wide::before,
+  .adm-table--refs td.adm-td-wide::before {
+    content: none;
+  }
+  .adm-table--cards .adm-season__btns {
+    flex-wrap: wrap;
+  }
+  .adm-table--cards.adm-table--ach tr {
+    grid-auto-flow: row dense;
+  }
+  .adm-table--cards.adm-table--ach td[data-label='Reward'] {
+    grid-column: 1 / -1;
+  }
+  .adm-table--cards.adm-table--refs td[data-label='Reward'] {
+    justify-content: flex-end;
+  }
+  .adm-table--cards.adm-table--refs td[data-label='Reward']::before {
+    content: none;
+  }
+  .adm-table--cards.adm-table--seasons td {
+    grid-column: 1 / -1;
+  }
+  .adm-table--seasons .adm-season__window {
+    justify-items: end;
+  }
+  .adm-table--seasons .adm-season__window > span:first-child {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    column-gap: 5px;
+  }
+  .adm-tablewrap--tall {
+    max-height: 480px;
+  }
+  .adm-payout__sum dd {
+    font-size: 19px;
+  }
+  .adm-achlist__row {
+    padding: 9px 12px;
+  }
 }

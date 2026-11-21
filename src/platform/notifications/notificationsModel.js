@@ -1,8 +1,11 @@
 // Pure rules for player notifications (gifts and messages from the Jalebi Games team). No React, no network.
 // Shapes: docs/ADMIN.md, "Shared shapes" (Notification) and "Player-facing API".
 //
-//   Notification = { id, kind: 'gift'|'message'|'system', title, body: string|null,
-//                    data: { coins?, xp?, itemId?, itemName?, from? }, createdAt: ISO, read: boolean }
+//   Notification = { id, kind: 'gift'|'message'|'system'|'achievement', title, body: string|null,
+//                    data: { coins?, xp?, itemId?, itemName?, from?, achievementId?, season?: { id, name, rank },
+//                            referral?: { name, role? } }, createdAt: ISO, read: boolean }
+// `achievement` (docs/ENGAGEMENT.md) is an unlock with its reward; season prizes and referral rewards are gifts that
+// carry `data.season` / `data.referral`. All of them pop in the gift popup.
 
 /** The inbox keeps this many (the server sends the latest 30). */
 export const INBOX_MAX = 30;
@@ -15,7 +18,9 @@ export const GIFT_POPUP_RECHECK_MS = 1500;
 /** After "Collect" the popup closes itself this long afterwards. */
 export const GIFT_POPUP_AUTOCLOSE_MS = 1600;
 
-const KINDS = new Set(['gift', 'message', 'system']);
+const KINDS = new Set(['gift', 'message', 'system', 'achievement']);
+/** Kinds the gift popup celebrates (unread ones). */
+export const POP_KINDS = Object.freeze(['gift', 'achievement']);
 
 const posInt = (v) => {
   const n = Math.floor(Number(v));
@@ -35,11 +40,19 @@ export function normalizeNotification(raw) {
   if (str(d.itemId, 80)) data.itemId = str(d.itemId, 80);
   if (str(d.itemName, 80)) data.itemName = str(d.itemName, 80);
   if (str(d.from, 80)) data.from = str(d.from, 80);
+  if (str(d.achievementId, 40)) data.achievementId = str(d.achievementId, 40);
+  if (d.season && typeof d.season === 'object' && str(d.season.name, 60)) {
+    data.season = { id: str(String(d.season.id ?? ''), 60), name: str(d.season.name, 60), rank: posInt(d.season.rank) || null };
+  }
+  if (d.referral && typeof d.referral === 'object' && str(d.referral.name, 60)) {
+    data.referral = { name: str(d.referral.name, 60) };
+    if (d.referral.role === 'invitee' || d.referral.role === 'referrer') data.referral.role = d.referral.role;
+  }
   const t = Date.parse(raw.createdAt);
   return {
     id,
     kind: KINDS.has(raw.kind) ? raw.kind : 'system',
-    title: str(raw.title, 120) || (raw.kind === 'gift' ? 'A gift for you' : 'Notification'),
+    title: str(raw.title, 120) || (raw.kind === 'gift' ? 'A gift for you' : raw.kind === 'achievement' ? 'Achievement unlocked' : 'Notification'),
     body: str(raw.body, 500) || null,
     data,
     createdAt: Number.isFinite(t) ? new Date(t).toISOString() : null,
@@ -101,12 +114,12 @@ export function unreadOf(list, serverUnread) {
 }
 
 /**
- * Which gifts the popup shows: unread `gift` notifications not already waved away this session (`skip` = Set of ids),
- * oldest first (so a stack reads in the order they were sent).
+ * Which gifts the popup shows: unread `gift` and `achievement` notifications not already waved away this session
+ * (`skip` = Set of ids), oldest first (so a stack reads in the order they were sent).
  */
 export function giftsToPop(list, skip = new Set()) {
   return (Array.isArray(list) ? list : [])
-    .filter((n) => n && n.kind === 'gift' && !n.read && !skip.has(n.id))
+    .filter((n) => n && POP_KINDS.includes(n.kind) && !n.read && !skip.has(n.id))
     .sort((a, b) => timeOf(a) - timeOf(b));
 }
 
@@ -144,9 +157,29 @@ export function giftRewards(gift, itemName = '') {
   return out;
 }
 
-/** The popup's title for `count` gifts. */
-export function giftHeadline(count) {
+/** The popup's title for `count` gifts; `gifts` (optional) makes an all-badges stack read "Badge unlocked". */
+export function giftHeadline(count, gifts) {
+  const list = Array.isArray(gifts) ? gifts : [];
+  if (list.length && list.every((g) => g?.kind === 'achievement')) return count > 1 ? `${count} badges unlocked` : 'Badge unlocked';
   return count > 1 ? `${count} gifts for you` : 'A gift for you';
+}
+
+/**
+ * The small tag above a gift that says what it is for, or null for a plain gift:
+ *   achievement -> { kind: 'achievement', label: 'Badge unlocked' }
+ *   season      -> { kind: 'season', label: 'Monsoon Season: rank 2' }
+ *   referral    -> { kind: 'referral', label: 'Meera joined with your link' | 'Invited by Meera' | 'Referral: Meera' }
+ */
+export function giftContext(gift) {
+  const d = gift?.data || {};
+  if (gift?.kind === 'achievement') return { kind: 'achievement', label: 'Badge unlocked' };
+  if (d.season && d.season.name) return { kind: 'season', label: d.season.rank ? `${d.season.name}: rank ${d.season.rank}` : d.season.name };
+  if (d.referral && d.referral.name) {
+    const who = d.referral.name;
+    const label = d.referral.role === 'referrer' ? `${who} joined with your link` : d.referral.role === 'invitee' ? `Invited by ${who}` : `Referral: ${who}`;
+    return { kind: 'referral', label };
+  }
+  return null;
 }
 
 /** The Collect button's label from the totals. */
@@ -177,6 +210,7 @@ export const KIND_META = Object.freeze({
   gift: { icon: 'gift', word: 'Gift' },
   message: { icon: 'message', word: 'Message' },
   system: { icon: 'info', word: 'Notice' },
+  achievement: { icon: 'medal', word: 'Badge' },
 });
 
 /** The bell's accessible name: "Notifications, 2 unread". */
