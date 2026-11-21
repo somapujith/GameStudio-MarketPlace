@@ -70,3 +70,13 @@
 @media(max-width:1199px) and (min-width:1000px) { .label-nav { gap: 5px; } .label-nav__link { font-size: 21px; padding-inline: 10px; } .label-nav__link.is-active { padding-inline: 20px; } .hub-app .hub-topbar__inner { gap: 10px; padding-inline: 22px; } .hub-app .hub-codebtn { padding-inline: 12px; } }
 @media(max-width:699px) { :root { --topbar-h: 88px; --jalebi-nav-size: 68px; } .hub-app .hub-topbar__logo { padding-right: 0; border-right: 0; } .hub-app .hub-topbar__logo .jalebi-logo__descriptor { display: none; } .hub-app .hub-codebtn { font-size: 15px; } .hub-app .hub-coins { padding-inline: 6px; font-size: 14px; } .hub-app .hub-topbar__inner { gap: 8px; padding-inline: 16px; } }
 @media(max-width:359px) { :root { --jalebi-nav-size: 62px; } .hub-app .hub-topbar__end { gap: 6px; } }
+/* Signed-in desktops under 1440px: label nav + search + code + coins + two bells + profile chip outgrow one row.
+   The chip keeps its avatar (its aria-label still names the player) and the nav tightens, so nothing scrolls sideways. */
+@media (min-width:1000px) and (max-width:1439px) {
+  .hub-app .hub-topbar__inner:has(.hub-userchip__meta) .hub-userchip__meta { display: none; }
+  .hub-app .hub-topbar__inner:has(.hub-userchip__meta) .hub-userchip { padding-inline: 4px; }
+  .hub-app .hub-topbar__inner:has(.hub-userchip__meta) { gap: 12px; }
+  .hub-app .hub-topbar__inner:has(.hub-userchip__meta) .label-nav { gap: clamp(2px, .6vw, 12px); }
+  .hub-app .hub-topbar__inner:has(.hub-userchip__meta) .label-nav__link { padding-inline: clamp(8px, .9vw, 14px); font-size: clamp(18px, 1.5vw, 24px); }
+  .hub-app .hub-topbar__inner:has(.hub-userchip__meta) .label-nav__link.is-active { padding-inline: clamp(14px, 1.5vw, 24px); }
+}
