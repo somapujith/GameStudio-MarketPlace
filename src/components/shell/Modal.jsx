@@ -27,7 +27,7 @@ export default function Modal({ open, onClose, title, children, actions, tone = 
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   useScrollLock(open); // iOS-safe, reference counted (src/lib/scrollLock.js)
-  const [mounted, setMounted] = useState(open);
+  const [mounted, setMounted] = useState(false);
   const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
@@ -51,7 +51,13 @@ export default function Modal({ open, onClose, title, children, actions, tone = 
 
   useEffect(() => {
     if (!open) return undefined;
+    // Record the opener before the portal mounts: a child's native autoFocus runs before passive effects.
     last.current = document.activeElement;
+    return () => last.current?.focus?.({ preventScroll: true });
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !mounted) return undefined;
     const first = panel.current?.querySelector('[data-autofocus]') || panel.current?.querySelector(FOCUSABLE);
     (first || panel.current)?.focus?.();
 
@@ -80,13 +86,12 @@ export default function Modal({ open, onClose, title, children, actions, tone = 
     document.addEventListener('keydown', onKey, true);
     return () => {
       document.removeEventListener('keydown', onKey, true);
-      last.current?.focus?.();
     };
-  }, [open, dismissible]);
+  }, [open, mounted, dismissible]);
 
-  if (!open && !mounted) return null;
+  if (!mounted) return null;
   return createPortal(
-    <div className={`hh-modal${leaving && !open ? ' is-leaving' : ''}`} onMouseDown={(e) => e.target === e.currentTarget && dismissible && onClose?.()}>
+    <div className={`hh-modal${leaving && !open ? ' is-leaving' : ''}`} inert={!open || undefined} onMouseDown={(e) => e.target === e.currentTarget && dismissible && onClose?.()}>
       <div ref={panel} className={`hh-modal__panel hh-modal__panel--${tone} ${className}`.trim()} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
         <span className="hh-modal__grip" aria-hidden="true" />
         {dismissible && (
