@@ -4,9 +4,12 @@
 //   const { friends } = await api.get('/api/friends');
 //   await api.post('/api/rooms', { maxPlayers: 4 });
 //
-// Failures throw an ApiError (`{ status, message }`):
-//   - server errors use the server's `{ error }` text as `message`
+// Failures throw an ApiError (`{ status, message, code, data }`):
+//   - server errors use the server's `{ error }` text as `message`; `code` is the body's `code` string (or null) and
+//     `data` the parsed error body (or null), e.g. a suspended account: `{ status: 403, code: 'banned', data: { reason } }`
 //   - network failure / timeout / the Worker not running  ->  status 0, message 'Offline'
+// Any response that says the account is suspended (403 + code 'banned') is also announced to `onSuspended` listeners
+// (the auth layer shows the suspended screen whichever call found out first).
 
 import { apiUrl, isCrossOrigin } from './config.js';
 import { getToken, setToken, clearToken } from './token.js';
@@ -16,10 +19,40 @@ const TIMEOUT_MS = 15000;
 const SIGN_IN_PATHS = new Set(['/api/auth/guest', '/api/auth/google']);
 
 export class ApiError extends Error {
-  constructor(status, message) {
+  /** `extra.code` / `extra.data` are optional: older callers construct it with `(status, message)` only. */
+  constructor(status, message, { code = null, data = null } = {}) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.code = typeof code === 'string' && code ? code : null;
+    this.data = data && typeof data === 'object' ? data : null;
+  }
+}
+
+/** True for an error (ApiError or look-alike) that means "this account is suspended". */
+export function isSuspendedError(err) {
+  return !!err && Number(err.status) === 403 && err.code === 'banned';
+}
+
+const suspendedListeners = new Set();
+
+/**
+ * `onSuspended(({ reason, message, path }) => …)` -> unsubscribe. Fired for every response that says the account is
+ * suspended (403 `{ code: 'banned', reason }`). `reason` is the moderator's text (string, possibly empty).
+ */
+export function onSuspended(fn) {
+  if (typeof fn !== 'function') return () => {};
+  suspendedListeners.add(fn);
+  return () => suspendedListeners.delete(fn);
+}
+
+function announceSuspended(info) {
+  for (const fn of [...suspendedListeners]) {
+    try {
+      fn(info);
+    } catch {
+      /* a bad listener must not turn into a request failure */
+    }
   }
 }
 
@@ -83,7 +116,10 @@ async function request(method, path, body, { signal, timeout = TIMEOUT_MS } = {}
     const msg = data && typeof data === 'object' && typeof data.error === 'string' ? data.error : '';
     // A proxy with nothing behind it answers 5xx with an empty / non-JSON body: that is "Offline", not our bug.
     if (!msg && res.status >= 500 && data === undefined) throw OFFLINE();
-    throw new ApiError(res.status, msg || fallbackMessage(res.status));
+    const body = data && typeof data === 'object' ? data : null;
+    const err = new ApiError(res.status, msg || fallbackMessage(res.status), { code: body && typeof body.code === 'string' ? body.code : null, data: body });
+    if (isSuspendedError(err)) announceSuspended({ reason: typeof body.reason === 'string' ? body.reason : '', message: err.message, path });
+    throw err;
   }
   if (data === undefined) {
     // 2xx but not JSON: the dev server's index.html fallback => the Worker is not reachable
@@ -200,6 +236,24 @@ export const getPushKey = (opts) => api.get('/api/push/key', opts);
 /** POST /api/push/subscribe { subscription } -> { ok: true }. DELETE-style unsubscribe: POST /api/push/unsubscribe { endpoint }. */
 export const pushSubscribe = (subscription, opts) => api.post('/api/push/subscribe', { subscription }, opts);
 export const pushUnsubscribe = (endpoint, opts) => api.post('/api/push/unsubscribe', { endpoint }, opts);
+
+// ---- player notifications and announcements (contract: docs/ADMIN.md, "Player-facing API") ----------------------
+
+/** GET /api/notifications -> { notifications: Notification[] (latest 30, newest first), unread: number } (signed in). */
+export const getNotifications = (opts) => api.get('/api/notifications', opts);
+
+/**
+ * POST /api/notifications/read -> { unread }. `markNotificationsRead(['id1','id2'])` marks those;
+ * `markNotificationsRead('all')` (or `{ all: true }`) marks every one.
+ */
+export function markNotificationsRead(ids, opts) {
+  const all = ids === 'all' || (ids && typeof ids === 'object' && !Array.isArray(ids) && ids.all === true);
+  const list = Array.isArray(ids) ? [...new Set(ids.filter((x) => typeof x === 'string' && x))] : [];
+  return api.post('/api/notifications/read', all ? { all: true } : { ids: list }, opts);
+}
+
+/** GET /api/announcements -> { announcements: Announcement[] } (public; live ones only, newest first, at most 3). */
+export const getAnnouncements = (opts) => api.get('/api/announcements', opts);
 
 /** Best human message for anything thrown by `api.*` (or anything else). */
 export function errorMessage(err, fallback = 'Something went wrong') {

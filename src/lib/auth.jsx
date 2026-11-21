@@ -1,17 +1,24 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { api, errorMessage } from './api.js';
+import { api, errorMessage, isSuspendedError, onSuspended } from './api.js';
 import { openUserSocket } from './socket.js';
 import { isCrossOrigin } from './config.js';
 import { clearToken } from './token.js';
 import { InviteBanner } from '@/components/online/InviteBanner.jsx';
 import { paths } from '@/platform/paths.js';
+import { isSuspendedClose, suspension } from '@/platform/notifications/suspendedModel.js';
 
 // Auth + the signed-in user's realtime socket.
 //
-//   const { user, loading, configured, loginWithGoogle, loginGuest, logout, refresh } = useAuth();
+//   const { user, loading, configured, loginWithGoogle, loginGuest, logout, refresh, suspended } = useAuth();
 //
 // `user` is the `user` object of GET /api/me, passed through untouched (id, name, avatar, isGuest, friendCode, level,
-// xp, coins, stats and the per-game `gameStats: { [gameId]: { games, wins, bestScore, rating } }`).
+// xp, coins, role: 'user'|'moderator'|'admin', stats and the per-game `gameStats: { [gameId]: { games, wins, bestScore,
+// rating } }`). The user socket keeps it live: `{t:'wallet', coins?, xp?, level?}` patches the numbers in place and
+// `{t:'items'}` re-reads /api/me (and drops the cached shop answer).
+// `suspended` is `{ reason }` once the server says the account is banned (a 403 `code:'banned'` from any call, the
+// socket's `{t:'suspended'}`, or a 4003 close of the user socket confirmed by /api/me), else null. The user is
+// signed out locally at that moment; AppShell shows the suspended screen; `logout()` (or an unban noticed by a later
+// `refresh()`) clears it. Contract: docs/ADMIN.md.
 // The session itself is the httpOnly `hyd_session` cookie: nothing sensitive is kept in JS or localStorage.
 // Only in the optional cross-origin mode (SPA hosted away from the Worker, VITE_API_ORIGIN) the session is a bearer
 // token kept in localStorage (token.js) instead, because browsers block third-party cookies.
@@ -93,6 +100,7 @@ export function AuthProvider({ children }) {
   const [signingIn, setSigningIn] = useState(false);
   const [socketStatus, setSocketStatus] = useState('closed');
   const [notices, setNotices] = useState([]);
+  const [suspended, setSuspended] = useState(null); // { reason } while the account is banned
   const userRef = useRef(null);
   const listeners = useRef(new Map()); // type | '*' -> Set<fn>
 
@@ -112,20 +120,37 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
+  /** The account is banned: sign out locally (no more member calls, the socket closes) and remember why. */
+  const suspend = useCallback((info) => {
+    const next = suspension(info);
+    setSuspended((cur) => (cur && cur.reason === next.reason ? cur : next));
+    setNotices([]);
+    setUser(null);
+  }, []);
+
+  // Whichever call finds out first (a shop purchase, a friends request, /api/me itself) shows the suspended screen.
+  useEffect(() => onSuspended(suspend), [suspend]);
+
   const refresh = useCallback(async () => {
     try {
       const r = await api.get('/api/me');
       const u = r && r.user ? r.user : null;
       if (!u) clearToken(); // cross-origin mode: the Worker no longer accepts the stored token
       setUser(u);
+      setSuspended(null); // answered normally: not (or no longer) suspended
       setReachable(true);
       return u;
     } catch (e) {
+      if (isSuspendedError(e)) {
+        suspend(e.data);
+        setReachable(true);
+        return null;
+      }
       // Offline blips must not sign a signed-in user out in the UI; a real 401 does.
       if (e && e.status === 401) setUser(null);
       return userRef.current;
     }
-  }, []);
+  }, [suspend]);
 
   // Initial load: config + current user. Never throws, never crashes the app.
   useEffect(() => {
@@ -133,7 +158,9 @@ export function AuthProvider({ children }) {
     (async () => {
       const [cfg, me] = await Promise.allSettled([api.get('/api/config'), api.get('/api/me')]);
       if (!alive) return;
-      setReachable(cfg.status === 'fulfilled' || me.status === 'fulfilled');
+      const banned = me.status === 'rejected' && isSuspendedError(me.reason);
+      setReachable(cfg.status === 'fulfilled' || me.status === 'fulfilled' || banned);
+      if (banned) suspend(me.reason.data);
       if (cfg.status === 'fulfilled' && cfg.value && typeof cfg.value.googleClientId === 'string' && cfg.value.googleClientId) {
         setGoogleClientId(cfg.value.googleClientId);
       }
@@ -144,7 +171,7 @@ export function AuthProvider({ children }) {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [suspend]);
 
   // ---- login / logout
 
@@ -235,6 +262,7 @@ export function AuthProvider({ children }) {
       /* GIS not loaded */
     }
     setNotices([]);
+    setSuspended(null);
     setUser(null);
   }, []);
 
@@ -288,6 +316,26 @@ export function AuthProvider({ children }) {
           }
         }
       }
+      if (msg.t === 'wallet') {
+        // an admin changed the balance: the coin chip (and anything reading user.coins / xp / level) moves at once
+        const patch = {};
+        for (const k of ['coins', 'xp', 'level']) {
+          const v = Number(msg[k]);
+          if (msg[k] != null && Number.isFinite(v)) patch[k] = v;
+        }
+        if (Object.keys(patch).length) setUser((u) => (u && String(u.id) === uid ? { ...u, ...patch } : u));
+        return;
+      }
+      if (msg.t === 'items') {
+        // items granted / revoked: forget the cached shop answer and re-read /api/me (equipped may have changed)
+        import('@/platform/home/useApi.js').then((m) => m.invalidateApi?.('/api/shop')).catch(() => {});
+        refresh();
+        return;
+      }
+      if (msg.t === 'suspended') {
+        suspend(msg);
+        return;
+      }
       if (msg.t === 'invite' && typeof msg.code === 'string') {
         // {t:'invite', from, code, gameId, gameName}: the banner says which game ("Ravi invited you to play X")
         pushNotice({ kind: 'invite', from: msg.from, code: msg.code, gameId: msg.gameId, gameName: typeof msg.gameName === 'string' ? msg.gameName : undefined });
@@ -295,13 +343,18 @@ export function AuthProvider({ children }) {
       else if (msg.t === 'friend_request') pushNotice({ kind: 'friend_request', from: msg.from });
       else if (msg.t === 'friend_accepted') pushNotice({ kind: 'friend_accepted', from: msg.by });
     };
-    const offs = [sock.on('status', (s) => setSocketStatus(s)), sock.on('message', deliver)];
+    const onStatus = (s, info) => {
+      setSocketStatus(s);
+      // 4003 = forbidden: for the user socket that is a suspended account (or a revoked session). /api/me says which.
+      if (s === 'closed' && isSuspendedClose(info)) refresh();
+    };
+    const offs = [sock.on('status', onStatus), sock.on('message', deliver)];
     return () => {
       offs.forEach((off) => off());
       sock.close();
       setSocketStatus('closed');
     };
-  }, [uid, pushNotice]);
+  }, [uid, pushNotice, refresh, suspend]);
 
   const value = useMemo(
     () => ({
@@ -321,8 +374,9 @@ export function AuthProvider({ children }) {
       updateProfile,
       subscribe,
       userSocketStatus: socketStatus,
+      suspended,
     }),
-    [user, loading, googleClientId, reachable, authError, signingIn, loginWithGoogle, loginGuest, logout, refresh, reloadConfig, updateProfile, subscribe, socketStatus],
+    [user, loading, googleClientId, reachable, authError, signingIn, loginWithGoogle, loginGuest, logout, refresh, reloadConfig, updateProfile, subscribe, socketStatus, suspended],
   );
 
   return (
@@ -354,6 +408,7 @@ const NOOP_AUTH = {
   updateProfile: async () => null,
   subscribe: () => () => {},
   userSocketStatus: 'closed',
+  suspended: null,
 };
 
 /** `{ user|null, loading, configured, loginWithGoogle, loginGuest, logout, refresh, … }`. Safe without a provider. */
@@ -369,7 +424,8 @@ export function useUserSocket() {
 
 /**
  * Subscribe to user-socket messages: `useUserEvents(handler, ['friend_request','presence'])`.
- * `types` omitted = every message. Message types: friend_request, friend_accepted, invite, presence.
+ * `types` omitted = every message. Message types: friend_request, friend_accepted, invite, presence, and (docs/ADMIN.md)
+ * notification, wallet, items, suspended.
  */
 export function useUserEvents(handler, types) {
   const { subscribe } = useAuth();

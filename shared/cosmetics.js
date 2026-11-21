@@ -19,6 +19,13 @@
 //   glow    dice only: the halo / sparkle colour of the skin (hex), defaults to the skin's edge colour
 //
 // rarity: common < rare < epic < legendary. Legendary items are the shiny ones (animated sheen, sparkle).
+//
+// source (docs/ENGAGEMENT.md): where an item comes from. Every item has one (catalogue entries without it are 'shop').
+//   shop         bought with coins at any time
+//   achievement  only by unlocking an achievement (shared/achievements.js), never buyable
+//   event        buyable only while a live `limited_shop` event lists it (worker/events.js)
+//   season       only as a season prize, never buyable
+// The price of a non-shop item is its value (it sorts with its rarity); it is only ever charged for a live event item.
 
 export const COSMETIC_KINDS = Object.freeze(['frame', 'dice', 'trail', 'board', 'title', 'voice']);
 /** Kinds that have an "equipped" slot (users.equipped). `voice` is owned-only. */
@@ -26,6 +33,9 @@ export const EQUIPPABLE_KINDS = Object.freeze(COSMETIC_KINDS.filter((k) => k !==
 
 /** Rarity tiers, lowest first (the shop sorts and styles by this order). */
 export const RARITIES = Object.freeze(['common', 'rare', 'epic', 'legendary']);
+
+/** Where an item can come from (see `source` above). */
+export const SOURCES = Object.freeze(['shop', 'achievement', 'event', 'season']);
 
 /**
  * The `finish` keys the art knows, by kind. The catalogue test pins that every `finish` below is listed here, so an art
@@ -38,7 +48,7 @@ export const FINISHES = Object.freeze({
   board: Object.freeze(['bazaar', 'lake', 'grid', 'marble', 'obsidian', 'emerald', 'goldleaf']),
 });
 
-export const COSMETICS = Object.freeze([
+const CATALOGUE = [
   // Avatar frames
   { id: 'frame-sandstone', kind: 'frame', name: 'Sandstone', price: 300, rarity: 'common', colors: ['#e3b778', '#a8743a'] },
   { id: 'frame-pearl', kind: 'frame', name: 'Hyderabadi Pearl', price: 800, rarity: 'rare', colors: ['#f6f1ea', '#c9b8d8'] },
@@ -111,10 +121,33 @@ export const COSMETICS = Object.freeze([
     id: 'voice-old-man', kind: 'voice', name: 'Old Man', price: 500, rarity: 'rare',
     icon: 'oldman', emoji: '👴', src: '/audio/voice/old-man.mp3', durationMs: 2590, caption: 'Oye!',
   },
-]);
 
-/** Items everybody owns without buying. */
-export const FREE_COSMETICS = Object.freeze(COSMETICS.filter((c) => c.price === 0).map((c) => c.id));
+  // Achievement rewards (never buyable): shared/achievements.js names the achievement that unlocks each one.
+  { id: 'title-champion', kind: 'title', name: 'Champion', price: 1500, rarity: 'epic', source: 'achievement' },
+  { id: 'title-collector', kind: 'title', name: 'Set Collector', price: 900, rarity: 'rare', source: 'achievement' },
+  { id: 'title-recruiter', kind: 'title', name: 'Recruiter', price: 900, rarity: 'rare', source: 'achievement' },
+  { id: 'frame-streak', kind: 'frame', name: 'Streak Flame', price: 2200, rarity: 'epic', colors: ['#ffb347', '#ff3d6e'], source: 'achievement' },
+
+  // Limited event items: buyable only while a live limited_shop event lists them.
+  { id: 'frame-diwali', kind: 'frame', name: 'Diwali Diya', price: 2400, rarity: 'epic', colors: ['#ffe27a', '#ff6a00'], source: 'event' },
+  { id: 'dice-diwali', kind: 'dice', name: 'Festive Diya', price: 2500, rarity: 'epic', colors: ['#ff8a1f', '#fff3c4', '#b8430b'], finish: 'gold', glow: '#ffd36b', source: 'event' },
+
+  // Season prizes (never buyable): given by the season payout to the ranks of a prize tier.
+  { id: 'title-season-champ', kind: 'title', name: 'Season Champion', price: 6000, rarity: 'legendary', source: 'season' },
+  { id: 'frame-season', kind: 'frame', name: 'Season Laurel', price: 3000, rarity: 'epic', colors: ['#d8f3ff', '#3a7bd5'], source: 'season' },
+];
+
+/** The catalogue. Every entry carries `source` ('shop' when the list above leaves it out). */
+export const COSMETICS = Object.freeze(CATALOGUE.map((c) => ({ source: 'shop', ...c })));
+
+/** Items everybody owns without buying (free shop items only). */
+export const FREE_COSMETICS = Object.freeze(COSMETICS.filter((c) => c.price === 0 && c.source === 'shop').map((c) => c.id));
+
+/** An item's source ('shop' for unknown values). */
+export const sourceOf = (item) => (item && SOURCES.includes(item.source) ? item.source : 'shop');
+
+/** Items of one source, catalogue order. */
+export const cosmeticsBySource = (source) => COSMETICS.filter((c) => c.source === source);
 
 export const cosmeticById = (id) => COSMETICS.find((c) => c.id === id) || null;
 

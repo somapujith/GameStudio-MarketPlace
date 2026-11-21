@@ -12,6 +12,8 @@ import {
   isSameOrigin,
   isSecureRequest,
   currentUser,
+  isBanned,
+  BANNED_MESSAGE,
 } from './auth.js';
 import { corsMiddleware, allowedOrigin } from './cors.js';
 import { apiSecurityHeaders } from './security.js';
@@ -31,6 +33,12 @@ import healthRoutes from './routes/health.js';
 import shopRoutes from './routes/shop.js';
 import pushRoutes from './routes/push.js';
 import wsTicketRoutes from './routes/wsTicket.js';
+import adminRoutes from './routes/admin.js';
+import notificationRoutes from './routes/notifications.js';
+import announcementRoutes from './routes/announcements.js';
+import achievementRoutes from './routes/achievements.js';
+import eventRoutes from './routes/events.js';
+import seasonRoutes from './routes/seasons.js';
 
 export { GameRoom } from './GameRoom.js';
 export { UserHub } from './UserHub.js';
@@ -89,6 +97,12 @@ api.route('/leaderboard', leaderboardRoutes);
 api.route('/shop', shopRoutes);
 api.route('/push', pushRoutes);
 api.route('/ws-ticket', wsTicketRoutes);
+api.route('/admin', adminRoutes);
+api.route('/notifications', notificationRoutes);
+api.route('/announcements', announcementRoutes);
+api.route('/achievements', achievementRoutes);
+api.route('/events', eventRoutes); // GET /api/events/live is public and cached 60 s (like /api/announcements)
+api.route('/seasons', seasonRoutes);
 api.notFound((c) => c.json({ error: 'Not found.' }, 404));
 
 app.route('/api', api);
@@ -124,7 +138,7 @@ function forwardRequest(request, user, extra = {}) {
 
 /**
  * Accept a WebSocket only to close it at once with an application close code, so the
- * browser client learns *why* (4001 sign in, 4004 not found) and does not retry blindly.
+ * browser client learns *why* (4001 sign in, 4003 suspended, 4004 not found) and does not retry blindly.
  */
 function closedSocket(code, reason) {
   const [client, server] = Object.values(new WebSocketPair());
@@ -162,6 +176,7 @@ async function wsSession(c, next) {
 app.get('/ws/room/:code', wsGuard, wsSession, async (c) => {
   const user = await currentUser(c);
   if (!user) return closedSocket(4001, 'Please sign in first.');
+  if (isBanned(user)) return closedSocket(4003, BANNED_MESSAGE);
   const code = normalizeRoomCode(c.req.param('code'));
   if (!code) return closedSocket(4004, 'That room code is not valid.');
   return roomStub(c.env, code).fetch(forwardRequest(c.req.raw, user, { 'X-Room-Code': code }));
@@ -170,6 +185,7 @@ app.get('/ws/room/:code', wsGuard, wsSession, async (c) => {
 app.get('/ws/user', wsGuard, wsSession, async (c) => {
   const user = await currentUser(c);
   if (!user) return closedSocket(4001, 'Please sign in first.');
+  if (isBanned(user)) return closedSocket(4003, BANNED_MESSAGE);
   return userHubStub(c.env, user.id).fetch(forwardRequest(c.req.raw, user));
 });
 

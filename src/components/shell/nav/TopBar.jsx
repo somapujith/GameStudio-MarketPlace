@@ -5,6 +5,7 @@ import { HubLogo } from '@/platform/game/hubArt.jsx';
 import HubIcon from '@/platform/game/HubIcon.jsx';
 import Badge from '@/platform/social/Badge.jsx';
 import SocialBell from '@/platform/social/SocialBell.jsx';
+import NotificationBell from '@/platform/notifications/NotificationBell.jsx';
 import ProfileChip from '../ProfileChip.jsx';
 import CodeSheet from './CodeSheet.jsx';
 import CoinsChip from './CoinsChip.jsx';
@@ -18,7 +19,7 @@ import { useTopbarFit } from './useTopbarFit.js';
 export { OPEN_CODE_EVENT, OPEN_SEARCH_EVENT };
 
 /** Is another dialog (a sheet, the code entry) already on screen? Then the shortcut stays quiet. */
-const dialogOpen = () => !!document.querySelector('.hh-modal, .xs-pal');
+const dialogOpen = () => !!document.querySelector('.hh-modal, .xs-pal, .nt-pop');
 
 /** Count pill on a masthead label (friend requests + invites); the live dot stays a tab-bar detail. */
 function LabelBadge({ id, badges }) {
@@ -29,8 +30,9 @@ function LabelBadge({ id, badges }) {
 
 /**
  * Branded masthead with a prominent mascot and a stable responsive height: logo, the label nav (wide screens),
- * search (opens the command palette: Ctrl/Cmd+K, "/" or a tap), "Enter code", coins (signed in), the social bell
- * and the profile chip (or a Sign in button). `badges` comes from useNavBadges in AppShell.
+ * search (opens the command palette: Ctrl/Cmd+K, "/" or a tap), "Enter code", coins (signed in), the notifications
+ * bell (members: gifts and messages from the team, docs/ADMIN.md), the social bell and the profile chip (or a Sign in
+ * button). `badges` comes from useNavBadges in AppShell.
  */
 export default function TopBar({ badges }) {
   const [codeOpen, setCodeOpen] = useState(false);
@@ -97,6 +99,7 @@ export default function TopBar({ badges }) {
             <span className="hub-codebtn__short">Code</span>
           </button>
           <CoinsChip />
+          <NotificationBell />
           <SocialBell />
           <ProfileChip />
         </div>

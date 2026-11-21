@@ -3,6 +3,9 @@
 import { query, transaction } from './db.js';
 import { matchRewards, levelFromXp } from './xp.js';
 import { ratingDeltas } from './rating.js';
+import { coinMultiplierAt } from './events.js';
+import { loadMetrics, evaluateAchievements } from './achievements.js';
+import { rewardReferral } from './referrals.js';
 
 const INT_MAX = 2147483647;
 
@@ -50,6 +53,18 @@ export function buildMatchRecord(room, adapter) {
       };
     });
 
+  // Per-match achievement facts (docs/ENGAGEMENT.md): only for players who finished the match (did not resign).
+  const facts = {};
+  for (const row of res.standings) {
+    if (row.stats?.finished === false) continue;
+    const f = {};
+    const sets = Number(row.stats?.setsCompleted);
+    if (Number.isFinite(sets)) f.setsCompleted = Math.max(0, Math.round(sets));
+    const worth = Number(row.stats?.finalWorth);
+    if (Number.isFinite(worth)) f.finalWorth = Math.round(worth);
+    if (Object.keys(f).length) facts[row.id] = f;
+  }
+
   const winner = res.winnerId ? seats.get(res.winnerId) : null;
   return {
     id: room.matchId,
@@ -68,6 +83,7 @@ export function buildMatchRecord(room, adapter) {
     users,
     // every seat, for the rating maths (each player is rated against the average of the others)
     seats: res.standings.map((row) => ({ id: row.id, rank: row.rank })),
+    facts,
   };
 }
 
@@ -79,11 +95,12 @@ export function buildMatchRecord(room, adapter) {
 //       lg = 1 (Nawabi Raj, so the previous app version keeps working)
 //   gs  user_game_stats: games, wins, best_score, rating (the row is created at 1000 + delta;
 //       |delta| <= 24 so `EXCLUDED.rating - 1000` is exactly the delta; floor 100)
+// $15 = the coin_boost multiplier live at ended_at (the coins in $12 already include it), kept in matches.coin_multiplier.
 export const PERSIST_SQL = `
 WITH ins AS (
-  INSERT INTO matches (id, room_code, started_at, ended_at, rounds, winner_id, win_reason, goal, max_rounds, player_count, dice_mode, game_id)
+  INSERT INTO matches (id, room_code, started_at, ended_at, rounds, winner_id, win_reason, goal, max_rounds, player_count, dice_mode, game_id, coin_multiplier)
   VALUES ($1::uuid, $2, $3::timestamptz, $4::timestamptz, $5::int,
-          (SELECT id FROM users WHERE id = $6::uuid), $7, $8::int, $9::int, $10::int, $13, $14::text)
+          (SELECT id FROM users WHERE id = $6::uuid), $7, $8::int, $9::int, $10::int, $13, $14::text, $15::numeric)
   ON CONFLICT (id) DO NOTHING
   RETURNING id
 ), mp AS (
@@ -141,11 +158,19 @@ async function loadRatings(env, rec) {
   }
 }
 
-/** Write a match record. Resolves to `{ inserted }` (false = it had already been stored). */
-export async function persistMatch(env, rec) {
-  const ratings = await loadRatings(env, rec);
+/** Match coins with the event multiplier applied (`Math.round(coins * m)`); XP is never boosted. */
+export const boostedCoins = (coins, multiplier) => Math.round(coins * (multiplier > 1 ? multiplier : 1));
+
+/**
+ * Write a match record. Resolves to `{ inserted, coinMultiplier }` (inserted false = it had already been stored).
+ * After a first write the engagement checks run (achievements for every player, the referral first-match reward):
+ * best effort, never failing the match write. `defer(promise)` (a Durable Object's ctx.waitUntil) lets them finish in
+ * the background; without it they are awaited.
+ */
+export async function persistMatch(env, rec, { defer } = {}) {
+  const [ratings, coinMultiplier] = await Promise.all([loadRatings(env, rec), coinMultiplierAt(env, rec.endedAt)]);
   const deltas = ratingDeltas(rec.seats.map((s) => ({ ...s, rating: ratings[s.id] })));
-  const users = rec.users.map((u) => ({ ...u, delta: deltas[u.user_id] || 0 }));
+  const users = rec.users.map((u) => ({ ...u, coins: boostedCoins(u.coins, coinMultiplier), delta: deltas[u.user_id] || 0 }));
   const rows = await query(env, PERSIST_SQL, [
     rec.id,
     rec.roomCode,
@@ -161,6 +186,7 @@ export async function persistMatch(env, rec) {
     JSON.stringify(users),
     rec.diceMode,
     rec.gameId,
+    coinMultiplier,
   ]);
   const row = rows[0] || { inserted: 0, users: [] };
   const updated = typeof row.users === 'string' ? JSON.parse(row.users) : row.users || [];
@@ -175,5 +201,45 @@ export async function persistMatch(env, rec) {
       /* cosmetic: the API recomputes level from xp */
     }
   }
-  return { inserted: row.inserted > 0 };
+  if (row.inserted > 0) {
+    const job = afterMatch(env, rec, { defer }).catch((err) => {
+      console.error('post-match checks failed:', err && err.code ? `${err.code} ${err.message}` : err && err.message);
+    });
+    if (typeof defer === 'function') defer(job);
+    else await job;
+  }
+  return { inserted: row.inserted > 0, coinMultiplier };
+}
+
+/**
+ * Engagement checks after a match was stored for the first time (docs/ENGAGEMENT.md): the referral first-match reward
+ * of each referred player (then the referrer's achievements), and every achievement of every player, with the
+ * per-match facts of the players who finished. Each step is best effort.
+ */
+export async function afterMatch(env, rec, { defer } = {}) {
+  const ids = [...new Set(rec.users.map((u) => u.user_id))];
+  if (!ids.length) return;
+  const rows = await loadMetrics(env, ids);
+  const referrers = [];
+  for (const m of rows) {
+    if (!m.referralPending) continue;
+    try {
+      const r = await rewardReferral(env, m.id, { defer });
+      if (r && r.referrerId) referrers.push(r.referrerId);
+    } catch (err) {
+      console.error('referral reward failed:', err && err.message);
+    }
+  }
+  try {
+    await evaluateAchievements(env, ids, { facts: rec.facts || {}, rows, defer });
+  } catch (err) {
+    console.error('achievement check failed:', err && err.message);
+  }
+  if (referrers.length) {
+    try {
+      await evaluateAchievements(env, referrers, { defer });
+    } catch (err) {
+      console.error('referrer achievement check failed:', err && err.message);
+    }
+  }
 }

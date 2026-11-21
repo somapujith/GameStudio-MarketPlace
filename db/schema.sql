@@ -235,3 +235,145 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS handle_changed_at timestamptz;
 
 CREATE UNIQUE INDEX IF NOT EXISTS users_handle_uniq
   ON users (lower(handle));
+
+-- admin console + player notifications (docs/ADMIN.md). Additive + idempotent only.
+-- role = 'user' | 'moderator' | 'admin' (ADMIN_EMAILS also makes a signed-in Google account an admin, see worker/admin.js).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'user';
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS banned_at timestamptz;
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS ban_reason text;
+
+-- Small partial indexes for the admin filters "banned" and "staff", and the "newest" sort / signup stats.
+CREATE INDEX IF NOT EXISTS users_banned_idx
+  ON users (banned_at DESC)
+  WHERE banned_at IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS users_staff_idx
+  ON users (role)
+  WHERE role <> 'user';
+
+CREATE INDEX IF NOT EXISTS users_created_idx
+  ON users (created_at DESC);
+
+-- One row per mutating admin action (who, what, on whom, details incl. the reason).
+CREATE TABLE IF NOT EXISTS admin_actions (
+  id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  admin_id    uuid REFERENCES users (id) ON DELETE SET NULL,
+  admin_name  text NOT NULL,
+  action      text NOT NULL,
+  target_id   uuid REFERENCES users (id) ON DELETE SET NULL,
+  target_name text,
+  details     jsonb NOT NULL DEFAULT '{}',
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS admin_actions_created_idx
+  ON admin_actions (created_at DESC);
+
+CREATE INDEX IF NOT EXISTS admin_actions_target_idx
+  ON admin_actions (target_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS admin_actions_admin_idx
+  ON admin_actions (admin_id, created_at DESC);
+
+-- Player notifications: kind = 'gift' | 'message' | 'system'.
+CREATE TABLE IF NOT EXISTS notifications (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  kind       text NOT NULL,
+  title      text NOT NULL,
+  body       text,
+  data       jsonb NOT NULL DEFAULT '{}',
+  read_at    timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS notifications_user_idx
+  ON notifications (user_id, created_at DESC);
+
+-- Site-wide banners: tone = 'info' | 'event' | 'warning'.
+CREATE TABLE IF NOT EXISTS announcements (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  message    text NOT NULL,
+  tone       text NOT NULL DEFAULT 'info',
+  link_url   text,
+  link_label text,
+  starts_at  timestamptz NOT NULL DEFAULT now(),
+  ends_at    timestamptz,
+  active     boolean NOT NULL DEFAULT true,
+  created_by uuid REFERENCES users (id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS announcements_live_idx
+  ON announcements (starts_at DESC)
+  WHERE active = true;
+
+-- achievements, referrals, seasonal events and seasons (docs/ENGAGEMENT.md). Additive + idempotent only.
+-- (matches_ended_idx, the index the season standings use, already exists above.)
+CREATE TABLE IF NOT EXISTS user_achievements (
+  user_id        uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  achievement_id text NOT NULL,
+  unlocked_at    timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, achievement_id)
+);
+
+CREATE INDEX IF NOT EXISTS user_achievements_achievement_idx
+  ON user_achievements (achievement_id);
+
+-- Who invited this account (set only when the Google account is created with a valid ?ref=) and when the
+-- first-match referral reward was paid (pays once).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by uuid REFERENCES users (id) ON DELETE SET NULL;
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_rewarded_at timestamptz;
+
+CREATE INDEX IF NOT EXISTS users_referred_by_idx
+  ON users (referred_by);
+
+-- The coin_boost multiplier live when the match ended (1 = none).
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS coin_multiplier numeric NOT NULL DEFAULT 1;
+
+-- Time-boxed switches: kind = 'coin_boost' ({ multiplier }) | 'limited_shop' ({ itemIds }).
+CREATE TABLE IF NOT EXISTS events (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  kind        text NOT NULL,
+  name        text NOT NULL,
+  description text,
+  starts_at   timestamptz NOT NULL,
+  ends_at     timestamptz NOT NULL,
+  active      boolean NOT NULL DEFAULT true,
+  config      jsonb NOT NULL DEFAULT '{}',
+  created_by  uuid REFERENCES users (id) ON DELETE SET NULL,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS events_window_idx
+  ON events (starts_at, ends_at);
+
+-- Points races: prize_tiers = [{ fromRank, toRank, coins?, itemId? }]; paid_at is set once by the payout.
+CREATE TABLE IF NOT EXISTS seasons (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name        text NOT NULL,
+  starts_at   timestamptz NOT NULL,
+  ends_at     timestamptz NOT NULL,
+  prize_tiers jsonb NOT NULL DEFAULT '[]',
+  paid_at     timestamptz,
+  created_by  uuid REFERENCES users (id) ON DELETE SET NULL,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+-- The final standings written by the payout (wins / games kept so a paid season still shows its table).
+CREATE TABLE IF NOT EXISTS season_results (
+  season_id uuid NOT NULL REFERENCES seasons (id) ON DELETE CASCADE,
+  user_id   uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  rank      integer NOT NULL,
+  points    integer NOT NULL,
+  wins      integer NOT NULL DEFAULT 0,
+  games     integer NOT NULL DEFAULT 0,
+  prize     jsonb NOT NULL DEFAULT '{}',
+  PRIMARY KEY (season_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS season_results_rank_idx
+  ON season_results (season_id, rank);

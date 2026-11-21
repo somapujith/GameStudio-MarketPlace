@@ -9,6 +9,7 @@ import { isGameRoute, ThemeSync } from '@/components/shell/theme.js';
 import { ViewTransitionBridge } from '@/components/shell/transitions.js';
 import { BRAND } from '@/platform/brand.js';
 import { LEGACY_REDIRECTS, paths } from '@/platform/paths.js';
+import { isStaff } from '@/lib/adminApi.js';
 import PageLoading from '@/platform/game/PageLoading.jsx';
 import '@/styles/hub.css';
 import '@/styles/mobile.css';
@@ -52,6 +53,9 @@ const FriendLink = page(() => import('@/pages/FriendLink.jsx'), 'FriendLink');
 const Lobby = page(() => import('@/pages/Lobby.jsx'), 'Lobby');
 const JoinRoom = page(() => import('@/pages/JoinRoom.jsx'), 'JoinRoom');
 const OnlineGame = page(() => import('@/pages/OnlineGame.jsx'), 'OnlineGame');
+
+// Admin console (staff only, its own chunk)
+const AdminApp = page(() => import('@/pages/admin/AdminApp.jsx'), 'AdminApp');
 
 /** Mirrors the in-app "reduced motion" setting onto <html> so CSS can honour it. */
 function MotionSync() {
@@ -123,6 +127,23 @@ function ToGamePage() {
   return <Navigate replace to={gameId ? paths.game(gameId) : paths.hub()} />;
 }
 
+/**
+ * `/admin/*`: signed-out and non-staff visitors get the hub's normal 404 inside the shell (the console chunk is never
+ * fetched for them); staff get the full-screen console, which double-checks the role and loads its permissions.
+ */
+function AdminRoute() {
+  const { user, loading } = useAuth();
+  const shell404 = (
+    <Routes>
+      <Route element={<AppShell />}>
+        <Route path="*" element={<NotFound />} />
+      </Route>
+    </Routes>
+  );
+  if (!loading && !isStaff(user)) return shell404;
+  return <AdminApp notFound={shell404} />;
+}
+
 export default function App() {
   return (
     <AuthProvider>
@@ -154,6 +175,8 @@ export default function App() {
                 <Route path="/play/:gameId/online/:code" element={<OnlineGame />} />
                 {/* Lobby: full screen (renders its own header), hub theme */}
                 <Route path="/lobby/:code" element={<Lobby />} />
+                {/* Admin console: full screen with its own sidebar (staff only; others get the 404) */}
+                <Route path="/admin/*" element={<AdminRoute />} />
 
                 {/* Hub screens */}
                 <Route element={<AppShell />}>

@@ -7,10 +7,32 @@ import HubIcon from '@/platform/game/HubIcon.jsx';
 import { useAccount } from '../hooks.js';
 import { useViewTransitionNavigate } from '../transitions.js';
 import { OPEN_CODE_EVENT } from './events.js';
-import { buildSections, flatten, shortcutLabel, stepIndex } from './paletteModel.js';
+import { actionMatches, buildSections, flatten, shortcutLabel, stepIndex } from './paletteModel.js';
+import { isStaff } from '@/lib/adminApi.js';
+import { paths } from '@/platform/paths.js';
 import { recentGames } from './recent.js';
 
 const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
+
+/** Staff only: the admin console, last of the quick actions (or its own row when a query matches only it). */
+const ADMIN_ACTION = {
+  id: 'a-admin',
+  kind: 'action',
+  label: 'Admin console',
+  hint: 'Staff tools',
+  icon: 'lock',
+  to: paths.admin(),
+  keys: 'admin console staff moderator moderate ban users dashboard audit announcements',
+};
+
+export function withAdminAction(sections, query) {
+  if (String(query ?? '').trim() && !actionMatches(ADMIN_ACTION, query)) return sections;
+  const i = sections.findIndex((s) => s.id === 'actions');
+  if (i >= 0) return sections.map((s, j) => (j === i ? { ...s, items: [...s.items, ADMIN_ACTION] } : s));
+  const at = sections.findIndex((s) => s.id === 'search');
+  const sec = { id: 'actions', label: 'Quick actions', items: [ADMIN_ACTION] };
+  return at >= 0 ? [...sections.slice(0, at), sec, ...sections.slice(at)] : [...sections, sec];
+}
 
 /** A game's square icon on its own colours; the initial when the art is missing. */
 function GameChip({ game }) {
@@ -66,7 +88,8 @@ export default function CommandPalette({ open, onClose }) {
   const uid = useId();
   const listId = `${uid}-list`;
   const { pathname, search } = useLocation();
-  const { signedIn } = useAccount();
+  const { signedIn, user } = useAccount();
+  const staff = isStaff(user);
   const go = useViewTransitionNavigate();
   const panel = useRef(null);
   const inputRef = useRef(null);
@@ -78,10 +101,11 @@ export default function CommandPalette({ open, onClose }) {
   const [recent, setRecent] = useState([]);
   useScrollLock(open);
 
-  const sections = useMemo(
-    () => (open ? buildSections({ query, games: GAMES, recent, signedIn, next: `${pathname}${search}` }) : []),
-    [open, query, recent, signedIn, pathname, search],
-  );
+  const sections = useMemo(() => {
+    if (!open) return [];
+    const built = buildSections({ query, games: GAMES, recent, signedIn, next: `${pathname}${search}` });
+    return staff ? withAdminAction(built, query) : built;
+  }, [open, query, recent, signedIn, staff, pathname, search]);
   const flat = useMemo(() => flatten(sections), [sections]);
 
   useEffect(() => {

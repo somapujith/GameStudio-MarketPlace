@@ -120,7 +120,7 @@ Open <http://localhost:5173>. `npm run worker` alone also serves the production 
 | `npm run sim` | `node scripts/simulate.js`: engine-only simulations with the auto-play brain (invariants and balance stats; `--fuzz` plays random legal actions) |
 | `npm run deploy` | `npm run build && wrangler deploy` |
 
-`.dev.vars` keys: `DATABASE_URL` (Neon), `JWT_SECRET` (session signing), `GOOGLE_CLIENT_ID` (optional; without it only guest play works).
+`.dev.vars` keys: `DATABASE_URL` (Neon), `JWT_SECRET` (session signing), `GOOGLE_CLIENT_ID` (optional; without it only guest play works), `ADMIN_EMAILS` (optional; comma-separated Google account emails that are always admins of the `/admin` console, see `docs/ADMIN.md`).
 
 Tests (`npm test`) cover the engine (rules, snatch, tokens, events, traps, fuzz to game over), client helpers and the Worker: validation, JWT/cookies/Google-token verification, rate limiting, security headers, the game-adapter registry, the HTTP API with a faked database, rating/leaderboard/room-listing queries, and full in-process runs of the `GameRoom` Durable Object with a fake runtime - including a trivial second game that proves the room is game-agnostic.
 
@@ -147,6 +147,7 @@ Changes to authorized origins can take a few minutes to apply.
 | `DATABASE_URL` | `.dev.vars` / `wrangler secret` | yes | Neon connection string |
 | `JWT_SECRET` | `.dev.vars` / `wrangler secret` | yes | HS256 key for the `hyd_session` cookie (≥ 16 chars; use 48+ random bytes) |
 | `GOOGLE_CLIENT_ID` | `.dev.vars` / `wrangler secret` | no (public id) | audience check for Google ID tokens; also sent to the browser by `/api/config` |
+| `ADMIN_EMAILS` | `.dev.vars` / `wrangler secret` | keep private | optional, comma-separated (case-insensitive) emails of Google accounts that are always **admins** of `/admin`, whatever `users.role` says (docs/ADMIN.md). Never commit real addresses (not in `wrangler.toml [vars]` either) |
 | `APP_NAME` | `wrangler.toml [vars]` | no | display name returned by `/api/config` (`Jalebi Games`) |
 | `VITE_CONTACT_EMAIL` | build environment | no | contact address shown on Help / Privacy / Terms; unset = no contact line (see `docs/DEPLOY.md`) |
 | `VITE_API_ORIGIN` | build environment | no | only for the split Vercel + Worker mode (see `docs/DEPLOY.md`) |
@@ -193,6 +194,7 @@ Create these **repository secrets** (Settings → Secrets and variables → Acti
 | `DATABASE_URL` | the production Neon connection string (migration step, and copied into the Worker) |
 | `JWT_SECRET` | a new random string for production, e.g. `openssl rand -base64 48` |
 | `GOOGLE_CLIENT_ID` | the OAuth Web client id (public) |
+| `ADMIN_EMAILS` | *optional*: comma-separated admin emails for `/admin` (synced into the Worker only when set) |
 
 With the secrets in place there is no manual `wrangler secret put`: the last step of the workflow writes `DATABASE_URL`, `JWT_SECRET` and `GOOGLE_CLIENT_ID` into the Worker on every deploy. To rotate one, change the GitHub secret and re-run the workflow. You can set secrets without pasting them anywhere shared by running `gh secret set NAME` in your own terminal, which prompts for the value.
 

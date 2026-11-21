@@ -6,7 +6,31 @@ import { cleanEquipped } from '../shared/cosmetics.js';
 // last_daily is returned as 'YYYY-MM-DD' text (never a driver-parsed Date, so no timezone drift).
 export const USER_COLUMNS =
   'id, google_sub, email, name, avatar, friend_code, handle, handle_changed_at, is_guest, xp, coins, level, games, wins, best_worth, rent_earned, created_at, last_seen, ' +
-  "daily_streak, to_char(last_daily, 'YYYY-MM-DD') AS last_daily, equipped, friend_requests";
+  "daily_streak, to_char(last_daily, 'YYYY-MM-DD') AS last_daily, equipped, friend_requests, role, banned_at, ban_reason";
+
+export const ROLES = Object.freeze(['user', 'moderator', 'admin']);
+
+/** The lowercased, trimmed addresses of the comma-separated ADMIN_EMAILS Worker variable. */
+export function adminEmails(env) {
+  const raw = env && typeof env.ADMIN_EMAILS === 'string' ? env.ADMIN_EMAILS : '';
+  return raw
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+/**
+ * The effective role of a user row: `users.role`, except that a signed-in (non-guest) account whose email is listed
+ * in ADMIN_EMAILS is always an admin. Guests are never staff; unknown role values count as 'user'.
+ */
+export function effectiveRole(r, env) {
+  if (!r || r.is_guest) return 'user';
+  const email = typeof r.email === 'string' ? r.email.trim().toLowerCase() : '';
+  if (email && adminEmails(env).includes(email)) return 'admin';
+  return r.role === 'moderator' || r.role === 'admin' ? r.role : 'user';
+}
+
+export const isStaffRole = (role) => role === 'moderator' || role === 'admin';
 
 /** users.equipped (jsonb) -> `{ frame?, dice?, title? }` with unknown ids dropped. */
 export function rowEquipped(r) {
@@ -50,8 +74,9 @@ export async function loadGameStats(env, userId) {
 /**
  * Full profile (only ever sent to the user themselves). `gameStats` is added when given.
  * `daily` / `equipped` default sensibly for rows read before those columns existed.
+ * `role` is the effective role (pass the Worker `env` so ADMIN_EMAILS is honoured).
  */
-export function rowToUser(r, gameStats, now = Date.now()) {
+export function rowToUser(r, gameStats, now = Date.now(), env = undefined) {
   const user = {
     id: r.id,
     name: r.name,
@@ -75,6 +100,7 @@ export function rowToUser(r, gameStats, now = Date.now()) {
     equipped: rowEquipped(r),
     // who may send me friend requests: 'everyone' (default) | 'nobody'
     friendRequests: r.friend_requests === 'nobody' ? 'nobody' : 'everyone',
+    role: effectiveRole(r, env),
   };
   if (gameStats) user.gameStats = gameStats;
   return user;

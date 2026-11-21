@@ -1338,7 +1338,8 @@ export class GameRoom extends DurableObject {
     const r = this.room;
     try {
       const rec = buildMatchRecord(r, this.adapter);
-      await persistMatch(this.env, rec);
+      // Achievement / referral checks and their pushes run after the write, in the background (never failing it).
+      await persistMatch(this.env, rec, { defer: (p) => this.ctx.waitUntil(p) });
       r.persisted = true;
       r.persistAt = null;
       await this.save();

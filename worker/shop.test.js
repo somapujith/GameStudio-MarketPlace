@@ -105,7 +105,11 @@ describe('GET /api/shop', () => {
     expect(res.json.items).toHaveLength(COSMETICS.length);
     expect(res.json.items.filter((i) => i.owned).map((i) => i.id)).toEqual(FREE_COSMETICS);
     const lake = res.json.items.find((i) => i.id === 'frame-lake');
-    expect(lake).toEqual({ id: 'frame-lake', kind: 'frame', name: 'Hussain Sagar', price: 800, rarity: 'rare', colors: ['#4cc9f0', '#2a6fdb'], owned: false, equipped: false });
+    expect(lake).toEqual({
+      id: 'frame-lake', kind: 'frame', name: 'Hussain Sagar', price: 800, rarity: 'rare',
+      source: 'shop', available: true, availableUntil: null, unlockHint: null,
+      colors: ['#4cc9f0', '#2a6fdb'], owned: false, equipped: false,
+    });
     expect('colors' in res.json.items.find((i) => i.kind === 'title')).toBe(false);
   });
 
@@ -225,7 +229,7 @@ describe('voice lines in the shop', () => {
     const out = await call('/api/shop', { cookie: await cookieFor(ME) });
     const v = out.json.items.find((i) => i.id === V);
     expect(v).toEqual({
-      id: V, kind: 'voice', name: 'Sheru Bhai', price, rarity: 'rare', icon: 'tiger', emoji: '🐯',
+      id: V, kind: 'voice', name: 'Sheru Bhai', price, rarity: 'rare', source: 'shop', available: true, availableUntil: null, unlockHint: null, icon: 'tiger', emoji: '🐯',
       src: '/audio/voice/sheru-bhai.mp3', durationMs: 8300, caption: 'Sheru Bhai!', owned: false, equipped: false,
     });
     items.set(ME, new Set([V]));

@@ -10,6 +10,7 @@ import { isUserOnline, getUserStatus, roomCall, pushToUser, background } from '.
 import { isJoinableLobby } from '../presence.js';
 import { sendPushToUser, pushConfigured } from '../push.js';
 import { blockRelation, NOT_BLOCKED_SQL } from './blocks.js';
+import { checkAchievements } from '../achievements.js';
 
 const friends = new Hono();
 
@@ -269,6 +270,7 @@ friends.post('/request', limit('friend-request', 20, 60), async (c) => {
   );
   if (accepted.length) {
     notifyFriend(c, target.id, { t: 'friend_accepted', by: identity(me) }, friendAcceptedNotification({ byName: me.name, byId: me.id }));
+    await checkAchievements(c.env, [me.id, target.id], { defer: (p) => background(c, p) }); // adda-regular, both sides
     return c.json({ ok: true, status: 'accepted', friend: rowToFriend(target) });
   }
   // 2) New pending request; the pair-unique index makes a repeat (or a race) a no-op.
@@ -315,6 +317,7 @@ friends.post('/accept', async (c) => {
     return c.json({ ok: true, status: 'accepted' }); // already friends: idempotent
   }
   notifyFriend(c, userId, { t: 'friend_accepted', by: identity(me) }, friendAcceptedNotification({ byName: me.name, byId: me.id }));
+  await checkAchievements(c.env, [me.id, userId], { defer: (p) => background(c, p) }); // adda-regular, both sides
   const other = await getUserById(c.env, userId);
   return c.json({ ok: true, status: 'accepted', friend: other ? rowToFriend(other) : undefined });
 });

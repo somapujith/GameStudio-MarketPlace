@@ -201,6 +201,12 @@ const topLevels = (p, meta) => {
   return Number.isFinite(n) && n > 0 ? Math.min(Math.round(n), 100) : 0;
 };
 
+/** Distinct colour groups `p` completed during the match (meta.sets, folded from `set_complete` events). */
+const setsCompleted = (p, meta) => {
+  const list = meta?.sets?.[p.id];
+  return Array.isArray(list) ? Math.min(new Set(list).size, 100) : 0;
+};
+
 const MODE_SUMMARY = (s) => engine.modeSummary(s.mode, s.targetWorth);
 
 // ------------------------------------------------------------------ the adapter
@@ -380,9 +386,13 @@ const adapter = {
     if (r.settings && typeof r.settings === 'object' && !('mode' in r.settings)) r.settings = normalizeSettings(r.settings);
   },
 
-  /** Fold the events of an applied action into the per-match `meta` (districts raised to the top level, per player). */
+  /**
+   * Fold the events of an applied action into the per-match `meta`: `hotels` = districts raised to the top level, per
+   * player; `sets` = the distinct colour groups each player completed at any point (`set_complete` events).
+   */
   track(meta, events, state) {
     let hotels = null;
+    let sets = null;
     for (const ev of events || []) {
       if (ev.type === 'level' && ev.reason === 'upgrade' && ev.level >= MAX_LEVEL) {
         const owner = state.owners[ev.tile];
@@ -390,14 +400,23 @@ const adapter = {
           hotels ||= { ...(meta && meta.hotels) };
           hotels[owner] = (hotels[owner] || 0) + 1;
         }
+      } else if (ev.type === 'set_complete' && ev.player != null && ev.group != null) {
+        const had = (sets || (meta && meta.sets) || {})[ev.player];
+        const list = Array.isArray(had) ? had : [];
+        if (!list.includes(ev.group)) {
+          sets ||= { ...(meta && meta.sets) };
+          sets[ev.player] = [...list, ev.group];
+        }
       }
     }
-    return hotels ? { ...meta, hotels } : meta;
+    if (!hotels && !sets) return meta;
+    return { ...meta, ...(hotels ? { hotels } : {}), ...(sets ? { sets } : {}) };
   },
 
   /**
    * Final standings by net worth (rank 1 = the winner). `score` is the final net worth; `stats.rentEarned` is the rent
-   * collected and `stats.hotelsBuilt` counts districts raised to the top level. `legacy` feeds the old users.* columns
+   * collected, `stats.hotelsBuilt` counts districts raised to the top level, `stats.setsCompleted` the distinct colour
+   * sets completed during the match, `stats.finalWorth` the final net worth and `stats.finished` false for a forfeit. `legacy` feeds the old users.* columns
    * (best_worth = final net worth, rent_earned) and the matches max_rounds / dice_mode columns.
    */
   result(state, meta) {
@@ -416,7 +435,15 @@ const adapter = {
           id: row.id,
           rank: row.rank,
           score: Math.round(row.worth),
-          stats: { rentEarned: Math.round(p.stats?.rentEarned || 0), hotelsBuilt: topLevels(p, meta) },
+          stats: {
+            rentEarned: Math.round(p.stats?.rentEarned || 0),
+            hotelsBuilt: topLevels(p, meta),
+            // achievements (docs/ENGAGEMENT.md): colour sets completed, final net worth, and whether the player
+            // played to the end (a forfeit does not count)
+            setsCompleted: setsCompleted(p, meta),
+            finalWorth: Math.round(row.worth),
+            finished: !p.resigned,
+          },
         };
       }),
       legacy: {

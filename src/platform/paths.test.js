@@ -18,3 +18,17 @@ describe('Nawabi Raj public links and room compatibility', () => {
     expect(paths.online('ludo-lanes', 'A/B')).toBe('/play/ludo-lanes/online/A%2FB');
   });
 });
+
+describe('admin console paths', () => {
+  it('builds every section', () => {
+    expect(paths.admin()).toBe('/admin');
+    expect(paths.admin('')).toBe('/admin');
+    for (const s of ['users', 'rooms', 'matches', 'grants', 'announcements', 'audit']) expect(paths.admin(s)).toBe(`/admin/${s}`);
+  });
+
+  it('builds a user page and escapes each segment', () => {
+    expect(paths.admin('users/1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed')).toBe('/admin/users/1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed');
+    expect(paths.admin('users/a b?c')).toBe('/admin/users/a%20b%3Fc');
+    expect(paths.admin('/audit/')).toBe('/admin/audit');
+  });
+});

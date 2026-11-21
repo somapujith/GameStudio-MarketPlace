@@ -1,5 +1,7 @@
 import { useEffect, useMemo } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
+import { isStaff } from '@/lib/adminApi.js';
+import { paths } from '@/platform/paths.js';
 import { featured, liveList } from '@/platform/home/catalog.js';
 import ProfileHeader from '@/platform/home/ProfileHeader.jsx';
 import GameStatCards, { RecentMatches } from '@/platform/home/GameStatCards.jsx';
@@ -89,6 +91,13 @@ export default function Profile() {
           </a>
         ))}
       </nav>
+      {isStaff(user) ? (
+        <p className="sa-staff">
+          <Link to={paths.admin()} className="hub-btn hub-btn--ghost">
+            Admin console
+          </Link>
+        </p>
+      ) : null}
       <div className="xp-procols">
         <GameStatCards games={games} user={user} />
         <RecentMatches signedIn={signedIn} lead={lead} />

@@ -1,17 +1,21 @@
 import { Hono } from 'hono';
 import { query } from '../db.js';
 import { HttpError, isUniqueViolation } from '../db.js';
-import { requireUser, requireMember, clearSessionCookie, isSecureRequest } from '../auth.js';
+import { requireUser, requireMember, clearSessionCookie, isSecureRequest, isBanned, bannedBody } from '../auth.js';
 import { USER_COLUMNS, rowToUser, rowDaily, loadGameStats } from '../users.js';
 import { validateName, parseAvatar, validateHandle } from '../validate.js';
 import { limit } from '../ratelimit.js';
 import { readJson } from '../http.js';
 import { istDay, istYesterday, DAILY_BASE, DAILY_STEP, DAILY_CAP, dailyReward } from '../xp.js';
+import { background } from '../hub.js';
+import { checkAchievements } from '../achievements.js';
+import { myReferrals } from '../referrals.js';
 
 const me = new Hono();
 
 // GET /api/me -> { user|null }  (also refreshes last_seen; user.gameStats = { [gameId]: { games, wins, bestScore, rating } },
-// user.daily = { streak, lastClaim, canClaim, nextReward }, user.equipped = { frame?, dice?, title? })
+// user.daily = { streak, lastClaim, canClaim, nextReward }, user.equipped = { frame?, dice?, title? },
+// user.role = the effective role 'user'|'moderator'|'admin'). A suspended account gets 403 { error, code: 'banned', reason }.
 me.get('/', async (c) => {
   const session = c.get('session');
   if (!session) return c.json({ user: null });
@@ -20,7 +24,9 @@ me.get('/', async (c) => {
     c.header('Set-Cookie', clearSessionCookie(isSecureRequest(c.req.raw)));
     return c.json({ user: null });
   }
-  return c.json({ user: rowToUser(rows[0], await loadGameStats(c.env, rows[0].id)) });
+  // A suspended account: 403 with code 'banned' so the client shows the suspended screen (docs/ADMIN.md).
+  if (isBanned(rows[0])) return c.json(bannedBody(rows[0]), 403);
+  return c.json({ user: rowToUser(rows[0], await loadGameStats(c.env, rows[0].id), Date.now(), c.env) });
 });
 
 export const HANDLE_CHANGE_DAYS = 7;
@@ -72,7 +78,7 @@ me.patch('/', requireUser, limit('me-patch', 30, 60), async (c) => {
     }
   }
   const stats = await loadGameStats(c.env, c.get('user').id);
-  if (!sets.length) return c.json({ user: rowToUser(c.get('user'), stats) });
+  if (!sets.length) return c.json({ user: rowToUser(c.get('user'), stats, Date.now(), c.env) });
   // `sets` only ever contains the fixed fragments built above; values are bound parameters.
   let rows;
   try {
@@ -81,7 +87,7 @@ me.patch('/', requireUser, limit('me-patch', 30, 60), async (c) => {
     if (isUniqueViolation(err, 'handle')) throw new HttpError(409, 'That handle is taken.');
     throw err;
   }
-  return c.json({ user: rowToUser(rows[0], stats) });
+  return c.json({ user: rowToUser(rows[0], stats, Date.now(), c.env) });
 });
 
 // GET /api/me/handle-available?h= -> { available, reason?: 'invalid'|'taken'|'reserved' }  (members only)
@@ -119,8 +125,15 @@ me.post('/daily', requireUser, limit('me-daily', 10, 60), async (c) => {
   const row = rows[0];
   if (!row) throw new HttpError(409, 'Already claimed today.');
   const streak = Number(row.daily_streak) || 1;
+  // Streak achievements (on-a-roll, ten-day-streak): best effort, pushed over the user socket. The response keeps the
+  // claim's own balance; an achievement reward arrives as a `wallet` push.
+  await checkAchievements(c.env, [row.id], { defer: (p) => background(c, p) });
   return c.json({ reward: dailyReward(streak), streak, coins: row.coins, daily: rowDaily(row, now) });
 });
+
+// GET /api/me/referrals -> { code, link, invited, rewarded, coinsEarned, recent: [{ name, avatar, joinedAt, rewarded }] }
+// (members only; link is a site path, e.g. /?ref=HYD-7K2Q)
+me.get('/referrals', requireMember, limit('me-referrals', 60, 60), async (c) => c.json(await myReferrals(c.env, c.get('user'))));
 
 export const MATCHES_DEFAULT = 20;
 export const MATCHES_MAX = 50;

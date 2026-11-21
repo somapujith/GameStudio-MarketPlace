@@ -113,15 +113,17 @@ describe('persistMatch', () => {
     });
     const rec = buildMatchRecord(finishedTycoonRoom(), tycoon);
     const res = await persistMatch({}, rec);
-    expect(res).toEqual({ inserted: true });
+    expect(res).toEqual({ inserted: true, coinMultiplier: 1 });
 
-    const [ratingCall, writeCall] = queryMock.mock.calls;
+    const [ratingCall] = queryMock.mock.calls;
+    const writeCall = queryMock.mock.calls.find((c) => c[1] === PERSIST_SQL);
     expect(ratingCall[1]).toMatch(/SELECT user_id, rating FROM user_game_stats WHERE game_id = \$1/);
     expect(ratingCall[2]).toEqual(['hyderabad-tycoon', [U1, U2, U3]]);
 
     expect(writeCall[1]).toBe(PERSIST_SQL);
     const params = writeCall[2];
-    expect(params).toHaveLength(14);
+    expect(params).toHaveLength(15);
+    expect(params[14]).toBe(1); // no live coin boost
     expect(params[0]).toBe(rec.id);
     expect(params[13]).toBe('hyderabad-tycoon');
     const users = JSON.parse(params[11]);
@@ -149,7 +151,7 @@ describe('persistMatch', () => {
   it('a replayed match reports inserted:false and skips the level sync', async () => {
     queryMock.mockImplementation(async (env, text) => (/FROM user_game_stats WHERE/.test(text) ? [] : [{ inserted: 0, users: '[]' }]));
     const res = await persistMatch({}, buildMatchRecord(finishedTycoonRoom(), tycoon));
-    expect(res).toEqual({ inserted: false });
+    expect(res).toEqual({ inserted: false, coinMultiplier: 1 });
     expect(transactionMock).not.toHaveBeenCalled();
   });
 
@@ -158,7 +160,7 @@ describe('persistMatch', () => {
       if (/FROM user_game_stats WHERE/.test(text)) throw new Error('boom');
       return [{ inserted: 1, users: [] }];
     });
-    await expect(persistMatch({}, buildMatchRecord(finishedTycoonRoom(), tycoon))).resolves.toEqual({ inserted: true });
+    await expect(persistMatch({}, buildMatchRecord(finishedTycoonRoom(), tycoon))).resolves.toEqual({ inserted: true, coinMultiplier: 1 });
   });
 
   it('a failed write is thrown (the room retries with backoff)', async () => {

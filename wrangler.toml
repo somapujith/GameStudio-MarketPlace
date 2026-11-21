@@ -6,6 +6,9 @@
 #   production  -> npx wrangler secret put DATABASE_URL
 #                  npx wrangler secret put JWT_SECRET          (e.g. `openssl rand -base64 48`)
 #                  npx wrangler secret put GOOGLE_CLIENT_ID    (the OAuth *Web* client id, not a secret per se)
+#                  npx wrangler secret put ADMIN_EMAILS        (OPTIONAL: comma-separated Google account emails that are
+#                                                               always admins of the /admin console; docs/ADMIN.md)
+# Never put ADMIN_EMAILS (or any real address) in [vars] below: this file is committed.
 # Only non-secret values belong in [vars] below.
 
 name = "gamestudio-marketplace" # must match the Worker name in the Cloudflare dashboard (workers.dev URL = gamestudio-marketplace.<subdomain>.workers.dev)

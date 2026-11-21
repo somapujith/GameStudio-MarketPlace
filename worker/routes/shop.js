@@ -6,7 +6,9 @@ import { requireUser } from '../auth.js';
 import { getUserById, rowEquipped } from '../users.js';
 import { limit } from '../ratelimit.js';
 import { readJson } from '../http.js';
-import { COSMETICS, EQUIPPABLE_KINDS, FREE_COSMETICS, cosmeticById } from '../../shared/cosmetics.js';
+import { COSMETICS, EQUIPPABLE_KINDS, FREE_COSMETICS, cosmeticById, sourceOf } from '../../shared/cosmetics.js';
+import { unlockHintFor } from '../../shared/achievements.js';
+import { loadLiveEvents, limitedItemsOf } from '../events.js';
 
 const shop = new Hono();
 
@@ -22,11 +24,33 @@ export function ownedList(bought) {
   return COSMETICS.filter((c) => set.has(c.id)).map((c) => c.id);
 }
 
-/** The catalogue as the shop shows it to one viewer. */
-export function shopItems(owned, equipped) {
+export const NOT_AVAILABLE = 'Not available right now.';
+
+/**
+ * Can this item be bought right now? Shop items always; event items only while a live limited_shop event lists them
+ * (`limited` = item id -> that event's end, see events.js limitedItemsOf); achievement and season items never.
+ */
+export function availability(c, limited = new Map()) {
+  const source = sourceOf(c);
+  if (source === 'shop') return { source, available: true, availableUntil: null, unlockHint: null };
+  const live = source === 'event' && limited.has(c.id);
+  return { source, available: live, availableUntil: live ? limited.get(c.id) : null, unlockHint: unlockHintFor(c, { live }) };
+}
+
+/** Live limited items (best effort: a failure shows no limited item as on sale). */
+async function liveLimited(env) {
+  try {
+    return limitedItemsOf(await loadLiveEvents(env));
+  } catch {
+    return new Map();
+  }
+}
+
+/** The catalogue as the shop shows it to one viewer. `limited` = the live limited items (id -> end ISO). */
+export function shopItems(owned, equipped, limited = new Map()) {
   const own = new Set(owned);
   return COSMETICS.map((c) => {
-    const item = { id: c.id, kind: c.kind, name: c.name, price: c.price, rarity: c.rarity };
+    const item = { id: c.id, kind: c.kind, name: c.name, price: c.price, rarity: c.rarity, ...availability(c, limited) };
     if (c.colors) item.colors = [...c.colors];
     // material / effect key and the dice halo colour (the art switches on these; see shared/cosmetics.js FINISHES)
     for (const k of ['finish', 'glow']) if (c[k] !== undefined) item[k] = c[k];
@@ -38,17 +62,19 @@ export function shopItems(owned, equipped) {
   });
 }
 
-// GET /api/shop -> { items:[{ id, kind, name, price, rarity, colors?, icon?, emoji?, src?, durationMs?, caption?, owned, equipped }], coins, equipped }
+// GET /api/shop -> { items:[{ id, kind, name, price, rarity, source, available, availableUntil, unlockHint, colors?, icon?, emoji?, src?, durationMs?, caption?, owned, equipped }], coins, equipped }
+// source 'shop' | 'achievement' | 'event' | 'season'; available = buyable right now (owned or not); availableUntil = the
+// live limited event's end for an event item on sale; unlockHint = how a locked item is obtained (docs/ENGAGEMENT.md).
 // Voice lines (kind 'voice') carry icon/emoji/src/durationMs/caption and are never "equipped": they are owned-only.
 // Session optional: signed out -> owned = free items only, coins null, equipped {}.
 shop.get('/', limit('shop-list', 60, 60), async (c) => {
   const session = c.get('session');
-  const user = session ? await getUserById(c.env, session.uid) : null;
-  if (!user) return c.json({ items: shopItems(ownedList([]), {}), coins: null, equipped: {} });
+  const [user, limited] = await Promise.all([session ? getUserById(c.env, session.uid) : null, liveLimited(c.env)]);
+  if (!user) return c.json({ items: shopItems(ownedList([]), {}, limited), coins: null, equipped: {} });
   const owned = ownedList(await boughtItems(c.env, user.id));
   // Only show something as equipped when it is (still) owned.
   const equipped = Object.fromEntries(Object.entries(rowEquipped(user)).filter(([, id]) => owned.includes(id)));
-  return c.json({ items: shopItems(owned, equipped), coins: user.coins, equipped });
+  return c.json({ items: shopItems(owned, equipped, limited), coins: user.coins, equipped });
 });
 
 // One atomic statement. `buyer` locks the users row (FOR UPDATE) while the balance is checked, so
@@ -91,13 +117,20 @@ const parseList = (v) => {
 };
 
 // POST /api/shop/buy { itemId } -> { coins, owned: string[] }
-//   400 unknown item, 402 Not enough coins., 409 Already owned.
+//   400 unknown item, 402 Not enough coins., 409 Already owned., 409 Not available right now. (achievement / season
+//   items, and event items outside a live limited_shop event)
 shop.post('/buy', requireUser, limit('shop-buy', 20, 60), async (c) => {
   const user = c.get('user');
   const { itemId } = await readJson(c);
   const item = typeof itemId === 'string' ? cosmeticById(itemId) : null;
   if (!item) throw new HttpError(400, 'Unknown item.');
   if (FREE_COSMETICS.includes(item.id)) throw new HttpError(409, 'Already owned.');
+  const source = sourceOf(item);
+  if (source !== 'shop') {
+    // Never buyable, or only inside the live window (read now: a lapsed event refuses the buy).
+    const limited = source === 'event' ? limitedItemsOf(await loadLiveEvents(c.env)) : new Map();
+    if (!availability(item, limited).available) throw new HttpError(409, NOT_AVAILABLE);
+  }
   let row;
   try {
     [row] = await query(c.env, BUY_SQL, [user.id, item.id, item.price]);

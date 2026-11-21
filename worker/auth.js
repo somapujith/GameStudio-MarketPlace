@@ -160,7 +160,11 @@ async function withFreshFriendCode(attempt) {
 
 const randomAvatar = () => crypto.getRandomValues(new Uint8Array(1))[0] % 12;
 
-/** Create or update the user for a verified Google identity. Resolves to the DB row. */
+/**
+ * Create or update the user for a verified Google identity. Resolves to the DB row plus `inserted`: true only when this
+ * call created the account (`xmax = 0` on the RETURNING row: an insert, not the ON CONFLICT update), which is when a
+ * referral may be recorded (docs/ENGAGEMENT.md section 2).
+ */
 export async function upsertGoogleUser(env, claims) {
   const email = typeof claims.email === 'string' ? claims.email.slice(0, 254) : null;
   const fallback = email ? email.split('@')[0] : '';
@@ -171,10 +175,12 @@ export async function upsertGoogleUser(env, claims) {
       `INSERT INTO users (google_sub, email, name, avatar, friend_code, is_guest)
        VALUES ($1, $2, $3, $4, $5, false)
        ON CONFLICT (google_sub) DO UPDATE SET email = EXCLUDED.email, last_seen = now()
-       RETURNING ${USER_COLUMNS}`,
+       RETURNING ${USER_COLUMNS}, (xmax = 0) AS inserted`,
       [claims.sub, email, name, randomAvatar(), friendCode],
     );
-    return rows[0];
+    const row = rows[0];
+    if (row) row.inserted = row.inserted === true;
+    return row;
   });
 }
 
@@ -237,8 +243,8 @@ export async function currentUser(c) {
   return session ? getUserById(c.env, session.uid) : null;
 }
 
-/** Resolve the signed-in user row, or a ready-made 401 response. */
-async function loadUser(c) {
+/** Resolve the signed-in user row, or a ready-made 401 (signed out) / 403 (suspended) response. */
+export async function loadUser(c) {
   const session = c.get('session');
   if (!session) return { res: c.json({ error: 'Please sign in first.' }, 401) };
   const user = await getUserById(c.env, session.uid);
@@ -246,8 +252,17 @@ async function loadUser(c) {
     c.header('Set-Cookie', clearSessionCookie(isSecureRequest(c.req.raw)));
     return { res: c.json({ error: 'Your session has expired. Please sign in again.' }, 401) };
   }
+  if (isBanned(user)) return { res: c.json(bannedBody(user), 403) };
   return { user };
 }
+
+export const BANNED_MESSAGE = 'Your account has been suspended.';
+
+/** Is this user row suspended (users.banned_at set)? */
+export const isBanned = (row) => !!(row && row.banned_at);
+
+/** The 403 body every user-loading endpoint returns for a suspended account (docs/ADMIN.md "Bans"). */
+export const bannedBody = (row) => ({ error: BANNED_MESSAGE, code: 'banned', reason: (row && row.ban_reason) || null });
 
 /** Loads the signed-in user row into `c.get('user')`; 401 when absent. */
 export async function requireUser(c, next) {

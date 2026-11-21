@@ -39,9 +39,9 @@ export async function readBodyText(request, limit = MAX_BODY_BYTES) {
   return new TextDecoder().decode(all);
 }
 
-/** Parse a JSON object body (<= 16 KB). Empty body -> {}. Throws HttpError(400/413). */
-export async function readJson(c) {
-  const text = await readBodyText(c.req.raw);
+/** Parse a JSON object body (<= 16 KB unless `limit` says otherwise). Empty body -> {}. Throws HttpError(400/413). */
+export async function readJson(c, limit = MAX_BODY_BYTES) {
+  const text = await readBodyText(c.req.raw, limit);
   if (!text.trim()) return {};
   let data;
   try {

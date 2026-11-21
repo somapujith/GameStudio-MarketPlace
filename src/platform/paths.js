@@ -29,6 +29,17 @@ export const paths = {
   /** Cosmetics shop (spend coins). */
   shop: () => '/shop',
   login: (next) => (next ? `/login?next=${enc(next)}` : '/login'),
+  /**
+   * Admin console (staff only): `admin()` is the dashboard, `admin('users')`, `admin('users/<id>')`, `admin('rooms')`,
+   * `admin('matches')`, `admin('grants')`, `admin('announcements')`, `admin('audit')`. Each segment is escaped.
+   */
+  admin: (section) => {
+    const parts = String(section ?? '')
+      .split('/')
+      .filter(Boolean)
+      .map((p) => enc(p));
+    return parts.length ? `/admin/${parts.join('/')}` : '/admin';
+  },
 };
 
 /**

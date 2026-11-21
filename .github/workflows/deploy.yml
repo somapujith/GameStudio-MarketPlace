@@ -6,10 +6,12 @@
 #   DATABASE_URL           Neon connection string (migration here + the Worker's runtime secret)
 #   JWT_SECRET             long random string that signs login sessions (use a NEW one for production)
 #   GOOGLE_CLIENT_ID       the OAuth *Web* client id
+# Optional:
+#   ADMIN_EMAILS           comma-separated Google account emails that are always admins of /admin
 #
-# After the deploy, the last step copies DATABASE_URL, JWT_SECRET and GOOGLE_CLIENT_ID into the
-# Worker as runtime secrets, so there is no manual `wrangler secret put`. To rotate one, change the
-# GitHub secret and re-run this workflow.
+# After the deploy, the last step copies DATABASE_URL, JWT_SECRET and GOOGLE_CLIENT_ID (and ADMIN_EMAILS when
+# it is set) into the Worker as runtime secrets, so there is no manual `wrangler secret put`. To rotate one,
+# change the GitHub secret and re-run this workflow. An unset ADMIN_EMAILS leaves the Worker's value alone.
 name: Deploy
 
 on:
@@ -92,7 +94,8 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          ADMIN_EMAILS: ${{ secrets.ADMIN_EMAILS }}
         run: |
-          node -e "require('fs').writeFileSync(process.env.RUNNER_TEMP + '/secrets.json', JSON.stringify({ DATABASE_URL: process.env.DATABASE_URL, JWT_SECRET: process.env.JWT_SECRET, GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID }), { mode: 0o600 })"
+          node -e "const e = process.env; const s = { DATABASE_URL: e.DATABASE_URL, JWT_SECRET: e.JWT_SECRET, GOOGLE_CLIENT_ID: e.GOOGLE_CLIENT_ID }; if (e.ADMIN_EMAILS) s.ADMIN_EMAILS = e.ADMIN_EMAILS; require('fs').writeFileSync(e.RUNNER_TEMP + '/secrets.json', JSON.stringify(s), { mode: 0o600 })"
           npx wrangler secret bulk "$RUNNER_TEMP/secrets.json"
           rm -f "$RUNNER_TEMP/secrets.json"
