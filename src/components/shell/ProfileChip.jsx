@@ -6,8 +6,8 @@ import { paths } from '@/platform/paths.js';
 import HubIcon from '@/platform/game/HubIcon.jsx';
 
 /**
- * Top-bar chip: avatar with a signed-in indicator (green = account, amber = guest, grey = signed out),
- * name and level. Signed-in players go to their profile; visitors go to the login screen and come back.
+ * The profile button at the end of the nav pill: a round avatar with a signed-in indicator (green = account,
+ * amber = guest). Signed-in players go to their profile; visitors go to the login screen and come back.
  */
 export default function ProfileChip() {
   const [profile] = useProfile();
@@ -21,25 +21,22 @@ export default function ProfileChip() {
   const sub = !signedIn ? 'to play' : guest ? 'Guest' : `Lv ${level}`;
   const to = signedIn ? paths.profile() : paths.login(`${pathname}${search}`);
 
-  if (loading && !signedIn) return <span className="hub-userchip hub-userchip--wait" aria-hidden="true" />; // auth still booting: no flash of "Sign in"
+  if (loading && !signedIn) return <span className="cj-nav__me cj-nav__me--wait" aria-hidden="true" />; // auth still booting: no flash of "Sign in"
 
   // A visitor gets a clear call to action instead of a grey avatar: signing in is how coins, friends and rank start.
   if (!signedIn) {
     return (
-      <Link to={to} data-tour="nav-profile" className="hub-btn hub-btn--primary hub-btn--sm hub-signin" aria-label="Sign in to play: Google or guest">
-        <HubIcon name="user" size={18} />
+      <Link to={to} data-tour="nav-profile" className="cj-btn cj-btn--primary cj-btn--sm cj-nav__signin" aria-label="Sign in to play: Google or guest">
+        <HubIcon name="user" size={16} />
         <span>Sign in</span>
       </Link>
     );
   }
 
+  // Signed in: a round avatar (the name and level live in the label; the status dot tells account from guest).
   return (
-    <Link to={to} data-tour="nav-profile" className="hub-userchip" aria-label={signedIn ? `Profile: ${name}. ${status}, level ${level}` : 'Sign in to play: Google or guest'}>
-      <AvatarRing preset={avatar} size={32} dot={signedIn ? (guest ? 'guest' : 'on') : 'off'} />
-      <span className="hub-userchip__meta">
-        <b>{name}</b>
-        <small>{sub}</small>
-      </span>
+    <Link to={to} data-tour="nav-profile" className="cj-nav__me" title={`${name} · ${sub}`} aria-label={`Profile: ${name}. ${status}, level ${level}`}>
+      <AvatarRing preset={avatar} size={32} dot={guest ? 'guest' : 'on'} />
     </Link>
   );
 }

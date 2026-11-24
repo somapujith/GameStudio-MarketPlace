@@ -1,0 +1,726 @@
+/* ==========================================================================
+   Cine shell: the hub chrome in the cine skin (docs/CINE_UI.md, "Shell decisions").
+   Loaded by App.jsx right after cine.css, so it wins over hub.css / x-shell.css / mobile.css at equal specificity.
+   Pieces: offsets + canvas · floating nav (.cj-nav: logo + glass pill, condenses on scroll) · phone dock (.cj-dock) ·
+   strips slot (.cj-strips) · minimal footer (.cj-foot) · nav badges.
+   Overlays (modals, palette, toasts, popups, inbox, strips' own look) are styled by the overlay layer, not here.
+   ========================================================================== */
+
+/* ---------- offsets: the nav floats over the page; these are the bands it and the dock cover ---------- */
+:root {
+  --topbar-h: 76px; /* phones: the logo band (the phone header scrolls away with the page) */
+  --tabbar-h: 72px; /* phones: the 60px dock + its 12px gap above the home indicator */
+  --cj-nav-inset: clamp(16px, 3.35vw, 48px);
+  --cj-nav-h: 52px; /* pill height: 6px padding + 40px items + 6px */
+  --cj-nav-item-h: 40px;
+  --cj-nav-pad: 6px;
+  --cj-nav-top: 20px;
+  --cj-nav-glass: rgba(14, 14, 16, 0.38);
+  --cj-nav-glass-on: rgba(14, 14, 16, 0.74);
+  --cj-nav-ring: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --cj-nav-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+  --cj-nav-spring: 0.4s var(--cj-spring);
+  --cj-nav-fade: 0.3s ease;
+}
+@media (min-width: 900px) {
+  :root {
+    --topbar-h: 88px; /* 20px inset + 52px pill + 16px breathing room */
+    --tabbar-h: 0px;
+  }
+}
+/* short landscape phones keep a slimmer dock */
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 899.98px) {
+  :root {
+    --tabbar-h: 62px;
+  }
+}
+
+/* ---------- canvas + layout ---------- */
+/* a safety net: full-bleed art (100vw heroes next to a classic scrollbar) never makes the page scroll sideways.
+   `clip` is not a scroll container, so sticky children keep working. Rows still scroll inside themselves. */
+.hub-app {
+  overflow-x: clip;
+}
+.hub-app .hub-backdrop {
+  background: var(--cj-bg);
+}
+.hub-app .hub-backdrop > * {
+  display: none;
+}
+.hub-app .hub-body {
+  display: block;
+  padding-left: 0;
+}
+.hub-app .hub-main,
+.hub-app--home .hub-main {
+  padding: 0 0 clamp(24px, 4vw, 56px);
+}
+.hub-app .hub-container,
+.hub-app--home .hub-container {
+  max-width: none;
+  padding: 0;
+}
+.hub-app .hub-footslot {
+  background: none;
+  padding-left: 0;
+  padding-bottom: var(--cj-safe-bottom);
+}
+.hub-app .hh-skip {
+  top: calc(var(--safe-top, 0px) + 10px);
+  z-index: 60;
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  font-family: var(--cj-font);
+  font-weight: 600;
+  box-shadow: var(--cj-shadow-card);
+}
+.jalebi-loader.jalebi-loader--small {
+  width: 56px;
+  height: 56px;
+  flex: none;
+}
+
+/* ---------- strips slot: invites, announcements, live events in the flow under the nav band ---------- */
+.cj-strips {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 0 var(--cj-gutter);
+}
+.cj-strips:has(> :not(.hub-noticeslot), > .hub-noticeslot:not(:empty)) {
+  padding-top: calc(var(--cj-safe-top) + 4px);
+}
+.cj-strips > * {
+  width: 100%;
+  max-width: 960px;
+}
+.cj-strips > .hub-noticeslot:empty {
+  display: none;
+}
+/* a strip already cleared the nav band: the page title below it does not clear it a second time */
+.hub-app:has(.cj-strips > :not(.hub-noticeslot), .cj-strips > .hub-noticeslot:not(:empty)) .cj-pagehead {
+  padding-top: 28px;
+}
+
+/* ==========================================================================
+   Floating nav
+   ========================================================================== */
+.hub-app .cj-nav {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  padding-top: var(--safe-top, 0px);
+  background: none;
+  border: 0;
+  pointer-events: none;
+  view-transition-name: none; /* a view-transition-name would make the nav a backdrop root and kill the pill's blur */
+}
+.cj-nav__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: calc(var(--topbar-h) - 8px);
+  padding: 12px max(var(--cj-nav-inset), var(--safe-right, 0px)) 0 max(var(--cj-nav-inset), var(--safe-left, 0px));
+}
+.cj-nav__logo {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 12px;
+  pointer-events: auto;
+  filter: drop-shadow(0 2px 12px rgba(0, 0, 0, 0.45));
+  transform-origin: left center;
+  transition: transform var(--cj-dur) var(--cj-condense);
+}
+.cj-nav__logo .jalebi-logo {
+  font-size: 56px !important; /* HubLogo sizes itself inline; big and clear: ~75px wide on phones */
+}
+
+/* the pill: glass lives on ::before so the dropdowns inside it can have their own backdrop blur */
+.cj-nav__pill {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  flex: none;
+  min-width: 0;
+  height: 44px;
+  padding: 2px;
+  border-radius: var(--cj-r-pill);
+  pointer-events: auto;
+  transition: height var(--cj-dur) var(--cj-condense), padding var(--cj-dur) var(--cj-condense);
+}
+.cj-nav__pill::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--cj-nav-glass);
+  box-shadow: var(--cj-nav-ring), var(--cj-nav-shadow);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+  transition: background-color var(--cj-dur) var(--cj-condense);
+}
+.cj-nav.is-condensed .cj-nav__pill::before {
+  background-color: var(--cj-nav-glass-on);
+}
+
+/* destinations */
+.cj-nav__links {
+  display: none;
+}
+.cj-nav__list {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cj-nav__list > li:not(.cj-nav__ind) {
+  position: relative;
+  z-index: 1;
+}
+.cj-nav__link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: var(--cj-nav-item-h);
+  padding: 0 20px;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-text);
+  font: 600 14px/1 var(--cj-font);
+  letter-spacing: 0.005em;
+  white-space: nowrap;
+  text-decoration: none;
+  transition: color var(--cj-nav-fade), height var(--cj-dur) var(--cj-condense), padding var(--cj-nav-spring);
+}
+@media (hover: hover) and (pointer: fine) {
+  .cj-nav__link:not(.is-active):hover {
+    color: var(--cj-text-strong);
+  }
+}
+.cj-nav__link.is-active {
+  color: var(--cj-ink);
+}
+.cj-nav__list:not(.has-ind) .cj-nav__link.is-active {
+  background: var(--cj-pill);
+}
+.cj-nav__ico {
+  display: none;
+}
+.cj-nav__link.is-active .cj-nav__ico {
+  display: block;
+}
+.cj-nav__ind {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  list-style: none;
+  border-radius: var(--cj-r-pill);
+  background: var(--cj-pill);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), 0 0 16px 1px rgba(255, 255, 255, 0.18);
+  pointer-events: none;
+  will-change: transform;
+  transition: transform var(--cj-nav-spring), width var(--cj-nav-spring), height var(--cj-dur) var(--cj-condense), opacity var(--cj-nav-fade);
+}
+.cj-nav__link .bd-badge--nav {
+  top: -3px;
+  right: 2px;
+}
+.cj-nav__link .hub-navbadge--live {
+  top: 9px;
+  right: 9px;
+}
+.cj-nav__rule {
+  display: none;
+  flex: none;
+  width: 1px;
+  height: 22px;
+  margin: 0 8px 0 10px;
+  background: var(--cj-line-2);
+}
+
+/* the cluster: search, code, coins, bells, profile */
+.cj-nav__tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.cj-nav__tour:empty {
+  display: none;
+}
+.cj-nav__btn,
+.hub-app .cj-nav .nt-bell,
+.hub-app .cj-nav .bd-bell,
+.hub-app .cj-nav .tour-help {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: var(--cj-nav-item-h);
+  min-width: 0;
+  height: var(--cj-nav-item-h);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--cj-text);
+  background: transparent;
+  box-shadow: none;
+  font-family: var(--cj-font);
+  cursor: pointer;
+  transition: background-color var(--cj-nav-fade), color var(--cj-nav-fade), transform var(--cj-dur) var(--cj-ease), width var(--cj-dur) var(--cj-condense), height var(--cj-dur) var(--cj-condense);
+}
+@media (hover: hover) and (pointer: fine) {
+  .cj-nav__btn:hover,
+  .hub-app .cj-nav .nt-bell:hover,
+  .hub-app .cj-nav .bd-bell:hover,
+  .hub-app .cj-nav .tour-help:hover {
+    color: var(--cj-text-strong);
+    background: var(--cj-glass-2);
+    border-color: transparent;
+  }
+}
+.cj-nav__btn:active,
+.hub-app .cj-nav .nt-bell:active,
+.hub-app .cj-nav .bd-bell:active {
+  transform: scale(0.92);
+}
+.hub-app .cj-nav .nt-bell.is-open {
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  box-shadow: none;
+}
+.hub-app .cj-nav .nt-bell:focus-visible,
+.hub-app .cj-nav .bd-bell:focus-visible,
+.cj-nav__btn:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 2px;
+}
+.hub-app .cj-nav .tour-help {
+  font-size: 17px;
+  font-weight: 700;
+}
+.hub-app .cj-nav .tour-help .tour-help__q {
+  color: inherit;
+  font-size: 18px;
+}
+.hub-app .cj-nav .tour-help.has-label {
+  width: auto;
+  padding: 0 14px;
+  border-radius: var(--cj-r-pill);
+  font-size: 13px;
+}
+.hub-app .cj-nav :is(.nt-bell__badge, .bd-badge--bell) {
+  position: absolute;
+  top: 1px;
+  right: 0;
+}
+
+/* coins: a small glass pill, the number in gold */
+.hub-app .cj-nav .cj-coins {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  min-height: 0;
+  height: calc(var(--cj-nav-item-h) - 4px);
+  margin: 0 4px;
+  padding: 0 13px 0 9px;
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-gold);
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ring);
+  font: 700 14px/1 var(--cj-font);
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+  white-space: nowrap;
+}
+@media (hover: hover) and (pointer: fine) {
+  .hub-app .cj-nav .cj-coins:hover {
+    background: var(--cj-glass-2);
+  }
+}
+.hub-app .cj-nav .cj-coins.is-up {
+  background: rgba(245, 198, 107, 0.16);
+}
+.hub-app .cj-nav .cj-coins.is-down b {
+  color: var(--cj-text-dim);
+}
+.hub-app .cj-nav .cj-coins:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 2px;
+}
+.hub-app .cj-nav .cj-coins .xs-coins__dot {
+  top: 1px;
+  right: 1px;
+  width: 8px;
+  height: 8px;
+  background: var(--cj-danger);
+  box-shadow: 0 0 0 2px rgba(14, 14, 16, 0.9);
+}
+
+/* profile: a round avatar, or the white "Sign in" pill */
+.cj-nav__me {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: var(--cj-nav-item-h);
+  height: var(--cj-nav-item-h);
+  margin-left: 2px;
+  border-radius: 50%;
+  text-decoration: none;
+  transition: transform var(--cj-dur) var(--cj-ease), width var(--cj-dur) var(--cj-condense), height var(--cj-dur) var(--cj-condense);
+}
+.cj-nav__me:active {
+  transform: scale(0.94);
+}
+.cj-nav__me .hh-avring {
+  width: calc(var(--sz) + 4px);
+  height: calc(var(--sz) + 4px);
+  padding: 2px;
+  background: rgba(255, 255, 255, 0.22);
+  box-shadow: none;
+  transition: background-color var(--cj-nav-fade);
+}
+@media (hover: hover) and (pointer: fine) {
+  .cj-nav__me:hover .hh-avring {
+    background: rgba(255, 255, 255, 0.6);
+  }
+}
+.cj-nav__me .hh-avring__dot {
+  width: 10px;
+  height: 10px;
+  right: -1px;
+  bottom: -1px;
+  box-shadow: 0 0 0 2px rgba(14, 14, 16, 0.95);
+}
+.cj-nav__me--wait {
+  background: var(--cj-glass-2);
+}
+.hub-app .cj-nav .cj-nav__signin {
+  min-height: calc(var(--cj-nav-item-h) - 2px);
+  margin-left: 4px;
+  padding: 0 16px 0 13px;
+  gap: 6px;
+  font-size: 14px;
+}
+
+/* ---------- phones (< 900 px): the logo, plus a small cluster (tour, coins, bells, Sign in) that scrolls away ---------- */
+@media (max-width: 899.98px) {
+  .cj-nav__search,
+  .cj-nav__code,
+  .cj-nav__me {
+    display: none;
+  }
+  .cj-nav__pill:not(:has(.cj-coins, .nt-bell, .bd-bell, .cj-nav__signin, .tour-help)) {
+    display: none;
+  }
+  .cj-nav__tools {
+    gap: 0;
+  }
+  .hub-app .cj-nav .cj-coins {
+    margin: 0 2px 0 0;
+  }
+  .hub-app .cj-nav .cj-nav__signin {
+    margin: 0;
+  }
+}
+
+/* ---------- wide screens (>= 900 px): fixed, the full pill, condenses on scroll ---------- */
+@media (min-width: 900px) {
+  .hub-app .cj-nav {
+    position: fixed;
+  }
+  .cj-nav__row {
+    height: calc(var(--cj-nav-top) + var(--cj-nav-h));
+    padding-top: var(--cj-nav-top);
+    gap: 40px; /* the pill keeps clear of the logo: useTopbarFit tightens it before they get close */
+  }
+  .cj-nav__logo .jalebi-logo {
+    font-size: 84px !important; /* ~100px wide, filling the nav band */
+  }
+  .cj-nav.is-condensed .cj-nav__logo {
+    transform: scale(0.86);
+  }
+  .cj-nav__pill {
+    height: var(--cj-nav-h);
+    padding: var(--cj-nav-pad);
+  }
+  .cj-nav__links {
+    display: block;
+  }
+  .cj-nav__rule {
+    display: block;
+  }
+  /* condensed: tighter padding, shorter items, more opaque glass */
+  .cj-nav.is-condensed {
+    --cj-nav-item-h: 36px;
+  }
+  .cj-nav.is-condensed .cj-nav__pill {
+    height: 44px;
+    padding: 4px;
+  }
+  /* fit levels (useTopbarFit): 1 narrower labels, 2 no coin icon, 3 the tightest gaps */
+  .cj-nav__row[data-fit] .cj-nav__link {
+    padding: 0 13px;
+  }
+  .cj-nav__row:is([data-fit='2'], [data-fit='3']) .cj-coins .xs-coins__icon {
+    display: none;
+  }
+  .cj-nav__row:is([data-fit='2'], [data-fit='3']) .cj-nav__rule {
+    margin-inline: 4px;
+  }
+  .cj-nav__row[data-fit='3'] .cj-nav__link {
+    padding: 0 10px;
+    font-size: 13px;
+  }
+  .cj-nav__row[data-fit='3'] .cj-nav__list {
+    gap: 0;
+  }
+  .cj-nav__row[data-fit='3'] {
+    --cj-nav-item-h: 36px;
+  }
+}
+
+/* ==========================================================================
+   Phone dock: floating glass bar at the bottom (< 900 px)
+   ========================================================================== */
+.cj-dock {
+  position: fixed;
+  left: max(10px, var(--safe-left, 0px));
+  right: max(10px, var(--safe-right, 0px));
+  bottom: calc(var(--safe-bottom, 0px) + 12px);
+  z-index: 40;
+  isolation: isolate;
+  max-width: 520px;
+  height: 60px;
+  margin: 0 auto;
+  padding: 8px;
+  border-radius: var(--cj-r-pill);
+  view-transition-name: none; /* same: keeps the dock's backdrop blur */
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+.cj-dock::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: rgba(14, 14, 16, 0.58);
+  box-shadow: var(--cj-nav-ring), 0 12px 40px rgba(0, 0, 0, 0.5);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+}
+.cj-dock__list {
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cj-dock__list > li:not(.cj-dock__ind) {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+}
+.cj-dock__item {
+  display: grid;
+  place-items: center;
+  width: min(52px, 100%);
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  color: rgba(255, 255, 255, 0.6);
+  background: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color var(--cj-nav-fade), transform var(--cj-dur) var(--cj-ease);
+}
+.cj-dock__item.is-active {
+  color: var(--cj-text-strong);
+}
+.cj-dock__item:active {
+  transform: scale(0.9);
+}
+.cj-dock__item:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 0;
+}
+.cj-dock__list:not(.has-ind) .cj-dock__item.is-active {
+  background: rgba(255, 255, 255, 0.12);
+}
+.cj-dock__icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+.cj-dock__ind {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  list-style: none;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  pointer-events: none;
+  will-change: transform;
+  transition: transform var(--cj-nav-spring), width var(--cj-nav-spring), opacity var(--cj-nav-fade);
+}
+.cj-dock .bd-badge--nav {
+  top: -8px;
+  right: -11px;
+}
+.cj-dock .hub-navbadge--live {
+  top: -2px;
+  right: -4px;
+}
+:root[data-kb] .cj-dock {
+  display: none;
+}
+@media (orientation: landscape) and (max-height: 500px) and (max-width: 899.98px) {
+  .cj-dock {
+    height: 52px;
+    padding: 4px;
+    bottom: calc(var(--safe-bottom, 0px) + 8px);
+  }
+}
+@media (min-width: 900px) {
+  .cj-dock {
+    display: none;
+  }
+}
+
+/* ---------- nav badges: a small red count, a green live dot ---------- */
+.hub-app .bd-badge {
+  font-family: var(--cj-font);
+  font-weight: 700;
+  color: #1c0606;
+  background: var(--cj-danger);
+  box-shadow: 0 0 0 2px rgba(14, 14, 16, 0.9);
+}
+.hub-app :is(.cj-nav, .cj-dock) .hub-navbadge--live {
+  position: absolute;
+  z-index: 2;
+  width: 8px;
+  min-width: 0;
+  height: 8px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--cj-live);
+  box-shadow: 0 0 0 2px rgba(14, 14, 16, 0.9), 0 0 8px rgba(107, 227, 138, 0.6);
+}
+
+/* ==========================================================================
+   Footer: minimal and centred
+   ========================================================================== */
+.hub-footslot > .cj-foot {
+  /* the legacy footer-slot rule caps children at 1180px; the footer spans the screen and centres its own content */
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+  padding-inline: var(--cj-gutter);
+}
+.cj-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  margin: 0;
+  padding: clamp(64px, 8vw, 112px) var(--cj-gutter) 36px;
+  font-family: var(--cj-font);
+  text-align: center;
+}
+.cj-foot__logo {
+  display: inline-flex;
+  border-radius: 10px;
+  text-decoration: none;
+}
+.cj-foot__logo .jalebi-logo__descriptor {
+  font-family: var(--cj-font);
+  font-weight: 800;
+}
+.cj-foot__line {
+  max-width: 54ch;
+  margin: 0;
+  color: var(--cj-text-faint);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.cj-foot__links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cj-foot__links a {
+  display: inline-block;
+  padding: 6px 0;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.22);
+  text-underline-offset: 3px;
+  transition: color var(--cj-nav-fade), text-decoration-color var(--cj-nav-fade);
+}
+@media (hover: hover) and (pointer: fine) {
+  .cj-foot__links a:hover {
+    color: var(--cj-text-strong);
+    text-decoration-color: rgba(255, 255, 255, 0.6);
+  }
+}
+.cj-foot__small {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 11px;
+}
+
+/* ---------- engines without backdrop-filter: the glass turns solid ---------- */
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .cj-nav__pill::before,
+  .cj-dock::before {
+    background: rgba(16, 20, 18, 0.96);
+  }
+}
+
+/* ---------- reduced motion: no springs, no condense animation ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .cj-nav__logo,
+  .cj-nav__pill,
+  .cj-nav__pill::before,
+  .cj-nav__link,
+  .cj-nav__ind,
+  .cj-nav__btn,
+  .cj-nav__me,
+  .cj-dock__item,
+  .cj-dock__ind,
+  .hub-app .cj-nav :is(.nt-bell, .bd-bell) {
+    transition: none !important;
+  }
+}
+:root[data-motion='reduced'] :is(.cj-nav__logo, .cj-nav__pill, .cj-nav__pill::before, .cj-nav__link, .cj-nav__ind, .cj-nav__btn, .cj-nav__me, .cj-dock__item, .cj-dock__ind),
+:root[data-motion='reduced'] .hub-app .cj-nav :is(.nt-bell, .bd-bell) {
+  transition: none !important;
+}

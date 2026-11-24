@@ -65,13 +65,13 @@ export default function CoinsChip() {
   return (
     <TransitionLink
       to={paths.shop()}
-      className={`hub-coins xs-coins${dir > 0 ? ' is-up' : dir < 0 ? ' is-down' : ''}`}
+      className={`cj-coins xs-coins${dir > 0 ? ' is-up' : dir < 0 ? ' is-down' : ''}`}
       data-coins-chip=""
       data-tour="nav-coins"
       title="Your coins: open the shop"
       aria-label={`${fmtNum(coins)} coins. Open the shop${canClaim ? '. Daily reward ready' : ''}`}
     >
-      <CoinIcon size={18} className="xs-coins__icon" />
+      <CoinIcon size={17} className="xs-coins__icon" />
       <b aria-hidden="true">{fmtNum(shown)}</b>
       {canClaim && <i className="xs-coins__dot" aria-hidden="true" />}
     </TransitionLink>

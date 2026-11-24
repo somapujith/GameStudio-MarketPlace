@@ -1,0 +1,776 @@
+/* ==========================================================================
+   Cine: the calm, cinematic hub skin (docs/CINE_UI.md).
+   Deep green-black canvas, white type at 80%, frosted glass, pill controls, 12px cards, slow soft motion.
+   Loaded LAST for hub pages. Every hub screen is built from these tokens and the .cj-* primitives below.
+   Game screens (/play/**) and the admin console keep their own styles.
+   ========================================================================== */
+@import '@fontsource-variable/inter';
+
+:root {
+  /* canvas */
+  --cj-bg: #04120b;
+  --cj-bg-2: #071a10;
+  --cj-bg-3: #0b2216;
+  /* type */
+  --cj-text: rgba(255, 255, 255, 0.8);
+  --cj-text-strong: #fff;
+  --cj-text-dim: rgba(255, 255, 255, 0.6);
+  --cj-text-faint: rgba(255, 255, 255, 0.4);
+  --cj-ink: #0a0a0b; /* text on white pills */
+  /* glass */
+  --cj-glass: rgba(255, 255, 255, 0.05);
+  --cj-glass-2: rgba(255, 255, 255, 0.1);
+  --cj-glass-3: rgba(255, 255, 255, 0.16);
+  --cj-glass-nav: rgba(16, 16, 18, 0.62);
+  --cj-line: rgba(255, 255, 255, 0.08);
+  --cj-line-2: rgba(255, 255, 255, 0.14);
+  --cj-pill: #f2f2f2;
+  --cj-blur: blur(24px) saturate(140%);
+  /* accents: used sparingly (live dots, rewards, the logo) */
+  --cj-live: #6be38a;
+  --cj-gold: #f5c66b;
+  --cj-brand: #ff6400;
+  --cj-danger: #ff6b6b;
+  /* shape */
+  --cj-r-card: 12px;
+  --cj-r-panel: 16px;
+  --cj-r-sheet: 26px;
+  --cj-r-pill: 999px;
+  --cj-shadow-card: 0 8px 30px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  --cj-shadow-pop: 0 -10px 40px -10px rgba(0, 0, 0, 0.5), 0 30px 80px -20px rgba(0, 0, 0, 0.8);
+  --cj-ring: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  /* layout */
+  /* Content column: pages keep a wide, CENTRED column. --cj-gutter is the space left of the column (and right of it), so
+     everything padded by it lines up in the middle of the screen; rows still scroll out to the screen edges. */
+  --cj-max: 1440px;
+  --cj-gutter: max(clamp(20px, 4.45vw, 64px), calc((100vw - var(--cj-max)) / 2));
+  --cj-row-gap: 12px;
+  --cj-section-gap: clamp(36px, 4.4vw, 56px);
+  --cj-poster-w: clamp(118px, 10.4vw, 150px);
+  /* shell offsets (cine/shell.css sets --topbar-h / --tabbar-h; see "Shell decisions" in docs/CINE_UI.md):
+     the band the floating nav covers at the top, and the band the phone dock covers at the bottom */
+  --cj-safe-top: calc(var(--topbar-h, 88px) + var(--safe-top, 0px));
+  --cj-safe-bottom: calc(var(--tabbar-h, 0px) + var(--safe-bottom, 0px));
+  /* motion */
+  --cj-ease: cubic-bezier(0.25, 1, 0.5, 1);
+  --cj-condense: cubic-bezier(0.4, 0, 0.2, 1);
+  --cj-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --cj-dur: 0.4s;
+  /* type */
+  --cj-font: -apple-system, BlinkMacSystemFont, 'Inter Variable', Inter, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* ---------- canvas ---------- */
+html:has(.hub-app),
+body:has(.hub-app) {
+  background: var(--cj-bg);
+}
+.hub-app {
+  color: var(--cj-text);
+  font-family: var(--cj-font);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--cj-bg);
+}
+.hub-app ::selection {
+  color: var(--cj-ink);
+  background: rgba(255, 255, 255, 0.85);
+}
+.hub-app :focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 3px;
+}
+
+/* ---------- ambient backdrop (blurred colour field behind page titles, like "My Lists") ---------- */
+.cj-ambient {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 55% at 18% 22%, rgba(78, 190, 92, 0.34), transparent 70%),
+    radial-gradient(50% 50% at 82% 30%, rgba(44, 140, 70, 0.26), transparent 70%),
+    radial-gradient(70% 60% at 50% 100%, rgba(10, 60, 30, 0.6), transparent 70%),
+    var(--cj-bg);
+  filter: saturate(115%);
+}
+.cj-ambient--warm {
+  background:
+    radial-gradient(60% 55% at 20% 20%, rgba(255, 140, 60, 0.22), transparent 70%),
+    radial-gradient(50% 50% at 85% 25%, rgba(78, 190, 92, 0.2), transparent 70%),
+    var(--cj-bg);
+}
+
+/* ---------- type ---------- */
+.cj-pagehead {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin: 0;
+  padding: clamp(84px, 9vw, 112px) var(--cj-gutter) 0;
+}
+.cj-pagehead__title,
+.cj-pagehead__tab {
+  margin: 0;
+  font: 700 clamp(32px, 3.1vw, 44px) / 1.1 var(--cj-font);
+  letter-spacing: -0.02em;
+  color: var(--cj-text-strong);
+}
+.cj-pagehead__tab {
+  color: rgba(255, 255, 255, 0.35);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  transition: color var(--cj-dur) var(--cj-ease);
+}
+.cj-pagehead__tab:hover {
+  color: rgba(255, 255, 255, 0.6);
+}
+.cj-pagehead__tab[aria-selected='true'] {
+  color: var(--cj-text-strong);
+}
+.cj-lede {
+  max-width: 60ch;
+  margin: 10px 0 0;
+  color: var(--cj-text-dim);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.cj-title-art {
+  margin: 0;
+  font: 700 clamp(30px, 3.1vw, 46px) / 1.02 var(--cj-font);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #eaf2ff;
+  background: linear-gradient(180deg, #ffffff 0%, #cfe0f0 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 2px 14px rgba(0, 0, 0, 0.45));
+}
+
+/* ---------- meta row: ★ 7.0 · 2026 · Drama ---------- */
+.cj-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--cj-text-strong);
+  font-size: 16px;
+  font-weight: 600;
+}
+.cj-meta > li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.cj-meta > li + li::before {
+  content: '';
+  width: 3px;
+  height: 3px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: var(--cj-text-faint);
+}
+.cj-meta svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+/* ---------- buttons: white pill, glass pill, round glass icon, glass group ---------- */
+.cj-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  font: 600 15px/1 var(--cj-font);
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+  transition: transform var(--cj-dur) var(--cj-ease), background-color var(--cj-dur) var(--cj-ease), opacity var(--cj-dur) var(--cj-ease);
+}
+.cj-btn:hover:not(:disabled) {
+  background: var(--cj-glass-3);
+}
+.cj-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.cj-btn:disabled,
+.cj-btn[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.cj-btn svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+.cj-btn--primary {
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  box-shadow: none;
+}
+.cj-btn--primary:hover:not(:disabled) {
+  background: #fff;
+}
+.cj-btn--lg {
+  min-height: 52px;
+  padding: 0 30px;
+  font-size: 18px;
+}
+.cj-btn--sm {
+  min-height: 34px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+.cj-btn--block {
+  width: 100%;
+}
+.cj-iconbtn {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+  cursor: pointer;
+  transition: background-color var(--cj-dur) var(--cj-ease), transform var(--cj-dur) var(--cj-ease);
+}
+.cj-iconbtn:hover {
+  background: var(--cj-glass-3);
+}
+.cj-iconbtn svg {
+  width: 20px;
+  height: 20px;
+}
+.cj-btngroup {
+  display: inline-flex;
+  align-items: center;
+  height: 52px;
+  padding: 0 8px;
+  border-radius: var(--cj-r-pill);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+}
+.cj-btngroup > * {
+  display: inline-grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cj-text-strong);
+  cursor: pointer;
+  text-decoration: none;
+}
+.cj-btngroup > * {
+  position: relative;
+}
+.cj-btngroup > * + *::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 1px;
+  height: 22px;
+  transform: translateY(-50%);
+  background: var(--cj-line-2);
+}
+.cj-btngroup svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* ---------- glass surfaces ---------- */
+.cj-glass {
+  border-radius: var(--cj-r-panel);
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+}
+.cj-panel {
+  padding: 20px;
+  border-radius: var(--cj-r-panel);
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ring);
+}
+.cj-panel__title {
+  margin: 0 0 14px;
+  color: var(--cj-text-strong);
+  font: 600 18px/1.3 var(--cj-font);
+}
+/* the info card on a title page: label left, value right, hairline between rows */
+.cj-facts {
+  margin: 0;
+  padding: 6px 14px;
+  border-radius: var(--cj-r-card);
+  background: rgba(16, 16, 18, 0.45);
+  box-shadow: var(--cj-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+}
+.cj-facts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 11px 0;
+  font-size: 12px;
+}
+.cj-facts > div + div {
+  border-top: 1px solid var(--cj-line);
+}
+.cj-facts dt {
+  color: var(--cj-text-faint);
+}
+.cj-facts dd {
+  margin: 0;
+  color: var(--cj-text-strong);
+  text-align: right;
+}
+
+/* ---------- sections and horizontal rows ---------- */
+.cj-section {
+  margin-top: var(--cj-section-gap);
+}
+.cj-section__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 0 var(--cj-gutter);
+}
+.cj-section__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--cj-text-strong);
+  font: 600 20px/1.4 var(--cj-font);
+  text-decoration: none;
+}
+a.cj-section__title svg,
+.cj-section__title .cj-chev {
+  width: 16px;
+  height: 16px;
+  opacity: 0.6;
+  transition: transform var(--cj-dur) var(--cj-ease), opacity var(--cj-dur) var(--cj-ease);
+}
+a.cj-section__title:hover svg {
+  transform: translateX(3px);
+  opacity: 1;
+}
+.cj-section__pick {
+  /* "Movies on [Netflix v]" style picker inside a heading */
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cj-text-strong);
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.4);
+  text-underline-offset: 5px;
+  cursor: pointer;
+}
+.cj-row {
+  display: flex;
+  gap: var(--cj-row-gap);
+  margin: 0;
+  padding: 4px var(--cj-gutter) 24px;
+  list-style: none;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: var(--cj-gutter);
+  scrollbar-width: none;
+}
+.cj-row::-webkit-scrollbar {
+  display: none;
+}
+.cj-row > * {
+  flex: none;
+  scroll-snap-align: start;
+}
+
+/* ---------- poster card (2:3) ---------- */
+.cj-poster {
+  position: relative;
+  display: block;
+  width: var(--cj-poster-w);
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  border-radius: var(--cj-r-card);
+  background: var(--cj-bg-3);
+  box-shadow: var(--cj-shadow-card);
+  color: var(--cj-text-strong);
+  text-decoration: none;
+  transform: translateZ(0);
+  transition: transform var(--cj-dur) var(--cj-ease), box-shadow var(--cj-dur) var(--cj-ease);
+}
+.cj-poster > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.8s var(--cj-ease);
+}
+.cj-poster::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 45%, rgba(0, 0, 0, 0.78) 100%);
+  pointer-events: none;
+}
+.cj-poster__title {
+  position: absolute;
+  z-index: 1;
+  right: 10px;
+  bottom: 10px;
+  left: 10px;
+  margin: 0;
+  font: 700 14px/1.2 var(--cj-font);
+  text-align: center;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+}
+.cj-poster__sub {
+  display: block;
+  margin-top: 3px;
+  color: var(--cj-text);
+  font: 500 12px/1.3 var(--cj-font);
+}
+.cj-poster__badge {
+  position: absolute;
+  z-index: 1;
+  top: 8px;
+  left: 8px;
+  padding: 4px 8px;
+  border-radius: var(--cj-r-pill);
+  background: rgba(14, 14, 16, 0.62);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+  color: var(--cj-text-strong);
+  font: 600 10px/1.2 var(--cj-font);
+  letter-spacing: 0.02em;
+}
+@media (hover: hover) and (pointer: fine) {
+  .cj-poster:hover {
+    transform: translateY(-4px) scale(1.03);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  }
+  .cj-poster:hover > img {
+    transform: scale(1.04);
+  }
+}
+/* wide card (16:9) for "trailers" style rows */
+.cj-wide {
+  position: relative;
+  display: block;
+  width: clamp(220px, 20vw, 300px);
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: var(--cj-r-card);
+  background: var(--cj-bg-3);
+  box-shadow: var(--cj-shadow-card);
+  color: var(--cj-text-strong);
+  text-decoration: none;
+  transition: transform var(--cj-dur) var(--cj-ease);
+}
+.cj-wide > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cj-wide::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 40%, rgba(0, 0, 0, 0.8));
+}
+.cj-wide__label {
+  position: absolute;
+  z-index: 1;
+  left: 12px;
+  right: 12px;
+  bottom: 10px;
+  font: 700 13px/1.25 var(--cj-font);
+}
+.cj-wide__label small {
+  display: block;
+  color: var(--cj-text-dim);
+  font-weight: 500;
+  font-size: 11px;
+}
+
+/* ---------- provider-style tile: rounded square + label ---------- */
+.cj-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 92px;
+  color: var(--cj-text);
+  font: 500 12px/1.3 var(--cj-font);
+  text-align: center;
+  text-decoration: none;
+}
+.cj-tile__art {
+  display: grid;
+  place-items: center;
+  width: 80px;
+  height: 80px;
+  overflow: hidden;
+  border-radius: var(--cj-r-panel);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-shadow-card);
+  color: var(--cj-text-strong);
+  transition: transform var(--cj-dur) var(--cj-ease);
+}
+.cj-tile__art > img,
+.cj-tile__art > svg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cj-tile:hover .cj-tile__art {
+  transform: translateY(-3px);
+}
+
+/* ---------- Top 10: huge outlined numerals behind the cards ---------- */
+.cj-top10 {
+  gap: 0;
+}
+.cj-top10 > li {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  padding-left: clamp(70px, 8vw, 110px);
+}
+.cj-top10__num {
+  position: absolute;
+  bottom: -0.04em;
+  left: 0;
+  z-index: 0;
+  font: 700 clamp(150px, 15.3vw, 220px) / 0.74 var(--cj-font);
+  letter-spacing: -0.07em;
+  color: transparent;
+  -webkit-text-stroke: 2px rgba(255, 255, 255, 0.32);
+  pointer-events: none;
+  user-select: none;
+}
+.cj-top10 > li > :not(.cj-top10__num) {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------- carousel dots: the current one stretches into a bar ---------- */
+.cj-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cj-dots button {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  background: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  transition: width var(--cj-dur) var(--cj-ease), background-color var(--cj-dur) var(--cj-ease);
+}
+.cj-dots button[aria-current='true'] {
+  width: 32px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+/* ---------- chips, inputs, avatars ---------- */
+.cj-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  color: var(--cj-text-strong);
+  font: 500 12px/1 var(--cj-font);
+  cursor: pointer;
+  transition: background-color var(--cj-dur) var(--cj-ease), color var(--cj-dur) var(--cj-ease);
+}
+.cj-chip[aria-pressed='true'],
+.cj-chip.is-on {
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  box-shadow: none;
+}
+.cj-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--cj-r-card);
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ring);
+  color: var(--cj-text-strong);
+  font: 500 14px/1.2 var(--cj-font);
+}
+.cj-input::placeholder {
+  color: var(--cj-text-faint);
+}
+.cj-input:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+.cj-person {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 96px;
+  text-align: center;
+  color: var(--cj-text-strong);
+  text-decoration: none;
+  font: 600 12px/1.25 var(--cj-font);
+}
+.cj-person small {
+  color: var(--cj-text-faint);
+  font-weight: 500;
+  font-size: 11px;
+}
+.cj-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cj-live);
+  box-shadow: 0 0 10px rgba(107, 227, 138, 0.7);
+}
+
+/* ---------- empty state (dashed folder) ---------- */
+.cj-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 40px 20px;
+  text-align: center;
+}
+.cj-empty__art {
+  display: grid;
+  place-items: center;
+  width: 240px;
+  height: 150px;
+  border: 1px dashed rgba(255, 255, 255, 0.28);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.cj-empty__title {
+  margin: 8px 0 0;
+  color: var(--cj-text-strong);
+  font: 700 24px/1.25 var(--cj-font);
+}
+.cj-empty__body {
+  margin: 0;
+  color: var(--cj-text-dim);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.cj-empty__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+/* ---------- modal card (glass, illustrated head, check rows, full-width pill) ---------- */
+.cj-modal {
+  width: min(100% - 32px, 400px);
+  overflow: hidden;
+  border-radius: var(--cj-r-sheet);
+  background: linear-gradient(180deg, rgba(38, 26, 56, 0.92), rgba(16, 16, 18, 0.94));
+  box-shadow: var(--cj-shadow-pop), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+  color: var(--cj-text);
+}
+.cj-modal__body {
+  padding: 22px 22px 22px;
+}
+.cj-modal__title {
+  margin: 0 0 14px;
+  color: var(--cj-text-strong);
+  font: 700 22px/1.2 var(--cj-font);
+}
+.cj-checks {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 22px;
+  padding: 0;
+  list-style: none;
+}
+.cj-checks > li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--cj-text-strong);
+  font: 600 13px/1.3 var(--cj-font);
+}
+.cj-checks__icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 8px;
+  background: var(--cj-glass-2);
+}
+
+/* ---------- reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .hub-app :is(.cj-btn, .cj-iconbtn, .cj-poster, .cj-poster > img, .cj-tile__art, .cj-dots button, .cj-chip) {
+    transition: none !important;
+  }
+}
+:root[data-motion='reduced'] .hub-app :is(.cj-btn, .cj-iconbtn, .cj-poster, .cj-poster > img, .cj-tile__art, .cj-dots button, .cj-chip) {
+  transition: none !important;
+}

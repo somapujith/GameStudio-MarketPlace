@@ -1,6 +1,6 @@
 import { useLayoutEffect } from 'react';
 
-/** Highest "tightness" level the CSS knows (hub.css: `.hub-topbar__inner[data-fit]`). */
+/** Highest "tightness" level the CSS knows (cine/shell.css: `.cj-nav__row[data-fit]`). */
 export const MAX_FIT = 3;
 
 /** The first level at which the bar fits; the last level when none does. `fits(level) -> boolean`. Pure. */
@@ -12,9 +12,10 @@ export function chooseFit(fits, max = MAX_FIT) {
 }
 
 /**
- * The top bar holds a logo, the code button, the coin balance and the profile chip on one row. A big balance
- * (1,11,50,000) or a narrow phone leaves too little room, so the bar sheds the least useful bits one level at a time:
- * 1 wordmark, 2 the "Code" label, 3 the coin icon. Re-measured whenever the row's contents or width change.
+ * The nav row holds the logo and the glass pill (four destinations, search, code, coins, bells, avatar). Between
+ * 900 and ~1100 px a big balance (1,11,50,000) or a second bell leaves too little room, so the pill tightens one level
+ * at a time: 1 narrower destination labels, 2 no coin icon, 3 the tightest gaps (cine/shell.css). Phones show
+ * only the logo and a small cluster, which always fits at level 0. Re-measured whenever the row or its contents change.
  */
 export function useTopbarFit(ref) {
   useLayoutEffect(() => {
@@ -41,7 +42,7 @@ export function useTopbarFit(ref) {
     if (typeof ResizeObserver !== 'undefined') {
       ro = new ResizeObserver(schedule);
       ro.observe(row);
-      row.querySelectorAll(':scope > *').forEach((el) => ro.observe(el));
+      row.querySelectorAll(':scope > *, .cj-nav__tools > *').forEach((el) => ro.observe(el));
     }
     window.addEventListener('resize', schedule);
     document.fonts?.ready?.then(schedule).catch(() => {});

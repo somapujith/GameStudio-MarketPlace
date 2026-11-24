@@ -15,11 +15,10 @@ import RefCapture from '@/platform/engagement/RefCapture.jsx';
 import '@/styles/hub.css';
 import '@/styles/mobile.css';
 import '@/styles/store.css';
-import '@/styles/jalebi.css';
-import '@/styles/jalebi-layout.css';
-import '@/styles/publisher.css';
-import '@/styles/publisher-screens.css';
-import '@/styles/publisher-micro.css';
+// The cine skin (docs/CINE_UI.md) loads LAST: the shared base, then the shell chrome built on it. The street-poster
+// (jalebi*.css) and publisher (publisher*.css) layers are retired from the hub.
+import '@/styles/cine.css';
+import '@/styles/cine/shell.css';
 
 /**
  * Lazy page loader that tolerates default OR named exports (several pages are written by other agents;

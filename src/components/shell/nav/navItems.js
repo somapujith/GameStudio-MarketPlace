@@ -1,4 +1,4 @@
-// The hub destinations (bottom bar on phones, left rail >= 900 px). Each item lists the path prefixes that light
+// The hub destinations (the floating dock on phones, the top bar's glass pill >= 900 px). Each item lists the path prefixes that light
 // it up: /games/:id and /lobby/:code keep "Arcade" active, /games and /search light "Browse", /login and /shop
 // keep "Profile" active. Footer pages (/about, /help, /privacy, /terms) belong to no tab on purpose.
 import { paths } from '@/platform/paths.js';
@@ -6,7 +6,7 @@ import { useLocation } from 'react-router-dom';
 
 export const NAV_ITEMS = [
   // `only`: exact paths that are NOT this item's (they belong to a more specific item)
-  { id: 'games', to: paths.hub(), label: 'Arcade', icon: 'gamepad', exact: true, match: ['/games', '/lobby', '/join'], only: ['/games'] },
+  { id: 'games', to: paths.hub(), label: 'Arcade', icon: 'home', exact: true, match: ['/games', '/lobby', '/join'], only: ['/games'] },
   { id: 'browse', to: paths.games(), label: 'Browse', icon: 'compass', match: ['/search'], exactMatch: ['/games'] },
   { id: 'friends', to: paths.friends(), label: 'The Adda', icon: 'users', match: ['/friends', '/f'] },
   { id: 'rank', to: paths.leaderboard(), label: 'Leaderboard', icon: 'podium', match: ['/leaderboard'] },

@@ -3,16 +3,15 @@ import { BRAND } from '@/platform/brand.js';
 import { paths } from '@/platform/paths.js';
 import { HubLogo } from '@/platform/game/hubArt.jsx';
 import HubIcon from '@/platform/game/HubIcon.jsx';
-import Badge from '@/platform/social/Badge.jsx';
 import SocialBell from '@/platform/social/SocialBell.jsx';
 import NotificationBell from '@/platform/notifications/NotificationBell.jsx';
 import ProfileChip from '../ProfileChip.jsx';
+import { TopNav } from '../TabBar.jsx';
 import CodeSheet from './CodeSheet.jsx';
 import CoinsChip from './CoinsChip.jsx';
 import CommandPalette from './CommandPalette.jsx';
 import TransitionLink from './TransitionLink.jsx';
 import { OPEN_CODE_EVENT, OPEN_SEARCH_EVENT } from './events.js';
-import { NAV_ITEMS, useIsActive } from './navItems.js';
 import { isOpenShortcut, shortcutLabel } from './paletteModel.js';
 import { useTopbarFit } from './useTopbarFit.js';
 
@@ -21,25 +20,45 @@ export { OPEN_CODE_EVENT, OPEN_SEARCH_EVENT };
 /** Is another dialog (a sheet, the code entry) already on screen? Then the shortcut stays quiet. */
 const dialogOpen = () => !!document.querySelector('.hh-modal, .xs-pal, .nt-pop');
 
-/** Count pill on a masthead label (friend requests + invites); the live dot stays a tab-bar detail. */
-function LabelBadge({ id, badges }) {
-  const b = badges && badges[id];
-  if (!b || !(b.count > 0)) return null;
-  return <Badge count={b.count} label={b.label || `${b.count} waiting`} className="bd-badge--nav bd-badge--label" />;
+/** Scrolled past the first few pixels? The pill condenses (tighter, more opaque) while it is. */
+const CONDENSE_AT = 16;
+
+/** `true` once the page has scrolled past `at` px (rAF-throttled, passive). */
+export function useCondensed(at = CONDENSE_AT) {
+  const [condensed, setCondensed] = useState(false);
+  useEffect(() => {
+    let frame = 0;
+    const read = () => {
+      frame = 0;
+      setCondensed(window.scrollY > at);
+    };
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(read);
+    };
+    read();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [at]);
+  return condensed;
 }
 
 /**
- * Branded masthead with a prominent mascot and a stable responsive height: logo, the label nav (wide screens),
- * search (opens the command palette: Ctrl/Cmd+K, "/" or a tap), "Enter code", coins (signed in), the notifications
- * bell (members: gifts and messages from the team, docs/ADMIN.md), the social bell and the profile chip (or a Sign in
- * button). `badges` comes from useNavBadges in AppShell.
+ * The hub's floating nav. Logo top-left; on wide screens (>= 900 px) a floating glass pill top-right holding the
+ * destinations (Arcade, Browse, The Adda, Leaderboard: the active one a white pill), a hairline, then search (opens the
+ * command palette: Ctrl/Cmd+K, "/" or a tap), "Enter code", coins (signed in), the notifications bell (members), the
+ * social bell (only while something waits) and the profile avatar (or a white "Sign in" pill). The pill condenses
+ * on scroll. On phones the destinations live in the bottom dock (TabBar), so the bar keeps only the logo and a small
+ * cluster (coins and the bells) that scrolls away with the page. `badges` comes from useNavBadges in AppShell.
  */
 export default function TopBar({ badges }) {
   const [codeOpen, setCodeOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const active = useIsActive();
   const rowRef = useRef(null);
-  useTopbarFit(rowRef); // sheds wordmark / label / coin icon when a big balance would overflow the row
+  const condensed = useCondensed();
+  useTopbarFit(rowRef); // tightens the pill one step at a time when a big balance would overflow the row
 
   useEffect(() => {
     const openCode = () => setCodeOpen(true);
@@ -60,48 +79,44 @@ export default function TopBar({ badges }) {
   }, []);
 
   return (
-    <header className="hub-topbar">
-      <div className="hub-topbar__inner" ref={rowRef}>
-        <TransitionLink to={paths.hub()} className="hub-topbar__logo" aria-label={`${BRAND.name}, home`}>
-          <HubLogo size={78} animated compact style={{ fontSize: 'var(--jalebi-nav-size, 78px)' }} />
+    <header className={`hub-topbar cj-nav${condensed ? ' is-condensed' : ''}`}>
+      <div className="cj-nav__row" ref={rowRef}>
+        <TransitionLink to={paths.hub()} className="cj-nav__logo" aria-label={`${BRAND.name}, home`}>
+          <HubLogo size={44} animated compact />
         </TransitionLink>
-        <nav className="label-nav" aria-label="Main" data-tour="nav-rail">
-          {NAV_ITEMS.filter((item) => item.id !== 'profile').map((item) => {
-            const on = active(item);
-            return (
-              <TransitionLink key={item.id} to={item.to} className={`label-nav__link${on ? ' is-active' : ''}`} aria-current={on ? 'page' : undefined}>
-                {item.label}
-                <LabelBadge id={item.id} badges={badges} />
-              </TransitionLink>
-            );
-          })}
-        </nav>
-        <button
-          type="button"
-          className="hub-search"
-          data-tour="nav-search"
-          onClick={() => setSearchOpen(true)}
-          aria-haspopup="dialog"
-          aria-keyshortcuts="Control+K Meta+K /"
-          aria-label="Search games and pages"
-        >
-          <HubIcon name="search" size={18} />
-          <span className="hub-search__label">Search games</span>
-          <kbd className="hub-search__kbd" aria-hidden="true">
-            {shortcutLabel()}
-          </kbd>
-        </button>
-        <div className="hub-topbar__end">
-          <span id="tour-help-slot" className="hub-topbar__tour" />
-          <button type="button" className="hub-codebtn" data-tour="nav-code" onClick={() => setCodeOpen(true)} aria-haspopup="dialog" aria-label="Have a code? Join a table with a room code">
-            <HubIcon name="hash" size={18} />
-            <span className="hub-codebtn__long">Enter code</span>
-            <span className="hub-codebtn__short">Code</span>
-          </button>
-          <CoinsChip />
-          <NotificationBell />
-          <SocialBell />
-          <ProfileChip />
+        <div className="cj-nav__pill">
+          <TopNav badges={badges} />
+          <span className="cj-nav__rule" aria-hidden="true" />
+          <div className="cj-nav__tools">
+            <span id="tour-help-slot" className="hub-topbar__tour cj-nav__tour" />
+            <button
+              type="button"
+              className="cj-nav__btn cj-nav__search"
+              data-tour="nav-search"
+              onClick={() => setSearchOpen(true)}
+              aria-haspopup="dialog"
+              aria-keyshortcuts="Control+K Meta+K /"
+              aria-label="Search games and pages"
+              title={`Search (${shortcutLabel()})`}
+            >
+              <HubIcon name="search" size={20} />
+            </button>
+            <button
+              type="button"
+              className="cj-nav__btn cj-nav__code"
+              data-tour="nav-code"
+              onClick={() => setCodeOpen(true)}
+              aria-haspopup="dialog"
+              aria-label="Have a code? Join a table with a room code"
+              title="Enter a room code"
+            >
+              <HubIcon name="hash" size={19} />
+            </button>
+            <CoinsChip />
+            <NotificationBell />
+            <SocialBell />
+            <ProfileChip />
+          </div>
         </div>
       </div>
       <CodeSheet open={codeOpen} onClose={() => setCodeOpen(false)} />

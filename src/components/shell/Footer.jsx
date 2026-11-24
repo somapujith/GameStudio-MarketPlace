@@ -2,57 +2,42 @@ import { Link } from 'react-router-dom';
 import { HubLogo } from '@/platform/game/hubArt.jsx';
 import { BRAND } from '@/platform/brand.js';
 import { paths } from '@/platform/paths.js';
-import '@/styles/x-legal.css';
+import '@/styles/x-legal.css'; // still loaded globally here: the Help / About pages lean on its .xl-* blocks
 
-const GROUPS = [
-  {
-    label: BRAND.name,
-    links: [
-      { to: paths.games(), text: 'Browse games' },
-      { to: paths.join(), text: 'Join a table' },
-      { to: paths.about(), text: 'About' },
-    ],
-  },
-  {
-    label: 'Help and legal',
-    links: [
-      { to: paths.help(), text: 'Help' },
-      { to: paths.privacy(), text: 'Privacy' },
-      { to: paths.terms(), text: 'Terms' },
-    ],
-  },
+const LINKS = [
+  { to: paths.about(), text: 'About' },
+  { to: paths.help(), text: 'Help' },
+  { to: paths.privacy(), text: 'Privacy' },
+  { to: paths.terms(), text: 'Terms' },
 ];
 
 /**
- * Marketplace footer for the hub shell (About, Help, Privacy, Terms, Browse). Render it once, after the page content,
- * INSIDE `.hub-container` / `.hub-main`: the main area already reserves room for the bottom tab bar and the home
- * indicator (padding-bottom), so the footer never hides behind them. Never render it on game screens.
+ * The hub's minimal centred footer: the Jalebi logo, one quiet line, small links (About, Help, Privacy, Terms) and the
+ * copyright. AppShell renders it once, after the page, inside `.hub-footslot`, which keeps it clear of the phone dock
+ * and the home indicator. Never rendered on game screens.
  */
 export default function Footer() {
   const year = new Date().getFullYear();
   return (
-    <footer className="xl-footer" aria-label="Site footer">
-      <div className="xl-footer__brand">
-        <Link to={paths.hub()} className="xl-footer__logo" aria-label={`${BRAND.name}, home`}>
-          <HubLogo size={26} />
-        </Link>
-        <p className="xl-footer__tag">{BRAND.tagline}</p>
-      </div>
-      <nav className="xl-footer__nav" aria-label="Footer">
-        {GROUPS.map((g) => (
-          <div key={g.label} className="xl-footer__group">
-            <p className="xl-footer__label">{g.label}</p>
-            <ul>
-              {g.links.map((l) => (
-                <li key={l.to}>
-                  <Link to={l.to}>{l.text}</Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
+    <footer className="cj-foot" aria-label="Site footer">
+      <Link to={paths.hub()} className="cj-foot__logo" aria-label={`${BRAND.name}, home`}>
+        <HubLogo size={34} compact={false} />
+      </Link>
+      <p className="cj-foot__line">
+        {BRAND.tagline} Board games to play with your friends, right in the browser.
+      </p>
+      <nav aria-label="Footer">
+        <ul className="cj-foot__links">
+          {LINKS.map((l) => (
+            <li key={l.to}>
+              <Link to={l.to}>{l.text}</Link>
+            </li>
+          ))}
+        </ul>
       </nav>
-      <p className="xl-footer__small">© {year} {BRAND.name}</p>
+      <p className="cj-foot__small">
+        © {year} {BRAND.name}
+      </p>
     </footer>
   );
 }

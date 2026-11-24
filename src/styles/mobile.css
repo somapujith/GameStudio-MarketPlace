@@ -28,9 +28,8 @@ nav a,
 [role='button'],
 [role='tab'],
 [role='switch'],
-.hub-topbar,
-.hub-tabbar,
-.hub-rail,
+.cj-nav,
+.cj-dock,
 .hh-modal__grip,
 .hub-skel,
 .hh-skel {
@@ -103,7 +102,7 @@ svg {
   max-height: min(86dvh, 640px, calc(var(--vvh, 100dvh) - 16px));
 }
 /* the tab bar and the install card are not useful while typing and would float over the field */
-:root[data-kb] .hub-tabbar,
+:root[data-kb] .cj-dock,
 :root[data-kb] .xs-install {
   display: none;
 }
@@ -124,73 +123,10 @@ svg {
     margin-bottom: 14px;
   }
 }
-/* phones (< 900 px wide): the tab bar becomes a slim rail on the left, below the top bar */
-@media (orientation: landscape) and (max-height: 500px) and (max-width: 899.98px) {
-  :root {
-    --rail-compact: 76px;
-    --hub-pad-l: var(--hub-gutter); /* the rail already sits in the notch inset */
-  }
-  .hub-tabbar {
-    top: calc(var(--safe-top, 0px) + var(--topbar-h) + 1px);
-    right: auto;
-    width: calc(var(--rail-compact) + var(--safe-left, 0px));
-    padding: 0 0 var(--safe-bottom, 0px) var(--safe-left, 0px);
-    overflow-y: auto;
-    border-top: 0;
-    border-right: 1px solid var(--hub-line);
-  }
-  .hub-tabbar ul {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    max-width: none;
-    margin: 0;
-    padding: 8px 6px;
-  }
-  .hub-tab {
-    min-height: 56px;
-    padding: 4px 2px;
-    font-size: 10.5px;
-  }
-  .hub-tab__icon {
-    width: 52px;
-    height: 28px;
-  }
-  .hub-body {
-    padding-left: calc(var(--rail-compact) + var(--safe-left, 0px));
-  }
-  .xs-install {
-    left: calc(var(--rail-compact) + var(--safe-left, 0px) + 12px);
-    right: max(12px, var(--safe-right, 0px));
-    bottom: calc(var(--safe-bottom, 0px) + 10px);
-    max-width: 420px;
-    margin: 0 auto 0 0;
-  }
-}
-/* wide landscape phones (>= 900 px): the existing left rail, made compact, clear of the notch */
-@media (orientation: landscape) and (max-height: 500px) and (min-width: 900px) {
-  .hub-body {
-    padding-left: var(--safe-left, 0px);
-  }
-  .hub-rail {
-    overflow-y: auto;
-    padding-top: 10px;
-    padding-bottom: 10px;
-  }
-  .hub-rail__link {
-    min-height: 54px;
-  }
-  .hub-main {
-    padding-top: 12px;
-  }
-}
+/* phones in landscape keep the floating dock (slimmer) at the bottom: see .cj-dock in cine/shell.css */
 
 /* ---------- engines without backdrop-filter: the translucent bars become solid ---------- */
 @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-  .hub-topbar,
-  .hub-tabbar {
-    background: var(--hub-bg);
-  }
   .hh-modal,
   .ho-modal {
     background: var(--hub-overlay);

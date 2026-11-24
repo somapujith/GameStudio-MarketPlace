@@ -712,18 +712,6 @@
 }
 
 /* ---------- top bar: search, sign in, auth placeholder ---------- */
-.hub-topbar::after {
-  /* a thin lantern-gold hairline: the sign under the bar */
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 1px;
-  pointer-events: none;
-  background: linear-gradient(90deg, transparent, rgba(var(--hub-gold-rgb), 0.45) 22%, rgba(var(--hub-brand-rgb), 0.5) 70%, transparent);
-  opacity: 0.8;
-}
 .hub-search {
   display: inline-flex;
   align-items: center;

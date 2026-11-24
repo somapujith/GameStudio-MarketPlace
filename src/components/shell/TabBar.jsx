@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { buzz } from '@/lib/haptics.js';
 import HubIcon from '@/platform/game/HubIcon.jsx';
 import Badge from '@/platform/social/Badge.jsx';
+import { OPEN_SEARCH_EVENT } from './nav/events.js';
 import { NAV_ITEMS, useIsActive } from './nav/navItems.js';
 import TransitionLink from './nav/TransitionLink.jsx';
 
@@ -20,9 +21,17 @@ function NavNote({ id, badges }) {
   return b.online > 0 ? <span className="hub-sr">, {b.online} online</span> : null;
 }
 
-/** Kept for the barrel (`@/components/shell/index.js`): both lists are the same four hub destinations. */
+/** Kept for the barrel (`@/components/shell/index.js`): both lists are the same hub destinations. */
 export const TABS = NAV_ITEMS;
 export const NAV = NAV_ITEMS;
+
+/** The search slot in the phone dock: a button (it opens the command palette), not a destination. */
+const SEARCH = { id: 'search', label: 'Search', icon: 'search', search: true };
+
+/** Dock order on phones: Arcade, Browse, The Adda, Leaderboard, Search, Profile. */
+const DOCK_ITEMS = [...NAV_ITEMS.filter((t) => t.id !== 'profile'), SEARCH, ...NAV_ITEMS.filter((t) => t.id === 'profile')];
+/** The desktop pill: the four destinations (Profile is the avatar in the cluster). */
+const PILL_ITEMS = NAV_ITEMS.filter((t) => t.id !== 'profile');
 
 /**
  * Sliding active indicator: measures the active item's `selector` element inside `listRef` and returns
@@ -64,6 +73,7 @@ function useIndicator(listRef, activeIndex, selector) {
     if (typeof ResizeObserver !== 'undefined') {
       ro = new ResizeObserver(measure);
       ro.observe(list);
+      list.querySelectorAll(':scope > li').forEach((li) => ro.observe(li));
     }
     window.addEventListener('resize', measure);
     return () => {
@@ -84,66 +94,97 @@ function useIndicator(listRef, activeIndex, selector) {
   };
 }
 
-function useNav() {
+function useNav(items) {
   const active = useIsActive();
-  const activeIndex = NAV_ITEMS.findIndex((t) => active(t));
+  const activeIndex = items.findIndex((t) => !t.search && active(t));
   const onTab = (on) => () => {
     if (!on) buzz('tap');
   };
   return { active, activeIndex, onTab };
 }
 
-/** Bottom tab bar, shown on phones and tablets (hidden >= 900 px, where the left rail takes over). */
+/**
+ * Phones and tablets (< 900 px): the floating glass dock at the bottom. Icons only (each link still carries its name
+ * for screen readers), the active one in a rounded-square highlight that springs between items, badges on the icons.
+ * Search opens the command palette. Hidden from 900 px, where the top bar's pill takes over.
+ */
 export default function TabBar({ badges }) {
-  const { active, activeIndex, onTab } = useNav();
+  const { active, activeIndex, onTab } = useNav(DOCK_ITEMS);
   const listRef = useRef(null);
-  const ind = useIndicator(listRef, activeIndex, '.hub-tab__icon');
+  const ind = useIndicator(listRef, activeIndex, '.cj-dock__item');
   return (
-    <nav className="hub-tabbar xs-ind-host" aria-label="Primary" data-tour="nav-tabbar">
-      <ul ref={listRef} className="xs-ind-list">
-        {NAV_ITEMS.map((t) => {
+    <nav className="cj-dock" aria-label="Primary" data-tour="nav-tabbar">
+      <ul ref={listRef} className={`cj-dock__list${ind.on ? ' has-ind' : ''}`}>
+        {DOCK_ITEMS.map((t) => {
+          if (t.search) {
+            return (
+              <li key={t.id}>
+                <button
+                  type="button"
+                  className="cj-dock__item"
+                  aria-haspopup="dialog"
+                  onClick={() => {
+                    buzz('tap');
+                    window.dispatchEvent(new Event(OPEN_SEARCH_EVENT));
+                  }}
+                >
+                  <span className="cj-dock__icon">
+                    <HubIcon name={t.icon} size={22} />
+                  </span>
+                  <span className="hub-sr">Search games and pages</span>
+                </button>
+              </li>
+            );
+          }
           const on = active(t);
           return (
             <li key={t.id}>
-              <TransitionLink to={t.to} className={`hub-tab${on ? ' is-active' : ''}`} aria-current={on ? 'page' : undefined} onClick={onTab(on)}>
-                <span className="hub-tab__icon">
-                  <HubIcon name={t.icon} size={22} strokeWidth={on ? 2.3 : 2} />
+              <TransitionLink to={t.to} className={`cj-dock__item${on ? ' is-active' : ''}`} aria-current={on ? 'page' : undefined} onClick={onTab(on)}>
+                <span className="cj-dock__icon">
+                  <HubIcon name={t.icon} size={22} strokeWidth={on ? 2.2 : 1.9} />
                   <NavBadge id={t.id} badges={badges} />
                 </span>
-                <span className="hub-tab__label">{t.label}<NavNote id={t.id} badges={badges} /></span>
+                <span className="hub-sr">
+                  {t.label}
+                  <NavNote id={t.id} badges={badges} />
+                </span>
               </TransitionLink>
             </li>
           );
         })}
-        <li className="xs-ind xs-ind--tab" aria-hidden="true" style={ind.style} />
+        <li className="cj-dock__ind" aria-hidden="true" style={ind.style} />
       </ul>
     </nav>
   );
 }
 
-/** Left rail for wide screens (>= 900 px; hidden below by CSS). Same destinations as the tab bar. */
+/**
+ * Wide screens (>= 900 px): the destinations inside the top bar's floating glass pill. The active one is a white
+ * pill with its icon (it springs from item to item); the others are plain 80% white labels. Hidden below 900 px.
+ */
 export function TopNav({ badges }) {
-  const { active, activeIndex, onTab } = useNav();
+  const { active, activeIndex, onTab } = useNav(PILL_ITEMS);
   const listRef = useRef(null);
-  const ind = useIndicator(listRef, activeIndex, '.hub-rail__link');
+  const ind = useIndicator(listRef, activeIndex, '.cj-nav__link');
   return (
-    <nav className="hub-rail xs-ind-host" aria-label="Main" data-tour="nav-rail">
-      <ul ref={listRef} className="xs-ind-list">
-        {NAV_ITEMS.map((t) => {
+    <nav className="cj-nav__links" aria-label="Main" data-tour="nav-rail">
+      <ul ref={listRef} className={`cj-nav__list${ind.on ? ' has-ind' : ''}`}>
+        {PILL_ITEMS.map((t) => {
           const on = active(t);
           return (
             <li key={t.id}>
-              <TransitionLink to={t.to} className={`hub-rail__link${on ? ' is-active' : ''}`} aria-current={on ? 'page' : undefined} onClick={onTab(on)}>
-                <span className="hub-rail__icon">
-                  <HubIcon name={t.icon} size={22} strokeWidth={on ? 2.3 : 2} />
-                  <NavBadge id={t.id} badges={badges} />
+              <TransitionLink to={t.to} className={`cj-nav__link${on ? ' is-active' : ''}`} aria-current={on ? 'page' : undefined} onClick={onTab(on)}>
+                <HubIcon name={t.icon} size={16} strokeWidth={2.2} className="cj-nav__ico" />
+                <span>
+                  {t.label}
+                  <NavNote id={t.id} badges={badges} />
                 </span>
-                <span className="hub-rail__label">{t.label}<NavNote id={t.id} badges={badges} /></span>
+                <NavBadge id={t.id} badges={badges} />
               </TransitionLink>
             </li>
           );
         })}
-        <li className="xs-ind xs-ind--rail" aria-hidden="true" style={ind.style} />
+        <li className="cj-nav__ind" aria-hidden="true" style={ind.style} />
       </ul>
     </nav>
   );

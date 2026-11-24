@@ -3,7 +3,6 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@/lib/auth.jsx';
 import { BRAND } from '@/platform/brand.js';
 import { getGame } from '@/games/registry.js';
-import { HubBackdrop } from '@/platform/game/hubArt.jsx';
 import { NoticeSlot } from '@/components/online/InviteBanner.jsx';
 import { useSocialCounts, withSocialBadge } from '@/platform/social/useSocialCounts.js';
 import { useTitleCount } from '@/platform/social/useTitleCount.js';
@@ -99,9 +98,10 @@ function useRouteFocus(pathname, mainRef) {
 }
 
 /**
- * Hub chrome (a layout route): label masthead with horizontal navigation (logo, Arcade / The Adda / Leaderboard,
- * search, "Enter code", coins, bell, profile), a bottom tab bar on smaller screens, offline pill, the PWA install
- * card and the daily-reward popup. Nav badges (friend requests, invites, friends online) go to both the masthead
+ * Hub chrome (a layout route), in the cine skin (docs/CINE_UI.md): the floating nav (logo + a glass pill with
+ * Arcade / Browse / The Adda / Leaderboard, search, "Enter code", coins, bells, profile) that floats over the page, the
+ * floating glass dock on phones, the minimal centred footer, offline pill, the PWA install card and the daily-reward
+ * popup. Nav badges (friend requests, invites, friends online) go to both the masthead
  * nav and the tab bar. Game screens (/play/**) and the lobby (/lobby/:code, full screen with its own header) are
  * rendered outside the platform chrome.
  * Admin features for players (docs/ADMIN.md): the notifications bell (TopBar), the announcement strip under the top
@@ -132,26 +132,27 @@ export default function AppShell() {
         <a className="hh-skip" href="#main">
           Skip to content
         </a>
-        <div className="hub-backdrop" aria-hidden="true">
-          <HubBackdrop />
-          <div className="hub-backdrop__shade" />
-        </div>
+        {/* the plain cine canvas; a page that wants the blurred colour field renders its own .cj-ambient */}
+        <div className="hub-backdrop" aria-hidden="true" />
 
         <TopBar badges={badges} />
         <OfflineBanner />
-        {suspended ? (
-          <SuspendedStrip />
-        ) : (
-          <>
-            <AnnouncementBar />
-            <LiveEventBar />
-          </>
-        )}
+        {/* slim strips (invites, announcements, live events) in the page flow just under the floating nav band */}
+        <div className="cj-strips">
+          <NoticeSlot />
+          {suspended ? (
+            <SuspendedStrip />
+          ) : (
+            <>
+              <AnnouncementBar />
+              <LiveEventBar />
+            </>
+          )}
+        </div>
 
         <div className="hub-body">
           <main id="main" ref={mainRef} className="hub-main" tabIndex={-1}>
             <div className="hub-container">
-              <NoticeSlot />
               <ErrorBoundary key={pathname} variant="route">
                 <Suspense fallback={<RouteSkeleton pathname={pathname} />}>
                   <Outlet />

@@ -851,16 +851,9 @@
   color: var(--hub-dim);
 }
 
-/* ---------- top bar ---------- */
-.hub-topbar {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  padding-top: var(--safe-top, 0px);
-  background: var(--hub-glass);
-  view-transition-name: hub-topbar; /* stays put while the page cross-fades */
-  border-bottom: 1px solid var(--hub-line);
-}
+/* ---------- top bar ----------
+   The hub nav is the floating glass pill in cine/shell.css (.cj-nav, which also carries .hub-topbar as a hook).
+   The .hub-topbar__* rules below are kept for the old markup only. */
 .hub-topbar__inner {
   display: flex;
   align-items: center;
