@@ -68,11 +68,15 @@ describe('tiffin-centre manifest', () => {
     expect(manifest.summarize({ level: 3, pace: 'rush' })).toBe('Level 3: Poori Morning, Rush hour pace');
   });
 
-  it('is registered: live, found by id, placed after Autowala and before the teasers', () => {
+  it('is registered: live, found by id, after the other live games and before the teasers', () => {
     expect(getGame('tiffin-centre')).toBe(manifest);
     expect(liveGames().map((g) => g.id)).toContain('tiffin-centre');
     const ids = GAMES.map((g) => g.id);
-    expect(ids.indexOf('tiffin-centre')).toBe(ids.indexOf('autowala') + 1);
+    const at = ids.indexOf('tiffin-centre');
+    // right after Autowala when that game is registered, otherwise right after Nawabi Raj
+    const before = ids.includes('autowala') ? ids.indexOf('autowala') : ids.indexOf('hyderabad-tycoon');
+    expect(at).toBe(before + 1);
+    expect(at).toBeLessThan(ids.findIndex((id) => getGame(id).status === 'coming_soon'));
     expect(new Set(ids).size).toBe(ids.length);
   });
 });
