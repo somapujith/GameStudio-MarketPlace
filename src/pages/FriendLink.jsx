@@ -10,13 +10,21 @@ import { useToasts } from '@/components/online/Toasts.jsx';
 import SIcon from '@/platform/social/SIcon.jsx';
 import StateCard from '@/platform/social/StateCard.jsx';
 import '@/styles/online.css';
-import '@/styles/x-social.css';
 import '@/styles/store-social.css';
+import '@/styles/cine.css';
+import '@/styles/cine/bridge.css';
+import '@/styles/cine/account.css';
 
 const REL_LABEL = { friends: 'Friends', outgoing: 'Request sent', incoming: 'Wants to be friends', me: 'You' };
 
+/** The page frame: a centred glass card over the blurred ambient field. */
 function Page({ children }) {
-  return <div className="hub-page sc-page st-scope sc-linkpage">{children}</div>;
+  return (
+    <div className="cj-scope cj-acc cj-acc--friend">
+      <div className="cj-ambient cj-amb-art cj-acc-ambient cj-acc-ambient--friend" aria-hidden="true" />
+      <div className="cj-acc-stage sc-linkpage">{children}</div>
+    </div>
+  );
 }
 
 /** Placeholder card shaped like the real one, so the page does not jump when the lookup lands. */
@@ -40,11 +48,10 @@ function Gate({ code, title, body, cta, to }) {
   return (
     <Page>
       <section className="sc-link sc-link--gate st-reveal" aria-labelledby="sc-link-h">
-        <span className="sc-link__lamp" aria-hidden="true" />
-        <span className="sc-link__gateicon" aria-hidden="true">
+                <span className="sc-link__gateicon" aria-hidden="true">
           <SIcon name="userPlus" size={30} />
         </span>
-        <span className="st-eyebrow">Friend link</span>
+        <span className="cj-acc-eyebrow">Friend link</span>
         <h1 id="sc-link-h" className="sc-link__title">
           {title}
         </h1>
@@ -294,8 +301,7 @@ function FriendCard({ code, me }) {
   return (
     <Page>
       <section className={`sc-link sc-link--${relKey}${success ? ' is-success' : ''} st-reveal`} aria-labelledby="ho-fl-title">
-        <span className="sc-link__lamp" aria-hidden="true" />
-        <div className="sc-link__ring">
+                <div className="sc-link__ring">
           <FriendAvatar person={person} size={104} />
           {success && (
             <span className="sc-link__check" aria-hidden="true">
@@ -303,7 +309,7 @@ function FriendCard({ code, me }) {
             </span>
           )}
         </div>
-        <span className="st-eyebrow">Friend link</span>
+        <span className="cj-acc-eyebrow">Friend link</span>
         {REL_LABEL[relKey] && <span className={`sc-relchip sc-relchip--${relKey}`}>{REL_LABEL[relKey]}</span>}
         <h1 id="ho-fl-title" className="sc-link__title">
           {title}

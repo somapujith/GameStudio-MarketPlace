@@ -17,10 +17,23 @@ import HubIcon from '@/platform/game/HubIcon.jsx';
 import '@/styles/online.css';
 import '@/styles/store-rooms.css';
 import '@/styles/join-code.css';
+import '@/styles/cine.css';
+import '@/styles/cine/bridge.css';
+import '@/styles/cine/account.css';
 
 const JOIN_DELAY = 1400; // ms: long enough to read who and what you are joining, short enough to feel instant
 
 const PROBLEM_ICON = { missing: 'search', full: 'users', playing: 'clock', finished: 'info', forbidden: 'info', wrongGame: 'info' };
+
+/** The page frame: centred glass cards over the blurred ambient field. */
+function JoinFrame({ invite = false, children }) {
+  return (
+    <div className={`cj-scope cj-acc cj-acc--join${invite ? ' cj-acc--invite' : ''}`}>
+      <div className="cj-ambient cj-amb-art cj-acc-ambient cj-acc-ambient--join" aria-hidden="true" />
+      <div className={`cj-acc-stage sr-join${invite ? ' jc-join' : ''}`}>{children}</div>
+    </div>
+  );
+}
 
 /** Why a code cannot be used: one clear card per reason, with the obvious next action first. */
 function BlockedState({ kind, info, onRejoin, onClear }) {
@@ -269,30 +282,30 @@ export default function JoinRoom() {
   const invite = fromLink && (!user || chose.current) && (pending || state === 'gate' || (chose.current && state === 'joining'));
   if (invite) {
     return (
-      <div className="hub-page st-scope sr-join jc-join">
-        <header className="sr-join__head st-reveal">
-          <span className="st-eyebrow">Join a table</span>
-          <h1 className="sr-join__title">{state === 'gate' ? "You're invited" : 'Opening your invite'}</h1>
-          <p className="sr-join__lead">{state === 'gate' ? 'Pick how you want to sit down. Either way you land in the lobby.' : 'One moment while we find the table.'}</p>
+      <JoinFrame invite>
+        <header className="cj-acc-head">
+          <span className="cj-acc-eyebrow">Join a table</span>
+          <h1 className="cj-acc-title">{state === 'gate' ? "You're invited" : 'Opening your invite'}</h1>
+          <p className="cj-acc-lede">{state === 'gate' ? 'Pick how you want to sit down. Either way you land in the lobby.' : 'One moment while we find the table.'}</p>
         </header>
         {state === 'gate' ? (
           <InviteLanding code={code} info={info} onOtherCode={resetCode} />
         ) : (
           <InviteSkeleton text={user ? 'Taking you to the lobby...' : 'Opening your invite...'} />
         )}
-      </div>
+      </JoinFrame>
     );
   }
 
   return (
-    <div className="hub-page st-scope sr-join">
-      <header className="sr-join__head st-reveal">
-        <span className="st-eyebrow">Join a table</span>
-        <h1 className="sr-join__title">Got a code? You are in.</h1>
-        <p className="sr-join__lead">Type the code, paste it, or paste the invite link, and you are at your friend's table.</p>
+    <JoinFrame>
+      <header className="cj-acc-head">
+        <span className="cj-acc-eyebrow">Join a table</span>
+        <h1 className="cj-acc-title">Got a code? You are in.</h1>
+        <p className="cj-acc-lede">Type the code, paste it, or paste the invite link, and you are at your friend's table.</p>
       </header>
 
-      <section className="sr-ticket st-reveal" style={{ '--i': 1 }} aria-labelledby="sr-join-h">
+      <section className="sr-ticket cj-acc-card cj-acc-codecard" aria-labelledby="sr-join-h">
         <h2 id="sr-join-h" className="sr-ticket__title">
           Enter the 6-character code
         </h2>
@@ -402,6 +415,6 @@ export default function JoinRoom() {
       <p className="sr-join__alt">
         Want your own table? <Link to={paths.game(BRAND.defaultGameId)}>Create one</Link>.
       </p>
-    </div>
+    </JoinFrame>
   );
 }

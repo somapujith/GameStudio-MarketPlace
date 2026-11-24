@@ -1,0 +1,734 @@
+/* ==========================================================================
+   The Adda (/friends) in the cine language (docs/CINE_UI.md): a page title with dim sibling tabs over a blurred
+   ambient field, a glass friend pass, round "online now" portraits, calm glass lists and a dashed empty state.
+   Prefix: cj-adda-. Legacy component classes inside are re-skinned by cine/bridge.css.
+   ========================================================================== */
+
+.cj-adda {
+  position: relative;
+  min-height: 100vh;
+  padding-bottom: 72px;
+  color: var(--cj-text);
+  font-family: var(--cj-font);
+  font-size: 14px;
+}
+.cj-adda-ambient {
+  --cj-amb-img: url('/art/cinematic/carrom.webp');
+  --cj-amb-op: 0.42;
+  --cj-amb-hue: 70deg;
+}
+
+/* ---------- page head: "The Adda  Requests 2  Invites 1" ---------- */
+.cj-adda-head__row {
+  align-items: baseline;
+}
+#root .cj-adda .cj-adda-tab {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  text-decoration: none;
+}
+#root .cj-adda .cj-adda-tab__n {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: var(--cj-r-pill);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  color: var(--cj-text-strong);
+  font: 600 13px/1 var(--cj-font);
+  letter-spacing: 0;
+  transform: translateY(-6px);
+}
+.cj-adda-head__lede {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  padding: 0 var(--cj-gutter);
+}
+.cj-adda-head__lede .cj-lede {
+  margin-top: 10px;
+}
+#root .cj-adda .cj-adda-stats {
+  margin-top: 10px;
+  color: var(--cj-text-dim);
+  font-size: 14px;
+  font-weight: 500;
+}
+#root .cj-adda .cj-adda-stats .is-live {
+  color: var(--cj-text-strong);
+}
+
+/* ---------- body ---------- */
+.cj-adda-body {
+  display: grid;
+  gap: 16px;
+  margin-top: 32px;
+  padding: 0 var(--cj-gutter);
+}
+.cj-adda-grid {
+  display: grid;
+  gap: 20px;
+  align-items: start;
+  min-width: 0;
+}
+.cj-adda-main,
+.cj-adda-side {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+@media (min-width: 1100px) {
+  .cj-adda-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 380px);
+    gap: 28px;
+  }
+  .cj-adda-side {
+    position: sticky;
+    top: 96px;
+  }
+}
+.cj-adda-inbox:empty {
+  display: none;
+}
+
+/* glass panels with a quiet heading row */
+.cj-adda-panel {
+  min-width: 0;
+  padding: 20px;
+  border-radius: var(--cj-r-panel);
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+}
+.cj-adda-panel__head,
+.cj-adda-section__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+.cj-adda-h2 {
+  margin: 0;
+  color: var(--cj-text-strong);
+  font: 600 18px/1.3 var(--cj-font);
+}
+.cj-adda-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--cj-r-pill);
+  background: var(--cj-glass-2);
+  color: var(--cj-text-strong);
+  font: 600 12px/1 var(--cj-font);
+}
+.cj-adda-requests:focus {
+  outline: none;
+}
+.cj-adda-requests:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 3px;
+}
+.cj-adda-requests .cj-adda-count {
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+}
+.cj-adda-eyebrow {
+  color: var(--cj-text-faint);
+  font: 600 12px/1.3 var(--cj-font);
+}
+.cj-adda-banner {
+  margin: 0;
+}
+.cj-adda-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  font-size: 14px;
+}
+.cj-adda-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---------- rows: calm list, hairlines between ---------- */
+#root .cj-adda .cj-adda-list {
+  display: block;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+#root .cj-adda .cj-adda-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 8px 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  transition: opacity var(--cj-dur) var(--cj-ease), transform var(--cj-dur) var(--cj-ease);
+}
+#root .cj-adda .cj-adda-row + .cj-adda-row {
+  border-top: 1px solid var(--cj-line);
+}
+#root .cj-adda .cj-adda-row.is-leaving {
+  opacity: 0;
+  transform: translateX(-8px);
+}
+.cj-adda-row__open {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 56px;
+  margin: 0 0 0 -8px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--cj-r-card);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--cj-dur) var(--cj-ease);
+}
+.cj-adda-row__open.is-static {
+  cursor: default;
+}
+@media (hover: hover) {
+  button.cj-adda-row__open:hover:not(:disabled) {
+    background: var(--cj-glass);
+  }
+}
+.cj-adda-row__ava {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+#root .cj-adda .cj-adda-row__ava .ho-dot {
+  position: absolute;
+  right: 0;
+  bottom: 1px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+}
+.cj-adda-row:not(.is-online) .cj-adda-row__ava .xs-ava {
+  opacity: 0.7;
+}
+.cj-adda-row__main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+#root .cj-adda .cj-adda-row__name {
+  overflow: hidden;
+  color: var(--cj-text-strong);
+  font: 600 14px/1.3 var(--cj-font);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#root .cj-adda .cj-adda-row__sub {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  color: var(--cj-text-dim);
+  font: 500 12px/1.35 var(--cj-font);
+  white-space: nowrap;
+}
+.cj-adda-row__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+}
+.cj-adda-row__actions .cj-btn--sm {
+  min-height: 34px;
+}
+#root .cj-adda .cj-adda-row__remove {
+  width: 34px;
+  height: 34px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--cj-text-faint);
+}
+#root .cj-adda .cj-adda-row__remove:hover:not(:disabled) {
+  background: var(--cj-glass-2);
+  color: var(--cj-text-strong);
+}
+.cj-adda-narrow {
+  display: none;
+}
+@media (max-width: 560px) {
+  .cj-adda-wide {
+    display: none;
+  }
+  .cj-adda-narrow {
+    display: inline;
+  }
+  #root .cj-adda .cj-adda-row__remove {
+    display: none; /* still in the friend's sheet (tap the row) */
+  }
+  /* requests and sent rows: the answer buttons drop under the name, so the name keeps its width */
+  #root .cj-adda :is(.cj-adda-requests, .adda-sent) .cj-adda-row {
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+  #root .cj-adda .cj-adda-requests .cj-adda-row__open {
+    flex-basis: 100%;
+  }
+  #root .cj-adda .cj-adda-requests .cj-adda-row__actions {
+    margin: 0 0 6px 56px;
+  }
+}
+
+/* Online / Offline group labels inside the friends panel */
+.cj-adda-group + .cj-adda-group {
+  margin-top: 14px;
+}
+.cj-adda-group__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 2px;
+  color: var(--cj-text-faint);
+  font: 600 12px/1.3 var(--cj-font);
+}
+.cj-adda-group__head span {
+  color: var(--cj-text-dim);
+}
+.cj-adda-group--on .cj-adda-group__head::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--cj-live);
+  box-shadow: 0 0 8px rgba(107, 227, 138, 0.7);
+}
+
+/* skeleton rows */
+#root .cj-adda .ho-skel-row {
+  gap: 12px;
+}
+#root .cj-adda .ho-skel-row .ho-skel--circle {
+  width: 44px;
+  height: 44px;
+  flex: none;
+}
+#root .cj-adda .ho-skel-row .ho-skel--line {
+  flex: 1;
+  max-width: 220px;
+  height: 12px;
+}
+
+/* ---------- online now: round portraits in a row ---------- */
+.cj-adda-online {
+  min-width: 0;
+}
+.cj-adda-section__head {
+  margin-bottom: 14px;
+}
+.cj-adda-people {
+  display: flex;
+  gap: 8px;
+  margin: 0 calc(var(--cj-gutter) * -1);
+  padding: 4px var(--cj-gutter) 8px;
+  list-style: none;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: var(--cj-gutter);
+  scrollbar-width: none;
+}
+.cj-adda-people::-webkit-scrollbar {
+  display: none;
+}
+@media (min-width: 1100px) {
+  .cj-adda-people {
+    flex-wrap: wrap;
+    margin: 0;
+    padding: 4px 0 8px;
+    overflow: visible;
+  }
+}
+.cj-adda-person {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 104px;
+  scroll-snap-align: start;
+  transition: opacity var(--cj-dur) var(--cj-ease), transform var(--cj-dur) var(--cj-ease);
+}
+.cj-adda-person.is-leaving {
+  opacity: 0;
+  transform: scale(0.9);
+}
+#root .cj-adda .cj-adda-person__open {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.cj-adda-person__ava {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 80px;
+  height: 80px;
+  overflow: visible;
+  border-radius: 50%;
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-shadow-card), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  transition: transform var(--cj-dur) var(--cj-ease);
+}
+.cj-adda-person__ava > :first-child {
+  border-radius: 50%;
+  overflow: hidden;
+}
+.cj-adda-person__dot {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--cj-bg);
+}
+@media (hover: hover) {
+  .cj-adda-person__open:hover .cj-adda-person__ava {
+    transform: translateY(-3px);
+  }
+}
+#root .cj-adda .cj-adda-person__name {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--cj-text-strong);
+  font: 600 13px/1.3 var(--cj-font);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#root .cj-adda .cj-adda-person__open small {
+  color: var(--cj-live);
+  font-size: 11px;
+}
+.cj-adda-person__join {
+  min-height: 30px !important;
+  padding: 0 12px !important;
+  font-size: 12px !important;
+}
+
+/* ---------- friend pass (glass) ---------- */
+.cj-adda-pass {
+  position: relative;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 22px;
+  overflow: hidden;
+  border-radius: var(--cj-r-panel);
+  background:
+    radial-gradient(120% 90% at 100% 0%, rgba(107, 227, 138, 0.12), transparent 60%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.04));
+  box-shadow: var(--cj-ring), var(--cj-shadow-card);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+}
+.cj-adda-pass__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.cj-adda-pass__qrbtn.is-on {
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  box-shadow: none;
+}
+.cj-adda-pass__qrbtn:disabled {
+  opacity: 0.45;
+}
+#root .cj-adda .cj-adda-pass__code {
+  color: var(--cj-text-strong);
+  font: 700 clamp(34px, 3vw, 42px) / 1 var(--cj-font);
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.cj-adda-pass__qr {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--cj-text-dim);
+  font-size: 13px;
+}
+.cj-adda-pass__qr[hidden] {
+  display: none;
+}
+.cj-adda-pass__qr svg {
+  flex: none;
+  border-radius: var(--cj-r-card);
+}
+.cj-adda-pass__link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 4px 4px 0;
+  border-radius: var(--cj-r-pill);
+  background: rgba(0, 0, 0, 0.22);
+  box-shadow: var(--cj-ring);
+}
+#root .cj-adda .cj-adda-pass__input {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: var(--cj-r-pill);
+  background: transparent;
+  box-shadow: none;
+  color: var(--cj-text-dim);
+  font: 500 13px/1.2 var(--cj-font);
+  text-overflow: ellipsis;
+}
+.cj-adda-pass__copy {
+  flex: none;
+}
+.cj-adda-pass__actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+}
+.cj-adda-pass__actions > .cj-btn {
+  padding: 0 16px;
+  font-size: 14px;
+}
+.cj-adda-pass__wa[aria-disabled='true'] {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.cj-adda-pass__note {
+  margin: 0;
+  color: var(--cj-text-faint);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ---------- add a friend + privacy: the panels' contents, calm ---------- */
+#root .cj-adda .cj-adda-add .fa-title {
+  font-size: 18px;
+}
+#root .cj-adda .cj-adda-add .fa-sec + .fa-sec {
+  border-top-color: var(--cj-line);
+}
+#root .cj-adda .cj-adda-add .fa-search__input {
+  min-height: 46px;
+  padding-left: 42px;
+  border-radius: var(--cj-r-pill);
+  font-size: 15px;
+}
+#root .cj-adda .cj-adda-add .sc-add__row {
+  display: flex;
+  gap: 8px;
+}
+#root .cj-adda .cj-adda-add .sc-add__input {
+  flex: 1;
+  min-width: 0;
+  min-height: 46px;
+  padding: 0 16px;
+  border-radius: var(--cj-r-pill);
+  font-size: 15px;
+}
+#root .cj-adda .cj-adda-add .sc-add__row .hub-btn {
+  min-height: 46px;
+}
+#root .cj-adda .cj-adda-add .fa-row + .fa-row {
+  border-top-color: var(--cj-line);
+}
+#root .cj-adda .cj-adda-add .fa-row__name {
+  color: var(--cj-text-strong);
+  font-weight: 600;
+}
+#root .cj-adda .cj-adda-add .fa-state {
+  border: 0;
+  border-radius: var(--cj-r-card);
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ring);
+}
+#root .cj-adda .cj-adda-add .fa-more {
+  color: var(--cj-text-strong);
+}
+#root .cj-adda .cj-adda-privacy .bl-card {
+  padding: 20px;
+}
+#root .cj-adda .bl-setting__label {
+  color: var(--cj-text-strong);
+  font-weight: 600;
+  font-size: 14px;
+}
+#root .cj-adda .bl-switch {
+  border: 0;
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: var(--cj-ring);
+}
+#root .cj-adda .bl-switch.is-on {
+  background: var(--cj-live);
+}
+#root .cj-adda .bl-switch__knob {
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+#root .cj-adda .bl-switch.is-on .bl-switch__knob {
+  background: #fff;
+}
+#root .cj-adda .bl-row + .bl-row {
+  border-top-color: var(--cj-line);
+}
+
+/* invites inbox: a glass panel with a white "Join" pill */
+#root .cj-adda .sc-inbox .sc-row + .sc-row {
+  border-top-color: var(--cj-line);
+}
+#root .cj-adda .sc-inbox .sc-invite__title {
+  color: var(--cj-text);
+}
+#root .cj-adda .sc-inbox .sc-invite__title strong {
+  color: var(--cj-text-strong);
+  font-weight: 600;
+}
+#root .cj-adda .sc-expiry {
+  color: var(--cj-gold);
+  font-weight: 500;
+}
+
+/* ---------- empty states (dashed card + two pills) ---------- */
+.cj-adda-gate {
+  padding: 64px var(--cj-gutter);
+}
+#root .cj-adda .cj-adda-empty {
+  max-width: 540px;
+  margin-top: clamp(24px, 6vh, 72px);
+}
+#root .cj-adda .cj-adda-empty--inline {
+  margin-top: 0;
+  padding: 24px 8px 12px;
+}
+.cj-adda-empty__art {
+  position: relative;
+}
+.cj-adda-empty__art::before {
+  /* the folder tab */
+  content: '';
+  position: absolute;
+  top: -11px;
+  left: -1px;
+  width: 92px;
+  height: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.28);
+  border-bottom: 0;
+  border-radius: 10px 14px 0 0;
+}
+.cj-adda-empty--inline .cj-adda-empty__art {
+  width: 200px;
+  height: 120px;
+}
+.cj-adda-empty__plus {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+}
+#root .cj-adda .cj-adda-empty--inline .cj-empty__title {
+  font-size: 20px;
+}
+.cj-adda-steps {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 18px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--cj-text-dim);
+  font-size: 13px;
+}
+.cj-adda-steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+#root .cj-adda .cj-adda-steps b {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  color: var(--cj-text-strong);
+  font: 600 11px/1 var(--cj-font);
+}
+
+/* ---------- phones ---------- */
+@media (max-width: 640px) {
+  .cj-adda-body {
+    margin-top: 24px;
+  }
+  .cj-adda-panel,
+  .cj-adda-pass {
+    padding: 16px;
+  }
+  .cj-adda-head__lede .cj-lede {
+    font-size: 14px;
+  }
+  #root .cj-adda .cj-adda-tab__n {
+    transform: translateY(-4px);
+  }
+}
+
+/* ---------- reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .cj-adda :is(.cj-adda-row, .cj-adda-person, .cj-adda-person__ava, .cj-adda-row__open) {
+    transition: none;
+  }
+}
+:root[data-motion='reduced'] .cj-adda :is(.cj-adda-row, .cj-adda-person, .cj-adda-person__ava, .cj-adda-row__open) {
+  transition: none;
+}
+
+/* ---------- wide screens: the online strip is a centred panel, not a left-flush row ---------- */
+@media (min-width: 1100px) {
+  .cj-adda-people {
+    justify-content: center;
+    padding: 20px;
+    border-radius: var(--cj-r-panel);
+    background: var(--cj-glass);
+    box-shadow: var(--cj-ring);
+  }
+}

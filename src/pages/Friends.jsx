@@ -7,10 +7,10 @@ import { paths } from '@/platform/paths.js';
 import { canShare, shareOrCopy, useCopied } from '@/components/online/clipboard.js';
 import { friendInviteMessage, friendLinkUrl, friendShareText, isRoomCode, normalizeRoomCode, parseFriendLink } from '@/components/online/codes.js';
 import ConfirmDialog from '@/components/online/ConfirmDialog.jsx';
-import { usePresence } from '@/components/online/InviteBanner.jsx';
+import { useInvites, usePresence } from '@/components/online/InviteBanner.jsx';
 import { FriendAvatar, FriendTitle } from '@/components/online/InviteFriends.jsx';
 import InviteToGameSheet from '@/components/online/InviteToGameSheet.jsx';
-import StatusPanel, { Loading } from '@/components/online/StatusPanel.jsx';
+import { Loading } from '@/components/online/StatusPanel.jsx';
 import { useToasts } from '@/components/online/Toasts.jsx';
 import { countOnline, emptyFriends, handleLabel } from '@/components/online/friendsModel.js';
 import AddFriendPanel from '@/platform/social/AddFriendPanel.jsx';
@@ -19,33 +19,66 @@ import InvitesInbox from '@/platform/social/InvitesInbox.jsx';
 import PrivacyCard from '@/platform/social/PrivacyCard.jsx';
 import { blockPlayer } from '@/platform/social/blockStore.js';
 import { JoinButton, StatusText, canJoin, statusText } from '@/platform/social/PresenceBits.jsx';
-import { WhatsAppIcon } from '@/platform/social/SIcon.jsx';
 import useFriends from '@/platform/social/useFriends.js';
-import IndiaArt from '@/components/art/IndiaArt.jsx';
+import { Avatar } from '@/components/art/index.js';
+import SIcon, { WhatsAppIcon } from '@/platform/social/SIcon.jsx';
 import '@/styles/online.css';
-import '@/styles/x-social.css';
 import '@/styles/store-social.css';
-import '@/styles/hubMoments.css';
 import '@/styles/handle.css';
-import '@/platform/home/adda.css';
+import '@/styles/cine.css';
+import '@/styles/cine/bridge.css';
+import '@/styles/cine/adda.css';
 
 const byId = (u) => String(u.id);
 
 /** Invite-to-room button label per feedback state (idle | sending | sent | saved | joined | declined). */
 const ROOM_INVITE_LABEL = { sending: 'Sending...', sent: 'Invited', saved: 'Saved', joined: 'Joined', declined: 'Declined' };
 
-function AddaMasthead({ heading = true, children }) {
+/** The page frame: the blurred ambient field behind everything, then the page content. */
+function AddaPage({ children }) {
+  return (
+    <div className="cj-scope cj-adda">
+      <div className="cj-ambient cj-amb-art cj-adda-ambient" aria-hidden="true" />
+      {children}
+    </div>
+  );
+}
+
+/**
+ * "The Adda" as a cine page title. `tabs` are dim siblings beside it (Requests 2, Invites 1) that jump to their section;
+ * `heading={false}` keeps a single h1 on the page when a gate card below carries its own.
+ */
+function AddaHead({ heading = true, tabs = [], children }) {
   const Title = heading ? 'h1' : 'p';
   return (
-    <header className="adda-route-head">
-      <div>
-        <p className="adda-kicker">Your people. Your table.</p>
-        <Title className="ho-h1 adda-route-head__title">The Adda</Title>
-        <p className="ho-muted">Add people once, then invite them to any game.</p>
+    <header className="cj-adda-head">
+      <div className="cj-pagehead cj-adda-head__row">
+        <Title className="cj-pagehead__title">The Adda</Title>
+        {tabs.map((t) => (
+          <Link key={t.hash} to={t.to} className="cj-pagehead__tab cj-adda-tab">
+            {t.label}
+            <span className="cj-adda-tab__n" aria-label={`, ${t.count} waiting`}>
+              {t.count}
+            </span>
+          </Link>
+        ))}
+      </div>
+      <div className="cj-adda-head__lede">
+        <p className="cj-lede">Your people, your table. Add friends once, then invite them to any game.</p>
         {children}
       </div>
-      <IndiaArt art="gully-cricket" className="adda-route-head__art" />
     </header>
+  );
+}
+
+/** A row of the dashed-card empty state's art: a glass circle with an icon (like an empty folder with a plus). */
+function EmptyArt({ icon = 'userPlus' }) {
+  return (
+    <span className="cj-empty__art cj-adda-empty__art" aria-hidden="true">
+      <span className="cj-adda-empty__plus">
+        <SIcon name={icon} size={20} />
+      </span>
+    </span>
   );
 }
 
@@ -61,9 +94,9 @@ function Handle({ person }) {
 
 function SkeletonRows({ n = 3 }) {
   return (
-    <ul className="ho-list" aria-busy="true" aria-label="Loading">
+    <ul className="ho-list cj-adda-list" aria-busy="true" aria-label="Loading">
       {Array.from({ length: n }, (_, i) => (
-        <li key={i} className="ho-row ho-skel-row" aria-hidden="true">
+        <li key={i} className="ho-row ho-skel-row cj-adda-row" aria-hidden="true">
           <span className="ho-skel ho-skel--circle" />
           <span className="ho-skel ho-skel--line" />
         </li>
@@ -77,57 +110,78 @@ export default function Friends() {
   const { user, loading, reachable, refresh } = useAuth();
   if (loading) {
     return (
-      <div className="ho-page adda-friends-page">
-        <AddaMasthead />
-        <Loading text="Loading friends..." />
-      </div>
+      <AddaPage>
+        <AddaHead />
+        <div className="cj-adda-gate">
+          <Loading text="Loading friends..." />
+        </div>
+      </AddaPage>
     );
   }
   if (!user && reachable === false) {
     return (
-      <div className="ho-page adda-friends-page">
-        <AddaMasthead heading={false} />
-        <StatusPanel
-          icon="📡"
-          tone="warn"
-          title="You are offline"
-          body="Friends and invites need a connection to the server. Reconnect and try again."
-          actions={[{ label: 'Try again', onClick: () => refresh?.(), primary: true }]}
-        />
-      </div>
+      <AddaPage>
+        <AddaHead heading={false} />
+        <section className="cj-empty cj-adda-empty" role="status" aria-labelledby="cj-adda-gate-h">
+          <EmptyArt icon="refresh" />
+          <h1 id="cj-adda-gate-h" className="cj-empty__title">
+            You are offline
+          </h1>
+          <p className="cj-empty__body">Friends and invites need a connection to the server. Reconnect and try again.</p>
+          <div className="cj-empty__actions">
+            <button type="button" className="cj-btn cj-btn--primary" onClick={() => refresh?.()}>
+              <SIcon name="refresh" size={17} /> Try again
+            </button>
+          </div>
+        </section>
+      </AddaPage>
     );
   }
   if (!user || user.isGuest) {
     const here = paths.friends() + (typeof window !== 'undefined' ? window.location.search : '');
     return (
-      <div className="ho-page adda-friends-page">
-        <AddaMasthead heading={false} />
-        <StatusPanel
-          icon="👥"
-          title={user ? 'Friends are for Google accounts' : 'Sign in to add friends'}
-          body={
-            user
+      <AddaPage>
+        <AddaHead heading={false} />
+        <section className="cj-empty cj-adda-empty" aria-labelledby="cj-adda-gate-h">
+          <EmptyArt />
+          <h1 id="cj-adda-gate-h" className="cj-empty__title">
+            {user ? 'Friends are for Google accounts' : 'Sign in to add friends'}
+          </h1>
+          <p className="cj-empty__body">
+            {user
               ? 'Guests can host and join rooms with a code or link. Sign in with Google to add friends, see who is online and invite them to a game in one tap.'
-              : 'Add friends with a friend link or their @username, see who is online and invite them to a game in one tap. Invites wait for them, even when they were offline.'
-          }
-          actions={[
-            { label: user ? 'Sign in with Google' : 'Sign in', to: paths.login(here), primary: true },
-            { label: 'Join a room with a code', to: paths.join() },
-          ]}
-        >
-          <ol className="adda-steps" aria-label="How the Adda works">
-            <li><b>1</b><span>Share your friend link</span></li>
-            <li><b>2</b><span>They add you in one tap</span></li>
-            <li><b>3</b><span>Invite them to any game</span></li>
+              : 'Add friends with a friend link or their @username, see who is online and invite them to a game in one tap. Invites wait for them, even when they were offline.'}
+          </p>
+          <div className="cj-empty__actions">
+            <Link to={paths.login(here)} className="cj-btn cj-btn--primary">
+              <SIcon name="users" size={17} /> {user ? 'Sign in with Google' : 'Sign in'}
+            </Link>
+            <Link to={paths.join()} className="cj-btn">
+              <SIcon name="table" size={17} /> Join a room with a code
+            </Link>
+          </div>
+          <ol className="cj-adda-steps" aria-label="How the Adda works">
+            <li>
+              <b>1</b>
+              <span>Share your friend link</span>
+            </li>
+            <li>
+              <b>2</b>
+              <span>They add you in one tap</span>
+            </li>
+            <li>
+              <b>3</b>
+              <span>Invite them to any game</span>
+            </li>
           </ol>
-        </StatusPanel>
-      </div>
+        </section>
+      </AddaPage>
     );
   }
   return <FriendsInner user={user} />;
 }
 
-/** Your friend code as the Adda's paper pass: the code, the link (copy, WhatsApp, share) and a QR code on demand. */
+/** Your friend code as a calm glass pass: the code, the link (copy, WhatsApp, share) and a QR code on demand. */
 function FriendPass({ code, onNotify, onShare }) {
   const [codeCopied, copyCode] = useCopied();
   const [linkCopied, copyLink] = useCopied();
@@ -135,25 +189,32 @@ function FriendPass({ code, onNotify, onShare }) {
   const link = code ? friendLinkUrl(code) : '';
   const whatsapp = code ? `https://wa.me/?text=${encodeURIComponent(friendShareText(code))}` : undefined;
   return (
-    <section className="ho-card ho-mycode adda-pass" aria-label="Your friend link">
-      <div className="adda-pass__top">
-        <span className="ho-eyebrow">Your friend code</span>
-        <button type="button" className={`adda-pass__qrbtn${qr ? ' is-on' : ''}`} onClick={() => setQr((v) => !v)} aria-expanded={qr} aria-controls="adda-pass-qr" disabled={!link}>
-          {qr ? 'Hide QR' : 'Show QR'}
-        </button>
-      </div>
-      <div className="ho-bigcode ho-bigcode--friend" aria-label={`Your friend code ${code}`}>
-        {code || '...'}
-      </div>
-      <div id="adda-pass-qr" className="adda-pass__qr" hidden={!qr || !link}>
-        {qr && link && <QRCodeSVG value={link} size={132} level="M" marginSize={2} bgColor="#ffffff" fgColor="#0b0908" title={`QR code for ${link}`} />}
-        <span>Scan to add me</span>
-      </div>
-      <div className="ho-linkrow">
-        <input className="ho-input ho-linkrow__input" readOnly value={link} aria-label="Your friend link" onFocus={(e) => e.target.select()} placeholder="Your friend link" />
+    <section className="cj-adda-pass" aria-label="Your friend link">
+      <div className="cj-adda-pass__top">
+        <span className="cj-adda-eyebrow">Your friend code</span>
         <button
           type="button"
-          className="ho-btn ho-btn--ghost"
+          className={`cj-chip cj-adda-pass__qrbtn${qr ? ' is-on' : ''}`}
+          onClick={() => setQr((v) => !v)}
+          aria-expanded={qr}
+          aria-controls="adda-pass-qr"
+          disabled={!link}
+        >
+          <SIcon name="qr" size={15} /> {qr ? 'Hide QR' : 'Show QR'}
+        </button>
+      </div>
+      <div className="cj-adda-pass__code" aria-label={`Your friend code ${code}`}>
+        {code || '...'}
+      </div>
+      <div id="adda-pass-qr" className="cj-adda-pass__qr" hidden={!qr || !link}>
+        {qr && link && <QRCodeSVG value={link} size={140} level="M" marginSize={2} bgColor="#ffffff" fgColor="#0a0a0b" title={`QR code for ${link}`} />}
+        <span>Scan to add me</span>
+      </div>
+      <div className="cj-adda-pass__link">
+        <input className="cj-input cj-adda-pass__input" readOnly value={link} aria-label="Your friend link" onFocus={(e) => e.target.select()} placeholder="Your friend link" />
+        <button
+          type="button"
+          className="cj-btn cj-btn--sm cj-adda-pass__copy"
           onClick={async () => {
             if (!(await copyLink(link))) onNotify('Could not copy the link.', 'bad');
           }}
@@ -162,26 +223,50 @@ function FriendPass({ code, onNotify, onShare }) {
           {linkCopied ? 'Copied!' : 'Copy link'}
         </button>
       </div>
-      <div className="ho-share__actions">
+      <div className="cj-adda-pass__actions">
+        <button type="button" className="cj-btn cj-btn--primary cj-adda-pass__share" onClick={onShare} disabled={!code}>
+          <SIcon name="share" size={17} /> {canShare() ? 'Share link' : 'Copy invite'}
+        </button>
         <button
           type="button"
-          className="ho-btn ho-btn--ghost"
+          className="cj-btn"
           onClick={async () => {
             if (!(await copyCode(code))) onNotify('Could not copy. Select the code and copy it manually.', 'bad');
           }}
           disabled={!code}
         >
-          {codeCopied ? 'Copied!' : 'Copy code'}
+          <SIcon name={codeCopied ? 'check' : 'copy'} size={16} /> {codeCopied ? 'Copied!' : 'Copy code'}
         </button>
-        <a className="ho-btn ho-btn--ghost adda-pass__wa" href={whatsapp} target="_blank" rel="noopener noreferrer" aria-disabled={!code || undefined}>
-          <WhatsAppIcon size={17} /> WhatsApp
+        <a className="cj-iconbtn cj-adda-pass__wa" href={whatsapp} target="_blank" rel="noopener noreferrer" aria-disabled={!code || undefined} aria-label="Share on WhatsApp" title="WhatsApp">
+          <WhatsAppIcon size={19} />
         </a>
-        <button type="button" className="ho-btn ho-btn--primary" onClick={onShare} disabled={!code}>
-          {canShare() ? 'Share link' : 'Copy invite'}
-        </button>
       </div>
-      <p className="ho-help">Anyone who opens your link can add you in one tap. No account needed to look.</p>
+      <p className="cj-adda-pass__note">Anyone who opens your link can add you in one tap. No account needed to look.</p>
     </section>
+  );
+}
+
+/** A friend who is online right now, as a round portrait (like a cast circle). Tap for their quick actions. */
+function OnlinePerson({ f, leaving, onOpen }) {
+  return (
+    <li className={`cj-adda-person${leaving ? ' is-leaving' : ''}`} aria-hidden={leaving || undefined}>
+      <button
+        type="button"
+        className="cj-person cj-adda-person__open"
+        onClick={() => onOpen(f)}
+        disabled={leaving}
+        aria-haspopup="dialog"
+        aria-label={`${f.name}, ${statusText(f).toLowerCase()}. Open actions`}
+      >
+        <span className="cj-adda-person__ava">
+          <Avatar preset={Number.isInteger(f.avatar) ? f.avatar : 0} size={72} />
+          <span className="cj-live-dot cj-adda-person__dot" aria-hidden="true" />
+        </span>
+        <span className="cj-adda-person__name">{f.name}</span>
+        <small>{statusText(f)}</small>
+      </button>
+      {canJoin(f) && <JoinButton friend={f} disabled={leaving} className="cj-btn cj-btn--primary cj-btn--sm cj-adda-person__join" />}
+    </li>
   );
 }
 
@@ -190,33 +275,33 @@ function FriendRow({ f, leaving, room, roomState, busy, onOpen, onInviteRoom, on
   const st = room ? roomState(f) : undefined;
   const done = st === 'sent' || st === 'saved' || st === 'joined' || st === 'declined';
   return (
-    <li className={`ho-row adda-friend${leaving ? ' is-leaving' : ''}`} aria-hidden={leaving || undefined}>
+    <li className={`ho-row cj-adda-row adda-friend${f.online ? ' is-online' : ''}${leaving ? ' is-leaving' : ''}`} aria-hidden={leaving || undefined}>
       <button
         type="button"
-        className="ho-row__open"
+        className="cj-adda-row__open"
         onClick={() => onOpen(f)}
         disabled={leaving}
         aria-haspopup="dialog"
         aria-label={`${f.name}, ${statusText(f).toLowerCase()}, level ${f.level}. Open actions`}
       >
-        <span className="ho-row__avatar">
+        <span className="cj-adda-row__ava">
           <FriendAvatar person={f} size={44} />
           <Dot online={f.online} />
         </span>
-        <span className="ho-row__main">
-          <span className="ho-row__name">{f.name}</span>
+        <span className="cj-adda-row__main">
+          <span className="cj-adda-row__name">{f.name}</span>
           <Handle person={f} />
-          <span className="ho-row__sub">
+          <span className="cj-adda-row__sub">
             <StatusText friend={f} /> · Lv {f.level} <FriendTitle person={f} />
           </span>
         </span>
       </button>
-      <span className="ho-row__actions">
-        {!room && canJoin(f) && <JoinButton friend={f} disabled={leaving} className="ho-btn ho-btn--primary ho-btn--sm" />}
+      <span className="cj-adda-row__actions">
+        {!room && canJoin(f) && <JoinButton friend={f} disabled={leaving} className="cj-btn cj-btn--primary cj-btn--sm" />}
         {room ? (
           <button
             type="button"
-            className={`ho-btn ho-btn--sm ${done ? 'ho-btn--ghost' : 'ho-btn--primary'}`}
+            className={`cj-btn cj-btn--sm${done ? '' : ' cj-btn--primary'}`}
             onClick={() => onInviteRoom(f, room)}
             disabled={st === 'sending' || done || leaving}
             aria-label={`Invite ${f.name} to room ${room}`}
@@ -226,20 +311,18 @@ function FriendRow({ f, leaving, room, roomState, busy, onOpen, onInviteRoom, on
         ) : (
           <button
             type="button"
-            className={`ho-btn ho-btn--sm ${f.online && !canJoin(f) ? 'ho-btn--primary' : 'ho-btn--ghost'}`}
+            className={`cj-btn cj-btn--sm${f.online && !canJoin(f) ? ' cj-btn--primary' : ''}`}
             onClick={() => onInvite(f)}
             disabled={leaving}
             title={f.online ? undefined : `${f.name} is offline: they will see the invite when they are back`}
             aria-label={`Invite ${f.name} to a game`}
           >
-            <span className="ho-narrow">Invite</span>
-            <span className="ho-wide">Invite to game</span>
+            <span className="cj-adda-narrow">Invite</span>
+            <span className="cj-adda-wide">Invite to game</span>
           </button>
         )}
-        <button type="button" className="ho-iconbtn" onClick={() => onRemove(f)} disabled={!!busy[f.id] || leaving} aria-label={`Remove ${f.name} from friends`}>
-          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M6 7h12M10 7V5h4v2M8 7l1 12h6l1-12" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+        <button type="button" className="cj-iconbtn cj-adda-row__remove" onClick={() => onRemove(f)} disabled={!!busy[f.id] || leaving} aria-label={`Remove ${f.name} from friends`}>
+          <SIcon name="trash" size={16} />
         </button>
       </span>
     </li>
@@ -260,6 +343,7 @@ function FriendsInner({ user }) {
   const [inviteSheet, setInviteSheet] = useState(null); // friend picked for "Invite to a new table"
 
   const { data, loadError, load, busy } = f;
+  const { invites } = useInvites();
   const d = data || emptyFriends();
   const online = countOnline(d);
   const friendsShown = usePresence(d.friends, byId);
@@ -303,185 +387,232 @@ function FriendsInner({ user }) {
     { key: 'on', label: 'Online', count: liveFriends.filter((s) => s.item.online).length, items: friendsShown.filter((s) => s.item.online) },
     { key: 'off', label: 'Offline', count: liveFriends.filter((s) => !s.item.online).length, items: friendsShown.filter((s) => !s.item.online) },
   ].filter((g) => g.items.length > 0);
+  const onlineShown = friendsShown.filter((s) => s.item.online);
+
+  // dim sibling "tabs" beside the title: they jump to (and, for requests, focus) their section
+  const jump = (hash) => ({ pathname: location.pathname, search: location.search, hash });
+  const tabs = [
+    data && d.incoming.length > 0 && { hash: '#requests', to: jump('#requests'), label: 'Requests', count: d.incoming.length },
+    invites.length > 0 && { hash: '#invites', to: jump('#invites'), label: 'Invites', count: invites.length },
+  ].filter(Boolean);
+
+  const findByName = () => {
+    const el = document.querySelector('.cj-adda-add input[type="search"]');
+    if (!el) return;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el.focus({ preventScroll: true });
+  };
 
   return (
-    <div className="ho-page ho-friends adda-friends-page">
-      <AddaMasthead>
+    <AddaPage>
+      <AddaHead tabs={tabs}>
         {data && (
-          <dl className="adda-stats">
-            <div>
-              <dt>Friends</dt>
-              <dd>{d.friends.length}</dd>
-            </div>
-            <div className={online > 0 ? 'is-live' : undefined}>
-              <dt>Online</dt>
-              <dd>{online}</dd>
-            </div>
-            <div className={d.incoming.length > 0 ? 'is-hot' : undefined}>
-              <dt>Requests</dt>
-              <dd>{d.incoming.length}</dd>
-            </div>
-          </dl>
+          <ul className="cj-meta cj-adda-stats" aria-label="Your Adda">
+            <li>
+              {d.friends.length} {d.friends.length === 1 ? 'friend' : 'friends'}
+            </li>
+            <li className={online > 0 ? 'is-live' : undefined}>
+              {online > 0 && <span className="cj-live-dot" aria-hidden="true" />}
+              {online} online
+            </li>
+            <li>
+              {d.incoming.length} {d.incoming.length === 1 ? 'request' : 'requests'}
+            </li>
+          </ul>
         )}
-      </AddaMasthead>
+      </AddaHead>
 
-      {socketStatus === 'reconnecting' && (
-        <div className="ho-banner ho-banner--warn" role="status">
-          <span>Reconnecting&hellip; online dots and new invites will catch up in a moment.</span>
-        </div>
-      )}
-
-      {room && (
-        <div className="ho-banner ho-banner--info" role="status">
-          <span>
-            Inviting to room <strong>{room}</strong>. Tap Invite next to a friend. Offline friends get it when they are back.
-          </span>
-          <Link to={paths.lobby(room)} className="ho-btn ho-btn--ghost ho-btn--sm">
-            Back to lobby
-          </Link>
-        </div>
-      )}
-
-      <div className="ho-grid">
-        <div className="ho-col adda-col--side">
-          <FriendPass code={user.friendCode} onNotify={push} onShare={share} />
-
-          {/* Add a friend: by name or @username, someone you just played with, or a friend code / link / @username */}
-          <div className="ho-card adda-add">
-            <AddFriendPanel compact onDone={() => load({ silent: true })} onNotify={push} />
+      <div className="cj-adda-body">
+        {socketStatus === 'reconnecting' && (
+          <div className="ho-banner ho-banner--warn cj-adda-banner" role="status">
+            <span>Reconnecting&hellip; online dots and new invites will catch up in a moment.</span>
           </div>
+        )}
 
-          <div className="adda-privacy">
-            <PrivacyCard onNotify={push} />
+        {room && (
+          <div className="ho-banner ho-banner--info cj-adda-banner" role="status">
+            <span>
+              Inviting to room <strong>{room}</strong>. Tap Invite next to a friend. Offline friends get it when they are back.
+            </span>
+            <Link to={paths.lobby(room)} className="cj-btn cj-btn--sm">
+              Back to lobby
+            </Link>
           </div>
-        </div>
+        )}
 
-        <div className="ho-col">
-          <div className="adda-inbox">
-            <InvitesInbox meId={user.id} />
-          </div>
+        <div className="cj-adda-grid">
+          <div className="cj-adda-main">
+            <div className="cj-adda-inbox">
+              <InvitesInbox meId={user.id} />
+            </div>
 
-          {loadError ? (
-            <section className="ho-card">
-              <div className="ho-inline-error" role="alert">
-                <span>{loadError.offline ? 'You are offline. Friends and invites need the server. We will try again when you are back.' : loadError.message}</span>
-                <button type="button" className="ho-btn ho-btn--ghost ho-btn--sm" onClick={() => load()}>
-                  Try again
-                </button>
-              </div>
-            </section>
-          ) : (
-            <>
-              {(!data || d.incoming.length > 0) && (
-                <section id="requests" tabIndex={-1} className="ho-card adda-requests" aria-labelledby="adda-req-h">
-                  <div className="ho-card__head">
-                    <h2 id="adda-req-h" className="ho-h2">
-                      Requests
+            {loadError ? (
+              <section className="cj-adda-panel">
+                <div className="ho-inline-error cj-adda-error" role="alert">
+                  <span>{loadError.offline ? 'You are offline. Friends and invites need the server. We will try again when you are back.' : loadError.message}</span>
+                  <button type="button" className="cj-btn cj-btn--sm" onClick={() => load()}>
+                    Try again
+                  </button>
+                </div>
+              </section>
+            ) : (
+              <>
+                {(!data || d.incoming.length > 0) && (
+                  <section id="requests" tabIndex={-1} className="cj-adda-panel cj-adda-requests" aria-labelledby="adda-req-h">
+                    <div className="cj-adda-panel__head">
+                      <h2 id="adda-req-h" className="cj-adda-h2">
+                        Requests
+                      </h2>
+                      {d.incoming.length > 0 && <span className="cj-adda-count">{d.incoming.length}</span>}
+                    </div>
+                    {!data ? (
+                      <SkeletonRows n={1} />
+                    ) : (
+                      <ul className="ho-list cj-adda-list" aria-label="Friend requests">
+                        {incomingShown.map(({ key, item: u, leaving }) => (
+                          <li key={key} className={`ho-row cj-adda-row${leaving ? ' is-leaving' : ''}`} aria-hidden={leaving || undefined}>
+                            <span className="cj-adda-row__open is-static">
+                              <span className="cj-adda-row__ava">
+                                <FriendAvatar person={u} size={44} />
+                              </span>
+                              <span className="cj-adda-row__main">
+                                <span className="cj-adda-row__name">{u.name}</span>
+                                <Handle person={u} />
+                                <span className="cj-adda-row__sub">
+                                  wants to be friends · Lv {u.level} <FriendTitle person={u} />
+                                </span>
+                              </span>
+                            </span>
+                            <span className="cj-adda-row__actions">
+                              <button type="button" className="cj-btn cj-btn--primary cj-btn--sm" onClick={() => f.accept(u)} disabled={!!busy[u.id] || leaving} aria-label={`Accept request from ${u.name}`}>
+                                Accept
+                              </button>
+                              <button type="button" className="cj-btn cj-btn--sm" onClick={() => f.decline(u)} disabled={!!busy[u.id] || leaving} aria-label={`Decline request from ${u.name}`}>
+                                Decline
+                              </button>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                )}
+
+                {data && onlineShown.length > 0 && (
+                  <section className="cj-adda-online" aria-labelledby="adda-online-h">
+                    <div className="cj-adda-section__head">
+                      <h2 id="adda-online-h" className="cj-section__title">
+                        Online now
+                      </h2>
+                      <span className="cj-live-dot" aria-hidden="true" />
+                    </div>
+                    <ul className="cj-adda-people" aria-label="Friends online now">
+                      {onlineShown.map(({ key, item, leaving }) => (
+                        <OnlinePerson key={key} f={item} leaving={leaving} onOpen={setActionsFor} />
+                      ))}
+                    </ul>
+                  </section>
+                )}
+
+                <section className="cj-adda-panel adda-friends" aria-labelledby="adda-friends-h">
+                  <div className="cj-adda-panel__head">
+                    <h2 id="adda-friends-h" className="cj-adda-h2">
+                      Your friends
                     </h2>
-                    {d.incoming.length > 0 && <span className="ho-count">{d.incoming.length}</span>}
+                    {data && d.friends.length > 0 && <span className="cj-adda-count">{d.friends.length}</span>}
                   </div>
                   {!data ? (
-                    <SkeletonRows n={1} />
+                    <SkeletonRows />
+                  ) : friendsShown.length === 0 ? (
+                    <div className="cj-empty cj-adda-empty cj-adda-empty--inline">
+                      <EmptyArt />
+                      <h3 className="cj-empty__title">Start your Adda</h3>
+                      <p className="cj-empty__body">
+                        Share your friend link, or add a friend by name, @username or code. Friends show up here with a green dot when they are online, and you can invite them to any game.
+                      </p>
+                      <div className="cj-empty__actions">
+                        <button type="button" className="cj-btn cj-btn--primary" onClick={share}>
+                          <SIcon name="share" size={17} /> Share my link
+                        </button>
+                        <button type="button" className="cj-btn" onClick={findByName}>
+                          <SIcon name="users" size={17} /> Find by name
+                        </button>
+                      </div>
+                    </div>
                   ) : (
-                    <ul className="ho-list" aria-label="Friend requests">
-                      {incomingShown.map(({ key, item: u, leaving }) => (
-                        <li key={key} className={`ho-row${leaving ? ' is-leaving' : ''}`} aria-hidden={leaving || undefined}>
-                          <span className="ho-row__avatar">
-                            <FriendAvatar person={u} size={44} />
-                          </span>
-                          <span className="ho-row__main">
-                            <span className="ho-row__name">{u.name}</span>
-                            <Handle person={u} />
-                            <span className="ho-row__sub">
-                              wants to be friends · Lv {u.level} <FriendTitle person={u} />
+                    groups.map((g) => (
+                      <div key={g.key} className={`cj-adda-group cj-adda-group--${g.key}`} role="group" aria-label={`${g.label}, ${g.count}`}>
+                        <h3 className="cj-adda-group__head">
+                          {g.label} <span>{g.count}</span>
+                        </h3>
+                        <ul className="ho-list cj-adda-list">
+                          {g.items.map(({ key, item, leaving }) => (
+                            <FriendRow
+                              key={key}
+                              f={item}
+                              leaving={leaving}
+                              room={room}
+                              roomState={(fr) => f.invited[`${fr.id}:${room}`]}
+                              busy={busy}
+                              onOpen={setActionsFor}
+                              onInvite={setActionsFor}
+                              onInviteRoom={f.inviteTo}
+                              onRemove={setConfirm}
+                            />
+                          ))}
+                        </ul>
+                      </div>
+                    ))
+                  )}
+                </section>
+
+                {data && d.outgoing.length > 0 && (
+                  <section className="cj-adda-panel adda-sent" aria-labelledby="adda-sent-h">
+                    <div className="cj-adda-panel__head">
+                      <h2 id="adda-sent-h" className="cj-adda-h2">
+                        Sent requests
+                      </h2>
+                      <span className="cj-adda-count">{d.outgoing.length}</span>
+                    </div>
+                    <ul className="ho-list cj-adda-list" aria-label="Sent requests">
+                      {d.outgoing.map((u) => (
+                        <li key={u.id} className="ho-row cj-adda-row">
+                          <span className="cj-adda-row__open is-static">
+                            <span className="cj-adda-row__ava">
+                              <FriendAvatar person={u} size={44} />
+                            </span>
+                            <span className="cj-adda-row__main">
+                              <span className="cj-adda-row__name">{u.name}</span>
+                              <Handle person={u} />
+                              <span className="cj-adda-row__sub">Waiting for them to accept</span>
                             </span>
                           </span>
-                          <span className="ho-row__actions">
-                            <button type="button" className="ho-btn ho-btn--primary ho-btn--sm" onClick={() => f.accept(u)} disabled={!!busy[u.id] || leaving} aria-label={`Accept request from ${u.name}`}>
-                              Accept
-                            </button>
-                            <button type="button" className="ho-btn ho-btn--ghost ho-btn--sm" onClick={() => f.decline(u)} disabled={!!busy[u.id] || leaving} aria-label={`Decline request from ${u.name}`}>
-                              Decline
+                          <span className="cj-adda-row__actions">
+                            <button type="button" className="cj-btn cj-btn--sm" onClick={() => f.cancel(u)} disabled={!!busy[u.id]} aria-label={`Cancel request to ${u.name}`}>
+                              Cancel
                             </button>
                           </span>
                         </li>
                       ))}
                     </ul>
-                  )}
-                </section>
-              )}
-
-              <section className="ho-card adda-friends" aria-labelledby="adda-friends-h">
-                <div className="ho-card__head">
-                  <h2 id="adda-friends-h" className="ho-h2">
-                    Your friends
-                  </h2>
-                  {data && d.friends.length > 0 && <span className="ho-count">{d.friends.length}</span>}
-                </div>
-                {!data ? (
-                  <SkeletonRows />
-                ) : friendsShown.length === 0 ? (
-                  <p className="ho-empty">
-                    No friends yet. Share your friend link, or add a friend by name, @username or code. Friends show up here with a green dot when they are online, and you can invite them to any game.
-                  </p>
-                ) : (
-                  groups.map((g) => (
-                    <div key={g.key} className={`adda-group adda-group--${g.key}`} role="group" aria-label={`${g.label}, ${g.count}`}>
-                      <h3 className="adda-group__head">
-                        {g.label} <span>{g.count}</span>
-                      </h3>
-                      <ul className="ho-list">
-                        {g.items.map(({ key, item, leaving }) => (
-                          <FriendRow
-                            key={key}
-                            f={item}
-                            leaving={leaving}
-                            room={room}
-                            roomState={(fr) => f.invited[`${fr.id}:${room}`]}
-                            busy={busy}
-                            onOpen={setActionsFor}
-                            onInvite={setActionsFor}
-                            onInviteRoom={f.inviteTo}
-                            onRemove={setConfirm}
-                          />
-                        ))}
-                      </ul>
-                    </div>
-                  ))
+                  </section>
                 )}
-              </section>
+              </>
+            )}
+          </div>
 
-              {data && d.outgoing.length > 0 && (
-                <section className="ho-card adda-sent" aria-labelledby="adda-sent-h">
-                  <div className="ho-card__head">
-                    <h2 id="adda-sent-h" className="ho-h2">
-                      Sent requests
-                    </h2>
-                    <span className="ho-count">{d.outgoing.length}</span>
-                  </div>
-                  <ul className="ho-list" aria-label="Sent requests">
-                    {d.outgoing.map((u) => (
-                      <li key={u.id} className="ho-row">
-                        <span className="ho-row__avatar">
-                          <FriendAvatar person={u} size={44} />
-                        </span>
-                        <span className="ho-row__main">
-                          <span className="ho-row__name">{u.name}</span>
-                          <Handle person={u} />
-                          <span className="ho-row__sub">Waiting for them to accept</span>
-                        </span>
-                        <span className="ho-row__actions">
-                          <button type="button" className="ho-btn ho-btn--ghost ho-btn--sm" onClick={() => f.cancel(u)} disabled={!!busy[u.id]} aria-label={`Cancel request to ${u.name}`}>
-                            Cancel
-                          </button>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-            </>
-          )}
+          <aside className="cj-adda-side" aria-label="Add friends">
+            <FriendPass code={user.friendCode} onNotify={push} onShare={share} />
+
+            {/* Add a friend: by name or @username, someone you just played with, or a friend code / link / @username */}
+            <div className="cj-adda-panel cj-adda-add">
+              <AddFriendPanel compact onDone={() => load({ silent: true })} onNotify={push} />
+            </div>
+
+            <div className="cj-adda-privacy">
+              <PrivacyCard onNotify={push} />
+            </div>
+          </aside>
         </div>
       </div>
 
@@ -544,6 +675,6 @@ function FriendsInner({ user }) {
         }}
       />
       {node}
-    </div>
+    </AddaPage>
   );
 }

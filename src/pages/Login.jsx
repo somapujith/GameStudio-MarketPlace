@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { AVATAR_PRESETS, Avatar } from '@/components/art/index.js';
 import { HubLogo } from '@/components/art/hub/index.js';
-import IndiaArt from '@/components/art/IndiaArt.jsx';
 import { errorMessage } from '@/lib/api.js';
 import { GoogleButton, useAuth } from '@/lib/auth.jsx';
 import { loadProfile } from '@/lib/storage.js';
@@ -11,9 +10,9 @@ import { paths } from '@/platform/paths.js';
 import HubIcon from '@/platform/game/HubIcon.jsx';
 import { safeNext } from '@/components/shell/nav/safeNext.js';
 import '@/styles/online.css';
-import '@/styles/x-social.css';
-import '@/styles/hubMoments.css';
-import '@/styles/store-account.css';
+import '@/styles/cine.css';
+import '@/styles/cine/bridge.css';
+import '@/styles/cine/account.css';
 
 const NAME_MAX = 24;
 
@@ -43,20 +42,20 @@ function readProfile() {
 
 function Mark({ on }) {
   return (
-    <span className={`sa-mark ${on ? 'is-yes' : 'is-no'}`} aria-hidden="true">
-      <HubIcon name={on ? 'check' : 'close'} size={14} strokeWidth={3} />
+    <span className={`cj-acc-mark ${on ? 'is-yes' : 'is-no'}`} aria-hidden="true">
+      <HubIcon name={on ? 'check' : 'close'} size={13} strokeWidth={3} />
     </span>
   );
 }
 
 function CompareTable() {
   return (
-    <table className="sa-compare">
-      <caption className="sa-compare__cap">Guest or Google account</caption>
+    <table className="cj-acc-compare">
+      <caption className="cj-acc-sr">Guest or Google account</caption>
       <thead>
         <tr>
           <th scope="col">
-            <span className="hub-sr">What you get</span>
+            <span className="cj-acc-sr">What you get</span>
           </th>
           <th scope="col">Guest</th>
           <th scope="col" className="is-member">
@@ -71,11 +70,11 @@ function CompareTable() {
             {['guest', 'member'].map((k) => (
               <td key={k} className={k === 'member' ? 'is-member' : ''}>
                 {typeof r[k] === 'string' ? (
-                  <span className="sa-compare__note">{r[k]}</span>
+                  <span className="cj-acc-compare__note">{r[k]}</span>
                 ) : (
                   <>
                     <Mark on={r[k]} />
-                    <span className="hub-sr">{r[k] ? 'Yes' : 'No'}</span>
+                    <span className="cj-acc-sr">{r[k] ? 'Yes' : 'No'}</span>
                   </>
                 )}
               </td>
@@ -89,33 +88,26 @@ function CompareTable() {
 
 function Legal() {
   return (
-    <p className="sa-legal">
-      By continuing you agree to the{' '}
-      <Link to={paths.terms()} className="st-link">
-        Terms
-      </Link>{' '}
-      and the{' '}
-      <Link to={paths.privacy()} className="st-link">
-        Privacy Policy
-      </Link>
-      .
+    <p className="cj-acc-legal">
+      By continuing you agree to the <Link to={paths.terms()}>Terms</Link> and the <Link to={paths.privacy()}>Privacy Policy</Link>.
     </p>
   );
 }
 
 function CardSkeleton() {
   return (
-    <div className="sa-card sa-card--skel" role="status" aria-busy="true" aria-live="polite">
-      <span className="hub-sr">Checking your session...</span>
-      <span className="st-skel sa-skel sa-skel--h" />
-      <span className="st-skel sa-skel sa-skel--btn" />
-      <span className="st-skel sa-skel sa-skel--line" />
-      <span className="st-skel sa-skel sa-skel--input" />
-      <span className="st-skel sa-skel sa-skel--btn" />
+    <div className="cj-acc-form cj-acc-form--skel" role="status" aria-busy="true" aria-live="polite">
+      <span className="cj-acc-sr">Checking your session...</span>
+      <span className="ho-skel cj-acc-skel cj-acc-skel--h" />
+      <span className="ho-skel cj-acc-skel cj-acc-skel--btn" />
+      <span className="ho-skel cj-acc-skel cj-acc-skel--line" />
+      <span className="ho-skel cj-acc-skel cj-acc-skel--input" />
+      <span className="ho-skel cj-acc-skel cj-acc-skel--btn" />
     </div>
   );
 }
 
+/** /login: one calm glass card over the ambient field (like a cinejoy modal): a welcome side with the reasons, and the form. */
 export default function Login() {
   const { user, loading, configured, reachable, authError, clearAuthError, loginWithGoogle, loginGuest, logout, reloadConfig, refresh, signingIn } = useAuth();
   const [params] = useSearchParams();
@@ -175,27 +167,27 @@ export default function Login() {
     card = <CardSkeleton />;
   } else if (!reachable) {
     card = (
-      <div className="sa-card sa-offline" role="alert">
-        <span className="sa-offline__icon" aria-hidden="true">
-          <HubIcon name="wifiOff" size={26} />
+      <div className="cj-acc-form cj-acc-offline" role="alert">
+        <span className="cj-acc-offline__icon" aria-hidden="true">
+          <HubIcon name="wifiOff" size={24} />
         </span>
-        <h2 id="sa-login-title" className="sa-card__title">
+        <h2 id="sa-login-title" className="cj-acc-form__title">
           Can&rsquo;t reach {BRAND.name} right now
         </h2>
-        <p className="sa-muted">Signing in and rooms need a connection. Check your network and try again; nothing you have done is lost.</p>
-        <button type="button" className="hub-btn hub-btn--primary" onClick={retry} disabled={retrying}>
+        <p className="cj-acc-muted">Signing in and rooms need a connection. Check your network and try again; nothing you have done is lost.</p>
+        <button type="button" className="cj-btn cj-btn--primary cj-btn--block" onClick={retry} disabled={retrying}>
           <HubIcon name="refresh" size={18} className={retrying ? 'hub-spin' : undefined} /> {retrying ? 'Trying...' : 'Try again'}
         </button>
       </div>
     );
   } else {
     card = (
-      <div className="sa-card">
-        <header className="sa-card__head">
-          <h2 id="sa-login-title" className="sa-card__title">
+      <div className="cj-acc-form">
+        <header className="cj-acc-form__head">
+          <h2 id="sa-login-title" className="cj-acc-form__title">
             {isGuestUser ? 'Upgrade to a full account' : 'Sign in or just jump in'}
           </h2>
-          <p className="sa-muted">
+          <p className="cj-acc-muted">
             {isGuestUser
               ? `You are playing as ${user.name} (guest). Sign in with Google to add friends, join the leaderboard and keep your progress.`
               : toGame
@@ -204,60 +196,60 @@ export default function Login() {
           </p>
         </header>
 
-        <div className="sa-google" aria-busy={signingIn ? 'true' : undefined}>
+        <div className="cj-acc-google" aria-busy={signingIn ? 'true' : undefined}>
           <GoogleButton />
           {signingIn && (
-            <p className="sa-muted sa-google__busy" role="status">
+            <p className="cj-acc-muted cj-acc-google__busy" role="status">
               Signing you in...
             </p>
           )}
           {authError && (
-            <p className="ho-inline-error" role="alert">
+            <p className="ho-inline-error cj-acc-error" role="alert">
               {authError}
             </p>
           )}
         </div>
 
         {isGuestUser ? (
-          <div className="sa-actions">
-            <button type="button" className="hub-btn hub-btn--soft" onClick={() => navigate(next, { replace: true })}>
+          <div className="cj-acc-actions">
+            <button type="button" className="cj-btn cj-btn--block" onClick={() => navigate(next, { replace: true })}>
               Keep playing as guest
             </button>
-            <button type="button" className="hub-btn hub-btn--ghost" onClick={logout}>
+            <button type="button" className="cj-btn cj-btn--block cj-acc-quiet" onClick={logout}>
               Sign out
             </button>
           </div>
         ) : (
           <>
-            <div className="ho-or" role="separator">
+            <div className="cj-acc-or" role="separator">
               <span>or</span>
             </div>
 
-            <form className="sa-guest" onSubmit={submitGuest} noValidate>
-              <h3 className="sa-guest__title">Continue as guest</h3>
-              <fieldset className="ho-avatars" aria-describedby="sa-avatar-hint">
-                <legend className="ho-field__label">Pick your character</legend>
-                <p id="sa-avatar-hint" className="sa-hint sa-hint--top">
+            <form className="cj-acc-guest" onSubmit={submitGuest} noValidate>
+              <h3 className="cj-acc-guest__title">Continue as guest</h3>
+              <fieldset className="cj-acc-avatars" aria-describedby="sa-avatar-hint">
+                <legend className="cj-acc-label">Pick your character</legend>
+                <p id="sa-avatar-hint" className="cj-acc-hint cj-acc-hint--top">
                   Choose your character &mdash; you can change it later
                 </p>
-                <div className="ho-avatars__grid">
+                <div className="cj-acc-avatars__grid">
                   {AVATAR_PRESETS.map((p) => (
-                    <label key={p.id} className={`ho-avatar-opt${avatar === p.id ? ' is-on' : ''}`} title={p.label}>
-                      <input type="radio" name="avatar" value={p.id} checked={avatar === p.id} onChange={() => setAvatar(p.id)} className="ho-sr" />
-                      <Avatar preset={p.id} size={48} />
-                      <span className="ho-sr">{p.label}</span>
+                    <label key={p.id} className={`cj-acc-avatar${avatar === p.id ? ' is-on' : ''}`} title={p.label}>
+                      <input type="radio" name="avatar" value={p.id} checked={avatar === p.id} onChange={() => setAvatar(p.id)} className="cj-acc-sr" />
+                      <Avatar preset={p.id} size={44} />
+                      <span className="cj-acc-sr">{p.label}</span>
                     </label>
                   ))}
                 </div>
               </fieldset>
 
-              <div>
-                <label className="ho-field__label" htmlFor="sa-guest-name">
+              <div className="cj-acc-field">
+                <label className="cj-acc-label" htmlFor="sa-guest-name">
                   Your name
                 </label>
                 <input
                   id="sa-guest-name"
-                  className="ho-input"
+                  className="cj-input cj-acc-input"
                   value={name}
                   onChange={(e) => setName(e.target.value.slice(0, NAME_MAX))}
                   maxLength={NAME_MAX}
@@ -266,18 +258,18 @@ export default function Login() {
                   enterKeyHint="go"
                   aria-describedby="sa-guest-hint"
                 />
-                <p id="sa-guest-hint" className="sa-hint">
+                <p id="sa-guest-hint" className="cj-acc-hint">
                   Friends see this at the table. Leave it empty and you are &ldquo;Guest&rdquo;.
                 </p>
               </div>
 
               {error && (
-                <p className="ho-inline-error" role="alert">
+                <p className="ho-inline-error cj-acc-error" role="alert">
                   {error}
                 </p>
               )}
 
-              <button type="submit" className="hub-btn hub-btn--soft hub-btn--lg hub-btn--block" disabled={busy}>
+              <button type="submit" className="cj-btn cj-btn--lg cj-btn--block cj-acc-guest__go" disabled={busy}>
                 {busy ? (
                   <>
                     <HubIcon name="refresh" size={18} className="hub-spin" /> Starting...
@@ -290,8 +282,11 @@ export default function Login() {
           </>
         )}
 
-        <details className="sa-why" open={isGuestUser}>
-          <summary>What does a guest miss out on?</summary>
+        <details className="cj-acc-why" open={isGuestUser}>
+          <summary>
+            What does a guest miss out on?
+            <HubIcon name="chevDown" size={18} className="cj-acc-why__chev" />
+          </summary>
           <CompareTable />
         </details>
 
@@ -301,43 +296,43 @@ export default function Login() {
   }
 
   return (
-    <div className="hub-page st-scope sa-login" aria-labelledby="sa-login-h1">
-      <div className="sa-login__grid">
-        <section className="sa-welcome st-reveal" aria-label={`Welcome to ${BRAND.name}`}>
-          <div className="sa-welcome__brand">
-            <span className="sa-welcome__logo">
-              <HubLogo size={96} />
-            </span>
-            <Link to={paths.hub()} className="sa-welcome__back st-link">
-              Browse games first
-            </Link>
-          </div>
-          <p className="st-eyebrow">{isGuestUser ? 'Level up' : `Welcome to ${BRAND.name}`}</p>
-          <h1 id="sa-login-h1" className="sa-welcome__title">
-            {isGuestUser ? 'Make your progress permanent.' : 'Your seat at the table is waiting.'}
-          </h1>
-          <p className="sa-welcome__lede">{BRAND.tagline} Pick a game, send the code, and play in seconds.</p>
-          <ul className="sa-benefits">
-            {BENEFITS.map((b, i) => (
-              <li key={b.title} className="sa-benefit st-reveal" style={{ '--i': i + 1 }}>
-                <span className="sa-benefit__icon" aria-hidden="true">
-                  <HubIcon name={b.icon} size={20} />
-                </span>
-                <span>
-                  <b>{b.title}</b>
-                  <small>{b.text}</small>
-                </span>
-              </li>
-            ))}
-          </ul>
-          <div className="sa-welcome__mascot" aria-hidden="true">
-            <IndiaArt art="chennai" className="ho-login__print" decorative />
-          </div>
-        </section>
+    <div className="cj-scope cj-acc cj-acc--login" aria-labelledby="sa-login-h1">
+      <div className="cj-ambient cj-amb-art cj-acc-ambient cj-acc-ambient--login" aria-hidden="true" />
+      <div className="cj-acc-stage">
+        <div className="cj-acc-card cj-acc-card--login">
+          <section className="cj-acc-welcome" aria-label={`Welcome to ${BRAND.name}`}>
+            <div className="cj-acc-welcome__brand">
+              <span className="cj-acc-welcome__logo">
+                <HubLogo size={56} />
+              </span>
+              <Link to={paths.hub()} className="cj-acc-welcome__back">
+                Browse games first <HubIcon name="arrowR" size={15} />
+              </Link>
+            </div>
+            <p className="cj-acc-eyebrow">{isGuestUser ? 'Level up' : `Welcome to ${BRAND.name}`}</p>
+            <h1 id="sa-login-h1" className="cj-acc-welcome__title">
+              {isGuestUser ? 'Make your progress permanent.' : 'Your seat at the table is waiting.'}
+            </h1>
+            <p className="cj-acc-welcome__lede">{BRAND.tagline} Pick a game, send the code, and play in seconds.</p>
+            <ul className="cj-checks cj-acc-benefits">
+              {BENEFITS.map((b) => (
+                <li key={b.title}>
+                  <span className="cj-checks__icon" aria-hidden="true">
+                    <HubIcon name={b.icon} size={15} />
+                  </span>
+                  <span className="cj-acc-benefit">
+                    <b>{b.title}</b>
+                    <small>{b.text}</small>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
 
-        <section className="sa-login__card st-reveal" style={{ '--i': 2 }} aria-labelledby="sa-login-title" aria-live="polite">
-          {card}
-        </section>
+          <section className="cj-acc-formwrap" aria-labelledby="sa-login-title" aria-live="polite">
+            {card}
+          </section>
+        </div>
       </div>
     </div>
   );

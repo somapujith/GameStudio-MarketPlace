@@ -1,0 +1,854 @@
+/* ==========================================================================
+   Account screens in the cine language (docs/CINE_UI.md): Login (/login), Join (/join, /join/:code) and the friend
+   link (/f/:code). Each is a calm centred glass card over a blurred ambient field, like a cinejoy modal.
+   Prefix: cj-acc-. Legacy classes inside (sr-*, jc*, sc-link*) are re-skinned here; buttons / inputs by bridge.css.
+   ========================================================================== */
+
+.cj-acc {
+  position: relative;
+  min-height: 100vh;
+  padding: clamp(84px, 9vw, 112px) var(--cj-gutter) 72px;
+  color: var(--cj-text);
+  font-family: var(--cj-font);
+  font-size: 14px;
+}
+.cj-acc-ambient--login {
+  --cj-amb-img: url('/art/cinematic/ludo.webp');
+  --cj-amb-op: 0.4;
+  --cj-amb-hue: 40deg;
+}
+.cj-acc-ambient--join {
+  --cj-amb-img: url('/art/cinematic/tambola.webp');
+  --cj-amb-op: 0.38;
+  --cj-amb-hue: 60deg;
+}
+.cj-acc-ambient--friend {
+  --cj-amb-img: url('/art/cinematic/carrom.webp');
+  --cj-amb-op: 0.42;
+  --cj-amb-hue: 70deg;
+}
+.cj-acc-stage {
+  position: relative;
+  display: grid;
+  gap: 16px;
+  width: min(100%, 520px);
+  margin: 0 auto;
+}
+.cj-acc-sr {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* shared type */
+#root .cj-acc .cj-acc-eyebrow {
+  margin: 0;
+  color: var(--cj-text-faint);
+  font: 600 12px/1.3 var(--cj-font);
+  letter-spacing: 0.02em;
+}
+.cj-acc-head {
+  display: grid;
+  gap: 8px;
+  text-align: center;
+  justify-items: center;
+}
+#root .cj-acc .cj-acc-title {
+  margin: 0;
+  color: var(--cj-text-strong);
+  font: 700 clamp(30px, 3vw, 40px) / 1.1 var(--cj-font);
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+#root .cj-acc .cj-acc-lede {
+  max-width: 46ch;
+  margin: 0;
+  color: var(--cj-text-dim);
+  font-size: 15px;
+  line-height: 1.6;
+}
+#root .cj-acc :is(.cj-acc-muted, .cj-acc-hint) {
+  margin: 0;
+  color: var(--cj-text-dim);
+  font-size: 13px;
+  line-height: 1.55;
+}
+#root .cj-acc .cj-acc-hint {
+  color: var(--cj-text-faint);
+  font-size: 12px;
+}
+#root .cj-acc .cj-acc-label {
+  display: block;
+  margin: 0 0 6px;
+  padding: 0;
+  color: var(--cj-text-faint);
+  font: 600 12px/1.3 var(--cj-font);
+}
+
+/* the glass card (modal look) */
+.cj-acc-card,
+#root .cj-acc .sr-ticket,
+#root .cj-acc .sc-link,
+#root .cj-acc .sc-state {
+  position: relative;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--cj-r-sheet);
+  background: linear-gradient(180deg, rgba(36, 44, 40, 0.72), rgba(14, 16, 15, 0.82));
+  box-shadow: var(--cj-shadow-pop), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+}
+#root .cj-acc .sr-ticket::before,
+#root .cj-acc .sr-ticket::after {
+  display: none;
+}
+
+/* ==========================================================================
+   Login: one wide modal card, welcome side + form side (stacked on phones)
+   ========================================================================== */
+.cj-acc--login .cj-acc-stage {
+  width: min(100%, 940px);
+}
+.cj-acc-card--login {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 900px) {
+  .cj-acc-card--login {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 440px);
+  }
+}
+.cj-acc-welcome {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 28px 26px 24px;
+  background:
+    radial-gradient(120% 70% at 0% 0%, rgba(107, 227, 138, 0.16), transparent 60%),
+    radial-gradient(90% 60% at 100% 100%, rgba(255, 140, 60, 0.08), transparent 70%);
+}
+@media (min-width: 900px) {
+  .cj-acc-welcome {
+    padding: 36px 34px;
+    border-right: 1px solid var(--cj-line);
+  }
+}
+.cj-acc-welcome__brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.cj-acc-welcome__logo {
+  display: inline-flex;
+  line-height: 0;
+}
+#root .cj-acc .cj-acc-welcome__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--cj-text-dim);
+  font: 600 13px/1 var(--cj-font);
+  text-decoration: none;
+  transition: color var(--cj-dur) var(--cj-ease);
+}
+#root .cj-acc .cj-acc-welcome__back:hover {
+  color: var(--cj-text-strong);
+}
+#root .cj-acc .cj-acc-welcome__title {
+  margin: 0;
+  color: var(--cj-text-strong);
+  font: 700 clamp(26px, 2.6vw, 34px) / 1.15 var(--cj-font);
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+#root .cj-acc .cj-acc-welcome__lede {
+  margin: 0;
+  color: var(--cj-text-dim);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.cj-acc-benefits {
+  margin: 8px 0 0;
+}
+#root .cj-acc .cj-acc-benefits > li {
+  align-items: flex-start;
+}
+.cj-acc-benefit {
+  display: grid;
+  gap: 2px;
+}
+#root .cj-acc .cj-acc-benefit b {
+  color: var(--cj-text-strong);
+  font: 600 13px/1.35 var(--cj-font);
+}
+#root .cj-acc .cj-acc-benefit small {
+  color: var(--cj-text-dim);
+  font: 500 12px/1.5 var(--cj-font);
+}
+@media (max-width: 899px) {
+  .cj-acc-benefit small {
+    display: none;
+  }
+  .cj-acc-welcome__lede {
+    display: none;
+  }
+}
+
+.cj-acc-formwrap {
+  min-width: 0;
+}
+.cj-acc-form {
+  display: grid;
+  gap: 16px;
+  padding: 28px 26px 24px;
+}
+@media (min-width: 900px) {
+  .cj-acc-form {
+    padding: 36px 34px 28px;
+  }
+}
+.cj-acc-form__head {
+  display: grid;
+  gap: 6px;
+}
+#root .cj-acc .cj-acc-form__title {
+  margin: 0;
+  color: var(--cj-text-strong);
+  font: 700 22px/1.2 var(--cj-font);
+}
+.cj-acc-google {
+  display: grid;
+  gap: 8px;
+}
+#root .cj-acc .ho-gbtn {
+  width: 100%;
+}
+#root .cj-acc .ho-gbtn__frame {
+  min-height: 44px;
+  border-radius: var(--cj-r-pill);
+}
+#root .cj-acc .ho-gbtn__skeleton {
+  border-radius: var(--cj-r-pill);
+}
+#root .cj-acc .ho-gbtn--off {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: var(--cj-r-card);
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ring);
+  color: var(--cj-text-dim);
+  font-size: 13px;
+}
+#root .cj-acc .ho-gbtn--off strong {
+  color: var(--cj-text-strong);
+  font-weight: 600;
+}
+.cj-acc-google__busy {
+  text-align: center;
+}
+.cj-acc-error {
+  margin: 0;
+  font-size: 13px;
+}
+.cj-acc-actions {
+  display: grid;
+  gap: 8px;
+}
+#root .cj-acc .cj-acc-quiet {
+  background: transparent;
+  box-shadow: none;
+  color: var(--cj-text-dim);
+}
+#root .cj-acc .cj-acc-quiet:hover:not(:disabled) {
+  background: var(--cj-glass);
+  color: var(--cj-text-strong);
+}
+
+/* "or" divider */
+#root .cj-acc :is(.cj-acc-or, .ho-or) {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  color: var(--cj-text-faint);
+  font: 500 12px/1 var(--cj-font);
+}
+#root .cj-acc :is(.cj-acc-or, .ho-or)::before,
+#root .cj-acc :is(.cj-acc-or, .ho-or)::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--cj-line-2);
+}
+#root .cj-acc :is(.cj-acc-or, .ho-or) span {
+  padding: 0;
+  background: none;
+}
+
+/* guest form */
+.cj-acc-guest {
+  display: grid;
+  gap: 14px;
+}
+#root .cj-acc .cj-acc-guest__title {
+  margin: 0;
+  color: var(--cj-text-strong);
+  font: 600 16px/1.3 var(--cj-font);
+}
+.cj-acc-avatars {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.cj-acc-hint--top {
+  margin: -2px 0 10px !important;
+}
+.cj-acc-avatars__grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+.cj-acc-avatar {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ring);
+  cursor: pointer;
+  transition: transform var(--cj-dur) var(--cj-ease), box-shadow var(--cj-dur) var(--cj-ease), background-color var(--cj-dur) var(--cj-ease);
+}
+.cj-acc-avatar > :not(input) {
+  width: 84%;
+  height: 84%;
+}
+.cj-acc-avatar > :not(input) :is(svg, img) {
+  width: 100%;
+  height: 100%;
+}
+.cj-acc-avatar:hover {
+  transform: translateY(-2px);
+  background: var(--cj-glass-2);
+}
+.cj-acc-avatar.is-on {
+  background: var(--cj-glass-2);
+  box-shadow: 0 0 0 2px #fff, 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+.cj-acc-avatar:has(input:focus-visible) {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 3px;
+}
+.cj-acc-field {
+  display: grid;
+  gap: 0;
+}
+#root .cj-acc .cj-acc-input {
+  font-size: 16px; /* no zoom on iOS */
+}
+.cj-acc-field .cj-acc-hint {
+  margin-top: 6px;
+}
+
+/* "What does a guest miss out on?" */
+.cj-acc-why {
+  border-radius: var(--cj-r-card);
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ring);
+}
+#root .cj-acc .cj-acc-why summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 14px;
+  color: var(--cj-text-strong);
+  font: 600 13px/1.3 var(--cj-font);
+  list-style: none;
+  cursor: pointer;
+}
+.cj-acc-why summary::-webkit-details-marker {
+  display: none;
+}
+.cj-acc-why__chev {
+  flex: none;
+  opacity: 0.6;
+  transition: transform var(--cj-dur) var(--cj-ease);
+}
+.cj-acc-why[open] .cj-acc-why__chev {
+  transform: rotate(180deg);
+}
+.cj-acc-compare {
+  width: 100%;
+  margin: 0 0 6px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+#root .cj-acc .cj-acc-compare :is(th, td) {
+  padding: 9px 14px;
+  border-top: 1px solid var(--cj-line);
+  color: var(--cj-text-dim);
+  font: 500 12px/1.35 var(--cj-font);
+  text-align: center;
+}
+#root .cj-acc .cj-acc-compare thead th {
+  border-top: 0;
+  color: var(--cj-text-faint);
+  font-weight: 600;
+}
+#root .cj-acc .cj-acc-compare tbody th {
+  color: var(--cj-text);
+  text-align: left;
+}
+#root .cj-acc .cj-acc-compare .is-member {
+  color: var(--cj-text-strong);
+}
+.cj-acc-compare__note {
+  white-space: nowrap;
+}
+.cj-acc-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+.cj-acc-mark.is-yes {
+  color: var(--cj-ink);
+  background: var(--cj-live);
+}
+.cj-acc-mark.is-no {
+  color: var(--cj-text-faint);
+  background: var(--cj-glass-2);
+}
+#root .cj-acc .cj-acc-legal {
+  margin: 0;
+  color: var(--cj-text-faint);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+}
+#root .cj-acc .cj-acc-legal a {
+  color: var(--cj-text-dim);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* offline + skeleton */
+.cj-acc-offline {
+  justify-items: center;
+  text-align: center;
+}
+.cj-acc-offline__icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+}
+.cj-acc-form--skel {
+  gap: 14px;
+}
+#root .cj-acc .cj-acc-skel {
+  display: block;
+  height: 14px;
+}
+#root .cj-acc .cj-acc-skel--h {
+  width: 60%;
+  height: 24px;
+}
+#root .cj-acc .cj-acc-skel--btn {
+  height: 44px;
+}
+#root .cj-acc .cj-acc-skel--line {
+  width: 40%;
+}
+#root .cj-acc .cj-acc-skel--input {
+  height: 44px;
+  border-radius: var(--cj-r-card);
+}
+
+/* ==========================================================================
+   Join a table: the code card with big calm digits in glass cells
+   ========================================================================== */
+.cj-acc--join .cj-acc-stage {
+  width: min(100%, 560px);
+}
+#root .cj-acc .sr-ticket {
+  gap: 12px;
+  padding: 26px 24px 18px;
+}
+#root .cj-acc .sr-ticket__title {
+  margin: 0;
+  color: var(--cj-text-strong);
+  font: 600 18px/1.3 var(--cj-font);
+  text-align: center;
+}
+#root .cj-acc .sr-ticket__hint {
+  margin: 0 auto;
+  max-width: 44ch;
+  color: var(--cj-text-dim);
+  font-size: 13px;
+  line-height: 1.55;
+  text-align: center;
+}
+#root .cj-acc .sr-ticket__status {
+  min-height: 22px;
+  color: var(--cj-text-dim);
+  font-size: 13px;
+  text-align: center;
+}
+#root .cj-acc :is(.sr-good, .sr-warn, .sr-bad, .sr-muted) {
+  font-weight: 500;
+}
+#root .cj-acc .sr-good {
+  color: var(--cj-live);
+}
+#root .cj-acc .sr-warn {
+  color: var(--cj-gold);
+}
+#root .cj-acc .sr-bad {
+  color: #ffc2c2;
+}
+
+/* CodeInput (.jc): glass cells, white digits */
+#root .cj-acc .jc__boxes {
+  gap: 10px;
+}
+#root .cj-acc .jc__group {
+  gap: 8px;
+}
+#root .cj-acc .jc__sep {
+  width: 10px;
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.3);
+}
+#root .cj-acc .jc__box {
+  border: 0;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  color: var(--cj-text-strong);
+  font: 600 clamp(26px, 7vw, 36px) / 1 var(--cj-font);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+  transition: box-shadow var(--cj-dur) var(--cj-ease), background-color var(--cj-dur) var(--cj-ease);
+}
+#root .cj-acc .jc__box.has-char {
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+}
+#root .cj-acc .jc.is-focused .jc__box.is-active {
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.85), 0 0 24px rgba(255, 255, 255, 0.08);
+}
+#root .cj-acc .jc--checking .jc__box {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+#root .cj-acc .jc--ok .jc__box {
+  box-shadow: inset 0 0 0 1px rgba(107, 227, 138, 0.6);
+}
+#root .cj-acc .jc--error .jc__box {
+  box-shadow: inset 0 0 0 1px rgba(255, 107, 107, 0.65);
+}
+#root .cj-acc .jc__check {
+  color: var(--cj-ink);
+  background: var(--cj-live);
+}
+#root .cj-acc .jc__btn {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  color: var(--cj-text-strong);
+  font: 600 13px/1 var(--cj-font);
+}
+#root .cj-acc .jc__btn:hover:not(:disabled) {
+  background: var(--cj-glass-3);
+}
+#root .cj-acc .jc__btn--quiet {
+  background: transparent;
+  box-shadow: none;
+  color: var(--cj-text-dim);
+}
+#root .cj-acc .jc__msg {
+  color: var(--cj-text-dim);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* room preview, joining bar, blocked notes, your tables */
+#root .cj-acc :is(.sr-preview, .sr-blocked, .sr-mine__row, .jc-invite__paths) {
+  border: 0;
+  border-radius: var(--cj-r-panel);
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+}
+#root .cj-acc .sr-preview__cover {
+  border-radius: var(--cj-r-card);
+  box-shadow: var(--cj-shadow-card);
+}
+#root .cj-acc .sr-preview__game {
+  color: var(--cj-text-strong);
+  font: 700 20px/1.2 var(--cj-font);
+}
+#root .cj-acc :is(.sr-preview__host, .sr-preview__seats, .sr-preview__summary) {
+  color: var(--cj-text-dim);
+}
+#root .cj-acc .sr-preview__dots .is-on {
+  background: var(--cj-live);
+}
+#root .cj-acc .sr-joining {
+  border: 0;
+  border-radius: var(--cj-r-card);
+  background: rgba(0, 0, 0, 0.2);
+  box-shadow: var(--cj-ring);
+  color: var(--cj-text);
+}
+#root .cj-acc .sr-joining__bar {
+  background: rgba(255, 255, 255, 0.85);
+}
+#root .cj-acc .sr-blocked__icon {
+  border: 0;
+  border-radius: 50%;
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+}
+#root .cj-acc .sr-blocked__text b {
+  color: var(--cj-text-strong);
+  font-weight: 600;
+}
+#root .cj-acc .sr-blocked__text span {
+  color: var(--cj-text-dim);
+}
+#root .cj-acc .sr-mine__title {
+  margin: 8px 0 10px;
+  color: var(--cj-text-strong);
+  font: 600 18px/1.3 var(--cj-font);
+}
+#root .cj-acc .sr-mine__main b {
+  color: var(--cj-text-strong);
+  font-weight: 600;
+}
+#root .cj-acc .sr-mine__main small {
+  color: var(--cj-text-dim);
+}
+#root .cj-acc .sr-mine__go {
+  color: var(--cj-text-strong);
+  font-weight: 600;
+}
+#root .cj-acc .sr-join__alt {
+  margin: 4px 0 0;
+  color: var(--cj-text-dim);
+  font-size: 14px;
+  text-align: center;
+}
+
+/* "You're invited" landing */
+#root .cj-acc .jc-invite__title {
+  color: var(--cj-text-strong);
+  font: 700 20px/1.3 var(--cj-font);
+}
+#root .cj-acc .jc-invite__paths {
+  gap: 6px;
+  padding: 20px;
+}
+#root .cj-acc .jc-path__title {
+  color: var(--cj-text-strong);
+  font: 600 16px/1.3 var(--cj-font);
+}
+#root .cj-acc .jc-field {
+  border: 0;
+  border-radius: var(--cj-r-card);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: var(--cj-ring);
+}
+#root .cj-acc .jc-field:focus-visible {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
+#root .cj-acc .jc-field__label {
+  color: var(--cj-text-faint);
+  font: 600 12px/1.3 var(--cj-font);
+}
+#root .cj-acc .jc-pill--open {
+  border: 0;
+  color: var(--cj-live);
+  background: rgba(107, 227, 138, 0.12);
+  font: 600 11px/1 var(--cj-font);
+}
+#root .cj-acc .jc-invite__generic {
+  border: 1px dashed rgba(255, 255, 255, 0.22);
+  border-radius: var(--cj-r-card);
+  background: rgba(255, 255, 255, 0.03);
+}
+#root .cj-acc .jc-link {
+  color: var(--cj-text-strong);
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   Friend link (/f/:code): one glass card with a big round portrait
+   ========================================================================== */
+.cj-acc--friend .cj-acc-stage {
+  width: min(100%, 480px);
+  margin-top: clamp(0px, 4vh, 40px);
+}
+#root .cj-acc .sc-link {
+  gap: 12px;
+  padding: 36px 26px 28px;
+}
+#root .cj-acc .sc-link__ring {
+  padding: 6px;
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-shadow-card), inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+#root .cj-acc .sc-link--friends .sc-link__ring {
+  box-shadow: 0 0 0 2px rgba(107, 227, 138, 0.6), var(--cj-shadow-card);
+}
+#root .cj-acc .sc-link__check {
+  color: var(--cj-ink);
+  background: var(--cj-live);
+  box-shadow: 0 0 0 4px rgba(14, 16, 15, 0.9);
+}
+#root .cj-acc .sc-link__title {
+  color: var(--cj-text-strong);
+  font: 700 clamp(24px, 2.4vw, 30px) / 1.2 var(--cj-font);
+  letter-spacing: -0.01em;
+}
+#root .cj-acc .sc-link__who strong {
+  color: var(--cj-text-strong);
+  font-weight: 600;
+}
+#root .cj-acc .sc-link__body {
+  color: var(--cj-text-dim);
+  font-size: 15px;
+  line-height: 1.6;
+}
+#root .cj-acc .sc-ticket {
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  color: var(--cj-text-strong);
+  font: 600 13px/1 var(--cj-font);
+  letter-spacing: 0.08em;
+}
+#root .cj-acc .sc-relchip {
+  border: 0;
+  background: var(--cj-glass-2);
+  color: var(--cj-text-dim);
+  font: 600 12px/1 var(--cj-font);
+}
+#root .cj-acc .sc-relchip--friends {
+  color: var(--cj-live);
+}
+#root .cj-acc .sc-relchip--incoming,
+#root .cj-acc .sc-relchip--outgoing {
+  color: var(--cj-gold);
+}
+#root .cj-acc .sc-link__gateicon {
+  border: 0;
+  border-radius: 50%;
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+}
+#root .cj-acc .sc-link__actions > .hub-btn {
+  flex: 1 1 160px;
+  max-width: 220px;
+}
+#root .cj-acc .sc-state {
+  padding: 32px 24px;
+}
+#root .cj-acc .sc-state__icon {
+  border: 0;
+  border-radius: 50%;
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+}
+#root .cj-acc .sc-state__title {
+  color: var(--cj-text-strong);
+  font: 700 22px/1.25 var(--cj-font);
+}
+#root .cj-acc .sc-state__text {
+  color: var(--cj-text-dim);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+/* phones */
+@media (max-width: 640px) {
+  .cj-acc {
+    padding-top: 76px;
+  }
+  .cj-acc-form,
+  .cj-acc-welcome {
+    padding: 22px 18px;
+  }
+  .cj-acc-avatars__grid {
+    gap: 6px;
+  }
+  #root .cj-acc .sr-ticket {
+    padding: 22px 14px 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cj-acc :is(.cj-acc-avatar, .cj-acc-why__chev, .jc__box) {
+    transition: none !important;
+  }
+}
+:root[data-motion='reduced'] .cj-acc :is(.cj-acc-avatar, .cj-acc-why__chev, .jc__box) {
+  transition: none !important;
+}
+
+@media (max-width: 899px) {
+  .cj-acc-welcome {
+    border-bottom: 1px solid var(--cj-line);
+  }
+  .cj-acc-welcome__logo {
+    display: none; /* the top bar already carries the logo on phones */
+  }
+  .cj-acc-welcome__brand {
+    justify-content: flex-end;
+    margin-bottom: 0;
+  }
+}
+
+#root .cj-acc .sr-ticket__status {
+  display: flex;
+  justify-content: center;
+}
+#root .cj-acc .jc__tools {
+  justify-content: center;
+}
+#root .cj-acc .sr-preview__dots i.is-on {
+  border-color: var(--cj-live);
+  background: var(--cj-live);
+  box-shadow: none;
+}
+#root .cj-acc .mp-chip {
+  border: 0;
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  color: var(--cj-text-strong);
+}

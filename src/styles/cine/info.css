@@ -1,0 +1,467 @@
+/* ==========================================================================
+   Info pages in the cine language (docs/CINE_UI.md): About, Help, Privacy, Terms (LegalPage) and the 404.
+   A page head over the blurred ambient field, a quiet table of contents, and the text in glass sections set at a
+   readable 15px / 1.7. Prefix: cj-info-. Legacy xl-* / hub-nf* classes are re-skinned here.
+   ========================================================================== */
+
+#root .cj-info.hub-page {
+  position: relative;
+  gap: 0;
+  min-height: 100vh;
+  padding: clamp(84px, 9vw, 112px) var(--cj-gutter) 72px;
+  color: var(--cj-text);
+  font-family: var(--cj-font);
+  animation: none; /* a transform on this box would trap the fixed ambient field */
+}
+.cj-info-ambient {
+  --cj-amb-img: url('/art/cinematic/word.webp');
+  --cj-amb-op: 0.34;
+  --cj-amb-hue: 50deg;
+}
+
+/* ---------- page head ---------- */
+#root .cj-info .xl-hero {
+  overflow: visible;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+#root .cj-info .xl-hero::after {
+  display: none;
+}
+#root .cj-info .cj-info-eyebrow {
+  margin: 0 0 10px;
+  color: var(--cj-text-faint);
+  font: 600 13px/1.3 var(--cj-font);
+  letter-spacing: 0.01em;
+  text-transform: none;
+}
+#root .cj-info .cj-info-eyebrow::before {
+  display: none;
+}
+#root .cj-info .cj-info-title {
+  max-width: 22ch;
+  font: 700 clamp(32px, 3.1vw, 44px) / 1.1 var(--cj-font);
+  letter-spacing: -0.02em;
+  color: var(--cj-text-strong);
+  text-wrap: balance;
+}
+#root .cj-info .cj-info-lede {
+  max-width: 60ch;
+  margin-top: 12px;
+  color: var(--cj-text-dim);
+  font-size: 15px;
+  line-height: 1.6;
+}
+#root .cj-info .xl-meta {
+  margin-top: 16px;
+}
+#root .cj-info .xl-meta .st-chip {
+  min-height: 30px;
+  padding: 0 12px;
+}
+
+/* ---------- layout ---------- */
+#root .cj-info .xl-layout {
+  margin-top: clamp(28px, 4vw, 44px);
+}
+@media (min-width: 900px) {
+  #root .cj-info .xl-layout {
+    grid-template-columns: 200px minmax(0, 1fr);
+    gap: clamp(28px, 4vw, 56px);
+  }
+  #root .cj-info .xl-toc {
+    top: 104px;
+  }
+}
+#root .cj-info .xl-toc__title {
+  color: var(--cj-text-faint);
+  font: 600 12px/1.3 var(--cj-font);
+}
+#root .cj-info .xl-toc__list a {
+  min-height: 36px;
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ring);
+  color: var(--cj-text-dim);
+  font: 500 13px/1.2 var(--cj-font);
+  transition: background-color var(--cj-dur) var(--cj-ease), color var(--cj-dur) var(--cj-ease);
+}
+#root .cj-info .xl-toc__list a:hover {
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+}
+#root .cj-info .xl-toc__list a.is-active {
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  box-shadow: none;
+}
+@media (min-width: 900px) {
+  #root .cj-info .xl-toc__list a {
+    background: transparent;
+    box-shadow: none;
+    white-space: normal;
+  }
+  #root .cj-info .xl-toc__list a.is-active {
+    color: var(--cj-text-strong);
+    background: var(--cj-glass-2);
+  }
+}
+
+/* ---------- sections: glass panels, readable column ---------- */
+#root .cj-info .xl-body {
+  display: grid;
+  gap: 16px;
+  max-width: 820px;
+}
+#root .cj-info .xl-body--wide {
+  max-width: 940px;
+}
+#root .cj-info .cj-info-section,
+#root .cj-info .cj-info-section:first-child {
+  padding: clamp(20px, 2.4vw, 28px);
+  border: 0;
+  border-radius: var(--cj-r-panel);
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+  scroll-margin-top: 96px;
+}
+#root .cj-info .xl-h2 {
+  margin: 0 0 12px;
+  color: var(--cj-text-strong);
+  font: 600 20px/1.3 var(--cj-font);
+  letter-spacing: -0.01em;
+}
+#root .cj-info .xl-anchor {
+  color: var(--cj-text-faint);
+}
+#root .cj-info .xl-prose {
+  color: var(--cj-text);
+  font-size: 15px;
+  line-height: 1.7;
+}
+#root .cj-info .xl-prose :is(p, li, span, td, th) {
+  font-size: inherit;
+}
+#root .cj-info .xl-prose :is(strong, b) {
+  color: var(--cj-text-strong);
+  font-weight: 600;
+}
+#root .cj-info .xl-prose li::marker {
+  color: var(--cj-text-faint);
+  font-weight: 600;
+}
+#root .cj-info .xl-prose a:not(.hub-btn) {
+  color: var(--cj-text-strong);
+  font-weight: 500;
+  text-decoration-color: rgba(255, 255, 255, 0.4);
+}
+#root .cj-info .xl-prose h3 {
+  color: var(--cj-text-strong);
+  font: 600 16px/1.35 var(--cj-font);
+}
+#root .cj-info .xl-prose code {
+  border: 0;
+  background: var(--cj-glass-2);
+  color: var(--cj-text-strong);
+}
+#root .cj-info :is(.xl-note, .xl-contact, .xl-tablewrap) {
+  border: 0;
+  border-radius: var(--cj-r-card);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: var(--cj-ring);
+}
+#root .cj-info .xl-table :is(th, td) {
+  border-color: var(--cj-line);
+}
+#root .cj-info .xl-table th {
+  color: var(--cj-text-strong);
+  font-weight: 600;
+}
+
+/* About: steps, game tiles, links */
+#root .cj-info .xl-step {
+  border: 0;
+  border-radius: var(--cj-r-card);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: var(--cj-ring);
+}
+#root .cj-info .xl-steps {
+  max-width: none;
+}
+#root .cj-info .xl-step:nth-child(n) {
+  margin-top: 0;
+}
+#root .cj-info .xl-step__icon {
+  color: var(--cj-text-strong);
+}
+#root .cj-info .xl-step h3 {
+  font-weight: 600;
+}
+#root .cj-info .xl-gtile {
+  border: 0;
+  border-radius: var(--cj-r-card);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: var(--cj-ring);
+  transition: background-color var(--cj-dur) var(--cj-ease), transform var(--cj-dur) var(--cj-ease);
+}
+#root .cj-info a.xl-gtile:hover {
+  background: var(--cj-glass-2);
+  transform: translateY(-2px);
+}
+#root .cj-info .xl-gtile--soon {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.02);
+}
+#root .cj-info .xl-gicon {
+  border-radius: var(--cj-r-card);
+  box-shadow: var(--cj-shadow-card);
+}
+#root .cj-info .xl-gtile__name {
+  color: var(--cj-text-strong);
+  font: 600 16px/1.25 var(--cj-font);
+}
+#root .cj-info .st-live {
+  background: var(--cj-live);
+}
+#root .cj-info .xl-links a {
+  color: var(--cj-text-strong);
+}
+#root .cj-info .xl-links span {
+  color: var(--cj-text-dim);
+}
+
+/* Help: search, quick chips, FAQ rows */
+#root .cj-info .xl-helphero {
+  margin-top: 20px;
+}
+#root .cj-info .xl-search input {
+  min-height: 50px;
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: var(--cj-ring);
+  color: var(--cj-text-strong);
+  font: 500 16px/1.2 var(--cj-font);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+}
+#root .cj-info .xl-search input::placeholder {
+  color: var(--cj-text-faint);
+}
+#root .cj-info .xl-search input:focus,
+#root .cj-info .xl-search input:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
+#root .cj-info .xl-search__icon {
+  z-index: 1;
+  color: var(--cj-text-faint);
+}
+#root .cj-info .xl-search {
+  isolation: isolate;
+}
+#root .cj-info .xl-search__count {
+  color: var(--cj-text-faint);
+}
+#root .cj-info .xl-quick__chip {
+  min-height: 32px;
+  text-decoration: none;
+}
+#root .cj-info .xl-quick__chip:hover {
+  background: var(--cj-glass-3);
+  transform: none;
+}
+#root .cj-info .xl-faq {
+  gap: 8px;
+}
+#root .cj-info .xl-faq__item {
+  border: 0;
+  border-radius: var(--cj-r-card);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: var(--cj-ring);
+}
+#root .cj-info .xl-faq__item.is-open {
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+#root .cj-info .xl-faq__q button {
+  min-height: 54px;
+  border-radius: var(--cj-r-card);
+  color: var(--cj-text-strong);
+  font: 600 15px/1.35 var(--cj-font);
+}
+#root .cj-info .xl-faq__chev {
+  color: var(--cj-text-dim);
+}
+#root .cj-info .xl-faq__panelin .xl-prose {
+  font-size: 15px;
+}
+#root .cj-info :is(.xl-empty, .xl-still) {
+  border: 0;
+  border-radius: var(--cj-r-panel);
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ring);
+}
+#root .cj-info .xl-still__h {
+  color: var(--cj-text-strong);
+  font: 600 18px/1.3 var(--cj-font);
+}
+#root .cj-info .xl-still p {
+  color: var(--cj-text-dim);
+  font-size: 15px;
+  line-height: 1.6;
+}
+#root .cj-info .xl-still a {
+  color: var(--cj-text-strong);
+}
+
+/* ==========================================================================
+   404: a dashed empty state with search and pills
+   ========================================================================== */
+#root .cj-nf.hub-page {
+  position: relative;
+  min-height: 100vh;
+  padding: clamp(84px, 9vw, 112px) var(--cj-gutter) 72px;
+  color: var(--cj-text);
+  font-family: var(--cj-font);
+  animation: none;
+}
+.cj-nf-ambient {
+  --cj-amb-img: url('/art/cinematic/ludo.webp');
+  --cj-amb-op: 0.34;
+  --cj-amb-hue: 50deg;
+}
+#root .cj-nf .cj-nf-empty {
+  max-width: 620px;
+  margin-top: clamp(8px, 4vh, 48px);
+  gap: 14px;
+}
+.cj-nf-art {
+  position: relative;
+}
+.cj-nf-art::before {
+  content: '';
+  position: absolute;
+  top: -11px;
+  left: -1px;
+  width: 92px;
+  height: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.28);
+  border-bottom: 0;
+  border-radius: 10px 14px 0 0;
+}
+#root .cj-nf .cj-nf-code {
+  color: var(--cj-text-strong);
+  font: 700 54px/1 var(--cj-font);
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+}
+#root .cj-nf .cj-empty__body code {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--cj-glass-2);
+  color: var(--cj-text-strong);
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+.cj-nf-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  max-width: 440px;
+  margin-top: 6px;
+  padding: 4px;
+  border-radius: var(--cj-r-pill);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: var(--cj-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+}
+.cj-nf-search:focus-within {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
+.cj-nf-search__icon {
+  flex: none;
+  margin-left: 12px;
+  color: var(--cj-text-faint);
+}
+#root .cj-nf .cj-nf-search__input {
+  flex: 1;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--cj-text-strong);
+  font: 500 16px/1.2 var(--cj-font);
+}
+.cj-nf-search__input:focus {
+  outline: none;
+}
+.cj-nf-search__input::placeholder {
+  color: var(--cj-text-faint);
+}
+.cj-nf-try {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+#root .cj-nf .cj-nf-try__label {
+  color: var(--cj-text-faint);
+  font: 600 12px/1 var(--cj-font);
+}
+#root .cj-nf .cj-nf-try a {
+  text-decoration: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #root .cj-info :is(.xl-toc__list a, .xl-gtile) {
+    transition: none;
+  }
+}
+:root[data-motion='reduced'] #root .cj-info :is(.xl-toc__list a, .xl-gtile) {
+  transition: none;
+}
+.cj-nf-search {
+  box-sizing: border-box;
+  max-width: min(440px, 100%);
+}
+#root .cj-nf .cj-nf-empty {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+/* ==========================================================================
+   Wide screens: the text column fills (or is centred in) the page column instead of hugging the table of contents
+   ========================================================================== */
+@media (min-width: 900px) {
+  #root .cj-info .xl-body,
+  #root .cj-info .xl-body--wide {
+    max-width: none;
+  }
+  #root .cj-info .xl-still {
+    max-width: none;
+  }
+  #root .cj-info .xl-helphero {
+    max-width: 760px;
+  }
+}
+@media (min-width: 1500px) {
+  /* contents | text | (an empty track the width of the contents): the text sits in the middle of the screen */
+  #root .cj-info .xl-layout {
+    grid-template-columns: 200px minmax(0, 960px) 200px;
+    justify-content: space-between;
+  }
+}

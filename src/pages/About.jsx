@@ -73,9 +73,8 @@ export default function About() {
       title: 'How it works',
       body: (
         <ol className="xl-steps">
-          {STEPS.map((s, i) => (
+          {STEPS.map((s) => (
             <li key={s.title} className="xl-step">
-              <span className="xl-step__n" aria-hidden="true">{i + 1}</span>
               <HubIcon name={s.icon} size={24} className="xl-step__icon" />
               <h3>{s.title}</h3>
               <p>{s.text}</p>

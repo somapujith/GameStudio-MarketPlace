@@ -1,0 +1,441 @@
+/* ==========================================================================
+   Cine bridge: re-skins the shared legacy classes (ho-*, hub-btn, sc-*, fa-*, bl-*, st-*) inside a `.cj-scope` root,
+   so the Adda, Login, Join, Friend link and the info pages read as the cine design language (docs/CINE_UI.md) while the
+   components keep their markup, classes and tests.
+   Selectors start with `#root .cj-scope` on purpose: they must beat the street-poster / publisher layers whatever order
+   the lazy chunks load in. Only colours, type, radii, shadows and glass change here; layout stays with the components.
+   ========================================================================== */
+
+/* ---------- legacy tokens, remapped to cine ---------- */
+.cj-scope {
+  --font-poster: var(--cj-font);
+  --font-display: var(--cj-font);
+  --font-body: var(--cj-font);
+  --font-hub-display: var(--cj-font);
+  --font-hub-body: var(--cj-font);
+  --brand-orange: #f2f2f2;
+  --brand-paper: #ffffff;
+  --brand-charcoal: #0a0a0b;
+  --hub-text: var(--cj-text-strong);
+  --hub-dim: var(--cj-text-dim);
+  --hub-faint: var(--cj-text-faint);
+  --text: var(--cj-text-strong);
+  --text-dim: var(--cj-text-dim);
+  --text-faint: var(--cj-text-faint);
+  --hub-bg: var(--cj-bg);
+  --hub-bg-2: var(--cj-bg-2);
+  --hub-surface: rgba(255, 255, 255, 0.05);
+  --hub-surface-2: rgba(255, 255, 255, 0.08);
+  --hub-surface-3: rgba(255, 255, 255, 0.13);
+  --surface: rgba(255, 255, 255, 0.05);
+  --hub-field: rgba(255, 255, 255, 0.05);
+  --hub-glass: rgba(16, 16, 18, 0.62);
+  --hub-glass-2: rgba(16, 16, 18, 0.8);
+  --hub-line: var(--cj-line);
+  --hub-line-2: var(--cj-line-2);
+  --line: var(--cj-line);
+  --hub-brand: #f2f2f2;
+  --hub-brand-2: #ffffff;
+  --hub-brand-ink: #ffffff;
+  --hub-brand-soft: rgba(255, 255, 255, 0.08);
+  --hub-brand-fill: #f2f2f2;
+  --hub-brand-glow: transparent;
+  --hub-on-brand: var(--cj-ink);
+  --hub-focus: rgba(255, 255, 255, 0.85);
+  --hub-good: var(--cj-live);
+  --good: var(--cj-live);
+  --hub-gold: var(--cj-gold);
+  --hub-bad: var(--cj-danger);
+  --hub-bad-ink: #ffb3b3;
+  --hub-warn: var(--cj-gold);
+  --hub-r-s: 10px;
+  --hub-r-m: 12px;
+  --hub-r-l: 16px;
+  --hub-r-xl: 16px;
+  --st-radius-card: 16px;
+  --st-radius-tile: 12px;
+  --st-radius-chip: 999px;
+  --hub-shadow-s: none;
+  --hub-shadow: var(--cj-shadow-card);
+  --hub-skel: rgba(255, 255, 255, 0.06);
+  --hub-skel-hi: rgba(255, 255, 255, 0.12);
+  color: var(--cj-text);
+  font-family: var(--cj-font);
+}
+
+/* calm type everywhere inside: no poster capitals, no wide tracking */
+#root .cj-scope :is(h1, h2, h3, h4, legend, summary, label, button, a, p, span, small, b, strong, dt, dd, th, td, li):not([class*='cj-']) {
+  font-family: var(--cj-font);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* ---------- buttons: white pill (primary), glass pill (the rest) ---------- */
+#root .cj-scope :is(.ho-btn, .hub-btn) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  font: 600 14px/1 var(--cj-font);
+  letter-spacing: 0.01em;
+  text-transform: none;
+  white-space: nowrap;
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+  transform: none;
+  transition: transform var(--cj-dur) var(--cj-ease), background-color var(--cj-dur) var(--cj-ease), opacity var(--cj-dur) var(--cj-ease);
+}
+#root .cj-scope :is(.ho-btn, .hub-btn):hover:not(:disabled, [aria-disabled='true']) {
+  background: var(--cj-glass-3);
+  color: var(--cj-text-strong);
+  box-shadow: var(--cj-ring);
+  transform: none;
+}
+#root .cj-scope :is(.ho-btn, .hub-btn):active:not(:disabled, [aria-disabled='true']) {
+  transform: scale(0.97);
+  box-shadow: var(--cj-ring);
+}
+#root .cj-scope :is(.ho-btn--primary, .hub-btn--primary, .hub-btn--accent),
+#root .cj-scope :is(.ho-btn--primary, .hub-btn--primary, .hub-btn--accent):hover:not(:disabled, [aria-disabled='true']) {
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  box-shadow: none;
+}
+#root .cj-scope :is(.ho-btn--primary, .hub-btn--primary, .hub-btn--accent):hover:not(:disabled, [aria-disabled='true']) {
+  background: #fff;
+}
+#root .cj-scope :is(.ho-btn, .hub-btn):is(:disabled, [aria-disabled='true'], .is-disabled) {
+  opacity: 0.45;
+  box-shadow: var(--cj-ring);
+  cursor: not-allowed;
+}
+#root .cj-scope :is(.ho-btn--primary, .hub-btn--primary):is(:disabled, [aria-disabled='true']) {
+  box-shadow: none;
+}
+#root .cj-scope :is(.ho-btn--sm, .hub-btn--sm) {
+  min-height: 34px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+#root .cj-scope :is(.ho-btn--lg, .hub-btn--lg) {
+  min-height: 52px;
+  padding: 0 28px;
+  font-size: 16px;
+}
+#root .cj-scope :is(.ho-btn--block, .hub-btn--block) {
+  width: 100%;
+}
+#root .cj-scope :is(.ho-btn, .hub-btn) svg {
+  flex: none;
+}
+#root .cj-scope :is(.ho-iconbtn, .sc-iconbtn) {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  transition: background-color var(--cj-dur) var(--cj-ease);
+}
+#root .cj-scope :is(.ho-iconbtn, .sc-iconbtn):hover:not(:disabled) {
+  background: var(--cj-glass-3);
+}
+
+/* ---------- cards: glass panels ---------- */
+#root .cj-scope :is(.ho-card, .sc-card, .st-card) {
+  padding: 20px;
+  border: 0;
+  border-radius: var(--cj-r-panel);
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+}
+#root .cj-scope :is(.ho-card__head, .sc-card__head) {
+  margin: 0 0 14px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+#root .cj-scope :is(.ho-h2, .sc-card__title, .fa-title) {
+  margin: 0;
+  color: var(--cj-text-strong);
+  font: 600 18px/1.3 var(--cj-font);
+}
+#root .cj-scope :is(.ho-count, .sc-count) {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  height: 24px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  background: var(--cj-glass-2);
+  color: var(--cj-text-strong);
+  font: 600 12px/1 var(--cj-font);
+  box-shadow: none;
+}
+#root .cj-scope .sc-count--warn {
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+}
+
+/* ---------- text bits ---------- */
+#root .cj-scope :is(.ho-muted, .sa-muted, .sr-muted, .ho-help, .fa-hint, .fa-lede, .bl-note, .bl-setting__hint) {
+  color: var(--cj-text-dim);
+}
+#root .cj-scope :is(.st-eyebrow, .ho-eyebrow, .ho-field__label, .fa-h3, .bl-sub, .sc-add__label, .lp-label) {
+  color: var(--cj-text-faint);
+  font: 600 12px/1.3 var(--cj-font);
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+#root .cj-scope :is(.st-link, .sr-join__alt a) {
+  color: var(--cj-text-strong);
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.35);
+  text-underline-offset: 4px;
+}
+#root .cj-scope .hd-handle {
+  color: var(--cj-text-faint);
+  font: 500 12px/1.3 var(--cj-font);
+}
+#root .cj-scope :is(.st-chip, .fa-chip) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  color: var(--cj-text-strong);
+  font: 500 12px/1 var(--cj-font);
+}
+#root .cj-scope .fa-chip--good {
+  color: var(--cj-live);
+}
+
+/* ---------- inputs ---------- */
+#root .cj-scope :is(.ho-input, .sc-add__input, .fa-search__input, .lp-link__input) {
+  min-height: 44px;
+  border: 0;
+  border-radius: var(--cj-r-card);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: var(--cj-ring);
+  color: var(--cj-text-strong);
+  font: 500 14px/1.2 var(--cj-font);
+  letter-spacing: normal;
+}
+#root .cj-scope :is(.ho-input, .sc-add__input, .fa-search__input, .lp-link__input)::placeholder {
+  color: var(--cj-text-faint);
+  letter-spacing: normal;
+}
+#root .cj-scope :is(.ho-input, .sc-add__input, .fa-search__input, .lp-link__input):focus,
+#root .cj-scope :is(.ho-input, .sc-add__input, .fa-search__input, .lp-link__input):focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
+#root .cj-scope .sc-add__input:not(.hd-lower) {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+#root .cj-scope .sc-add__input:placeholder-shown {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* ---------- notes, banners, errors ---------- */
+#root .cj-scope :is(.ho-banner, .sc-note) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: var(--cj-r-card);
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ring);
+  color: var(--cj-text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+#root .cj-scope .ho-banner--warn {
+  box-shadow: inset 0 0 0 1px rgba(245, 198, 107, 0.35);
+}
+#root .cj-scope .ho-banner strong {
+  color: var(--cj-text-strong);
+}
+#root .cj-scope :is(.ho-inline-error, .sc-add__error, .sc-note--bad, .fa-state--bad) {
+  color: #ffc2c2;
+}
+
+/* ---------- skeletons ---------- */
+#root .cj-scope :is(.ho-skel, .st-skel) {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.05));
+  background-size: 200% 100%;
+  border-radius: var(--cj-r-pill);
+}
+#root .cj-scope .ho-skel--circle {
+  border-radius: 50%;
+}
+
+/* ---------- presence dots and status lines ---------- */
+#root .cj-scope :is(.xs-dot.is-on, .ho-dot.is-on) {
+  background: var(--cj-live);
+  box-shadow: 0 0 0 2px var(--cj-bg), 0 0 10px rgba(107, 227, 138, 0.7);
+}
+#root .cj-scope :is(.xs-dot, .ho-dot):not(.is-on) {
+  background: rgba(255, 255, 255, 0.35);
+  box-shadow: 0 0 0 2px var(--cj-bg);
+}
+#root .cj-scope .pr-status {
+  font-weight: 500;
+  color: var(--cj-text-dim);
+}
+#root .cj-scope :is(.pr-status--on, .pr-status--lobby, .pr-status--play) {
+  color: var(--cj-live);
+}
+
+/* ---------- status panel (gates, errors) as a calm glass card ---------- */
+#root .cj-scope .ho-status {
+  width: min(100%, 440px);
+  gap: 12px;
+  padding: 32px 24px;
+  border: 0;
+  border-radius: var(--cj-r-sheet);
+  background: rgba(16, 16, 18, 0.5);
+  box-shadow: var(--cj-ring), var(--cj-shadow-card);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+}
+#root .cj-scope .ho-status__icon {
+  width: 56px;
+  height: 56px;
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  font-family: var(--cj-font);
+}
+#root .cj-scope .ho-status__title {
+  color: var(--cj-text-strong);
+  font: 700 22px/1.25 var(--cj-font);
+}
+#root .cj-scope .ho-status__body {
+  color: var(--cj-text-dim);
+  font-size: 15px;
+  line-height: 1.6;
+}
+#root .cj-scope .ho-loading {
+  color: var(--cj-text-dim);
+}
+
+/* ---------- sheet (bottom sheet on phones, centred glass card from 640px) ---------- */
+#root .cj-scope .ho-modal {
+  background: rgba(0, 0, 0, 0.55);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+#root .cj-scope .ho-sheet {
+  border: 0;
+  border-radius: var(--cj-r-sheet) var(--cj-r-sheet) 0 0;
+  background: linear-gradient(180deg, rgba(30, 36, 33, 0.94), rgba(14, 16, 15, 0.96));
+  box-shadow: var(--cj-shadow-pop), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+  color: var(--cj-text);
+}
+@media (min-width: 640px) {
+  #root .cj-scope .ho-sheet {
+    border-radius: var(--cj-r-sheet);
+  }
+}
+#root .cj-scope .ho-sheet__grab {
+  background: rgba(255, 255, 255, 0.25);
+}
+#root .cj-scope .ho-modal__title {
+  color: var(--cj-text-strong);
+  font: 700 20px/1.25 var(--cj-font);
+}
+#root .cj-scope .sc-act {
+  border: 0;
+  border-radius: var(--cj-r-card);
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ring);
+}
+#root .cj-scope .sc-act:hover:not(:disabled) {
+  background: var(--cj-glass-2);
+}
+#root .cj-scope .sc-act__icon {
+  border-radius: 50%;
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+}
+#root .cj-scope .sc-act.is-primary {
+  background: var(--cj-glass-2);
+}
+#root .cj-scope .sc-act.is-primary .sc-act__icon {
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+}
+#root .cj-scope .sc-act.is-danger {
+  background: transparent;
+}
+#root .cj-scope .sc-act.is-danger :is(strong, .sc-act__icon) {
+  color: #ffb3b3;
+}
+#root .cj-scope .sc-act__text strong {
+  font-weight: 600;
+  color: var(--cj-text-strong);
+}
+
+/* ---------- ambient backdrop with a blurred piece of our own game art (cinejoy blurs a poster the same way) ----------
+   Use: <div class="cj-ambient cj-amb-art" style="--cj-amb-img: url(...)" aria-hidden="true" />. The cine.css glow stays
+   underneath; the art is a soft colour field, never readable. */
+.cj-amb-art {
+  overflow: hidden;
+}
+.cj-amb-art::before,
+.cj-amb-art::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+}
+.cj-amb-art::before {
+  inset: -12%;
+  background: var(--cj-amb-img, none) center / cover no-repeat;
+  filter: blur(64px) saturate(135%) hue-rotate(var(--cj-amb-hue, 0deg));
+  opacity: var(--cj-amb-op, 0.5);
+  transform: scale(1.1);
+}
+.cj-amb-art::after {
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(4, 18, 11, 0.15) 0%, rgba(4, 18, 11, 0.55) 55%, var(--cj-bg) 100%),
+    radial-gradient(120% 80% at 50% 0%, transparent 40%, rgba(4, 18, 11, 0.6) 100%);
+}
+
+/* ---------- reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  #root .cj-scope :is(.ho-btn, .hub-btn, .ho-iconbtn, .sc-act) {
+    transition: none;
+  }
+  #root .cj-scope :is(.ho-skel, .st-skel) {
+    animation: none;
+  }
+}
+:root[data-motion='reduced'] #root .cj-scope :is(.ho-btn, .hub-btn, .ho-iconbtn, .sc-act) {
+  transition: none;
+}

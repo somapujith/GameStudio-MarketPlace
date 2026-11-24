@@ -3,9 +3,12 @@ import { useLocation } from 'react-router-dom';
 import useDocTitle from '@/platform/game/useDocTitle.js';
 import { BRAND } from '@/platform/brand.js';
 import '@/styles/x-legal.css';
+import '@/styles/cine.css';
+import '@/styles/cine/bridge.css';
+import '@/styles/cine/info.css';
 
 /**
- * Shared frame for About / Help / Privacy / Terms: hero, a table of contents (sticky column from 900 px, a scrolling
+ * Shared frame for About / Help / Privacy / Terms (cine look: page head over the ambient field, glass sections): hero, a table of contents (sticky column from 900 px, a scrolling
  * chip row on phones) and readable sections with anchored headings.
  *
  *   <LegalPage eyebrow title lead description meta={[...]} sections={[{ id, title, body }]} hero={node}>
@@ -19,11 +22,12 @@ export default function LegalPage({ eyebrow, title, docTitle, lead, description,
   useHashScroll();
 
   return (
-    <div className="hub-page xl-page">
-      <header className="xl-hero">
-        <p className="xl-eyebrow">{eyebrow}</p>
-        <h1 className="xl-h1">{title}</h1>
-        {lead ? <p className="xl-lead">{lead}</p> : null}
+    <div className="cj-scope cj-info hub-page xl-page">
+      <div className="cj-ambient cj-amb-art cj-info-ambient" aria-hidden="true" />
+      <header className="xl-hero cj-info-head">
+        <p className="xl-eyebrow cj-info-eyebrow">{eyebrow}</p>
+        <h1 className="xl-h1 cj-pagehead__title cj-info-title">{title}</h1>
+        {lead ? <p className="xl-lead cj-lede cj-info-lede">{lead}</p> : null}
         {meta.length ? (
           <ul className="xl-meta">
             {meta.map((m) => (
@@ -50,7 +54,7 @@ export default function LegalPage({ eyebrow, title, docTitle, lead, description,
 
         <div className={`xl-body${wide ? ' xl-body--wide' : ''}`}>
           {sections.map((s, i) => (
-            <section key={s.id} id={s.id} className="xl-section st-reveal" style={{ '--i': Math.min(i, 5) }} aria-labelledby={`${s.id}-h`}>
+            <section key={s.id} id={s.id} className="xl-section cj-info-section" style={{ '--i': Math.min(i, 5) }} aria-labelledby={`${s.id}-h`}>
               <h2 id={`${s.id}-h`} className="xl-h2">
                 {s.title}
                 <a className="xl-anchor" href={`#${s.id}`} aria-label={`Link to “${s.title}”`}>
