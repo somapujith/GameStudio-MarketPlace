@@ -149,6 +149,30 @@ export function MobileBar({ game, seats, host, busy, user, authLoading, panelRef
   );
 }
 
+/**
+ * Panel of a SOLO game (manifest `solo: true`): no table, code or sign-in, just "Play now". The game is its own static page,
+ * so this is a plain link (a full page load), not a router <Link>.
+ */
+export function SoloPanel({ game }) {
+  const players = playersLabel(game.players);
+  return (
+    <section className="gd-panel gd-panel--solo" aria-labelledby="gd-panel-h" data-tour="game-panel">
+      <h2 id="gd-panel-h" className="gd-panel__title">
+        Play {game.name}
+      </h2>
+      <p className="gd-panel__hint">
+        {players ? `${players}. ` : ''}No table, code or sign-in: it opens full screen in this browser.
+      </p>
+      <a href={paths.solo(game.id)} className="hub-btn hub-btn--accent hub-btn--lg hub-btn--block gd-panel__create" data-tour="game-create">
+        <HubIcon name="play" size={20} /> Play now
+      </a>
+      <div className="gd-panel__alt">
+        <ShareButton game={game} className="hub-btn hub-btn--ghost hub-btn--block" />
+      </div>
+    </section>
+  );
+}
+
 /** Coming-soon panel: Notify me (stored on this device only), play something else meanwhile, share. */
 export function SoonPanel({ game }) {
   const [notify, toggle] = useNotify(game.id);

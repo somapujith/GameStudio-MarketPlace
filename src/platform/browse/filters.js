@@ -4,6 +4,7 @@
 
 export const PLAYER_OPTIONS = [
   { id: 'any', label: 'Any' },
+  { id: '1', label: '1', min: 1, max: 1 },
   { id: '2', label: '2', min: 2, max: 2 },
   { id: '3', label: '3', min: 3, max: 3 },
   { id: '4', label: '4', min: 4, max: 4 },
@@ -180,7 +181,7 @@ export function activeChips(state, categories = []) {
   const out = [];
   if (state.cat !== 'all') out.push({ key: 'cat', label: categories.find((c) => c.id === state.cat)?.label ?? state.cat });
   const label = (opts, id) => opts.find((o) => o.id === id)?.label;
-  if (state.players !== 'any') out.push({ key: 'players', label: `${label(PLAYER_OPTIONS, state.players)} players` });
+  if (state.players !== 'any') out.push({ key: 'players', label: state.players === '1' ? '1 player' : `${label(PLAYER_OPTIONS, state.players)} players` });
   if (state.dur !== 'any') out.push({ key: 'dur', label: DURATION_OPTIONS.find((o) => o.id === state.dur)?.hint ?? state.dur });
   if (state.status !== 'any') out.push({ key: 'status', label: label(STATUS_OPTIONS, state.status) });
   return out;

@@ -96,7 +96,9 @@ export function sectionList(game, { live = true } = {}) {
   if (live && hasMaps(game)) out.push({ id: 'gd-maps', label: 'Maps' });
   if (live && howToPlaySteps(game).length) out.push({ id: 'gd-how', label: 'How to play' });
   if (galleryItems(game).length) out.push({ id: 'gd-gallery', label: 'Gallery' });
-  if (live) {
+  if (live && game.solo && Array.isArray(game.stats)) out.push({ id: 'gd-board', label: 'Leaderboard' }); // a solo game that saves scores
+  if (live && !game.solo) {
+    // tables and a leaderboard only exist for a room-based game
     out.push({ id: 'gd-live', label: 'Live now' });
     out.push({ id: 'gd-board', label: 'Leaderboard' });
   }

@@ -19,6 +19,8 @@ export const paths = {
   game: (gameId) => `/games/${enc(gameSlug(gameId))}`,
   /** Full-screen online game for a room code. */
   online: (gameId, code) => `/play/${enc(gameSlug(gameId))}/online/${enc(code)}`,
+  /** A SOLO game (manifest `solo: true`): its own full-screen screen, rendered by pages/SoloGame.jsx. */
+  solo: (gameId) => `/play/${enc(gameSlug(gameId))}`,
   lobby: (code) => `/lobby/${enc(code)}`,
   join: (code) => (code ? `/join/${enc(code)}` : '/join'),
   friends: () => '/friends',

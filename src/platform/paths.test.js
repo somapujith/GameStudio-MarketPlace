@@ -19,6 +19,14 @@ describe('Nawabi Raj public links and room compatibility', () => {
   });
 });
 
+describe('solo game paths', () => {
+  it('is the full-screen route /play/<slug>', () => {
+    expect(paths.solo('autowala')).toBe('/play/autowala');
+    expect(paths.solo('a/b')).toBe('/play/a%2Fb');
+    expect(paths.solo('autowala')).not.toBe(paths.online('autowala', 'ABC234'));
+  });
+});
+
 describe('admin console paths', () => {
   it('builds every section', () => {
     expect(paths.admin()).toBe('/admin');

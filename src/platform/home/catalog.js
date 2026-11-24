@@ -18,6 +18,8 @@ export const liveList = () => {
   const l = asList(safe(() => registry.liveGames(), null));
   return l.length ? l : allGames().filter((g) => g.status === 'live');
 };
+/** Live games that keep per-player stats (a leaderboard, a record, badges): every live game, except solo games that do not save scores. */
+export const rankedList = () => liveList().filter((g) => !g.solo || Array.isArray(g.stats)); // a solo game that saves scores (manifest `stats`) is ranked too
 export const soonList = () => {
   const l = asList(safe(() => registry.comingSoonGames(), null));
   return l.length ? l : allGames().filter((g) => g.status === 'coming_soon');
