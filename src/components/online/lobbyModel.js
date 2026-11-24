@@ -38,6 +38,18 @@ export function waitingText({ need = 0, hostName } = {}) {
   return hostName ? `Waiting for ${hostName} to start...` : 'Waiting for the host to start...';
 }
 
+/**
+ * What the host's seat stepper may do. `joined` = taken seats, `current` = the room's seats, `min` / `max` = the game's
+ * table sizes. The lowest seat count is whoever already sits down (never fewer than the game's minimum), because the
+ * server refuses fewer seats than players. -> { low, high, canLess, canMore, adjustable }
+ */
+export function seatLimits({ joined = 0, current = 0, min = 2, max = 6 } = {}) {
+  const hi = Math.max(1, Math.floor(max));
+  const low = Math.min(hi, Math.max(Math.floor(min) || 1, Math.floor(joined) || 0));
+  const now = Math.min(hi, Math.max(low, Math.floor(current) || low));
+  return { low, high: hi, canLess: now > low, canMore: now < hi, adjustable: hi > low };
+}
+
 /** "2 of 4 joined". */
 export const joinedLabel = (joined, maxPlayers) => `${joined} of ${maxPlayers} joined`;
 

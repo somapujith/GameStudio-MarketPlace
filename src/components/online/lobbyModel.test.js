@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanPieces, customRulesSpoken, joinedLabel, joinedPercent, pieceChoices, pieceOf, rosterChanges, seatColor, startState, waitingText } from './lobbyModel.js';
+import { cleanPieces, customRulesSpoken, joinedLabel, joinedPercent, pieceChoices, pieceOf, rosterChanges, seatColor, seatLimits, startState, waitingText } from './lobbyModel.js';
 
 describe('startState', () => {
   const base = { maxPlayers: 4, minToStart: 2 };
@@ -120,5 +120,24 @@ describe('customRulesSpoken', () => {
     expect(customRulesSpoken(0)).toBe('');
     expect(customRulesSpoken(-1)).toBe('');
     expect(customRulesSpoken(undefined)).toBe('');
+  });
+});
+
+describe('seatLimits (the host seat stepper)', () => {
+  it('lets the host go down to the players already seated, and up to the game maximum', () => {
+    expect(seatLimits({ joined: 1, current: 4, min: 2, max: 6 })).toEqual({ low: 2, high: 6, canLess: true, canMore: true, adjustable: true });
+    expect(seatLimits({ joined: 3, current: 3, min: 2, max: 6 })).toMatchObject({ low: 3, canLess: false, canMore: true });
+    expect(seatLimits({ joined: 2, current: 6, min: 2, max: 6 })).toMatchObject({ canLess: true, canMore: false });
+  });
+  it('never goes below the game minimum, even with an empty room', () => {
+    expect(seatLimits({ joined: 0, current: 2, min: 2, max: 6 })).toMatchObject({ low: 2, canLess: false });
+  });
+  it('is not adjustable when the game has a single table size', () => {
+    expect(seatLimits({ joined: 1, current: 1, min: 1, max: 1 }).adjustable).toBe(false);
+    expect(seatLimits({ joined: 2, current: 2, min: 2, max: 2 }).adjustable).toBe(false);
+  });
+  it('survives junk', () => {
+    expect(() => seatLimits({})).not.toThrow();
+    expect(() => seatLimits({ joined: NaN, current: undefined, min: undefined, max: undefined })).not.toThrow();
   });
 });
