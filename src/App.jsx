@@ -53,6 +53,7 @@ const FriendLink = page(() => import('@/pages/FriendLink.jsx'), 'FriendLink');
 const Lobby = page(() => import('@/pages/Lobby.jsx'), 'Lobby');
 const JoinRoom = page(() => import('@/pages/JoinRoom.jsx'), 'JoinRoom');
 const OnlineGame = page(() => import('@/pages/OnlineGame.jsx'), 'OnlineGame');
+const SoloGame = page(() => import('@/pages/SoloGame.jsx'), 'SoloGame');
 
 // Admin console (staff only, its own chunk)
 const AdminApp = page(() => import('@/pages/admin/AdminApp.jsx'), 'AdminApp');
@@ -174,6 +175,8 @@ export default function App() {
 
                 {/* Game screen: full screen, no hub chrome */}
                 <Route path="/play/:gameId/online/:code" element={<OnlineGame />} />
+                {/* A solo game (manifest `solo: true`): its own full-screen screen */}
+                <Route path="/play/:gameId" element={<SoloGame />} />
                 {/* Lobby: full screen (renders its own header), hub theme */}
                 <Route path="/lobby/:code" element={<Lobby />} />
                 {/* Admin console: full screen with its own sidebar (staff only; others get the 404) */}
