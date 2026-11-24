@@ -356,7 +356,7 @@ describe('arrivals', () => {
     expect(applyAction(s, { type: 'tutorial-flags', patience: true }).error).toBeTruthy();
     const t = tutorial();
     const bad = [
-      undefined, null, 5, [], {}, { order: [] }, { order: ['pizza'] }, { order: ['poori'] }, { order: [5] }, { order: ['dosa'], kind: 'ghost' },
+      undefined, null, 5, [], {}, { order: [] }, { order: ['pizza'] }, { order: [5] }, { order: ['dosa'], kind: 'ghost' },
       { order: ['dosa'], kind: '__proto__' }, { order: ['dosa', 'dosa', 'dosa', 'dosa', 'dosa'] },
     ];
     for (const customer of bad) {

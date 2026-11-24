@@ -300,6 +300,6 @@ describe('createLocalSession (tutorial)', () => {
     expect(s.tutorial.ackable).toBe(true);
     expect(s.tutorial.progress.total).toBe(s.tutorial.steps.length);
     s.tutorial.ack();
-    expect(s.tutorial.step.id).toBe('tour');
+    expect(s.tutorial.step.id).toBe('look');
   });
 });

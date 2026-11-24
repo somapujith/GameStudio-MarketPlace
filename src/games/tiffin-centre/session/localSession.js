@@ -96,11 +96,12 @@ export function createLocalSession(options = {}) {
   }
 
   // The tutorial driver reads the new state and may answer with actions (a spawn, flags ...): apply them, let it look again.
+  let lastLook = null;
   function pumpTutorial(events) {
     if (!driver) return;
     let seen = events.slice();
     for (let i = 0; i < 8 && !engine.isOver(state); i++) {
-      const r = driver.advance(state, seen, { meId });
+      const r = driver.advance(state, seen, { meId, look: lastLook });
       if (r.completed) onTutorialDone();
       if (!r.actions.length) return;
       seen = [];
@@ -286,6 +287,11 @@ export function createLocalSession(options = {}) {
       lastError = 'That is not something you can do.';
       return false;
     }
+    // the tutorial teaches one thing at a time: Chotu refuses the rest (the HUD checks first and shows the same toast)
+    if (driver && !driver.finished && !driver.skipped && typeof driver.allows === 'function' && !driver.allows(action.type)) {
+      lastError = driver.notYet || 'Chotu says: not yet!';
+      return false;
+    }
     if (status !== 'playing') {
       lastError = status === 'paused' ? 'The game is paused.' : status === 'loading' ? 'Not started yet.' : 'The shift is over.';
       return false;
@@ -320,6 +326,23 @@ export function createLocalSession(options = {}) {
         get spotlight() { return driver.spotlight; },
         get ackable() { return driver.ackable; },
         get progress() { return driver.progress; },
+        get chapter() { return driver.chapter; },
+        get chapters() { return driver.chapters; },
+        get recipe() { return driver.recipe; },
+        get allowed() { return driver.allowed; },
+        get notYet() { return driver.notYet; },
+        get controls() { return driver.controls; },
+        get pointer() { return driver.pointer; },
+        allows(type) { return driver.allows(type); },
+        /** 'touch' | 'keyboard': picks which copy variants text / hint / controls return. */
+        setPointer(p) { driver.setPointer(p); },
+        /** The scene's head direction ({yaw, pitch}), for the 'look around' step; applied on the next tutorial pump. */
+        noteLook(look) {
+          lastLook = look && Number.isFinite(look.yaw) ? { yaw: look.yaw, pitch: Number(look.pitch) || 0 } : null;
+          const events = [];
+          pumpTutorial(events);
+          if (events.length) notify(events);
+        },
         /** The player pressed "Got it" (a no-op on steps that do not wait for it). */
         ack() {
           if (!driver.ack()) return false;
