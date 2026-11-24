@@ -32,6 +32,7 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
   const audioRef = useRef(null);
+  const [audio, setAudio] = useState(null);
   const [scene, setScene] = useState(null);
   const [gl, setGl] = useState(null); // null | 'webgl' | 'lost'
   const [muted, setMuted] = useState(false);
@@ -45,6 +46,7 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
     let off = null;
     const audio = createTiffinAudio({ meId: session.meId });
     audioRef.current = audio;
+    setAudio(audio);
     (async () => {
       await loadFonts();
       if (dead || !canvasRef.current || !wrapRef.current) return;
@@ -90,6 +92,7 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
       s?.dispose();
       audio.dispose();
       audioRef.current = null;
+      setAudio(null);
       setScene(null);
       if (window.__tiffin?.session === session) delete window.__tiffin;
     };
@@ -109,7 +112,8 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
   useEffect(() => {
     if (status === 'playing') audioRef.current?.startAmbience();
     else audioRef.current?.stopAmbience();
-  }, [status, scene]);
+    audioRef.current?.setSpeechPaused?.(status !== 'playing');
+  }, [status, scene, audio]);
 
   const onMute = useCallback((next) => {
     setMuted(next);
@@ -127,15 +131,6 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
   const paused = status === 'paused' && !tutorialFinished;
   const online = mode === 'online';
 
-  const coachStep = tutorial && !tutorial.finished && !tutorial.skipped
-    ? {
-        id: tutorial.step?.id ?? `step-${tutorial.index}`,
-        text: tutorial.say ? `${tutorial.say} ${tutorial.text ?? ''}`.trim() : tutorial.text,
-        te: tutorial.te,
-        hint: tutorial.hint,
-      }
-    : null;
-
   let blocker = null;
   if (gl === 'webgl') blocker = 'webgl';
   else if (gl === 'lost') blocker = 'error';
@@ -146,7 +141,7 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
   return (
     <div className="tc" ref={wrapRef} data-mode={mode}>
       <canvas ref={canvasRef} className="tc-canvas" aria-label="Your tiffin stall" />
-      {scene && state && !blocker ? <Hud session={session} scene={scene} muted={muted} onMute={onMute} /> : null}
+      {scene && state && !blocker ? <Hud session={session} scene={scene} audio={audio} muted={muted} onMute={onMute} /> : null}
 
       {online && state && !showResults && !blocker ? (
         <button type="button" className="tc-leave" onClick={() => setLeaving(true)} aria-label="Leave the table">
@@ -154,11 +149,9 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
         </button>
       ) : null}
 
-      {coachStep && state && !showResults && !blocker ? (
+      {tutorial && !tutorial.finished && !tutorial.skipped && state && !showResults && !blocker ? (
         <CoachMark
-          step={coachStep}
-          index={tutorial.index}
-          total={tutorial.steps?.length ?? 0}
+          tutorial={tutorial}
           onSkip={() => {
             tutorial.skip?.();
             onExit?.();
@@ -172,6 +165,7 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
           open
           muted={muted}
           onMute={onMute}
+          audio={audio}
           onResume={() => session.resume?.()}
           onRestart={() => session.restart?.()}
           onQuit={() => {
