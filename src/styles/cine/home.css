@@ -1,0 +1,959 @@
+/* ==========================================================================
+   Cine: Home (/). docs/CINE_UI.md.
+   A full-bleed hero carousel behind the floating nav (backdrop fading left and down into the canvas, display title,
+   meta row, description, white pill + glass group, dots bottom-right), then calm rows: category tiles, posters,
+   Top 10 with outlined numerals, wide table cards, friend circles, achievement cards. Prefix: cj-home-.
+   ========================================================================== */
+
+.cj-home {
+  position: relative;
+  display: block;
+  min-width: 0;
+  padding-bottom: 24px;
+}
+.cj-home-rows {
+  /* the rows paint over the hero art that runs on below the hero */
+  position: relative;
+  z-index: 1;
+  margin-top: -40px;
+}
+.cj-home-rows > :first-child.cj-section,
+.cj-home-livewrap + .cj-section {
+  margin-top: 8px;
+}
+
+/* ---------- hero carousel ---------- */
+.cj-home-hero {
+  position: relative;
+  z-index: 0;
+  height: clamp(560px, 88svh, 880px);
+  min-width: 0;
+}
+.cj-home-hero__slides {
+  position: absolute;
+  inset: 0;
+}
+.cj-home-slide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 1.2s var(--cj-ease),
+    visibility 0s linear 1.2s;
+}
+.cj-home-slide.is-on {
+  z-index: 1;
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 1.2s var(--cj-ease),
+    visibility 0s;
+}
+.cj-home-slide__art {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(100% + 140px);
+  overflow: hidden;
+  background: var(--cj-bg);
+}
+.cj-home-slide__art > .cj-artfill {
+  transform: scale(1.06);
+  transition: transform 9s linear;
+}
+.cj-home-slide__art > .cj-artfill.is-flipped {
+  transform: scaleX(-1) scale(1.06);
+}
+.cj-home-slide.is-on .cj-home-slide__art > .cj-artfill {
+  transform: scale(1);
+}
+.cj-home-slide.is-on .cj-home-slide__art > .cj-artfill.is-flipped {
+  transform: scaleX(-1);
+}
+/* the fades: left into the canvas behind the text, down into the rows, a soft shade under the nav */
+.cj-home-slide__art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, var(--cj-bg) 0%, rgba(4, 18, 11, 0.82) 20%, rgba(4, 18, 11, 0.36) 46%, rgba(4, 18, 11, 0) 68%),
+    linear-gradient(0deg, var(--cj-bg) 0%, rgba(4, 18, 11, 0.86) 14%, rgba(4, 18, 11, 0.2) 38%, rgba(4, 18, 11, 0) 56%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0) 22%);
+}
+.cj-home-slide__copy {
+  position: absolute;
+  left: var(--cj-gutter);
+  bottom: clamp(88px, 13vh, 132px);
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  width: min(600px, calc(100% - 2 * var(--cj-gutter)));
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 0.9s var(--cj-ease) 0.15s,
+    transform 0.9s var(--cj-ease) 0.15s;
+}
+.cj-home-slide.is-on .cj-home-slide__copy {
+  opacity: 1;
+  transform: none;
+}
+.cj-home-slide__kicker {
+  margin: 0 0 -6px;
+  color: var(--cj-gold);
+  font: 600 12px/1 var(--cj-font);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.cj-home-slide__title.cj-title-art {
+  max-width: 14ch;
+  font-size: clamp(36px, 3.9vw, 58px);
+  line-height: 1.02;
+  overflow-wrap: break-word;
+}
+.cj-home-slide__meta {
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
+}
+.cj-home-slide__tables {
+  color: var(--cj-live);
+}
+.cj-home-slide__desc {
+  display: -webkit-box;
+  margin: 4px 0 6px;
+  overflow: hidden;
+  color: var(--cj-text-strong);
+  font: 600 16px/1.75 var(--cj-font);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.55);
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+}
+.cj-home-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.cj-home-hero__actions .cj-btn--lg {
+  min-width: 130px;
+}
+.cj-home-hero__actions .cj-btngroup {
+  background: rgba(30, 32, 34, 0.55);
+}
+.cj-home-hero__actions .cj-btngroup > :focus-visible {
+  outline-offset: -4px;
+  border-radius: 50%;
+}
+
+/* dots bottom-right, level with the buttons */
+.cj-home-hero__controls {
+  position: absolute;
+  right: var(--cj-gutter);
+  bottom: calc(clamp(88px, 13vh, 132px) + 22px);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.cj-home-hero__pause {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--cj-text-strong);
+  opacity: 0.7;
+  cursor: pointer;
+  transition: opacity var(--cj-dur) var(--cj-ease), background-color var(--cj-dur) var(--cj-ease);
+}
+.cj-home-hero__pause:hover,
+.cj-home-hero__pause:focus-visible {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.22);
+}
+.cj-home-hero .cj-dots {
+  padding: 8px 4px;
+}
+
+/* ---------- the live chips under the hero ---------- */
+.cj-home-livewrap:empty {
+  display: none;
+}
+.cj-home-live {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 var(--cj-gutter);
+}
+.cj-home-pulse {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+  text-decoration: none;
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+}
+.cj-home-pulse b {
+  font-weight: 700;
+}
+.cj-home-pulse .cj-live-dot {
+  width: 7px;
+  height: 7px;
+}
+.cj-home-pulse.is-off {
+  color: var(--cj-text-dim);
+  cursor: default;
+}
+.cj-home-pulse--resume {
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  box-shadow: none;
+}
+.cj-home-pulse__go {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  padding-left: 10px;
+  border-left: 1px solid rgba(0, 0, 0, 0.15);
+  font-weight: 700;
+}
+.cj-home-live__skel {
+  width: 160px;
+  height: 36px;
+  border-radius: var(--cj-r-pill);
+}
+
+/* ---------- section heads: counts and "more" links beside the title ---------- */
+.cj-home-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 6px;
+  color: var(--cj-text-dim);
+  font: 500 13px/1 var(--cj-font);
+}
+.cj-home-count .cj-live-dot {
+  width: 7px;
+  height: 7px;
+}
+.cj-home-more {
+  margin-left: auto;
+  color: var(--cj-text-dim);
+  font: 500 13px/1.3 var(--cj-font);
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.3);
+  text-underline-offset: 4px;
+  transition: color var(--cj-dur) var(--cj-ease);
+}
+.cj-home-more:hover {
+  color: var(--cj-text-strong);
+}
+.cj-home-anchor {
+  scroll-margin-top: var(--cj-safe-top, 88px);
+}
+
+/* ---------- calm notes (empty / offline / signed out) ---------- */
+.cj-home-note {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: 760px;
+  margin: 0 var(--cj-gutter);
+  padding: 16px 18px;
+  border-radius: var(--cj-r-panel);
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ring);
+}
+.cj-home-note__ico {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--cj-glass-2);
+  color: var(--cj-text-strong);
+}
+.cj-home-note__text {
+  display: grid;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+.cj-home-note__text b {
+  color: var(--cj-text-strong);
+  font-size: 14px;
+  font-weight: 600;
+}
+.cj-home-note__text span {
+  color: var(--cj-text-dim);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.cj-home-note__act {
+  flex: none;
+}
+
+/* ---------- skeletons ---------- */
+.cj-home-skel {
+  display: block;
+  border-radius: var(--cj-r-card);
+  background: linear-gradient(100deg, rgba(255, 255, 255, 0.05) 30%, rgba(255, 255, 255, 0.1) 50%, rgba(255, 255, 255, 0.05) 70%) 0 0 / 300% 100%;
+  animation: cj-home-shimmer 1.6s linear infinite;
+}
+.cj-home-skel.cj-poster,
+.cj-home-skel.cj-wide {
+  box-shadow: none;
+}
+.cj-home-skel--round {
+  width: 78px;
+  height: 78px;
+  border-radius: 50%;
+}
+.cj-home-skel--line {
+  width: 56px;
+  height: 10px;
+  border-radius: 6px;
+}
+@keyframes cj-home-shimmer {
+  to {
+    background-position: -150% 0;
+  }
+}
+
+/* ---------- Browse by Category ---------- */
+.cj-home-tile {
+  width: 104px;
+}
+.cj-home-tile__art {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  isolation: isolate;
+  background: var(--g-bg, var(--cj-bg-3));
+}
+.cj-home-tile__art > .cj-artfill {
+  z-index: -1;
+  filter: saturate(0.9);
+}
+.cj-home-tile__art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(160deg, rgba(4, 18, 11, 0.35), rgba(4, 18, 11, 0.78));
+}
+.cj-home-tile__ico {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+.cj-home-tile__ico .hh2-cat-ico {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  color: #fff;
+}
+.cj-home-tile__ico .hh2-cat-ico svg {
+  width: 100%;
+  height: 100%;
+}
+.cj-home-tile__label {
+  display: grid;
+  gap: 2px;
+  color: var(--cj-text-strong);
+  font-weight: 600;
+}
+.cj-home-tile__label small {
+  color: var(--cj-text-faint);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* ---------- Top 10: player posters ---------- */
+.cj-home-top .cj-top10 {
+  padding-top: 12px;
+}
+.cj-home-player {
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(90% 60% at 50% 34%, color-mix(in srgb, var(--tint) 38%, transparent), transparent 72%),
+    linear-gradient(170deg, #12301f 0%, #08180f 70%);
+}
+.cj-home-player__glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(60% 40% at 50% 100%, rgba(255, 255, 255, 0.06), transparent 70%);
+}
+.cj-home-player__ava {
+  position: relative;
+  z-index: 1;
+  margin-top: -26%;
+  filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.45));
+}
+.cj-home-player .hh2-ava:not(.hh2-ava--kit) {
+  background: color-mix(in srgb, var(--tint) 70%, transparent);
+}
+.cj-home-player__name {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 14px;
+}
+.cj-home-player .cj-poster__sub {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cj-home-player.is-me {
+  box-shadow: var(--cj-shadow-card), inset 0 0 0 2px rgba(255, 255, 255, 0.7);
+}
+
+/* ---------- Open tables: wide cards ---------- */
+.cj-home-table {
+  isolation: isolate;
+  width: clamp(250px, 22vw, 320px);
+}
+.cj-home-table > .cj-artfill {
+  z-index: -1;
+}
+.cj-home-table::after {
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.15) 0%, rgba(0, 0, 0, 0.82) 72%);
+}
+.cj-home-table__live {
+  position: absolute;
+  z-index: 1;
+  top: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: var(--cj-r-pill);
+  background: rgba(14, 14, 16, 0.62);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+  font: 600 10px/1.2 var(--cj-font);
+}
+.cj-home-table__live .cj-live-dot {
+  width: 6px;
+  height: 6px;
+}
+.cj-home-table__label {
+  display: grid;
+  gap: 2px;
+  font-size: 14px;
+}
+.cj-home-table__label small {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cj-home-table__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+.cj-home-table__join {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 11px;
+  border-radius: var(--cj-r-pill);
+  background: var(--cj-pill);
+  color: var(--cj-ink);
+  font: 600 12px/1 var(--cj-font);
+}
+.cj-home-seats {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 600 12px/1 var(--cj-font);
+}
+.cj-home-seats__pips {
+  display: inline-flex;
+  gap: 3px;
+}
+.cj-home-seats__pips i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+}
+.cj-home-seats__pips i.is-on {
+  background: var(--cj-live);
+}
+
+/* ---------- Friends online: circles ---------- */
+.cj-home-friend {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: 600 12px/1.25 var(--cj-font);
+}
+.cj-home-friend__name {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cj-home-friend small {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cj-home-friend.is-online small {
+  color: var(--cj-live);
+}
+.cj-home-friend:not(.is-online) .hh2-ava {
+  opacity: 0.62;
+}
+.cj-home-friend .hh2-ava {
+  transition: transform var(--cj-dur) var(--cj-ease);
+}
+.cj-home-friend:hover .hh2-ava {
+  transform: translateY(-3px);
+}
+.cj-home-friend__plus {
+  display: grid;
+  place-items: center;
+  width: 78px;
+  height: 78px;
+  border: 1px dashed rgba(255, 255, 255, 0.32);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--cj-text-strong);
+  transition: background-color var(--cj-dur) var(--cj-ease);
+}
+.cj-home-friend--invite:hover .cj-home-friend__plus {
+  background: var(--cj-glass-2);
+}
+
+/* ---------- How it works (visitors) ---------- */
+.cj-home-how__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 24px;
+  margin: 0 var(--cj-gutter);
+  padding: 22px;
+  border-radius: var(--cj-r-panel);
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ring);
+}
+.cj-home-how__steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cj-home-how__step {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 12px;
+  row-gap: 3px;
+  align-items: center;
+}
+.cj-home-how__n {
+  display: none;
+}
+.cj-home-how__ico {
+  grid-row: span 2;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: var(--cj-glass-2);
+  color: var(--cj-text-strong);
+}
+.cj-home-how__step b {
+  color: var(--cj-text-strong);
+  font-size: 14px;
+  font-weight: 600;
+}
+.cj-home-how__step span:last-child {
+  color: var(--cj-text-dim);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.cj-home-how__cta {
+  display: flex;
+  gap: 10px;
+}
+
+/* ---------- daily reward (the card is another area's component) ---------- */
+.cj-home-daily {
+  max-width: calc(720px + 2 * var(--cj-gutter));
+  padding: 0 var(--cj-gutter);
+}
+
+/* ---------- Achievements to chase ---------- */
+.cj-home-ach {
+  display: flex;
+  gap: 14px;
+  width: 290px;
+  min-height: 132px;
+  padding: 16px;
+  border-radius: var(--cj-r-panel);
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ring);
+  color: var(--cj-text);
+  text-decoration: none;
+  transition: background-color var(--cj-dur) var(--cj-ease), transform var(--cj-dur) var(--cj-ease);
+}
+.cj-home-ach:hover {
+  background: var(--cj-glass-2);
+  transform: translateY(-3px);
+}
+.cj-home-ach.cj-home-skel {
+  box-shadow: none;
+}
+.cj-home-ach__medal {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, rgba(245, 198, 107, 0.4), rgba(245, 198, 107, 0.08));
+  box-shadow: inset 0 0 0 1px rgba(245, 198, 107, 0.4);
+  color: var(--cj-gold);
+}
+.cj-home-ach__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.cj-home-ach__body b {
+  color: var(--cj-text-strong);
+  font-size: 14px;
+  font-weight: 600;
+}
+.cj-home-ach__body small {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--cj-text-dim);
+  font-size: 12px;
+  line-height: 1.45;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.cj-home-ach__bar {
+  display: block;
+  height: 4px;
+  margin-top: auto;
+  overflow: hidden;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+}
+.cj-home-ach__bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--cj-pill);
+}
+.cj-home-ach__foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--cj-text-faint);
+  font-size: 11px;
+}
+.cj-home-ach__coins {
+  color: var(--cj-gold);
+}
+
+/* ---------- tablets ---------- */
+@media (max-width: 1023px) {
+  .cj-home-how__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------- phones: a portrait hero (image above, centred text), rows scroll sideways ---------- */
+@media (max-width: 599px) {
+  .cj-home-hero {
+    height: clamp(560px, 86svh, 740px);
+  }
+  .cj-home-slide__art {
+    height: calc(100% + 60px);
+  }
+  .cj-home-slide__art > .cj-artfill {
+    object-position: var(--pos-phone, var(--pos, 50% 50%));
+  }
+  .cj-home-slide__art::after {
+    background:
+      linear-gradient(0deg, var(--cj-bg) 0%, rgba(4, 18, 11, 0.92) 22%, rgba(4, 18, 11, 0.45) 44%, rgba(4, 18, 11, 0) 64%),
+      linear-gradient(180deg, rgba(0, 0, 0, 0.45) 0%, rgba(0, 0, 0, 0) 18%);
+  }
+  .cj-home-slide__copy {
+    left: 16px;
+    right: 16px;
+    bottom: 64px;
+    width: auto;
+    align-items: center;
+    gap: 12px;
+    text-align: center;
+  }
+  .cj-home-slide__title.cj-title-art {
+    max-width: none;
+    font-size: clamp(28px, 8.6vw, 36px);
+  }
+  .cj-home-slide__meta {
+    justify-content: center;
+    font-size: 14px;
+  }
+  .cj-home-slide__desc {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-line-clamp: 2;
+  }
+  .cj-home-hero__actions {
+    justify-content: center;
+    gap: 10px;
+  }
+  .cj-home-hero__actions .cj-btn--lg {
+    min-width: 128px;
+    min-height: 50px;
+  }
+  .cj-home-hero__actions .cj-btngroup {
+    height: 50px;
+  }
+  .cj-home-hero__controls {
+    left: 0;
+    right: 0;
+    bottom: 22px;
+    justify-content: center;
+    gap: 10px;
+  }
+  .cj-home-hero__pause {
+    width: 24px;
+    height: 24px;
+  }
+  .cj-home-rows {
+    margin-top: -12px;
+  }
+  .cj-home-tile {
+    width: 84px;
+  }
+  .cj-home-tile__art {
+    width: 72px;
+    height: 72px;
+  }
+  .cj-home-note {
+    flex-wrap: wrap;
+    margin: 0 16px;
+  }
+  .cj-home-note__act {
+    flex-basis: 100%;
+    padding-left: 56px;
+  }
+  .cj-home-how__body {
+    margin: 0 16px;
+    padding: 18px;
+  }
+  .cj-home-how__steps {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+  .cj-home-how__cta > * {
+    flex: 1;
+  }
+  .cj-home-ach {
+    width: 262px;
+  }
+  .cj-home-player__ava .hh2-ava {
+    transform: scale(0.86);
+  }
+}
+
+/* ---------- reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .cj-home-slide,
+  .cj-home-slide.is-on,
+  .cj-home-slide__copy,
+  .cj-home-slide__art > .cj-artfill,
+  .cj-home-ach,
+  .cj-home-friend .hh2-ava {
+    transition: none !important;
+  }
+  .cj-home-slide__art > .cj-artfill:not(.is-flipped) {
+    transform: none !important;
+  }
+  .cj-home-skel {
+    animation: none;
+  }
+}
+:root[data-motion='reduced'] :is(.cj-home-slide, .cj-home-slide.is-on, .cj-home-slide__copy, .cj-home-slide__art > .cj-artfill, .cj-home-ach, .cj-home-friend .hh2-ava) {
+  transition: none !important;
+}
+:root[data-motion='reduced'] .cj-home-slide__art > .cj-artfill:not(.is-flipped) {
+  transform: none !important;
+}
+:root[data-motion='reduced'] .cj-home-skel {
+  animation: none;
+}
+
+/* ---------- Top 10: every player on screen, no sideways scrolling ---------- */
+.cj-home-top10 {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 30px 12px;
+  margin: 0;
+  padding: 12px var(--cj-gutter) 24px;
+  list-style: none;
+  overflow: visible;
+}
+.cj-home-top10 > li {
+  min-width: 0;
+  padding-left: clamp(52px, 36%, 112px);
+}
+.cj-home-top10 .cj-poster {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  max-width: 156px;
+}
+.cj-home-top10 .cj-top10__num {
+  font-size: clamp(120px, 11.5vw, 190px);
+}
+@media (max-width: 899px) {
+  .cj-home-top10 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 599px) {
+  .cj-home-top10 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 26px 8px;
+  }
+  .cj-home-top10 .cj-top10__num {
+    font-size: 124px;
+  }
+}
+
+/* ==========================================================================
+   Wide screens: short rows fill the centred column (or sit centred) instead of hugging the left edge.
+   Rows with many cards still scroll; these are the ones that hold only a handful.
+   ========================================================================== */
+@media (min-width: 900px) {
+  :is(.cj-home-cats, .cj-home-play, .cj-home-soon, .cj-home-tables, .cj-home-friends, .cj-home-achs) .cj-row {
+    display: grid;
+    gap: 16px;
+    overflow: visible;
+    scroll-snap-type: none;
+  }
+  .cj-home-note {
+    max-width: none;
+  }
+
+  /* categories: one tile per column across the whole width, wide art */
+  .cj-home-cats .cj-row {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+  .cj-home-cats .cj-home-tile {
+    width: 100%;
+  }
+  .cj-home-cats .cj-home-tile__art {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+  }
+
+  /* play now: landscape cards that share the width */
+  .cj-home-play .cj-row {
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 20px;
+  }
+  .cj-home-play .cj-row:has(> li:only-child) {
+    grid-template-columns: minmax(0, 720px);
+    justify-content: center;
+  }
+  .cj-home-play :is(.cj-postercard, .cj-poster) {
+    width: 100%;
+  }
+  .cj-home-play .cj-poster {
+    aspect-ratio: 21 / 9;
+  }
+
+  /* coming soon: landscape art, evenly across */
+  .cj-home-soon .cj-row {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  }
+  .cj-home-soon :is(.cj-postercard, .cj-poster) {
+    width: 100%;
+  }
+  .cj-home-soon .cj-poster {
+    aspect-ratio: 3 / 2;
+  }
+
+  /* open tables */
+  .cj-home-tables .cj-row {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+  .cj-home-tables .cj-home-table {
+    width: 100%;
+  }
+
+  /* friends: portraits centred in the column */
+  .cj-home-friends .cj-row {
+    grid-template-columns: repeat(auto-fit, minmax(104px, 128px));
+    justify-content: center;
+    gap: 22px;
+  }
+
+  /* achievements to chase: an even grid, never a lone last card */
+  .cj-home-achs .cj-row {
+    grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
+  }
+  .cj-home-achs .cj-home-ach {
+    width: auto;
+  }
+
+  /* top 10: even columns, each numeral + card pair centred in its cell */
+  .cj-home-top10 {
+    grid-template-columns: repeat(var(--cols, 5), minmax(0, 1fr));
+  }
+  .cj-home-top10 > li {
+    width: fit-content;
+    margin-inline: auto;
+    padding-left: clamp(64px, 7vw, 112px);
+  }
+  .cj-home-top10 .cj-poster {
+    flex: none;
+    width: clamp(120px, 11vw, 156px);
+  }
+
+  /* daily reward card spans the column */
+  .cj-home-daily {
+    max-width: none;
+  }
+  .cj-home-daily > * {
+    max-width: none;
+  }
+}

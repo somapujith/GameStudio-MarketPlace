@@ -93,14 +93,6 @@ export const homeSteps = [
     phone: { target: `${t('home-friends')} .sh-head`, placement: 'top' },
   },
   {
-    id: 'categories',
-    target: t('home-categories'),
-    placement: 'top',
-    title: 'Browse by kind',
-    body: 'Board, card, word and more. Pick a kind of game you feel like playing.',
-    phone: { target: `${t('home-categories')} .sh-head`, placement: 'top' },
-  },
-  {
     id: 'daily',
     target: t('home-daily'),
     placement: 'top',

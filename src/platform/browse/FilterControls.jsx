@@ -1,16 +1,16 @@
-// The three filter groups (players, time, status) as ticket-style segmented pills. Used inline on wide screens
+// The three filter groups (players, time, status) as rows of glass chips. Used inline on wide screens
 // (changes apply at once) and inside the phone filter sheet (changes are a draft until Apply).
 import { DURATION_OPTIONS, PLAYER_OPTIONS, STATUS_OPTIONS } from './filters.js';
 
 function Segmented({ label, value, options, onPick, idPrefix, showHint = false, minCol = 44 }) {
   return (
-    <div className="bw-group" role="group" aria-labelledby={`${idPrefix}-lbl`}>
-      <span id={`${idPrefix}-lbl`} className="bw-group__label">
+    <div className="cj-browse-group" role="group" aria-labelledby={`${idPrefix}-lbl`}>
+      <span id={`${idPrefix}-lbl`} className="cj-browse-group__label">
         {label}
       </span>
-      <div className="bw-seg" style={{ '--bw-col': `${minCol}px` }}>
+      <div className="cj-browse-seg" style={{ '--col': `${minCol}px` }}>
         {options.map((o) => (
-          <button key={o.id} type="button" className="bw-seg__btn" aria-pressed={value === o.id} onClick={() => onPick(o.id)}>
+          <button key={o.id} type="button" className="cj-chip cj-browse-seg__btn" aria-pressed={value === o.id} onClick={() => onPick(o.id)}>
             {o.label}
             {showHint && (o.tiny || o.hint) ? <small>{o.tiny || o.hint}</small> : null}
           </button>

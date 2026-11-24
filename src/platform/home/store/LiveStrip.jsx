@@ -25,20 +25,20 @@ export default function LiveStrip({ live }) {
 
   if (loading) {
     return (
-      <div className="sh-live" aria-hidden="true">
-        <span className="st-skel sh-live__skel" />
-        <span className="st-skel sh-live__skel" style={{ width: 120 }} />
+      <div className="cj-home-live" aria-hidden="true">
+        <span className="cj-home-skel cj-home-live__skel" />
+        <span className="cj-home-skel cj-home-live__skel" style={{ width: 120 }} />
       </div>
     );
   }
 
   if (offline) {
     return (
-      <div className="sh-live" role="status">
-        <span className="sh-pulse sh-pulse--off">
+      <div className="cj-home-live" role="status">
+        <span className="cj-chip cj-home-pulse is-off">
           <HubIcon name="wifiOff" size={15} /> Live tables unavailable
         </span>
-        <button type="button" className="sh-pulse sh-pulse--btn" onClick={retry}>
+        <button type="button" className="cj-chip cj-home-pulse" onClick={retry}>
           <HubIcon name="refresh" size={14} /> Retry
         </button>
       </div>
@@ -51,13 +51,13 @@ export default function LiveStrip({ live }) {
     const playing = resume.kind === 'playing';
     const to = playing ? paths.online(resume.room.gameId || rGame?.id || '', resume.room.code) : paths.lobby(resume.room.code);
     chips.push(
-      <Link key="resume" to={to} className="sh-pulse sh-pulse--resume" style={themeVars(rGame)}>
-        <i className="st-live" aria-hidden="true" />
+      <Link key="resume" to={to} className="cj-chip cj-home-pulse cj-home-pulse--resume" style={themeVars(rGame)}>
+        <i className="cj-live-dot" aria-hidden="true" />
         <span>
           {playing ? 'Your game is running' : 'Your table is open'}
           <b> · {resume.room.code}</b>
         </span>
-        <span className="sh-pulse__go">
+        <span className="cj-home-pulse__go">
           {playing ? 'Rejoin' : 'Open lobby'} <HubIcon name="arrowR" size={14} strokeWidth={2.6} />
         </span>
       </Link>,
@@ -65,23 +65,23 @@ export default function LiveStrip({ live }) {
   }
   if (tables > 0) {
     chips.push(
-      <a key="tables" href="#sh-open" onClick={jump} className="sh-pulse">
-        <i className="st-live" aria-hidden="true" />
+      <a key="tables" href="#sh-open" onClick={jump} className="cj-chip cj-home-pulse">
+        <i className="cj-live-dot" aria-hidden="true" />
         <b>{plural(tables, 'table')}</b> open to join
       </a>,
     );
   }
   if (friendsOnline > 0) {
     chips.push(
-      <Link key="friends" to={paths.friends()} className="sh-pulse">
-        <i className="st-live" aria-hidden="true" />
+      <Link key="friends" to={paths.friends()} className="cj-chip cj-home-pulse">
+        <i className="cj-live-dot" aria-hidden="true" />
         <b>{friendsOnline}</b> friend{friendsOnline === 1 ? '' : 's'} online
       </Link>,
     );
   }
   if (!chips.length) return null;
   return (
-    <div className="sh-live" aria-label="Happening now">
+    <div className="cj-home-live" aria-label="Happening now">
       {chips}
     </div>
   );

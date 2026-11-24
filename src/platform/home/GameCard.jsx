@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
 import { paths } from '@/platform/paths.js';
 import { useNotify } from '@/platform/game/notify.js';
-import './street-catalog.css';
 import '@/styles/mappicker.css';
 
 const ART = {

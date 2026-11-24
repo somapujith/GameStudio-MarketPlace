@@ -4,30 +4,33 @@ import GameTour from '@/components/tour/GameTour.jsx';
 import CodeSheet from '@/components/shell/nav/CodeSheet.jsx';
 import { radioKeyNav } from '@/components/shell/ui.jsx';
 import MapPicker from '@/components/online/MapPicker.jsx';
-import { getCategory, getGame } from '@/games/registry.js';
+import { featuredGame, getCategory, getGame } from '@/games/registry.js';
 import { useAuth } from '@/lib/auth.jsx';
 import { BRAND } from '@/platform/brand.js';
 import { paths } from '@/platform/paths.js';
-import { MobileBar, ShareButton, SoonPanel, createCopy } from '@/platform/game/ActionPanel.jsx';
+import { MobileBar, createCopy } from '@/platform/game/ActionPanel.jsx';
 import MapsSection from '@/platform/game/MapsSection.jsx';
 import { DEFAULT_MAP } from '@/components/online/mapModel.js';
 import { AboutSection, DetailsTable, GallerySection, HowToPlay, LeaderboardSection, OpenTables, RelatedGames, openTableList, useOpenRooms } from '@/platform/game/DetailSections.jsx';
-import { GameHead, HeroArt, categoryHref } from '@/platform/game/GameHero.jsx';
+import { categoryHref, playersLabel } from '@/platform/game/GameHero.jsx';
 import HubIcon from '@/platform/game/HubIcon.jsx';
 import Unavailable from '@/platform/game/Unavailable.jsx';
 import { themeVars } from '@/platform/game/color.js';
-import { gameJsonLd, hasMaps, metaDescription, sectionList } from '@/platform/game/detailModel.js';
+import { gameJsonLd, hasMaps, howToPlaySteps, metaDescription, sectionList } from '@/platform/game/detailModel.js';
 import useDocTitle from '@/platform/game/useDocTitle.js';
 import { defaultSeats, seatOptions } from '@/platform/game/seats.js';
 import useHostRoom from '@/platform/game/useHostRoom.js';
-import '@/styles/store-detail.css';
-import '@/platform/game/nawabi-detail.css';
+import useShareGame from '@/platform/game/useShareGame.js';
+import { useNotify } from '@/platform/game/notify.js';
+import { ArtFill } from '@/platform/browse/GameArt.jsx';
+import '@/styles/mappicker.css';
+import '@/styles/cine/detail.css';
 
 /** Games › Category › Name. */
 function Crumbs({ game }) {
   const cat = getCategory(game.category);
   return (
-    <nav className="gd-crumbs" aria-label="Breadcrumb">
+    <nav className="cj-detail-crumbs" aria-label="Breadcrumb">
       <ol>
         <li>
           <Link to={paths.games()}>
@@ -45,14 +48,6 @@ function Crumbs({ game }) {
       </ol>
     </nav>
   );
-}
-
-function Crown() {
-  return <svg className="nawabi-poster__crown" width="100" height="85" viewBox="0 0 100 85" aria-hidden="true"><g fill="none" stroke="currentColor" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round"><path d="m12 33 12 39 57-5 8-43-26 26-17-40-10 43zM26 80l52-5" /><circle cx="12" cy="28" r="4" /><circle cx="46" cy="6" r="4" /><circle cx="90" cy="19" r="4" /></g></svg>;
-}
-
-function TableDice() {
-  return <svg className="nawabi-ticket__dice" width="55" height="48" viewBox="0 0 55 48" aria-hidden="true"><g fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinejoin="round"><path d="m5 20 15-8 15 8v18l-15 8-15-8zM5 20l15 8 15-8M20 28v18M31 8l10-6 12 7v17l-10 6" /></g><g fill="currentColor"><circle cx="15" cy="20" r="1.8" /><circle cx="24" cy="20" r="1.8" /><circle cx="12" cy="29" r="1.8" /><circle cx="13" cy="36" r="1.8" /><circle cx="27" cy="31" r="1.8" /><circle cx="27" cy="38" r="1.8" /><circle cx="40" cy="9" r="1.8" /><circle cx="46" cy="15" r="1.8" /><circle cx="47" cy="23" r="1.8" /></g></svg>;
 }
 
 /** Anchor nav for the page's sections, with the section in view marked. */
@@ -80,11 +75,11 @@ function SubNav({ items }) {
 
   if (items.length < 2) return null;
   return (
-    <nav className="gd-subnav" aria-label="On this page" data-tour="game-subnav">
+    <nav className="cj-detail-subnav" aria-label="On this page" data-tour="game-subnav">
       <ul>
         {items.map((it) => (
           <li key={it.id}>
-            <a href={`#${it.id}`} className="gd-subnav__a" aria-current={active === it.id ? 'location' : undefined}>
+            <a href={`#${it.id}`} className="cj-chip" aria-current={active === it.id ? 'location' : undefined}>
               {it.label}
             </a>
           </li>
@@ -119,11 +114,132 @@ function useGameMeta(game, soon) {
   });
 }
 
+const firstParagraph = (text) =>
+  String(text || '')
+    .split(/\n{2,}/)[0]
+    .trim();
+const mapNames = (line) => (typeof line === 'string' ? line.replace(/^\s*\d+\s+maps?:\s*/i, '').trim() : '');
+
+/** The info card on the right of the hero: label left, value right (only rows the manifest can fill). */
+function Facts({ game, soon }) {
+  const rows = [];
+  const players = playersLabel(game.players);
+  if (players) rows.push(['Players', players]);
+  if (game.duration) rows.push(['Match length', game.duration]);
+  if (hasMaps(game) && mapNames(game.mapsLine)) rows.push(['Maps', mapNames(game.mapsLine)]);
+  if (howToPlaySteps(game).length)
+    rows.push([
+      'Rules',
+      <a key="r" href="#gd-how" className="cj-detail-link">
+        How to play
+      </a>,
+    ]);
+  if (soon) rows.push(['Status', 'Coming soon']);
+  if (game.ageRating) rows.push(['Age rating', game.ageRating]);
+  if (Array.isArray(game.platforms) && game.platforms.length) rows.push(['Plays on', game.platforms.join(', ')]);
+  if (game.publisher) rows.push(['Publisher', game.publisher]);
+  if (!rows.length) return null;
+  return (
+    <dl className="cj-facts cj-detail-facts" aria-label={`${game.name} at a glance`}>
+      {rows.map(([k, v]) => (
+        <div key={k}>
+          <dt>{k}</dt>
+          <dd>{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 /**
- * A playable game's listing: framed release artwork and quick start with seats, map,
- * Create table, Join with a code and Share, using the private-room host and code-join flows), then About, Maps,
- * How to play, Gallery, Open tables, Leaderboard, Game details and More like this. A phone bar offers Create table
- * once the ticket has scrolled away.
+ * The title-page hero: the backdrop fading left and down into the canvas; breadcrumbs; the name in the wide display type
+ * and a category line; `actions` (the white pill + round icon buttons); `notes` (sign-in / offline); the meta line
+ * (players · time · maps · open tables); the tagline and description; `children` (the table setup); the facts card.
+ */
+function TitleHero({ game, soon = false, tables, actions, notes, children }) {
+  const cat = getCategory(game.category);
+  const players = playersLabel(game.players);
+  const maps = hasMaps(game) ? mapNames(game.mapsLine).split('·').filter(Boolean).length : 0;
+  const tags = Array.isArray(game.tags) ? game.tags.filter((t) => typeof t === 'string' && t).slice(0, 2) : [];
+  return (
+    <section className={`cj-detail-hero${soon ? ' is-soon' : ''}`} aria-labelledby="gd-title">
+      <div className="cj-detail-hero__art" aria-hidden="true">
+        <ArtFill game={game} backdrop detail eager />
+      </div>
+      <div className="cj-detail-hero__grid">
+        <div className="cj-detail-hero__main">
+          <Crumbs game={game} />
+          <header className="cj-detail-head" data-tour="game-head">
+            {soon && <p className="cj-detail-kicker">Coming soon</p>}
+            <h1 id="gd-title" className="cj-title-art cj-detail-title">
+              {game.name}
+            </h1>
+            <p className="cj-detail-cats">
+              {cat && (
+                <Link to={categoryHref(cat)} aria-label={`More ${cat.label} games`}>
+                  {cat.label}
+                </Link>
+              )}
+              {tags.map((t) => (
+                <span key={t}>{t}</span>
+              ))}
+            </p>
+          </header>
+          {actions}
+          {notes}
+          <ul className="cj-meta cj-detail-meta gd-facts" aria-label="Quick facts">
+            {soon ? (
+              <li className="cj-detail-meta__soon">
+                <HubIcon name="spark" size={15} /> Coming soon
+              </li>
+            ) : (
+              <li>
+                <i className="cj-live-dot" aria-hidden="true" /> Live
+              </li>
+            )}
+            {players && (
+              <li>
+                <HubIcon name="users" size={15} /> {players}
+              </li>
+            )}
+            {game.duration && (
+              <li>
+                <HubIcon name="clock" size={15} /> {game.duration}
+              </li>
+            )}
+            {maps > 0 && (
+              <li>
+                <HubIcon name="map" size={15} /> {maps} maps
+              </li>
+            )}
+            {game.ageRating && <li title="Age rating">{game.ageRating}</li>}
+            {!soon && Number(tables) > 0 && (
+              <li>
+                <a href="#gd-live" className="cj-detail-meta__tables">
+                  {tables} open {Number(tables) === 1 ? 'table' : 'tables'} now
+                </a>
+              </li>
+            )}
+          </ul>
+          {game.tagline && <p className="cj-detail-tagline">{game.tagline}</p>}
+          {game.description && <p className="cj-detail-desc">{firstParagraph(game.description)}</p>}
+          {children}
+        </div>
+        <aside className="cj-detail-hero__side">
+          <Facts game={game} soon={soon} />
+          <p className="cj-detail-maker">
+            <span>{game.publisher || BRAND.name}</span>
+          </p>
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * A playable game's title page: the hero with Create table (seats + map in the table setup under it), Join with a code,
+ * Invite, Share and Rules, then About, Maps, How to play, Gallery, Open tables, Top players, Game details and More like
+ * this. A phone bar offers Create table once the table setup has scrolled away.
  */
 function LiveDetail({ game }) {
   useGameMeta(game, false);
@@ -137,142 +253,189 @@ function LiveDetail({ game }) {
   const rooms = useOpenRooms(game.id);
   const tables = rooms.status === 'ok' ? openTableList(rooms.rooms, game.id).length : undefined;
   const jump = useJumpLinks();
+  const share = useShareGame(game);
   const [mapId, setMapId] = useState(DEFAULT_MAP); // the map the table will start on (games with maps only)
   const hostOn = useCallback((o) => host({ ...o, map: mapId }), [host, mapId]);
   const create = () => hostOn({ maxPlayers: seats });
   const nav = sectionList(game, { live: true });
   const copy = createCopy({ user, authLoading, reachable, busy, game });
 
-  return (
+  const actions = (
+    <div className="cj-detail-actions">
+      <button type="button" className="cj-btn cj-btn--primary cj-btn--lg" data-tour="game-create" onClick={create} disabled={busy || (authLoading && !user)} aria-busy={busy || undefined}>
+        <HubIcon name="play" size={20} /> {copy.label}
+      </button>
+      <button type="button" className="cj-iconbtn" data-tour="game-join" onClick={() => setCodeOpen(true)} aria-haspopup="dialog" aria-label="Join with a code" title="Join with a code">
+        <HubIcon name="hash" size={20} />
+      </button>
+      <Link to={paths.friends()} className="cj-iconbtn" aria-label="Invite friends" title="Invite friends">
+        <HubIcon name="users" size={20} />
+      </Link>
+      <button type="button" className="cj-iconbtn" data-tour="game-share" onClick={share} aria-label={`Share ${game.name}`} title="Share">
+        <HubIcon name="share" size={20} />
+      </button>
+      {howToPlaySteps(game).length > 0 && (
+        <a href="#gd-how" className="cj-iconbtn" aria-label="Rules: how to play" title="How to play">
+          <HubIcon name="book" size={20} />
+        </a>
+      )}
+    </div>
+  );
+  const notes = (
     <>
-      <div className="hub-page hub-detail nawabi-page" onClick={jump}>
-        <GameTour game={game} />
-        <Crumbs game={game} />
-        <div className="nawabi-layout">
-          <section className="nawabi-poster" aria-label={`About ${game.name}`}>
-            <div className="nawabi-poster__identity">
-              <p className="nawabi-poster__edition"><span>01 / THE JALEBI COLLECTION</span><span className="nawabi-poster__available"><i aria-hidden="true" /> PLAYABLE NOW</span></p>
-              <Crown />
-              <h1 className="nawabi-poster__title" aria-label={game.name}><span>{game.name.split(' ').slice(0, -1).join(' ')}</span><strong>{game.name.split(' ').at(-1)}</strong></h1>
-              <p className="nawabi-poster__pitch">{game.tagline}</p>
-            </div>
-            <figure className="nawabi-poster__art">
-              <img className="nawabi-page__scene" src="/art/cinematic/nawabi-setup.webp" width="2048" height="1024" alt="" fetchPriority="high" decoding="async" />
-              <figcaption><span>{game.name} / Jalebi Games</span><span>Multiplayer. In your browser.</span></figcaption>
-            </figure>
-            <dl className="nawabi-poster__facts">
-              <div><HubIcon name="users" size={40} /><div><dt>Players</dt><dd>{game.players.min} &ndash; {game.players.max}</dd></div></div>
-              <div><HubIcon name="clock" size={40} /><div><dt>Minutes</dt><dd>{game.duration.replace(/\s*min$/, '')}</dd></div></div>
-              {tables > 0 && <div><i className="st-live" aria-hidden="true" /><div><dt>Open now</dt><dd>{tables} {tables === 1 ? 'table' : 'tables'}</dd></div></div>}
-            </dl>
-            {game.mapsLine && <p className="hh2-gcard__maps nawabi-poster__maps">{game.mapsLine}</p>}
-          </section>
-          <section className="nawabi-ticket" ref={panelRef} aria-labelledby="nawabi-create-title" data-tour="game-panel">
-            <header className="nawabi-ticket__head">
-              <p><span className="nawabi-ticket__index">01</span> Your next game starts here</p>
-              <h2 id="nawabi-create-title">Create a table</h2>
-            </header>
-            <div className="nawabi-ticket__step" data-tour="game-seats">
-              <h3 id="hub-seats-h">
-                How many players?
-              </h3>
-              <div className="nawabi-ticket__seats" role="radiogroup" aria-labelledby="hub-seats-h" onKeyDown={radioKeyNav}>
-                {options.map((n) => (
-                  <button
-                    key={n}
-                    type="button"
-                    role="radio"
-                    aria-checked={n === seats}
-                    className={n === seats ? 'is-on' : undefined}
-                    tabIndex={n === seats ? 0 : -1}
-                    onClick={() => setSeats(n)}
-                    disabled={busy}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {hasMaps(game) && (
-              <div className="nawabi-ticket__step nawabi-ticket__map" data-tour="game-map">
-                <MapPicker compact isHost value={mapId} onPick={(patch) => setMapId(patch.map)} disabled={busy} label="Map" />
-              </div>
-            )}
-
-            <button type="button" className="nawabi-ticket__create" data-tour="game-create" onClick={create} disabled={busy || (authLoading && !user)} aria-busy={busy || undefined}>
-              <span className="nawabi-ticket__create-label"><TableDice />{copy.label}</span><span className="nawabi-ticket__launch" aria-hidden="true"><HubIcon name="arrowR" size={26} /></span>
-            </button>
-            {copy.signedOut && !copy.offline && (
-              <Link to={paths.login(paths.game(game.id))} className="nawabi-ticket__signin">
-                Sign in or continue as a guest <HubIcon name="arrowR" size={16} />
-              </Link>
-            )}
-            {copy.offline && (
-              <p className="nawabi-ticket__offline" role="status">
-                <HubIcon name="wifiOff" size={16} /> Can't reach the server right now. Check your connection and try again.
-              </p>
-            )}
-            <div className="nawabi-ticket__or" aria-hidden="true"><span />Or<span /></div>
-            <button type="button" className="nawabi-ticket__join" data-tour="game-join" onClick={() => setCodeOpen(true)} aria-haspopup="dialog">
-              <HubIcon name="hash" size={26} /> Join with a code
-            </button>
-            <p className="nawabi-ticket__hint">Have a code from your friend? Enter it to join their game.</p>
-            <ShareButton game={game} className="nawabi-ticket__share" />
-          </section>
-        </div>
-      </div>
-
-      <div className="hub-page gd nawabi-more" style={themeVars(game.theme)} onClick={jump}>
-        <div className="gd-main">
-          <SubNav items={nav} />
-          <AboutSection game={game} index={0} />
-          <MapsSection game={game} index={1} />
-          <HowToPlay game={game} index={1} />
-          <GallerySection game={game} index={2} />
-          <OpenTables game={game} state={rooms} onCreate={create} busy={busy} index={3} />
-          <LeaderboardSection game={game} user={user} index={4} />
-          <DetailsTable game={game} index={5} />
-        </div>
-        <RelatedGames game={game} />
-        <MobileBar game={game} seats={seats} host={hostOn} busy={busy} user={user} authLoading={authLoading} panelRef={panelRef} />
-        <CodeSheet open={codeOpen} onClose={() => setCodeOpen(false)} />
-      </div>
+      {copy.signedOut && !copy.offline && (
+        <Link to={paths.login(paths.game(game.id))} className="cj-detail-signin">
+          Sign in or continue as a guest <HubIcon name="arrowR" size={15} />
+        </Link>
+      )}
+      {copy.offline && (
+        <p className="cj-detail-offline" role="status">
+          <HubIcon name="wifiOff" size={16} /> Can't reach the server right now. Check your connection and try again.
+        </p>
+      )}
     </>
+  );
+
+  return (
+    <div className="hub-page cj-detail" style={themeVars(game.theme)} onClick={jump}>
+      <GameTour game={game} />
+      <TitleHero game={game} tables={tables} actions={actions} notes={notes}>
+        <section className="cj-detail-setup" ref={panelRef} aria-labelledby="nawabi-create-title" data-tour="game-panel">
+          <h2 id="nawabi-create-title" className="cj-detail-setup__title">
+            Table setup
+          </h2>
+          <div className="cj-detail-setup__row" data-tour="game-seats">
+            <h3 id="hub-seats-h" className="cj-detail-setup__label">
+              How many players?
+            </h3>
+            <div className="cj-detail-seats" role="radiogroup" aria-labelledby="hub-seats-h" onKeyDown={radioKeyNav}>
+              {options.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  role="radio"
+                  aria-checked={n === seats}
+                  className={`cj-chip${n === seats ? ' is-on' : ''}`}
+                  tabIndex={n === seats ? 0 : -1}
+                  onClick={() => setSeats(n)}
+                  disabled={busy}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+          {hasMaps(game) && (
+            <div className="cj-detail-setup__row cj-detail-setup__map" data-tour="game-map">
+              <MapPicker compact isHost value={mapId} onPick={(patch) => setMapId(patch.map)} disabled={busy} label="Map" />
+            </div>
+          )}
+          {!(copy.signedOut && copy.offline) && <p className="cj-detail-setup__hint">{copy.hint}</p>}
+        </section>
+      </TitleHero>
+
+      <SubNav items={nav} />
+      <AboutSection game={game} index={0} />
+      <MapsSection game={game} index={1} />
+      <HowToPlay game={game} index={1} />
+      <GallerySection game={game} index={2} />
+      <OpenTables game={game} state={rooms} onCreate={create} busy={busy} index={3} />
+      <LeaderboardSection game={game} user={user} index={4} />
+      <DetailsTable game={game} index={5} />
+      <RelatedGames game={game} />
+      <MobileBar game={game} seats={seats} host={hostOn} busy={busy} user={user} authLoading={authLoading} panelRef={panelRef} />
+      <CodeSheet open={codeOpen} onClose={() => setCodeOpen(false)} />
+    </div>
   );
 }
 
-/** A coming-soon teaser: the same shopfront, with What to expect, Notify me and a way to play something else. */
-function SoonDetail({ game }) {
-  useGameMeta(game, true);
+/**
+ * A SOLO game's title page (manifest `solo: true`): Play opens the game's own full-screen route, no table, code or sign-in.
+ * It has no maps or open tables; it has a leaderboard when it saves scores (manifest `stats`).
+ */
+function SoloDetail({ game }) {
+  useGameMeta(game, false);
+  const { user } = useAuth() || {};
   const jump = useJumpLinks();
-  const nav = sectionList(game, { live: false });
+  const share = useShareGame(game);
+  const nav = sectionList(game, { live: true });
+  const actions = (
+    <div className="cj-detail-actions" data-tour="game-panel">
+      <a href={paths.solo(game.id)} className="cj-btn cj-btn--primary cj-btn--lg" data-tour="game-create">
+        <HubIcon name="play" size={20} /> Play now
+      </a>
+      <button type="button" className="cj-iconbtn" data-tour="game-share" onClick={share} aria-label={`Share ${game.name}`} title="Share">
+        <HubIcon name="share" size={20} />
+      </button>
+      {howToPlaySteps(game).length > 0 && (
+        <a href="#gd-how" className="cj-iconbtn" aria-label="Rules: how to play" title="How to play">
+          <HubIcon name="book" size={20} />
+        </a>
+      )}
+    </div>
+  );
+  const players = playersLabel(game.players);
   return (
-    <div className="hub-page gd gd--soon" style={themeVars(game.theme)} onClick={jump}>
-      <Crumbs game={game} />
-      <div className="gd-grid">
-        <HeroArt game={game} soon />
-        <aside className="gd-aside">
-          <div className="gd-aside__in">
-            <GameHead game={game} soon />
-            <SoonPanel game={game} />
-          </div>
-        </aside>
-        <div className="gd-main">
-          <SubNav items={nav} />
-          <AboutSection game={game} soon index={0} />
-          <GallerySection game={game} index={1} />
-          <DetailsTable game={game} index={2} />
-        </div>
-      </div>
+    <div className="hub-page cj-detail" style={themeVars(game.theme)} onClick={jump}>
+      <TitleHero game={game} actions={actions} notes={<p className="cj-detail-hint">{players ? `${players}. ` : ''}No table, code or sign-in: it opens full screen in this browser.</p>} />
+      <SubNav items={nav} />
+      <AboutSection game={game} index={0} />
+      <HowToPlay game={game} index={1} />
+      <GallerySection game={game} index={2} />
+      {Array.isArray(game.stats) && <LeaderboardSection game={game} user={user} index={4} />}
+      <DetailsTable game={game} index={3} />
       <RelatedGames game={game} />
     </div>
   );
 }
 
-/** /games/:gameId: a live game is a store listing (details + start a table), a coming-soon game a teaser. */
+/** A coming-soon teaser: the same title page, with Notify me (this device only), Share and a way to play something else. */
+function SoonDetail({ game }) {
+  useGameMeta(game, true);
+  const jump = useJumpLinks();
+  const share = useShareGame(game);
+  const [notify, toggle] = useNotify(game.id);
+  const nav = sectionList(game, { live: false });
+  const live = featuredGame();
+  const meanwhile = live && live.status !== 'coming_soon' && live.id !== game.id ? live : null;
+  const players = playersLabel(game.players);
+  const actions = (
+    <div className="cj-detail-actions">
+      <button type="button" className="cj-btn cj-btn--primary cj-btn--lg" aria-pressed={notify} onClick={toggle}>
+        <HubIcon name={notify ? 'check' : 'bell'} size={20} /> {notify ? 'On the list' : 'Notify me'}
+      </button>
+      <button type="button" className="cj-iconbtn" onClick={share} aria-label={`Share ${game.name}`} title="Share">
+        <HubIcon name="share" size={20} />
+      </button>
+      {meanwhile && (
+        <Link to={paths.game(meanwhile.id)} className="cj-btn cj-detail-meanwhile">
+          <HubIcon name="play" size={16} /> Play {meanwhile.name} meanwhile
+        </Link>
+      )}
+    </div>
+  );
+  const notes = (
+    <p className="cj-detail-hint">
+      {game.name} {players ? `(${players.toLowerCase()}) ` : ''}isn't open for play yet. Notify me marks it as one you're waiting for, saved on this device only.
+    </p>
+  );
+  return (
+    <div className="hub-page cj-detail cj-detail--soon" style={themeVars(game.theme)} onClick={jump}>
+      <TitleHero game={game} soon actions={actions} notes={notes} />
+      <SubNav items={nav} />
+      <AboutSection game={game} soon index={0} />
+      <GallerySection game={game} index={1} />
+      <DetailsTable game={game} index={2} />
+      <RelatedGames game={game} />
+    </div>
+  );
+}
+
+/** /games/:gameId: a live game is a title page with the create-table flow, a solo game opens its own page, a coming-soon game a teaser. */
 export default function GameDetail() {
   const { gameId } = useParams();
   const game = getGame(gameId);
   if (!game) return <Unavailable reason="unknown" query={gameId} />;
-  return game.status === 'coming_soon' ? <SoonDetail key={game.id} game={game} /> : <LiveDetail key={game.id} game={game} />;
+  if (game.status === 'coming_soon') return <SoonDetail key={game.id} game={game} />;
+  return game.solo ? <SoloDetail key={game.id} game={game} /> : <LiveDetail key={game.id} game={game} />;
 }

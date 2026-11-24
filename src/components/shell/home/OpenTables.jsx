@@ -3,9 +3,10 @@ import { getOpenRooms } from '@/lib/api.js';
 import { paths } from '@/platform/paths.js';
 import HubIcon from '@/platform/game/HubIcon.jsx';
 import { featured, gameById } from '@/platform/home/catalog.js';
-import { GameIcon } from '@/platform/home/GameArt.jsx';
 import { themeVars } from '@/platform/home/gameTheme.js';
-import Rail from '@/platform/home/store/Rail.jsx';
+import { CineRow, CineSection } from '@/platform/home/CineRow.jsx';
+import { Note } from '@/platform/home/HomeRows.jsx';
+import { ArtFill } from '@/platform/browse/GameArt.jsx';
 import { useLive } from '@/platform/home/store/live.js';
 import { joinableRooms } from './homeModel.js';
 import { useLoad } from './useLoad.js';
@@ -17,8 +18,8 @@ function Seats({ players, max }) {
   const m = Math.max(0, Number(max) || 0);
   if (!m) return null;
   return (
-    <span className="xh-seats" aria-label={`${n} of ${m} seats taken`}>
-      <span className="xh-seats__pips" aria-hidden="true">
+    <span className="cj-home-seats" aria-label={`${n} of ${m} seats taken`}>
+      <span className="cj-home-seats__pips" aria-hidden="true">
         {Array.from({ length: Math.min(m, 8) }, (_, i) => (
           <i key={i} className={i < n ? 'is-on' : ''} />
         ))}
@@ -30,49 +31,38 @@ function Seats({ players, max }) {
   );
 }
 
+/** One open table: a wide card over the game's art (host, game, rules, seats, Join). */
 function TableCard({ room }) {
   const game = gameById(room.gameId);
   const host = String(room.hostName || '').trim() || 'A player';
   return (
-    <Link to={paths.join(room.code)} className="xh-table sh-ticket" style={themeVars(game)}>
-      <span className="xh-table__top">
-        <GameIcon game={game} size={44} />
-        <span className="xh-table__who">
-          <b>{`${host}'s table`}</b>
-          <small>{game?.name || 'Game table'}</small>
-        </span>
+    <Link to={paths.join(room.code)} className="cj-wide cj-home-table" style={themeVars(game)} aria-label={`Join ${host}'s table${game ? `, ${game.name}` : ''}`}>
+      {game && <ArtFill game={game} />}
+      <span className="cj-home-table__live">
+        <i className="cj-live-dot" aria-hidden="true" /> Waiting
       </span>
-      <span className="xh-table__summary">{room.summary ? String(room.summary) : 'Standard rules'}</span>
-      <span className="xh-table__foot">
-        <Seats players={room.players} max={room.maxPlayers} />
-        <span className="xh-table__join" aria-hidden="true">
-          Join <HubIcon name="arrowR" size={15} strokeWidth={2.4} />
+      <span className="cj-wide__label cj-home-table__label">
+        {`${host}'s table`}
+        <small>
+          {game?.name || 'Game table'}
+          {room.summary ? ` · ${String(room.summary)}` : ''}
+        </small>
+        <span className="cj-home-table__foot">
+          <Seats players={room.players} max={room.maxPlayers} />
+          <span className="cj-home-table__join" aria-hidden="true">
+            Join <HubIcon name="arrowR" size={14} strokeWidth={2.4} />
+          </span>
         </span>
       </span>
     </Link>
   );
 }
 
-function SkelTicket() {
-  return (
-    <li className="xh-table sh-ticket sh-ticket--skel" aria-hidden="true">
-      <span className="xh-table__top">
-        <span className="st-skel" style={{ width: 44, height: 44, borderRadius: 14 }} />
-        <span className="xh-table__who">
-          <span className="st-skel" style={{ width: 110, height: 14 }} />
-          <span className="st-skel" style={{ width: 70, height: 10 }} />
-        </span>
-      </span>
-      <span className="st-skel" style={{ width: '80%', height: 11 }} />
-      <span className="st-skel" style={{ width: '45%', height: 12 }} />
-    </li>
-  );
-}
-
 /**
- * "Open tables": public rooms waiting for players, as a rail of ticket cards with a Join arrow. Skeleton while
- * loading, an honest empty state with a create CTA, and a calm offline state with Retry. Uses the Home page's shared
- * live numbers when mounted under <LiveProvider>, else its own (polled) request.
+ * "Open tables": public rooms waiting for players, as a row of wide cards with a Join arrow. Skeletons while loading,
+ * an honest empty state with a create CTA, and a calm offline state with Retry. Uses the Home page's shared live
+ * numbers when mounted under <LiveProvider>, else its own (polled) request. `#sh-open` is the anchor the live chips
+ * jump to.
  */
 export default function OpenTables() {
   const shared = useLive();
@@ -84,79 +74,64 @@ export default function OpenTables() {
   const host = featured();
 
   let body;
-  if (status === 'loading') {
+  if (status === 'loading' || status === 'idle') {
     body = (
-      <ul className="st-rail sh-rail" aria-hidden="true" data-solo="false">
-        {[0, 1, 2, 3].map((i) => (
-          <SkelTicket key={i} />
+      <ul className="cj-row" aria-hidden="true">
+        {[0, 1, 2].map((i) => (
+          <li key={i}>
+            <span className="cj-wide cj-home-skel" />
+          </li>
         ))}
       </ul>
     );
   } else if (status === 'offline' || status === 'error' || status === 'auth') {
     body = (
-      <div className="sh-state" role="status">
-        <span className="sh-state__icon" aria-hidden="true">
-          <HubIcon name="wifiOff" size={24} />
-        </span>
-        <p className="sh-state__text">
-          <b>Open tables are unavailable</b>
-          <span>We cannot reach the server right now. Games with a code still work.</span>
-        </p>
-        <button type="button" className="hub-btn hub-btn--soft hub-btn--sm" onClick={retry}>
+      <Note live icon="wifiOff" title="Open tables are unavailable" text="We cannot reach the server right now. Games with a code still work.">
+        <button type="button" className="cj-btn cj-btn--sm" onClick={retry}>
           <HubIcon name="refresh" size={16} /> Retry
         </button>
-      </div>
+      </Note>
     );
   } else if (!rooms.length) {
     body = (
-      <div className="sh-state">
-        <span className="sh-state__icon" aria-hidden="true">
-          <HubIcon name="table" size={24} />
-        </span>
-        <p className="sh-state__text">
-          <b>No open tables right now</b>
-          <span>Start one and share the code, or wait here: new tables show up on their own.</span>
-        </p>
+      <Note icon="table" title="No open tables right now" text="Start one and share the code. New tables show up here on their own.">
         {host && (
-          <Link to={paths.game(host.id)} className="hub-btn hub-btn--primary hub-btn--sm">
+          <Link to={paths.game(host.id)} className="cj-btn cj-btn--primary cj-btn--sm">
             <HubIcon name="plus" size={16} /> Create a table
           </Link>
         )}
-      </div>
+      </Note>
+    );
+  } else {
+    body = (
+      <CineRow label="Open tables" count={rooms.length}>
+        {rooms.map((r) => (
+          <li key={r.code}>
+            <TableCard room={r} />
+          </li>
+        ))}
+      </CineRow>
     );
   }
 
-  const live = rooms.length > 0;
-  const badge = live ? (
-    <span className="sh-count">
-      <i className="st-live" aria-hidden="true" /> {rooms.length} open
-    </span>
-  ) : null;
-
-  const head = {
-    eyebrow: 'Happening now',
-    title: 'Open tables',
-    sub: 'Pick a seat at a table that is waiting for players.',
-    badge,
-    moreTo: paths.join(),
-    moreLabel: 'Have a code?',
-  };
+  const extra = (
+    <>
+      {rooms.length > 0 && (
+        <span className="cj-home-count">
+          <i className="cj-live-dot" aria-hidden="true" /> {rooms.length} open
+        </span>
+      )}
+      <Link to={paths.join()} className="cj-home-more">
+        Have a code?
+      </Link>
+    </>
+  );
 
   return (
-    <div id="sh-open" className="sh-anchor" aria-busy={status === 'loading' || undefined}>
-      {live ? (
-        <Rail {...head} count={rooms.length} label="Open tables">
-          {rooms.map((r) => (
-            <li key={r.code}>
-              <TableCard room={r} />
-            </li>
-          ))}
-        </Rail>
-      ) : (
-        <Rail {...head} bare>
-          {body}
-        </Rail>
-      )}
+    <div id="sh-open" className="cj-home-anchor" aria-busy={status === 'loading' || undefined}>
+      <CineSection id="home-tables" title="Open tables" data-tour="home-tables" className="cj-home-tables" extra={extra}>
+        {body}
+      </CineSection>
     </div>
   );
 }

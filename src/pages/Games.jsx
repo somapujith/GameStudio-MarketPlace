@@ -1,5 +1,6 @@
-// /games: the whole catalogue with category chips, filters, sort and a grid/list view. The URL is the state
+// /games: the whole catalogue with category chips, filters, sort and a poster grid / list view. The URL is the state
 // (?cat=&players=&dur=&status=&sort=&view=), so every combination is shareable and Back/Forward just work.
+// Cine layout (docs/CINE_UI.md): the big page title with a dim "Search" sibling, glass chips, a poster grid.
 import { useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { CATEGORIES, GAMES } from '@/games/registry.js';
@@ -25,8 +26,7 @@ import {
   toQuery,
 } from '@/platform/browse/filters.js';
 import { getStoredView, setStoredView } from '@/platform/browse/storage.js';
-import '@/styles/store-browse.css';
-import '@/platform/browse/publisher-catalog.css';
+import '@/styles/cine/browse.css';
 
 const CAT_IDS = CATEGORIES.map((c) => c.id);
 
@@ -60,51 +60,54 @@ export default function Games() {
   const soonActive = state.status === 'soon';
 
   return (
-    <div className="hub-page bw-page st-scope">
-      <header className="bw-head st-reveal">
-        <span className="st-eyebrow">Jalebi Games / The catalogue</span>
-        <h1 className="bw-title">The games<span aria-hidden="true">.</span></h1>
-        <p className="bw-sub">
-          {GAMES.some((g) => g.status !== 'coming_soon') && <i className="st-live" aria-hidden="true" />}
-          {catalogueSummary(GAMES)}
-        </p>
+    <div className="hub-page cj-browse">
+      <div className="cj-browse-glow" aria-hidden="true" />
+      <header className="cj-pagehead cj-browse-head">
+        <h1 className="cj-pagehead__title">Browse</h1>
+        <Link className="cj-pagehead__tab" to={paths.search()}>
+          Search
+        </Link>
       </header>
+      <p className="cj-lede cj-browse-lede">
+        {GAMES.some((g) => g.status !== 'coming_soon') && <i className="cj-live-dot" aria-hidden="true" />}
+        {catalogueSummary(GAMES)}
+      </p>
 
-      <section className="bw-controls st-reveal" style={{ '--i': 1 }} aria-label="Filter and sort games">
-        <div className="bw-cats" role="group" aria-label="Category">
-          <button type="button" className="hub-chip bw-cat" aria-pressed={state.cat === 'all'} onClick={() => go({ cat: 'all' })}>
-            All<span className="bw-cat__n">{counts.all}</span>
+      <section className="cj-browse-controls" aria-label="Filter and sort games">
+        <div className="cj-browse-cats" role="group" aria-label="Category">
+          <button type="button" className="cj-chip cj-browse-cat" aria-pressed={state.cat === 'all'} onClick={() => go({ cat: 'all' })}>
+            All<span className="cj-browse-cat__n">{counts.all}</span>
           </button>
           {cats.map((c) => (
-            <button key={c.id} type="button" className={`hub-chip bw-cat ${counts.byCat[c.id] === 0 ? 'is-empty' : ''}`} aria-pressed={state.cat === c.id} onClick={() => go({ cat: state.cat === c.id ? 'all' : c.id })}>
-              <CatIcon cat={c} size={18} />
+            <button key={c.id} type="button" className={`cj-chip cj-browse-cat ${counts.byCat[c.id] === 0 ? 'is-empty' : ''}`} aria-pressed={state.cat === c.id} onClick={() => go({ cat: state.cat === c.id ? 'all' : c.id })}>
+              <CatIcon cat={c} size={16} />
               {c.label}
-              <span className="bw-cat__n">{counts.byCat[c.id]}</span>
+              <span className="cj-browse-cat__n">{counts.byCat[c.id]}</span>
             </button>
           ))}
-          <button type="button" className={`hub-chip bw-cat ${counts.soon === 0 ? 'is-empty' : ''}`} aria-pressed={soonActive} onClick={() => go({ status: soonActive ? 'any' : 'soon' })}>
-            <CatIcon cat={{ id: 'soon' }} size={18} />
-            Coming soon<span className="bw-cat__n">{counts.soon}</span>
+          <button type="button" className={`cj-chip cj-browse-cat ${counts.soon === 0 ? 'is-empty' : ''}`} aria-pressed={soonActive} onClick={() => go({ status: soonActive ? 'any' : 'soon' })}>
+            <CatIcon cat={{ id: 'soon' }} size={16} />
+            Coming soon<span className="cj-browse-cat__n">{counts.soon}</span>
           </button>
         </div>
 
         {/* wide screens: the filters sit in the page */}
-        <div className="bw-bar">
+        <div className="cj-browse-bar">
           <FilterControls state={state} onChange={(patch) => go(patch)} idPrefix="bf" />
         </div>
 
         {/* phones: one button opens the sheet, active filters show as removable chips */}
-        <div className="bw-phonebar">
-          <button ref={filterBtn} type="button" className="hub-btn hub-btn--soft bw-filterbtn" onClick={() => setSheetOpen(true)} aria-haspopup="dialog">
+        <div className="cj-browse-phonebar">
+          <button ref={filterBtn} type="button" className="cj-btn cj-btn--sm cj-browse-filterbtn" onClick={() => setSheetOpen(true)} aria-haspopup="dialog">
             <SlidersIcon />
             Filters
-            {filterCount > 0 && <span className="bw-filterbtn__n">{filterCount}</span>}
+            {filterCount > 0 && <span className="cj-browse-filterbtn__n">{filterCount}</span>}
           </button>
           {chips.length > 0 && (
-            <ul className="bw-active" role="list" aria-label="Active filters">
+            <ul className="cj-browse-active" role="list" aria-label="Active filters">
               {chips.map((c) => (
                 <li key={c.key}>
-                  <button type="button" className="bw-activechip" onClick={() => go({ [c.key]: c.key === 'cat' ? 'all' : 'any' })} aria-label={`Remove filter ${c.label}`}>
+                  <button type="button" className="cj-chip is-on" onClick={() => go({ [c.key]: c.key === 'cat' ? 'all' : 'any' })} aria-label={`Remove filter ${c.label}`}>
                     {c.label}
                     <CloseIcon width={14} height={14} />
                   </button>
@@ -114,18 +117,18 @@ export default function Games() {
           )}
         </div>
 
-        <div className="bw-toolbar">
-          <div className="bw-resultwrap">
-            <p className="bw-result" role="status" aria-live="polite" aria-atomic="true">
+        <div className="cj-browse-toolbar">
+          <div className="cj-browse-resultwrap">
+            <p className="cj-browse-result" role="status" aria-live="polite" aria-atomic="true">
               {n === 0 ? 'No games match' : filtered ? `Showing ${n} of ${GAMES.length} games` : `${n} ${n === 1 ? 'game' : 'games'}`}
             </p>
             {filtered && (
-              <button type="button" className="bw-clear" onClick={clearAll}>
+              <button type="button" className="cj-browse-textbtn" onClick={clearAll}>
                 Clear filters
               </button>
             )}
           </div>
-          <label className="bw-sort">
+          <label className="cj-browse-sort">
             <span>Sort</span>
             <select value={state.sort} onChange={(e) => go({ sort: e.target.value }, { replace: true })}>
               {SORT_OPTIONS.map((o) => (
@@ -134,12 +137,13 @@ export default function Games() {
                 </option>
               ))}
             </select>
+            <HubIcon name="chevDown" size={14} />
           </label>
-          <div className="bw-view" role="group" aria-label="Layout">
-            <button type="button" className="bw-iconbtn" aria-pressed={state.view === 'grid'} aria-label="Grid view" onClick={() => setView('grid')}>
+          <div className="cj-browse-view" role="group" aria-label="Layout">
+            <button type="button" className="cj-browse-viewbtn" aria-pressed={state.view === 'grid'} aria-label="Grid view" onClick={() => setView('grid')}>
               <GridIcon />
             </button>
-            <button type="button" className="bw-iconbtn" aria-pressed={state.view === 'list'} aria-label="List view" onClick={() => setView('list')}>
+            <button type="button" className="cj-browse-viewbtn" aria-pressed={state.view === 'list'} aria-label="List view" onClick={() => setView('list')}>
               <ListIcon />
             </button>
           </div>
@@ -147,37 +151,37 @@ export default function Games() {
       </section>
 
       {n > 0 ? (
-        <ul className={state.view === 'list' ? 'bw-list' : 'bw-grid'} role="list">
+        <ul className={state.view === 'list' ? 'cj-browse-list' : 'cj-browse-grid'} role="list">
           {results.map((game, i) => (
-            <li key={game.id} className="bw-li">
-              {state.view === 'list' ? <BrowseRow game={game} index={i} /> : <BrowseCard game={game} index={i} />}
-            </li>
+            <li key={game.id}>{state.view === 'list' ? <BrowseRow game={game} index={i} /> : <BrowseCard game={game} index={i} />}</li>
           ))}
         </ul>
       ) : (
-        <div className="bw-empty st-card">
-          <span className="bw-empty__mark" aria-hidden="true">
-            <HubIcon name="compass" size={30} />
+        <div className="cj-empty cj-browse-empty">
+          <span className="cj-empty__art" aria-hidden="true">
+            <span className="cj-browse-empty__mark">
+              <HubIcon name="compass" size={22} />
+            </span>
           </span>
-          <h2 className="bw-empty__title">No games match these filters</h2>
-          <p className="bw-empty__text">Try fewer filters, or widen the number of players. New games are on the way.</p>
-          <div className="bw-empty__actions">
-            <button type="button" className="hub-btn hub-btn--primary" onClick={clearAll}>
+          <h2 className="cj-empty__title">No games match these filters</h2>
+          <p className="cj-empty__body">Try fewer filters, or widen the number of players. New games are on the way.</p>
+          <div className="cj-empty__actions">
+            <button type="button" className="cj-btn cj-btn--primary" onClick={clearAll}>
               Clear filters
             </button>
             {!soonActive && soonSuggestions.length > 0 && (
-              <button type="button" className="hub-btn hub-btn--ghost" onClick={() => go({ cat: 'all', players: 'any', dur: 'any', status: 'soon' })}>
+              <button type="button" className="cj-btn" onClick={() => go({ cat: 'all', players: 'any', dur: 'any', status: 'soon' })}>
                 See what is coming soon
               </button>
             )}
           </div>
           {soonSuggestions.length > 0 && (
-            <ul className="bw-empty__soon" role="list" aria-label="Coming soon">
+            <ul className="cj-browse-suggest" role="list" aria-label="Coming soon">
               {soonSuggestions.map((g) => (
                 <li key={g.id}>
-                  <Link className="st-chip" to={paths.game(g.id)}>
+                  <Link className="cj-chip" to={paths.game(g.id)}>
                     {g.name}
-                    <span className="bw-empty__tagsoon">Soon</span>
+                    <span className="cj-browse-suggest__soon">Soon</span>
                   </Link>
                 </li>
               ))}

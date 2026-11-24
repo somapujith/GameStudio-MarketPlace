@@ -33,24 +33,24 @@ export default function Unavailable({ reason = 'unknown', game = null, fullscree
   const q = idToQuery(query);
   return (
     <section className={`hub-unavail${fullscreen ? ' hub-unavail--full' : ''}`} aria-labelledby="hub-unavail-title">
-      <div className="hub-unavail__card">
-        <span className="hub-unavail__art" aria-hidden="true">
+      <div className="hub-unavail__card cj-empty cj-detail-unavail">
+        <span className="hub-unavail__art cj-empty__art" aria-hidden="true">
           <HubMark size={64} />
         </span>
-        <h1 id="hub-unavail-title" className="hub-h1">
+        <h1 id="hub-unavail-title" className="cj-empty__title">
           {title}
         </h1>
-        <p className="hub-lead">{copy.text}</p>
-        <div className="hub-unavail__actions">
+        <p className="cj-empty__body">{copy.text}</p>
+        <div className="hub-unavail__actions cj-empty__actions">
           {game && (
-            <Link to={paths.game(game.id)} className="hub-btn hub-btn--soft">
+            <Link to={paths.game(game.id)} className="cj-btn">
               {game.name}
             </Link>
           )}
-          <Link to={paths.games()} className="hub-btn hub-btn--primary">
+          <Link to={paths.games()} className="cj-btn cj-btn--primary">
             <HubIcon name="gamepad" size={18} /> Browse all games
           </Link>
-          <Link to={paths.search(q)} className="hub-btn hub-btn--soft">
+          <Link to={paths.search(q)} className="cj-btn">
             <HubIcon name="search" size={18} /> {q ? `Search for “${q}”` : 'Search games'}
           </Link>
         </div>

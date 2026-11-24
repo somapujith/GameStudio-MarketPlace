@@ -1,5 +1,7 @@
 // /search?q=: live catalogue search. The field filters as you type; the URL follows (debounced, replace) so Back is
 // clean and a result page is shareable. Arrow keys walk the results, Enter opens the top one.
+// Cine layout (docs/CINE_UI.md): the big page title with a dim "Browse" sibling, a glass field, poster grids, and the
+// dashed-folder empty state.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { CATEGORIES, GAMES } from '@/games/registry.js';
@@ -8,12 +10,13 @@ import useDocTitle from '@/platform/game/useDocTitle.js';
 import { paths } from '@/platform/paths.js';
 import { CatIcon } from '@/platform/home/GameArt.jsx';
 import HubIcon from '@/platform/game/HubIcon.jsx';
-import BrowseRow from '@/platform/browse/BrowseRow.jsx';
+import BrowseCard from '@/platform/browse/BrowseCard.jsx';
+import { GamePoster } from '@/platform/browse/GameArt.jsx';
 import { searchGames } from '@/platform/browse/searchGames.js';
 import { browseHref } from '@/platform/browse/filters.js';
 import { ClockIcon, CloseIcon, SearchIcon } from '@/platform/browse/icons.jsx';
 import { getRecents, pushRecent, saveRecents } from '@/platform/browse/storage.js';
-import '@/styles/store-browse.css';
+import '@/styles/cine/browse.css';
 
 const DEBOUNCE_MS = 250;
 const MAX_Q = 80;
@@ -124,15 +127,15 @@ export default function Search() {
   let rowIndex = 0;
   const section = (title, hits, id) =>
     hits.length > 0 && (
-      <section className="bw-sgroup" aria-labelledby={id}>
-        <h2 id={id} className="bw-sgroup__title">
+      <section className="cj-browse-sgroup" aria-labelledby={id}>
+        <h2 id={id} className="cj-section__title cj-browse-sgroup__title">
           {title}
-          <span className="bw-sgroup__n">{hits.length}</span>
+          <span className="cj-browse-sgroup__n">{hits.length}</span>
         </h2>
-        <ul className="bw-list" role="list">
+        <ul className="cj-browse-grid" role="list">
           {hits.map(({ game }) => (
-            <li key={game.id} className="bw-li">
-              <BrowseRow game={game} query={query} index={rowIndex++} onOpen={() => remember(query)} onKeyDown={onResultKey} />
+            <li key={game.id}>
+              <BrowseCard game={game} query={query} index={rowIndex++} onOpen={() => remember(query)} onKeyDown={onResultKey} />
             </li>
           ))}
         </ul>
@@ -140,21 +143,24 @@ export default function Search() {
     );
 
   return (
-    <div className="hub-page bw-page st-scope">
-      <header className="bw-head st-reveal">
-        <span className="st-eyebrow">Search</span>
-        <h1 className="bw-title">Find your next game</h1>
+    <div className="hub-page cj-browse cj-search">
+      <div className="cj-browse-glow" aria-hidden="true" />
+      <header className="cj-pagehead cj-browse-head">
+        <h1 className="cj-pagehead__title">Search</h1>
+        <Link className="cj-pagehead__tab" to={paths.games()}>
+          Browse
+        </Link>
       </header>
 
-      <form className="bw-search st-reveal" style={{ '--i': 1 }} role="search" onSubmit={(e) => e.preventDefault()}>
+      <form className="cj-browse-search" role="search" onSubmit={(e) => e.preventDefault()}>
         <label htmlFor="bw-q" className="hub-sr">
           Search games
         </label>
-        <SearchIcon className="bw-search__ico" width={22} height={22} />
+        <SearchIcon className="cj-browse-search__ico" width={20} height={20} />
         <input
           id="bw-q"
           ref={inputRef}
-          className="bw-search__input"
+          className="cj-input cj-browse-search__input"
           type="search"
           inputMode="search"
           enterKeyHint="search"
@@ -171,7 +177,7 @@ export default function Search() {
         {value && (
           <button
             type="button"
-            className="bw-search__clear"
+            className="cj-browse-search__clear"
             aria-label="Clear search"
             onClick={() => {
               setValue('');
@@ -189,35 +195,37 @@ export default function Search() {
 
       {query ? (
         total > 0 ? (
-          <div ref={listRef} className="bw-results">
+          <div ref={listRef} className="cj-browse-results">
             {section('Games', liveHits, 'bw-s-live')}
             {section('Coming soon', soonHits, 'bw-s-soon')}
-            <p className="bw-hint">
+            <p className="cj-browse-hint">
               <kbd>↑</kbd> <kbd>↓</kbd> to move, <kbd>Enter</kbd> to open the top result.
             </p>
           </div>
         ) : (
-          <div className="bw-empty st-card">
-            <span className="bw-empty__mark" aria-hidden="true">
-              <HubIcon name="search" size={30} />
+          <div className="cj-empty cj-browse-empty">
+            <span className="cj-empty__art" aria-hidden="true">
+              <span className="cj-browse-empty__mark">
+                <HubIcon name="search" size={22} />
+              </span>
             </span>
-            <h2 className="bw-empty__title">No games match “{query}”</h2>
-            <p className="bw-empty__text">Check the spelling, or try a category or a single word.</p>
-            <ul className="bw-suggest" role="list" aria-label="Try a category">
+            <h2 className="cj-empty__title">No games match “{query}”</h2>
+            <p className="cj-empty__body">Check the spelling, or try a category or a single word.</p>
+            <ul className="cj-browse-suggest" role="list" aria-label="Try a category">
               {cats.map((c) => (
                 <li key={c.id}>
-                  <Link className="hub-chip" to={browseHref({ cat: c.id })}>
-                    <CatIcon cat={c} size={18} />
+                  <Link className="cj-chip" to={browseHref({ cat: c.id })}>
+                    <CatIcon cat={c} size={16} />
                     {c.label}
                   </Link>
                 </li>
               ))}
             </ul>
-            <div className="bw-empty__actions">
-              <Link className="hub-btn hub-btn--primary" to={paths.games()}>
+            <div className="cj-empty__actions">
+              <Link className="cj-btn cj-btn--primary" to={paths.games()}>
                 Browse all games
               </Link>
-              <button type="button" className="hub-btn hub-btn--ghost" onClick={() => setValue('')}>
+              <button type="button" className="cj-btn" onClick={() => setValue('')}>
                 Clear search
               </button>
             </div>
@@ -226,24 +234,24 @@ export default function Search() {
       ) : (
         <>
           {recents.length > 0 && (
-            <section className="bw-block st-reveal" style={{ '--i': 2 }} aria-labelledby="bw-recent">
-              <div className="st-head">
-                <h2 id="bw-recent" className="st-head__title bw-h">
+            <section className="cj-section cj-browse-block" aria-labelledby="bw-recent">
+              <div className="cj-section__head">
+                <h2 id="bw-recent" className="cj-section__title">
                   Recent searches
                 </h2>
-                <button type="button" className="bw-textbtn" onClick={clearRecents}>
+                <button type="button" className="cj-browse-textbtn" onClick={clearRecents}>
                   Clear all
                 </button>
               </div>
-              <ul className="bw-suggest" role="list">
+              <ul className="cj-browse-suggest cj-browse-suggest--left" role="list">
                 {recents.map((q) => (
-                  <li key={q} className="bw-recent">
-                    <button type="button" className="hub-chip bw-recent__q" onClick={() => pickSuggestion(q)}>
-                      <ClockIcon width={16} height={16} />
+                  <li key={q} className="cj-browse-recent">
+                    <button type="button" className="cj-chip cj-browse-recent__q" onClick={() => pickSuggestion(q)}>
+                      <ClockIcon width={14} height={14} />
                       {q}
                     </button>
-                    <button type="button" className="bw-recent__x" aria-label={`Remove ${q} from recent searches`} onClick={() => forget(q)}>
-                      <CloseIcon width={14} height={14} />
+                    <button type="button" className="cj-browse-recent__x" aria-label={`Remove ${q} from recent searches`} onClick={() => forget(q)}>
+                      <CloseIcon width={12} height={12} />
                     </button>
                   </li>
                 ))}
@@ -251,22 +259,28 @@ export default function Search() {
             </section>
           )}
 
-          <section className="bw-block st-reveal" style={{ '--i': 3 }} aria-labelledby="bw-cats">
-            <div className="st-head">
-              <h2 id="bw-cats" className="st-head__title bw-h">
+          <section className="cj-section cj-browse-block" aria-labelledby="bw-cats">
+            <div className="cj-section__head">
+              <h2 id="bw-cats" className="cj-section__title">
                 Browse by category
               </h2>
-              <Link className="st-link" to={paths.games()}>
+              <Link className="cj-browse-textbtn" to={paths.games()}>
                 All games
               </Link>
             </div>
-            <ul className="bw-suggest" role="list">
+            <ul className="cj-row cj-browse-tiles" role="list">
               {cats.map((c) => (
                 <li key={c.id}>
-                  <Link className="hub-chip" to={browseHref({ cat: c.id })}>
-                    <CatIcon cat={c} size={18} />
-                    {c.label}
-                    <span className="bw-cat__n">{c.n}</span>
+                  <Link className="cj-tile" to={browseHref({ cat: c.id })}>
+                    <span className="cj-tile__art cj-browse-tile__art">
+                      <CatIcon cat={c} size={34} />
+                    </span>
+                    <span>
+                      {c.label}
+                      <small className="cj-browse-tile__n">
+                        {c.n} {c.n === 1 ? 'game' : 'games'}
+                      </small>
+                    </span>
                   </Link>
                 </li>
               ))}
@@ -274,17 +288,17 @@ export default function Search() {
           </section>
 
           {liveGames.length > 0 && (
-            <section className="bw-block st-reveal" style={{ '--i': 4 }} aria-labelledby="bw-playnow">
-              <div className="st-head">
-                <h2 id="bw-playnow" className="st-head__title bw-h">
+            <section className="cj-section cj-browse-block" aria-labelledby="bw-playnow">
+              <div className="cj-section__head">
+                <h2 id="bw-playnow" className="cj-section__title">
                   Playable now
                 </h2>
               </div>
               <div ref={listRef}>
-                <ul className="bw-list" role="list">
-                  {liveGames.slice(0, 4).map((game, i) => (
-                    <li key={game.id} className="bw-li">
-                      <BrowseRow game={game} index={i} onKeyDown={onResultKey} />
+                <ul className="cj-row" role="list">
+                  {liveGames.slice(0, 4).map((game) => (
+                    <li key={game.id}>
+                      <GamePoster game={game} onKeyDown={onResultKey} />
                     </li>
                   ))}
                 </ul>

@@ -84,26 +84,26 @@ export default function FilterSheet({ open, state, games, onApply, onClose, retu
 
   // portal to <body>: the sheet must sit above the tab bar, which lives in a different stacking context
   return createPortal(
-    <div className={`bw-sheetwrap st-scope ${shown ? 'is-open' : ''}`} onKeyDown={onKeyDown}>
-      <div className="bw-scrim" onClick={onClose} aria-hidden="true" />
-      <div ref={sheetRef} className="bw-sheet" role="dialog" aria-modal="true" aria-labelledby="bw-sheet-title" tabIndex={-1}>
-        <div className="bw-sheet__grip" aria-hidden="true" />
-        <div className="bw-sheet__head">
-          <h2 id="bw-sheet-title" className="bw-sheet__title">
+    <div className={`cj-browse-sheetwrap ${shown ? 'is-open' : ''}`} onKeyDown={onKeyDown}>
+      <div className="cj-browse-scrim" onClick={onClose} aria-hidden="true" />
+      <div ref={sheetRef} className="cj-browse-sheet" role="dialog" aria-modal="true" aria-labelledby="bw-sheet-title" tabIndex={-1}>
+        <div className="cj-browse-sheet__grip" aria-hidden="true" />
+        <div className="cj-browse-sheet__head">
+          <h2 id="bw-sheet-title" className="cj-browse-sheet__title">
             Filters
           </h2>
-          <button type="button" className="bw-iconbtn" onClick={onClose} aria-label="Close filters">
+          <button type="button" className="cj-iconbtn" onClick={onClose} aria-label="Close filters">
             <CloseIcon />
           </button>
         </div>
-        <div className="bw-sheet__body">
+        <div className="cj-browse-sheet__body">
           <FilterControls state={draft} onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))} idPrefix="bfs" showHints />
         </div>
-        <div className="bw-sheet__foot">
-          <button type="button" className="hub-btn hub-btn--ghost" disabled={!dirty} onClick={() => setDraft((d) => ({ ...d, players: DEFAULTS.players, dur: DEFAULTS.dur, status: DEFAULTS.status }))}>
+        <div className="cj-browse-sheet__foot">
+          <button type="button" className="cj-btn" disabled={!dirty} onClick={() => setDraft((d) => ({ ...d, players: DEFAULTS.players, dur: DEFAULTS.dur, status: DEFAULTS.status }))}>
             Reset
           </button>
-          <button type="button" className="hub-btn hub-btn--primary bw-sheet__apply" onClick={() => onApply({ players: draft.players, dur: draft.dur, status: draft.status })}>
+          <button type="button" className="cj-btn cj-btn--primary cj-browse-sheet__apply" onClick={() => onApply({ players: draft.players, dur: draft.dur, status: draft.status })}>
             {preview === 0 ? 'Apply (no matches)' : `Show ${preview} ${preview === 1 ? 'game' : 'games'}`}
           </button>
         </div>
