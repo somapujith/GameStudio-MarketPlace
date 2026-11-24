@@ -42,10 +42,16 @@
 //                                           ones, shows it as room.players[i].piece and passes it to createGame as
 //                                           players[i].piece. Without it, pieces are off (`piece` is null, `{t:'piece'}` errors).
 //
+//              canHost({ env, user })       async gate on OPENING a table (POST /api/rooms, after the settings are validated; joiners are
+//                                           not asked): -> { ok:true } | { ok:false, error }. A refusal is a 403 with `error`.
+//                                           `user` is the signed-in users row, `env` the Worker env (so it may query the database).
+//                                           Tiffin Centre requires the finished tutorial (user_game_stats.extra ->> 'tutorial').
+//
 //   `result().legacy` is only for Nawabi Raj: when present, the old users.games / wins /
 //   best_worth / rent_earned columns and the matches goal / max_rounds / dice_mode columns are
 //   kept up to date for the previous version of the app.
 import hyderabadTycoon from './hyderabad-tycoon.js';
+import tiffinCentre from './tiffin-centre.js';
 
 /** The game of rooms created before the marketplace existed (and of requests without `gameId`). */
 export const DEFAULT_GAME_ID = hyderabadTycoon.id;
@@ -53,6 +59,7 @@ export const DEFAULT_GAME_ID = hyderabadTycoon.id;
 // A plain object on purpose: tests register extra adapters here (and remove them again).
 export const GAME_ADAPTERS = {
   [hyderabadTycoon.id]: hyderabadTycoon,
+  [tiffinCentre.id]: tiffinCentre,
 };
 
 /** The adapter for a game id, or null for anything unknown (including non-strings). */

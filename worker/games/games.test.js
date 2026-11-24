@@ -7,10 +7,10 @@ import { ANIM_MS, MAX_ANIM_MS, LONG_TRIP } from '../../shared/timing.js';
 import * as engine from '../../shared/index.js';
 
 describe('registry', () => {
-  it('knows Nawabi Raj and nothing else by default', () => {
+  it('knows Nawabi Raj and Tiffin Centre and nothing else by default', () => {
     expect(DEFAULT_GAME_ID).toBe('hyderabad-tycoon');
     expect(getAdapter('hyderabad-tycoon')).toBe(tycoon);
-    expect(Object.keys(GAME_ADAPTERS)).toEqual(['hyderabad-tycoon']);
+    expect(Object.keys(GAME_ADAPTERS)).toEqual(['hyderabad-tycoon', 'tiffin-centre']);
   });
 
   it('getAdapter returns null for anything unknown (no prototype leaks)', () => {
@@ -20,7 +20,10 @@ describe('registry', () => {
   });
 
   it('listGames is the public, function-free description', () => {
-    expect(listGames()).toEqual([{ id: 'hyderabad-tycoon', name: 'Nawabi Raj', minPlayers: 2, maxPlayers: 6 }]);
+    expect(listGames()).toEqual([
+      { id: 'hyderabad-tycoon', name: 'Nawabi Raj', minPlayers: 2, maxPlayers: 6 },
+      { id: 'tiffin-centre', name: 'Tiffin Centre', minPlayers: 2, maxPlayers: 4 },
+    ]);
     expect(() => JSON.stringify(listGames())).not.toThrow();
   });
 

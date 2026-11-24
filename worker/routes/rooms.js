@@ -19,6 +19,11 @@ rooms.post('/', requireUser, limit('room-create', 10, 60), async (c) => {
   const body = await readJson(c);
   const init = parseRoomInit(body);
   if (!init.ok) throw new HttpError(400, init.error);
+  // Optional adapter gate on opening a table (e.g. Tiffin Centre needs its tutorial first). Joiners are never asked.
+  if (typeof init.adapter.canHost === 'function') {
+    const gate = await init.adapter.canHost({ env: c.env, user });
+    if (!gate || gate.ok !== true) throw new HttpError(403, (gate && gate.error) || 'You cannot open a table for this game yet.');
+  }
   const host = { id: user.id, name: user.name, avatar: user.avatar, guest: !!user.is_guest };
 
   for (let attempt = 0; attempt < 8; attempt += 1) {

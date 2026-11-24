@@ -39,6 +39,7 @@ import announcementRoutes from './routes/announcements.js';
 import achievementRoutes from './routes/achievements.js';
 import eventRoutes from './routes/events.js';
 import seasonRoutes from './routes/seasons.js';
+import tutorialRoutes from './routes/tutorial.js';
 
 export { GameRoom } from './GameRoom.js';
 export { UserHub } from './UserHub.js';
@@ -91,6 +92,7 @@ api.route('/me', meRoutes);
 api.route('/friends', friendRoutes);
 api.route('/blocks', blockRoutes);
 api.route('/games', gameRoutes);
+api.route('/games', tutorialRoutes); // POST /api/games/:gameId/tutorial/complete
 api.route('/rooms', roomRoutes);
 api.route('/invites', inviteRoutes);
 api.route('/leaderboard', leaderboardRoutes);

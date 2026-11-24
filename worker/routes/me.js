@@ -13,7 +13,8 @@ import { myReferrals } from '../referrals.js';
 
 const me = new Hono();
 
-// GET /api/me -> { user|null }  (also refreshes last_seen; user.gameStats = { [gameId]: { games, wins, bestScore, rating } },
+// GET /api/me -> { user|null }  (also refreshes last_seen; user.gameStats = { [gameId]: { games, wins, bestScore, rating, tutorialDone? } }
+// (tutorialDone: boolean, only for games with a tutorial, e.g. tiffin-centre),
 // user.daily = { streak, lastClaim, canClaim, nextReward }, user.equipped = { frame?, dice?, title? },
 // user.role = the effective role 'user'|'moderator'|'admin'). A suspended account gets 403 { error, code: 'banned', reason }.
 me.get('/', async (c) => {

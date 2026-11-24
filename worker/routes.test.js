@@ -109,7 +109,12 @@ describe('GET /api/games', () => {
     installDb((text) => (/GROUP BY game_id/.test(text) ? [{ game_id: 'hyderabad-tycoon', n: 3 }] : undefined));
     const res = await call('/api/games');
     expect(res.status).toBe(200);
-    expect(res.json).toEqual({ games: [{ id: 'hyderabad-tycoon', name: 'Nawabi Raj', minPlayers: 2, maxPlayers: 6, openTables: 3 }] });
+    expect(res.json).toEqual({
+      games: [
+        { id: 'hyderabad-tycoon', name: 'Nawabi Raj', minPlayers: 2, maxPlayers: 6, openTables: 3 },
+        { id: 'tiffin-centre', name: 'Tiffin Centre', minPlayers: 2, maxPlayers: 4, openTables: 0 },
+      ],
+    });
     expect(res.headers.get('cache-control')).toBe('public, max-age=5');
     expect(res.headers.get('x-content-type-options')).toBe('nosniff'); // the other security headers still apply
   });

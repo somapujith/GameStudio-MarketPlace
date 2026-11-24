@@ -1,6 +1,7 @@
 // User row <-> API shape mapping and simple user queries.
 import { query } from './db.js';
 import { levelFromXp, dailyState } from './xp.js';
+import { hasTutorial } from './games/tutorial.js';
 import { cleanEquipped } from '../shared/cosmetics.js';
 
 // last_daily is returned as 'YYYY-MM-DD' text (never a driver-parsed Date, so no timezone drift).
@@ -48,11 +49,28 @@ export function rowEquipped(r) {
 /** The daily-reward block of a user row (see dailyState in xp.js). */
 export const rowDaily = (r, now = Date.now()) => dailyState({ streak: r.daily_streak, lastClaim: r.last_daily }, now);
 
-/** user_game_stats rows -> { [gameId]: { games, wins, bestScore, rating } }. */
+/** user_game_stats.extra (jsonb: an object, or its text) -> `tutorial === true`. */
+function tutorialFlag(extra) {
+  let x = extra;
+  if (typeof x === 'string') {
+    try {
+      x = JSON.parse(x);
+    } catch {
+      return false;
+    }
+  }
+  return !!x && typeof x === 'object' && x.tutorial === true;
+}
+
+/**
+ * user_game_stats rows -> { [gameId]: { games, wins, bestScore, rating, tutorialDone? } }. `tutorialDone` (boolean, from
+ * `extra.tutorial`) is added for games that have a tutorial (worker/games/tutorial.js) only.
+ */
 export function rowsToGameStats(rows) {
   const out = {};
   for (const r of rows || []) {
     out[r.game_id] = { games: r.games, wins: r.wins, bestScore: r.best_score, rating: r.rating };
+    if (hasTutorial(r.game_id)) out[r.game_id].tutorialDone = tutorialFlag(r.extra);
   }
   return out;
 }
@@ -62,7 +80,7 @@ export async function loadGameStats(env, userId) {
   try {
     const rows = await query(
       env,
-      'SELECT game_id, games, wins, best_score, rating FROM user_game_stats WHERE user_id = $1',
+      'SELECT game_id, games, wins, best_score, rating, extra FROM user_game_stats WHERE user_id = $1',
       [userId],
     );
     return rowsToGameStats(rows);
