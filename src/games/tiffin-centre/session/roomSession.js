@@ -11,6 +11,8 @@
 import { useEffect, useRef } from 'react';
 import { useRoomConnection } from '@/components/online/useRoomConnection.js';
 import { useAuth } from '@/lib/auth.jsx';
+import * as engine from '@shared/tiffin-centre/index.js';
+import { createRoomCache } from './autosave.js';
 import { createRoomSessionCore } from './roomCore.js';
 
 export function useRoomSession(code) {
@@ -26,6 +28,7 @@ export function useRoomSession(code) {
       code,
       core: createRoomSessionCore({
         meId,
+        cache: createRoomCache(code, { stateVersion: engine.STATE_VERSION }),
         send: (msg, opts) => sendRef.current(msg, opts),
         leave: () => leaveRef.current(),
       }),

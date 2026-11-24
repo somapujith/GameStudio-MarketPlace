@@ -96,7 +96,7 @@ export function createActionLimiter({ send, now = () => Date.now(), setTimer = s
  * The session status for a room: 'loading' | 'playing' | 'done' | 'closed' | 'disconnected' | 'error'.
  * A finished game keeps its result whatever happens to the link afterwards (unless the room went back to its lobby).
  */
-export function roomStatus({ fatal, connection, room, state }) {
+export function roomStatus({ fatal, connection, room, state, stale = false }) {
   if (room && room.status === 'lobby') return 'loading'; // back in the lobby (also hides a stale finished game)
   if (state && (state.status === 'done' || state.status === 'closed')) return state.status;
   // The room is over but the engine state never said so: the server called the shift off (everybody was away for too long, or a
@@ -109,6 +109,8 @@ export function roomStatus({ fatal, connection, room, state }) {
     return 'disconnected';
   }
   if (!state) return connection === 'closed' ? 'disconnected' : 'loading';
+  // a state that came from the page-refresh cache is only a picture of the stall: nobody may act on it until the server speaks
+  if (stale) return 'disconnected';
   if (connection !== 'open') return 'disconnected';
   return 'playing';
 }
@@ -128,7 +130,11 @@ export function playersOf(room, state) {
   return [];
 }
 
-export function createRoomSessionCore({ meId = '', send, leave, engine = realEngine, now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()), setTimer, clearTimer, validate = true } = {}) {
+/**
+ * `cache` (optional) is `{ load(), save(state, meId), clear() }` (see createRoomCache in autosave.js): the last good state survives a page
+ * refresh, so the stall shows at once. It is `stale` (status 'disconnected', dispatch refused) until the first state from the server.
+ */
+export function createRoomSessionCore({ meId = '', send, leave, engine = realEngine, now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()), setTimer, clearTimer, validate = true, cache = null, cacheEveryMs = 2000 } = {}) {
   let me = String(meId || '');
   let room = null;
   let state = null;
@@ -139,7 +145,35 @@ export function createRoomSessionCore({ meId = '', send, leave, engine = realEng
   let lastSeq = -1;
   let result = null;
   let disposed = false;
+  let stale = false;
+  let cachedMe = '';
+  let lastCacheAt = -Infinity;
   const subs = new Set();
+
+  const cacheDo = (fn) => {
+    try {
+      return cache ? fn(cache) : undefined;
+    } catch {
+      return undefined; // a broken cache is only a missing cache
+    }
+  };
+  const dropStale = () => {
+    state = null;
+    stale = false;
+    cachedMe = '';
+    result = null;
+    cacheDo((c) => c.clear());
+  };
+  {
+    const hit = cacheDo((c) => c.load());
+    const ok = hit && hit.state && (!me || !hit.meId || hit.meId === me) && (!me || !hit.state.players || Object.hasOwn(hit.state.players, me));
+    if (ok) {
+      state = hit.state;
+      stale = true;
+      cachedMe = hit.meId || '';
+      tickAt = now();
+    } else if (hit) cacheDo((c) => c.clear());
+  }
   const sendMsg = (action) => (typeof send === 'function' ? send({ t: 'action', action }, { queue: false }) : false);
   const limiter = createActionLimiter({ send: sendMsg, now, setTimer, clearTimer });
 
@@ -154,7 +188,7 @@ export function createRoomSessionCore({ meId = '', send, leave, engine = realEng
     }
   };
 
-  const status = () => roomStatus({ fatal, connection, room, state });
+  const status = () => roomStatus({ fatal, connection, room, state, stale });
   // A finished engine state has its own result; a room the server ended without finishing the shift (abandoned) is a closed centre.
   const resultOf = () => {
     if (!state) return null;
@@ -173,6 +207,8 @@ export function createRoomSessionCore({ meId = '', send, leave, engine = realEng
     get status() { return status(); },
     /** The room is (back) in its lobby: the game screen should navigate to the lobby page. */
     get lobby() { return !!room && room.status === 'lobby'; },
+    /** true while `state` is only the page-refresh cache (nothing can be dispatched; the first server state clears it). */
+    get stale() { return stale; },
     get connection() { return sessionConnection(connection); },
     get fatal() { return fatal; },
     get lastError() { return lastError; },
@@ -183,8 +219,8 @@ export function createRoomSessionCore({ meId = '', send, leave, engine = realEng
         lastError = 'That is not something you can do.';
         return false;
       }
-      if (status() !== 'playing') {
-        lastError = connection !== 'open' ? 'Reconnecting, hold on.' : 'The game is not running.';
+      if (stale || status() !== 'playing') {
+        lastError = stale || connection !== 'open' ? 'Reconnecting, hold on.' : 'The game is not running.';
         return false;
       }
       const full = { ...action, playerId: me };
@@ -213,6 +249,7 @@ export function createRoomSessionCore({ meId = '', send, leave, engine = realEng
     resume: () => false,
     restart: () => false,
     quit() {
+      cacheDo((c) => c.clear());
       limiter.dispose();
       if (typeof leave === 'function') leave();
     },
@@ -222,9 +259,14 @@ export function createRoomSessionCore({ meId = '', send, leave, engine = realEng
     session,
     setMe(id) {
       me = String(id || '');
+      if (stale && me && ((cachedMe && cachedMe !== me) || (state && state.players && !Object.hasOwn(state.players, me)))) {
+        dropStale(); // somebody else's cached table
+        notify([]);
+      }
     },
     setRoom(next) {
       room = next || null;
+      if (room && (room.status === 'lobby' || room.status === 'finished')) cacheDo((c) => c.clear());
       result = resultOf();
       notify([]);
     },
@@ -235,6 +277,7 @@ export function createRoomSessionCore({ meId = '', send, leave, engine = realEng
     },
     setFatal(next) {
       fatal = next || null;
+      if (fatal && ['left', 'kicked', 'join', 'closed'].includes(fatal.kind)) cacheDo((c) => c.clear());
       notify([]);
     },
     /** A rejected action or other server error text (a toast). */
@@ -250,12 +293,22 @@ export function createRoomSessionCore({ meId = '', send, leave, engine = realEng
       if (typeof seq === 'number') lastSeq = seq;
       if (fresh && typeof seq !== 'number') lastSeq = -1;
       const prevTick = state ? num(state.tick, -1) : -1;
-      const first = state === null;
+      const wasStale = stale;
+      const first = state === null || wasStale;
+      stale = false;
       state = next;
       // the tick clock only moves on a NEW tick (an action echo arrives mid-tick and must not reset the bars)
       if (first || fresh || num(next.tick, -1) !== prevTick) tickAt = now();
       result = resultOf();
-      notify(fresh || first ? [] : Array.isArray(events) ? events : [], { fresh: !!fresh });
+      if (cache) {
+        const t = now();
+        if (engine.isOver(next)) cacheDo((c) => c.clear());
+        else if (wasStale || t - lastCacheAt >= cacheEveryMs) {
+          lastCacheAt = t;
+          cacheDo((c) => c.save(next, me));
+        }
+      }
+      notify(fresh || first ? [] : Array.isArray(events) ? events : [], { fresh: !!fresh, ...(wasStale ? { wasStale: true } : {}) });
     },
     /** Undo `dispose()`: React StrictMode (dev) runs mount -> cleanup -> mount on the same hook state, so a disposed core must come back. */
     revive() {
