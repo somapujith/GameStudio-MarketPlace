@@ -1,0 +1,94 @@
+// /play/tiffin-centre (manifest loaders.soloGame, rendered by pages/SoloGame.jsx): the solo side of Tiffin Centre.
+//   home      -> SoloHome: the guided tutorial first; once it is done, Invite friends (the room mode unlocks) and 12 practice shifts
+//   briefing  -> the pre-shift card of a practice level
+//   play      -> TiffinGame over a local session (tutorial or practice)
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/lib/auth.jsx';
+import { paths } from '@/platform/paths.js';
+import { tutorialDone } from '@/platform/game/tutorial.js';
+import { MAX_LEVEL, GAME_ID } from '@shared/tiffin-centre/catalog.js';
+import TiffinGame from './TiffinGame.jsx';
+import { SoloHome, LevelBriefing } from './ui/menus/index.js';
+import { createLocalSession, getProgress, unlockedLevel, isTutorialDoneLocal, syncPendingTutorial } from './session/index.js';
+import './tiffin.css';
+
+export default function TiffinSolo({ game }) {
+  const navigate = useNavigate();
+  const { user } = useAuth() || {};
+  const [stage, setStage] = useState({ name: 'home' });
+  const [session, setSession] = useState(null);
+  const [rev, setRev] = useState(0); // bumps when we come back home, so progress and the tutorial flag are re-read
+  const live = useRef(null);
+
+  const stop = useCallback(() => {
+    live.current?.quit?.();
+    live.current = null;
+    setSession(null);
+  }, []);
+  useEffect(() => () => live.current?.quit?.(), []);
+  useEffect(() => {
+    syncPendingTutorial?.(); // a tutorial finished offline last time: tell the server now
+  }, []);
+
+  const begin = useCallback(
+    (opts) => {
+      live.current?.quit?.();
+      const s = createLocalSession({ playerName: user?.name || 'You', avatar: user?.avatar, ...opts });
+      live.current = s;
+      setSession(s);
+      setStage({ name: 'play', ...opts });
+    },
+    [user],
+  );
+  const home = useCallback(() => {
+    stop();
+    setRev((n) => n + 1);
+    setStage({ name: 'home' });
+  }, [stop]);
+
+  const gameId = game?.id || GAME_ID;
+  const toGamePage = useCallback(() => navigate(paths.game(gameId)), [navigate, gameId]);
+
+  if (stage.name === 'play' && session) {
+    return (
+      <TiffinGame
+        session={session}
+        onExit={stage.mode === 'tutorial' ? toGamePage : home}
+        onInvite={toGamePage}
+        onRetry={stage.mode === 'practice' ? (s) => s.restart() : undefined}
+        onNext={
+          stage.mode === 'practice' && stage.level < MAX_LEVEL
+            ? () => {
+                stop();
+                setStage({ name: 'briefing', level: stage.level + 1, pace: stage.pace });
+              }
+            : undefined
+        }
+      />
+    );
+  }
+
+  if (stage.name === 'briefing') {
+    return (
+      <div className="tc">
+        <LevelBriefing level={stage.level} pace={stage.pace} onGo={() => begin({ mode: 'practice', level: stage.level, pace: stage.pace })} />
+      </div>
+    );
+  }
+
+  const progress = getProgress();
+  const done = tutorialDone(user, game || { id: gameId }) || isTutorialDoneLocal();
+  return (
+    <div className="tc" key={rev}>
+      <SoloHome
+        progress={progress}
+        tutorialDone={done}
+        unlockedLevel={unlockedLevel(progress)}
+        onStartTutorial={() => begin({ mode: 'tutorial', level: 0, pace: 'normal' })}
+        onStartLevel={(level, pace) => setStage({ name: 'briefing', level, pace })}
+        onInvite={toGamePage}
+      />
+    </div>
+  );
+}

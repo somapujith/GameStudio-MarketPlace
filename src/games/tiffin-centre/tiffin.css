@@ -1,0 +1,53 @@
+/* Tiffin Centre: the full-screen root. The HUD (ui/hud/hud.css) and menus (ui/menus/menus.css) style themselves under it.
+   Palette from docs/TIFFIN_CENTRE_PLAN.md section 2; every consumer also carries var() fallbacks. */
+.tc {
+  --tc-saffron: #ff8a1f;
+  --tc-turmeric: #ffc83d;
+  --tc-chilli: #e0392b;
+  --tc-curry-leaf: #2f9e5b;
+  --tc-teal: #12908e;
+  --tc-cream: #fff4dc;
+  --tc-charcoal: #241a14;
+  --tc-steel: #c9d1d6;
+  --tc-night: #141a33;
+  --tc-font: 'Bricolage Grotesque Variable', 'Noto Sans Telugu Variable', system-ui, sans-serif;
+  --tc-font-paint: 'Bricolage Grotesque Variable', 'Noto Sans Telugu Variable', system-ui, sans-serif;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #241a14;
+  color: var(--tc-cream);
+  font-family: var(--tc-font);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+.tc-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  outline: none;
+}
+
+/* Co-op: leave the table (the HUD has no exit in a room). Sits bottom-left, clear of the dock. */
+.tc-leave {
+  position: absolute;
+  left: max(10px, env(safe-area-inset-left));
+  bottom: max(10px, env(safe-area-inset-bottom));
+  z-index: 6;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 2px solid rgba(255, 244, 220, 0.5);
+  border-radius: 12px;
+  background: rgba(36, 26, 20, 0.82);
+  color: var(--tc-cream, #fff4dc);
+  font: 700 14px/1 var(--tc-font);
+  cursor: pointer;
+}
+.tc-leave:hover { background: rgba(224, 57, 43, 0.85); }
+.tc-leave:focus-visible { outline: 3px solid var(--tc-turmeric, #ffc83d); outline-offset: 2px; }
