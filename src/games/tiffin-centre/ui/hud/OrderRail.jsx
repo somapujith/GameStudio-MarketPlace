@@ -1,0 +1,142 @@
+// The kitchen chit rail: one paper chit per customer on a steel clip, in spot order. The coin ring on each chit drains smoothly between
+// ticks (written straight to CSS variables from the shared frame bus: no React state per frame). A paying customer shows a glowing
+// rupee note with a countdown ring and a big COLLECT button.
+import { useRef } from 'react';
+import { formatINR } from '@shared/format.js';
+import DishIcon from './DishIcon.jsx';
+import HudIcon from './HudIcon.jsx';
+import { useFrame } from './hooks.js';
+import { activeCustomers, customerTarget, ticketFrame, ticketModel } from './hudLogic.js';
+
+const STATE_WORD = { waiting: 'waiting', eating: 'eating', paying: 'ready to pay' };
+
+function chitLabel(t) {
+  const needs = t.chips.filter((c) => !c.served).map((c) => c.name);
+  const done = t.chips.length - needs.length;
+  const what = needs.length ? `needs ${needs.join(' and ')}` : 'all served';
+  return `${t.name}, ${t.kindLabel}, ${STATE_WORD[t.st] || t.st}, ${what}${done ? `, ${done} of ${t.chips.length} served` : ''}`;
+}
+
+function Chit({ t, spotOn, walkOn, collectSpot, collectWalk, onTarget, register }) {
+  return (
+    <li
+      ref={(el) => register(t.id, el)}
+      className={`tc-hud-chit${spotOn ? ' is-spot' : ''}${walkOn ? ' is-walking' : ''}`}
+      data-st={t.st}
+      data-tone={t.st === 'paying' ? 'ok' : t.st === 'eating' ? 'eat' : 'ok'}
+      data-ticket={t.id}
+      style={{ '--tilt': `${((t.id * 37) % 5) - 2}deg` }}
+    >
+      <span className="tc-hud-clip" aria-hidden="true" />
+      <button type="button" className="tc-hud-chit-main" onClick={() => onTarget(customerTarget(t.id))} aria-label={chitLabel(t)} data-spot={`ticket:${t.id}`}>
+        <span className="tc-hud-coin" aria-hidden="true">
+          <span className="tc-hud-coin-num" data-num="" />
+          <span className="tc-hud-coin-ico">{t.st === 'paying' ? <HudIcon name="rupee" size={16} /> : t.st === 'eating' ? <HudIcon name="chai" size={16} /> : null}</span>
+        </span>
+        <span className="tc-hud-who">
+          <b>{t.name}</b>
+          <small>{t.st === 'eating' ? 'Eating...' : t.st === 'paying' ? 'Pay now!' : t.kindLabel}</small>
+        </span>
+        <span className="tc-hud-dishes">
+          {t.chips.map((c, i) => (
+            <span key={i} className={`tc-hud-dishchip${c.served ? ' is-served' : ''}${c.inHand && !c.served ? ' is-inhand' : ''}`}>
+              <DishIcon dish={c.dish} size={30} />
+              <span className="tc-hud-dishname">
+                <span className="tc-hud-en">{c.name}</span>
+                <span className="tc-hud-te">{c.te}</span>
+              </span>
+              {c.served && (
+                <span className="tc-hud-tick" aria-hidden="true">
+                  <HudIcon name="check" size={14} />
+                </span>
+              )}
+            </span>
+          ))}
+        </span>
+      </button>
+      {t.st === 'paying' && (
+        <button
+          type="button"
+          className={`tc-hud-collect${collectSpot ? ' is-spot' : ''}${collectWalk ? ' is-walking' : ''}`}
+          data-spot={`collect:${t.id}`}
+          onClick={() => onTarget(customerTarget(t.id))}
+          aria-label={`Collect ${formatINR(t.total)} from ${t.name}`}
+        >
+          <span className="tc-hud-note" aria-hidden="true" />
+          <span className="tc-hud-collect-txt">
+            <small>COLLECT</small>
+            <b>{formatINR(t.total)}</b>
+          </span>
+          <span className="tc-hud-collect-secs" data-paysecs="" aria-hidden="true" />
+        </button>
+      )}
+    </li>
+  );
+}
+
+export default function OrderRail({ state, hands, spot, walking, onTarget }) {
+  const els = useRef(new Map());
+  const register = (id, el) => {
+    if (el) els.current.set(id, { el, num: el.querySelector('[data-num]'), secs: null, last: {} });
+    else els.current.delete(id);
+  };
+  useFrame((_t, frac, st) => {
+    if (!st) return;
+    for (const c of st.customers || []) {
+      const rec = els.current.get(c.id);
+      if (!rec) continue;
+      const f = ticketFrame(c, st, frac);
+      const { el, last } = rec;
+      const p = f.p.toFixed(3);
+      if (last.p !== p) {
+        el.style.setProperty('--p', p);
+        last.p = p;
+      }
+      if (last.tone !== f.tone) {
+        el.dataset.tone = f.tone;
+        last.tone = f.tone;
+      }
+      const shake = f.shake ? '1' : '0';
+      if (last.shake !== shake) {
+        el.dataset.shake = shake;
+        last.shake = shake;
+      }
+      const text = c.st === 'eating' ? '' : String(f.secs);
+      if (rec.num && last.text !== text) {
+        rec.num.textContent = text;
+        last.text = text;
+      }
+      if (c.st === 'paying') {
+        const ps = el.querySelector('[data-paysecs]');
+        if (ps && last.pay !== f.secs) {
+          ps.textContent = `${f.secs}s`;
+          last.pay = f.secs;
+        }
+      }
+    }
+  });
+  const list = activeCustomers(state);
+  return (
+    <section className="tc-hud-railbox" aria-label="Orders">
+      <div className="tc-hud-railwire" aria-hidden="true" />
+      <ol className="tc-hud-rail">
+        {list.length === 0 && <li className="tc-hud-rail-empty">No orders yet. Keep the tawa hot!</li>}
+        {list.map((c) => {
+          const t = ticketModel(c, state, hands);
+          return (
+            <Chit
+              key={c.id}
+              t={t}
+              spotOn={spot.has(`ticket:${c.id}`)}
+              walkOn={walking.has(`ticket:${c.id}`)}
+              collectSpot={spot.has(`collect:${c.id}`)}
+              collectWalk={walking.has(`collect:${c.id}`)}
+              onTarget={onTarget}
+              register={register}
+            />
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
