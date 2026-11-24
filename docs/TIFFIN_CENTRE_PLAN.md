@@ -37,6 +37,28 @@ a kitchen chit rail, big thumb-sized station buttons, coin ring timers.
 - States to design: empty stall, cooking, ready (ping), burnt (smoke), customer waiting/eating/paying/angry/walked-out-unpaid, hands full,
   teammate present/away, connection lost, pause, shift end (stars), failed shift, level locked, tutorial coach marks.
 
+## 2b. Movement and street style (user requirements, binding on every WP)
+
+**Characters move and do the work.** Nobody teleports. `shared/tiffin-centre/movement.js` is the shared kinematics (read it): everyone works on one line
+behind the counter; `players[id].at` is `null | stationId | 'spot:N' | 'bin'`; `move {to}` accepts exactly those (engine validates with `validTarget` against
+`cfg.stations` / `cfg.spots`). **Walk, then work:** when a player taps a target the HUD's action runner (1) dispatches `move {to: workTarget(action, state)}` at once
+so teammates see the walk, (2) waits `walkSeconds(currentX, standX(to))` (the runner tracks the avatar's x with the same `stepWalker`, so scene and runner agree
+without extra messages), (3) dispatches the real action (`cook/take/serve/collect/discard`) on arrival, and the avatar plays the WORK animation for `WORK_MS`.
+One queued action per player: a new tap replaces it; a refusal from the engine shows a toast. The engine itself has no range check (co-op trust), actions are
+still valid whenever they arrive. Keyboard: A/D or arrows walk the avatar along the line (nearest target highlighted), Space/E acts on it. Tutorial steps wait for the walk.
+Work animations per station kind (tied to the level's stations and menu): tawa = pour and spread batter in circles, flip with the spatula, fold; steamer = lift the lid in
+a steam cloud, tap the trays; kadai = drop batter/dough, swirl, lift with the jhara spoon; chai = the long Irani high pour between two vessels; serve = slide the plate across the
+counter; collect = take the note, tuck it into the money box (gallaa) with a coin ping; discard = tip into the bin. Walking = bob + arm swing; carrying shows plates in hands.
+Co-op: avatars share the line, so two at one station stand in offset lanes (`LANE_OFFSET`) and never overlap.
+
+**Everything is STREET style.** This is a Hyderabadi roadside tiffin stall on a footpath (not a restaurant): a tin-roof or tarpaulin-and-bamboo stall with a flex banner sign,
+a hand-painted menu board with prices, a steel counter and a wooden thela hand-cart, LPG cylinders and brick stoves, big steel tiffin drums and batter buckets,
+stacked steel plates, plastic stools and a bench, a hanging tube-light and bare bulbs on a wire, newspaper-lined baskets, dishes on steel plates / banana leaf /
+newspaper cones, chai in small glasses, a wet road with puddle reflections at dusk, autos, scooters and bikes passing, a pani-puri cart neighbour, a kirana shutter,
+posters and flex banners, electric poles with tangled wires, a street dog, a cow at noon, Charminar in the haze, and customers who stand and eat at the counter.
+UI follows suit: flex-banner headers, hand-painted lettering, order chits on a spike/clip, chalk/enamel board price tags, gunny-sack and tin textures, no glossy app chrome.
+Audio: the street (horns, hawkers, pressure cookers, frying, steel plates). Art and copy: Hyderabadi street voice ("Anna, one masala dosa!", "Chai ready, miyan!").
+
 ## 3. Rules (the engine implements exactly this)
 
 - State advances only by `tick` actions (once per `TICK_MS`) and player actions. Same seed + same actions = same game.
@@ -53,7 +75,7 @@ a kitchen chit rail, big thumb-sized station buttons, coin ring timers.
 - `serve {customer, hand}` gives the dish in hand index `hand` to that customer if they still need it. `collect {customer}` takes the money from a
   `paying` customer: `total = sum(prices)`, `tip = round(total * kind.tip * (0.04 + 0.12 * patienceFrac) + perfectBonus)` where `perfectBonus` is 5% of each
   perfect dish price, plus `combo` bonus +2% of total per consecutive collect (max +20%). Any player may serve/collect for any customer (that is the co-op).
-- `discard {hand}` throws a held dish away. `move {to}` (station id or null) is cosmetic: where the avatar stands (clients tween).
+- `discard {hand}` throws a held dish away. `move {to}` (`null`, a station id, `spot:N` or `bin`: see 2b) sets `players[id].at`; cosmetic for rules, clients animate the walk.
 - **Lives:** `LIVES` hearts, shared by the team. At 0 the shift ends as `closed` (failed). Tutorial has none.
 - **Shift end:** at `tick >= shiftTicks` no new customers arrive; once everyone present has left, `status = 'done'`. Stars: `money >= stars[i] *
   PACE.stars * coopScale` for i = 0,1,2 gives 1-3 stars; 0 stars = failed. Level 0 always completes when the script ends.
