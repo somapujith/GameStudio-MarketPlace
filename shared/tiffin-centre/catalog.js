@@ -117,7 +117,7 @@ export function daypartOf(hour) {
 // patience = multiplier; stars = money for 1 / 2 / 3 stars (before pace and co-op scaling); orderMax caps dishes per customer.
 const MORNING = ['dosa', 'masala_dosa', 'irani_chai'];
 export const LEVELS = {
-  0: { id: 0, name: 'Training Morning', te: 'శిక్షణ', hour: [7, 8], shiftTicks: 600, spots: 3, stations: ['tawa1', 'chai1'], menu: MORNING, gap: [14, 20], patience: 2, orderMax: 2, stars: [0, 0, 0], tutorial: true },
+  0: { id: 0, name: 'Training Morning', te: 'శిక్షణ', hour: [7, 8], shiftTicks: 3600, spots: 3, stations: ['tawa1', 'chai1'], menu: MORNING, gap: [14, 20], patience: 2, orderMax: 2, stars: [0, 0, 0], tutorial: true },
   1: { id: 1, name: 'Sunrise Dosa', te: 'సూర్యోదయ దోశ', hour: [6, 9], shiftTicks: 150, spots: 3, stations: ['tawa1', 'chai1'], menu: MORNING, gap: [12, 18], patience: 1.2, orderMax: 2, stars: [250, 450, 650] },
   2: { id: 2, name: 'Idly Sambar', te: 'ఇడ్లీ సాంబార్', hour: [6, 9.5], shiftTicks: 165, spots: 4, stations: ['tawa1', 'steamer1', 'chai1'], menu: [...MORNING, 'idly'], gap: [11, 16], patience: 1.1, orderMax: 2, stars: [280, 500, 740] },
   3: { id: 3, name: 'Poori Morning', te: 'పూరీ ఉదయం', hour: [7, 10], shiftTicks: 180, spots: 4, stations: ['tawa1', 'steamer1', 'kadai1', 'chai1'], menu: [...MORNING, 'idly', 'poori'], gap: [10, 15], patience: 1.05, orderMax: 2, stars: [350, 620, 930] },

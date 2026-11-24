@@ -26,6 +26,8 @@ export function tutorialDone(user, game, storage = defaultStorage()) {
   const id = game?.id;
   if (!id) return false;
   if (user?.gameStats?.[id]?.tutorialDone === true) return true;
+  // A signed-in account is judged by the server alone: the browser's mirror may belong to somebody who used it before.
+  if (user) return false;
   try {
     return !!storage && typeof storage.getItem === 'function' && storage.getItem(tutorialKey(id)) === '1';
   } catch {

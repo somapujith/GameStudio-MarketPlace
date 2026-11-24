@@ -251,7 +251,7 @@ function LiveDetail({ game }) {
   const options = seatOptions(game.players);
   const [seats, setSeats] = useState(() => defaultSeats(options));
   const panelRef = useRef(null);
-  const locked = roomsLocked(user, game); // manifest `tutorial.requiredForRooms` and the tutorial is not finished: no tables yet
+  const locked = !authLoading && roomsLocked(user, game); // manifest `tutorial.requiredForRooms` and the tutorial is not finished: no tables yet
   const rooms = useOpenRooms(locked ? null : game.id);
   const tables = rooms.status === 'ok' ? openTableList(rooms.rooms, game.id).length : undefined;
   const jump = useJumpLinks();

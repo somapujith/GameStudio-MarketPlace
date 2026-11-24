@@ -89,7 +89,7 @@ function run(seed) {
   let s = createGame({ players, settings: { level, pace: pick(r, ['relaxed', 'normal', 'rush']) }, seed });
   const label = (i, a) => `seed ${seed} level ${level} step ${i} ${JSON.stringify(a)}`;
   let steps = 0;
-  while (!isOver(s) && steps < 6000) {
+  while (!isOver(s) && steps < 60000) {
     const burst = Math.floor(r() * 4);
     for (let k = 0; k < burst; k++) {
       // some players are sensible, some are chaos

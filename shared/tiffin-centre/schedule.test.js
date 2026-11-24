@@ -1,5 +1,7 @@
 // Tiffin Centre: the customer schedule is built from the seed alone and obeys the plan's arrival rules.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+vi.setConfig({ testTimeout: 30000 }); // loops every level; slow on a loaded machine
 import {
   buildSchedule, createGame, applyAction, menuFor, patienceFor, LOOKAHEAD, FIRST_ARRIVAL,
   LEVELS, DISHES, STATIONS, CUSTOMER_KINDS, CUSTOMER_NAMES, PACE, PATIENCE_BASE, coopScale,

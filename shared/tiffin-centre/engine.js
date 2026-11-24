@@ -51,9 +51,13 @@ function clearSlot(sl) {
 /** Build a fresh game. Unknown settings fall back to the defaults (level 1, normal pace); level 0 is the tutorial. */
 export function createGame({ players = [], settings = {}, seed } = {}) {
   const st = settings && typeof settings === 'object' ? settings : {};
-  let lv = st.level === undefined || st.level === null ? 1 : Math.trunc(Number(st.level));
-  if (!Number.isFinite(lv)) lv = 1;
-  lv = Math.max(0, Math.min(MAX_LEVEL, lv));
+  // Level 0 (the scripted tutorial: no lives, frozen clocks, `spawn` accepted) only when asked for with the number 0;
+  // anything else that is not a real level 1..12 (-4, '', [], false, NaN) becomes a real level.
+  let lv = 0;
+  if (st.level !== 0) {
+    const t = Math.trunc(Number(st.level));
+    lv = Math.max(1, Math.min(MAX_LEVEL, Number.isFinite(t) ? t : 1));
+  }
   const level = levelDef(lv);
   const pace = typeof st.pace === 'string' && hasOwn(PACE, st.pace) ? st.pace : 'normal';
   const tutorial = !!level.tutorial;

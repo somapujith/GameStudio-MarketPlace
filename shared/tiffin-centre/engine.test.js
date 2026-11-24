@@ -458,7 +458,7 @@ describe('lives, closing and the end of the shift', () => {
   it('a tutorial with a frozen customer is still sent home eventually', () => {
     let s = spawn(tutorial()).state;
     let guard = 0;
-    while (!isOver(s) && guard++ < 2000) s = ap(s, { type: 'tick' }).state;
+    while (!isOver(s) && guard++ < 8000) s = ap(s, { type: 'tick' }).state;
     expect(s.status).toBe('done');
     expect(s.tick).toBeGreaterThan(s.shiftTicks);
   });

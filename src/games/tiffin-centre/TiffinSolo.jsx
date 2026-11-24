@@ -48,7 +48,15 @@ export default function TiffinSolo({ game }) {
   }, [stop]);
 
   const gameId = game?.id || GAME_ID;
-  const toGamePage = useCallback(() => navigate(paths.game(gameId)), [navigate, gameId]);
+  const toGamePage = useCallback(async () => {
+    // tell the server the tutorial is done BEFORE leaving, so the game page re-reads /api/me with the table unlocked
+    try {
+      await Promise.race([syncPendingTutorial?.(), new Promise((r) => setTimeout(r, 2500))]);
+    } catch {
+      /* offline: the local mirror and the retry on the next visit cover it */
+    }
+    navigate(paths.game(gameId));
+  }, [navigate, gameId]);
 
   if (stage.name === 'play' && session) {
     return (

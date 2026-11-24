@@ -176,7 +176,7 @@ describe('the tutorial level', () => {
     s = applyAction(s, { type: 'tutorial-flags', patience: true, pay: true }).state;
     s = applyAction(s, { type: 'spawn', customer: { order: ['dosa', 'irani_chai'] } }).state;
     let guard = 0;
-    while (!isOver(s) && guard++ < 2000) {
+    while (!isOver(s) && guard++ < 8000) {
       const a = chooseAutoAction(s, 'a');
       if (a) s = applyAction(s, a).state;
       s = applyAction(s, { type: 'tick' }).state;
