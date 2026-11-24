@@ -175,6 +175,13 @@ export function sharedTexture(key, make) {
   return t;
 }
 
+// Modules that keep their own derived caches (street bundles, PBR texture sets) register a reset here; it runs on disposeModelCache().
+const resetHooks = new Set();
+export function onModelCacheReset(fn) {
+  resetHooks.add(fn);
+  return () => resetHooks.delete(fn);
+}
+
 export function disposeModelCache() {
   for (const g of geoCache.values()) g.dispose();
   for (const m of matCache.values()) m.dispose();
@@ -182,7 +189,21 @@ export function disposeModelCache() {
   geoCache.clear();
   matCache.clear();
   texCache.clear();
+  for (const fn of resetHooks) fn();
 }
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Procedural texture quality. Sizes apply to NEW textures only (cached ones keep the size they were built with), so call
+// setTextureQuality() before the first model is built (the scene does it from its quality setting).
+const TEX_Q = { low: { base: 128, hero: 256 }, medium: { base: 256, hero: 512 }, high: { base: 512, hero: 1024 } };
+let texQuality = 'medium';
+export function setTextureQuality(q) {
+  if (TEX_Q[q]) texQuality = q;
+  return texQuality;
+}
+export const getTextureQuality = () => texQuality;
+/** Edge length in px (power of two) of a procedural texture; `hero` ones are the close-up props. */
+export const texRes = (hero = false) => (hero ? TEX_Q[texQuality].hero : TEX_Q[texQuality].base);
 
 const TEXTURE_SLOTS = ['map', 'emissiveMap', 'alphaMap', 'normalMap', 'roughnessMap', 'bumpMap'];
 

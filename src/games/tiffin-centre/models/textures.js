@@ -3,6 +3,11 @@
 import { makeCanvasTexture, redrawWhenFontsLoad, sharedTexture } from './util.js';
 import { RepeatWrapping } from 'three';
 
+// High-quality seamless procedural generators (noise, fbm, worley, Sobel normal maps, PBR recipes). Node-safe: stubs without a canvas.
+export * from './texgen.js';
+export { pbr } from './textures-pbr.js';
+export { setTextureQuality, getTextureQuality, texRes } from './util.js';
+
 export const FONT_TE = '"Noto Sans Telugu Variable","Noto Sans Telugu","Nirmala UI",sans-serif';
 export const FONT_UI = '"Bricolage Grotesque Variable","Bricolage Grotesque",system-ui,sans-serif';
 
