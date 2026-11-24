@@ -1,126 +1,151 @@
-// The fixed high 3/4 camera, framed responsively. `frameCamera` is pure: given the aspect it returns the position, target and fov
-// so that every gameplay point (all spots, stations, bin, the roof / banner above them) lands inside the HUD-safe window.
+// First-person camera maths (pure, no three, no DOM, so every bit of it is unit-tested): the cook's eyes at (x, eyeHeight, cookZ) looking
+// towards -z. Conventions: yaw 0 faces the customers, yaw > 0 turns to the cook's RIGHT (+x), pitch > 0 looks UP. Limits come from
+// LAYOUT.view; the field of view widens on portrait phones so the stall front still reads; the lens can be shifted so the interesting
+// part of the picture sits in the HUD-safe window.
 import { LAYOUT } from '../../../../shared/tiffin-centre/catalog.js';
+import { WALK_SPEED } from '../../../../shared/tiffin-centre/movement.js';
 
 const D2R = Math.PI / 180;
-const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const TAU = Math.PI * 2;
+export const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
-/** World points that must stay on screen: the six spots, the stations, the bin, the road edge and the banner / roof overhead. */
-export const FIT_POINTS = (() => {
-  const pts = [];
-  for (const x of [-4.9, 4.9]) {
-    pts.push([x, 0, 3.3]); // the footpath edge, in front of the customers
-    pts.push([x, 1.9, 1.7]); // customers' heads at the outer spots
-    pts.push([x, 0, -1.2]);
-    pts.push([x, 3.8, -3.9]); // the roof at the back corners
-    pts.push([x, 1.9, -2.2]);
-  }
-  pts.push([-2.5, 5.2, -3.9], [2.5, 5.2, -3.9], [0, 0, 3.3], [0, 1.9, 1.7]); // + the Charminar hoarding above the roof
-  return pts;
-})();
+export const VIEW = LAYOUT.view;
+export const REST_PITCH = -0.1; // where the head rests when there is nothing to look at: a little down, counter and customers both in view
+export const HFOV_MIN = 62; // degrees: portrait phones get a taller vertical fov until the horizontal one reaches this
+export const FOV_MAX = 100; // degrees (vertical) cap, beyond this the edges stretch too much
+export const AUTO_YAW_GAIN = 0.62; // how far (of the way to the target) the head leads while walking
+export const AUTO_YAW_MAX = 0.75;
+export const AUTO_PITCH_GAIN = 0.55; // look down only part of the way at the work: the customers stay in the top of the picture
+export const MANUAL_HOLD_S = 2.4; // free look is held this long after the last input, then the head recentres on its own
+export const MANUAL_RELAX = 1.6; // 1/s, how fast it recentres
+export const FOLLOW_RATE = 26; // 1/s, how tightly the eye follows the walker (the walker itself is instant: this IS the glide)
+export const LOOK_RATE = 9; // 1/s, damping of the head
+export const PIN_RATE = 6.5;
+export const BOB_CYCLE = 3.4; // metres of walking per full bob cycle (two steps)
+export const BOB_Y = 0.034;
+export const BOB_X = 0.012;
+export const BOB_ROLL = 0.011; // radians
+export const LEAN_ROLL = 0.018; // radians of lean into the walking direction at full speed
+export const BREATH = 0.0035;
+
+/** Vertical fov (degrees) for an aspect: LAYOUT.view.fov in landscape, wider on portrait phones, never above FOV_MAX. */
+export function viewFov(aspect, base = VIEW.fov) {
+  const a = clamp(aspect || 1.6, 0.3, 4);
+  const need = (2 * Math.atan(Math.tan((HFOV_MIN * D2R) / 2) / a)) / D2R;
+  return clamp(Math.max(base, need), base, FOV_MAX);
+}
+
+/** Horizontal fov (degrees) for a vertical fov and aspect. */
+export const hFovOf = (vfov, aspect) => (2 * Math.atan(Math.tan((vfov * D2R) / 2) * aspect)) / D2R;
 
 /** Default HUD-safe insets (fractions of the viewport height) by orientation. */
-export const defaultInsets = (aspect) => (aspect < 0.9 ? { top: 0.1, bottom: 0.26 } : { top: 0.09, bottom: 0.12 });
+export const defaultInsets = (aspect) => (aspect < 0.9 ? { top: 0.1, bottom: 0.22 } : { top: 0.08, bottom: 0.1 });
 
-const BASE_ELEV = (() => {
-  const [px, py, pz] = LAYOUT.camera.pos;
-  const [tx, ty, tz] = LAYOUT.camera.target;
-  return Math.atan2(py - ty, Math.hypot(px - tx, pz - tz)) / D2R;
-})();
+/** Lens shift (fraction of the viewport height, positive = the picture moves UP) that centres the view in the window the HUD leaves free. */
+export function lensShift(insets, aspect) {
+  const ins = insets || defaultInsets(aspect || 1.6);
+  const centre = (ins.top + (1 - ins.bottom)) / 2;
+  return clamp((0.5 - centre) * 0.85, -0.2, 0.2);
+}
+
+/** Clamp a look {yaw, pitch} to the view limits (in place). */
+export function clampLook(look, view = VIEW) {
+  look.yaw = clamp(look.yaw, -view.yawMax, view.yawMax);
+  look.pitch = clamp(look.pitch, view.pitchMin, view.pitchMax);
+  return look;
+}
+
+/** Yaw / pitch that point the eye at (fx, fy, fz) towards (tx, ty, tz). */
+export function aimAt(fx, fy, fz, tx, ty, tz, out = { yaw: 0, pitch: 0 }) {
+  const dx = tx - fx;
+  const dz = tz - fz;
+  out.yaw = Math.atan2(dx, -dz);
+  out.pitch = Math.atan2(ty - fy, Math.hypot(dx, dz));
+  return out;
+}
+
+/** The head's goal while the hands work on / walk to a point: leads the walk, settles ahead of the work, partly down. */
+export function autoGoal(eyeX, point, out = { yaw: 0, pitch: 0 }) {
+  aimAt(eyeX, LAYOUT.eyeHeight, LAYOUT.cookZ, point.x, point.y, point.z, out);
+  out.yaw = clamp(out.yaw * AUTO_YAW_GAIN, -AUTO_YAW_MAX, AUTO_YAW_MAX);
+  out.pitch = clamp(out.pitch * AUTO_PITCH_GAIN, VIEW.pitchMin, VIEW.pitchMax);
+  return out;
+}
+
+export const damp = (a, b, rate, dt) => a + (b - a) * (1 - Math.exp(-rate * Math.max(0, dt)));
+
+/** One damped step of a look towards its goal; both clamped to the view limits. Returns `look`. */
+export function stepLook(look, goal, rate, dt, view = VIEW) {
+  look.yaw = damp(look.yaw, clamp(goal.yaw, -view.yawMax, view.yawMax), rate, dt);
+  look.pitch = damp(look.pitch, clamp(goal.pitch, view.pitchMin, view.pitchMax), rate, dt);
+  return look;
+}
+
+/** Free look: add a delta to the manual offset and keep the RESULT (auto goal + offset) inside the limits. */
+export function addManual(manual, dYaw, dPitch, base, view = VIEW) {
+  const y = clamp(base.yaw + manual.yaw + (Number.isFinite(dYaw) ? dYaw : 0), -view.yawMax, view.yawMax);
+  const p = clamp(base.pitch + manual.pitch + (Number.isFinite(dPitch) ? dPitch : 0), view.pitchMin, view.pitchMax);
+  manual.yaw = y - base.yaw;
+  manual.pitch = p - base.pitch;
+  return manual;
+}
+
+/** Walk-cycle phase after moving `dx` metres (phase in radians, one full cycle per BOB_CYCLE metres). */
+export const advancePhase = (phase, dx) => (phase + (Math.abs(dx) / BOB_CYCLE) * TAU) % TAU;
 
 /**
- * @param {{aspect:number, insets?:{top:number,bottom:number}, points?:number[][], margin?:number}} o
- * @returns {{pos:number[], target:number[], fov:number, distance:number, elevation:number, portrait:number}}
+ * Head bob for a walk cycle phase and a smoothed speed (0..1): vertical y (two bobs per cycle), side x, roll. Everything is zero when
+ * standing still or with reduced motion. `dir` (-1..1) leans the head into the walk.
  */
-export function frameCamera({ aspect, insets, points = FIT_POINTS, margin = 0.03 }) {
-  const a = clamp(aspect || 1.6, 0.3, 4);
-  const ins = insets || defaultInsets(a);
-  const portrait = clamp((1.15 - a) / (1.15 - 0.55), 0, 1);
-  const elev = (BASE_ELEV + portrait * 15) * D2R;
-  const fov = LAYOUT.camera.fov + portrait * 6;
-  const tanV = Math.tan((fov * D2R) / 2);
-  const tanH = tanV * a;
-  // camera basis: u = target -> camera (in the y-z plane), right = +x, up = perpendicular to u in the y-z plane
-  const uy = Math.sin(elev);
-  const uz = Math.cos(elev);
-  const upy = uz;
-  const upz = -uy;
-  const winTop = 1 - 2 * ins.top - margin;
-  const winBot = -1 + 2 * ins.bottom + margin;
-  const lim = 1 - margin;
-  const [bx, by, bz] = LAYOUT.camera.target;
-
-  // project every point for camera distance D with the target shifted along `up` by s; fills extents in ndc
-  const ext = { xmax: 0, ymin: 0, ymax: 0 };
-  const project = (D, s) => {
-    const ty = by + upy * s;
-    const tz = bz + upz * s;
-    ext.xmax = 0;
-    ext.ymin = Infinity;
-    ext.ymax = -Infinity;
-    for (const p of points) {
-      const rx = p[0] - bx;
-      const ry = p[1] - ty;
-      const rz = p[2] - tz;
-      const depth = D - (uy * ry + uz * rz);
-      if (depth < 0.1) return false;
-      ext.xmax = Math.max(ext.xmax, Math.abs(rx / (depth * tanH)));
-      const ny = (upy * ry + upz * rz) / (depth * tanV);
-      ext.ymin = Math.min(ext.ymin, ny);
-      ext.ymax = Math.max(ext.ymax, ny);
-    }
-    return true;
-  };
-  // returns the target shift that centres the points in the window when D is large enough, else null
-  const fits = (D) => {
-    let s = 0;
-    const want = (winTop + winBot) / 2;
-    for (let k = 0; k < 4; k++) {
-      if (!project(D, s)) return null;
-      s += (((ext.ymin + ext.ymax) / 2 - want) * D * tanV) * 0.9; // moving the camera up moves the picture down
-    }
-    if (!project(D, s)) return null;
-    return ext.xmax <= lim && ext.ymax <= winTop + 1e-6 && ext.ymin >= winBot - 1e-6 ? s : null;
-  };
-  let lo = 4;
-  let hi = 120;
-  let best = { D: hi, s: 0 };
-  for (let k = 0; k < 40; k++) {
-    const mid = (lo + hi) / 2;
-    const s = fits(mid);
-    if (s === null) lo = mid;
-    else {
-      hi = mid;
-      best = { D: mid, s };
-    }
-  }
-  const D = best.D;
-  const target = [bx, by + upy * best.s, bz + upz * best.s];
-  const pos = [target[0], target[1] + uy * D, target[2] + uz * D];
-  return { pos, target, fov, distance: D, elevation: elev / D2R, portrait };
-}
-
-/** Project a world point with a frameCamera result (tests, HUD placement without WebGL): ndc {x, y, depth}. */
-export function projectWith(frame, aspect, p) {
-  const e = frame.elevation * D2R;
-  const uy = Math.sin(e);
-  const uz = Math.cos(e);
-  const rx = p[0] - frame.target[0];
-  const ry = p[1] - frame.target[1];
-  const rz = p[2] - frame.target[2];
-  const depth = frame.distance - (uy * ry + uz * rz);
-  const tanV = Math.tan((frame.fov * D2R) / 2);
-  return { x: rx / (depth * tanV * aspect), y: (uz * ry - uy * rz) / (depth * tanV), depth };
-}
-
-/** Sway / shake offsets (pure, deterministic in t) in metres. `shake` is the current decaying amplitude. */
-export function swayOffset(t, shake, reducedMotion, out = { x: 0, y: 0, tx: 0 }) {
-  if (reducedMotion) {
-    out.x = out.y = out.tx = 0;
+export function walkBob(phase, speed01, dir, reduced, out = { x: 0, y: 0, roll: 0 }) {
+  if (reduced || speed01 <= 0.0005) {
+    out.x = out.y = out.roll = 0;
     return out;
   }
-  out.x = Math.sin(t * 0.31) * 0.07 + Math.sin(t * 47) * shake * 0.2;
-  out.y = Math.sin(t * 0.43 + 1) * 0.035 + Math.sin(t * 61 + 2) * shake * 0.16;
-  out.tx = Math.sin(t * 0.19) * 0.05;
+  const s = clamp(speed01, 0, 1);
+  out.y = -Math.abs(Math.sin(phase)) * BOB_Y * s + BOB_Y * 0.5 * s;
+  out.x = Math.sin(phase) * BOB_X * s;
+  out.roll = Math.sin(phase) * BOB_ROLL * s - dir * LEAN_ROLL * s;
+  return out;
+}
+
+/** Smoothed 0..1 walking speed from a measured speed (m/s). */
+export const speed01Of = (mps) => clamp(Math.abs(mps) / WALK_SPEED, 0, 1);
+
+/**
+ * An edge-of-screen hint for a target that is not on screen. (px, py): the projected CSS px (valid when depth > 0); (vx, vy): the point in
+ * camera space (used when it is behind). The hint sits on the border of the window inset by `margin`, along the line from the centre.
+ * side: 'left' | 'right' | 'behind'.
+ */
+export function edgeHint(px, py, depth, vx, vy, w, h, margin = 28, out = { side: 'right', x: 0, y: 0 }) {
+  const cx = w / 2;
+  const cy = h / 2;
+  const behind = depth <= 0.001;
+  let dx = behind ? vx : px - cx;
+  let dy = behind ? -vy : py - cy;
+  if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) {
+    dx = 0;
+    dy = 1;
+  }
+  const hw = Math.max(1, cx - margin);
+  const hh = Math.max(1, cy - margin);
+  const sx = Math.abs(dx) > 1e-9 ? hw / Math.abs(dx) : Infinity;
+  const sy = Math.abs(dy) > 1e-9 ? hh / Math.abs(dy) : Infinity;
+  const s = Math.min(sx, sy);
+  out.x = cx + dx * s;
+  out.y = cy + dy * s;
+  out.side = behind ? 'behind' : dx < 0 ? 'left' : 'right';
+  return out;
+}
+
+/** Sway of the camera when something shakes it (decaying `shake`), deterministic in t, radians. */
+export function shakeAngles(t, shake, reduced, out = { pitch: 0, yaw: 0, roll: 0 }) {
+  if (reduced || shake <= 0) {
+    out.pitch = out.yaw = out.roll = 0;
+    return out;
+  }
+  out.pitch = Math.sin(t * 47) * shake * 0.014;
+  out.yaw = Math.sin(t * 53 + 1) * shake * 0.01;
+  out.roll = Math.sin(t * 61 + 2) * shake * 0.012;
   return out;
 }

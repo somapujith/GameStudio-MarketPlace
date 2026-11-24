@@ -2,7 +2,7 @@
 // segment with a world radius) and pick the one whose projected disc contains the pointer, where the disc is never smaller than
 // MIN_PX across (44 px: a fingertip). Nearest-to-centre wins, with a bias so a slot beats its station and a customer beats the floor.
 // The maths takes a `projector` so it is unit-testable without WebGL.
-import { Vector3 } from 'three';
+import { Vector3, Raycaster, Box3 } from 'three';
 
 export const MIN_PX = 44; // minimum hit-disc diameter in CSS px
 export const PRIORITY = { slot: 0.8, customer: 0.9, bin: 1.0, station: 1.3 };
@@ -66,6 +66,8 @@ export function cameraProjector(camera, getSize) {
       v.set(p.x, p.y, p.z).applyMatrix4(camera.matrixWorldInverse);
       const depth = -v.z;
       out.depth = depth;
+      out.vx = v.x; // camera space (the edge hint of an off-screen target uses its direction)
+      out.vy = v.y;
       if (depth <= 0) {
         out.x = out.y = 0;
         return out;
@@ -85,3 +87,27 @@ export function cameraProjector(camera, getSize) {
 
 /** Is a projected point inside the canvas (with a small slack)? */
 export const onScreen = (x, y, w, h, slack = 8) => x >= -slack && y >= -slack && x <= w + slack && y <= h + slack;
+
+// --- cheap raycast fallback for the big things (a station's whole counter block, a customer's body, the bin) ------------------------------
+const _ray = new Raycaster();
+const _hit = new Vector3();
+
+/** boxes: [{ target, box: Box3 }] in world space. The camera ray through NDC (ndcX, ndcY); returns the nearest box's target or null. */
+export function pickBoxes(boxes, camera, ndcX, ndcY) {
+  _ray.setFromCamera({ x: ndcX, y: ndcY }, camera);
+  let best = null;
+  let bestD = Infinity;
+  for (let i = 0; i < boxes.length; i++) {
+    const hit = _ray.ray.intersectBox(boxes[i].box, _hit);
+    if (!hit) continue;
+    const d = hit.distanceToSquared(_ray.ray.origin);
+    if (d < bestD) {
+      bestD = d;
+      best = boxes[i].target;
+    }
+  }
+  return best;
+}
+
+/** A world box from a centre and half extents. */
+export const boxAt = (cx, cy, cz, hx, hy, hz) => new Box3().set(new Vector3(cx - hx, cy - hy, cz - hz), new Vector3(cx + hx, cy + hy, cz + hz));

@@ -7,13 +7,16 @@ import { clamp } from './interp.js';
 
 const VERT = /* glsl */ `
   attribute vec4 aColor; attribute float aSize; attribute float aShape;
-  uniform float uScale;
+  uniform float uScale; uniform float uMaxPx;
   varying vec4 vColor; varying float vShape;
   void main() {
     vColor = aColor; vShape = aShape;
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     gl_Position = projectionMatrix * mv;
-    gl_PointSize = max(0.0, aSize * uScale / max(0.1, -mv.z));
+    // first person: particles are seen from ~1 m, so they fade as they brush the lens and are capped in size (never a white-out)
+    float depth = max(0.1, -mv.z);
+    gl_PointSize = clamp(aSize * uScale / depth, 0.0, uMaxPx);
+    vColor.a *= smoothstep(0.3, 0.9, depth);
   }
 `;
 const FRAG = /* glsl */ `
@@ -53,7 +56,7 @@ function makePool(n, additive, tr) {
   const size = g.attributes.aSize.array;
   const shape = g.attributes.aShape.array;
   const mat = tr.track(new ShaderMaterial({
-    uniforms: { uScale: { value: 600 } },
+    uniforms: { uScale: { value: 600 }, uMaxPx: { value: 160 } },
     vertexShader: VERT,
     fragmentShader: FRAG,
     transparent: true,
@@ -66,14 +69,15 @@ function makePool(n, additive, tr) {
   return { n, next: 0, pos, col, size, shape, vel, age, life, s0, s1, a0, grav, drag, base, g, mat, points };
 }
 
-export function createFx({ scene, art, tr, quality, reducedMotion }) {
+export function createFx({ scene, art, tr, quality, reducedMotion: reduced0 }) {
+  let reducedMotion = !!reduced0;
   const N = quality.particles;
   const soft = makePool(Math.ceil(N * 0.6), false, tr);
   const glow = makePool(Math.ceil(N * 0.4), true, tr);
   const root = new Group();
   root.add(soft.points, glow.points);
   scene.add(root);
-  const amount = reducedMotion ? 0.35 : 1;
+  let amount = reducedMotion ? 0.35 : 1;
   const rnd = Math.random; // visual only: not part of the game state
 
   function spawn(pool, x, y, z, vx, vy, vz, lifeS, size0, size1, r, g, b, alpha, shape, grav = 0, drag = 0.6) {
@@ -181,9 +185,12 @@ export function createFx({ scene, art, tr, quality, reducedMotion }) {
     f.s.visible = false;
   }
 
-  function update(dt, viewScale) {
+  function update(dt, viewScale, cam = null) {
     soft.mat.uniforms.uScale.value = viewScale;
     glow.mat.uniforms.uScale.value = viewScale;
+    const maxPx = viewScale * 0.22; // a puff is never wider than ~1/6 of the view height
+    soft.mat.uniforms.uMaxPx.value = maxPx;
+    glow.mat.uniforms.uMaxPx.value = maxPx;
     for (const p of [soft, glow]) {
       const { pos, vel, col, size, age, life, s0, s1, a0, grav, drag } = p;
       for (let i = 0; i < p.n; i++) {
@@ -219,7 +226,10 @@ export function createFx({ scene, art, tr, quality, reducedMotion }) {
       f.s.visible = true;
       const pop = u < 0.12 ? 0.6 + (u / 0.12) * 0.55 : 1.15 - 0.15 * Math.min(1, (u - 0.12) / 0.2);
       f.s.position.set(f.x, f.y + f.rise * (1 - (1 - u) * (1 - u)), f.z);
-      f.s.scale.set(1.5 * f.scale * pop, 0.56 * f.scale * pop, 1);
+      // first person: keep a label a readable size on screen whether it is 1 m or 6 m away
+      const dist = cam ? Math.hypot(f.x - cam.x, f.y - cam.y, f.z - cam.z) : 3;
+      const dk = clamp(dist / 3, 0.3, 1.1) * 0.6;
+      f.s.scale.set(1.5 * f.scale * pop * dk, 0.56 * f.scale * pop * dk, 1);
       f.m.opacity = u < 0.75 ? 1 : 1 - (u - 0.75) / 0.25;
     }
   }
@@ -231,5 +241,11 @@ export function createFx({ scene, art, tr, quality, reducedMotion }) {
     labelCache.clear();
   }
 
-  return { burst, emit, floatText, update, dispose, root };
+  return {
+    burst, emit, floatText, update, dispose, root,
+    setReduced(b) {
+      reducedMotion = !!b;
+      amount = reducedMotion ? 0.35 : 1;
+    },
+  };
 }

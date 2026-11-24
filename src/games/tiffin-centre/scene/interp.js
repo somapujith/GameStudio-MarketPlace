@@ -71,11 +71,19 @@ export function moodOf(c) {
   return c.st === 'eating' ? 'eating' : c.st === 'paying' ? 'paying' : 'waiting';
 }
 
-/** Where a customer who is arriving starts (on the road side) for spot i: alternate left / right of the spot. */
+/** Where a customer who is arriving starts (out on the street, to the side and well beyond the counter) for spot i. */
 export function arrivalStart(spot, out = { x: 0, z: 0 }) {
   const side = spot % 2 === 0 ? -1 : 1;
-  out.x = LAYOUT.spotX(spot) + side * 2.6;
-  out.z = 4.4;
+  out.x = LAYOUT.spotX(spot) + side * 2.8;
+  out.z = LAYOUT.spotZ - 2.6;
+  return out;
+}
+
+/** Where a customer who leaves walks off to (along the street, away from the stall). */
+export function departureEnd(spot, x, out = { x: 0, z: 0 }) {
+  const side = spot % 2 === 0 ? -1 : 1;
+  out.x = x + side * 3.6;
+  out.z = LAYOUT.spotZ - 3.2;
   return out;
 }
 
@@ -147,6 +155,84 @@ export function workForEvent(ev) {
     default:
       return null;
   }
+}
+
+// --- first-person work: event -> a short sequence of viewmodel actions (kind, seconds). The SAME sequence drives the station prop's
+// playAction(slot, kind, t01), so the hands and the stall move together. Shared constant arrays: nothing is allocated per event.
+export const SEQ = {
+  tawaCook: [['tawa-oil', 0.22], ['tawa-pour', 0.22], ['tawa-spread', 0.3]],
+  tawaFlipTake: [['tawa-flip', 0.3], ['tawa-take', 0.3]],
+  tawaFillTake: [['tawa-fill', 0.3], ['tawa-take', 0.3]],
+  steamer: [['steamer', 0.65]],
+  kadai: [['kadai', 0.65]],
+  chai: [['chai-pour', 0.65]],
+  serve: [['serve', 0.5]],
+  collect: [['collect', 0.55]],
+  discard: [['discard', 0.5]],
+};
+export const ACTION_KINDS = ['tawa-oil', 'tawa-pour', 'tawa-spread', 'tawa-flip', 'tawa-fill', 'tawa-take', 'steamer', 'kadai', 'chai-pour', 'serve', 'collect', 'discard'];
+const FILLED = new Set(['masala_dosa', 'podi_dosa']); // dosas that get their filling / podi before the fold
+
+/** The viewmodel / station action sequence a game event implies (a SEQ entry) or null. Station events also carry the station and slot. */
+export function actionSeqFor(ev) {
+  if (!ev) return null;
+  switch (ev.type) {
+    case 'cook-start': {
+      const k = STATIONS[ev.station]?.kind;
+      return k === 'tawa' ? SEQ.tawaCook : k === 'steamer' ? SEQ.steamer : k === 'kadai' ? SEQ.kadai : k === 'chai' ? SEQ.chai : null;
+    }
+    case 'take': {
+      const k = STATIONS[ev.station]?.kind;
+      if (k === 'tawa') return FILLED.has(ev.dish) ? SEQ.tawaFillTake : SEQ.tawaFlipTake;
+      return k === 'steamer' ? SEQ.steamer : k === 'kadai' ? SEQ.kadai : k === 'chai' ? SEQ.chai : null;
+    }
+    case 'burnt-cleared':
+      return SEQ.discard;
+    case 'serve':
+      return SEQ.serve;
+    case 'collect':
+      return SEQ.collect;
+    case 'discard':
+      return SEQ.discard;
+    default:
+      return null;
+  }
+}
+
+export const seqDuration = (seq) => {
+  let d = 0;
+  for (let i = 0; i < seq.length; i++) d += seq[i][1];
+  return d;
+};
+
+/** Where a sequence is after `elapsed` seconds: { kind, t01, done }. Past the end: the last action at t01 = 1, done = true. */
+export function sampleSeq(seq, elapsed, out = { kind: null, t01: 0, done: true }) {
+  let t = Math.max(0, elapsed);
+  for (let i = 0; i < seq.length; i++) {
+    const dur = seq[i][1];
+    if (t < dur) {
+      out.kind = seq[i][0];
+      out.t01 = t / dur;
+      out.done = false;
+      return out;
+    }
+    t -= dur;
+  }
+  out.kind = seq[seq.length - 1][0];
+  out.t01 = 1;
+  out.done = true;
+  return out;
+}
+
+/**
+ * Where another cook stands relative to the local cook, who is the camera: close by (|dxm| < reach) they are pushed beside AND behind the
+ * line so nobody walks through the eyes. `side` is a stable +1 / -1 per pair (so passing never flips sides). Smooth in dxm.
+ */
+export function crowdOffset(dxm, side, out = { x: 0, z: 0 }, reach = 0.9) {
+  const w = smoothstep(1 - Math.abs(dxm) / reach);
+  out.x = side * 0.72 * w;
+  out.z = 0.16 * w;
+  return out;
 }
 
 /** Distinct, friendly avatar colours; a player's own `avatar` string (a #hex) wins. */
