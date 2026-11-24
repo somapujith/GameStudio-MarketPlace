@@ -4,6 +4,8 @@ import Sheet from './Sheet.jsx';
 import { canShare, shareOrCopy, useCopied } from './clipboard.js';
 import { inviteMessage, inviteText, joinLink, spacedCode, whatsappUrl } from './codes.js';
 import '@/styles/lobby-invite.css';
+import '@/styles/cine/overlays.css';
+import '@/styles/cine/share-sheet.css';
 
 export function WhatsAppIcon() {
   return (

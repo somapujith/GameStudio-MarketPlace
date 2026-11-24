@@ -1,0 +1,155 @@
+/* ==========================================================================
+   The invite share sheet (components/online/ShareSheet.jsx), in the cine look: a glass sheet with the link in a calm
+   field, a white Copy pill, glass action pills and the QR code on a soft white tile.
+   It lives inside the online Sheet (portalled), so the sheet chrome comes from cine/overlays.css; this file styles
+   the content only.
+   ========================================================================== */
+.ho-modal .lp-sheet {
+  gap: 18px;
+}
+.ho-modal .ho-sheet__head .ho-modal__title {
+  font-size: 20px;
+  line-height: 1.25;
+}
+.ho-modal .ho-sheet__head .ho-muted {
+  margin-top: 6px;
+  color: var(--cj-text-dim);
+  font: 500 13px/1.4 var(--cj-font);
+  letter-spacing: 0.04em;
+}
+
+/* the link field */
+.ho-modal .lp-sheet__link {
+  gap: 10px;
+}
+.ho-modal .lp-sheet .lp-label {
+  color: var(--cj-text-faint);
+  font: 600 11px/1.2 var(--cj-font);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.ho-modal .lp-sheet .lp-sheet__input {
+  min-height: 48px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--cj-r-card);
+  color: var(--cj-text-strong);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: var(--cj-ov-ring);
+  font: 500 14px/1.2 var(--cj-font);
+  letter-spacing: 0;
+}
+.ho-modal .lp-sheet .lp-sheet__input:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+
+/* buttons: the primary is the white pill; the rest are glass pills */
+.ho-modal .lp-sheet .lp-btn {
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  font: 600 14px/1 var(--cj-font);
+  letter-spacing: 0.01em;
+  text-transform: none;
+  text-decoration: none;
+  transition: background-color var(--cj-dur) var(--cj-ease), transform var(--cj-dur) var(--cj-ease);
+}
+.ho-modal .lp-sheet .lp-btn:active {
+  transform: scale(0.97);
+}
+.ho-modal .lp-sheet .lp-sheet__copy.ho-btn--primary {
+  min-height: 54px;
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  box-shadow: none;
+  font-size: 16px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .ho-modal .lp-sheet .lp-sheet__copy.ho-btn--primary:hover {
+    background: #fff;
+  }
+}
+.ho-modal .lp-sheet .lp-sheet__copy.is-done.ho-btn--primary {
+  color: #05361c;
+  background: #bdf2cf;
+}
+.ho-modal .lp-sheet .lp-btn:not(.ho-btn--primary) {
+  min-height: 46px;
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ov-ring);
+}
+@media (hover: hover) and (pointer: fine) {
+  .ho-modal .lp-sheet .lp-btn:not(.ho-btn--primary):hover {
+    background: var(--cj-glass-3);
+  }
+}
+.ho-modal .lp-sheet .lp-btn.ho-btn--wa svg {
+  color: #62e08f; /* WhatsApp green, on the icon only */
+}
+.ho-modal .lp-sheet .lp-btn:not(.ho-btn--primary).is-done {
+  color: #bdf2cf;
+}
+.ho-modal .lp-sheet__row {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+/* the QR code: a calm white tile, no offset shadow */
+.ho-modal .lp-sheet .lp-qr {
+  gap: 12px;
+  padding-top: 6px;
+}
+.ho-modal .lp-sheet .lp-qr__tile {
+  padding: 8px;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.4);
+}
+.ho-modal .lp-sheet .lp-qr__tile svg {
+  border-radius: 12px;
+}
+.ho-modal .lp-sheet .lp-qr__hint {
+  color: var(--cj-text-dim);
+  font: 500 12px/1.2 var(--cj-font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* translucent glass, like the rules dialog */
+:root .ho-modal:has(.lp-sheet) .ho-sheet {
+  border-radius: 28px;
+  background: linear-gradient(180deg, rgba(40, 56, 48, 0.58) 0%, rgba(14, 22, 18, 0.72) 100%);
+  box-shadow:
+    0 30px 90px -20px rgba(0, 0, 0, 0.75),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  -webkit-backdrop-filter: blur(34px) saturate(160%);
+  backdrop-filter: blur(34px) saturate(160%);
+}
+:root .ho-modal:has(.lp-sheet) {
+  background: rgba(3, 12, 8, 0.42);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+  backdrop-filter: blur(14px) saturate(120%);
+}
+
+/* three actions fit one line on a wide sheet; on a phone an odd last one spans the row */
+.ho-modal .lp-sheet__row .lp-btn {
+  padding-inline: 8px;
+  font-size: 13.5px;
+  white-space: nowrap;
+}
+@media (max-width: 639px) {
+  .ho-modal .lp-sheet__row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ho-modal .lp-sheet__row > :last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+}
+@media (min-width: 640px) {
+  :root .ho-modal:has(.lp-sheet) .ho-sheet {
+    width: min(100%, 480px);
+    max-width: 480px;
+  }
+}
