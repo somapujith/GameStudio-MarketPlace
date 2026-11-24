@@ -16,6 +16,7 @@ The working tree has many uncommitted changes by the owner: **edit only the file
   Also (C) **Practice shifts**: solo, any level 1..12 (local, uses the same engine), stars saved in localStorage.
 - **Platform:** phone (touch, 390x844 portrait AND landscape) and desktop (mouse + keys). Hub CSP: no CDN, no inline script, no external assets
   (everything procedural: geometry, canvas textures, Web Audio). Fonts Bricolage Grotesque + Noto Sans Telugu (Telugu dish names shown on signs/UI).
+- **Item availability (user requirement):** the HUD always shows, per menu dish, how many are ready, cooking, held and still wanted by waiting customers (`availability(state, meId)` in `ui/hud`), derived from state only. Ingredient stock is not part of the game.
 - **Out of scope:** voice chat, ingredient stock, free-roaming avatars, player money shops, ranking, achievements.
 - **Acceptance:** `npx vitest run shared/tiffin-centre worker src/games/tiffin-centre src/games src/platform` green; `npx vite build` passes;
   tutorial playable start to finish; two browsers can play a private table; no console errors; 60fps-ish on a mid phone (quality auto-downgrade).
