@@ -1,10 +1,11 @@
 // One global celebration overlay (level-ups, badges, coins, purchases).
 //
 //   import { celebrate } from '@/components/shell/celebrate.js';
-//   celebrate({ kind: 'level' | 'badge' | 'coins' | 'purchase', title, text, icon? });   // -> id | null
+//   celebrate({ kind: 'level' | 'badge' | 'coins' | 'purchase', title, text, icon?, itemId?, rarity?, duration? });   // -> id | null
+// `itemId` (a shared/cosmetics id) shows that item art in the medal; `rarity: 'legendary'` gives the card the gold treatment.
 //
-// Queued and shown one at a time by <CelebrationHost/> (mounted once in App.jsx): auto-dismiss after ~2.5 s,
-// tap / Esc / Enter to close, a short gold coin shower for 'coins' and 'level', buzz('win') + sound for a level-up,
+// Queued and shown one at a time by <CelebrationHost/> (mounted once in App.jsx): a glass card with a confetti burst,
+// auto-dismiss after ~2.5 s (longer when `duration` says so), tap / Esc / the Awesome button to close, a gold coin shower for 'coins' and 'level', buzz('win') + sound for a level-up,
 // announced through an aria-live="polite" region. Reduced motion = a simple fade, no coins.
 // `icon` is a shell Icon name (see icons.jsx / HubIcon), e.g. 'trophy', 'star', 'gift'. Identical calls within
 // 1.5 s are ignored, so firing from an effect twice (StrictMode) is harmless.

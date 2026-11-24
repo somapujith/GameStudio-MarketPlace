@@ -65,6 +65,15 @@ describe('celebration queue', () => {
     expect(normalizeCelebration({ kind: 'purchase', title: '  Neon   frame ', icon: 'star' })).toMatchObject({ title: 'Neon frame', icon: 'star' });
     expect(normalizeCelebration({ kind: 'coins', text: 'x'.repeat(300) }).text).toHaveLength(140);
   });
+
+  it('keeps an optional item id and the legendary flag for the richer card, and nothing else', () => {
+    const rich = normalizeCelebration({ kind: 'purchase', title: 'Aurora', itemId: ' frame-aurora ', rarity: 'legendary', duration: 6500 });
+    expect(rich).toMatchObject({ itemId: 'frame-aurora', rarity: 'legendary', duration: 6500 });
+    // any other rarity is plain, and an empty id is dropped
+    const plain = normalizeCelebration({ kind: 'purchase', title: 'Sandstone', itemId: '', rarity: 'rare' });
+    expect(plain).not.toHaveProperty('itemId');
+    expect(plain).not.toHaveProperty('rarity');
+  });
 });
 
 describe('celebrate() (app-wide queue)', () => {

@@ -10,7 +10,7 @@ export const DEDUPE_MS = 1500;
 
 const DEFAULT_TITLES = { level: 'Level up!', badge: 'Badge unlocked', coins: 'Coins added', purchase: 'Unlocked!' };
 
-/** Cleans an input into `{ kind, title, text, icon }` or null when unusable. */
+/** Cleans an input into `{ kind, title, text, icon, duration, itemId?, rarity? }` or null when unusable. */
 export function normalizeCelebration(input) {
   if (!input || typeof input !== 'object') return null;
   const kind = CELEBRATION_KINDS.includes(input.kind) ? input.kind : 'badge';
@@ -19,7 +19,10 @@ export function normalizeCelebration(input) {
   const text = str(input.text, 140);
   const icon = typeof input.icon === 'string' && input.icon ? input.icon : null;
   const duration = Number.isFinite(Number(input.duration)) ? Math.max(800, Math.min(8000, Number(input.duration))) : CELEBRATION_MS;
-  return { kind, title, text, icon, duration };
+  // optional extras for a richer card: a cosmetic id (its art replaces the icon) and 'legendary' (the gold treatment)
+  const itemId = str(input.itemId, 60);
+  const rarity = input.rarity === 'legendary' ? 'legendary' : '';
+  return { kind, title, text, icon, duration, ...(itemId ? { itemId } : null), ...(rarity ? { rarity } : null) };
 }
 
 /**

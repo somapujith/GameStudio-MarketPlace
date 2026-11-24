@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
+import { cosmeticById } from '@shared/cosmetics.js';
 import { buzz } from '@/lib/haptics.js';
+import { Preview } from '@/platform/home/Ava.jsx';
 import { appCelebrations, checkLevelUp } from './celebrationQueue.js';
 import { useAccount, useReducedMotion } from './hooks.js';
 import { CoinIcon, Icon } from './icons.jsx';
 import { playSfx } from './sound.js';
 import { isGameRoute } from './theme.js';
 import '@/styles/x-shell.css';
+import '@/styles/cine/celebration.css';
 
 /*
  * Renders the head of the app-wide celebration queue (see celebrate.js for the API). Mount once, inside the
@@ -18,6 +21,10 @@ const LEVELS_KEY = 'hub.levels.v1';
 const SOUND = { level: 'win', coins: 'coin', purchase: 'buy', badge: 'cheer' };
 const ICON = { level: 'bolt', badge: 'medal', purchase: 'sparkle' };
 const SHOWER = { level: 18, coins: 14 };
+const EYEBROW = { level: 'Level up', badge: 'Badge unlocked', coins: 'Reward', purchase: 'New unlock' };
+const CONFETTI = { level: 46, badge: 40, coins: 34, purchase: 40 };
+const CONFETTI_LEGENDARY = 70;
+const PALETTE = ['#f5c66b', '#ffe7a3', '#ff7a8a', '#6fe3c1', '#a99bff', '#7cc4ff', '#ffffff'];
 
 const rand = (a, b) => a + Math.random() * (b - a);
 
@@ -30,6 +37,24 @@ function makeCoins(n) {
     delay: Math.round(rand(0, 380)),
     dur: Math.round(rand(900, 1500)),
     size: Math.round(rand(14, 24)),
+  }));
+}
+
+/** Confetti: ribbons and dots that burst up from the medal and drift down. */
+function makeConfetti(n) {
+  return Array.from({ length: n }, (_, i) => ({
+    id: i,
+    x: Math.round(rand(-50, 50)), // vw around the centre
+    rise: Math.round(rand(140, 340)),
+    fall: Math.round(rand(300, 620)),
+    drift: Math.round(rand(-90, 90)),
+    rot: Math.round(rand(-540, 540)),
+    delay: Math.round(rand(0, 420)),
+    dur: Math.round(rand(1700, 2900)),
+    w: Math.round(rand(6, 11)),
+    h: Math.round(rand(8, 18)),
+    round: i % 4 === 0,
+    color: PALETTE[i % PALETTE.length],
   }));
 }
 
@@ -124,6 +149,12 @@ export default function CelebrationHost() {
   useEffect(() => () => clearTimeout(exitTimer.current), []);
 
   const coins = useMemo(() => (item && !reduced && SHOWER[item.kind] ? makeCoins(SHOWER[item.kind]) : []), [item, reduced]);
+  const legendary = item?.rarity === 'legendary';
+  const confetti = useMemo(() => (item && !reduced ? makeConfetti(legendary ? CONFETTI_LEGENDARY : CONFETTI[item.kind] || 40) : []), [item, reduced, legendary]);
+  const cosmetic = item?.itemId ? cosmeticById(item.itemId) : null;
+  const inMedal = cosmetic && ['frame', 'dice', 'trail', 'board'].includes(cosmetic.kind); // round art fits the medal
+  const asChip = cosmetic && cosmetic.kind === 'title'; // a title is a wide chip: shown under the text
+  const eyebrow = legendary ? 'Legendary unlock' : EYEBROW[item?.kind] || 'Congratulations';
 
   return (
     <>
@@ -131,7 +162,7 @@ export default function CelebrationHost() {
         {announce}
       </div>
       {item && (
-        <div className={`xs-cel xs-cel--${item.kind}${leaving ? ' is-leaving' : ''}${reduced ? ' is-reduced' : ''}`} onClick={close} data-nosfx>
+        <div className={`xs-cel cj-cel xs-cel--${item.kind}${legendary ? ' is-legendary' : ''}${leaving ? ' is-leaving' : ''}${reduced ? ' is-reduced' : ''}`} onClick={close} data-nosfx>
           {coins.length > 0 && (
             <div className="xs-cel__shower" aria-hidden="true">
               {coins.map((c) => (
@@ -145,14 +176,60 @@ export default function CelebrationHost() {
               ))}
             </div>
           )}
-          <div className="xs-cel__card" key={item.id} aria-hidden="true">
-            <span className="xs-cel__rays" />
-            <span className="xs-cel__medal">
-              {item.kind === 'coins' && !item.icon ? <CoinIcon size={40} /> : <Icon name={item.icon || ICON[item.kind] || 'sparkle'} size={38} strokeWidth={2.2} />}
+          {confetti.length > 0 && (
+            <div className="cj-cel__confetti" aria-hidden="true">
+              {confetti.map((c) => (
+                <i
+                  key={`${item.id}-${c.id}`}
+                  className={c.round ? 'is-dot' : undefined}
+                  style={{
+                    '--x': `${c.x}vw`,
+                    '--rise': `${c.rise}px`,
+                    '--fall': `${c.fall}px`,
+                    '--drift': `${c.drift}px`,
+                    '--rot': `${c.rot}deg`,
+                    '--delay': `${c.delay}ms`,
+                    '--dur': `${c.dur}ms`,
+                    '--w': `${c.w}px`,
+                    '--h': `${c.h}px`,
+                    '--c': c.color,
+                  }}
+                />
+              ))}
+            </div>
+          )}
+          <div className="xs-cel__card cj-cel__card" key={item.id} aria-hidden="true">
+            <span className="xs-cel__rays cj-cel__rays" />
+            <span className="cj-cel__sparkles" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+              <i />
             </span>
-            <b className="xs-cel__title">{item.title}</b>
-            {item.text && <span className="xs-cel__text">{item.text}</span>}
-            <span className="xs-cel__hint">Tap to close</span>
+            <span className={`xs-cel__medal cj-cel__medal${inMedal ? ' has-item' : ''}`}>
+              <span className="cj-cel__ring" aria-hidden="true" />
+              {inMedal ? (
+                <Preview item={cosmetic} size={68} />
+              ) : item.kind === 'coins' && !item.icon ? (
+                <CoinIcon size={40} />
+              ) : (
+                <Icon name={item.icon || ICON[item.kind] || 'sparkle'} size={38} strokeWidth={2.2} />
+              )}
+            </span>
+            <span className="cj-cel__eyebrow">
+              <i aria-hidden="true" />
+              {eyebrow}
+              <i aria-hidden="true" />
+            </span>
+            <b className="xs-cel__title cj-cel__title">{item.title}</b>
+            {item.text && <span className="xs-cel__text cj-cel__text">{item.text}</span>}
+            {asChip && (
+              <span className="cj-cel__chip">
+                <Preview item={cosmetic} size={34} />
+              </span>
+            )}
+            <span className="cj-cel__btn">Awesome!</span>
+            <span className="xs-cel__hint cj-cel__hint">Tap anywhere to close</span>
           </div>
           <button type="button" className="hub-sr" onClick={close} data-nosfx>
             Close
