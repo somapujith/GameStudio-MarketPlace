@@ -94,6 +94,22 @@ describe('listing model', () => {
     expect(formatReleased('nope')).toBe('');
     expect(formatReleased(undefined)).toBe('');
   });
+  it('image slides carry their picture and a clamped zoom; one without a usable path is dropped', () => {
+    const items = galleryItems({
+      gallery: [
+        { kind: 'image', src: '/art/a.webp', caption: 'A' },
+        { kind: 'image', src: '/art/a.webp', focus: 'left', zoom: 2.2 },
+        { kind: 'image', src: '/art/a.webp', zoom: 9 },
+        { kind: 'image', src: 'https://example.com/x.png' },
+        { kind: 'image' },
+      ],
+    });
+    expect(items).toHaveLength(3);
+    expect(items[0]).toMatchObject({ kind: 'image', src: '/art/a.webp', caption: 'A', zoom: 1 });
+    expect(items[1]).toMatchObject({ zoom: 2.2, origin: '18% 52%' });
+    expect(items[2].zoom).toBe(3);
+  });
+
   it('builds gallery slides from the manifest, or falls back to the cover', () => {
     const items = galleryItems({ art: { cover: () => null }, gallery: [{ kind: 'cover', caption: 'A' }, { kind: 'nope' }, { kind: 'scene', focus: 'left' }, null] });
     expect(items.map((i) => i.kind)).toEqual(['cover', 'scene']);

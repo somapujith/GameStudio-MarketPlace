@@ -69,7 +69,10 @@ describe('hyderabad-tycoon manifest', () => {
     expect(manifest.highlights.length).toBeGreaterThan(1);
     for (const h of manifest.highlights) expect(Object.keys(h)).toEqual(['icon', 'title', 'text']);
     for (const s of manifest.howToPlay) expect(typeof s.icon).toBe('string');
-    expect(manifest.gallery.map((g) => g.kind)).toEqual(['cover', 'scene', 'board']);
+    expect(manifest.gallery.map((g) => g.kind)).toEqual(['image', 'image', 'image', 'image', 'image', 'image', 'image', 'board']);
+    // the pictures are the three board scenes shipped with the app
+    const srcs = new Set(manifest.gallery.filter((g) => g.kind === 'image').map((g) => g.src));
+    expect([...srcs].sort()).toEqual(['/art/cinematic/heritage-board.webp', '/art/cinematic/heritage-cityscape.webp', '/art/cinematic/heritage-sunset.webp']);
     expect(manifest.released).toBeUndefined();
     for (const k of ['rating', 'ratings', 'reviews', 'installs', 'downloads', 'playersOnline']) expect(manifest[k]).toBeUndefined();
   });

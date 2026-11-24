@@ -44,19 +44,29 @@ export function highlightList(game) {
 /** A game that has maps (a `map` setting drawn as the map picker): the listing gets a Maps section. */
 export const hasMaps = (game) => Array.isArray(game?.settings) && game.settings.some((f) => f && f.key === 'map' && f.widget === 'map');
 
-const KINDS = new Set(['cover', 'scene', 'board', 'icon']);
-const FOCUS = { left: '18% 52%', right: '80% 54%', center: '50% 50%', top: '50% 22%', bottom: '50% 80%' };
+const KINDS = new Set(['cover', 'scene', 'board', 'icon', 'image']);
+const FOCUS = { left: '18% 52%', right: '80% 54%', center: '50% 50%', top: '50% 22%', bottom: '50% 80%', pieces: '55% 64%', heart: '50% 50%' };
 
 /**
- * `manifest.gallery` -> slides `[{ kind, caption, origin }]`. Slides are built from the game's own art (cover, a
- * zoomed crop of it, the icon), so a game without a gallery still gets its cover; an empty manifest gives one slide.
+ * `manifest.gallery` -> slides `[{ kind, caption, origin, src?, zoom? }]`. Slides are built from the game's own art (cover,
+ * a zoomed crop of it, the icon) or are `image` slides (a picture of the game: `src`, optional `focus` and `zoom`), so a game without a gallery still gets its cover; an empty manifest gives one slide.
  */
 export function galleryItems(game) {
   const raw = Array.isArray(game?.gallery) ? game.gallery : [];
   const items = raw
     .filter((g) => g && KINDS.has(g.kind))
     .slice(0, 8)
-    .map((g) => ({ kind: g.kind === 'icon' ? 'board' : g.kind, caption: str(g.caption), origin: FOCUS[g.focus] || FOCUS.center }));
+    .filter((g) => g.kind !== 'image' || (typeof g.src === 'string' && g.src.startsWith('/')))
+    .map((g) => {
+      const item = { kind: g.kind === 'icon' ? 'board' : g.kind, caption: str(g.caption), origin: FOCUS[g.focus] || FOCUS.center };
+      // an `image` slide shows one of the game's own pictures (a path under /public); `zoom` crops in on `focus`
+      if (g.kind === 'image') {
+        item.src = g.src;
+        const z = Number(g.zoom);
+        item.zoom = Number.isFinite(z) && z > 1 ? Math.min(z, 3) : 1;
+      }
+      return item;
+    });
   if (!items.length && game?.art?.cover) items.push({ kind: 'cover', caption: '', origin: FOCUS.center });
   return items;
 }

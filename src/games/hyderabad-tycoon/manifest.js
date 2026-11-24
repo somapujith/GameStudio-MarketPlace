@@ -37,8 +37,13 @@ export default {
     { icon: 'door', title: 'No download', text: 'Play in the browser on a phone, tablet or computer. Guests are welcome.' },
   ],
   gallery: [
-    { kind: 'cover', caption: 'Cover art: the board, the dice and the city skyline' },
-    { kind: 'scene', focus: 'right', caption: 'The board, close up' },
+    { kind: 'image', src: '/art/cinematic/heritage-sunset.webp', caption: 'Hyderabad at sunset' },
+    { kind: 'image', src: '/art/cinematic/heritage-cityscape.webp', caption: 'The city on the board: Charminar, the metro and the lake' },
+    { kind: 'image', src: '/art/cinematic/heritage-cityscape.webp', focus: 'pieces', zoom: 1.8, caption: 'Chai, biryani, metro, auto and pearls' },
+    { kind: 'image', src: '/art/cinematic/heritage-board.webp', caption: 'The heritage board, from above' },
+    { kind: 'image', src: '/art/cinematic/heritage-board.webp', focus: 'heart', zoom: 2.1, caption: 'The old city at the centre of the board' },
+    { kind: 'image', src: '/art/cinematic/heritage-sunset.webp', focus: 'center', zoom: 1.9, caption: 'Charminar, the heart of the board' },
+    { kind: 'image', src: '/art/cinematic/heritage-sunset.webp', focus: 'left', zoom: 2.1, caption: 'Chai and biryani: the pieces' },
     { kind: 'board', caption: 'The Nawabi Raj icon' },
   ],
   howToPlay: [
