@@ -4,7 +4,7 @@
 //
 // Units: time is in TICKS (1 tick = TICK_MS = 1 second of game time, driven by the room server's `deadlines`).
 // Money is whole rupees. 3D units are metres, +x = the player's right, -z = towards the back wall (the kitchen),
-// +z = towards the street (the customers). y is up.
+// (first person: the cook looks towards -z; the customers and the street are at -z, the cook's back is +z). y is up.
 
 export const GAME_ID = 'tiffin-centre';
 export const TICK_MS = 1000;
@@ -42,24 +42,28 @@ export const STATION_KINDS = {
   chai: { id: 'chai', name: 'Chai counter', te: 'చాయ్ కౌంటర్', slots: 2 },
 };
 
-/** Fixed layout of the stall. `slotOrder` of a station is slot 0, 1, 2... left to right. */
+/** Fixed layout of the stall, FIRST PERSON: the cook stands on the cook line (z = LAYOUT.cookZ = 0) facing -z (so +x is the cook's RIGHT, the default three.js camera); the cooking row is in front of them on the counter
+    (a station's front faces +z, towards the cook) and the customers stand beyond it. `slotOrder` of a station is slot 0, 1, 2... left to right as the cook sees them. */
 export const STATIONS = {
-  tawa1: { id: 'tawa1', kind: 'tawa', x: -3.0, z: -2.2 },
-  steamer1: { id: 'steamer1', kind: 'steamer', x: -1.5, z: -2.2 },
-  kadai1: { id: 'kadai1', kind: 'kadai', x: 0.0, z: -2.2 },
-  tawa2: { id: 'tawa2', kind: 'tawa', x: 1.5, z: -2.2 },
-  chai1: { id: 'chai1', kind: 'chai', x: 3.0, z: -2.2 },
+  tawa1: { id: 'tawa1', kind: 'tawa', x: -2.6, z: -1.0 },
+  steamer1: { id: 'steamer1', kind: 'steamer', x: -1.3, z: -1.0 },
+  kadai1: { id: 'kadai1', kind: 'kadai', x: 0.0, z: -1.0 },
+  tawa2: { id: 'tawa2', kind: 'tawa', x: 1.3, z: -1.0 },
+  chai1: { id: 'chai1', kind: 'chai', x: 2.6, z: -1.0 },
 };
 export const STATION_IDS = Object.keys(STATIONS);
 
 export const LAYOUT = {
-  counterZ: 0.3, // the serving counter's front edge; customers stand beyond it
-  cookZ: -0.9, // where a cook stands (in front of the station they use)
-  spotZ: 1.7, // customers' feet
-  spotX: (i) => -3.75 + i * 1.5, // customer spot i = 0..5, left to right
+  // First person: the cook's eyes are at (x along the line, EYE_HEIGHT, cookZ) looking -z (three.js default); yaw 0 faces the customers.
+  eyeHeight: 1.55,
+  cookZ: 0, // where a cook stands (the walking line); x is the station / customer they work at
+  stationZ: -1.0, // the cooking row (centre of each station's counter block)
+  counterZ: -1.65, // the serving counter's customer-side edge; customers stand beyond it
+  spotZ: -2.5, // customers' feet
+  spotX: (i) => -2.75 + i * 1.1, // customer spot i = 0..5, left to right as the cook sees them
   spots: 6,
-  bin: { x: 4.4, z: -1.2 }, // burnt dishes and the discard bin
-  camera: { pos: [0, 7.2, 6.8], target: [0, 0.4, -0.6], fov: 42 }, // a starting point; the scene may refine it
+  bin: { x: 3.7, z: -0.5 }, // burnt dishes and the discard bin, at the right end of the row
+  view: { fov: 74, yawMax: 1.45, pitchMin: -0.75, pitchMax: 0.55 }, // first-person camera: field of view and how far the head can turn (radians)
 };
 
 // ---------------------------------------------------------------------------------------------------------------------

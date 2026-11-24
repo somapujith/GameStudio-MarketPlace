@@ -59,6 +59,30 @@ posters and flex banners, electric poles with tangled wires, a street dog, a cow
 UI follows suit: flex-banner headers, hand-painted lettering, order chits on a spike/clip, chalk/enamel board price tags, gunny-sack and tin textures, no glossy app chrome.
 Audio: the street (horns, hawkers, pressure cookers, frying, steel plates). Art and copy: Hyderabadi street voice ("Anna, one masala dosa!", "Chai ready, miyan!").
 
+## 2c. FIRST PERSON, real faces, real dialogue (user requirement, supersedes the 3/4 camera of sections 2 and 5)
+
+**The player sees through the cook's eyes**, as in real life: standing behind the counter of a roadside stall, eye height `LAYOUT.eyeHeight`, looking at -z. The cooking row (tawa, idly
+steamer, kadai, chai counter) is on the counter in front of you (`STATIONS`, z = -1.0, fronts face +z towards you), customers stand beyond it (`LAYOUT.spotX/spotZ`), the street and
+traffic behind them, Charminar in the haze, and the tin roof and bamboo posts overhead. **+x is the cook's right**; `catalog.js` LAYOUT is the source of truth. You walk along the cook line
+(`standX`): the camera glides to that x with a walking bob (stride-synced, reduced-motion safe), the head turns towards the target, then your own HANDS do the work in view: spatula and
+batter ladle on the tawa, the idly lid, the jhara spoon in the kadai, the long Irani chai pour, plates passed across the counter, money taken. Other players appear as full 3D cooks beside you on
+the line. The head can also be turned freely (drag on empty space, or Q/E and arrow keys): `LAYOUT.view` limits. Customers wearing off-screen are shown by edge indicators in the HUD
+(patience colour) and by their order chits; tapping a chit acts on that customer without looking at them.
+- Scene API additions: `lookBy(dYaw, dPitch)`, `lookAt(target | null)` (smoothly, `null` returns to centre), `getLook() -> {yaw, pitch}`, `setViewmodel(on)`; `project()` returns `visible:false` plus an `edge` hint
+  `{ side: 'left'|'right'|'behind', x, y }` for off-screen targets.
+- Models API additions: `buildViewmodel() -> { group (attach to the camera), setAction(kind|null, t), setHands(dishes), update(dt,t), dispose() }`; customers face +z (towards the cook) and get proper FACES.
+- **Faces and emotions:** each customer has a designed face (eyes with whites, iris, highlights and lids; brows; nose; mouth; ears; cheeks; hairstyles incl. receding grey hair, topknot, bun, plaits, dupatta or
+  headscarf, topi/skull cap, moustaches and beards, glasses, bindi, tilak, kids with big eyes), varied by kind and seed. Expressions: `neutral | bored | impatient | angry | happy | delighted | eating | paying |
+  sheepish | surprised | laughing | sad`; head and eyes follow the cook (the camera); `setSpeaking(ms, intensity)` moves the mouth and head while a line is spoken; blink; brow and mouth morphs
+  are cheap scale/rotation changes of a few meshes (no external assets).
+- **Dialogue** (`shared/tiffin-centre/dialogue/`, pure, deterministic, tested): hundreds of authentic lines in **Telugu** (తెలుగు), **Hindi** (हिन्दी) and **Hyderabadi Dakhni Hindi-Urdu** ("kya miyan", "nakko", "mereku", "hau", "bol
+  na bhai"), each `{ id, lang, text (script), rom (Roman letters), en (gloss), mood, sit, kinds? }`, written by native-sounding phrasing, never machine-literal, with the emotional range of a real street stall:
+  greeting, ordering (dish names in the customer's language), polite waiting -> hurrying -> furious, praise and thanks, complaints (late, cold, burnt, small portion), haggling and extra chutney/sambar requests,
+  paying (change, UPI jokes, "keep the change"), blessing and gossip, kids' demands, elders' remarks, office-goers on the phone, students broke at month end, auto drivers, festival and rain and cricket talk,
+  regulars teasing the cook, apologising for walking off unpaid, storming off angry. The director `createDialogueDirector({ lang, seed })` maps engine state and events to spoken lines
+  (`update(state, events) -> [{ customer, line, ttlMs }]`); the player's setting chooses subtitles: `native | roman | english | both` and optional speech (Web Speech API, `te-IN` / `hi-IN`, no network).
+  Lines are flagged for native-speaker review in the file header; no API keys or external services are used at runtime.
+
 ## 3. Rules (the engine implements exactly this)
 
 - State advances only by `tick` actions (once per `TICK_MS`) and player actions. Same seed + same actions = same game.
