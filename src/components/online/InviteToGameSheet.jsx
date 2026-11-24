@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createRoom, errorMessage, sendInvite } from '@/lib/api.js';
+import { useAuth } from '@/lib/auth.jsx';
 import { paths } from '@/platform/paths.js';
 import { themeVars } from '@/platform/game/color.js';
 import { inviteGames, warmOnlineGame } from './games.js';
@@ -18,7 +19,8 @@ import '@/styles/store-social.css';
  */
 export default function InviteToGameSheet({ friend, onClose }) {
   const navigate = useNavigate();
-  const games = inviteGames();
+  const { user } = useAuth() || {};
+  const games = inviteGames(user || null); // games still locked behind their solo tutorial are not offered
   const [busy, setBusy] = useState(null); // gameId being created
   const [error, setError] = useState('');
   const alive = useRef(true);

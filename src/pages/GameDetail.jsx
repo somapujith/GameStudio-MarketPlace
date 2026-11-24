@@ -19,6 +19,7 @@ import { themeVars } from '@/platform/game/color.js';
 import { gameJsonLd, hasMaps, howToPlaySteps, metaDescription, sectionList } from '@/platform/game/detailModel.js';
 import useDocTitle from '@/platform/game/useDocTitle.js';
 import { defaultSeats, seatOptions } from '@/platform/game/seats.js';
+import { roomsLocked } from '@/platform/game/tutorial.js';
 import useHostRoom from '@/platform/game/useHostRoom.js';
 import useShareGame from '@/platform/game/useShareGame.js';
 import { useNotify } from '@/platform/game/notify.js';
@@ -250,27 +251,43 @@ function LiveDetail({ game }) {
   const options = seatOptions(game.players);
   const [seats, setSeats] = useState(() => defaultSeats(options));
   const panelRef = useRef(null);
-  const rooms = useOpenRooms(game.id);
+  const locked = roomsLocked(user, game); // manifest `tutorial.requiredForRooms` and the tutorial is not finished: no tables yet
+  const rooms = useOpenRooms(locked ? null : game.id);
   const tables = rooms.status === 'ok' ? openTableList(rooms.rooms, game.id).length : undefined;
   const jump = useJumpLinks();
   const share = useShareGame(game);
   const [mapId, setMapId] = useState(DEFAULT_MAP); // the map the table will start on (games with maps only)
   const hostOn = useCallback((o) => host({ ...o, map: mapId }), [host, mapId]);
   const create = () => hostOn({ maxPlayers: seats });
-  const nav = sectionList(game, { live: true });
+  const nav = sectionList(game, { live: true, locked });
   const copy = createCopy({ user, authLoading, reachable, busy, game });
 
   const actions = (
     <div className="cj-detail-actions">
-      <button type="button" className="cj-btn cj-btn--primary cj-btn--lg" data-tour="game-create" onClick={create} disabled={busy || (authLoading && !user)} aria-busy={busy || undefined}>
-        <HubIcon name="play" size={20} /> {copy.label}
-      </button>
-      <button type="button" className="cj-iconbtn" data-tour="game-join" onClick={() => setCodeOpen(true)} aria-haspopup="dialog" aria-label="Join with a code" title="Join with a code">
-        <HubIcon name="hash" size={20} />
-      </button>
-      <Link to={paths.friends()} className="cj-iconbtn" aria-label="Invite friends" title="Invite friends">
-        <HubIcon name="users" size={20} />
-      </Link>
+      {locked ? (
+        <a href={paths.solo(game.id)} className="cj-btn cj-btn--primary cj-btn--lg" data-tour="game-create">
+          <HubIcon name="play" size={20} /> Play tutorial
+        </a>
+      ) : (
+        <button type="button" className="cj-btn cj-btn--primary cj-btn--lg" data-tour="game-create" onClick={create} disabled={busy || (authLoading && !user)} aria-busy={busy || undefined}>
+          <HubIcon name="play" size={20} /> {copy.label}
+        </button>
+      )}
+      {!locked && game.loaders?.soloGame && (
+        <a href={paths.solo(game.id)} className="cj-btn cj-btn--lg">
+          <HubIcon name="play" size={20} /> Play solo / practice
+        </a>
+      )}
+      {!locked && (
+        <button type="button" className="cj-iconbtn" data-tour="game-join" onClick={() => setCodeOpen(true)} aria-haspopup="dialog" aria-label="Join with a code" title="Join with a code">
+          <HubIcon name="hash" size={20} />
+        </button>
+      )}
+      {!locked && (
+        <Link to={paths.friends()} className="cj-iconbtn" aria-label="Invite friends" title="Invite friends">
+          <HubIcon name="users" size={20} />
+        </Link>
+      )}
       <button type="button" className="cj-iconbtn" data-tour="game-share" onClick={share} aria-label={`Share ${game.name}`} title="Share">
         <HubIcon name="share" size={20} />
       </button>
@@ -283,6 +300,11 @@ function LiveDetail({ game }) {
   );
   const notes = (
     <>
+      {locked && (
+        <p className="cj-detail-hint cj-detail-lock" role="status">
+          <HubIcon name="lock" size={16} /> Finish the tutorial to open a table with friends
+        </p>
+      )}
       {copy.signedOut && !copy.offline && (
         <Link to={paths.login(paths.game(game.id))} className="cj-detail-signin">
           Sign in or continue as a guest <HubIcon name="arrowR" size={15} />
@@ -300,6 +322,7 @@ function LiveDetail({ game }) {
     <div className="hub-page cj-detail" style={themeVars(game.theme)} onClick={jump}>
       <GameTour game={game} />
       <TitleHero game={game} tables={tables} actions={actions} notes={notes}>
+        {!locked && (
         <section className="cj-detail-setup" ref={panelRef} aria-labelledby="nawabi-create-title" data-tour="game-panel">
           <h2 id="nawabi-create-title" className="cj-detail-setup__title">
             Table setup
@@ -332,6 +355,7 @@ function LiveDetail({ game }) {
           )}
           {!(copy.signedOut && copy.offline) && <p className="cj-detail-setup__hint">{copy.hint}</p>}
         </section>
+        )}
       </TitleHero>
 
       <SubNav items={nav} />
@@ -339,11 +363,11 @@ function LiveDetail({ game }) {
       <MapsSection game={game} index={1} />
       <HowToPlay game={game} index={1} />
       <GallerySection game={game} index={2} />
-      <OpenTables game={game} state={rooms} onCreate={create} busy={busy} index={3} />
+      {!locked && <OpenTables game={game} state={rooms} onCreate={create} busy={busy} index={3} />}
       <LeaderboardSection game={game} user={user} index={4} />
       <DetailsTable game={game} index={5} />
       <RelatedGames game={game} />
-      <MobileBar game={game} seats={seats} host={hostOn} busy={busy} user={user} authLoading={authLoading} panelRef={panelRef} />
+      {!locked && <MobileBar game={game} seats={seats} host={hostOn} busy={busy} user={user} authLoading={authLoading} panelRef={panelRef} />}
       <CodeSheet open={codeOpen} onClose={() => setCodeOpen(false)} />
     </div>
   );
@@ -437,5 +461,5 @@ export default function GameDetail() {
   const game = getGame(gameId);
   if (!game) return <Unavailable reason="unknown" query={gameId} />;
   if (game.status === 'coming_soon') return <SoonDetail key={game.id} game={game} />;
-  return game.solo ? <SoloDetail key={game.id} game={game} /> : <LiveDetail key={game.id} game={game} />;
+  return game.solo && !game.loaders?.onlineGame ? <SoloDetail key={game.id} game={game} /> : <LiveDetail key={game.id} game={game} />;
 }

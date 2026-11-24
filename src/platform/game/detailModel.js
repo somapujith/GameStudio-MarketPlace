@@ -98,7 +98,7 @@ export function detailRows(game) {
  * The in-page anchor nav: only sections that will actually render. `live` = a playable game.
  * ids are the section element ids on the page.
  */
-export function sectionList(game, { live = true } = {}) {
+export function sectionList(game, { live = true, locked = false } = {}) {
   if (!game) return [];
   const has = (v) => (Array.isArray(v) ? v.length > 0 : !!v);
   const out = [];
@@ -106,10 +106,11 @@ export function sectionList(game, { live = true } = {}) {
   if (live && hasMaps(game)) out.push({ id: 'gd-maps', label: 'Maps' });
   if (live && howToPlaySteps(game).length) out.push({ id: 'gd-how', label: 'How to play' });
   if (galleryItems(game).length) out.push({ id: 'gd-gallery', label: 'Gallery' });
-  if (live && game.solo && Array.isArray(game.stats)) out.push({ id: 'gd-board', label: 'Leaderboard' }); // a solo game that saves scores
-  if (live && !game.solo) {
-    // tables and a leaderboard only exist for a room-based game
-    out.push({ id: 'gd-live', label: 'Live now' });
+  const hybrid = !!(game.solo && game.loaders?.onlineGame); // a solo screen AND rooms: shown as a room-based game
+  if (live && game.solo && !hybrid && Array.isArray(game.stats)) out.push({ id: 'gd-board', label: 'Leaderboard' }); // a solo game that saves scores
+  if (live && (!game.solo || hybrid)) {
+    // tables and a leaderboard only exist for a room-based game (no open tables while the rooms are locked behind a tutorial)
+    if (!locked) out.push({ id: 'gd-live', label: 'Live now' });
     out.push({ id: 'gd-board', label: 'Leaderboard' });
   }
   if (detailRows(game).length) out.push({ id: 'gd-details', label: 'Details' });

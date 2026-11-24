@@ -5,9 +5,11 @@
 // hidden tab, under reduced motion and after the pause button; the dots and Left / Right pick a slide.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '@/lib/auth.jsx';
 import { BRAND } from '@/platform/brand.js';
 import { paths } from '@/platform/paths.js';
 import HubIcon from '@/platform/game/HubIcon.jsx';
+import { roomsLocked } from '@/platform/game/tutorial.js';
 import useShareGame from '@/platform/game/useShareGame.js';
 import { useNotify } from '@/platform/game/notify.js';
 import { useReducedMotion } from '@/components/shell/hooks.js';
@@ -44,10 +46,12 @@ function NotifyPill({ game }) {
 function Actions({ game, active }) {
   const share = useShareGame(game);
   const soon = game.status === 'coming_soon';
+  const { user } = useAuth() || {};
+  const locked = !soon && roomsLocked(user, game); // a game whose rooms need its solo tutorial first: Play opens the tutorial
   const tab = active ? undefined : -1;
   let primary;
   if (soon) primary = <NotifyPill game={game} />;
-  else if (game.solo)
+  else if (locked || (game.solo && !game.loaders?.onlineGame))
     primary = (
       <a href={paths.solo(game.id)} className="cj-btn cj-btn--primary cj-btn--lg" tabIndex={tab}>
         <HubIcon name="play" size={20} /> Play
@@ -63,9 +67,11 @@ function Actions({ game, active }) {
     <div className="cj-home-hero__actions film-hero__actions">
       {primary}
       <div className="cj-btngroup">
-        <button type="button" onClick={share} aria-label={soon ? `Share ${game.name}` : `Invite friends to ${game.name}`} title={soon ? 'Share' : 'Invite friends'} tabIndex={tab}>
-          <HubIcon name={soon ? 'share' : 'plus'} size={22} />
-        </button>
+        {!locked && (
+          <button type="button" onClick={share} aria-label={soon ? `Share ${game.name}` : `Invite friends to ${game.name}`} title={soon ? 'Share' : 'Invite friends'} tabIndex={tab}>
+            <HubIcon name={soon ? 'share' : 'plus'} size={22} />
+          </button>
+        )}
         <Link to={paths.game(game.id)} aria-label={`${game.name} details`} title="Details" tabIndex={tab}>
           <HubIcon name="info" size={22} />
         </Link>
