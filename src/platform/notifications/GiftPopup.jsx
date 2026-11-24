@@ -52,7 +52,7 @@ export function GiftArt({ gift, avatar }) {
     const ach = achievementById(d.achievementId);
     return (
       <span className="gp-art gp-art--badge is-new">
-        <HubIcon name={ach?.icon || 'medal'} size={30} strokeWidth={2.2} />
+        <HubIcon name={ach?.icon || 'medal'} size={22} strokeWidth={2.2} />
       </span>
     );
   }
@@ -60,28 +60,55 @@ export function GiftArt({ gift, avatar }) {
   if (item) {
     return (
       <span className="gp-art gp-art--item" data-rarity={item.rarity}>
-        <Preview item={item} size={56} avatar={avatar} />
+        <Preview item={item} size={44} avatar={avatar} />
       </span>
     );
   }
   if (d.coins) {
     return (
       <span className="gp-art gp-art--coins">
-        <CoinIcon size={34} />
+        <CoinIcon size={26} />
       </span>
     );
   }
   if (d.xp) {
     return (
       <span className="gp-art gp-art--xp">
-        <Icon name="star" size={30} />
+        <Icon name="star" size={22} />
       </span>
     );
   }
   return (
     <span className="gp-art">
-      <Icon name="gift" size={30} />
+      <Icon name="gift" size={22} />
     </span>
+  );
+}
+
+/**
+ * The popup's illustrated head (the shared Modal's `hero`): Jalebi art, and the reward itself centred on it in a glowing
+ * glass medallion: the coin when there are coins, else the item, an unlocked badge, an XP star or a parcel.
+ */
+export function GiftHero({ gifts = [], avatar, ready = true }) {
+  const totals = giftTotals(gifts);
+  const first = gifts[0];
+  const badges = gifts.length > 0 && gifts.every((g) => g.kind === 'achievement');
+  const item = first?.data?.itemId ? cosmeticById(first.data.itemId) : null;
+  let art = <Icon name="gift" size={40} />;
+  let tile = false;
+  if (badges) art = <HubIcon name={achievementById(first?.data?.achievementId)?.icon || 'medal'} size={38} strokeWidth={2} />;
+  else if (totals.coins > 0) art = <CoinIcon size={50} />;
+  else if (item) {
+    art = <Preview item={item} size={64} avatar={avatar} />;
+    tile = true;
+  } else if (totals.xp > 0) art = <Icon name="star" size={40} />;
+  return (
+    <>
+      <span className="cj-ov-hero__art cj-ov-art--chai" aria-hidden="true" />
+      <span className={`gp-medal cj-ov-medal${tile ? ' cj-ov-medal--item' : ''}${ready ? ' is-ready' : ''}`} aria-hidden="true">
+        {art}
+      </span>
+    </>
   );
 }
 
@@ -121,20 +148,17 @@ function GiftRow({ gift, avatar }) {
 }
 
 /**
- * The popup's content, presentational (renders on the server): who it is from, the stacked gifts, one big Collect
- * button that turns into Done, and a polite live region. The dialog chrome is the shared Modal.
+ * The popup's content, presentational (renders on the server): who it is from, the stacked gifts as calm check rows,
+ * one full-width Collect pill that turns into Done, and a polite live region. The dialog chrome (and the illustrated
+ * head, GiftHero) is the shared Modal.
  */
 export function GiftCard({ gifts = [], avatar, collected = false, gain = null, reduced = false, live = '', collectRef, onCollect, onDone }) {
   const totals = giftTotals(gifts);
   const from = gifts.length ? giftFrom(gifts[0], TEAM) : TEAM;
   const several = gifts.length > 1;
-  const badges = gifts.length > 0 && gifts.every((g) => g.kind === 'achievement');
   return (
     <div className="gp" data-collected={collected ? '' : undefined}>
       <div className="gp-head">
-        <span className={`gp-ribbon${collected ? '' : ' is-ready'}`} aria-hidden="true">
-          <Icon name={badges ? 'medal' : 'gift'} size={28} />
-        </span>
         <p className="gp-from">
           <span>From</span> <b>{from}</b>
         </p>
@@ -310,7 +334,13 @@ export default function GiftPopup({ onActiveChange }) {
   const count = stack.length;
   return (
     <>
-      <Modal open={up} onClose={close} title={giftHeadline(count, stack)} className="hub-sheet gp-panel">
+      <Modal
+        open={up}
+        onClose={close}
+        title={giftHeadline(count, stack)}
+        className="hub-sheet gp-panel"
+        hero={<GiftHero gifts={stack} avatar={user?.avatar} ready={phase === 'open'} />}
+      >
         <GiftCard
           gifts={stack}
           avatar={user?.avatar}

@@ -2,7 +2,7 @@
      .jg-reward*   reward chips (coins, item art)
      .jg-achs / .jg-ach*   the profile's achievements grid
      .jg-ref*      the profile's invite card
-     .jg-events*   the live-event strip under the top bar
+     .jg-events*   the live-event strip under the nav (cine glass bar, overlay layer)
      .jg-shop*     limited / reward items on shop cards
      .gp-badge*    the gift popup's "Badge unlocked" treatment
    Motion is decorative only and switched off for reduced motion (system setting or the in-app one). */
@@ -132,27 +132,43 @@
   .jg-ref__title { padding-right: 90px; }
 }
 
-/* ---------------------------------------------------------------- live-event strip (under the top bar) */
-.jg-events { position: relative; z-index: 4; color: var(--brand-charcoal); background: var(--brand-orange); border-bottom: 2px solid var(--brand-charcoal); animation: jg-events-in 220ms cubic-bezier(.23, 1, .32, 1) both; }
-@keyframes jg-events-in { from { opacity: 0; transform: translateY(-4px); } }
-.jg-events__inner { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; max-width: 1664px; min-height: 40px; margin-inline: auto; padding: 5px clamp(16px, 3.4vw, 58px); }
-.jg-events__tag { flex: none; font: 400 15px/1 var(--font-poster); letter-spacing: .06em; text-transform: uppercase; }
-.jg-event {
-  display: inline-flex; align-items: center; gap: 7px; min-height: 30px; padding: 3px 11px;
-  font: 800 13.5px/1.15 var(--font-body); color: var(--brand-paper); background: var(--brand-charcoal);
-  border: 1px solid var(--brand-charcoal); border-radius: 3px; text-decoration: none; transform: skewX(-5deg);
+/* ---------------------------------------------------------------- live-event strip (under the nav) */
+/* A slim floating glass bar in the cine strips slot (docs/CINE_UI.md): a soft gold tint, a "Live now" dot, glass chips. */
+.jg-events {
+  position: relative; z-index: 4; overflow: hidden; border-radius: var(--cj-r-pill); color: var(--cj-text);
+  background: linear-gradient(90deg, rgba(245, 198, 107, .14), rgba(255, 255, 255, .03)), rgba(16, 17, 18, .55);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .3), inset 0 0 0 1px rgba(245, 198, 107, .22);
+  -webkit-backdrop-filter: var(--cj-blur); backdrop-filter: var(--cj-blur); font-family: var(--cj-font);
+  animation: jg-events-in .5s var(--cj-ease) both;
 }
-.jg-event > * { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; transform: skewX(5deg); }
-.jg-event--coin_boost .jg-event__x { color: var(--brand-yellow); font: 400 17px/1 var(--font-poster); }
-a.jg-event:hover { color: var(--brand-charcoal); background: var(--brand-paper); }
-a.jg-event:focus-visible { outline: 2px solid var(--brand-charcoal); outline-offset: 2px; }
+@keyframes jg-events-in { from { opacity: 0; transform: translateY(-6px); } }
+.jg-events__inner { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; min-height: 48px; padding: 6px 8px 6px 18px; }
+.jg-events__tag {
+  display: inline-flex; flex: none; align-items: center; gap: 8px; margin-right: 4px;
+  color: var(--cj-text-strong); font: 600 13px/1 var(--cj-font); letter-spacing: 0; text-transform: none;
+}
+.jg-events__tag::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--cj-live); box-shadow: 0 0 10px rgba(107, 227, 138, .7); }
+.jg-event {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 14px 0 12px;
+  font: 600 13px/1.15 var(--cj-font); color: var(--cj-text-strong); background: rgba(255, 255, 255, .08);
+  border: 0; border-radius: var(--cj-r-pill); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); text-decoration: none; transform: none;
+  transition: background-color var(--cj-dur) var(--cj-ease), transform var(--cj-dur) var(--cj-ease);
+}
+.jg-event > * { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; transform: none; }
+.jg-event svg { color: var(--cj-gold); }
+.jg-event > span + span svg { color: var(--cj-text-dim); }
+.jg-event--coin_boost .jg-event__x { color: var(--cj-gold); font: 700 14px/1 var(--cj-font); }
+a.jg-event:hover { color: var(--cj-text-strong); background: rgba(255, 255, 255, .16); }
+a.jg-event:active { transform: scale(.97); }
+a.jg-event:focus-visible { outline: 2px solid rgba(255, 255, 255, .85); outline-offset: 2px; }
 @media (max-width: 599px) {
   /* one row that scrolls sideways inside the strip (never the page), so two chips do not double its height */
-  .jg-events__inner { flex-wrap: nowrap; gap: 6px; padding-inline: 12px; min-height: 38px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+  .jg-events { border-radius: 20px; }
+  .jg-events__inner { flex-wrap: nowrap; gap: 6px; padding-inline: 8px; min-height: 46px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
   .jg-events__inner::-webkit-scrollbar { display: none; }
   .jg-event { flex: none; }
   .jg-events__tag { display: none; }
-  .jg-event { font-size: 12.5px; padding-inline: 8px; min-height: 28px; }
+  .jg-event { font-size: 12.5px; padding-inline: 10px 12px; min-height: 32px; }
 }
 
 /* ---------------------------------------------------------------- shop: limited and reward items */
@@ -173,24 +189,27 @@ a.jg-event:focus-visible { outline: 2px solid var(--brand-charcoal); outline-off
 .jg-shop-source { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 800; color: var(--hub-dim); }
 
 /* ---------------------------------------------------------------- gift popup: badge unlocked */
+/* the calm cine look of the gift popup (notifications.css): a gold medal tile and a small glass tag over the title */
 .gp-art--badge {
-  color: var(--brand-charcoal); background: radial-gradient(circle at 35% 30%, #ffd77a, var(--brand-yellow) 55%, #c9780f);
-  border: 2px solid var(--brand-charcoal); border-radius: 50%; box-shadow: 0 0 0 3px var(--brand-paper), 0 0 0 5px var(--brand-charcoal);
+  color: var(--cj-ink); background: radial-gradient(circle at 35% 30%, #ffe3a3, var(--cj-gold) 60%, #c98f2c);
+  border: 0; border-radius: 50%; box-shadow: 0 0 0 3px rgba(245, 198, 107, .18), 0 6px 18px rgba(245, 198, 107, .25);
 }
 .gp-tag {
-  display: inline-flex; align-items: center; gap: 5px; width: fit-content; margin-bottom: 4px; padding: 3px 8px 2px;
-  font: 400 13px/1 var(--font-poster); letter-spacing: .07em; text-transform: uppercase;
-  color: var(--brand-charcoal); background: var(--brand-paper); border-radius: 2px; transform: rotate(-2deg) skewX(-6deg);
+  display: inline-flex; align-items: center; gap: 5px; width: fit-content; margin-bottom: 4px; padding: 4px 9px 4px 8px;
+  font: 600 11px/1 var(--cj-font); letter-spacing: 0; text-transform: none;
+  color: var(--cj-text-strong); background: rgba(255, 255, 255, .08); border-radius: var(--cj-r-pill); transform: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08);
 }
-.gp-tag--achievement { background: var(--brand-yellow); }
-.gp-tag--season { background: #9fd3ff; }
-.gp-tag--referral { background: var(--brand-orange); }
-.gp-art--badge.is-new { animation: jg-badge-pop 420ms cubic-bezier(.23, 1, .32, 1) both; }
-@keyframes jg-badge-pop { from { transform: scale(.6) rotate(-20deg); opacity: 0; } to { transform: scale(1) rotate(0); opacity: 1; } }
+.gp-tag svg { color: var(--cj-text-dim); }
+.gp-tag--achievement svg { color: var(--cj-gold); }
+.gp-tag--season svg { color: #a9d8ff; }
+.gp-tag--referral svg { color: var(--cj-live); }
+.gp-art--badge.is-new { animation: jg-badge-pop .6s var(--cj-ease) both; }
+@keyframes jg-badge-pop { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .jg-events, .gp-art--badge.is-new, .jg-ach.is-unlocked { animation: none !important; transition: none !important; }
+  .jg-events, .jg-event, .gp-art--badge.is-new, .jg-ach.is-unlocked { animation: none !important; transition: none !important; }
   .jg-ach.is-unlocked:hover { transform: none; }
 }
-:root[data-motion='reduced'] :is(.jg-events, .gp-art--badge.is-new, .jg-ach.is-unlocked) { animation: none !important; transition: none !important; }
+:root[data-motion='reduced'] :is(.jg-events, .jg-event, .gp-art--badge.is-new, .jg-ach.is-unlocked) { animation: none !important; transition: none !important; }
 :root[data-motion='reduced'] .jg-ach.is-unlocked:hover { transform: none; }

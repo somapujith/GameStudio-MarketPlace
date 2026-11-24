@@ -12,7 +12,7 @@ import { useToast } from '../Toast.jsx';
 import CoinFlight, { centerOf } from './CoinFlight.jsx';
 import { dailyView, fmtCountdown, istDayKey, msUntilIstMidnight, previewDays } from './homeModel.js';
 import { useCountUp } from './useCountUp.js';
-import '@/platform/home/adda.css';
+import '@/styles/cine/overlays.css'; // .cj-ov-daily: the card in the cine glass look
 
 const CELEBRATE_MS = 2600;
 
@@ -189,8 +189,7 @@ export default function DailyReward() {
   // ---- signed out / booting --------------------------------------------------------------
   if (loading || !user) {
     return (
-      <section data-tour="home-daily" className="hub-panel hh2-daily xh-daily adda-ticket is-out" aria-labelledby="hh2-daily-h" aria-busy={loading || undefined}>
-        <p className="adda-ticket__serial">Jalebi Games / Daily admission</p>
+      <section data-tour="home-daily" className="hub-panel hh2-daily xh-daily cj-ov-daily is-out" aria-labelledby="hh2-daily-h" aria-busy={loading || undefined}>
         <div className="hh2-daily__glow" aria-hidden="true" />
         <Head sub={loading ? 'Checking your streak…' : 'Sign in or play as guest to collect daily coins.'} streak={null} />
         <Track days={previewDays()} label="Daily rewards, days 1 to 7" />
@@ -219,8 +218,7 @@ export default function DailyReward() {
         : `Day ${pos} of 7. Keep the streak alive.`;
 
   return (
-    <section data-tour="home-daily" className={`hub-panel hh2-daily xh-daily adda-ticket ${view.claimed ? 'is-claimed' : 'is-ready'}`} aria-labelledby="hh2-daily-h">
-      <p className="adda-ticket__serial">Jalebi Games / Daily admission</p>
+    <section data-tour="home-daily" className={`hub-panel hh2-daily xh-daily cj-ov-daily ${view.claimed ? 'is-claimed' : 'is-ready'}`} aria-labelledby="hh2-daily-h">
       <div className="hh2-daily__glow" aria-hidden="true" />
       <Head sub={sub} streak={view.claimed ? view.streak : view.lost ? 0 : view.streak} ready={!view.claimed} />
       <Track days={view.days} />

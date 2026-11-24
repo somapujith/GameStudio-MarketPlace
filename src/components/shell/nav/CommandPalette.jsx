@@ -11,6 +11,7 @@ import { actionMatches, buildSections, flatten, shortcutLabel, stepIndex } from 
 import { isStaff } from '@/lib/adminApi.js';
 import { paths } from '@/platform/paths.js';
 import { recentGames } from './recent.js';
+import '@/styles/cine/overlays.css';
 
 const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
 
@@ -39,7 +40,7 @@ function GameChip({ game }) {
   const Art = game?.art?.icon;
   const t = game?.theme || {};
   return (
-    <span className="xs-pal__ico xs-pal__ico--game" style={{ '--pal-bg': t.bg || undefined, '--pal-a': t.accent || undefined }} aria-hidden="true">
+    <span className="cj-ov-pal__ico cj-ov-pal__ico--game" style={{ '--pal-bg': t.bg || undefined, '--pal-a': t.accent || undefined }} aria-hidden="true">
       {Art ? <Art size={40} /> : <b>{String(game?.name || '?').charAt(0).toUpperCase()}</b>}
     </span>
   );
@@ -52,7 +53,7 @@ function Row({ item, id, active, onPick, onHover }) {
       id={id}
       role="option"
       aria-selected={active}
-      className={`xs-pal__item${active ? ' is-active' : ''}`}
+      className={`cj-ov-pal__item${active ? ' is-active' : ''}`}
       onMouseDown={(e) => e.preventDefault()}
       onMouseMove={onHover}
       onClick={onPick}
@@ -60,18 +61,18 @@ function Row({ item, id, active, onPick, onHover }) {
       {item.game ? (
         <GameChip game={item.game} />
       ) : (
-        <span className={`xs-pal__ico xs-pal__ico--${item.kind}`} aria-hidden="true">
+        <span className={`cj-ov-pal__ico cj-ov-pal__ico--${item.kind}`} aria-hidden="true">
           <HubIcon name={item.icon || 'search'} size={20} />
         </span>
       )}
-      <span className="xs-pal__txt">
-        <span className="xs-pal__label">
+      <span className="cj-ov-pal__txt">
+        <span className="cj-ov-pal__label">
           {item.label}
-          {soon && <i className="xs-pal__soon">Soon</i>}
+          {soon && <i className="cj-ov-pal__soon">Soon</i>}
         </span>
-        {item.hint ? <span className="xs-pal__hint">{item.hint}</span> : null}
+        {item.hint ? <span className="cj-ov-pal__hint">{item.hint}</span> : null}
       </span>
-      <span className="xs-pal__go" aria-hidden="true">
+      <span className="cj-ov-pal__go" aria-hidden="true">
         <HubIcon name="arrowR" size={16} />
       </span>
     </li>
@@ -82,7 +83,7 @@ function Row({ item, id, active, onPick, onHover }) {
  * Command palette: search the catalogue, jump to a screen, or go straight to a room code.
  * Combobox + listbox semantics (focus stays in the input, `aria-activedescendant` follows the arrows), focus trap,
  * Esc closes and restores focus. It opens from the keyboard hundreds of times a day for some people, so it has no
- * open/close animation on purpose (see x-shell.css `.xs-pal`).
+ * open/close animation on purpose (see `.cj-ov-pal` in styles/cine/overlays.css).
  */
 export default function CommandPalette({ open, onClose }) {
   const uid = useId();
@@ -190,13 +191,13 @@ export default function CommandPalette({ open, onClose }) {
   const status = query.trim() ? `${count} ${count === 1 ? 'result' : 'results'}` : '';
 
   return createPortal(
-    <div className="xs-pal" onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
-      <div ref={panel} className="xs-pal__panel" role="dialog" aria-modal="true" aria-label="Search Jalebi Games" onKeyDown={onKeyDown}>
-        <div className="xs-pal__bar">
-          <HubIcon name="search" size={20} className="xs-pal__mag" />
+    <div className="xs-pal cj-ov-pal" onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
+      <div ref={panel} className="cj-ov-pal__panel" role="dialog" aria-modal="true" aria-label="Search Jalebi Games" onKeyDown={onKeyDown}>
+        <div className="cj-ov-pal__bar">
+          <HubIcon name="search" size={20} className="cj-ov-pal__mag" />
           <input
             ref={inputRef}
-            className="xs-pal__input"
+            className="cj-ov-pal__input"
             type="text"
             role="combobox"
             aria-expanded="true"
@@ -214,21 +215,21 @@ export default function CommandPalette({ open, onClose }) {
             enterKeyHint="go"
           />
           {query ? (
-            <button type="button" className="xs-pal__clear" aria-label="Clear search" onClick={() => { setQuery(''); inputRef.current?.focus(); }}>
+            <button type="button" className="cj-ov-pal__clear" aria-label="Clear search" onClick={() => { setQuery(''); inputRef.current?.focus(); }}>
               <HubIcon name="close" size={16} strokeWidth={2.4} />
             </button>
           ) : null}
-          <button type="button" className="xs-pal__close" onClick={onClose}>
-            <span className="xs-pal__close-long">Esc</span>
-            <span className="xs-pal__close-short">Cancel</span>
+          <button type="button" className="cj-ov-pal__close" onClick={onClose}>
+            <span className="cj-ov-pal__close-long">Esc</span>
+            <span className="cj-ov-pal__close-short">Cancel</span>
           </button>
         </div>
 
-        <ul ref={listRef} id={listId} role="listbox" aria-label={query.trim() ? 'Results' : 'Suggestions'} className="xs-pal__list">
+        <ul ref={listRef} id={listId} role="listbox" aria-label={query.trim() ? 'Results' : 'Suggestions'} className="cj-ov-pal__list">
           {sections.map((s) => (
-            <li key={s.id} role="presentation" className="xs-pal__sec">
-              {s.label ? <div className="xs-pal__sechead" role="presentation">{s.label}</div> : null}
-              <ul role="presentation" className="xs-pal__rows">
+            <li key={s.id} role="presentation" className="cj-ov-pal__sec">
+              {s.label ? <div className="cj-ov-pal__sechead" role="presentation">{s.label}</div> : null}
+              <ul role="presentation" className="cj-ov-pal__rows">
                 {s.items.map((item) => {
                   n += 1;
                   const i = n;
@@ -239,11 +240,11 @@ export default function CommandPalette({ open, onClose }) {
           ))}
         </ul>
 
-        <p className="xs-pal__foot" aria-hidden="true">
+        <p className="cj-ov-pal__foot" aria-hidden="true">
           <span><kbd>↑</kbd><kbd>↓</kbd> move</span>
           <span><kbd>↵</kbd> open</span>
           <span><kbd>Esc</kbd> close</span>
-          <span className="xs-pal__foot-end">{shortcutLabel()} anywhere</span>
+          <span className="cj-ov-pal__foot-end">{shortcutLabel()} anywhere</span>
         </p>
         <p className="hub-sr" role="status" aria-live="polite">{status}</p>
       </div>

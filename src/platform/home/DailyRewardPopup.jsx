@@ -96,6 +96,18 @@ export function DailyPopupCard({ view, busy = false, gain = null, coins = null, 
   );
 }
 
+/** The popup's illustrated head (the shared Modal's `hero`): the chai-stall art with the gift in a glowing glass medallion. */
+export function DailyHero({ ready = true }) {
+  return (
+    <>
+      <span className="cj-ov-hero__art cj-ov-art--charminar" aria-hidden="true" />
+      <span className={`cj-ov-medal${ready ? ' is-ready' : ''}`} aria-hidden="true">
+        <Icon name={ready ? 'gift' : 'check'} size={40} />
+      </span>
+    </>
+  );
+}
+
 /**
  * Greets a signed-in member with today's reward a few seconds after the app loads (see dailyPopupModel.js for the
  * rules: members only, only when claimable, hub routes only, never over another dialog, once per session and day).
@@ -221,7 +233,7 @@ export default function DailyRewardPopup() {
   if (phase === 'idle') return null;
   return (
     <>
-      <Modal open={phase === 'open'} onClose={close} title="Daily reward" className="hub-sheet dp-panel">
+      <Modal open={phase === 'open'} onClose={close} title="Daily reward" className="hub-sheet dp-panel" hero={<DailyHero ready={!view.claimed} />}>
         <DailyPopupCard
           view={view}
           busy={busy}

@@ -25,6 +25,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from './icons.jsx';
 import '@/styles/x-shell.css';
+import '@/styles/cine/overlays.css'; // hub routes: glass pills, bottom centre
 
 const ToastCtx = createContext(null);
 

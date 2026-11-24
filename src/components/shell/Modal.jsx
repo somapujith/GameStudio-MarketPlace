@@ -2,10 +2,11 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useScrollLock } from '@/lib/useScrollLock.js';
 import { Icon } from './icons.jsx';
+import '@/styles/cine/overlays.css';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-const LEAVE_MS = 200; // keep in step with `.hh-modal.is-leaving` in x-shell.css
+const LEAVE_MS = 200; // keep in step with `.cj-ov-modal.is-leaving` in styles/cine/overlays.css
 
 function motionReduced() {
   try {
@@ -17,10 +18,13 @@ function motionReduced() {
 
 /**
  * Accessible dialog: portal, focus trap, Esc / backdrop to close, scroll lock (iOS-safe), focus restore.
- * Bottom sheet on phones, centred card on desktop. Closing plays a short exit (200 ms, transform + opacity) unless
- * motion is reduced; the dialog stays mounted for that moment but is inert (focus is already restored).
+ * The cine overlay look (docs/CINE_UI.md): a glass card with a 26px radius on desktop, a bottom sheet with a grab handle
+ * on phones, a round glass close button and full-width pill actions. `hero` (optional) is an illustrated head that runs
+ * edge to edge above the title (see `.cj-ov-hero` in styles/cine/overlays.css). Closing plays a short exit (200 ms,
+ * transform + opacity) unless motion is reduced; the dialog stays mounted for that moment but is inert (focus is
+ * already restored).
  */
-export default function Modal({ open, onClose, title, children, actions, tone = 'default', dismissible = true, className = '' }) {
+export default function Modal({ open, onClose, title, children, actions, hero = null, tone = 'default', dismissible = true, className = '' }) {
   const titleId = useId();
   const panel = useRef(null);
   const last = useRef(null);
@@ -91,19 +95,20 @@ export default function Modal({ open, onClose, title, children, actions, tone = 
 
   if (!mounted) return null;
   return createPortal(
-    <div className={`hh-modal${leaving && !open ? ' is-leaving' : ''}`} inert={!open || undefined} onMouseDown={(e) => e.target === e.currentTarget && dismissible && onClose?.()}>
-      <div ref={panel} className={`hh-modal__panel hh-modal__panel--${tone} ${className}`.trim()} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
-        <span className="hh-modal__grip" aria-hidden="true" />
+    <div className={`hh-modal cj-ov-modal${leaving && !open ? ' is-leaving' : ''}`} inert={!open || undefined} onMouseDown={(e) => e.target === e.currentTarget && dismissible && onClose?.()}>
+      <div ref={panel} className={`hh-modal__panel cj-ov-sheet hh-modal__panel--${tone}${hero ? ' has-hero' : ''} ${className}`.trim()} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
+        <span className="hh-modal__grip cj-ov-grip" aria-hidden="true" />
         {dismissible && (
-          <button type="button" className="hh-iconbtn hh-modal__close" onClick={onClose} aria-label="Close">
-            <Icon name="close" size={20} />
+          <button type="button" className="hh-iconbtn hh-modal__close cj-ov-close" onClick={onClose} aria-label="Close">
+            <Icon name="close" size={18} strokeWidth={2.2} />
           </button>
         )}
-        <h2 id={titleId} className="hh-modal__title">
+        {hero && <div className="cj-ov-hero">{hero}</div>}
+        <h2 id={titleId} className="hh-modal__title cj-ov-title">
           {title}
         </h2>
-        <div className="hh-modal__body">{children}</div>
-        {actions && <div className="hh-modal__actions">{actions}</div>}
+        <div className="hh-modal__body cj-ov-body">{children}</div>
+        {actions && <div className="hh-modal__actions cj-ov-actions">{actions}</div>}
       </div>
     </div>,
     document.body,

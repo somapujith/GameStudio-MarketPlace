@@ -1,0 +1,1356 @@
+/* ==========================================================================
+   Cine overlays (docs/CINE_UI.md, "Overlays"). Prefix `cj-ov-`.
+   The modal language of the reference: a deep glass card (26px radius, inset hairline, --cj-shadow-pop) over a blurred,
+   dimmed page, an optional illustrated head that runs edge to edge, a round glass close button, calm 600-weight type and
+   full-width pills (white = the main action, glass = the rest). Phones (< 600px): the same card as a bottom sheet with a
+   26px top radius and a grab handle, above the floating dock.
+   Pieces:
+     tokens + legacy-token remap for portalled overlays (they live on <body>, outside .hub-app)
+     .cj-ov-modal / .cj-ov-sheet …   the shared Modal (src/components/shell/Modal.jsx)
+     .cj-ov-hero / .cj-ov-medal     illustrated heads (gift popup, daily reward)
+     .cj-ov-pal*                    the command palette
+     toasts (hub routes)            small glass pills, bottom centre, above the dock on phones
+     .ho-sheet / .ho-modal__box     the online Sheet and ConfirmDialog when they open inside the hub
+     .cj-ov-install / .cj-ov-net    the install card and the offline pill
+     .dp* / .cj-ov-daily            the daily-reward popup and the daily-reward card
+   Selectors carry a `:root` (or a doubled class) where a legacy layer (global.css, x-shell.css, hub.css, mobile.css)
+   styles the same element, so the cine look wins whatever order the lazy chunks load in.
+   Motion: --cj-ease, transform + opacity; reduced motion (OS setting or :root[data-motion='reduced']) is a plain fade.
+   ========================================================================== */
+
+:root {
+  --cj-ov-z: 120; /* above the nav (30), the dock (40) and the legacy sheet layers (60-90) */
+  --cj-ov-z-toast: 130; /* a toast raised from inside a dialog stays readable */
+  --cj-ov-scrim: rgba(2, 8, 5, 0.5);
+  --cj-ov-blur: blur(18px) saturate(120%);
+  --cj-ov-card: linear-gradient(180deg, rgba(30, 36, 33, 0.9) 0%, rgba(16, 17, 18, 0.95) 62%);
+  --cj-ov-card-solid: #141716;
+  --cj-ov-ring: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --cj-ov-pad: 24px;
+}
+
+/* the legacy tokens that content inside a portalled overlay still reads, remapped to cine */
+:is(.cj-ov-modal, .cj-ov-pal, .cj-ov-install, .cj-ov-net, .nt-pop),
+:root:is([data-route='hub'], [data-route='lobby']):not(:has(.adm, .adm-page)) .ho-modal {
+  --font-poster: var(--cj-font);
+  --font-display: var(--cj-font);
+  --font-body: var(--cj-font);
+  --font-hub-display: var(--cj-font);
+  --font-hub-body: var(--cj-font);
+  --brand-orange: #f2f2f2;
+  --brand-paper: #ffffff;
+  --brand-charcoal: #0a0a0b;
+  --hub-text: var(--cj-text-strong);
+  --hub-dim: var(--cj-text-dim);
+  --hub-faint: var(--cj-text-faint);
+  --text: var(--cj-text-strong);
+  --text-dim: var(--cj-text-dim);
+  --text-faint: var(--cj-text-faint);
+  --hub-surface: rgba(255, 255, 255, 0.05);
+  --hub-surface-2: rgba(255, 255, 255, 0.08);
+  --hub-surface-3: rgba(255, 255, 255, 0.13);
+  --surface: rgba(255, 255, 255, 0.05);
+  --surface-2: rgba(255, 255, 255, 0.08);
+  --hub-field: rgba(255, 255, 255, 0.05);
+  --hub-line: var(--cj-line);
+  --hub-line-2: var(--cj-line-2);
+  --line: var(--cj-line);
+  --line-strong: var(--cj-line-2);
+  --hub-brand: #f2f2f2;
+  --hub-brand-2: #ffffff;
+  --hub-brand-ink: #ffffff;
+  --hub-brand-soft: rgba(255, 255, 255, 0.08);
+  --hub-brand-fill: #f2f2f2;
+  --hub-on-brand: var(--cj-ink);
+  --hub-focus: rgba(255, 255, 255, 0.85);
+  --hub-good: var(--cj-live);
+  --good: var(--cj-live);
+  --hub-gold: var(--cj-gold);
+  --gold: var(--cj-gold);
+  --hub-bad: var(--cj-danger);
+  --bad: var(--cj-danger);
+  --hub-bad-ink: #ffb3b3;
+  --hub-r-s: 10px;
+  --hub-r-m: 12px;
+  --hub-r-l: 16px;
+  --hub-shadow: var(--cj-shadow-card);
+  --hub-brand-rgb: 255, 255, 255;
+  --hub-skel: rgba(255, 255, 255, 0.06);
+  --hub-skel-hi: rgba(255, 255, 255, 0.12);
+  font-family: var(--cj-font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ==========================================================================
+   The shared Modal
+   ========================================================================== */
+:root .hh-modal.cj-ov-modal {
+  position: fixed;
+  inset: 0;
+  bottom: var(--kb-inset, 0px);
+  z-index: var(--cj-ov-z);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background: var(--cj-ov-scrim);
+  -webkit-backdrop-filter: var(--cj-ov-blur);
+  backdrop-filter: var(--cj-ov-blur);
+  animation: cj-ov-fade 0.3s var(--cj-ease) both;
+}
+:root .cj-ov-modal .hh-modal__panel.cj-ov-sheet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 420px);
+  max-width: 420px;
+  max-height: min(88dvh, calc(var(--vvh, 100dvh) - 32px));
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  padding: var(--cj-ov-pad);
+  border: 0;
+  border-radius: var(--cj-r-sheet);
+  color: var(--cj-text);
+  background: var(--cj-ov-card);
+  box-shadow: var(--cj-shadow-pop), var(--cj-ov-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+  font-family: var(--cj-font);
+  text-align: left;
+  animation: cj-ov-pop var(--cj-dur) var(--cj-ease) both;
+}
+:root .cj-ov-modal .cj-ov-sheet:focus {
+  outline: none;
+}
+:root .cj-ov-modal .cj-ov-sheet :focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 3px;
+}
+:root .cj-ov-modal .cj-ov-grip {
+  display: none;
+}
+/* round glass close, top right (over the art when there is a head) */
+:root .cj-ov-modal .hh-modal__close.cj-ov-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--cj-text-strong);
+  background: rgba(14, 14, 16, 0.5);
+  box-shadow: var(--cj-ov-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+  cursor: pointer;
+  transition: background-color var(--cj-dur) var(--cj-ease), transform var(--cj-dur) var(--cj-ease);
+}
+:root .cj-ov-modal .cj-ov-close svg {
+  width: 18px;
+  height: 18px;
+}
+@media (hover: hover) and (pointer: fine) {
+  :root .cj-ov-modal .cj-ov-close:hover {
+    background: rgba(255, 255, 255, 0.18);
+  }
+}
+:root .cj-ov-modal .cj-ov-close:active {
+  transform: scale(0.92);
+}
+:root .cj-ov-modal .hh-modal__title.cj-ov-title {
+  margin: 0;
+  padding-right: 44px;
+  color: var(--cj-text-strong);
+  font: 700 22px/1.2 var(--cj-font);
+  letter-spacing: -0.01em;
+  text-transform: none;
+  font-synthesis: none;
+}
+:root .cj-ov-modal .has-hero .cj-ov-title {
+  padding-right: 0;
+}
+:root .cj-ov-modal .hh-modal__body.cj-ov-body {
+  margin-top: 14px;
+  color: var(--cj-text-dim);
+  font-size: 14px;
+  line-height: 1.55;
+}
+:root .cj-ov-modal .cj-ov-body > p:first-child {
+  margin-top: 0;
+}
+:root .cj-ov-modal .hh-modal__actions.cj-ov-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+:root .cj-ov-modal .cj-ov-actions > * {
+  flex: 1 1 140px;
+}
+
+/* ---------- buttons inside overlays: white pill (main), glass pill (the rest) ---------- */
+:root :is(.cj-ov-modal, .cj-ov-install) :is(.hub-btn, .btn) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ov-ring);
+  font: 600 15px/1 var(--cj-font);
+  letter-spacing: 0.01em;
+  text-transform: none;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transform: none;
+  transition: transform var(--cj-dur) var(--cj-ease), background-color var(--cj-dur) var(--cj-ease), opacity var(--cj-dur) var(--cj-ease);
+}
+:root :is(.cj-ov-modal, .cj-ov-install) :is(.hub-btn, .btn):hover:not(:disabled, [aria-disabled='true']) {
+  background: var(--cj-glass-3);
+  border-color: transparent;
+  box-shadow: var(--cj-ov-ring);
+  transform: none;
+}
+:root :is(.cj-ov-modal, .cj-ov-install) :is(.hub-btn, .btn):active:not(:disabled, [aria-disabled='true']) {
+  transform: scale(0.97);
+}
+:root :is(.cj-ov-modal, .cj-ov-install) :is(.hub-btn--primary, .hub-btn--accent, .btn--primary, .btn--gold) {
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  box-shadow: none;
+}
+:root :is(.cj-ov-modal, .cj-ov-install) :is(.hub-btn--primary, .hub-btn--accent, .btn--primary, .btn--gold):hover:not(:disabled, [aria-disabled='true']) {
+  color: var(--cj-ink);
+  background: #fff;
+  box-shadow: none;
+}
+:root .cj-ov-modal :is(.hub-btn--danger, .btn--danger) {
+  color: #ffc9c9;
+  background: rgba(255, 107, 107, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(255, 107, 107, 0.28);
+}
+:root .cj-ov-modal :is(.hub-btn--danger, .btn--danger):hover:not(:disabled, [aria-disabled='true']) {
+  background: rgba(255, 107, 107, 0.24);
+  box-shadow: inset 0 0 0 1px rgba(255, 107, 107, 0.38);
+}
+:root :is(.cj-ov-modal, .cj-ov-install) :is(.hub-btn, .btn):is(:disabled, [aria-disabled='true']) {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+:root .cj-ov-modal :is(.hub-btn--lg, .btn--lg) {
+  min-height: 52px;
+  font-size: 16px;
+}
+:root .cj-ov-modal :is(.hub-btn--sm, .btn--sm) {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+:root .cj-ov-modal :is(.hub-btn--block, .btn--block) {
+  width: 100%;
+}
+:root .cj-ov-modal :is(.hub-btn, .btn) svg {
+  flex: none;
+}
+/* fields inside dialogs */
+:root .cj-ov-modal :is(input[type='text'], input[type='search'], input:not([type]), textarea, select):not([class*='cj-ov']) {
+  font-family: var(--cj-font);
+}
+
+/* ---------- illustrated head ---------- */
+.cj-ov-hero {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  height: 188px;
+  margin: calc(var(--cj-ov-pad) * -1) calc(var(--cj-ov-pad) * -1) 18px;
+  overflow: hidden;
+  border-radius: var(--cj-r-sheet) var(--cj-r-sheet) 0 0;
+}
+/* the picture: a child span with an art modifier, so the head's content decides its own art */
+.cj-ov-hero__art {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(75% 95% at 50% 45%, transparent 40%, rgba(10, 12, 11, 0.35) 100%),
+    var(--cj-ov-art, none) center 38% / cover no-repeat;
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 52%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 0%, #000 52%, transparent 100%);
+}
+.cj-ov-art--charminar {
+  --cj-ov-art: url('/art/cinematic/nawabi-setup.webp');
+}
+.cj-ov-art--chai {
+  --cj-ov-art: url('/art/cinematic/leaderboard-scene.webp');
+}
+.cj-ov-art--street {
+  --cj-ov-art: url('/art/cinematic/hero.webp');
+}
+.cj-ov-hero__art.cj-ov-art--chai {
+  background-position: center, 68% 30%;
+}
+/* the reward itself, centred on the art: a glowing glass medallion */
+.cj-ov-medal {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  color: var(--cj-gold);
+  background: radial-gradient(circle at 50% 38%, rgba(255, 226, 150, 0.34), rgba(255, 255, 255, 0.08) 68%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2), 0 0 0 8px rgba(255, 255, 255, 0.05), 0 18px 50px rgba(0, 0, 0, 0.45), 0 0 70px rgba(245, 198, 107, 0.35);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+}
+.cj-ov-medal > svg,
+.cj-ov-medal > .gp-art {
+  filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.45));
+}
+.cj-ov-medal--item {
+  border-radius: 24px;
+  color: var(--cj-text-strong);
+  background: rgba(14, 14, 16, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16), 0 18px 50px rgba(0, 0, 0, 0.55);
+}
+.cj-ov-medal__count {
+  position: absolute;
+  right: -10px;
+  bottom: -4px;
+  min-width: 34px;
+  padding: 5px 9px;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  font: 700 13px/1 var(--cj-font);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+}
+.cj-ov-medal.is-ready {
+  animation: cj-ov-float 4.2s ease-in-out 0.6s infinite;
+}
+@keyframes cj-ov-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+/* a short eyebrow above the title when there is a head ("From the Jalebi Games team") */
+.cj-ov-eyebrow {
+  margin: 0 0 6px;
+  color: var(--cj-text-dim);
+  font: 500 12px/1.3 var(--cj-font);
+}
+.cj-ov-eyebrow b {
+  color: var(--cj-text-strong);
+  font-weight: 600;
+}
+
+/* ---------- phones: a bottom sheet with a grab handle ---------- */
+@media (max-width: 599px) {
+  :root .hh-modal.cj-ov-modal {
+    align-items: flex-end;
+    padding: 0;
+  }
+  :root .cj-ov-modal .hh-modal__panel.cj-ov-sheet {
+    width: 100%;
+    max-width: none;
+    max-height: min(90dvh, calc(var(--vvh, 100dvh) - 12px));
+    padding: 22px 20px calc(20px + var(--safe-bottom, 0px));
+    border-radius: var(--cj-r-sheet) var(--cj-r-sheet) 0 0;
+    box-shadow: 0 -10px 40px -10px rgba(0, 0, 0, 0.6), var(--cj-ov-ring);
+    animation-name: cj-ov-rise;
+  }
+  :root .cj-ov-modal .hh-modal__grip.cj-ov-grip {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    z-index: 3;
+    display: block;
+    width: 40px;
+    height: 5px;
+    margin: 0;
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.32);
+    transform: translateX(-50%);
+  }
+  :root .cj-ov-modal .hh-modal__close.cj-ov-close {
+    top: 16px;
+    right: 14px;
+  }
+  .cj-ov-hero {
+    height: 168px;
+    margin: -22px -20px 16px;
+  }
+  :root .cj-ov-modal .cj-ov-actions > * {
+    flex-basis: 100%;
+  }
+}
+
+/* ---------- enter / leave ---------- */
+@keyframes cj-ov-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes cj-ov-pop {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+}
+@keyframes cj-ov-rise {
+  from {
+    opacity: 0.4;
+    transform: translateY(48px);
+  }
+}
+:root .hh-modal.cj-ov-modal.is-leaving {
+  pointer-events: none;
+  animation: cj-ov-fade-out 0.2s ease both;
+}
+:root .hh-modal.cj-ov-modal.is-leaving .cj-ov-sheet {
+  animation: cj-ov-pop-out 0.2s ease both;
+}
+@keyframes cj-ov-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes cj-ov-pop-out {
+  to {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+@media (max-width: 599px) {
+  :root .hh-modal.cj-ov-modal.is-leaving .cj-ov-sheet {
+    animation-name: cj-ov-sink;
+  }
+  @keyframes cj-ov-sink {
+    to {
+      opacity: 0;
+      transform: translateY(40px);
+    }
+  }
+}
+
+/* ==========================================================================
+   Command palette: a glass search sheet with a big calm input
+   No open/close motion on purpose: it is opened from the keyboard many times a day.
+   ========================================================================== */
+:root .xs-pal.cj-ov-pal {
+  position: fixed;
+  inset: 0;
+  bottom: var(--kb-inset, 0px);
+  z-index: var(--cj-ov-z);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: calc(var(--safe-top, 0px) + 12vh) 16px 16px;
+  background: var(--cj-ov-scrim);
+  -webkit-backdrop-filter: var(--cj-ov-blur);
+  backdrop-filter: var(--cj-ov-blur);
+  color: var(--cj-text);
+}
+.cj-ov-pal__panel {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 640px);
+  max-height: min(70vh, 620px);
+  overflow: hidden;
+  border-radius: var(--cj-r-sheet);
+  color: var(--cj-text);
+  background: var(--cj-ov-card);
+  box-shadow: var(--cj-shadow-pop), var(--cj-ov-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+}
+.cj-ov-pal__bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 72px;
+  padding: 0 14px 0 24px;
+  border-bottom: 1px solid var(--cj-line);
+}
+.cj-ov-pal__mag {
+  flex: none;
+  color: var(--cj-text-faint);
+  transition: color var(--cj-dur) var(--cj-ease);
+}
+.cj-ov-pal__bar:focus-within .cj-ov-pal__mag {
+  color: var(--cj-text-strong);
+}
+:root .cj-ov-pal .cj-ov-pal__input {
+  flex: 1;
+  min-width: 0;
+  height: 70px;
+  padding: 0;
+  border: 0;
+  outline: none;
+  color: var(--cj-text-strong);
+  background: transparent;
+  box-shadow: none;
+  font: 500 20px/1.2 var(--cj-font); /* at least 16px: iOS never zooms the page on focus */
+  letter-spacing: -0.01em;
+}
+.cj-ov-pal__input::placeholder {
+  color: var(--cj-text-faint);
+  font-weight: 400;
+}
+.cj-ov-pal :focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 2px;
+}
+:root .cj-ov-pal .cj-ov-pal__input:focus-visible {
+  outline: none;
+}
+.cj-ov-pal__clear,
+.cj-ov-pal__close {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  height: 36px;
+  min-width: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-text-dim);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ov-ring);
+  font: 600 12px/1 var(--cj-font);
+  cursor: pointer;
+  transition: background-color var(--cj-dur) var(--cj-ease), color var(--cj-dur) var(--cj-ease);
+}
+.cj-ov-pal__close {
+  padding: 0 12px;
+}
+.cj-ov-pal__close-short {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .cj-ov-pal__clear:hover,
+  .cj-ov-pal__close:hover {
+    color: var(--cj-text-strong);
+    background: var(--cj-glass-3);
+  }
+}
+.cj-ov-pal__list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 8px 10px 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+.cj-ov-pal__sec,
+.cj-ov-pal__rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cj-ov-pal__sechead {
+  padding: 14px 14px 8px;
+  color: var(--cj-text-faint);
+  font: 600 12px/1.3 var(--cj-font);
+}
+.cj-ov-pal__item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 60px;
+  padding: 8px 14px 8px 10px;
+  border-radius: 14px;
+  list-style: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.2s var(--cj-ease);
+}
+.cj-ov-pal__item.is-active {
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ov-ring);
+}
+.cj-ov-pal__ico {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  overflow: hidden;
+  border-radius: var(--cj-r-card);
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ov-ring);
+}
+.cj-ov-pal__ico--game {
+  background: var(--pal-bg, var(--cj-glass-2));
+}
+.cj-ov-pal__ico--game svg {
+  width: 100%;
+  height: 100%;
+}
+.cj-ov-pal__ico--game b {
+  color: #fff;
+  font: 700 18px/1 var(--cj-font);
+}
+.cj-ov-pal__ico--join {
+  color: var(--cj-gold);
+}
+.cj-ov-pal__txt {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.cj-ov-pal__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  color: var(--cj-text-strong);
+  font: 600 15px/1.25 var(--cj-font);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cj-ov-pal__soon {
+  flex: none;
+  padding: 3px 8px;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-text-dim);
+  background: var(--cj-glass-2);
+  font: 600 10px/1.2 var(--cj-font);
+  font-style: normal;
+}
+.cj-ov-pal__hint {
+  overflow: hidden;
+  color: var(--cj-text-dim);
+  font: 500 13px/1.3 var(--cj-font);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cj-ov-pal__go {
+  flex: none;
+  color: var(--cj-text-dim);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.2s var(--cj-ease), transform 0.2s var(--cj-ease);
+}
+.cj-ov-pal__item.is-active .cj-ov-pal__go {
+  opacity: 1;
+  transform: none;
+}
+.cj-ov-pal__foot {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: 0;
+  padding: 12px 24px;
+  border-top: 1px solid var(--cj-line);
+  color: var(--cj-text-faint);
+  font: 500 12px/1.3 var(--cj-font);
+}
+.cj-ov-pal__foot kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  margin-right: 4px;
+  padding: 0 5px;
+  border-radius: 6px;
+  color: var(--cj-text-dim);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ov-ring);
+  font: 600 11px/1 var(--cj-font);
+}
+.cj-ov-pal__foot-end {
+  margin-left: auto;
+}
+/* phones: the whole screen, input on top, "Cancel" to leave */
+@media (max-width: 599px) {
+  :root .xs-pal.cj-ov-pal {
+    padding: 0;
+    background: rgba(4, 18, 11, 0.72);
+  }
+  .cj-ov-pal__panel {
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    padding-top: var(--safe-top, 0px);
+    border-radius: 0;
+    background: linear-gradient(180deg, rgba(20, 26, 23, 0.92), rgba(8, 14, 11, 0.96));
+    box-shadow: none;
+  }
+  .cj-ov-pal__bar {
+    gap: 8px;
+    min-height: 64px;
+    margin: 10px 12px 4px;
+    padding: 0 6px 0 16px;
+    border: 0;
+    border-radius: var(--cj-r-pill);
+    background: var(--cj-glass-2);
+    box-shadow: var(--cj-ov-ring);
+  }
+  :root .cj-ov-pal .cj-ov-pal__input {
+    height: 52px;
+    font-size: 17px;
+  }
+  .cj-ov-pal__close-long,
+  .cj-ov-pal__foot {
+    display: none;
+  }
+  .cj-ov-pal__close-short {
+    display: inline;
+  }
+  .cj-ov-pal__close {
+    padding: 0 12px;
+    color: var(--cj-text-strong);
+    background: transparent;
+    box-shadow: none;
+    font-size: 14px;
+  }
+  .cj-ov-pal__list {
+    padding: 4px 8px calc(var(--safe-bottom, 0px) + 16px);
+  }
+}
+@media (min-width: 600px) and (max-height: 520px) {
+  :root .xs-pal.cj-ov-pal {
+    padding-top: calc(var(--safe-top, 0px) + 12px);
+  }
+  .cj-ov-pal__panel {
+    max-height: 100%;
+  }
+}
+
+/* ==========================================================================
+   Toasts on hub routes: small glass pills, bottom centre, above the dock on phones
+   (game screens and the lobby keep theirs: x-shell.css positions those per route)
+   ========================================================================== */
+:root[data-route='hub'] .hh-toasts.xs-toasts {
+  top: auto;
+  bottom: calc(var(--cj-safe-bottom, 0px) + 16px);
+  z-index: var(--cj-ov-z-toast);
+  flex-direction: column-reverse;
+  gap: 8px;
+  width: min(calc(100vw - 32px), 440px);
+}
+@media (min-width: 900px) {
+  :root[data-route='hub'] .hh-toasts.xs-toasts {
+    bottom: 28px;
+  }
+}
+/* the install card sits in the same corner on phones and narrower desktops: toasts rise above it */
+@media (max-width: 1279px) {
+  :root[data-route='hub']:has(.cj-ov-install) .hh-toasts.xs-toasts {
+    bottom: calc(var(--cj-safe-bottom, 0px) + 100px);
+  }
+}
+@media (min-width: 900px) and (max-width: 1279px) {
+  :root[data-route='hub']:has(.cj-ov-install) .hh-toasts.xs-toasts {
+    bottom: 112px;
+  }
+}
+:root[data-route='hub'] .hh-toast.xs-toast {
+  gap: 10px;
+  min-height: 46px;
+  max-width: 100%;
+  padding: 6px 8px 6px 16px;
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-text-strong);
+  background: rgba(22, 24, 23, 0.78);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45), var(--cj-ov-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+  font: 500 14px/1.3 var(--cj-font);
+  transform-origin: 50% 100%;
+  animation: cj-ov-toast-in var(--cj-dur) var(--cj-ease) both;
+}
+:root[data-route='hub'] .hh-toast.xs-toast.is-leaving {
+  animation: cj-ov-toast-out 0.22s ease both;
+}
+:root[data-route='hub'] .xs-toast .hh-icon {
+  flex: none;
+  color: var(--cj-text-dim);
+}
+:root[data-route='hub'] .hh-toast--good.xs-toast .hh-icon {
+  color: var(--cj-live);
+}
+:root[data-route='hub'] .hh-toast--bad.xs-toast .hh-icon {
+  color: var(--cj-danger);
+}
+:root[data-route='hub'] .hh-toast--gold.xs-toast .hh-icon {
+  color: var(--cj-gold);
+}
+:root[data-route='hub'] .hh-toast--bad.xs-toast {
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 107, 107, 0.3);
+}
+:root[data-route='hub'] .xs-toast .xs-toast__action {
+  min-height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  font: 600 13px/1 var(--cj-font);
+}
+:root[data-route='hub'] .xs-toast .xs-toast__close {
+  width: 34px;
+  height: 34px;
+  margin: 0;
+  color: var(--cj-text-faint);
+  background: transparent;
+}
+@media (hover: hover) and (pointer: fine) {
+  :root[data-route='hub'] .xs-toast .xs-toast__close:hover {
+    color: var(--cj-text-strong);
+    background: var(--cj-glass-2);
+  }
+}
+/* the fallback stack of the online adapter (no provider: tests, harnesses) */
+:root[data-route='hub'] .hh-toasts:not(.xs-toasts) .hh-toast {
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-text-strong);
+  background: rgba(22, 24, 23, 0.78);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45), var(--cj-ov-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+  font: 500 14px/1.3 var(--cj-font);
+}
+@keyframes cj-ov-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+}
+@keyframes cj-ov-toast-out {
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+}
+
+/* ==========================================================================
+   The online Sheet and ConfirmDialog, when they open on a hub route (Friends, Friend link, the home friend sheet, which
+   portals to <body>). The lobby and game screens (other data-route values) and the admin console keep their own look.
+   ========================================================================== */
+:root:is([data-route='hub'], [data-route='lobby']):not(:has(.adm, .adm-page)) .ho-modal {
+  z-index: var(--cj-ov-z);
+  background: var(--cj-ov-scrim);
+  -webkit-backdrop-filter: var(--cj-ov-blur);
+  backdrop-filter: var(--cj-ov-blur);
+  animation: cj-ov-fade 0.3s var(--cj-ease) both;
+}
+:root:is([data-route='hub'], [data-route='lobby']):not(:has(.adm, .adm-page)) .ho-modal :is(.ho-sheet, .ho-modal__box) {
+  border: 0;
+  border-radius: var(--cj-r-sheet);
+  color: var(--cj-text);
+  background: var(--cj-ov-card);
+  box-shadow: var(--cj-shadow-pop), var(--cj-ov-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+  font-family: var(--cj-font);
+  animation: cj-ov-pop var(--cj-dur) var(--cj-ease) both;
+}
+:root:is([data-route='hub'], [data-route='lobby']):not(:has(.adm, .adm-page)) .ho-modal .ho-modal__box {
+  padding: var(--cj-ov-pad);
+}
+:root:is([data-route='hub'], [data-route='lobby']):not(:has(.adm, .adm-page)) .ho-modal .ho-sheet {
+  padding: 18px var(--cj-ov-pad) var(--cj-ov-pad);
+}
+:root:is([data-route='hub'], [data-route='lobby']):not(:has(.adm, .adm-page)) .ho-modal .ho-modal__title {
+  color: var(--cj-text-strong);
+  font: 700 20px/1.25 var(--cj-font);
+  letter-spacing: -0.01em;
+  text-transform: none;
+}
+:root:is([data-route='hub'], [data-route='lobby']):not(:has(.adm, .adm-page)) .ho-modal .ho-modal__body {
+  color: var(--cj-text-dim);
+  font-size: 14px;
+  line-height: 1.55;
+}
+:root:is([data-route='hub'], [data-route='lobby']):not(:has(.adm, .adm-page)) .ho-modal .ho-sheet__head .ho-iconbtn {
+  width: 36px;
+  height: 36px;
+  min-width: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ov-ring);
+}
+:root:is([data-route='hub'], [data-route='lobby']):not(:has(.adm, .adm-page)) .ho-modal .ho-sheet__grab {
+  width: 40px;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.32);
+}
+:root:is([data-route='hub'], [data-route='lobby']):not(:has(.adm, .adm-page)) .ho-modal .ho-modal__actions .ho-btn {
+  min-height: 48px;
+}
+@media (max-width: 639px) {
+  :root:is([data-route='hub'], [data-route='lobby']):not(:has(.adm, .adm-page)) .ho-sheetwrap .ho-sheet {
+    padding-bottom: calc(var(--cj-ov-pad) + var(--safe-bottom, 0px));
+    border-radius: var(--cj-r-sheet) var(--cj-r-sheet) 0 0;
+    box-shadow: 0 -10px 40px -10px rgba(0, 0, 0, 0.6), var(--cj-ov-ring);
+    animation-name: cj-ov-rise;
+  }
+}
+
+/* ==========================================================================
+   Install card: a small glass card, above the dock on phones, bottom right on desktop
+   ========================================================================== */
+:root .xs-install.cj-ov-install {
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--cj-safe-bottom, 0px) + 12px);
+  z-index: 45;
+  gap: 12px;
+  max-width: 420px;
+  padding: 12px 8px 12px 12px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 20px;
+  color: var(--cj-text);
+  background: rgba(22, 24, 23, 0.8);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5), var(--cj-ov-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+  animation: cj-ov-toast-in var(--cj-dur) var(--cj-ease) both;
+}
+:root .xs-install.cj-ov-install::before {
+  display: none;
+}
+@media (min-width: 900px) {
+  :root .xs-install.cj-ov-install {
+    left: auto;
+    right: 28px;
+    bottom: 28px;
+    width: 380px;
+  }
+}
+.cj-ov-install__mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ov-ring);
+}
+.cj-ov-install__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  color: var(--cj-text-dim);
+  font: 500 13px/1.4 var(--cj-font);
+}
+.cj-ov-install__text b {
+  color: var(--cj-text-strong);
+  font: 600 15px/1.3 var(--cj-font);
+}
+.cj-ov-install__text em {
+  color: var(--cj-text-strong);
+  font-style: normal;
+  font-weight: 600;
+}
+.cj-ov-install__share {
+  display: inline-block;
+  vertical-align: -3px;
+}
+:root .cj-ov-install .cj-ov-install__go {
+  flex: none;
+  min-height: 38px;
+  padding: 0 16px;
+  font-size: 14px;
+}
+.cj-ov-install__x {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--cj-text-dim);
+  background: transparent;
+  cursor: pointer;
+  transition: background-color var(--cj-dur) var(--cj-ease), color var(--cj-dur) var(--cj-ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .cj-ov-install__x:hover {
+    color: var(--cj-text-strong);
+    background: var(--cj-glass-2);
+  }
+}
+@media (max-width: 380px) {
+  .cj-ov-install__mark {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   Offline pill: a glass pill just under the floating nav
+   ========================================================================== */
+:root .xs-net.cj-ov-net {
+  position: fixed;
+  top: calc(var(--cj-safe-top, 88px) + 4px);
+  left: 0;
+  right: 0;
+  z-index: 35;
+  display: flex;
+  justify-content: center;
+  padding-inline: 16px;
+  pointer-events: none;
+}
+.cj-ov-net__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(100%, 520px);
+  margin: 0;
+  padding: 10px 18px 10px 14px;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-text-strong);
+  background: rgba(22, 24, 23, 0.8);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.45), var(--cj-ov-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+  font: 500 13px/1.35 var(--cj-font);
+  animation: cj-ov-drop var(--cj-dur) var(--cj-ease) both;
+}
+.cj-ov-net__pill svg {
+  flex: none;
+}
+.cj-ov-net__pill.is-off svg {
+  color: var(--cj-gold);
+}
+.cj-ov-net__pill.is-back svg {
+  color: var(--cj-live);
+}
+@keyframes cj-ov-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+/* ==========================================================================
+   Daily reward: the popup (inside the Modal) and the card (on Home)
+   ========================================================================== */
+:root .cj-ov-modal .hh-modal__panel.dp-panel {
+  width: min(100%, 440px);
+  max-width: 440px;
+}
+:root .cj-ov-modal .dp-panel .cj-ov-title {
+  text-align: center;
+}
+:root .cj-ov-modal .dp-panel .cj-ov-body {
+  margin-top: 6px;
+}
+:root .cj-ov-modal .dp {
+  gap: 16px;
+  color: var(--cj-text);
+}
+:root .cj-ov-modal .dp-head {
+  flex-direction: column;
+  gap: 10px;
+  text-align: center;
+}
+:root .cj-ov-modal .dp-head .hh2-daily__gift {
+  display: none; /* the head art carries the gift */
+}
+:root .cj-ov-modal .dp-sub {
+  color: var(--cj-text-dim);
+  font: 500 14px/1.45 var(--cj-font);
+}
+:root .cj-ov-modal .dp-claim {
+  min-height: 52px;
+}
+:root .cj-ov-modal .dp-later {
+  min-height: 46px;
+}
+:root .cj-ov-modal .dp-bal {
+  color: var(--cj-text-faint);
+  font: 500 12px/1.3 var(--cj-font);
+}
+:root .cj-ov-modal .dp-bal b {
+  color: var(--cj-text-strong);
+  font-weight: 600;
+}
+:root .cj-ov-modal .dp-bal b.is-rolling {
+  color: var(--cj-gold);
+}
+:root .cj-ov-modal .dp-err {
+  color: #ffb3b3;
+  font: 600 13px/1.4 var(--cj-font);
+}
+
+/* shared pieces: the streak chip and the 7-day track (the popup and the card) */
+:root :is(.cj-ov-modal, .cj-ov-daily) .hh2-daily__streak {
+  gap: 5px;
+  padding: 6px 12px 6px 10px;
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-gold);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ov-ring);
+  font-family: var(--cj-font);
+}
+:root :is(.cj-ov-modal, .cj-ov-daily) .hh2-daily__streak b {
+  color: var(--cj-text-strong);
+  font: 700 15px/1 var(--cj-font);
+}
+:root :is(.cj-ov-modal, .cj-ov-daily) .hh2-daily__streak small {
+  color: var(--cj-text-dim);
+  font: 500 12px/1 var(--cj-font);
+}
+:root :is(.cj-ov-modal, .cj-ov-daily) .hh2-daily__days {
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+:root :is(.cj-ov-modal, .cj-ov-daily) .hh2-daypip {
+  gap: 6px;
+}
+:root :is(.cj-ov-modal, .cj-ov-daily) .hh2-daypip__dot {
+  max-width: 40px;
+  border: 0;
+  border-radius: 12px;
+  color: var(--cj-text-faint);
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ov-ring);
+}
+:root :is(.cj-ov-modal, .cj-ov-daily) .hh2-daypip__label {
+  color: var(--cj-text-faint);
+  font: 600 11px/1 var(--cj-font);
+  font-variant-numeric: tabular-nums;
+}
+:root :is(.cj-ov-modal, .cj-ov-daily) .hh2-daypip.is-done .hh2-daypip__dot {
+  color: var(--cj-ink);
+  background: var(--cj-gold);
+  box-shadow: none;
+}
+:root :is(.cj-ov-modal, .cj-ov-daily) .hh2-daypip.is-done .hh2-daypip__label {
+  color: var(--cj-gold);
+}
+:root :is(.cj-ov-modal, .cj-ov-daily) .hh2-daypip.is-current .hh2-daypip__dot {
+  color: var(--cj-gold);
+  background: var(--cj-glass-2);
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.85), 0 0 20px rgba(245, 198, 107, 0.25);
+}
+:root :is(.cj-ov-modal, .cj-ov-daily) .hh2-daypip.is-current .hh2-daypip__label {
+  color: var(--cj-text-strong);
+}
+:root :is(.cj-ov-modal, .cj-ov-daily) .hh2-daypip.is-big:not(.is-done) .hh2-daypip__dot {
+  color: var(--cj-gold);
+}
+/* the claim pill: white, with a slow sheen while it waits */
+:root :is(.cj-ov-modal, .cj-ov-daily) .xh-claim::after {
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.7) 50%, transparent 70%);
+}
+:root :is(.cj-ov-modal, .cj-ov-daily) .xh-gain {
+  color: var(--cj-gold);
+  font: 700 34px/1 var(--cj-font);
+  text-shadow: 0 2px 0 rgba(120, 70, 0, 0.6), 0 0 24px rgba(245, 198, 107, 0.6);
+}
+
+/* the card on Home: a glass panel */
+:root .hub-panel.cj-ov-daily {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--cj-r-panel);
+  color: var(--cj-text);
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ov-ring);
+  font-family: var(--cj-font);
+}
+:root .hub-panel.cj-ov-daily::before,
+:root .hub-panel.cj-ov-daily::after {
+  display: none;
+}
+:root .cj-ov-daily .hh2-daily__glow {
+  inset: 0;
+  background: radial-gradient(60% 80% at 100% 0%, rgba(245, 198, 107, 0.1), transparent 70%);
+}
+:root .cj-ov-daily .hh2-daily__head {
+  flex-wrap: nowrap;
+  gap: 14px;
+}
+:root .cj-ov-daily .hh2-daily__gift {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  color: var(--cj-gold);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ov-ring);
+  animation: none;
+}
+:root .cj-ov-daily .hh2-daily__titles {
+  min-width: 0;
+}
+:root .cj-ov-daily .hh2-daily__titles .st-eyebrow {
+  display: block;
+  margin: 0 0 2px;
+  color: var(--cj-text-faint);
+  font: 500 12px/1.3 var(--cj-font);
+  letter-spacing: 0;
+  text-transform: none;
+}
+:root .cj-ov-daily .hh2-daily__titles .st-head__title {
+  margin: 0;
+  color: var(--cj-text-strong);
+  font: 600 20px/1.3 var(--cj-font);
+  letter-spacing: 0;
+  text-transform: none;
+}
+:root .cj-ov-daily .hh2-daily__sub {
+  margin: 2px 0 0;
+  color: var(--cj-text-dim);
+  font: 500 13px/1.45 var(--cj-font);
+}
+:root .cj-ov-daily :is(.hub-btn, .btn) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ov-ring);
+  font: 600 16px/1 var(--cj-font);
+  letter-spacing: 0.01em;
+  text-transform: none;
+  text-decoration: none;
+  transform: none;
+}
+:root .cj-ov-daily :is(.hub-btn--primary, .hub-btn--accent) {
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  box-shadow: none;
+}
+:root .cj-ov-daily :is(.hub-btn--primary, .hub-btn--accent):hover:not(:disabled) {
+  background: #fff;
+}
+:root .cj-ov-daily .hub-btn:disabled {
+  opacity: 1;
+  color: var(--cj-text-dim);
+  cursor: default;
+}
+:root .cj-ov-daily .xh-daily__bal {
+  color: var(--cj-text-faint);
+  font: 500 12px/1.3 var(--cj-font);
+}
+:root .cj-ov-daily .xh-daily__bal b {
+  color: var(--cj-text-strong);
+  font-weight: 600;
+}
+:root .cj-ov-daily .xh-daily__bal b.is-rolling {
+  color: var(--cj-gold);
+}
+:root .cj-ov-daily.is-out .hh2-daypip {
+  opacity: 0.7;
+}
+
+/* ==========================================================================
+   Engines without backdrop-filter: the glass turns solid
+   ========================================================================== */
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  :root .hh-modal.cj-ov-modal,
+  :root .xs-pal.cj-ov-pal {
+    background: rgba(2, 8, 5, 0.82);
+  }
+  :root .cj-ov-modal .hh-modal__panel.cj-ov-sheet,
+  .cj-ov-pal__panel {
+    background: var(--cj-ov-card-solid);
+  }
+}
+
+/* ==========================================================================
+   Reduced motion: fades only, no lift, no float, no sheen
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  :root .cj-ov-modal .hh-modal__panel.cj-ov-sheet,
+  :root .hh-modal.cj-ov-modal.is-leaving .cj-ov-sheet,
+  :root[data-route='hub'] .hh-toast.xs-toast,
+  :root .xs-install.cj-ov-install,
+  .cj-ov-net__pill,
+  :root:is([data-route='hub'], [data-route='lobby']):not(:has(.adm, .adm-page)) .ho-modal :is(.ho-sheet, .ho-modal__box) {
+    animation-name: cj-ov-fade;
+    animation-duration: 0.16s;
+    transform: none;
+  }
+  .cj-ov-medal.is-ready,
+  :root :is(.cj-ov-modal, .cj-ov-daily) .xh-claim::after {
+    animation: none;
+  }
+  :root :is(.cj-ov-modal, .cj-ov-daily) .xh-claim::after {
+    display: none;
+  }
+  .cj-ov-pal__item,
+  .cj-ov-pal__go,
+  .cj-ov-close,
+  :root :is(.cj-ov-modal, .cj-ov-install) :is(.hub-btn, .btn) {
+    transition: none;
+  }
+}
+:root[data-motion='reduced'] .cj-ov-modal .hh-modal__panel.cj-ov-sheet,
+:root[data-motion='reduced'] .hh-modal.cj-ov-modal.is-leaving .cj-ov-sheet,
+:root[data-motion='reduced'][data-route='hub'] .hh-toast.xs-toast,
+:root[data-motion='reduced'] .xs-install.cj-ov-install,
+:root[data-motion='reduced'] .cj-ov-net__pill,
+:root[data-motion='reduced']:is([data-route='hub'], [data-route='lobby']):not(:has(.adm, .adm-page)) .ho-modal :is(.ho-sheet, .ho-modal__box) {
+  animation-name: cj-ov-fade;
+  animation-duration: 0.16s;
+  transform: none;
+}
+:root[data-motion='reduced'] .cj-ov-medal.is-ready,
+:root[data-motion='reduced'] :is(.cj-ov-modal, .cj-ov-daily) .xh-claim::after {
+  animation: none;
+}
+:root[data-motion='reduced'] :is(.cj-ov-modal, .cj-ov-daily) .xh-claim::after {
+  display: none;
+}
+:root[data-motion='reduced'] :is(.cj-ov-pal__item, .cj-ov-pal__go, .cj-ov-close),
+:root[data-motion='reduced'] :is(.cj-ov-modal, .cj-ov-install) :is(.hub-btn, .btn) {
+  transition: none;
+}
