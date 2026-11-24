@@ -1,15 +1,41 @@
 // Pause (solo) and the co-op "leave your seat" confirm. Both are modal layers inside the game root: focus is trapped, Esc steps back.
+// The pause menu also holds the player's settings: spoken language, subtitle style, customer voices (saved on this device) and the controls.
 import { useEffect, useRef, useState } from 'react';
+import { KEY_HELP } from '../hud/look.js';
+import { LANG_OPTIONS, SUB_OPTIONS, usePrefs, voiceNotice } from '../hud/prefs.js';
 import { useDialog } from './hooks.js';
+import Segmented from './Segmented.jsx';
 import './menus.css';
 
+function ControlsHelp() {
+  return (
+    <div className="tc-menu-controls">
+      {[['Keyboard', KEY_HELP.keyboard], ['Touch', KEY_HELP.touch]].map(([name, rows]) => (
+        <section key={name} aria-label={name}>
+          <h4>{name}</h4>
+          <dl>
+            {rows.map((r) => (
+              <div key={r.what}>
+                <dt>{r.keys.map((k) => <kbd key={k}>{k}</kbd>)}</dt>
+                <dd>{r.what}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      ))}
+    </div>
+  );
+}
+
 /**
- * Solo pause: "Chai break". Props: { open, onResume, onRestart, onQuit, muted, onMute(next: boolean) }.
- * Restart and Quit ask once more before they throw the shift away.
+ * Solo pause: "Chai break". Props: { open, onResume, onRestart, onQuit, muted, onMute(next: boolean), audio? }.
+ * Restart and Quit ask once more before they throw the shift away. `audio` (optional) lets the voices switch say when a language has no
+ * voice on this device (audio.isSpeechAvailable(lang) / audio.speech.isAvailable(lang)).
  */
-export default function PauseMenu({ open = false, onResume, onRestart, onQuit, muted = false, onMute }) {
+export default function PauseMenu({ open = false, onResume, onRestart, onQuit, muted = false, onMute, audio = null }) {
   const root = useRef(null);
   const [ask, setAsk] = useState(null); // null | 'restart' | 'quit'
+  const [prefs, setPrefs] = usePrefs();
   useDialog(root, {
     active: open,
     onEscape: () => (ask ? setAsk(null) : onResume?.()),
@@ -19,6 +45,7 @@ export default function PauseMenu({ open = false, onResume, onRestart, onQuit, m
   }, [ask, open]);
   if (!open) return null;
   const confirm = ask === 'restart' ? { text: 'Restart this shift? Today\'s tally so far is lost.', yes: 'Restart shift', run: onRestart } : ask === 'quit' ? { text: 'Leave the stall? This shift will not be saved.', yes: 'Leave', run: onQuit } : null;
+  const note = voiceNotice(prefs, audio);
 
   return (
     <div className="tc-menu tc-menu-layer tc-menu-pause" ref={root} role="dialog" aria-modal="true" aria-labelledby="tc-pause-h" tabIndex={-1}>
@@ -34,14 +61,33 @@ export default function PauseMenu({ open = false, onResume, onRestart, onQuit, m
             </div>
           </div>
         ) : (
-          <div className="tc-menu-stack">
-            <button type="button" className="tc-menu-btn tc-menu-btn--steel tc-menu-btn--primary tc-menu-btn--big" data-autofocus onClick={() => onResume?.()}>Resume</button>
-            <button type="button" className="tc-menu-btn tc-menu-btn--plank" onClick={() => setAsk('restart')}>Restart shift</button>
-            <button type="button" className="tc-menu-btn tc-menu-btn--plank" role="switch" aria-checked={!!muted} onClick={() => onMute?.(!muted)}>
-              Sound: {muted ? 'off' : 'on'}
-            </button>
-            <button type="button" className="tc-menu-btn tc-menu-btn--ghost" onClick={() => setAsk('quit')}>Leave the stall</button>
-          </div>
+          <>
+            <div className="tc-menu-stack">
+              <button type="button" className="tc-menu-btn tc-menu-btn--steel tc-menu-btn--primary tc-menu-btn--big" data-autofocus onClick={() => onResume?.()}>Resume</button>
+              <button type="button" className="tc-menu-btn tc-menu-btn--plank" onClick={() => setAsk('restart')}>Restart shift</button>
+              <button type="button" className="tc-menu-btn tc-menu-btn--plank" role="switch" aria-checked={!!muted} onClick={() => onMute?.(!muted)}>
+                Sound: {muted ? 'off' : 'on'}
+              </button>
+              <button type="button" className="tc-menu-btn tc-menu-btn--ghost" onClick={() => setAsk('quit')}>Leave the stall</button>
+            </div>
+            <details className="tc-menu-set" open>
+              <summary>Customers talk</summary>
+              <div className="tc-menu-set__body">
+                <p className="tc-menu-set__h" id="tc-set-lang">Language</p>
+                <Segmented wrap label="Customer language" options={LANG_OPTIONS} value={prefs.lang} onChange={(lang) => setPrefs({ lang })} />
+                <p className="tc-menu-set__h" id="tc-set-subs">Subtitles</p>
+                <Segmented wrap label="Subtitles" options={SUB_OPTIONS} value={prefs.subs} onChange={(subs) => setPrefs({ subs })} />
+                <button type="button" className="tc-menu-btn tc-menu-btn--sm" role="switch" aria-checked={!!prefs.voices} onClick={() => setPrefs({ voices: !prefs.voices })}>
+                  Voices: {prefs.voices ? 'on' : 'off'}
+                </button>
+                {note && <p className="tc-menu-set__note" role="note">{note}</p>}
+              </div>
+            </details>
+            <details className="tc-menu-set">
+              <summary>Controls</summary>
+              <div className="tc-menu-set__body"><ControlsHelp /></div>
+            </details>
+          </>
         )}
         <p className="tc-menu-keys" aria-hidden="true"><kbd>Esc</kbd> {ask ? 'back' : 'resume'}</p>
       </div>

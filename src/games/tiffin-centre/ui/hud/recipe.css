@@ -1,0 +1,21 @@
+/* Recipe card (tutorial coach + the '?' peek in the cook sheet). Self-contained: also rendered outside .tc-hud (the coach is a menus layer). */
+.tc-hud-recipe {
+  --r-char: var(--tc-charcoal, #241a14);
+  --r-red: #a3200f;
+  padding: 8px 10px 9px; border-radius: 6px; color: var(--r-char); text-align: left;
+  background: repeating-linear-gradient(180deg, transparent 0 21px, rgba(36, 26, 20, 0.07) 21px 22px), #fff9e8;
+  box-shadow: inset 0 0 0 2px rgba(36, 26, 20, 0.28), 0 2px 0 rgba(0, 0, 0, 0.2);
+  font-family: 'Bricolage Grotesque Variable', 'Bricolage Grotesque', 'Segoe UI', system-ui, sans-serif;
+}
+.tc-hud-recipe header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.tc-hud-recipe header > span { display: grid; line-height: 1.2; }
+.tc-hud-recipe header b { font-size: 16px; font-weight: 900; text-transform: uppercase; color: var(--r-red); }
+.tc-hud-recipe .tc-hud-te { font-family: 'Noto Sans Telugu Variable', 'Noto Sans Telugu', 'Nirmala UI', 'Gautami', sans-serif; font-weight: 700; line-height: 1.35; }
+.tc-hud-recipe ol { margin: 0; padding: 0 0 0 22px; display: grid; gap: 5px; }
+.tc-hud-recipe li { display: grid; line-height: 1.25; padding-left: 2px; }
+.tc-hud-recipe li::marker { font-weight: 900; color: var(--r-red); }
+.tc-hud-recipe-en { font-size: 14px; font-weight: 800; }
+.tc-hud-recipe-te { font-size: 12.5px; color: #4b3822; }
+.tc-hud-recipe-hi { font-size: 12.5px; font-weight: 700; color: #4b3822; }
+.tc-hud-recipe-tip { margin: 7px 0 0; padding: 3px 9px; border-radius: 3px; font-size: 12.5px; font-weight: 800; background: #ffd25a; border: 2px dashed #6b4410; }
+.tc-hud-recipe-tip span { display: block; margin-top: 2px; font-size: 12px; font-weight: 700; }

@@ -91,6 +91,13 @@ describe('PauseMenu and QuitConfirm', () => {
     expect(html(h(PauseMenu, { open: false }))).toBe('');
     expect(html(h(QuitConfirm, { open: false }))).toBe('');
   });
+  it('pause holds the settings: language, subtitles, voices (with the missing-voice note) and the controls', () => {
+    const audio = { isSpeechAvailable: (l) => l !== 'te' };
+    const s = html(h(PauseMenu, { open: true, onResume: noop, onRestart: noop, onQuit: noop, onMute: noop, audio }));
+    for (const w of ['Customers talk', 'Customer language', 'తెలుగు', 'हिन्दी', 'Hyderabadi', 'Mixed', 'Native + English', 'Roman letters', 'Voices: on', 'Controls', 'Walk along the counter', 'Drag on empty space to look around']) expect(s).toContain(w);
+    expect(s).toContain('No Telugu voice on this device');
+    expect(s).toContain('role="radiogroup"');
+  });
   it('open pause is a labelled modal dialog with Resume, Restart, sound switch and quit', () => {
     const s = html(h(PauseMenu, { open: true, onResume: noop, onRestart: noop, onQuit: noop, muted: true, onMute: noop }));
     expect(s).toContain('role="dialog"');
@@ -113,19 +120,51 @@ describe('PauseMenu and QuitConfirm', () => {
 });
 
 describe('CoachMark', () => {
-  const step = { id: 's1', text: 'Tap the tawa, anna.', te: 'పెనం నొక్కండి', hint: 'The big round pan on the left' };
-  it('shows Chotu, the text, Telugu, dots and Skip; the hint waits for its timer', () => {
-    const s = html(h(CoachMark, { step, index: 1, total: 5, onSkip: noop }));
-    expect(s).toContain('Chotu');
-    expect(s).not.toContain('Chef Amma');
+  const step = { id: 's1', say: 'Pehle tawa pe chalo!', text: 'Tap the tawa, anna.', textTouch: 'Tap the glowing tawa.', te: 'పెనం నొక్కండి', hint: 'The big round pan on the left', recipe: 'dosa' };
+  const chapters = ['Look', 'Tokens', 'Tawa', 'Idly'];
+  it('is a one-line bar: Chotu says, the line, the chapter and a count; the full card lives behind a toggle', () => {
+    const s = html(h(CoachMark, { step, index: 1, total: 5, onSkip: noop, chapters, chapter: 2 }));
+    expect(s).toContain('Chotu says');
+    expect(s).toContain('Pehle tawa pe chalo!');
     expect(s).toContain('Tap the tawa, anna.');
     expect(s).toContain('పెనం నొక్కండి');
     expect(s).toContain('Step 2 of 5');
     expect(s).toContain('Skip tutorial');
     expect(s).toContain('aria-live="polite"');
-    expect(s).not.toContain('The big round pan');
-    expect((s.match(/<i class="is-/g) || []).length).toBe(5);
+    expect(s).toContain('aria-expanded="false"');
+    expect(s).toMatch(/id="tc-coach-body-s1"[^>]*hidden/);
+    expect(s).not.toContain('The big round pan'); // the hint waits for its timer
     expect(s).not.toContain('Got it');
+    expect(s).not.toContain('Chef Amma');
+  });
+  it('shows progress by chapter, not one dot per step', () => {
+    const s = html(h(CoachMark, { step, index: 5, total: 16, onSkip: noop, chapters, chapter: 'Tawa' }));
+    expect((s.match(/<li class="is-/g) || []).length).toBe(4);
+    expect(s).toContain('class="is-done"');
+    expect(s).toContain('class="is-active" aria-current="step"');
+    expect(s).toContain('Chapters: Tawa, 3 of 4');
+    expect(s).not.toContain('tc-menu-dots');
+    const bare = html(h(CoachMark, { step, index: 5, total: 16, onSkip: noop }));
+    expect(bare).toContain('tc-menu-progress');
+  });
+  it('reads a session tutorial object (say, text, chapters, step count inside the chapter)', () => {
+    const tutorial = {
+      index: 2,
+      steps: [{ chapter: 'Look' }, { chapter: 'Tokens' }, { chapter: 'Tokens' }],
+      chapters: [{ id: 'Look', label: 'Look' }, { id: 'Tokens', label: 'Tokens' }],
+      chapter: 1,
+      say: 'Token dekho!',
+      text: 'Every customer holds a numbered token.',
+      te: 'టోకెన్',
+      step: { id: 'tokens-2', recipe: 'idly' },
+      ackable: true,
+    };
+    const s = html(h(CoachMark, { tutorial, onSkip: noop, onNext: noop }));
+    expect(s).toContain('Token dekho!');
+    expect(s).toContain('Every customer holds a numbered token.');
+    expect(s).toContain('Tokens 2/2');
+    expect(s).toContain('Done'); // the last step of three
+    expect(s).toContain('Show recipe');
   });
   it('shows a Got it button only when onNext is given, and renders nothing without a step', () => {
     expect(html(h(CoachMark, { step, index: 0, total: 2, onSkip: noop, onNext: noop }))).toContain('Got it');

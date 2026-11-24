@@ -284,23 +284,171 @@ export function briefingModel(level, pace) {
 
 export const DEFAULT_HINT_MS = 9000;
 
-/** step: { id, text, te?, hint?: string | { text, ms }, hintMs? }. `index` is 0-based. */
-export function coachViewModel(step, index = 0, total = 1) {
+/** One chapter of the tutorial strip: string | { id, label|name|title, te? } -> { id, label, te }. */
+const chapterItem = (c, i) => (typeof c === 'string' ? { id: c, label: c, te: '' } : { id: c?.id ?? String(i), label: String(c?.label ?? c?.name ?? c?.title ?? c?.id ?? ''), te: c?.te || '' });
+
+/**
+ * The chapter strip (Look, Tokens, Tawa, Idly, Kadai, Chai, Serve and collect, Game flow, Rush): every chapter with a state
+ * ('done' | 'active' | 'todo'). `chapter` is the current one as an index, an id / label, or { id | index }. [] when the driver has none.
+ */
+export function chapterStrip(chapters, chapter) {
+  const list = Array.isArray(chapters) ? chapters.map(chapterItem) : [];
+  if (!list.length) return { items: [], index: -1, label: '', count: 0 };
+  let cur = -1;
+  if (typeof chapter === 'number' && Number.isFinite(chapter)) cur = Math.trunc(chapter);
+  else if (typeof chapter === 'string') cur = list.findIndex((c) => c.id === chapter || c.label === chapter);
+  else if (chapter && typeof chapter === 'object') {
+    cur = Number.isFinite(chapter.index) ? Math.trunc(chapter.index) : list.findIndex((c) => c.id === chapter.id || c.label === chapter.label);
+  }
+  cur = cur >= list.length ? list.length - 1 : cur;
+  return {
+    items: list.map((c, k) => ({ ...c, state: cur < 0 ? 'todo' : k < cur ? 'done' : k === cur ? 'active' : 'todo' })),
+    index: cur,
+    label: cur >= 0 ? list[cur].label : '',
+    count: list.length,
+  };
+}
+
+const pickText = (v) => (typeof v === 'string' ? v : v && typeof v === 'object' ? String(v.text || '') : '');
+
+/** Controls line: string | string[] | { touch, keyboard } -> the right one for this device. */
+export function controlsLine(controls, touch) {
+  if (!controls) return '';
+  if (typeof controls === 'string') return controls;
+  if (Array.isArray(controls)) return controls.filter(Boolean).join('  ·  ');
+  if (typeof controls === 'object') return controlsLine(touch ? controls.touch ?? controls.keyboard ?? controls.kb : controls.keyboard ?? controls.kb ?? controls.touch, touch);
+  return '';
+}
+
+/** First sentence of a line, for the one-line coach bar. */
+export function firstSentence(text, max = 110) {
+  const t = String(text || '').trim();
+  const m = /^(.+?[.!?])(\s|$)/.exec(t);
+  const one = m ? m[1] : t;
+  return one.length > max ? `${one.slice(0, max - 1).trimEnd()}…` : one;
+}
+
+/**
+ * step: { id, say?, text, textTouch?, te?, hint?: string | { text, ms }, hintTouch?, hintMs?, controls?, recipe? (a dish id), chapter? }. `index` is 0-based.
+ * extra: { touch (a coarse pointer: use the textTouch / hintTouch wording), chapters, chapter, steps? (the driver's steps, for the count inside a chapter) }.
+ */
+export function coachViewModel(step, index = 0, total = 1, extra = {}) {
   const n = Math.max(1, Math.trunc(num(total, 1)));
   const i = clamp(Math.trunc(num(index)), 0, n - 1);
   const s = step && typeof step === 'object' ? step : {};
+  const touch = !!extra.touch;
   const hintObj = s.hint && typeof s.hint === 'object' ? s.hint : null;
-  const hint = typeof s.hint === 'string' ? s.hint : hintObj?.text || '';
+  const hintBase = pickText(s.hint);
+  const hint = touch && s.hintTouch ? pickText(s.hintTouch) : hintBase;
+  const text = touch && s.textTouch ? pickText(s.textTouch) : pickText(s.text);
   const ms = num(hintObj?.ms ?? s.hintMs, DEFAULT_HINT_MS);
+  const chapter = chapterStrip(extra.chapters ?? s.chapters, extra.chapter ?? s.chapter);
+  const recipe = typeof s.recipe === 'string' ? s.recipe : s.recipe?.dish || (typeof extra.recipe === 'string' ? extra.recipe : '') || '';
+  let inChapter = null;
+  const co = extra.chapter ?? s.chapter;
+  if (co && typeof co === 'object' && Number.isFinite(co.count) && Number.isFinite(co.step)) {
+    inChapter = { at: Math.min(co.count, co.step + 1), of: co.count }; // the driver's own { step, count } inside the chapter
+  } else if (Array.isArray(extra.steps) && chapter.index >= 0) {
+    const key = chapter.items[chapter.index].id;
+    const same = extra.steps.map((x, k) => ({ k, c: x?.chapter })).filter((x) => x.c === key || x.c === chapter.items[chapter.index].label);
+    const at = same.findIndex((x) => x.k === i);
+    if (same.length && at >= 0) inChapter = { at: at + 1, of: same.length };
+  }
   return {
     id: s.id || `step-${i}`,
-    text: s.text || '',
+    say: s.say || '',
+    text,
+    line: firstSentence(s.say || text),
     te: s.te || '',
     hint,
     hintMs: Math.max(1500, ms),
+    controls: controlsLine(s.controls ?? extra.controls, touch),
+    recipe,
+    chapters: chapter,
+    chapterStep: inChapter,
     position: `Step ${i + 1} of ${n}`,
     last: i === n - 1,
+    ack: !!s.ack,
     dots: Array.from({ length: n }, (_, k) => (k < i ? 'done' : k === i ? 'active' : 'todo')),
+    progress: n > 1 ? i / (n - 1) : 1,
+  };
+}
+
+/**
+ * The coach step of a session's `tutorial` object (or of a bare driver): reads each field from the object, then from its `step`, so it
+ * works with the wrapper in session/localSession.js and with a driver passed straight in. A driver's per-pointer variants
+ * (textFor / hintFor / controlsFor) become the text / textTouch, hint / hintTouch and controls { keyboard, touch } of the step.
+ */
+export function coachStepFromTutorial(t) {
+  if (!t || typeof t !== 'object') return null;
+  const st = t.step && typeof t.step === 'object' ? t.step : {};
+  const get = (k) => (t[k] !== undefined ? t[k] : st[k]);
+  const per = (fn, kb, touch) => (typeof t[fn] === 'function' ? { kb: t[fn]('keyboard'), touch: t[fn]('touch') } : { kb, touch });
+  const text = per('textFor', get('text'), get('textTouch'));
+  const hint = per('hintFor', get('hint'), get('hintTouch'));
+  const controls = typeof t.controlsFor === 'function' ? { keyboard: t.controlsFor('keyboard'), touch: t.controlsFor('touch') } : get('controls');
+  const dish = get('recipe');
+  return {
+    id: st.id ?? get('id'),
+    say: get('say') || '',
+    text: text.kb || '',
+    textTouch: text.touch || '',
+    te: get('te') || '',
+    hint: hint.kb || '',
+    hintTouch: hint.touch || '',
+    controls,
+    recipe: dish && typeof dish === 'object' ? dish.dish : dish,
+    chapter: get('chapter'),
+    chapters: get('chapters'),
+    ack: !!(t.ackable ?? st.ack),
+  };
+}
+
+// ---- saved shift (auto-save) -----------------------------------------------------------------------------------------------------
+
+/** '3 min ago' style text for a timestamp (ms since the epoch); 'just now' under 45 s, 'a while ago' for a missing or future time. */
+export function savedAgo(savedAt, now = Date.now()) {
+  const t = Number(savedAt);
+  if (!Number.isFinite(t) || t <= 0 || t > now + 60000) return 'a while ago';
+  const s = Math.max(0, Math.round((now - t) / 1000));
+  if (s < 45) return 'just now';
+  const m = Math.round(s / 60);
+  if (m < 60) return `${Math.max(1, m)} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} ${h === 1 ? 'hour' : 'hours'} ago`;
+  const d = Math.round(h / 24);
+  return `${d} ${d === 1 ? 'day' : 'days'} ago`;
+}
+
+/**
+ * The Resume card of the start screen. `saved` is describeSavedShift(snapshot): { title, level, pace, tick, shiftTicks, money, savedAt }
+ * (null / missing = no card). A level 0 save is the tutorial: "Continue tutorial". Tolerant of missing fields.
+ */
+export function resumeViewModel(saved, now = Date.now()) {
+  if (!saved || typeof saved !== 'object') return null;
+  const level = Math.max(0, Math.trunc(num(saved.level)));
+  const tutorial = level === 0 || saved.mode === 'tutorial';
+  const total = Math.max(1, Math.trunc(num(saved.shiftTicks, 1)));
+  const tick = clamp(Math.trunc(num(saved.tick)), 0, total);
+  const pct = Math.round((tick / total) * 100);
+  const def = levelDef(level);
+  const title = String(saved.title || def.name);
+  const money = Math.max(0, Math.round(num(saved.money)));
+  const ago = savedAgo(saved.savedAt, now);
+  return {
+    tutorial,
+    level,
+    title,
+    te: def.te,
+    paceLabel: PACE[paceOf(saved.pace)].label,
+    pct,
+    left: shiftLength(total - tick),
+    money,
+    ago,
+    heading: tutorial ? 'Continue tutorial' : 'Resume your shift',
+    resume: tutorial ? 'Continue tutorial' : 'Resume',
+    label: `${tutorial ? 'Tutorial' : `Level ${level}, ${title}`}, ${pct} percent done, saved ${ago}${tutorial ? '' : `, takings ${rupees(money)}`}`,
+    confirm: tutorial ? 'Start the tutorial again from the beginning?' : 'Throw away this saved shift and start fresh?',
   };
 }
 

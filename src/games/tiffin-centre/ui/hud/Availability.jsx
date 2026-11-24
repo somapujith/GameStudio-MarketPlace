@@ -4,10 +4,13 @@
 import DishIcon from './DishIcon.jsx';
 import { availabilityLabel, chipTone, dishInfo } from './hudLogic.js';
 
-export default function Availability({ rows, onChip }) {
-  if (!rows.length) return null;
+// `children` is the room kept for a compact "stall status" strip (stock bars, gas gauge, event banner): it renders above the chips inside
+// the same chalk board, so adding it later changes no layout.
+export default function Availability({ rows, onChip, children }) {
+  if (!rows.length && !children) return null;
   return (
     <section className="tc-hud-board" aria-label="Dish availability">
+      {children}
       <ul className="tc-hud-chips">
         {rows.map((r) => {
           const d = dishInfo(r.dish);

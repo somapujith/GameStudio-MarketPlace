@@ -45,7 +45,7 @@ describe('action runner: walk, then work', () => {
     r.runner.request({ type: 'serve', customer: 1, hand: 0 });
     expect(moves(r)).toEqual([expect.objectContaining({ to: 'spot:2' })]);
     expect(real(r)).toHaveLength(0);
-    expect(r.runner.snapshot().pending.label).toBe('Walking to serve Ravi anna');
+    expect(r.runner.snapshot().pending.label).toBe('Walking to serve Token 1');
     const secs = walkSeconds(0, standX('spot:2'));
     r.run(secs * 1000 - 100);
     expect(real(r)).toHaveLength(0);

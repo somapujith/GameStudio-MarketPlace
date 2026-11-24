@@ -42,9 +42,9 @@ describe('HudLayer render', () => {
     expect(i2).toBeGreaterThan(i1);
     expect(html).toContain('దోశ');
     expect(html).toContain('tc-hud-tick');
-    expect(html).toContain('aria-label="Collect ₹30 from Fatima aapa"');
+    expect(html).toContain('aria-label="Collect ₹30 from token 2, Fatima aapa"');
     expect(html).toContain('Eating...');
-    expect(html).toContain('Ravi anna, Office-goer, waiting, needs Plain Dosa');
+    expect(html).toContain('Token 1, Ravi anna, Office-goer, waiting, needs Plain Dosa');
   });
 
   it('availability board with aria labels, tones and counts', () => {

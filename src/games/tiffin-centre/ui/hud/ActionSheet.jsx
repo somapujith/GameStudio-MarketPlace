@@ -1,10 +1,11 @@
 // The action sheet: what can this station cook that is on today's menu. Big thumb rows with an enamel price tag, cook time and the
 // same ready / cooking / wanted counts as the chalk board. Keys 1-9 pick, arrows move, Esc closes. A bottom sheet on phones,
-// a panel over the dock on wide screens (CSS only).
-import { useEffect, useRef } from 'react';
+// a panel over the dock on wide screens (CSS only). Each row has a '?' that opens that dish's recipe card (steps in English, Telugu, Hindi).
+import { useEffect, useRef, useState } from 'react';
 import { formatINR } from '@shared/format.js';
 import DishIcon from './DishIcon.jsx';
 import HudIcon from './HudIcon.jsx';
+import RecipeCard from './RecipeCard.jsx';
 import { dishForKey, placeName, stationDishes } from './hudLogic.js';
 
 export default function ActionSheet({ sheet, state, avail, onPick, onClose }) {
@@ -13,6 +14,9 @@ export default function ActionSheet({ sheet, state, avail, onPick, onClose }) {
   const onPickRef = useRef(onPick);
   onPickRef.current = onPick;
   const stats = new Map((avail || []).map((a) => [a.dish, a]));
+  const [peek, setPeek] = useState(null);
+  const peekRef = useRef(null);
+  peekRef.current = peek;
 
   useEffect(() => {
     const prev = typeof document !== 'undefined' ? document.activeElement : null;
@@ -28,7 +32,8 @@ export default function ActionSheet({ sheet, state, avail, onPick, onClose }) {
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
-        onClose();
+        if (peekRef.current) setPeek(null);
+        else onClose();
         return;
       }
       const row = dishForKey(rows, e.key);
@@ -76,7 +81,7 @@ export default function ActionSheet({ sheet, state, avail, onPick, onClose }) {
           {rows.map((r) => {
             const a = stats.get(r.id);
             return (
-              <li key={r.id}>
+              <li key={r.id} className="tc-hud-sheet-item">
                 <button type="button" className="tc-hud-sheet-row" data-dish={r.id} aria-keyshortcuts={String(r.key)} onClick={() => onPick(r.id)}>
                   <span className="tc-hud-keycap" aria-hidden="true">{r.key}</span>
                   <DishIcon dish={r.id} size={44} />
@@ -90,6 +95,17 @@ export default function ActionSheet({ sheet, state, avail, onPick, onClose }) {
                     <small>{`${r.cook}s to cook`}</small>
                   </span>
                 </button>
+                <button
+                  type="button"
+                  className="tc-hud-sheet-peek"
+                  aria-expanded={peek === r.id}
+                  aria-label={`Recipe for ${r.name}`}
+                  title="Recipe"
+                  onClick={() => setPeek((p) => (p === r.id ? null : r.id))}
+                >
+                  <HudIcon name="help" size={20} />
+                </button>
+                {peek === r.id && <RecipeCard dish={r.id} className="tc-hud-sheet-recipe" />}
               </li>
             );
           })}

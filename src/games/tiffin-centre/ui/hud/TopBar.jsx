@@ -103,7 +103,7 @@ export default function TopBar({ state, reduced, pops = [], lostN = 0, lostIdx =
 
       <div className="tc-hud-btns">
         {onMute && (
-          <button type="button" className="tc-hud-btn" onClick={onMute} aria-pressed={!!muted} aria-label={muted ? 'Unmute' : 'Mute'}>
+          <button type="button" className="tc-hud-btn" onClick={() => onMute(!muted)} aria-pressed={!!muted} aria-label={muted ? 'Unmute' : 'Mute'}>
             <HudIcon name={muted ? 'volumeOff' : 'volume'} size={20} />
           </button>
         )}

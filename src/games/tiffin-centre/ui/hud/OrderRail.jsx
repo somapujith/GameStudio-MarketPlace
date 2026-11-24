@@ -2,6 +2,7 @@
 // ticks (written straight to CSS variables from the shared frame bus: no React state per frame). A paying customer shows a glowing
 // rupee note with a countdown ring and a big COLLECT button.
 import { useRef } from 'react';
+import { LOOK } from './look.js';
 import { formatINR } from '@shared/format.js';
 import DishIcon from './DishIcon.jsx';
 import HudIcon from './HudIcon.jsx';
@@ -14,10 +15,10 @@ function chitLabel(t) {
   const needs = t.chips.filter((c) => !c.served).map((c) => c.name);
   const done = t.chips.length - needs.length;
   const what = needs.length ? `needs ${needs.join(' and ')}` : 'all served';
-  return `${t.name}, ${t.kindLabel}, ${STATE_WORD[t.st] || t.st}, ${what}${done ? `, ${done} of ${t.chips.length} served` : ''}`;
+  return `Token ${t.token}, ${t.name}, ${t.kindLabel}, ${STATE_WORD[t.st] || t.st}, ${what}${done ? `, ${done} of ${t.chips.length} served` : ''}`;
 }
 
-function Chit({ t, spotOn, walkOn, collectSpot, collectWalk, onTarget, register }) {
+function Chit({ t, spotOn, walkOn, collectSpot, collectWalk, onTap, onLook, register }) {
   return (
     <li
       ref={(el) => register(t.id, el)}
@@ -28,7 +29,12 @@ function Chit({ t, spotOn, walkOn, collectSpot, collectWalk, onTarget, register 
       style={{ '--tilt': `${((t.id * 37) % 5) - 2}deg` }}
     >
       <span className="tc-hud-clip" aria-hidden="true" />
-      <button type="button" className="tc-hud-chit-main" onClick={() => onTarget(customerTarget(t.id))} aria-label={chitLabel(t)} data-spot={`ticket:${t.id}`}>
+      <button type="button" className="tc-hud-chit-main" onClick={() => onTap(t.id)} aria-label={chitLabel(t)} data-spot={`ticket:${t.id}`}>
+        <span className="tc-hud-token" aria-hidden="true">
+          <i className="tc-hud-token-hole" />
+          <small>TOKEN</small>
+          <b>{t.token}</b>
+        </span>
         <span className="tc-hud-coin" aria-hidden="true">
           <span className="tc-hud-coin-num" data-num="" />
           <span className="tc-hud-coin-ico">{t.st === 'paying' ? <HudIcon name="rupee" size={16} /> : t.st === 'eating' ? <HudIcon name="chai" size={16} /> : null}</span>
@@ -40,27 +46,30 @@ function Chit({ t, spotOn, walkOn, collectSpot, collectWalk, onTarget, register 
         <span className="tc-hud-dishes">
           {t.chips.map((c, i) => (
             <span key={i} className={`tc-hud-dishchip${c.served ? ' is-served' : ''}${c.inHand && !c.served ? ' is-inhand' : ''}`}>
-              <DishIcon dish={c.dish} size={30} />
+              <DishIcon dish={c.dish} size={28} />
               <span className="tc-hud-dishname">
                 <span className="tc-hud-en">{c.name}</span>
                 <span className="tc-hud-te">{c.te}</span>
               </span>
               {c.served && (
                 <span className="tc-hud-tick" aria-hidden="true">
-                  <HudIcon name="check" size={14} />
+                  <HudIcon name="check" size={12} />
                 </span>
               )}
             </span>
           ))}
         </span>
       </button>
+      <button type="button" className="tc-hud-chit-look" onClick={() => onLook(t.id)} aria-label={`Look at token ${t.token}`} title="Look at them">
+        <HudIcon name="eye" size={16} />
+      </button>
       {t.st === 'paying' && (
         <button
           type="button"
           className={`tc-hud-collect${collectSpot ? ' is-spot' : ''}${collectWalk ? ' is-walking' : ''}`}
           data-spot={`collect:${t.id}`}
-          onClick={() => onTarget(customerTarget(t.id))}
-          aria-label={`Collect ${formatINR(t.total)} from ${t.name}`}
+          onClick={() => onTap(t.id, true)}
+          aria-label={`Collect ${formatINR(t.total)} from token ${t.token}, ${t.name}`}
         >
           <span className="tc-hud-note" aria-hidden="true" />
           <span className="tc-hud-collect-txt">
@@ -74,8 +83,21 @@ function Chit({ t, spotOn, walkOn, collectSpot, collectWalk, onTarget, register 
   );
 }
 
-export default function OrderRail({ state, hands, spot, walking, onTarget }) {
+export default function OrderRail({ state, hands, spot, walking, onTarget, onLook }) {
   const els = useRef(new Map());
+  const lastTap = useRef({ id: null, t: 0 });
+  // One tap works on the customer; a second tap on the same chit within a moment turns your head to them instead (no second job queued).
+  const onTap = (id, force = false) => {
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const l = lastTap.current;
+    if (!force && l.id === id && now - l.t < LOOK.doubleMs && onLook) {
+      lastTap.current = { id: null, t: 0 };
+      onLook(id);
+      return;
+    }
+    lastTap.current = { id, t: now };
+    onTarget(customerTarget(id));
+  };
   const register = (id, el) => {
     if (el) els.current.set(id, { el, num: el.querySelector('[data-num]'), secs: null, last: {} });
     else els.current.delete(id);
@@ -120,7 +142,7 @@ export default function OrderRail({ state, hands, spot, walking, onTarget }) {
     <section className="tc-hud-railbox" aria-label="Orders">
       <div className="tc-hud-railwire" aria-hidden="true" />
       <ol className="tc-hud-rail" tabIndex={list.length === 0 ? -1 : undefined}>
-        {list.length === 0 && <li className="tc-hud-rail-empty">No orders yet. Keep the tawa hot!</li>}
+        {list.length === 0 && <li className="tc-hud-rail-empty">No tokens yet. Keep the tawa hot!</li>}
         {list.map((c) => {
           const t = ticketModel(c, state, hands);
           return (
@@ -131,7 +153,8 @@ export default function OrderRail({ state, hands, spot, walking, onTarget }) {
               walkOn={walking.has(`ticket:${c.id}`)}
               collectSpot={spot.has(`collect:${c.id}`)}
               collectWalk={walking.has(`collect:${c.id}`)}
-              onTarget={onTarget}
+              onTap={onTap}
+              onLook={(id) => onLook?.(id)}
               register={register}
             />
           );

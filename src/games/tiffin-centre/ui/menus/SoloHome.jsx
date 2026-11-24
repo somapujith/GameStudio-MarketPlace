@@ -1,7 +1,7 @@
 // The start screen at /play/tiffin-centre: a flex-banner hero over the stall, the tutorial board (until it is done), Invite friends,
 // and the practice-shift map: painted signboards grouped by time of day, stars chalked on a board.
 import { useState } from 'react';
-import { PACE_OPTIONS, levelMapModel, paceOf, totalStars, unlockedLevelOf } from './menuModels.js';
+import { PACE_OPTIONS, levelMapModel, paceOf, resumeViewModel, totalStars, unlockedLevelOf } from './menuModels.js';
 import { ChotuAvatar, DishGlyph, Padlock, SkyGlyph, StallHeroArt, StarRow } from './art.jsx';
 import { radioKeys } from './hooks.js';
 import { paths } from '@/platform/paths.js';
@@ -59,17 +59,59 @@ function LevelCard({ c, pace, onStart }) {
   );
 }
 
+/** The auto-save card: the shift you left, how far it got, when it was saved. Resume is the primary action; Start fresh asks first. */
+export function ResumeCard({ saved, now, onResume, onDiscard }) {
+  const [ask, setAsk] = useState(false);
+  const vm = resumeViewModel(saved, now);
+  if (!vm) return null;
+  return (
+    <section className="tc-menu-board tc-menu-resume" aria-labelledby="tc-resume-h">
+      <div className="tc-menu-resume__text">
+        <h2 id="tc-resume-h" className="tc-menu-paint">{vm.heading}</h2>
+        <p className="tc-menu-resume__what">
+          <b>{vm.tutorial ? 'Tutorial' : vm.title}</b>
+          {!vm.tutorial && <span lang="te" className="tc-menu-te"> {vm.te}</span>}
+          <small>{vm.tutorial ? ' ' : ` · ${vm.paceLabel} · `}saved {vm.ago}</small>
+        </p>
+        <div className="tc-menu-resume__bar" role="progressbar" aria-label="How far the shift got" aria-valuemin={0} aria-valuemax={100} aria-valuenow={vm.pct} aria-valuetext={`${vm.pct} percent, ${vm.left} left`}>
+          <i style={{ width: `${vm.pct}%` }} />
+        </div>
+        <p className="tc-menu-resume__meta">
+          {vm.pct}% done · {vm.left} left{!vm.tutorial && vm.money > 0 ? ` · ${'₹'}${vm.money.toLocaleString('en-IN')} so far` : ''}
+        </p>
+      </div>
+      {ask ? (
+        <div className="tc-menu-resume__ask" role="alertdialog" aria-label="Start fresh?">
+          <p>{vm.confirm}</p>
+          <div className="tc-menu-row">
+            <button type="button" className="tc-menu-btn tc-menu-btn--plank tc-menu-btn--sm" data-autofocus autoFocus onClick={() => setAsk(false)}>Keep it</button>
+            <button type="button" className="tc-menu-btn tc-menu-btn--danger tc-menu-btn--sm" onClick={() => { setAsk(false); onDiscard?.(); }}>Start fresh</button>
+          </div>
+        </div>
+      ) : (
+        <div className="tc-menu-resume__actions">
+          <button type="button" className="tc-menu-btn tc-menu-btn--steel tc-menu-btn--primary tc-menu-btn--big" data-autofocus autoFocus aria-label={vm.label} onClick={() => onResume?.()}>{vm.resume}</button>
+          <button type="button" className="tc-menu-btn tc-menu-btn--ghost tc-menu-btn--sm" onClick={() => setAsk(true)}>Start fresh</button>
+        </div>
+      )}
+    </section>
+  );
+}
+
 /**
  * Props: { progress: { best: { [level]: { stars, earned } }, unlocked }, tutorialDone, unlockedLevel,
- *          onStartTutorial(), onStartLevel(level, pace), onInvite(), onBack(), defaultPace? }
+ *          onStartTutorial(), onStartLevel(level, pace), onInvite(), onBack(), defaultPace?,
+ *          saved?: describeSavedShift(snapshot) | null, onResume(), onDiscard(), now? }
+ * A saved shift puts the Resume card first (and takes the keyboard focus from the buttons below it).
  */
-export default function SoloHome({ progress = null, tutorialDone = false, unlockedLevel, onStartTutorial, onStartLevel, onInvite, onBack, defaultPace = 'normal' }) {
+export default function SoloHome({ progress = null, tutorialDone = false, unlockedLevel, onStartTutorial, onStartLevel, onInvite, onBack, defaultPace = 'normal', saved = null, onResume, onDiscard, now }) {
   const [pace, setPace] = useState(paceOf(defaultPace));
   const [peek, setPeek] = useState(false);
   const open = Number.isFinite(Number(unlockedLevel)) && unlockedLevel !== undefined ? Number(unlockedLevel) : unlockedLevelOf(progress);
   const groups = levelMapModel({ progress, unlockedLevel: open });
   const showMap = tutorialDone || peek;
   const gamePath = paths.game(GAME_ID);
+  const hasSave = !!resumeViewModel(saved, now);
 
   return (
     <main className="tc-menu tc-menu-home" aria-labelledby="tc-home-title">
@@ -97,6 +139,7 @@ export default function SoloHome({ progress = null, tutorialDone = false, unlock
         </header>
 
         <div className="tc-menu-home__col">
+          {hasSave && <ResumeCard saved={saved} now={now} onResume={onResume} onDiscard={onDiscard} />}
           {!tutorialDone ? (
             <>
               <section className="tc-menu-board tc-menu-tutorial" aria-labelledby="tc-tut-h">
@@ -106,7 +149,7 @@ export default function SoloHome({ progress = null, tutorialDone = false, unlock
                   <p className="tc-menu-lede">Chotu shows you the stall, one customer at a time. About three minutes.</p>
                   <p className="tc-menu-unlock"><Padlock size={16} /> Unlocks co-op with friends</p>
                 </div>
-                <button type="button" className="tc-menu-btn tc-menu-btn--plank tc-menu-btn--big" data-autofocus autoFocus onClick={() => onStartTutorial?.()}>
+                <button type="button" className="tc-menu-btn tc-menu-btn--plank tc-menu-btn--big" {...(hasSave ? {} : { 'data-autofocus': true, autoFocus: true })} onClick={() => onStartTutorial?.()}>
                   Start tutorial
                 </button>
               </section>
@@ -124,7 +167,7 @@ export default function SoloHome({ progress = null, tutorialDone = false, unlock
                 <h2 id="tc-inv-h" className="tc-menu-paint">Open a table with friends</h2>
                 <p className="tc-menu-lede">Two to four of you, one stall, real time. Serve fast, collect faster.</p>
               </div>
-              <button type="button" className="tc-menu-btn tc-menu-btn--steel tc-menu-btn--primary tc-menu-btn--big" data-autofocus autoFocus onClick={() => onInvite?.()}>
+              <button type="button" className="tc-menu-btn tc-menu-btn--steel tc-menu-btn--primary tc-menu-btn--big" {...(hasSave ? {} : { 'data-autofocus': true, autoFocus: true })} onClick={() => onInvite?.()}>
                 Invite friends
               </button>
             </section>

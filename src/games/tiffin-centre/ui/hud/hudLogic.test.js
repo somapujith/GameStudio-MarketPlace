@@ -379,10 +379,10 @@ describe('walking line and nearest target', () => {
   it('words and keys of a pending action', () => {
     const st = s();
     expect(placeName('tawa1', st)).toBe('Dosa tawa');
-    expect(placeName('spot:1', st)).toBe('Fatima aapa');
+    expect(placeName('spot:1', st)).toBe('Token 7');
     expect(placeName('bin', st)).toBe('the bin');
     expect(pendingLabel({ type: 'cook', station: 'tawa1', slot: 0, dish: 'dosa' }, 'tawa1', st)).toBe('Walking to Dosa tawa');
-    expect(pendingLabel({ type: 'serve', customer: 7, hand: 0 }, 'spot:1', st)).toBe('Walking to serve Fatima aapa');
+    expect(pendingLabel({ type: 'serve', customer: 7, hand: 0 }, 'spot:1', st)).toBe('Walking to serve Token 7');
     expect([...pendingKeys({ type: 'take', station: 'tawa1', slot: 2 }, 'tawa1')].sort()).toEqual(['slot:tawa1:2', 'station:tawa1']);
     expect([...pendingKeys({ type: 'collect', customer: 7 }, 'spot:1')].sort()).toEqual(['collect:7', 'ticket:7']);
     expect([...pendingKeys({ type: 'discard', hand: 0 }, 'bin')]).toEqual(['bin']);
@@ -414,7 +414,7 @@ describe('tutorial spotlight mapping', () => {
 describe('event notices', () => {
   const s = mkState({ customers: [mkCustomer({ id: 1, name: 'Ravi anna' })] });
   it('names the key moments', () => {
-    expect(eventNotice({ type: 'pay-ready', customer: 1 }, s, 'me').text).toBe('Pay now! Ravi anna is holding money out');
+    expect(eventNotice({ type: 'pay-ready', customer: 1 }, s, 'me').text).toBe('Pay now! Token 1 (Ravi anna) is holding money out');
     expect(eventNotice({ type: 'pay-warning', customer: 1 }, s, 'me')).toMatchObject({ tone: 'warn', pulse: true });
     expect(eventNotice({ type: 'customer-unpaid', customer: 1, owed: 40 }, s, 'me').text).toContain('walked out without paying (-1 heart)');
     expect(eventNotice({ type: 'customer-angry', customer: 1 }, s, 'me').tone).toBe('bad');

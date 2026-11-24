@@ -157,6 +157,10 @@ export function customerKindLabel(kind) {
   return CUSTOMER_KINDS[kind]?.label || 'Customer';
 }
 
+/** Every customer holds a numbered order TOKEN, like a real street stall: their customer id. */
+export const tokenOf = (c) => (c && c.id !== undefined && c.id !== null ? c.id : 0);
+export const tokenText = (c) => `Token ${tokenOf(c)}`;
+
 /** View model of one chit: chips in order with a served flag, and whether it is `mine to serve` with the held dishes. */
 export function ticketModel(c, state, hands = []) {
   const got = [...(c?.got || [])];
@@ -169,6 +173,7 @@ export function ticketModel(c, state, hands = []) {
   });
   return {
     id: c.id,
+    token: tokenOf(c),
     name: c.name || 'Customer',
     kind: c.kind,
     kindLabel: customerKindLabel(c.kind),
@@ -480,7 +485,10 @@ export const EMOTES = [
 ];
 export const emoteInfo = (e) => EMOTES.find((x) => x.e === e) || null;
 
-const nameOf = (state, id) => (state?.customers || []).find((c) => c.id === id)?.name || 'A customer';
+const nameOf = (state, id) => {
+  const c = (state?.customers || []).find((x) => x.id === id);
+  return c ? `Token ${c.id} (${c.name || 'customer'})` : 'A customer';
+};
 const dishName = (id) => DISHES[id]?.name || 'dish';
 const playerName = (state, id, meId) => (id === meId ? 'You' : state?.players?.[id]?.name || 'A teammate');
 
@@ -542,7 +550,7 @@ export function patienceWarnings(prev, next) {
       const b = before.get(c.id);
       return b && c.st === 'waiting' && b.st === 'waiting' && b.patience / Math.max(1, b.patienceMax) >= 0.25 && c.patience / Math.max(1, c.patienceMax) < 0.25;
     })
-    .map((c) => ({ text: `Customer waiting too long! ${c.name}`, tone: 'warn', icon: 'alarm', toast: true, customer: c.id }));
+    .map((c) => ({ text: `Token ${c.id} is waiting too long! ${c.name}`, tone: 'warn', icon: 'alarm', toast: true, customer: c.id }));
 }
 
 /** Teammate changes between two states: joined / left (a player who vanished, or the session marks `online:false`). */
@@ -655,7 +663,8 @@ export function placeName(to, state) {
   if (to === 'bin') return 'the bin';
   if (typeof to === 'string' && to.startsWith('spot:')) {
     const spot = Number(to.slice(5));
-    return (state?.customers || []).find((c) => c.spot === spot && onStall(c))?.name || 'the counter';
+    const c = (state?.customers || []).find((x) => x.spot === spot && onStall(x));
+    return c ? `Token ${c.id}` : 'the counter';
   }
   const kind = STATIONS[to] && STATION_KINDS[STATIONS[to].kind];
   return kind ? kind.name : 'the stall';
@@ -684,6 +693,74 @@ export function pendingKeys(action, to) {
   if (action.type === 'discard') keys.add('bin');
   if (to && !keys.size) keys.add(to);
   return keys;
+}
+
+// ---- the tutorial gate: some steps only allow some actions ----------------------------------------------------------------------------
+export const GATE_TEXT = 'Chotu says: not yet!';
+const ALIAS = { walk: 'move', go: 'move', stand: 'move', pickup: 'take', 'pick-up': 'take', pour: 'cook', work: 'cook' };
+
+/**
+ * May the player do this action right now? `allowed` is the tutorial driver's `allowed` for the current step: null / undefined / true =
+ * everything (normal play and old drivers), false or [] = nothing, an array / Set of action names (cook, take, serve, collect, discard,
+ * move, emote; 'walk' means move; '*' means all), an object { cook: true }, or a function (action) => boolean.
+ */
+export function isActionAllowed(allowed, action) {
+  if (allowed === null || allowed === undefined || allowed === true) return true;
+  if (allowed === false) return false;
+  const type = typeof action === 'string' ? action : action?.type;
+  if (!type) return true;
+  if (typeof allowed === 'function') {
+    try {
+      return !!allowed(typeof action === 'string' ? { type } : action);
+    } catch {
+      return true;
+    }
+  }
+  const list = allowed instanceof Set ? [...allowed] : Array.isArray(allowed) ? allowed : typeof allowed === 'object' ? Object.keys(allowed).filter((k) => allowed[k]) : [];
+  if (list.includes('*') || list.includes('all')) return true;
+  return list.map((a) => ALIAS[a] || a).includes(type);
+}
+
+/** Where a tap on this target walks you to (so a step that only allows `move` still lets you tap your way there). */
+export function walkToFor(target, state) {
+  if (!target) return null;
+  if (target.kind === 'slot' || target.kind === 'station') return target.station ?? target.id ?? null;
+  if (target.kind === 'bin') return 'bin';
+  if (target.kind === 'customer') {
+    const c = (state?.customers || []).find((x) => x.id === target.id);
+    return c && Number.isInteger(c.spot) ? `spot:${c.spot}` : null;
+  }
+  return null;
+}
+
+/**
+ * Check a `decideAction` result against the tutorial gate: { go: decision } to carry on, { walk: to } to only walk there, { blocked: true }
+ * to refuse with the friendly toast. Hints (nothing is sent) always pass.
+ */
+export function gateDecision(decision, target, allowed, state) {
+  if (!decision) return { go: decision };
+  const need = decision.type === 'sheet' ? 'cook' : decision.type === 'dispatch' ? decision.action?.type : null;
+  if (!need || isActionAllowed(allowed, { type: need })) return { go: decision };
+  if (isActionAllowed(allowed, { type: 'move' })) {
+    const to = walkToFor(target, state);
+    if (to) return { walk: to };
+  }
+  return { blocked: true };
+}
+
+/** The pick target a queued action is about (to turn the head to it when it is off screen). */
+export function pendingTarget(action) {
+  if (!action) return null;
+  if (action.type === 'cook' || action.type === 'take') return slotTarget(action.station, action.slot);
+  if (action.type === 'serve' || action.type === 'collect') return customerTarget(action.customer);
+  if (action.type === 'discard') return BIN_TARGET;
+  return null;
+}
+
+/** The chip colour of a customer: the patience ring's tone, a paying customer's pay window, and whether it should flash (about to leave). */
+export function chitUrgency(c, state, frac = 0) {
+  const f = ticketFrame(c, state, frac);
+  return { tone: f.tone, flash: f.mode === 'pay' && f.secs <= 3, secs: f.secs, mode: f.mode };
 }
 
 export { standX, validTarget, walkSeconds, workTarget };

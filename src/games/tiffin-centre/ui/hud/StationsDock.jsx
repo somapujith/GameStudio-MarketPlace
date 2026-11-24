@@ -44,7 +44,8 @@ function Slot({ station, s, spotOn, walkOn, onSlot, onFocusTarget, register }) {
   );
 }
 
-export default function StationsDock({ state, spot, walking, onSlot, onFocusTarget }) {
+// `renderExtra(station)` is the room kept after a station's slots for a per-station control (e.g. a Tend button on the tawa and kadai).
+export default function StationsDock({ state, spot, walking, onSlot, onFocusTarget, renderExtra }) {
   const els = useRef(new Map());
   const register = (key, el) => {
     if (el) els.current.set(key, { el, secs: el.querySelector('[data-secs]'), last: {} });
@@ -96,6 +97,7 @@ export default function StationsDock({ state, spot, walking, onSlot, onFocusTarg
                 register={register}
               />
             ))}
+            {renderExtra?.(st)}
           </span>
         </div>
       ))}
