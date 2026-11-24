@@ -1,0 +1,1856 @@
+/* ==========================================================================
+   Cine lobby (/lobby/:code): the calm, cinematic table (docs/CINE_UI.md). Imported by pages/Lobby.jsx only.
+   Everything is scoped under `.cj-lobby` (the page root, a full-screen route outside the hub shell). The shared
+   lobby components (Seat, InviteTicket, PiecePicker, SettingsPanel, ConnectionChip, MapTag, InviteFriends) keep their
+   own markup and classes; they are re-skinned here only inside `.cj-lobby-main`, so the overlays the lobby renders
+   (share sheet, confirm dialogs, toasts) keep the overlay look.
+   Anatomy: top bar (back arrow + small logo | tour ? + Leave) -> page head ("Ravi's table", meta row, code chip)
+   -> two sides: Invite ticket + Players | Your piece, Game rules, Start, Invite friends.
+   Phones (< 900px): one column, the Start bar fixed at the bottom in a glass bar with safe-area padding.
+   ========================================================================== */
+
+.cj-lobby {
+  --cj-lobby-max: 1240px;
+  --cj-lobby-start-h: 0px; /* room kept under the page for the phone Start bar */
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: clip;
+  color: var(--cj-text);
+  background: var(--cj-bg);
+  font-family: var(--cj-font);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+.cj-lobby :focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 3px;
+}
+
+/* ---------- the shared components' tokens, remapped to cine inside the page (not the overlays) ---------- */
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main,
+.cj-lobby .cj-lobby-bar {
+  --font-poster: var(--cj-font);
+  --font-display: var(--cj-font);
+  --font-body: var(--cj-font);
+  --font-hub-display: var(--cj-font);
+  --font-hub-body: var(--cj-font);
+  --brand-orange: #f2f2f2;
+  --brand-paper: #ffffff;
+  --brand-charcoal: #0a0a0b;
+  --hub-text: var(--cj-text-strong);
+  --hub-dim: var(--cj-text-dim);
+  --hub-faint: var(--cj-text-faint);
+  --text: var(--cj-text-strong);
+  --text-dim: var(--cj-text-dim);
+  --text-faint: var(--cj-text-faint);
+  --hub-surface: rgba(255, 255, 255, 0.05);
+  --hub-surface-2: rgba(255, 255, 255, 0.08);
+  --hub-surface-3: rgba(255, 255, 255, 0.13);
+  --surface: rgba(255, 255, 255, 0.05);
+  --ho-card-bg: rgba(255, 255, 255, 0.05);
+  --hub-field: rgba(255, 255, 255, 0.05);
+  --hub-line: var(--cj-line);
+  --hub-line-2: var(--cj-line-2);
+  --line: var(--cj-line);
+  --hub-brand: #f2f2f2;
+  --hub-brand-2: #ffffff;
+  --hub-brand-ink: #ffffff;
+  --hub-brand-soft: rgba(255, 255, 255, 0.08);
+  --hub-brand-fill: #f2f2f2;
+  --hub-brand-glow: transparent;
+  --hub-on-brand: var(--cj-ink);
+  --hub-focus: rgba(255, 255, 255, 0.85);
+  --hub-good: var(--cj-live);
+  --good: var(--cj-live);
+  --hub-gold: var(--cj-gold);
+  --hub-bad: var(--cj-danger);
+  --hub-warn: var(--cj-gold);
+  --hub-ink-mix: 0%;
+  --st-radius-card: 16px;
+  --st-radius-tile: 12px;
+  --hub-shadow-s: none;
+  /* the game's accent (Nawabi saffron) stays out of the chrome: cine accents are white, green and gold */
+  --g-accent: #f2f2f2;
+  --g-line: var(--cj-line-2);
+  --g-glow: transparent;
+  --g-glow-strong: transparent;
+  --ho-accent: #f2f2f2;
+  --ho-accent-2: #ffffff;
+  --lp-accent: #f2f2f2;
+  --lt-accent: #f2f2f2;
+  --mp-accent: #f2f2f2;
+}
+/* calm type: no poster capitals, no wide tracking (my own cj-* classes set their own) */
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main :is(h2, h3, h4, legend, label, button, a, p, span, small, b, strong, dt, dd, li):not([class*='cj-']) {
+  font-family: var(--cj-font);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* ---------- ambient backdrop: the cine glow + the game's art, far out of focus ---------- */
+.cj-lobby-ambient {
+  overflow: hidden;
+}
+.cj-lobby-ambient__art {
+  position: absolute;
+  inset: -12%;
+  width: 124%;
+  height: 124%;
+  object-fit: cover;
+  opacity: 0.34;
+  filter: blur(64px) saturate(135%);
+  transform: translateZ(0);
+}
+.cj-lobby-ambient__shade {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(70% 60% at 50% 110%, rgba(4, 18, 11, 0.95), transparent 70%),
+    linear-gradient(180deg, rgba(4, 18, 11, 0.15) 0%, rgba(4, 18, 11, 0.55) 55%, rgba(4, 18, 11, 0.92) 100%);
+}
+
+/* ---------- top bar: back arrow + small logo | tour + Leave ---------- */
+.cj-lobby-bar {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: calc(var(--cj-lobby-max) + 2 * var(--cj-gutter));
+  margin: 0 auto;
+  padding: calc(18px + env(safe-area-inset-top, 0px)) var(--cj-gutter) 0;
+}
+.cj-lobby-bar__start,
+.cj-lobby-bar__end {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.cj-lobby-bar__back {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-left: -10px;
+  border-radius: 50%;
+  color: var(--cj-text-strong);
+  text-decoration: none;
+  transition: background-color var(--cj-dur) var(--cj-ease), transform var(--cj-dur) var(--cj-ease);
+}
+.cj-lobby-bar__back:hover {
+  background: var(--cj-glass);
+  transform: translateX(-2px);
+}
+.cj-lobby-bar__logo {
+  display: inline-flex;
+  align-items: center;
+  height: 44px;
+  text-decoration: none;
+}
+.cj-lobby-bar__logo {
+  filter: drop-shadow(0 2px 12px rgba(0, 0, 0, 0.45));
+}
+.cj-lobby-bar .tourslot {
+  display: inline-flex;
+}
+.cj-lobby .cj-lobby-bar .tour-help {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+  font: 600 15px/1 var(--cj-font);
+  transition: background-color var(--cj-dur) var(--cj-ease);
+}
+.cj-lobby .cj-lobby-bar .tour-help:hover {
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-3);
+}
+.cj-lobby .cj-lobby-bar .tour-help .tour-help__q {
+  color: inherit;
+  font-size: 17px;
+  font-weight: 600;
+}
+.cj-lobby-bar__leave {
+  min-height: 40px;
+  padding: 0 16px;
+  font-size: 14px;
+}
+@media (max-width: 419px) {
+  .cj-lobby-bar__leave {
+    width: 40px;
+    padding: 0;
+  }
+  .cj-lobby-bar__leave span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+/* ---------- main column ---------- */
+.cj-lobby-main {
+  position: relative;
+  z-index: 1;
+  padding: 0 var(--cj-gutter) calc(72px + var(--cj-lobby-start-h) + env(safe-area-inset-bottom, 0px));
+}
+.cj-lobby-page {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  max-width: var(--cj-lobby-max);
+  margin: 0 auto;
+}
+/* entrance: the zones rise one after the other (never on an ancestor of the phone's fixed Start bar: a transform there
+   would make it the bar's containing block) */
+.cj-lobby-head,
+.cj-lobby-side > * {
+  animation: cj-lobby-rise 0.6s var(--cj-ease) backwards;
+}
+.cj-lobby-side > :nth-child(2) {
+  animation-delay: 0.06s;
+}
+.cj-lobby-side > :nth-child(3) {
+  animation-delay: 0.12s;
+}
+.cj-lobby-side > :nth-child(4) {
+  animation-delay: 0.18s;
+}
+
+/* ---------- page head: big title, meta row, the code as a glass chip ---------- */
+.cj-lobby-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px 28px;
+  padding-top: clamp(18px, 3.2vw, 40px);
+}
+.cj-lobby-head__main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.cj-lobby .cj-lobby-head__title {
+  overflow-wrap: anywhere;
+  font-size: clamp(32px, 3.4vw, 48px);
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.35);
+}
+.cj-lobby .cj-lobby-head__meta {
+  gap: 8px 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--cj-text-strong);
+}
+.cj-lobby-head__meta > li {
+  min-width: 0;
+}
+.cj-lobby-head__game {
+  gap: 8px;
+}
+.cj-lobby .cj-lobby-head__icon {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  overflow: hidden;
+  border-radius: 7px;
+  box-shadow: var(--cj-ring);
+}
+.cj-lobby .cj-lobby-head__icon :is(img, svg) {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.cj-lobby-head__count {
+  font-variant-numeric: tabular-nums;
+}
+/* the map chip, quiet: a mini ring + the name in the meta row's own type */
+.cj-lobby .cj-lobby-head__map.mp-chip {
+  gap: 6px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--cj-text-strong);
+  font: inherit;
+}
+.cj-lobby .cj-lobby-head__map .mp-chip__k {
+  color: var(--cj-text-dim);
+  font-weight: 500;
+}
+.cj-lobby .cj-lobby-head__map .mp-chip__name {
+  color: var(--cj-text-strong);
+  font-weight: 600;
+}
+.cj-lobby .cj-lobby-head__map .mp-chip__te {
+  color: var(--cj-text-dim);
+  font-weight: 500;
+}
+.cj-lobby .cj-lobby-head__map .mp-chip__ring {
+  width: 18px;
+  height: 18px;
+}
+.cj-lobby .cj-lobby-head__map .mp-chip__ring svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* the connection, as a calm status line: dot + label (+ hint, + Try now) */
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .sr-conn {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--cj-text-strong);
+  font: inherit;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .sr-conn__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: 0;
+  text-transform: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .sr-conn__dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--cj-text-faint);
+  box-shadow: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .sr-conn--good .sr-conn__dot {
+  background: var(--cj-live);
+  box-shadow: 0 0 10px rgba(107, 227, 138, 0.7);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .sr-conn--warn .sr-conn__dot {
+  background: var(--cj-gold);
+  box-shadow: 0 0 10px rgba(245, 198, 107, 0.6);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .sr-conn--bad .sr-conn__dot {
+  background: var(--cj-danger);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .sr-conn__hint {
+  color: var(--cj-text-dim);
+  font-size: 12px;
+  font-weight: 500;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .sr-conn__retry {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  font: 600 12px/1 var(--cj-font);
+  cursor: pointer;
+}
+
+/* the room code chip: [Room  ABC 234 | Copy] */
+.cj-lobby-code {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 0 6px 0 18px;
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+  font: 600 14px/1 var(--cj-font);
+  cursor: pointer;
+  transition: background-color var(--cj-dur) var(--cj-ease), transform var(--cj-dur) var(--cj-ease);
+}
+.cj-lobby-code:hover {
+  background: var(--cj-glass-3);
+}
+.cj-lobby-code:active {
+  transform: scale(0.97);
+}
+.cj-lobby-code__k {
+  color: var(--cj-text-dim);
+  font-size: 12px;
+  font-weight: 500;
+}
+.cj-lobby-code__v {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  font-variant-numeric: tabular-nums;
+}
+.cj-lobby-code__copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  font-size: 13px;
+}
+.cj-lobby-code.is-copied .cj-lobby-code__copy {
+  color: var(--cj-text-strong);
+  background: rgba(107, 227, 138, 0.22);
+}
+
+/* "this game is not in this version" */
+.cj-lobby-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 14px 16px 14px 18px;
+  border-radius: var(--cj-r-panel);
+  color: var(--cj-text-strong);
+  background: rgba(245, 198, 107, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(245, 198, 107, 0.28);
+  font-size: 14px;
+  line-height: 1.5;
+}
+/* "Waiting for the last table to join" (play again) */
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .pa-banner {
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+  font-family: var(--cj-font);
+}
+
+/* ---------- the two sides ---------- */
+.cj-lobby .cj-lobby-cols {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+.cj-lobby .cj-lobby-side {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+@media (min-width: 900px) {
+  .cj-lobby .cj-lobby-cols {
+    display: grid;
+    grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+  }
+}
+
+/* ---------- glass cards (my sections and the shared .ho-card ones inside the lobby) ---------- */
+.cj-lobby-card,
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-card,
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr.lr {
+  position: relative;
+  min-width: 0;
+  margin: 0;
+  padding: 20px;
+  border: 0;
+  border-radius: var(--cj-r-panel);
+  color: var(--cj-text);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: var(--cj-ring), 0 20px 50px -30px rgba(0, 0, 0, 0.6);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+}
+.cj-lobby-card:focus {
+  outline: none;
+}
+.cj-lobby-card__head,
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-card__head,
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr.lr .lr-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.cj-lobby-card__title,
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-h2,
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr.lr .lr-head .ho-h2 {
+  margin: 0;
+  color: var(--cj-text-strong);
+  font: 600 20px/1.3 var(--cj-font);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.cj-lobby-card__aside,
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-card__head .ho-muted {
+  color: var(--cj-text-dim);
+  font: 500 13px/1.3 var(--cj-font);
+  letter-spacing: 0;
+  text-transform: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main :is(.st-eyebrow, .lr .st-eyebrow, .ho-eyebrow) {
+  margin: 0;
+  color: var(--cj-text-faint);
+  font: 500 12px/1.3 var(--cj-font);
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .st-eyebrow::before,
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .st-eyebrow::after {
+  display: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main :is(.ho-muted, .ho-help) {
+  color: var(--cj-text-dim);
+}
+
+/* ---------- buttons inside the page: cine pills (white = the one action, glass = the rest) ---------- */
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  font: 600 14px/1 var(--cj-font);
+  letter-spacing: 0.01em;
+  text-transform: none;
+  text-decoration: none;
+  transform: none;
+  transition: transform var(--cj-dur) var(--cj-ease), background-color var(--cj-dur) var(--cj-ease), opacity var(--cj-dur) var(--cj-ease);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-btn:hover:not(:disabled, [aria-disabled='true']) {
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-3);
+  box-shadow: var(--cj-ring);
+  transform: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-btn:active:not(:disabled, [aria-disabled='true']) {
+  transform: scale(0.97);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-btn--primary,
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-btn--primary:hover:not(:disabled, [aria-disabled='true']) {
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  box-shadow: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-btn--primary:hover:not(:disabled, [aria-disabled='true']) {
+  background: #fff;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-btn--sm {
+  min-height: 34px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-btn:disabled,
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-btn[aria-disabled='true'] {
+  opacity: 0.45;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-btn svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-btn--wa svg {
+  color: #25d366;
+}
+
+/* ---------- the invite ticket: calm code digits, white Share pill, glass Copy / WhatsApp ---------- */
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lp-ticket {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  outline-offset: 10px;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lp-ticket__top {
+  align-items: flex-start;
+  gap: 8px;
+  padding: 0 0 18px;
+  text-align: left;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lp-label {
+  color: var(--cj-text-faint);
+  font: 500 12px/1.2 var(--cj-font);
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lp-ticket__code {
+  color: var(--cj-text-strong);
+  font: 700 clamp(40px, 4.6vw, 60px) / 1 var(--cj-font);
+  letter-spacing: 0.16em;
+  font-variant-numeric: tabular-nums;
+  text-shadow: none;
+  -webkit-text-fill-color: currentColor;
+  background: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lp-ticket .lp-ticket__code > span {
+  letter-spacing: inherit;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lp-ticket__hint {
+  color: var(--cj-text-dim);
+  font: 400 14px/1.5 var(--cj-font);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lp-ticket__tear {
+  margin: 0;
+  border-top: 1px solid var(--cj-line);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lp-ticket__tear::before,
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lp-ticket__tear::after {
+  display: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lp-ticket__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 18px 0 0;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lp-ticket__actions .lp-btn {
+  flex: 1 1 0;
+  min-width: max-content;
+  min-height: 48px;
+  padding-inline: 18px;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lp-ticket__actions .lp-ticket__main {
+  flex: 1 1 100%;
+  min-height: 52px;
+  font-size: 16px;
+}
+@media (min-width: 1200px) {
+  :is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lp-ticket__actions .lp-ticket__main {
+    flex: 1.4 1 0;
+  }
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lp-btn.is-done {
+  color: var(--cj-text-strong);
+  background: rgba(107, 227, 138, 0.2);
+  box-shadow: inset 0 0 0 1px rgba(107, 227, 138, 0.4);
+}
+@keyframes cj-lobby-lit {
+  from {
+    outline-color: rgba(255, 255, 255, 0.7);
+    outline-offset: 2px;
+  }
+  to {
+    outline-color: transparent;
+    outline-offset: 12px;
+  }
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lp-ticket.is-lit-0,
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lp-ticket.is-lit-1 {
+  outline: 2px solid transparent;
+}
+
+/* ---------- players: progress, count, seat cards ---------- */
+.cj-lobby-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  font: 500 12px/1 var(--cj-font);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.cj-lobby-count.is-full {
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  box-shadow: none;
+}
+.cj-lobby-progress {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 18px;
+}
+.cj-lobby-progress > span {
+  flex: 1;
+  height: 3px;
+  border-radius: var(--cj-r-pill);
+  background: rgba(255, 255, 255, 0.12);
+  transition: background-color var(--cj-dur) var(--cj-ease);
+}
+.cj-lobby-progress > span.is-on {
+  background: rgba(255, 255, 255, 0.85);
+}
+.cj-lobby-seatgrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+@media (min-width: 560px) {
+  .cj-lobby-seatgrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (min-width: 900px) and (max-width: 1099px) {
+  .cj-lobby-seatgrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* a taken seat: a calm glass card, the avatar as a cast circle */
+.cj-lobby .cj-lobby-seatgrid .lt-seat {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 190px;
+  margin: 0;
+  padding: 20px 10px 14px;
+  border: 0;
+  border-radius: var(--cj-r-card);
+  color: var(--cj-text-strong);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.03));
+  box-shadow: var(--cj-shadow-card), var(--cj-ring);
+  text-align: center;
+  transform: none;
+  translate: none;
+  animation: cj-lobby-seat 0.5s var(--cj-ease) both;
+  transition: opacity var(--cj-dur) var(--cj-ease), transform var(--cj-dur) var(--cj-ease), box-shadow var(--cj-dur) var(--cj-ease);
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat.is-me {
+  box-shadow: var(--cj-shadow-card), inset 0 0 0 1px rgba(255, 255, 255, 0.32);
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat.is-leaving {
+  opacity: 0;
+  transform: scale(0.94);
+  animation: none;
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat__avatar {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--lt-seat, #fff) 55%, transparent), 0 10px 24px rgba(0, 0, 0, 0.35);
+  animation: none;
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat.is-away .lt-seat__avatar {
+  opacity: 0.5;
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat__dot {
+  right: 1px;
+  bottom: 1px;
+  width: 13px;
+  height: 13px;
+  border: 2px solid #0c1a12;
+  background: var(--cj-text-faint);
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat__dot.is-on {
+  background: var(--cj-live);
+  box-shadow: 0 0 8px rgba(107, 227, 138, 0.6);
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat__piece {
+  left: -6px;
+  bottom: -2px;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  background: rgba(16, 20, 18, 0.9);
+  box-shadow: var(--cj-ring);
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat__name {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--cj-text-strong);
+  font: 600 14px/1.25 var(--cj-font);
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat.is-away .lt-seat__name {
+  color: var(--cj-text-dim);
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat__pieceline {
+  color: var(--cj-text-dim);
+  font: 500 12px/1.3 var(--cj-font);
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat__pieceline.is-none {
+  color: var(--cj-text-faint);
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat__title {
+  display: flex;
+  justify-content: center;
+  max-width: 100%;
+  margin-top: 2px;
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat__loadout {
+  justify-content: center;
+  max-width: 100%;
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat__tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.cj-lobby .cj-lobby-seatgrid .lt-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 22px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  font: 500 11px/1 var(--cj-font);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.cj-lobby .cj-lobby-seatgrid .lt-tag--host {
+  color: var(--cj-gold);
+}
+.cj-lobby .cj-lobby-seatgrid .lt-tag--me {
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  box-shadow: none;
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat__away {
+  color: var(--cj-text-faint);
+  font: 500 11px/1 var(--cj-font);
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat__acts {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat__remove {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--cj-text-strong);
+  background: rgba(16, 20, 18, 0.55);
+  box-shadow: var(--cj-ring);
+  cursor: pointer;
+  transition: background-color var(--cj-dur) var(--cj-ease);
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat__remove:hover {
+  background: rgba(255, 107, 107, 0.3);
+}
+.cj-lobby .cj-lobby-seatgrid .fa-btn--icon,
+.cj-lobby .cj-lobby-seatgrid .fa-chip--icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--cj-text-strong);
+  background: rgba(16, 20, 18, 0.55);
+  box-shadow: var(--cj-ring);
+  transform: none;
+}
+.cj-lobby .cj-lobby-seatgrid .fa-btn--icon:hover:not(:disabled) {
+  background: var(--cj-glass-3);
+  box-shadow: var(--cj-ring);
+  transform: none;
+}
+.cj-lobby .cj-lobby-seatgrid .fa-chip--icon {
+  color: var(--cj-live);
+}
+.cj-lobby .cj-lobby-seatgrid .fa-btn--icon svg,
+.cj-lobby .cj-lobby-seatgrid .fa-chip--icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* an open seat: a dashed glass card, "+ Invite" */
+.cj-lobby .cj-lobby-seatgrid .lt-seat--empty {
+  padding: 0;
+  background: rgba(255, 255, 255, 0.02);
+  box-shadow: none;
+  outline: 1px dashed rgba(255, 255, 255, 0.24);
+  outline-offset: -1px;
+  animation: none;
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat--empty .lt-seat__invite {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 190px;
+  padding: 16px 10px;
+  border: 0;
+  border-radius: inherit;
+  color: var(--cj-text-strong);
+  background: none;
+  font: inherit;
+  cursor: pointer;
+  transition: background-color var(--cj-dur) var(--cj-ease);
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat--empty .lt-seat__invite:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat--empty .lt-seat__invite:focus-visible {
+  outline-offset: -3px;
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat__slot {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  transition: transform var(--cj-dur) var(--cj-ease), background-color var(--cj-dur) var(--cj-ease);
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat__slot svg {
+  width: 18px;
+  height: 18px;
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat--empty .lt-seat__invite:hover .lt-seat__slot {
+  background: var(--cj-glass-3);
+  transform: scale(1.06);
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat__name--open {
+  color: var(--cj-text-faint);
+  font: 500 12px/1.3 var(--cj-font);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat__cta {
+  color: var(--cj-text-strong);
+  font: 600 14px/1.2 var(--cj-font);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.cj-lobby .cj-lobby-seatgrid .lt-seat__cta::before {
+  content: '+ ';
+}
+
+/* ---------- your piece: calm glass tiles ---------- */
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-pieces__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 14px;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-pieces .lr-pieces__label {
+  color: var(--cj-text-strong);
+  font: 600 20px/1.3 var(--cj-font);
+  letter-spacing: 0;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-pieces__me {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cj-text-dim);
+  font: 500 13px/1.3 var(--cj-font);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-pieces__me.has-pick {
+  color: var(--cj-text-strong);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-pieces__avatar {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  box-shadow: var(--cj-ring);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-pieces__row {
+  gap: 10px;
+  margin-inline: -20px;
+  padding: 4px 20px 6px;
+  scroll-padding-inline: 20px;
+  scrollbar-width: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-pieces__row {
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 20px, #000 calc(100% - 36px), transparent);
+  mask-image: linear-gradient(90deg, transparent 0, #000 20px, #000 calc(100% - 36px), transparent);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-pieces__row::-webkit-scrollbar {
+  display: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-piece {
+  width: 92px;
+  min-height: 112px;
+  gap: 6px;
+  padding: 10px 6px;
+  border: 0;
+  border-radius: var(--cj-r-card);
+  color: var(--cj-text);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: var(--cj-ring);
+  transition: transform var(--cj-dur) var(--cj-ease), background-color var(--cj-dur) var(--cj-ease), box-shadow var(--cj-dur) var(--cj-ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  :is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-piece:hover:not(:disabled):not(.is-mine) {
+    background: rgba(255, 255, 255, 0.09);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+    transform: translateY(-3px);
+  }
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-piece__name {
+  color: inherit;
+  font: 500 12px/1.25 var(--cj-font);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-piece.is-mine {
+  color: var(--cj-text-strong);
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.9), 0 10px 26px rgba(0, 0, 0, 0.35);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-piece.is-mine .lr-piece__name {
+  font-weight: 600;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-piece__check {
+  top: 6px;
+  right: 6px;
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-piece.is-taken {
+  background: rgba(255, 255, 255, 0.02);
+  box-shadow: none;
+  outline: 1px dashed rgba(255, 255, 255, 0.18);
+  outline-offset: -1px;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-piece.is-taken :is(.lr-piece__art, .lr-piece__name) {
+  opacity: 0.45;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-piece__owner {
+  color: var(--cj-text-dim);
+  font: 500 11px/1.2 var(--cj-font);
+}
+
+/* ---------- game rules / settings: chips, glass toggles, segmented controls ---------- */
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-head__titles {
+  gap: 4px;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-toggle,
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-more {
+  min-height: 40px;
+  border: 0;
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  font: 600 13px/1 var(--cj-font);
+  transition: background-color var(--cj-dur) var(--cj-ease), transform var(--cj-dur) var(--cj-ease);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-toggle {
+  padding: 0 12px 0 16px;
+  border-radius: var(--cj-r-pill);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-toggle[aria-expanded='true'] {
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  box-shadow: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-toggle[aria-expanded='true'] .lr-chev {
+  color: var(--cj-ink);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-more {
+  min-height: 44px;
+  border-radius: var(--cj-r-card);
+}
+@media (hover: hover) and (pointer: fine) {
+  :is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-toggle:not([aria-expanded='true']):hover,
+  :is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-more:hover {
+    background: var(--cj-glass-3);
+  }
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-chev {
+  color: var(--cj-text-dim);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-more__count {
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  font-weight: 600;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-chips {
+  gap: 8px;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-chip,
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-chip--static {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  font: 500 12px/1.2 var(--cj-font);
+  letter-spacing: 0;
+  text-transform: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-chip--map {
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  box-shadow: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-chip--custom {
+  color: var(--cj-gold);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-body {
+  gap: 16px;
+  padding-top: 18px;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main :is(.ho-field__label, .xl-presets .ho-field__label) {
+  color: var(--cj-text-strong);
+  font: 600 14px/1.3 var(--cj-font);
+  letter-spacing: 0;
+  text-transform: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main :is(.ho-summary, .ho-rules, .xl-rules__bar .ho-muted) {
+  color: var(--cj-text-dim);
+  font-family: var(--cj-font);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-summary {
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+/* segmented choices and chips as cine chips; the chosen one is the white pill */
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-seg {
+  gap: 4px;
+  padding: 4px;
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: var(--cj-ring);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-chips {
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-chip:not(.ho-chip--static) {
+  padding: 0 14px;
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main :is(.ho-seg__opt, .ho-chip:not(.ho-chip--static)) {
+  min-height: 34px;
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-text);
+  background: transparent;
+  box-shadow: none;
+  font: 500 13px/1.1 var(--cj-font);
+  letter-spacing: 0;
+  text-transform: none;
+  transition: background-color var(--cj-dur) var(--cj-ease), color var(--cj-dur) var(--cj-ease);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main :is(.ho-seg__opt, .ho-chip:not(.ho-chip--static)):hover:not(:disabled) {
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main :is(.ho-seg__opt.is-on, .ho-chip.is-on, .ho-seg__opt[aria-checked='true'], .ho-seg__opt[aria-pressed='true']),
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main :is(.ho-seg__opt.is-on, .ho-chip.is-on, .ho-seg__opt[aria-checked='true'], .ho-seg__opt[aria-pressed='true']):hover:not(:disabled) {
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  box-shadow: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-stepper {
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: var(--cj-ring);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-stepper__btn {
+  border: 0;
+  border-radius: 50%;
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main :is(.xl-rules__reset, .xl-rules__toggle) {
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-text-strong);
+  background: none;
+  font: 600 13px/1 var(--cj-font);
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.35);
+  text-underline-offset: 4px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .xl-preset {
+  border: 0;
+  border-radius: var(--cj-r-card);
+  color: var(--cj-text);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: var(--cj-ring);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .xl-preset:is(.is-on, [aria-checked='true'], [aria-pressed='true']) {
+  color: var(--cj-text-strong);
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.9);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .xl-group {
+  border: 0;
+  border-radius: var(--cj-r-card);
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: var(--cj-ring);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main :is(.xl-group__title, .xl-preset__name, .xl-rule__val, .ho-stepper__val) {
+  color: var(--cj-text-strong);
+  font-family: var(--cj-font);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main :is(.xl-group__note, .xl-preset__hint, .xl-rule__meta, .ho-field .ho-help) {
+  color: var(--cj-text-dim);
+  font-family: var(--cj-font);
+}
+/* switches: the white track when on, a dark thumb */
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-switch {
+  border: 0;
+  border-radius: var(--cj-r-card);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: var(--cj-ring);
+  color: var(--cj-text-strong);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-switch__track {
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-switch.is-on .ho-switch__track {
+  background: var(--cj-pill);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-switch__thumb {
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-switch.is-on .ho-switch__thumb {
+  background: var(--cj-ink);
+}
+/* sliders: a white fill and a white thumb */
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .xl-slider__input {
+  --xl-track: linear-gradient(to right, rgba(255, 255, 255, 0.85) 0 var(--p, 0%), rgba(255, 255, 255, 0.14) var(--p, 0%) 100%);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .xl-slider__input.is-off {
+  --xl-track: rgba(255, 255, 255, 0.14);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .xl-slider__input::-webkit-slider-runnable-track {
+  height: 4px;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .xl-slider__input::-webkit-slider-thumb {
+  width: 22px;
+  height: 22px;
+  margin-top: -9px;
+  border: 0;
+  background: #fff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .xl-slider__input::-moz-range-track {
+  height: 4px;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .xl-slider__input::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 0;
+  background: #fff;
+}
+/* the map picker: glass cards, the chosen one ringed in white */
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .mp-card {
+  border: 0;
+  border-radius: var(--cj-r-card);
+  color: var(--cj-text);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: var(--cj-ring);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .mp-card.is-on {
+  background: rgba(255, 255, 255, 0.1);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .mp-card::after {
+  inset: 0;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .mp-card__name {
+  color: var(--cj-text-strong);
+  font: 600 16px/1.25 var(--cj-font);
+  letter-spacing: 0;
+  text-transform: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .mp-card__tag {
+  color: var(--cj-text-strong);
+  font: 500 13px/1.4 var(--cj-font);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main :is(.mp-card__blurb, .mp-card__te) {
+  color: var(--cj-text-dim);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .mp-card__mark:empty {
+  display: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .mp-card__mark {
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  box-shadow: none;
+  font: 600 10px/1 var(--cj-font);
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .mp-place {
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  font: 500 12px/1.2 var(--cj-font);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .xl-warn {
+  border: 0;
+  border-radius: var(--cj-r-card);
+  color: var(--cj-text-strong);
+  background: rgba(245, 198, 107, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(245, 198, 107, 0.28);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-inline-error {
+  color: #ffb3b3;
+}
+
+/* ---------- Start: the one white pill (a calm translucent pill + the reason while it cannot start) ---------- */
+.cj-lobby-start {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 20px;
+  border-radius: var(--cj-r-panel);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: var(--cj-ring), 0 20px 50px -30px rgba(0, 0, 0, 0.6);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+}
+.cj-lobby-start__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.cj-lobby .cj-lobby-start__go {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 56px;
+  font-size: 17px;
+}
+.cj-lobby .cj-lobby-start__go:disabled {
+  opacity: 1;
+  color: var(--cj-text-dim);
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: var(--cj-ring);
+  cursor: not-allowed;
+}
+.cj-lobby .cj-lobby-start__go svg {
+  width: 16px;
+  height: 16px;
+}
+.cj-lobby-start.is-ready .cj-lobby-start__go {
+  box-shadow: 0 12px 34px -10px rgba(255, 255, 255, 0.28);
+}
+.cj-lobby-start.is-starting .cj-lobby-start__go {
+  cursor: progress;
+}
+.cj-lobby-start__invite {
+  display: none;
+  flex: none;
+  min-height: 56px;
+  padding: 0 20px;
+  font-size: 15px;
+}
+.cj-lobby-start__note {
+  margin: 0;
+  color: var(--cj-text-dim);
+  font: 400 13px/1.5 var(--cj-font);
+  text-align: center;
+}
+.cj-lobby-start__note.is-reason {
+  color: var(--cj-text-strong);
+  font-weight: 500;
+}
+.cj-lobby-start__wait {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 48px;
+  margin: 0;
+  color: var(--cj-text-strong);
+  font: 500 14px/1.4 var(--cj-font);
+}
+.cj-lobby-start__wait .cj-live-dot {
+  flex: none;
+  animation: cj-lobby-breathe 2.4s ease-in-out infinite;
+}
+.cj-lobby-spin {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: cj-lobby-spin 0.8s linear infinite;
+}
+
+/* ---------- invite friends (the shared InviteFriends list, in the lobby's glass) ---------- */
+.cj-lobby-friends__guest {
+  margin: 0;
+  color: var(--cj-text-dim);
+  font: 400 14px/1.6 var(--cj-font);
+}
+.cj-lobby-friends__guest a {
+  color: var(--cj-text-strong);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.4);
+  text-underline-offset: 4px;
+}
+.cj-lobby .cj-lobby-friends :is(.lp-row) {
+  border: 0;
+  border-radius: var(--cj-r-card);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: var(--cj-ring);
+}
+.cj-lobby .cj-lobby-friends :is(.lp-row__name) {
+  color: var(--cj-text-strong);
+  font-family: var(--cj-font);
+  font-weight: 600;
+}
+.cj-lobby .cj-lobby-friends :is(.lp-row__sub, .lp-state__text, .lp-friendhead__count) {
+  color: var(--cj-text-dim);
+  font-family: var(--cj-font);
+}
+.cj-lobby .cj-lobby-friends .lp-state {
+  border: 0;
+  border-radius: var(--cj-r-card);
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: var(--cj-ring);
+}
+.cj-lobby .cj-lobby-friends .lp-state--empty {
+  outline: 1px dashed rgba(255, 255, 255, 0.24);
+  outline-offset: -1px;
+  box-shadow: none;
+}
+.cj-lobby .cj-lobby-friends .lp-state__title {
+  color: var(--cj-text-strong);
+  font: 600 16px/1.3 var(--cj-font);
+}
+.cj-lobby .cj-lobby-friends .lp-search__input {
+  min-height: 44px;
+  border: 0;
+  border-radius: var(--cj-r-card);
+  color: var(--cj-text-strong);
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ring);
+  font: 500 14px/1.2 var(--cj-font);
+}
+.cj-lobby .cj-lobby-friends :is(.lp-ibtn, .lp-addbtn) {
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  font: 600 13px/1 var(--cj-font);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.cj-lobby .cj-lobby-friends .lp-ibtn.is-idle {
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  box-shadow: none;
+}
+.cj-lobby .cj-lobby-friends .lp-dot {
+  background: var(--cj-live);
+}
+
+/* ---------- waiting for the room / the status screens ---------- */
+.cj-lobby-main--wait {
+  display: grid;
+  min-height: calc(100dvh - 80px);
+  place-items: center;
+}
+.cj-lobby-wait {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 32px 24px;
+  text-align: center;
+}
+.cj-lobby-wait .ho-loading {
+  color: var(--cj-text-strong);
+  font: 600 16px/1.4 var(--cj-font);
+}
+.cj-lobby--solo {
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+}
+.cj-lobby .cj-lobby-solo {
+  width: 100%;
+  max-width: 440px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  background: none;
+}
+.cj-lobby .cj-lobby-solo .ho-status {
+  padding: 28px 24px 24px;
+  border: 0;
+  border-radius: var(--cj-r-sheet);
+  color: var(--cj-text);
+  background: linear-gradient(180deg, rgba(30, 44, 36, 0.78), rgba(14, 18, 16, 0.9));
+  box-shadow: var(--cj-shadow-pop), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+  text-align: center;
+}
+.cj-lobby .cj-lobby-solo .ho-status::before,
+.cj-lobby .cj-lobby-solo .ho-status::after,
+.cj-lobby .cj-lobby-solo .st-eyebrow::before,
+.cj-lobby .cj-lobby-solo .st-eyebrow::after {
+  display: none;
+}
+.cj-lobby .cj-lobby-solo :is(.ho-status__body, .ho-status__title) {
+  text-align: center;
+}
+.cj-lobby .cj-lobby-solo .ho-status__icon {
+  border: 0;
+  border-radius: 14px;
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+}
+.cj-lobby .cj-lobby-solo .ho-status__title {
+  color: var(--cj-text-strong);
+  font: 700 24px/1.2 var(--cj-font);
+  letter-spacing: -0.01em;
+  text-transform: none;
+}
+.cj-lobby .cj-lobby-solo .ho-status__body {
+  color: var(--cj-text-dim);
+  font: 400 15px/1.6 var(--cj-font);
+}
+.cj-lobby .cj-lobby-solo .st-eyebrow {
+  color: var(--cj-text-faint);
+  font: 500 12px/1.3 var(--cj-font);
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+.cj-lobby .cj-lobby-solo .ho-btn {
+  min-height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: var(--cj-r-pill);
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  font: 600 14px/1 var(--cj-font);
+  letter-spacing: 0.01em;
+  text-transform: none;
+  transform: none;
+}
+.cj-lobby .cj-lobby-solo .ho-btn--primary,
+.cj-lobby .cj-lobby-solo .ho-btn--primary:hover {
+  color: var(--cj-ink);
+  background: var(--cj-pill);
+  box-shadow: none;
+}
+
+/* ---------- phones and portrait tablets: one column, Start fixed at the bottom in a glass bar ---------- */
+@media (max-width: 899px) {
+  .cj-lobby {
+    --cj-lobby-start-h: 128px;
+  }
+  .cj-lobby-main:not(.is-host) {
+    --cj-lobby-start-h: 84px;
+  }
+  .cj-lobby-page {
+    gap: 22px;
+  }
+  .cj-lobby-head {
+    align-items: flex-start;
+  }
+  .cj-lobby-start {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 40;
+    gap: 8px;
+    padding: 12px max(16px, var(--cj-gutter)) calc(12px + env(safe-area-inset-bottom, 0px));
+    border-radius: 22px 22px 0 0;
+    background: rgba(10, 18, 14, 0.72);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 -18px 40px -16px rgba(0, 0, 0, 0.6);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    backdrop-filter: blur(24px) saturate(160%);
+    animation: cj-lobby-bar-in 0.5s var(--cj-ease) 0.2s both;
+  }
+  .cj-lobby-start.is-host {
+    flex-direction: column-reverse; /* the reason reads above the pills */
+  }
+  .cj-lobby-start__invite {
+    display: inline-flex;
+  }
+  .cj-lobby-start__note {
+    font-size: 12px;
+  }
+  .cj-lobby .cj-lobby-start__go {
+    min-height: 52px;
+    font-size: 16px;
+  }
+  .cj-lobby-start__invite {
+    min-height: 52px;
+    padding: 0 18px;
+  }
+  /* toasts float above the bar */
+  .cj-lobby .hh-toasts {
+    bottom: calc(var(--cj-lobby-start-h) + env(safe-area-inset-bottom, 0px) + 8px);
+  }
+}
+@media (max-width: 559px) {
+  .cj-lobby-card,
+  :is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .ho-card,
+  :is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr.lr {
+    padding: 18px 16px;
+  }
+  :is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lr-pieces__row {
+    margin-inline: -16px;
+    padding-inline: 16px;
+    scroll-padding-inline: 16px;
+  }
+  .cj-lobby .cj-lobby-seatgrid .lt-seat {
+    min-height: 176px;
+  }
+  .cj-lobby .cj-lobby-seatgrid .lt-seat--empty .lt-seat__invite {
+    min-height: 176px;
+  }
+  .cj-lobby-code {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .cj-lobby-head__code {
+    width: 100%;
+  }
+  .cj-lobby .cj-lobby-head__meta {
+    gap: 6px 10px;
+    font-size: 14px;
+  }
+  .cj-lobby .cj-lobby-head__map :is(.mp-chip__k, .mp-chip__te) {
+    display: none;
+  }
+  :is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lp-ticket__code {
+    font-size: clamp(36px, 12vw, 48px);
+  }
+}
+
+/* ---------- motion ---------- */
+@keyframes cj-lobby-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes cj-lobby-seat {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes cj-lobby-bar-in {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes cj-lobby-breathe {
+  50% {
+    opacity: 0.45;
+  }
+}
+@keyframes cj-lobby-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lp-ticket.is-lit-0 {
+  animation: cj-lobby-lit 1s var(--cj-ease);
+}
+:is(.cj-lobby, .cj-rules-dialog) .cj-lobby-main .lp-ticket.is-lit-1 {
+  animation: cj-lobby-lit 1s var(--cj-ease) 0s 1 normal both running;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cj-lobby :is(.cj-lobby-head, .cj-lobby-side > *, .cj-lobby-start, .cj-lobby-start__go, .lt-seat, .cj-live-dot, .lp-ticket, .cj-lobby-code, .lr-piece, .cj-lobby-bar__back) {
+    animation: none !important;
+    transition: none !important;
+  }
+  .cj-lobby-spin {
+    animation-duration: 2.4s;
+  }
+}
+:root[data-motion='reduced'] .cj-lobby :is(.cj-lobby-head, .cj-lobby-side > *, .cj-lobby-start, .cj-lobby-start__go, .lt-seat, .cj-live-dot, .lp-ticket, .cj-lobby-code, .lr-piece, .cj-lobby-bar__back) {
+  animation: none !important;
+  transition: none !important;
+}
+:root[data-motion='reduced'] .cj-lobby-spin {
+  animation-duration: 2.4s;
+}
+
+/* ---------- host: how many seats (SeatStepper) ---------- */
+.cj-lobby-card__tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.cj-seatstep {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+}
+.cj-seatstep__label {
+  margin-right: 2px;
+  color: var(--cj-text-dim, rgba(255, 255, 255, 0.62));
+  font: 500 12px/1 var(--cj-font);
+}
+.cj-seatstep__btn {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--cj-text-strong);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  cursor: pointer;
+  transition: background-color var(--cj-dur) var(--cj-ease), opacity var(--cj-dur) var(--cj-ease);
+}
+.cj-seatstep__btn:hover:not(:disabled) {
+  background: var(--cj-glass-3, rgba(255, 255, 255, 0.2));
+}
+.cj-seatstep__btn:focus-visible {
+  outline: 2px solid var(--cj-pill, #fff);
+  outline-offset: 2px;
+}
+.cj-seatstep__btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.cj-seatstep__val {
+  min-width: 1.4ch;
+  color: var(--cj-text-strong);
+  font: 600 14px/1 var(--cj-font);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+@media (pointer: coarse) {
+  .cj-seatstep__btn {
+    width: 44px;
+    height: 44px;
+  }
+}

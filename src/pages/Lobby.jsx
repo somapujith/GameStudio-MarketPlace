@@ -31,21 +31,21 @@ import InviteFriends from '@/components/online/InviteFriends.jsx';
 import MapTag from '@/components/online/MapTag.jsx';
 import PlayAgain, { RematchBanner } from '@/components/online/PlayAgain.jsx';
 import Seat, { EmptySeat } from '@/components/online/Seat.jsx';
+import SeatStepper from '@/components/online/SeatStepper.jsx';
 import SettingsPanel from '@/components/online/SettingsPanel.jsx';
 import { InviteTicket } from '@/components/online/ShareCard.jsx';
 import ShareSheet from '@/components/online/ShareSheet.jsx';
 import StatusPanel, { Loading } from '@/components/online/StatusPanel.jsx';
 import { useToasts } from '@/components/online/Toasts.jsx';
 import HubIcon from '@/platform/game/HubIcon.jsx';
-import { HubBackdrop, HubLogo } from '@/platform/game/hubArt.jsx';
+import { HubLogo } from '@/platform/game/hubArt.jsx';
 import { themeVars as gameVars } from '@/platform/game/color.js';
+import { publisherArt } from '@/platform/browse/publisherArt.js';
 import LobbyTour from '@/components/tour/LobbyTour.jsx';
 import PiecePicker from '@/platform/game/PiecePicker.jsx';
 import '@/styles/online.css';
-import '@/styles/x-lobby.css';
-import '@/styles/store-rooms.css';
-import '@/styles/lobby-shell.css';
-import '@/styles/lobby-invite.css';
+import '@/styles/cine.css';
+import '@/styles/cine/lobby.css';
 
 const PIECE_SETTLE = 4000; // ms: no answer to a piece pick -> show what the server says again
 
@@ -60,23 +60,25 @@ function themeVars(game) {
 }
 
 /**
- * The lobby is a full-screen route (no tab bar, so nobody leaves by accident). `.hub-app` keeps the Jalebi poster skin
- * (online.css "Lobby: two-sided panel") on it; `.ls-page` brings the hub's backdrop and the lobby's own top bar.
+ * The lobby is a full-screen route (no tab bar, so nobody leaves by accident). It wears the cine skin
+ * (docs/CINE_UI.md, styles/cine/lobby.css): everything is scoped under `.cj-lobby`, over a blurred ambient backdrop of
+ * the game's own art.
  */
-function Shell({ style, children }) {
+function Shell({ style, game = null, children }) {
   return (
-    <div className="hub-app hub-app--lobby ls-page" style={style}>
-      <Backdrop />
+    <div className="hub-app hub-app--lobby cj-lobby" style={style}>
+      <Ambient game={game} />
       {children}
     </div>
   );
 }
 
-/** Terminal / gating states (bad code, opening, match over, kicked, lost connection): one centred panel. */
+/** Terminal / gating states (bad code, opening, match over, kicked, lost connection): one centred glass panel. */
 function Solo({ children }) {
   return (
-    <div className="hub-app hub-app--lobby">
-      <div className="hub-page st-scope sr-solo">{children}</div>
+    <div className="hub-app hub-app--lobby cj-lobby cj-lobby--solo">
+      <Ambient />
+      <div className="hub-page st-scope sr-solo cj-lobby-solo">{children}</div>
     </div>
   );
 }
@@ -116,57 +118,48 @@ export default function Lobby() {
   return <LobbyInner code={code} user={user} />;
 }
 
-/** The same soft glow as behind Home (the lobby is full screen, so it brings its own copy of the hub backdrop). */
-function Backdrop() {
+/**
+ * The calm ambient field behind the lobby (like the reference's "My Lists" page): the cine green glow, with the game's
+ * own painted cover blurred far out of focus over it when it has one.
+ */
+function Ambient({ game = null }) {
+  const art = game ? publisherArt(game) : null;
   return (
-    <div className="hub-backdrop ls-backdrop" aria-hidden="true">
-      <HubBackdrop />
-      <div className="hub-backdrop__shade" />
+    <div className="cj-ambient cj-lobby-ambient" aria-hidden="true">
+      {art && <img className="cj-lobby-ambient__art" src={art.src} alt="" decoding="async" />}
+      <div className="cj-lobby-ambient__shade" />
     </div>
   );
 }
 
 /**
- * The hub's top bar in the lobby's own words: logo (home), "Home / <Game> / Table ABCD", the tour "?" and Leave.
- * The logo and crumbs only walk away; Leave asks.
+ * The lobby's top bar, like the reference's title page: a back arrow (to the game's page) and the small Jalebi logo
+ * (home) on the left; the tour "?" and Leave on the right. The arrow and logo only walk away; Leave asks.
  */
-function TopBar({ game, gName, code, backTo, onLeave, isHost, alone, tour = null }) {
+function TopBar({ game, gName, backTo, onLeave, isHost, alone, tour = null }) {
   return (
-    <header className="ls-bar">
-      <div className="ls-bar__in">
-        <Link to={paths.hub()} className="ls-bar__logo" aria-label={`${BRAND.name}, home`}>
-          <HubLogo size={30} />
+    <header className="cj-lobby-bar">
+      <div className="cj-lobby-bar__start">
+        <Link to={backTo} className="cj-lobby-bar__back" aria-label={game ? `Back to ${gName}` : 'Back to the games'}>
+          <HubIcon name="arrowL" size={24} />
         </Link>
-        <nav className="ls-crumbs" aria-label="Breadcrumb">
-          <ol>
-            <li className="ls-crumbs__home">
-              <Link to={paths.hub()}>Home</Link>
-            </li>
-            <li className="ls-crumbs__game">
-              <Link to={backTo}>
-                <HubIcon name="chevL" size={16} className="ls-crumbs__chev" />
-                <span>{game ? gName : 'Games'}</span>
-              </Link>
-            </li>
-            <li className="ls-crumbs__here" aria-current="page">
-              Table {code}
-            </li>
-          </ol>
-        </nav>
-        <div className="ls-bar__end">
-          {tour}
-          {onLeave && (
-            <button type="button" className="ho-btn ho-btn--ghost ho-btn--sm ls-bar__leave" onClick={onLeave} data-tour="lobby-leave">
-              <HubIcon name="door" size={18} /> <span>{isHost && alone ? 'Close table' : 'Leave table'}</span>
-            </button>
-          )}
-        </div>
+        <Link to={paths.hub()} className="cj-lobby-bar__logo" aria-label={`${BRAND.name}, home`}>
+          <HubLogo size={40} compact />
+        </Link>
+      </div>
+      <div className="cj-lobby-bar__end">
+        {tour}
+        {onLeave && (
+          <button type="button" className="cj-btn cj-btn--sm cj-lobby-bar__leave" onClick={onLeave} data-tour="lobby-leave">
+            <HubIcon name="door" size={18} /> <span>{isHost && alone ? 'Close table' : 'Leave table'}</span>
+          </button>
+        )}
       </div>
     </header>
   );
 }
 
-/** The compact code chip in the masthead ("Code ABC 234", tap to copy). The code is big in one place: the invite ticket. */
+/** The compact code chip in the page head ("Room ABC 234 Copy", tap to copy). The code is big in one place: the invite ticket. */
 function CodeChip({ code, onNotify }) {
   const [copied, copy] = useCopied();
   const spoken = String(code).split('').join(' ');
@@ -174,15 +167,21 @@ function CodeChip({ code, onNotify }) {
     <>
       <button
         type="button"
-        className={`ho-qhead__code${copied ? ' is-copied' : ''}`}
+        className={`cj-lobby-code${copied ? ' is-copied' : ''}`}
         data-tour="lobby-code"
         aria-label={`Room code ${spoken}. Tap to copy.`}
         onClick={async () => {
           if (!(await copy(code)) && onNotify) onNotify('Could not copy. Select the code and copy it manually.', 'bad');
         }}
       >
-        <span aria-hidden="true">{spacedCode(code)}</span>
-        <span className="ho-qhead__copy" aria-hidden="true">
+        <span className="cj-lobby-code__k" aria-hidden="true">
+          Room
+        </span>
+        <span className="cj-lobby-code__v" aria-hidden="true">
+          {spacedCode(code)}
+        </span>
+        <span className="cj-lobby-code__copy" aria-hidden="true">
+          <HubIcon name={copied ? 'check' : 'copy'} size={15} />
           {copied ? 'Copied' : 'Copy'}
         </span>
       </button>
@@ -193,10 +192,10 @@ function CodeChip({ code, onNotify }) {
   );
 }
 
-/** "Invite" in the Start card: phones and portrait tablets (from 900px the invite ticket sits in view beside it). */
+/** "Invite" in the Start bar: phones and portrait tablets (from 900px the invite ticket sits in view beside it). */
 function InviteButton({ onInvite }) {
   return (
-    <button type="button" className="ho-btn ho-btn--ghost ls-start__invite ho-startcard__invite" onClick={onInvite} aria-label="Invite players">
+    <button type="button" className="cj-btn cj-btn--lg ls-start__invite cj-lobby-start__invite" onClick={onInvite} aria-label="Invite players">
       <HubIcon name="share" size={18} /> <span>Invite</span>
     </button>
   );
@@ -309,12 +308,12 @@ function LobbyInner({ code, user }) {
   if (!room) {
     return (
       <Shell>
-        <TopBar game={null} gName="Lobby" code={code} backTo={paths.hub()} />
-        <main className="ls-main ho-lobby-main" aria-busy="true">
-          <div className="ho-page ho-lobby">
+        <TopBar game={null} gName="Lobby" backTo={paths.hub()} />
+        <main className="cj-lobby-main cj-lobby-main--wait" aria-busy="true">
+          <div className="cj-lobby-wait">
             <Loading text="Joining the room..." />
-            <div className="ho-lobby__wait-chip">{chip}</div>
-            <button type="button" className="ho-btn ho-btn--ghost ho-lobby__cancel" onClick={() => navigate(paths.hub())}>
+            <div className="cj-lobby-wait__chip">{chip}</div>
+            <button type="button" className="cj-btn cj-lobby-wait__cancel" onClick={() => navigate(paths.hub())}>
               Cancel
             </button>
           </div>
@@ -394,11 +393,10 @@ function LobbyInner({ code, user }) {
   const seatsOpen = emptySeats > 0 ? `${emptySeats} ${emptySeats === 1 ? 'seat' : 'seats'} open` : 'Table full';
 
   return (
-    <Shell style={vars}>
+    <Shell style={vars} game={game}>
       <TopBar
         game={game}
         gName={gName}
-        code={code}
         backTo={game ? paths.game(gameId) : paths.hub()}
         onLeave={askLeave}
         isHost={isHost}
@@ -406,26 +404,38 @@ function LobbyInner({ code, user }) {
         tour={<LobbyTour isHost={isHost} ready={open && !!game} />}
       />
 
-      <main className="ls-main ho-lobby-main">
-        <div className="ho-page ho-lobby ho-lobby--quick">
-          <header className="ho-qhead" data-tour="lobby-header">
-            <GameIcon game={game} name={gName} size={48} className="ho-qhead__icon" />
-            <div className="ho-qhead__main">
-              <h1 className="ho-h1">{gName}</h1>
-              <p className="ho-muted">
-                {hostName ? `${hostName}'s table` : 'Your table'} <span aria-hidden="true">&middot;</span> Room <CodeChip code={code} onNotify={push} />
-              </p>
-              {hasMaps && <MapTag value={room.settings || {}} className="ho-qhead__map" />}
+      <main className={`cj-lobby-main${isHost ? ' is-host' : ''}`}>
+        <div className="cj-lobby-page">
+          <header className="cj-lobby-head" data-tour="lobby-header">
+            <div className="cj-lobby-head__main">
+              <h1 className="cj-pagehead__title cj-lobby-head__title">{hostName ? `${hostName}'s table` : 'Your table'}</h1>
+              <ul className="cj-meta cj-lobby-head__meta">
+                <li className="cj-lobby-head__game">
+                  <GameIcon game={game} name={gName} size={22} className="cj-lobby-head__icon" />
+                  <span>{gName}</span>
+                </li>
+                {hasMaps && (
+                  <li>
+                    <MapTag value={room.settings || {}} className="cj-lobby-head__map" />
+                  </li>
+                )}
+                <li className="cj-lobby-head__count">
+                  Players {Math.min(joined, maxPlayers)}/{maxPlayers}
+                </li>
+                <li className="cj-lobby-head__conn" data-tour="lobby-connection">
+                  {chip}
+                </li>
+              </ul>
             </div>
-            <div className="ho-qhead__conn" data-tour="lobby-connection">
-              {chip}
+            <div className="cj-lobby-head__code">
+              <CodeChip code={code} onNotify={push} />
             </div>
           </header>
 
           {!game && (
-            <div className="ho-banner ho-banner--warn" role="status">
+            <div className="cj-lobby-banner" role="status">
               <span>This game is not available in this version of the app. Reload to update, or leave the room.</span>
-              <button type="button" className="ho-btn ho-btn--ghost ho-btn--sm" onClick={() => window.location.reload()}>
+              <button type="button" className="cj-btn cj-btn--sm" onClick={() => window.location.reload()}>
                 Reload
               </button>
             </div>
@@ -433,34 +443,46 @@ function LobbyInner({ code, user }) {
 
           <RematchBanner from={rematch} players={players} meId={user.id} />
 
-          <div className="ho-lobby__cols">
-            <div className="ho-col ho-lobby__side ho-lobby__side--people">
+          <div className="ho-lobby__cols cj-lobby-cols">
+            <div className="ho-lobby__side ho-lobby__side--people cj-lobby-side">
               {/* the invite: the room code big on a ticket; Share invite opens the lobby's one share-link sheet (link, QR, WhatsApp) */}
-              <section className="ho-card ho-share ho-ticketcard" id="sr-invite" tabIndex={-1} aria-labelledby="ho-invite-h">
-                <div className="ho-card__head">
-                  <h2 id="ho-invite-h" className="ho-h2">
+              <section className="cj-lobby-card cj-lobby-invite" id="sr-invite" tabIndex={-1} aria-labelledby="ho-invite-h">
+                <div className="cj-lobby-card__head">
+                  <h2 id="ho-invite-h" className="cj-lobby-card__title">
                     Invite
                   </h2>
-                  <span className="ho-muted">{seatsOpen}</span>
+                  <span className="cj-lobby-card__aside">{seatsOpen}</span>
                 </div>
                 <InviteTicket code={code} gameName={gName} onNotify={push} onShare={inviteSomeone} highlight={inviteLit} />
               </section>
 
-              <section className="ho-card ho-seats" aria-labelledby="ho-seats-h" data-tour="lobby-seats">
-                <div className="ho-card__head">
-                  <h2 id="ho-seats-h" className="ho-h2">
+              <section className="cj-lobby-card cj-lobby-seats" aria-labelledby="ho-seats-h" data-tour="lobby-seats">
+                <div className="cj-lobby-card__head">
+                  <h2 id="ho-seats-h" className="cj-lobby-card__title">
                     Players
                   </h2>
-                  <span className={`ho-count${full ? ' is-full' : ''}`} aria-live="polite">
-                    {joinedLabel(joined, maxPlayers)}
-                  </span>
+                  <div className="cj-lobby-card__tools">
+                    {isHost && (
+                      <SeatStepper
+                        value={maxPlayers}
+                        joined={joined}
+                        min={minToStart}
+                        max={bounds.max || maxPlayers}
+                        disabled={!open || starting}
+                        onChange={(n) => send({ t: 'settings', settings: { maxPlayers: n } }, { queue: false })}
+                      />
+                    )}
+                    <span className={`cj-lobby-count${full ? ' is-full' : ''}`} aria-live="polite">
+                      {joinedLabel(joined, maxPlayers)}
+                    </span>
+                  </div>
                 </div>
-                <div className="ho-progress ho-progress--seats" role="progressbar" aria-label="Seats taken" aria-valuemin={0} aria-valuemax={maxPlayers} aria-valuenow={Math.min(joined, maxPlayers)}>
+                <div className="cj-lobby-progress" role="progressbar" aria-label="Seats taken" aria-valuemin={0} aria-valuemax={maxPlayers} aria-valuenow={Math.min(joined, maxPlayers)}>
                   {Array.from({ length: maxPlayers }, (_, i) => (
                     <span key={i} className={i < joined ? 'is-on' : undefined} />
                   ))}
                 </div>
-                <ul className="ho-seatgrid" data-seats={seats.length + openSlots}>
+                <ul className="cj-lobby-seatgrid" data-seats={seats.length + openSlots}>
                   {seats.map(({ key, player: p, leaving }) => {
                     const me = sameId(p.id, user.id);
                     const i = players.findIndex((q) => sameId(q.id, p.id));
@@ -487,40 +509,40 @@ function LobbyInner({ code, user }) {
               </section>
             </div>
 
-            <div className="ho-col ho-lobby__side ho-lobby__side--control">
+            <div className="ho-lobby__side ho-lobby__side--control cj-lobby-side">
               {choices.length > 0 && (
-                <div className="ho-lobby__pieces" data-tour="lobby-pieces">
+                <div className="cj-lobby-pieces" data-tour="lobby-pieces">
                   <PiecePicker choices={choices} color={myColor} onPick={choosePiece} disabled={!open} pending={!!pending} me={{ name: user.name, avatar: (players[myIndex] || user).avatar }} />
                 </div>
               )}
 
-              <div className="ho-lobby__settings" data-tour="lobby-settings">
+              <div className="cj-lobby-settings" data-tour="lobby-settings">
                 <SettingsPanel game={game} settings={room.settings} isHost={isHost} disabled={!open || starting} errorId={errorId} error={error} onSend={(msg) => send(msg, { queue: false })} />
               </div>
 
-              <section className={`ho-card ho-startcard${canStart ? ' is-ready' : ''}${starting ? ' is-starting' : ''}`} aria-label="Start" data-tour="lobby-start">
+              <section className={`cj-lobby-start${isHost ? ' is-host' : ''}${canStart ? ' is-ready' : ''}${starting ? ' is-starting' : ''}`} aria-label="Start" data-tour="lobby-start">
                 {isHost ? (
                   <>
-                    <div className="ho-startcard__row">
+                    <div className="cj-lobby-start__row">
                       <InviteButton onInvite={inviteSomeone} />
                       <button
                         type="button"
-                        className={`ho-btn ho-btn--primary ho-btn--lg ho-btn--block${full && canStart ? ' ho-btn--full' : ''}`}
+                        className={`cj-btn cj-btn--primary cj-btn--lg cj-btn--block cj-lobby-start__go${full && canStart ? ' is-full' : ''}`}
                         onClick={start}
                         disabled={!canStart}
                         aria-describedby="ho-start-note"
                       >
-                        {starting && <span className="ho-spinner" aria-hidden="true" />} {startLabel}
+                        {starting ? <span className="cj-lobby-spin" aria-hidden="true" /> : <HubIcon name="play" size={18} />} {startLabel}
                       </button>
                     </div>
-                    <p id="ho-start-note" className={`ho-help${reason ? ' is-reason' : ''}`} aria-live="polite">
+                    <p id="ho-start-note" className={`cj-lobby-start__note${reason ? ' is-reason' : ''}`} aria-live="polite">
                       {reason || startHelp}
                     </p>
                   </>
                 ) : (
-                  <div className="ho-startcard__row">
-                    <p className="ho-waiting" role="status" aria-live="polite">
-                      {open ? <i className="st-live" aria-hidden="true" /> : <span className="ho-spinner" aria-hidden="true" />}{' '}
+                  <div className="cj-lobby-start__row">
+                    <p className="cj-lobby-start__wait" role="status" aria-live="polite">
+                      {open ? <i className="cj-live-dot" aria-hidden="true" /> : <span className="cj-lobby-spin" aria-hidden="true" />}{' '}
                       <span>{open ? waitingText({ need, hostName }) : 'Reconnecting to the room...'}</span>
                     </p>
                     <InviteButton onInvite={inviteSomeone} />
@@ -528,14 +550,14 @@ function LobbyInner({ code, user }) {
                 )}
               </section>
 
-              <section className="ho-card ho-invitefriends" aria-labelledby="ho-friends-h" data-tour="lobby-friends">
-                <div className="ho-card__head">
-                  <h2 id="ho-friends-h" className="ho-h2">
+              <section className="cj-lobby-card cj-lobby-friends" aria-labelledby="ho-friends-h" data-tour="lobby-friends">
+                <div className="cj-lobby-card__head">
+                  <h2 id="ho-friends-h" className="cj-lobby-card__title">
                     Invite friends
                   </h2>
                 </div>
                 {user.isGuest ? (
-                  <p className="ho-help ho-qguest">
+                  <p className="cj-lobby-friends__guest">
                     Friends need an account. <Link to={paths.login(paths.lobby(code))}>Sign in with Google</Link> to invite them in one tap, or share the code above.
                   </p>
                 ) : (
