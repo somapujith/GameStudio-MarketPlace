@@ -26,7 +26,11 @@ import { createAmbience } from './ambience.js';
 import { createVoiceLimiter, soundsForEvent, soundsForMove } from './mapping.js';
 import { layerLevels, hourOfState, busyOfState } from './mix.js';
 import { createTiffinHaptics } from './haptics.js';
+import { createTiffinSpeech } from './speech.js';
+import { createCrowd } from './crowd.js';
 
+export { createTiffinSpeech, getVoicesEnabled, setVoicesEnabled, subscribeVoices, VOICES_KEY } from './speech.js';
+export { crowdHandle, createCrowd } from './crowd.js';
 export { soundsForEvent, soundsForMove, createVoiceLimiter } from './mapping.js';
 export { layerLevels, daypartWeights } from './mix.js';
 export { hapticFor, HAPTIC_PATTERNS, createTiffinHaptics } from './haptics.js';
@@ -70,6 +74,8 @@ export function createTiffinAudio({
   doc = typeof document !== 'undefined' ? document : null,
   buzz,
   haptics = true,
+  speech: speechOptions = {}, // options of createTiffinSpeech (synth, onStart, onEnd, ...) or a ready speech object
+  crowd: crowdEnabled = true, // the murmur of waiting customers and the "tsk / hmph / mmm" vocalisations
 } = {}) {
   const factory = getAudioContext || defaultContextFactory;
   const ownsContext = !getAudioContext;
@@ -81,6 +87,8 @@ export function createTiffinAudio({
   let ctx = null;
   let nodes = null; // { sfxBus, ambBus, group, master, comp, shaper }
   let ambience = null;
+  let crowd = null;
+  let speech = null; // created on first use (the browser's speechSynthesis is only touched when a line is spoken)
   let unlocked = false;
   let disposed = false;
   let muted = false;
@@ -146,6 +154,16 @@ export function createTiffinAudio({
     shaper.connect(ctx.destination);
     nodes = { sfxBus, ambBus, group, master, comp, shaper };
     ambience = createAmbience({ ctx, dest: ambBus, now, timers, rng });
+    if (crowdEnabled) crowd = createCrowd({ ctx, dest: ambBus, vocalDest: sfxBus, now, timers, rng });
+  }
+
+  function getSpeech() {
+    if (!speech) {
+      const ready = speechOptions && typeof speechOptions.speak === 'function';
+      speech = ready ? speechOptions : createTiffinSpeech({ getSettings: settings, ...speechOptions });
+      speech.setVolume?.(localVolume);
+    }
+    return speech;
   }
 
   function resume() {
@@ -259,7 +277,11 @@ export function createTiffinAudio({
       installLifecycle();
       applyLevels();
       applyAmbience();
-      if (wantAmbience) ambience.start();
+      if (wantAmbience) {
+        ambience.start();
+        crowd?.start();
+      }
+      getSpeech().unlock?.(); // iOS only speaks after a gesture: this is one
       return true;
     },
     isUnlocked: () => unlocked,
@@ -268,11 +290,13 @@ export function createTiffinAudio({
     setMuted(b) {
       muted = !!b;
       applyLevels();
+      if (muted) speech?.cancel();
     },
     isMuted: () => effectivelyMuted(),
     setVolume(v) {
       localVolume = clamp01(v);
       applyLevels();
+      speech?.setVolume?.(localVolume);
     },
     setMe(id) {
       me = id;
@@ -290,6 +314,7 @@ export function createTiffinAudio({
       for (const ev of list) {
         for (const item of soundsForEvent(ev, { meId: me, state })) if (play(item)) started++;
       }
+      if (crowd && !effectivelyMuted()) crowd.handle(list, state); // tsk / hmph / mmm / laugh: not counted in `started`
       if (haptics) hapt.handle(list);
       if (list.some((e) => e && (e.type === 'shift-end' || e.type === 'life-lost'))) duckAmbience();
       return started;
@@ -301,6 +326,7 @@ export function createTiffinAudio({
       void tickAt;
       hour = hourOfState(state);
       busy = busyOfState(state);
+      if (unlocked) crowd?.update(state); // the murmur follows how many customers wait
       if (lastHour === null || Math.abs(hour - lastHour) >= HOUR_EPS || Math.abs(busy - (lastBusy ?? 0)) >= BUSY_EPS) applyAmbience();
       const players = state.players && typeof state.players === 'object' ? state.players : {};
       for (const [id, p] of Object.entries(players)) {
@@ -321,18 +347,43 @@ export function createTiffinAudio({
       if (unlocked && ambience && !disposed) {
         applyAmbience();
         ambience.start();
+        crowd?.start();
       }
     },
     stopAmbience() {
       wantAmbience = false;
       ambience?.stop();
+      crowd?.stop();
     },
     isAmbienceOn: () => !!ambience?.isRunning(),
+
+    /**
+     * A customer's spoken line ({ id, text, lang: 'te'|'hi'|'dk', mood, ttlMs, customer }) through the browser's speech voices.
+     * Returns false when it will not be spoken (Voices off, muted, no voice for that language): show the subtitle instead.
+     */
+    speak(utterance) {
+      if (disposed || muted || !hubSettings().sfx) return false;
+      try {
+        return getSpeech().speak(utterance);
+      } catch {
+        return false;
+      }
+    },
+    /** The 'Voices' switch of this session (persist it with setVoicesEnabled; the speech object also follows that by itself). */
+    setSpeechEnabled(b) {
+      getSpeech().setEnabled(!!b);
+    },
+    cancelSpeech: (customerId) => speech?.cancel(customerId),
+    setSpeechPaused: (b) => getSpeech().setPaused?.(!!b),
+    isSpeechAvailable: (lang) => getSpeech().isAvailable(lang),
+    getSpeech,
 
     dispose() {
       if (disposed) return;
       disposed = true;
       try {
+        speech?.dispose?.();
+        crowd?.dispose();
         ambience?.dispose();
         unsubSettings?.();
         if (visHandler && doc) doc.removeEventListener('visibilitychange', visHandler);
