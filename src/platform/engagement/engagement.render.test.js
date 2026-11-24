@@ -71,7 +71,7 @@ describe('AchievementsView', () => {
     expect(out).toContain('id="achievements"');
     expect(out).toContain('3 / 11 unlocked');
     for (const label of ['Play', 'Streaks', 'Nawabi Raj', 'Friends']) expect(out).toContain(`>${label}`);
-    expect((out.match(/jg-ach is-unlocked/g) || []).length).toBe(3);
+    expect((out.match(/cj-pro-ach is-unlocked/g) || []).length).toBe(3);
     expect(out).toContain('Unlocked <time dateTime=');
     expect(out).toContain('12 Nov 2026');
     const bars = out.match(/role="progressbar"[^>]*/g) || [];
@@ -80,8 +80,8 @@ describe('AchievementsView', () => {
   });
   it('reward chips: coins and the cosmetic drawn with the shop art', () => {
     const out = html(h(AchievementsView, { data: achData, status: 'ok', signedIn: true, avatar: 2 }));
-    expect(out).toContain('jg-reward--coins');
-    expect(out).toContain('jg-reward--item');
+    expect(out).toContain('cj-pro-reward--coins');
+    expect(out).toContain('cj-pro-reward--item');
     expect(out).toContain('Streak Flame');
     expect(out).toContain('Champion title'); // spoken label of the title reward
   });
@@ -89,11 +89,11 @@ describe('AchievementsView', () => {
     const data = { ...achData, achievements: achievements.map((a) => ({ ...a, progress: null, unlocked: false, unlockedAt: null })), unlocked: 0 };
     const out = html(h(AchievementsView, { data, status: 'ok', signedIn: false }));
     expect(out).toContain('Sign in to track your progress');
-    expect(out).not.toContain('jg-ach__bar');
+    expect(out).not.toContain('cj-pro-ach__bar');
     expect(out).not.toContain('unlocked</b>');
   });
   it('loading and error states', () => {
-    expect(html(h(AchievementsView, { status: 'loading' }))).toContain('jg-ach--skel');
+    expect(html(h(AchievementsView, { status: 'loading' }))).toContain('cj-pro-ach--skel');
     const err = html(h(AchievementsView, { status: 'error', onRetry() {} }));
     expect(err).toContain('Could not load achievements');
     expect(err).toContain('Try again');
@@ -135,7 +135,7 @@ describe('SeasonCard', () => {
   const season = { id: 's', name: 'Diwali Season', startsAt: at(10, 0), endsAt: at(24, 17, 30), status: 'active', prizeTiers: [{ fromRank: 1, toRank: 1, coins: 5000, itemId: 'title-season-champ', itemName: 'Season Champion' }, { fromRank: 2, toRank: 3, coins: 2500 }, { fromRank: 4, toRank: 10, coins: 1000, itemId: 'frame-season', itemName: 'Season Laurel' }] };
   it('active: status, a polite countdown, the name and the prize tiers with art', () => {
     const out = html(h(SeasonCard, { season, now: NOW, avatar: 2 }));
-    expect(out).toContain('leader-record leader-season');
+    expect(out).toContain('cj-lb-season');
     expect(out).toContain('Live');
     expect(out).toMatch(/aria-live="polite"[^>]*>.*Ends in 4d 7h/);
     expect(out).toContain('Ends in 4 days 7 hours');
@@ -155,7 +155,7 @@ describe('Leaderboard: Season tab', () => {
     const out = html(h(Leaderboard), { path: '/leaderboard?tab=season', auth: { user: member } });
     expect(out).toMatch(/<button[^>]*role="tab"[^>]*id="hh2-tab-season"[^>]*aria-selected="true"/);
     expect(out).toMatch(/role="tabpanel"[^>]*aria-labelledby="hh2-tab-season"/);
-    expect(out).toContain('leader-cinema--season');
+    expect(out).toContain('cj-lb--season');
   });
   it('the Overall tab is unchanged and Season is not selected there', () => {
     const out = html(h(Leaderboard), { path: '/leaderboard', auth: { user: member } });
@@ -201,7 +201,7 @@ describe('Shop cards for limited and reward items', () => {
   const card = (item, over = {}) => html(h('ul', null, h(ItemCard, { item, i: 0, equipped: {}, selected: false, coins: 99999, signedIn: true, offline: false, busy: false, buying: false, fresh: false, avatar: 2, preview: null, now: NOW, onSelect() {}, onBuy() {}, onEquip() {}, ...over })));
   it('a live limited item: ribbon, countdown, a Buy button', () => {
     const out = card(byId('frame-diwali'));
-    expect(out).toContain('jg-shop-ribbon');
+    expect(out).toContain('cj-shop-limited');
     expect(out).toContain('Limited');
     expect(out).toContain('Ends in 2d 13h');
     expect(out).toContain('aria-live="polite"');

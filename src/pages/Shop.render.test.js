@@ -18,7 +18,7 @@ describe('ItemCard', () => {
   it('renders every kind (voice included) without throwing', () => {
     for (const kind of COSMETIC_KINDS) {
       const out = html(h('ul', null, card(firstOf(kind), { preview: kind === 'voice' ? { playingId: null, toggle() {} } : null })));
-      expect(out).toContain('xp-item');
+      expect(out).toContain('cj-shop-item');
       expect(out).toContain(firstOf(kind).name);
     }
   });
@@ -32,14 +32,14 @@ describe('ItemCard', () => {
   it('legendary cards carry the rarity class, the badge, the glints and a gold Buy', () => {
     const item = firstOf('trail', 'legendary');
     const out = html(h('ul', null, card(item)));
-    expect(out).toContain('xp-item--legendary');
-    expect(out).toContain('xp-rarity--legendary');
+    expect(out).toContain('cj-shop-item--legendary');
+    expect(out).toContain('cj-shop-rarity--legendary');
     expect(out).toContain('Legendary');
-    expect(out).toContain('xz-glints');
-    expect(out).toContain('hub-btn--primary');
+    expect(out).toContain('cj-shop-glints');
+    expect(out).toContain('cj-btn--primary');
   });
   it('other rarities have no glints', () => {
-    expect(html(h('ul', null, card(firstOf('trail', 'epic'))))).not.toContain('xz-glints');
+    expect(html(h('ul', null, card(firstOf('trail', 'epic'))))).not.toContain('cj-shop-glints');
   });
   it('a legendary dice card still renders its swatch', () => {
     expect(html(h('ul', null, card(firstOf('dice', 'legendary'))))).toContain('<svg');

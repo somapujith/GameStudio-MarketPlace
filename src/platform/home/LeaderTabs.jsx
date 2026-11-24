@@ -1,23 +1,23 @@
 import { useEffect, useRef } from 'react';
-import HubIcon from '@/platform/game/HubIcon.jsx';
-import { GameIcon } from './GameArt.jsx';
 
 /**
- * Overall + one tab per live game, as signage pills with the game's icon, then any `extra` tabs (`{ id, label, icon }`,
- * e.g. the Season race). WAI-ARIA tabs: roving tabindex, arrow keys / Home / End. The row scrolls sideways on phones
- * and keeps the active tab in view.
+ * Overall + one tab per live game, then any `extra` tabs (`{ id, label }`, e.g. the Season race), drawn as the dim
+ * sibling tabs of a cine page head (`.cj-pagehead__tab`: the selected one turns white). WAI-ARIA tabs: roving
+ * tabindex, arrow keys / Home / End. The row scrolls sideways on phones and keeps the active tab in view.
  */
 export default function LeaderTabs({ games, value, onChange, panelId, extra = [] }) {
   const list = useRef(null);
   const tabs = [
     { id: 'overall', label: 'Overall', game: null },
     ...games.map((g) => ({ id: g.id, label: g.name, game: g })),
-    ...extra.map((t) => ({ id: t.id, label: t.label, game: null, icon: t.icon })),
+    ...extra.map((t) => ({ id: t.id, label: t.label, game: null })),
   ];
 
   useEffect(() => {
-    const el = list.current?.querySelector('[aria-selected="true"]');
-    if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest', inline: 'center' });
+    const row = list.current;
+    const el = row?.querySelector('[aria-selected="true"]');
+    // scroll the tab row itself (never the page): the leaderboard fits the viewport
+    if (row && el && row.scrollWidth > row.clientWidth) row.scrollTo?.({ left: el.offsetLeft - (row.clientWidth - el.offsetWidth) / 2 });
   }, [value]);
 
   const onKeyDown = (e) => {
@@ -34,7 +34,7 @@ export default function LeaderTabs({ games, value, onChange, panelId, extra = []
   };
 
   return (
-    <div className="hub-row hub-row--tight hh2-tabs" role="tablist" aria-label="Leaderboard" ref={list} onKeyDown={onKeyDown}>
+    <div className="cj-lb-tabs" role="tablist" aria-label="Leaderboard" ref={list} onKeyDown={onKeyDown}>
       {tabs.map((t) => {
         const on = t.id === value;
         return (
@@ -47,11 +47,10 @@ export default function LeaderTabs({ games, value, onChange, panelId, extra = []
             aria-selected={on}
             aria-controls={panelId}
             tabIndex={on ? 0 : -1}
-            className={`hub-chip hh2-tab hh2-tab--${t.game ? 'game' : t.id} ${on ? 'is-on' : ''}`}
+            className="cj-pagehead__tab cj-lb-tab"
             onClick={() => onChange(t.id)}
           >
-            {t.game ? <GameIcon game={t.game} size={26} /> : <HubIcon name={t.icon || 'podium'} size={20} />}
-            <span>{t.label}</span>
+            {t.label}
           </button>
         );
       })}

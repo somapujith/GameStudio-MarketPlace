@@ -16,7 +16,7 @@ export const profileSteps = [
     placement: 'bottom',
     title: 'You and your level',
     body: 'Your name, icon, level and coins. Win matches to earn XP and level up.',
-    phone: { target: `${t('profile-header')} .hh2-pro__top`, placement: 'bottom' },
+    phone: { target: `${t('profile-header')} .cj-pro-hero__main`, placement: 'bottom' },
   },
   {
     id: 'stats',
@@ -27,7 +27,7 @@ export const profileSteps = [
   },
   {
     id: 'badges',
-    target: `${t('profile-badges')} .hub-section__head`,
+    target: `${t('profile-badges')} .cj-pro-sec__head`,
     placement: 'bottom',
     title: 'Badges',
     body: 'Little trophies for things you achieve, just below. Locked ones show what to aim for.',
@@ -38,7 +38,7 @@ export const profileSteps = [
     placement: 'top',
     title: 'Sound',
     body: 'Turn effects on or off, set the volume, and add a quiet night-market hum under the board.',
-    phone: { target: `${t('settings-sound')} .hub-section__title`, placement: 'top' },
+    phone: { target: `${t('settings-sound')} .cj-pro-panel__title`, placement: 'top' },
   },
   {
     id: 'motion',
@@ -46,7 +46,7 @@ export const profileSteps = [
     placement: 'top',
     title: 'Motion and feel',
     body: 'Reduce motion, switch vibration on or off, shake your phone to roll, and speed up the animations.',
-    phone: { target: `${t('settings-motion')} .hub-section__title`, placement: 'top' },
+    phone: { target: `${t('settings-motion')} .cj-pro-panel__title`, placement: 'top' },
   },
   {
     id: 'look',
@@ -61,7 +61,7 @@ export const profileSteps = [
     placement: 'top',
     title: 'Invite notifications',
     body: 'Get a ping when a friend invites you to a table, even with the app closed.',
-    phone: { target: `${t('settings-notify')} .hub-section__title`, placement: 'top' },
+    phone: { target: `${t('settings-notify')} .cj-pro-panel__title`, placement: 'top' },
   },
   {
     id: 'replay',

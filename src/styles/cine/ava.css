@@ -1,0 +1,38 @@
+/* Cine: the round player avatar (src/platform/home/Ava.jsx), used on the leaderboard, profile, shop, friends and home.
+   Same footprint as before (size + 3px ring each side); only the colours move to the cine palette: a soft white ring on
+   glass, a deep green face plate, the live-green presence dot. Owned by the leaderboard / profile / shop area. */
+.hub-app .hh2-ava {
+  position: relative;
+  flex: none;
+  display: inline-block;
+  width: calc(var(--sz) + 6px);
+  height: calc(var(--sz) + 6px);
+  padding: 3px;
+  border-radius: 50%;
+  background: var(--ring, rgba(255, 255, 255, 0.14));
+}
+.hub-app .hh2-ava > svg:first-child {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: var(--cj-bg-3, #0b2216);
+}
+.hub-app .hh2-ava.hh2-ava--kit {
+  width: auto;
+  height: auto;
+  padding: 0;
+  background: none;
+}
+.hub-app .hh2-ava__dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 3px solid var(--cj-bg, #04120b);
+  background: rgba(255, 255, 255, 0.4);
+}
+.hub-app .hh2-ava__dot--on {
+  background: var(--cj-live, #6be38a);
+}

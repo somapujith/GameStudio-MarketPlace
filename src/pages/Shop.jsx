@@ -19,12 +19,7 @@ import { useAccount, useDaily, useProgress } from '@/components/shell/hooks.js';
 import { useProfile } from '@/components/shell/stores.js';
 import { celebrate } from '@/components/shell/celebrate.js';
 import { VoiceArt, useVoicePreview } from '@/components/voice/VoiceShop.jsx';
-import '@/styles/hubhome.css';
-import '@/styles/x-profile.css';
-import '@/styles/hubMoments.css';
-import '@/styles/store-account.css';
-import '@/styles/shop-shine.css';
-import '@/styles/engagement.css';
+import '@/styles/cine/shop.css';
 import {
   RARITY_FILTERS,
   RARITY_LABEL,
@@ -86,6 +81,12 @@ export function mergeItems(serverItems, owned) {
 
 function KindTabs({ value, onChange, counts }) {
   const list = useRef(null);
+  useEffect(() => {
+    const row = list.current;
+    const el = row?.querySelector('[aria-selected="true"]');
+    // keep the chosen tab in view by scrolling the tab row itself, never the page
+    if (row && el && row.scrollWidth > row.clientWidth) row.scrollTo?.({ left: el.offsetLeft - (row.clientWidth - el.offsetWidth) / 2 });
+  }, [value]);
   const onKeyDown = (e) => {
     const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
     if (!step && e.key !== 'Home' && e.key !== 'End') return;
@@ -96,7 +97,7 @@ function KindTabs({ value, onChange, counts }) {
     requestAnimationFrame(() => list.current?.querySelector(`[data-kind="${COSMETIC_KINDS[next]}"]`)?.focus());
   };
   return (
-    <div className="hub-row hub-row--tight hh2-tabs xp-kindtabs" role="tablist" aria-label="Item type" ref={list} onKeyDown={onKeyDown}>
+    <div className="cj-shop-tabs" role="tablist" aria-label="Item type" ref={list} onKeyDown={onKeyDown}>
       {COSMETIC_KINDS.map((k) => {
         const on = k === value;
         const c = counts[k];
@@ -110,13 +111,12 @@ function KindTabs({ value, onChange, counts }) {
             aria-selected={on}
             aria-controls={PANEL_ID}
             tabIndex={on ? 0 : -1}
-            className={`hub-chip hh2-tab ${on ? 'is-on' : ''}`}
+            className="cj-pagehead__tab cj-shop-tab"
             onClick={() => onChange(k)}
           >
-            <HubIcon name={KIND_ICON[k]} size={18} />
-            <span>{KIND_LABEL[k]}</span>
+            {KIND_LABEL[k]}
             {c && (
-              <span className="sa-tabcount" aria-label={`${c.owned} of ${c.total} owned`}>
+              <span className="cj-shop-tab__count" aria-label={`${c.owned} of ${c.total} owned`}>
                 {c.owned}/{c.total}
               </span>
             )}
@@ -140,14 +140,14 @@ export function ItemCard({ item, i, equipped, selected, coins, signedIn, offline
   let action;
   if (sale.mode === 'locked') {
     action = (
-      <p className="jg-shop-hint">
-        <HubIcon name="lock" size={15} strokeWidth={2.4} />
+      <p className="cj-shop-hint">
+        <HubIcon name="lock" size={14} strokeWidth={2.4} />
         <span>{sale.hint}</span>
       </p>
     );
   } else if (sale.mode === 'offsale') {
     action = (
-      <button type="button" className="hub-btn hub-btn--sm hub-btn--soft" disabled aria-label={`${item.name}: on sale during events`}>
+      <button type="button" className="cj-btn cj-btn--sm cj-btn--block" disabled aria-label={`${item.name}: on sale during events`}>
         On sale during events
       </button>
     );
@@ -157,7 +157,7 @@ export function ItemCard({ item, i, equipped, selected, coins, signedIn, offline
     action = (
       <button
         type="button"
-        className="hub-btn hub-btn--sm hub-btn--accent vl-play"
+        className={`cj-btn cj-btn--sm cj-btn--block vl-play ${on ? '' : 'cj-btn--primary'}`.trim()}
         onClick={() => preview?.toggle(item)}
         aria-pressed={on}
         aria-label={`${on ? 'Stop' : 'Play'} ${item.name}`}
@@ -169,7 +169,7 @@ export function ItemCard({ item, i, equipped, selected, coins, signedIn, offline
     action = (
       <button
         type="button"
-        className={`hub-btn hub-btn--sm ${isEquipped ? 'hub-btn--soft' : 'hub-btn--accent'}`}
+        className={`cj-btn cj-btn--sm cj-btn--block ${isEquipped ? '' : 'cj-btn--primary'}`.trim()}
         onClick={() => onEquip(item, !isEquipped)}
         disabled={!signedIn || offline || busy || buying}
         aria-label={`${isEquipped ? 'Unequip' : 'Equip'} ${item.name}`}
@@ -179,7 +179,7 @@ export function ItemCard({ item, i, equipped, selected, coins, signedIn, offline
     );
   } else if (!signedIn) {
     action = (
-      <Link to={paths.login(paths.shop())} className="hub-btn hub-btn--soft hub-btn--sm">
+      <Link to={paths.login(paths.shop())} className="cj-btn cj-btn--sm cj-btn--block">
         Sign in to buy
       </Link>
     );
@@ -187,7 +187,7 @@ export function ItemCard({ item, i, equipped, selected, coins, signedIn, offline
     action = (
       <button
         type="button"
-        className={`hub-btn hub-btn--sm ${short ? 'hub-btn--soft' : 'hub-btn--primary'}`}
+        className={`cj-btn cj-btn--sm cj-btn--block ${short ? '' : 'cj-btn--primary'}`.trim()}
         onClick={() => onBuy(item)}
         disabled={offline}
         aria-label={short ? `${item.name}: need ${fmtNum(short)} more coins` : `Buy ${item.name} for ${fmtNum(item.price)} coins`}
@@ -212,66 +212,73 @@ export function ItemCard({ item, i, equipped, selected, coins, signedIn, offline
               : '';
   return (
     <li
-      className={`xp-item xp-item--${item.rarity} ${stateCls} ${selected ? 'is-sel' : ''} ${fresh ? 'is-fresh' : ''}`.replace(/\s+/g, ' ').trim()}
+      className={`cj-shop-item cj-shop-item--${item.rarity} ${stateCls} ${selected ? 'is-sel' : ''} ${fresh ? 'is-fresh' : ''}`.replace(/\s+/g, ' ').trim()}
       style={{ '--i': Math.min(i, 12) }}
     >
-      {sale.mode === 'limited' && (
-        <span className="jg-shop-ribbon" aria-hidden="true">
-          Limited
-        </span>
-      )}
-      {legendary && (
-        <span className="xz-glints" aria-hidden="true">
-          <i />
-          <i />
-          <i />
-        </span>
-      )}
-      {isVoice ? (
-        <div className="vl-art" style={{ '--rc': 'var(--hub-line-2)' }}>
-          <VoiceArt item={item} size={76} locked={!item.owned} playing={preview?.playingId === item.id} />
-        </div>
-      ) : (
-        <button type="button" className="xp-item__art" onClick={() => onSelect(item.id)} aria-pressed={selected} aria-label={`Preview ${item.name}`}>
-          <span className="hub-moment-preview">
-            <Preview item={item} size={76} avatar={avatar} shine={legendary} />
-          </span>
-          {(short > 0 || sale.mode === 'locked') && (
-            <span className="sa-lock" aria-hidden="true">
-              <HubIcon name="lock" size={14} strokeWidth={2.4} />
+      <div className="cj-shop-item__poster">
+        {isVoice ? (
+          <div className="vl-art cj-shop-item__art" style={{ '--rc': 'rgba(255,255,255,0.14)' }}>
+            <VoiceArt item={item} size={72} locked={!item.owned} playing={preview?.playingId === item.id} />
+          </div>
+        ) : (
+          <button type="button" className="cj-shop-item__art" onClick={() => onSelect(item.id)} aria-pressed={selected} aria-label={`Preview ${item.name}`}>
+            <span className="hub-moment-preview">
+              <Preview item={item} size={76} avatar={avatar} shine={legendary} />
             </span>
-          )}
-        </button>
-      )}
-      <div className="xp-item__body">
-        <b className="xp-item__name" title={item.name}>
+          </button>
+        )}
+        {legendary && (
+          <span className="cj-shop-glints" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+        )}
+        <span className={`cj-shop-rarity cj-shop-rarity--${item.rarity}`}>{RARITY[item.rarity] || item.rarity}</span>
+        {sale.mode === 'limited' && (
+          <span className="cj-shop-limited" aria-hidden="true">
+            Limited
+          </span>
+        )}
+        {(short > 0 || sale.mode === 'locked') && (
+          <span className="cj-shop-lock" aria-hidden="true">
+            <HubIcon name="lock" size={13} strokeWidth={2.4} />
+          </span>
+        )}
+        {isEquipped && (
+          <span className="cj-shop-on" aria-hidden="true">
+            <HubIcon name="check" size={13} strokeWidth={3} />
+          </span>
+        )}
+      </div>
+      <div className="cj-shop-item__body">
+        <b className="cj-shop-item__name" title={item.name}>
           {item.name}
         </b>
-        {isVoice && item.caption ? <p className="vl-cap">{item.caption}</p> : null}
-        <span className="xp-item__tags">
-          <span className={`xp-rarity xp-rarity--${item.rarity}`}>{RARITY[item.rarity] || item.rarity}</span>
+        {isVoice && item.caption ? <p className="vl-cap cj-shop-item__cap">{item.caption}</p> : null}
+        <span className="cj-shop-item__tags">
           {isEquipped ? (
-            <span className="xp-state xp-state--on">
+            <span className="cj-shop-state cj-shop-state--on">
               <HubIcon name="check" size={12} strokeWidth={3} /> Equipped
             </span>
           ) : item.owned ? (
-            <span className="xp-state">{item.price === 0 ? 'Free' : 'Owned'}</span>
+            <span className="cj-shop-state">{item.price === 0 ? 'Free' : 'Owned'}</span>
           ) : sale.mode === 'locked' ? (
-            <span className="jg-shop-source">
+            <span className="cj-shop-state cj-shop-source">
               <HubIcon name={item.source === 'season' ? 'trophy' : 'medal'} size={13} /> {item.source === 'season' ? 'Season prize' : 'Achievement reward'}
             </span>
           ) : isVoice ? (
-            <span className={`xp-price ${affordable ? 'is-afford' : ''}`}>
+            <span className={`cj-shop-price ${affordable ? 'is-afford' : ''}`.trim()}>
               <HubIcon name="lock" size={12} strokeWidth={2.6} /> Locked · <CoinIcon size={14} /> {fmtNum(item.price)}
             </span>
           ) : (
-            <span className={`xp-price ${affordable ? 'is-afford' : ''}`}>
+            <span className={`cj-shop-price ${affordable ? 'is-afford' : ''}`.trim()}>
               <CoinIcon size={14} /> {fmtNum(item.price)}
             </span>
           )}
         </span>
         {sale.mode === 'limited' && (
-          <span className="jg-shop-until">
+          <span className="cj-shop-until">
             <span className="sr-only">Limited: </span>
             <HubIcon name="clock" size={12} strokeWidth={2.6} />
             {leftMs != null && leftMs > 0 ? (
@@ -282,7 +289,7 @@ export function ItemCard({ item, i, equipped, selected, coins, signedIn, offline
           </span>
         )}
       </div>
-      <div className="xp-item__act">{action}</div>
+      <div className="cj-shop-item__act">{action}</div>
     </li>
   );
 }
@@ -293,46 +300,48 @@ export function LookPanel({ equipped, selectedId, avatar, name, onBrowse, onClea
   const trying = slots.filter((x) => x.trying);
   const selItem = selectedId ? cosmeticById(selectedId) : null;
   return (
-    <section className="hub-panel xp-look sa-look" aria-label="Your look">
-      <h2 className="xp-look__h">Your look</h2>
-      <ul className="xp-look__grid">
+    <section className="cj-shop-look" aria-label="Your look">
+      <h2 className="cj-shop-look__h">Your look</h2>
+      <ul className="cj-shop-look__grid">
         {slots.map(({ kind: k, item, trying: swap }) => {
           const shine = item?.rarity === 'legendary';
           const label = SLOT[k].label;
           const what = item ? item.name : SLOT[k].none;
           let art;
-          if (k === 'frame') art = <Ava preset={avatar} size={64} frame={item?.id} ring="var(--hub-surface-3)" />;
-          else if (k === 'title') art = item ? <Title title={item.id} size="md" /> : <span className="hub-muted xp-look__none">No title</span>;
-          else if (k === 'dice') art = <Dice skin={item?.id || 'dice-ivory'} size={46} shine={shine} />;
-          else if (item) art = <Preview item={item} size={56} />;
-          else art = <span className="xp-slot__empty" aria-hidden="true">{k === 'trail' ? 'None' : 'Classic'}</span>;
+          if (k === 'frame') art = <Ava preset={avatar} size={52} frame={item?.id} ring="rgba(255,255,255,0.12)" />;
+          else if (k === 'title') art = item ? <Title title={item.id} size="sm" /> : <span className="cj-shop-slot__empty">No title</span>;
+          else if (k === 'dice') art = <Dice skin={item?.id || 'dice-ivory'} size={40} shine={shine} />;
+          else if (item) art = <Preview item={item} size={46} />;
+          else art = <span className="cj-shop-slot__empty" aria-hidden="true">{k === 'trail' ? 'None' : 'Classic'}</span>;
           return (
-            <li key={k} className={`xp-slot xp-slot--${k} ${swap ? 'is-trying' : ''}`.trim()}>
+            <li key={k} className={`cj-shop-slot cj-shop-slot--${k} ${swap ? 'is-trying' : ''}`.trim()}>
               <button
                 type="button"
-                className={`xp-slot__btn ${shine ? 'xz-shiny' : ''}`.trim()}
+                className={`cj-shop-slot__btn ${shine ? 'is-shiny' : ''}`.trim()}
                 onClick={() => onBrowse(k)}
                 aria-label={`${label}: ${what}${swap ? ' (trying on)' : ''}. Browse ${KIND_LABEL[k].toLowerCase()}`}
               >
-                <span className="xp-slot__label">{label}</span>
-                <span className="xp-slot__art" key={item?.id || 'none'}>
+                <span className="cj-shop-slot__art" key={item?.id || 'none'}>
                   {art}
                 </span>
-                <span className="xp-slot__name">
-                  {k === 'frame' && <b className="xp-look__name">{name}</b>}
-                  <span className={k === 'frame' ? 'xp-slot__sub' : ''}>{what}</span>
+                <span className="cj-shop-slot__text">
+                  <span className="cj-shop-slot__label">{label}</span>
+                  <span className="cj-shop-slot__name">
+                    {k === 'frame' && <b className="cj-shop-look__name">{name}</b>}
+                    <span className={k === 'frame' ? 'cj-shop-slot__sub' : ''}>{what}</span>
+                  </span>
                 </span>
-                {swap && <span className="xp-slot__try">Trying</span>}
+                {swap && <span className="cj-shop-slot__try">Trying</span>}
               </button>
             </li>
           );
         })}
       </ul>
-      <p className="xp-look__note" aria-live="polite">
+      <p className="cj-shop-look__note" aria-live="polite">
         {selItem && trying.length ? (
           <>
             Previewing <b>{selItem.name}</b>.{' '}
-            <button type="button" className="hh2-textlink xp-linkbtn" onClick={onClear}>
+            <button type="button" className="cj-shop-linkbtn" onClick={onClear}>
               Show my current look
             </button>
           </>
@@ -347,8 +356,8 @@ export function LookPanel({ equipped, selectedId, avatar, name, onBrowse, onClea
 /** Rarity chips (with counts for the tab) and the sort select. */
 export function RarityBar({ rarity, sort, counts, onRarity, onSort }) {
   return (
-    <div className="xp-filterbar">
-      <div className="xp-rarchips" role="group" aria-label="Rarity">
+    <div className="cj-shop-filters">
+      <div className="cj-shop-chips" role="group" aria-label="Rarity">
         {RARITY_FILTERS.map((r) => {
           const n = counts[r] ?? 0;
           const on = r === rarity;
@@ -356,20 +365,21 @@ export function RarityBar({ rarity, sort, counts, onRarity, onSort }) {
             <button
               key={r}
               type="button"
-              className={`xp-rarchip xp-rarchip--${r} ${on ? 'is-on' : ''}`}
+              className={`cj-chip cj-shop-rarchip cj-shop-rarchip--${r}`}
               aria-pressed={on}
               disabled={!on && n === 0}
               onClick={() => onRarity(r)}
             >
+              {r !== 'all' && <i className="cj-shop-rarchip__dot" aria-hidden="true" />}
               {r === 'all' ? 'All' : RARITY[r]}
-              <span className="xp-rarchip__n" aria-label={`${n} items`}>
+              <span className="cj-shop-rarchip__n" aria-label={`${n} items`}>
                 {n}
               </span>
             </button>
           );
         })}
       </div>
-      <label className="xp-sort">
+      <label className="cj-shop-sort">
         <span>Sort</span>
         <select value={sort} onChange={(e) => onSort(e.target.value)}>
           {SORTS.map((s) => (
@@ -378,20 +388,21 @@ export function RarityBar({ rarity, sort, counts, onRarity, onSort }) {
             </option>
           ))}
         </select>
+        <HubIcon name="chevDown" size={14} />
       </label>
     </div>
   );
 }
 
-function ItemSkeletons({ n = 8 }) {
+function ItemSkeletons({ n = 10 }) {
   return (
-    <ul className="xp-items" aria-hidden="true">
+    <ul className="cj-shop-items" aria-hidden="true">
       {Array.from({ length: n }, (_, i) => (
-        <li key={i} className="xp-item sa-itemskel">
-          <span className="st-skel sa-itemskel__art" />
-          <span className="st-skel" style={{ height: 16, width: '70%' }} />
-          <span className="st-skel" style={{ height: 14, width: '45%' }} />
-          <span className="st-skel" style={{ height: 44, borderRadius: 12 }} />
+        <li key={i} className="cj-shop-item cj-shop-item--skel">
+          <span className="cj-shop-skel cj-shop-item__poster" />
+          <span className="cj-shop-skel" style={{ height: 14, width: '70%' }} />
+          <span className="cj-shop-skel" style={{ height: 12, width: '45%' }} />
+          <span className="cj-shop-skel" style={{ height: 34, borderRadius: 999 }} />
         </li>
       ))}
     </ul>
@@ -497,7 +508,9 @@ export default function Shop() {
         title: legendary ? `Legendary: ${item.name}` : `${item.name} is yours`,
         text: item.kind === 'voice' ? 'Voice line unlocked. Open the soundboard at the table and tap it: everyone hears it.' : `New ${KIND_ONE[item.kind]} unlocked. Equip it to show it off at the table.`,
         icon: legendary ? 'star' : 'gift',
-        ...(legendary ? { duration: 4200 } : null),
+        itemId: item.id,
+        rarity: item.rarity,
+        duration: legendary ? 6500 : 4800,
       });
       if (legendary) setBurst((n) => n + 1);
       if (EQUIPPABLE_KINDS.includes(item.kind)) {
@@ -593,87 +606,89 @@ export default function Shop() {
   const gap = d && Number.isFinite(balance) ? Math.max(0, d.item.price - balance) : null;
 
   return (
-    <div className="hub-page hh2 xp-page xp-shop sa-shop st-scope">
-      <header className="sa-shophead st-reveal">
-        <p className="st-eyebrow sa-shophead__eyebrow">Cosmetics</p>
-        <h1 className="sa-shophead__title">Shop</h1>
-        <p className="sa-shophead__sub">Frames, dice, pawn trails, board themes, titles and voice lines to stand out at the table. Looks and sounds only, never an advantage.</p>
+    <div className="hub-page cj-shop">
+      <div className="cj-ambient cj-shop-ambient" aria-hidden="true" />
+      <header className="cj-pagehead cj-shop-head">
+        <h1 className="cj-pagehead__title">Shop</h1>
+        <KindTabs value={kind} onChange={pickKind} counts={signedIn ? counts : {}} />
+      </header>
+      <div className="cj-shop-intro">
+        <p className="cj-lede cj-shop-lede">Frames, dice, pawn trails, board themes, titles and voice lines to stand out at the table. Looks and sounds only, never an advantage.</p>
         {signedIn && (
-          <div className="sa-shophead__bal" aria-label={`Balance: ${fmtNum(balance ?? 0)} coins`}>
-            <span className="xp-balance">
-              <CoinIcon size={22} />
+          <div className="cj-shop-bal" aria-label={`Balance: ${fmtNum(balance ?? 0)} coins`}>
+            <span className="cj-shop-bal__coins">
+              <CoinIcon size={20} />
               <b aria-hidden="true">{fmtNum(shownCoins)}</b>
             </span>
-            <Link to={paths.hub()} className="st-link">
+            <Link to={paths.hub()} className="cj-shop-bal__link">
               {daily.canClaim ? `Claim +${fmtNum(daily.nextReward)} today` : 'How to earn coins'}
             </Link>
           </div>
         )}
-      </header>
+      </div>
 
       {!signedIn && !booting && (
-        <div className="hh2-banner sa-gate" role="note">
-          <HubIcon name="lock" size={20} />
+        <div className="cj-shop-note" role="note">
+          <HubIcon name="lock" size={18} />
           <p>Browse everything now and try items on. Sign in to buy with the coins you win and to keep what you own.</p>
-          <Link to={paths.login(paths.shop())} className="hub-btn hub-btn--primary hub-btn--sm">
+          <Link to={paths.login(paths.shop())} className="cj-btn cj-btn--primary cj-btn--sm">
             Sign in to buy
           </Link>
         </div>
       )}
       {guest && (
-        <div className="hh2-banner sa-gate" role="note">
-          <HubIcon name="info" size={20} />
+        <div className="cj-shop-note" role="note">
+          <HubIcon name="info" size={18} />
           <p>You are a guest: items you buy stay with this browser. Sign in with Google to keep them on every device.</p>
-          <Link to={paths.login(paths.shop())} className="hub-btn hub-btn--soft hub-btn--sm">
+          <Link to={paths.login(paths.shop())} className="cj-btn cj-btn--sm">
             Sign in
           </Link>
         </div>
       )}
       {offline && (
-        <div className="hh2-banner xp-banner--warn" role="status">
-          <HubIcon name="wifiOff" size={20} />
+        <div className="cj-shop-note cj-shop-note--warn" role="status">
+          <HubIcon name="wifiOff" size={18} />
           <p>You are offline. You can look around; buying and equipping need a connection.</p>
-          <button type="button" className="hub-btn hub-btn--soft hub-btn--sm" onClick={ready ? res.reload : retry}>
+          <button type="button" className="cj-btn cj-btn--sm" onClick={ready ? res.reload : retry}>
             <HubIcon name="refresh" size={16} /> Try again
           </button>
         </div>
       )}
 
-      <div className="sa-shop__layout">
+      <div className="cj-shop-layout">
         <LookPanel equipped={equipped} selectedId={sel} avatar={avatar} name={name} onBrowse={pickKind} onClear={() => setSel(null)} />
 
-        <div className="sa-shop__main">
-          <div className="sa-shop__bar">
-            <KindTabs value={kind} onChange={pickKind} counts={signedIn ? counts : {}} />
+        <div className="cj-shop-main">
+          <div className="cj-shop-bar">
             {signedIn && (
-              <div className="sa-views" role="group" aria-label="Show">
+              <div className="cj-shop-views" role="group" aria-label="Show">
                 {VIEWS.map((v) => (
-                  <button key={v.id} type="button" className={`sa-view ${view === v.id ? 'is-on' : ''}`} aria-pressed={view === v.id} onClick={() => setView(v.id)}>
+                  <button key={v.id} type="button" className="cj-chip cj-shop-view" aria-pressed={view === v.id} onClick={() => setView(v.id)}>
                     {v.label}
                   </button>
                 ))}
               </div>
             )}
+            <RarityBar rarity={rarity} sort={sort} counts={rarityCounts} onRarity={(r) => go({ rarity: r })} onSort={(v) => go({ sort: v })} />
           </div>
-          <RarityBar rarity={rarity} sort={sort} counts={rarityCounts} onRarity={(r) => go({ rarity: r })} onSort={(v) => go({ sort: v })} />
-          <section id={PANEL_ID} role="tabpanel" aria-labelledby={`xp-tab-${kind}`} aria-busy={loading} className="xp-shop__panel">
+          <section id={PANEL_ID} role="tabpanel" aria-labelledby={`xp-tab-${kind}`} aria-busy={loading} className="cj-shop-panel">
             {kind === 'voice' && (
-              <p className="hub-muted vl-shopnote" role="note">
+              <p className="cj-shop-voicenote vl-shopnote" role="note">
                 {signedIn
                   ? 'Buy a line once with your coins, then tap it on the soundboard at any table: everyone hears it. Only you can play what you own.'
                   : 'Sign in to buy voice lines. Only the player who owns a line can play it at the table.'}
               </p>
             )}
             {!loading && vault.length > 0 && vaultVisible({ kind, view, rarity }) && (
-              <section className="xz-vault" aria-labelledby="xz-vault-h">
-                <header className="xz-vault__head">
-                  <h2 id="xz-vault-h" className="xz-vault__title">
-                    <HubIcon name="star" size={18} strokeWidth={2.4} /> Legendary vault
+              <section className="cj-shop-vault" aria-labelledby="xz-vault-h">
+                <header className="cj-shop-vault__head">
+                  <h2 id="xz-vault-h" className="cj-shop-vault__title">
+                    <HubIcon name="star" size={16} strokeWidth={2.4} /> Legendary vault
                   </h2>
-                  <span className="xz-vault__count">{signedIn ? `${vaultTotals.owned} of ${vaultTotals.total} owned` : `${vaultTotals.total} legendary items`}</span>
+                  <span className="cj-shop-vault__count">{signedIn ? `${vaultTotals.owned} of ${vaultTotals.total} owned` : `${vaultTotals.total} legendary items`}</span>
                 </header>
-                <p className="xz-vault__sub">The rarest looks in the shop, across every category. Tap one to try it on.</p>
-                <ul className="xp-items xz-vault__rail" tabIndex={0} aria-label="Legendary items, scroll sideways">
+                <p className="cj-shop-vault__sub">The rarest looks in the shop, across every category. Tap one to try it on.</p>
+                <ul className="cj-shop-items cj-shop-vault__rail" tabIndex={0} aria-label="Legendary items, scroll sideways">
                   {vault.map((item, i) => (
                     <ItemCard key={item.id} item={item} i={i} {...cardProps(item)} />
                   ))}
@@ -683,27 +698,32 @@ export default function Shop() {
             {loading ? (
               <ItemSkeletons />
             ) : shown.length ? (
-              <ul className="xp-items" key={`${kind}-${view}-${rarity}-${sort}`}>
+              <ul className="cj-shop-items" key={`${kind}-${view}-${rarity}-${sort}`}>
                 {shown.map((item, i) => (
                   <ItemCard key={item.id} item={item} i={i} {...cardProps(item)} />
                 ))}
               </ul>
             ) : (
-              <div className="hub-empty xp-empty">
-                <p className="hub-empty__title">
+              <div className="cj-empty cj-shop-empty">
+                <span className="cj-empty__art cj-shop-empty__art" aria-hidden="true">
+                  <span className="cj-shop-empty__icon">
+                    <HubIcon name="search" size={20} />
+                  </span>
+                </span>
+                <p className="cj-empty__title">
                   {rarity !== 'all'
                     ? `No ${RARITY[rarity].toLowerCase()} ${KIND_LABEL[kind].toLowerCase()}${view === 'all' ? '' : view === 'owned' ? ' owned' : ' within reach'}`
                     : view === 'owned'
                       ? `You do not own any ${KIND_LABEL[kind].toLowerCase()} yet`
                       : `No ${KIND_LABEL[kind].toLowerCase()} within reach right now`}
                 </p>
-                <p className="hub-empty__text">
+                <p className="cj-empty__body">
                   {rarity !== 'all' ? 'Try another rarity, or show everything.' : view === 'owned' ? 'Buy one and it shows up here, ready to equip.' : 'Earn a few more coins from the daily reward and finished matches.'}
                 </p>
-                <div className="hub-empty__actions">
+                <div className="cj-empty__actions">
                   <button
                     type="button"
-                    className="hub-btn hub-btn--soft hub-btn--sm"
+                    className="cj-btn cj-btn--primary"
                     onClick={() => {
                       setView('all');
                       go({ rarity: 'all' });
@@ -719,8 +739,8 @@ export default function Shop() {
       </div>
 
       {burst > 0 && (
-        <div className="xz-burst" key={burst} aria-hidden="true">
-          <b className="xz-burst__ring" />
+        <div className="cj-shop-burst" key={burst} aria-hidden="true">
+          <b className="cj-shop-burst__ring" />
           {Array.from({ length: 14 }, (_, n) => (
             <i key={n} style={{ '--a': `${n * (360 / 14)}deg`, '--d': `${120 + (n % 3) * 34}px` }} />
           ))}
@@ -763,15 +783,15 @@ export default function Shop() {
         }
       >
         {d && (
-          <div className="xp-buy sa-buy">
-            <span className={`xp-buy__art ${d.item.rarity === 'legendary' ? 'xz-shiny' : ''}`.trim()}>
+          <div className="cj-shop-buy">
+            <span className={`cj-shop-buy__art ${d.item.rarity === 'legendary' ? 'is-shiny' : ''}`.trim()}>
               {d.item.kind === 'voice' ? <VoiceArt item={d.item} size={88} /> : <Preview item={d.item} size={88} avatar={avatar} shine={d.item.rarity === 'legendary'} />}
             </span>
             {d.phase === 'poor' ? (
-              <div className="sa-buy__body">
+              <div className="cj-shop-buy__body">
                 <p>
                   <b>{d.item.name}</b> costs{' '}
-                  <b className="xp-price">
+                  <b className="cj-shop-price">
                     <CoinIcon size={14} /> {fmtNum(d.item.price)}
                   </b>
                   {gap !== null && (
@@ -780,7 +800,7 @@ export default function Shop() {
                     </>
                   )}
                 </p>
-                <ul className="sa-earn">
+                <ul className="cj-shop-earn">
                   <li>
                     <HubIcon name="gift" size={16} />
                     <span>{daily.canClaim ? `Your daily reward is waiting: +${fmtNum(daily.nextReward)} coins.` : `Daily reward: +${fmtNum(daily.nextReward)} coins tomorrow, more as your streak grows.`}</span>
@@ -792,7 +812,7 @@ export default function Shop() {
                       {lead && (
                         <>
                           {' '}
-                          <Link to={paths.game(lead.id)} className="hh2-textlink" onClick={close}>
+                          <Link to={paths.game(lead.id)} className="cj-shop-link" onClick={close}>
                             Play {lead.name}
                           </Link>
                         </>
@@ -804,11 +824,11 @@ export default function Shop() {
             ) : d.phase === 'error' ? (
               <p>{d.msg}</p>
             ) : (
-              <div className="sa-buy__body">
+              <div className="cj-shop-buy__body">
                 <p>
-                  <span className={`xp-rarity xp-rarity--${d.item.rarity}`}>{RARITY[d.item.rarity] || d.item.rarity}</span> {d.item.kind === 'voice' ? 'voice line. Plays for everyone at the table when you tap it. Sound only.' : `${KIND_ONE[d.item.kind]}. Cosmetic only.`}
+                  <span className={`cj-shop-rarity cj-shop-rarity--${d.item.rarity}`}>{RARITY[d.item.rarity] || d.item.rarity}</span> {d.item.kind === 'voice' ? 'voice line. Plays for everyone at the table when you tap it. Sound only.' : `${KIND_ONE[d.item.kind]}. Cosmetic only.`}
                 </p>
-                <dl className="sa-ledger">
+                <dl className="cj-shop-ledger">
                   <div>
                     <dt>Balance</dt>
                     <dd>

@@ -67,19 +67,19 @@ export default function BadgeGrid({ games, user, level }) {
 
   const earned = all.filter((b) => b.earned).length;
   return (
-    <section id="badges" className="hub-section sa-anchor" aria-labelledby="hh2-badges-h" data-tour="profile-badges">
-      <div className="hub-section__head">
-        <h2 id="hh2-badges-h" className="hub-section__title">
+    <section id="badges" className="cj-pro-sec" aria-labelledby="hh2-badges-h" data-tour="profile-badges">
+      <div className="cj-pro-sec__head">
+        <h2 id="hh2-badges-h" className="cj-pro-sec__title">
           Badges
-          <span className="hub-pill">
+          <span className="cj-pro-sec__count">
             {earned}/{all.length}
           </span>
         </h2>
       </div>
       <BadgeList badges={platform} fresh={freshBadges} />
       {perGame.map(({ game, badges }) => (
-        <div key={game.id} className="xp-badgegroup">
-          <h3 className="xp-badgegroup__h">{game.name}</h3>
+        <div key={game.id} className="cj-pro-badgegroup">
+          <h3 className="cj-pro-sec__sub">{game.name}</h3>
           <BadgeList badges={badges} fresh={freshBadges} />
         </div>
       ))}
@@ -116,20 +116,20 @@ function BadgeList({ badges, fresh }) {
     .sort((x, y) => Number(y.b.earned) - Number(x.b.earned) || (x.b.earned ? 0 : y.b.pct - x.b.pct) || x.i - y.i)
     .map((x) => x.b);
   return (
-    <ul className="hh2-badges xp-badges">
+    <ul className="cj-pro-badges">
       {sorted.map((b, i) => (
-        <li key={b.id} className={`hh2-badge ${b.earned ? 'is-earned' : 'is-locked'}`} style={{ '--i': Math.min(i, 12) }}>
+        <li key={b.id} className={`cj-pro-badge ${b.earned ? 'is-earned' : 'is-locked'}`} style={{ '--i': Math.min(i, 12) }}>
           <BadgeArtwork badge={b} fresh={fresh?.has(b.id)} />
-          <b className="hh2-badge__name">{b.label}</b>
-          <small className="hh2-badge__desc">
-            {!b.earned && <span className="sa-how">How to earn</span>}
+          <b className="cj-pro-badge__name">{b.label}</b>
+          <small className="cj-pro-badge__desc">
+            {!b.earned && <span className="cj-pro-badge__how">How to earn</span>}
             {b.desc}
           </small>
           {b.earned ? (
-            <span className="hh2-badge__state">Earned</span>
+            <span className="cj-pro-badge__state">Earned</span>
           ) : (
-            <span className="hh2-badge__prog">
-              <span className="hh2-badge__bar" aria-hidden="true">
+            <span className="cj-pro-bar-row">
+              <span className="cj-pro-bar" aria-hidden="true">
                 <i style={{ width: `${b.pct}%` }} />
               </span>
               <span className="sr-only">Locked. Progress </span>

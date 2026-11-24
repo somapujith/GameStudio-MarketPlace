@@ -1,0 +1,1014 @@
+/* ==========================================================================
+   Cine leaderboard (/leaderboard). Prefix `cj-lb-`. Built on cine.css (docs/CINE_UI.md).
+   A page head with the tabs as dim siblings over the ambient backdrop, the top three as Top-10 numeral cards, the rest
+   in a glass list that scrolls inside itself. The page always fits the viewport: no page scroll at any size.
+   ========================================================================== */
+
+/* ---------- the route owns the viewport: full-bleed, no footer, the page fills what is left under the bars ---------- */
+.hub-app:has(.cj-lb) {
+  height: 100svh;
+  min-height: 0;
+}
+.hub-app:has(.cj-lb) :is(.xl-footer, .hub-footslot) {
+  display: none;
+}
+.hub-app:has(.cj-lb) .hub-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.hub-app:has(.cj-lb) .hub-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0;
+}
+.hub-app:has(.cj-lb) .hub-container {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cj-lb {
+  /* the floating nav sits over the page head (the pagehead's own clearance, >= --cj-safe-top); phones keep clear of
+     the bottom dock. The page fills 100svh minus any strips in flow, so the list gets what is left. */
+  --cj-lb-top: max(clamp(84px, 9vw, 112px), calc(var(--cj-safe-top, 88px) + 16px));
+  --cj-lb-bottom: calc(var(--cj-safe-bottom, 0px) + 28px);
+  --cj-lb-side: clamp(330px, 30vw, 440px);
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+  color: var(--cj-text);
+  font-family: var(--cj-font);
+  animation: none;
+}
+.cj-lb-ambient {
+  background:
+    radial-gradient(55% 50% at 14% 12%, rgba(78, 190, 92, 0.3), transparent 70%),
+    radial-gradient(45% 45% at 78% 18%, rgba(245, 198, 107, 0.1), transparent 70%),
+    radial-gradient(60% 55% at 85% 85%, rgba(44, 140, 70, 0.2), transparent 70%),
+    radial-gradient(70% 60% at 30% 100%, rgba(10, 60, 30, 0.55), transparent 70%),
+    var(--cj-bg);
+}
+
+/* ---------- page head: "Leaderboard" + the tabs as dim siblings ---------- */
+.cj-lb-head.cj-pagehead {
+  flex: none;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  padding-top: var(--cj-lb-top);
+  min-width: 0;
+}
+.cj-lb-head .cj-pagehead__title {
+  flex: none;
+}
+.cj-lb-tabs {
+  display: flex;
+  align-items: baseline;
+  gap: 8px 28px;
+  min-width: 0;
+  margin: 0;
+  padding: 0 2px 4px 28px;
+  border-left: 1px solid var(--cj-line-2);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.cj-lb-tabs::-webkit-scrollbar {
+  display: none;
+}
+.cj-lb-tab {
+  flex: none;
+  white-space: nowrap;
+  border-radius: 8px;
+}
+.cj-lb-tab:focus-visible {
+  outline-offset: 2px;
+}
+
+/* ---------- the board: two columns on desktop, a fitted stack below 1000px ---------- */
+.cj-lb-board {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--cj-lb-side);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  column-gap: clamp(28px, 3.2vw, 52px);
+  padding: clamp(20px, 2.6vh, 32px) var(--cj-gutter) var(--cj-lb-bottom);
+}
+.cj-lb-banner {
+  grid-column: 1;
+  grid-row: 1;
+}
+.cj-lb-top {
+  grid-column: 1;
+  grid-row: 2;
+  align-self: center;
+}
+.cj-lb-rec,
+.cj-lb-season {
+  grid-column: 1;
+  grid-row: 3;
+  align-self: end;
+}
+.cj-lb-ranks {
+  grid-column: 2;
+  grid-row: 1 / -1;
+}
+/* empty / loading / error: the notice on the left, the record (or season card) on the right */
+.cj-lb:not([data-state='populated']) .cj-lb-empty {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  align-self: center;
+}
+.cj-lb:not([data-state='populated']):not([data-state='loading']) :is(.cj-lb-rec, .cj-lb-season) {
+  grid-column: 2;
+  grid-row: 1 / -1;
+}
+
+/* ---------- sign-in banner ---------- */
+.cj-lb-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 18px;
+  padding: 10px 10px 10px 16px;
+  border-radius: var(--cj-r-pill);
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+  color: var(--cj-text);
+  font-size: 13px;
+}
+.cj-lb-banner p {
+  flex: 1;
+  margin: 0;
+}
+.cj-lb-banner svg {
+  flex: none;
+  color: var(--cj-text-dim);
+}
+
+/* ---------- top three: poster cards over outlined numerals ---------- */
+.cj-lb-top.cj-top10 {
+  /* card height: the column's width split in three, capped by the viewport height and a comfortable maximum */
+  --ch: max(120px, min(300px, calc((100cqw - 24px) / 3.12), calc(100svh - 440px)));
+  container-type: inline-size;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cj-lb-top > li.cj-lb-top__item {
+  flex: none;
+  padding-left: calc(var(--ch) * 0.37);
+}
+.cj-lb-top .cj-top10__num {
+  bottom: -0.05em;
+  font-size: calc(var(--ch) * 0.82);
+  -webkit-text-stroke-width: 2px;
+}
+.cj-lb-top__item.is-me .cj-top10__num {
+  -webkit-text-stroke-color: rgba(255, 255, 255, 0.6);
+}
+.cj-lb-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: calc(var(--ch) / 1.5);
+  height: var(--ch);
+  overflow: hidden;
+  border-radius: var(--cj-r-card);
+  background:
+    radial-gradient(90% 60% at 50% 30%, var(--cj-lb-tint, rgba(255, 255, 255, 0.1)), transparent 72%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02)),
+    var(--cj-bg-3);
+  box-shadow: var(--cj-shadow-card), var(--cj-ring);
+  color: var(--cj-text-strong);
+  container-type: size;
+  transition: transform var(--cj-dur) var(--cj-ease), box-shadow var(--cj-dur) var(--cj-ease);
+}
+.cj-lb-card[data-place='1'] {
+  --cj-lb-tint: rgba(245, 198, 107, 0.26);
+}
+.cj-lb-card[data-place='2'] {
+  --cj-lb-tint: rgba(220, 230, 240, 0.18);
+}
+.cj-lb-card[data-place='3'] {
+  --cj-lb-tint: rgba(214, 150, 96, 0.2);
+}
+.cj-lb-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 48%, rgba(0, 0, 0, 0.62) 100%);
+  pointer-events: none;
+}
+.cj-lb-top__item.is-me .cj-lb-card {
+  box-shadow: var(--cj-shadow-card), inset 0 0 0 1.5px rgba(255, 255, 255, 0.55);
+}
+@media (hover: hover) and (pointer: fine) {
+  .cj-lb-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45), var(--cj-ring);
+  }
+}
+.cj-lb-card__crown {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  left: 8px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(14, 14, 16, 0.55);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+  color: var(--cj-gold);
+}
+.cj-lb-card__ava {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  padding-top: 12px;
+}
+.cj-lb-card__info {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  padding: 0 10px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  text-align: center;
+}
+.cj-lb-card__name {
+  max-width: 100%;
+  overflow: hidden;
+  font: 700 14px/1.2 var(--cj-font);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+}
+.cj-lb-card__stats {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--cj-text);
+  font: 500 12px/1.3 var(--cj-font);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cj-lb-card__chips {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  max-width: 100%;
+  min-width: 0;
+  margin-top: 2px;
+}
+/* smaller cards: a smaller avatar, then no title chip */
+@container (max-height: 240px) {
+  .cj-lb-card__ava .hh2-ava {
+    zoom: 0.8;
+  }
+}
+@container (max-height: 200px) {
+  .cj-lb-card__ava .hh2-ava {
+    zoom: 0.66;
+  }
+  .cj-lb-card__chips [data-rarity] {
+    display: none;
+  }
+  .cj-lb-card__chips:not(:has(.cj-lb-you)) {
+    display: none;
+  }
+}
+@container (max-height: 160px) {
+  .cj-lb-card__ava .hh2-ava {
+    zoom: 0.54;
+  }
+}
+
+.cj-lb-you {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: var(--cj-r-pill);
+  background: var(--cj-pill);
+  color: var(--cj-ink);
+  font: 700 10px/1 var(--cj-font);
+  letter-spacing: 0.02em;
+}
+
+/* ---------- your record: a compact glass stat strip ---------- */
+.cj-lb-rec {
+  margin-top: clamp(18px, 2.6vh, 28px);
+  padding: 14px 18px 16px;
+  border-radius: var(--cj-r-panel);
+  background: rgba(16, 16, 18, 0.4);
+  box-shadow: var(--cj-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+}
+.cj-lb-rec__title {
+  margin: 0 0 10px;
+  color: var(--cj-text-strong);
+  font: 600 14px/1.3 var(--cj-font);
+}
+.cj-lb-rec__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(76px, 1fr));
+  margin: 0;
+}
+.cj-lb-rec__stats > div {
+  min-width: 0;
+  padding: 0 12px;
+}
+.cj-lb-rec__stats > div:first-child {
+  padding-left: 0;
+}
+.cj-lb-rec__stats > div + div {
+  border-left: 1px solid var(--cj-line);
+}
+.cj-lb-rec__stats dt {
+  overflow: hidden;
+  color: var(--cj-text-faint);
+  font: 500 12px/1.3 var(--cj-font);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cj-lb-rec__stats dd {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 4px 0 0;
+  overflow: hidden;
+  color: var(--cj-text-strong);
+  font: 600 18px/1.2 var(--cj-font);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.cj-lb-rec__note {
+  margin: 0;
+  color: var(--cj-text-dim);
+  font-size: 13px;
+}
+.cj-lb-link {
+  color: var(--cj-text-strong);
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.4);
+  text-underline-offset: 4px;
+}
+
+/* ---------- season card (Season tab: the record's spot) ---------- */
+.cj-lb-season {
+  margin-top: clamp(18px, 2.6vh, 28px);
+  padding: 14px 18px 16px;
+  min-width: 0;
+  border-radius: var(--cj-r-panel);
+  background: rgba(16, 16, 18, 0.4);
+  box-shadow: var(--cj-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+}
+.cj-lb-season__head {
+  min-width: 0;
+}
+.cj-lb-season__kicker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin: 0;
+  color: var(--cj-text-dim);
+  font: 500 12px/1.3 var(--cj-font);
+}
+.cj-lb-season__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--cj-r-pill);
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  color: var(--cj-text-strong);
+  font-weight: 600;
+}
+.cj-lb-season__status .cj-live-dot {
+  width: 7px;
+  height: 7px;
+}
+.cj-lb-season__count {
+  font-variant-numeric: tabular-nums;
+}
+.cj-lb-season__name {
+  margin: 8px 0 0;
+  overflow: hidden;
+  color: var(--cj-text-strong);
+  font: 600 20px/1.3 var(--cj-font);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cj-lb-season__rules {
+  margin: 6px 0 0;
+  color: var(--cj-text-dim);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.cj-lb-season__tiers {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0 0 2px;
+  list-style: none;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.cj-lb-season__tiers::-webkit-scrollbar {
+  display: none;
+}
+.cj-lb-season__tier {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 12px 0 12px;
+  border-radius: var(--cj-r-pill);
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ring);
+}
+.cj-lb-season__tier > b {
+  color: var(--cj-text-strong);
+  font: 700 13px/1 var(--cj-font);
+}
+.cj-lb-season__prize {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.cj-lb-season__coins {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--cj-gold);
+  font: 600 13px/1 var(--cj-font);
+  font-variant-numeric: tabular-nums;
+}
+.cj-lb-season__item {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--cj-gold);
+}
+
+/* ---------- rankings: the calm glass list (scrolls inside itself) ---------- */
+.cj-lb-ranks {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--cj-r-panel);
+  background: var(--cj-glass);
+  box-shadow: var(--cj-ring);
+  -webkit-backdrop-filter: var(--cj-blur);
+  backdrop-filter: var(--cj-blur);
+}
+.cj-lb-ranks__head {
+  display: flex;
+  flex: none;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 8px;
+}
+.cj-lb-ranks__title {
+  margin: 0;
+  color: var(--cj-text-strong);
+  font: 600 20px/1.3 var(--cj-font);
+}
+.cj-lb-ranks__count {
+  color: var(--cj-text-faint);
+  font: 500 12px/1 var(--cj-font);
+}
+.cj-lb-ranks__none {
+  flex: 1;
+  margin: 0;
+  padding: 8px 18px 18px;
+  color: var(--cj-text-dim);
+  font-size: 13px;
+}
+.cj-lb-ranks__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+.cj-lb-ranks__scroll:focus-visible {
+  outline-offset: -3px;
+  border-radius: var(--cj-r-panel);
+}
+.cj-lb-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 14px;
+}
+.cj-lb-table thead th {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  padding: 8px 8px;
+  background: rgba(14, 30, 20, 0.96);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  color: var(--cj-text-faint);
+  font: 500 12px/1.2 var(--cj-font);
+  text-align: right;
+  white-space: nowrap;
+}
+.cj-lb-table thead th:first-child {
+  padding-left: 18px;
+  text-align: left;
+}
+.cj-lb-table thead th:nth-child(2) {
+  text-align: left;
+}
+.cj-lb-table thead th:last-child,
+.cj-lb-table td:last-child {
+  padding-right: 18px;
+}
+.cj-lb-table tbody th,
+.cj-lb-table tbody td {
+  padding: 9px 8px;
+  border-top: 1px solid var(--cj-line);
+  color: var(--cj-text);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.cj-lb-table tbody th {
+  width: 1%;
+  padding-left: 18px;
+  color: var(--cj-text-faint);
+  font: 600 13px/1 var(--cj-font);
+  text-align: left;
+}
+.cj-lb-table tbody td:nth-child(2) {
+  width: 100%;
+  max-width: 0;
+  text-align: left;
+}
+.cj-lb-table tbody tr {
+  transition: background-color var(--cj-dur) var(--cj-ease);
+}
+.cj-lb-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+.cj-lb-table tbody tr.is-me {
+  background: rgba(255, 255, 255, 0.1);
+}
+.cj-lb-table tbody tr.is-me th {
+  color: var(--cj-text-strong);
+  box-shadow: inset 3px 0 0 var(--cj-pill);
+}
+.cj-lb-table tbody tr.is-me td {
+  color: var(--cj-text-strong);
+}
+.cj-lb-player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.cj-lb-player__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.cj-lb-player__line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.cj-lb-player__line b {
+  overflow: hidden;
+  color: var(--cj-text-strong);
+  font: 600 14px/1.25 var(--cj-font);
+  text-overflow: ellipsis;
+}
+.cj-lb-player__sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--cj-text-faint);
+  font: 500 12px/1.2 var(--cj-font);
+}
+.cj-lb-player__sub:empty {
+  display: none;
+}
+.cj-lb-player__sub > * {
+  min-width: 0;
+}
+.cj-lb-standing {
+  flex: none;
+  margin: 0;
+  padding: 12px 18px 14px;
+  border-top: 1px solid var(--cj-line);
+  color: var(--cj-text-dim);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.cj-lb-standing b {
+  color: var(--cj-text-strong);
+}
+
+/* ---------- empty / error states ---------- */
+.cj-lb-empty.cj-empty {
+  padding: 12px 0;
+}
+.cj-lb-empty .cj-empty__art {
+  width: 200px;
+  height: 124px;
+}
+.cj-lb-empty__icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--cj-glass-2);
+  box-shadow: var(--cj-ring);
+  color: var(--cj-text-strong);
+}
+
+/* ---------- loading ---------- */
+.cj-lb-skel {
+  display: block;
+  border-radius: 6px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.05) 25%, rgba(255, 255, 255, 0.11) 50%, rgba(255, 255, 255, 0.05) 75%) 0 0 / 200% 100%;
+  animation: cj-lb-shimmer 1.6s linear infinite;
+}
+.cj-lb-card.cj-lb-skel {
+  border-radius: var(--cj-r-card);
+}
+.cj-lb-skelrows {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 16px 18px;
+  list-style: none;
+}
+.cj-lb-skelrows li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 52px;
+}
+@keyframes cj-lb-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* ---------- entrance: the cards rise, the list fades in (once, after the data lands) ---------- */
+@keyframes cj-lb-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}
+@keyframes cj-lb-fade {
+  from {
+    opacity: 0;
+  }
+}
+.cj-lb[data-intro='true'][data-state='populated'] .cj-lb-top__item {
+  animation: cj-lb-rise 0.7s var(--cj-ease) both;
+  animation-delay: calc(var(--i, 0) * 90ms);
+}
+.cj-lb[data-intro='true'][data-state='populated'] .cj-lb-table tbody tr {
+  animation: cj-lb-fade 0.6s var(--cj-ease) both;
+  animation-delay: calc(200ms + var(--i, 0) * 30ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cj-lb *,
+  .cj-lb .cj-lb-top__item,
+  .cj-lb .cj-lb-table tbody tr {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+:root[data-motion='reduced'] .cj-lb *,
+:root[data-motion='reduced'] .cj-lb .cj-lb-top__item,
+:root[data-motion='reduced'] .cj-lb .cj-lb-table tbody tr {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* ---------- short desktops: tighter head ---------- */
+@media (min-width: 1000px) and (max-height: 760px) {
+  .cj-lb {
+    --cj-lb-top: calc(var(--cj-safe-top, 88px) + 4px);
+    --cj-lb-bottom: calc(var(--cj-safe-bottom, 0px) + 20px);
+  }
+  .cj-lb-top.cj-top10 {
+    --ch: max(120px, min(300px, calc((100cqw - 24px) / 3.12), calc(100svh - 400px)));
+  }
+}
+
+/* ==========================================================================
+   Below 1000px: one column. Top three, record strip, then the list fills the rest.
+   ========================================================================== */
+@media (max-width: 999px) {
+  .cj-lb {
+    /* shell tokens (docs/CINE_UI.md, shell decisions): the nav band on top, the dock band at the bottom */
+    --cj-lb-top: calc(var(--cj-safe-top, 64px) + 12px);
+    --cj-lb-bottom: calc(var(--cj-safe-bottom, 72px) + 20px);
+  }
+  .cj-lb-board {
+    display: flex;
+    flex-direction: column;
+    padding-top: 18px;
+  }
+  .cj-lb-board > * {
+    align-self: stretch;
+  }
+  .cj-lb-top {
+    order: 1;
+  }
+  .cj-lb-rec,
+  .cj-lb-season {
+    order: 2;
+    margin-top: 16px;
+  }
+  .cj-lb-ranks {
+    order: 3;
+    flex: 1;
+    margin-top: 16px;
+  }
+  .cj-lb-top.cj-top10 {
+    --ch: max(110px, min(280px, calc((100cqw - 24px) / 3.12), calc(100svh - 640px)));
+    flex: none;
+  }
+  .cj-lb:not([data-state='populated']) .cj-lb-empty {
+    flex: 1;
+    justify-content: center;
+  }
+  .cj-lb:not([data-state='populated']) :is(.cj-lb-rec, .cj-lb-season) {
+    order: 3;
+  }
+}
+
+/* ==========================================================================
+   Phones: the head wraps (title, then a sideways row of tabs), the top three become square avatar tiles with the name
+   underneath (like poster titles on a phone), the record strip drops its heading.
+   ========================================================================== */
+@media (max-width: 599px) {
+  .cj-lb-head.cj-pagehead {
+    flex-wrap: wrap;
+    gap: 4px 0;
+    padding-inline: 20px;
+  }
+  .cj-lb-head .cj-pagehead__title {
+    width: 100%;
+    font-size: 28px;
+  }
+  .cj-lb-tabs {
+    gap: 22px;
+    width: 100%;
+    margin-inline: -20px;
+    padding: 2px 20px 4px;
+    border-left: 0;
+  }
+  .cj-lb-tab.cj-pagehead__tab {
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .cj-lb-board {
+    padding: 14px 20px var(--cj-lb-bottom);
+  }
+  .cj-lb-banner {
+    margin-bottom: 12px;
+    padding: 8px 8px 8px 14px;
+    font-size: 12px;
+  }
+  .cj-lb-top.cj-top10 {
+    /* --ch here is the square tile's side */
+    --ch: min(104px, calc((100cqw - 16px) / 3.9));
+    gap: 8px;
+  }
+  .cj-lb-top > li.cj-lb-top__item {
+    min-width: 0;
+    padding-left: calc(var(--ch) * 0.3);
+  }
+  .cj-lb-top .cj-top10__num {
+    bottom: auto;
+    top: calc(var(--ch) * 0.16);
+    font-size: calc(var(--ch) * 0.9);
+  }
+  .cj-lb-card {
+    width: var(--ch);
+    height: auto;
+    overflow: visible;
+    background: none;
+    box-shadow: none;
+    container-type: normal;
+  }
+  .cj-lb-card::after {
+    display: none;
+  }
+  .cj-lb-card__ava {
+    flex: none;
+    width: var(--ch);
+    height: var(--ch);
+    padding: 0;
+    overflow: hidden;
+    border-radius: var(--cj-r-card);
+    background:
+      radial-gradient(90% 70% at 50% 40%, var(--cj-lb-tint, rgba(255, 255, 255, 0.1)), transparent 72%),
+      var(--cj-bg-3);
+    box-shadow: var(--cj-shadow-card), var(--cj-ring);
+  }
+  .cj-lb-top__item.is-me .cj-lb-card {
+    box-shadow: none;
+  }
+  .cj-lb-top__item.is-me .cj-lb-card__ava {
+    box-shadow: var(--cj-shadow-card), inset 0 0 0 1.5px rgba(255, 255, 255, 0.55);
+  }
+  .cj-lb-card__ava .hh2-ava {
+    zoom: 0.68;
+  }
+  .cj-lb-card__crown {
+    top: 5px;
+    left: 5px;
+    width: 22px;
+    height: 22px;
+  }
+  .cj-lb-card__crown svg {
+    width: 13px;
+    height: 13px;
+  }
+  .cj-lb-card__info {
+    position: static;
+    align-items: flex-start;
+    gap: 1px;
+    margin-top: 6px;
+    text-align: left;
+  }
+  .cj-lb-card__name {
+    font-size: 12px;
+  }
+  .cj-lb-card__stats {
+    color: var(--cj-text-faint);
+    font-size: 11px;
+  }
+  .cj-lb-card__chips {
+    display: none;
+  }
+  .cj-lb-top__item.is-me .cj-lb-card__name::after {
+    content: ' (you)';
+    color: var(--cj-text-dim);
+    font-weight: 500;
+  }
+  .cj-lb-rec,
+  .cj-lb-season {
+    margin-top: 14px;
+    padding: 10px 14px;
+  }
+  .cj-lb-rec__title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .cj-lb-rec__stats {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+  .cj-lb-rec__stats > div {
+    padding: 0 6px;
+  }
+  .cj-lb-rec__stats dt {
+    font-size: 11px;
+  }
+  .cj-lb-rec__stats dd {
+    gap: 3px;
+    font-size: 15px;
+  }
+  .cj-lb-rec__stats dd svg {
+    width: 12px;
+    height: 12px;
+  }
+  .cj-lb-season__name {
+    margin-top: 6px;
+    font-size: 16px;
+  }
+  .cj-lb-season__tiers {
+    margin-top: 8px;
+  }
+  .cj-lb-season__tier {
+    height: 32px;
+    padding: 0 10px;
+  }
+  .cj-lb-ranks {
+    margin-top: 14px;
+  }
+  .cj-lb-ranks__head {
+    padding: 12px 14px 6px;
+  }
+  .cj-lb-ranks__title {
+    font-size: 17px;
+  }
+  .cj-lb-table thead th:first-child,
+  .cj-lb-table tbody th {
+    padding-left: 14px;
+  }
+  .cj-lb-table thead th:last-child,
+  .cj-lb-table td:last-child {
+    padding-right: 14px;
+  }
+  .cj-lb-table tbody th,
+  .cj-lb-table tbody td {
+    padding-block: 7px;
+    font-size: 13px;
+  }
+  .cj-lb-table thead th,
+  .cj-lb-table tbody td {
+    padding-inline: 6px;
+  }
+  .cj-lb-player {
+    gap: 8px;
+  }
+  .cj-lb-player .hh2-ava {
+    zoom: 0.85;
+  }
+  .cj-lb-player__line b {
+    font-size: 13px;
+  }
+  .cj-lb-player__sub .xp-title,
+  .cj-lb-player__sub > span[data-rarity] {
+    display: none;
+  }
+  .cj-lb-standing {
+    padding: 9px 14px 10px;
+    font-size: 12px;
+  }
+  .cj-lb-empty .cj-empty__art {
+    width: 150px;
+    height: 96px;
+  }
+  .cj-lb-empty .cj-empty__title {
+    font-size: 20px;
+  }
+  .cj-lb-empty .cj-empty__body {
+    font-size: 14px;
+  }
+}
+/* the third stat column (game tabs, season) yields first on narrow phones */
+@media (max-width: 379px) {
+  .cj-lb-table :is(th, td):nth-child(5) {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   Wide screens, empty / error states: the notice (left) and the record or season card (right) share one centre line
+   instead of the card hugging the bottom of its column.
+   ========================================================================== */
+@media (min-width: 1000px) {
+  .cj-lb:not([data-state='populated']):not([data-state='loading']) :is(.cj-lb-rec, .cj-lb-season) {
+    align-self: center;
+  }
+}

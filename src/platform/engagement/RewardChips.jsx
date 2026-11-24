@@ -10,13 +10,13 @@ export default function RewardChips({ reward, avatar, size = 26, label = 'Reward
   const chips = rewardChips(reward);
   if (!chips.length) return null;
   return (
-    <ul className={`jg-rewards ${className}`.trim()} aria-label={label}>
+    <ul className={`cj-pro-rewards ${className}`.trim()} aria-label={label}>
       {chips.map((c) => (
-        <li key={c.kind} className={`jg-reward jg-reward--${c.kind}`} data-rarity={c.item?.rarity}>
+        <li key={c.kind} className={`cj-pro-reward cj-pro-reward--${c.kind}`} data-rarity={c.item?.rarity}>
           {c.kind === 'coins' ? (
             <CoinIcon size={15} />
           ) : c.item ? (
-            <span className="jg-reward__art" aria-hidden="true">
+            <span className="cj-pro-reward__art" aria-hidden="true">
               <Preview item={c.item} size={size} avatar={avatar} />
             </span>
           ) : null}

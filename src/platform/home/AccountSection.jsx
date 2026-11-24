@@ -40,23 +40,23 @@ export default function AccountSection() {
   };
 
   return (
-    <section id="account" className="hub-panel hh2-account sa-anchor" aria-labelledby="hh2-acct-h">
-      <h2 id="hh2-acct-h" className="hub-section__title">
+    <section id="account" className="cj-pro-panel cj-pro-account" aria-labelledby="hh2-acct-h">
+      <h2 id="hh2-acct-h" className="cj-pro-panel__title">
         <HubIcon name="user" size={18} /> Account
       </h2>
       {signedIn ? (
         <>
-          <div className="hh2-account__row">
+          <div className="cj-pro-account__row">
             <Ava preset={user?.avatar ?? profile.avatar} size={52} dot={guest ? undefined : 'on'} />
-            <div className="hh2-account__text">
+            <div className="cj-pro-account__text">
               <b>{user?.name || profile.name}</b>
               <small>{guest ? 'Guest account: rooms and play only' : 'Signed in with Google'}</small>
             </div>
-            <button type="button" className="hub-btn hub-btn--soft hub-btn--sm" onClick={() => setConfirm(true)}>
+            <button type="button" className="cj-btn cj-btn--sm" onClick={() => setConfirm(true)}>
               <Icon name="logout" size={16} /> Sign out
             </button>
             {user?.friendCode && !guest && (
-              <button type="button" className="hh2-codechip" onClick={() => copy(user.friendCode)} aria-label={`Copy friend code ${user.friendCode}`}>
+              <button type="button" className="cj-pro-codechip" onClick={() => copy(user.friendCode)} aria-label={`Copy friend code ${user.friendCode}`}>
                 <span>Friend code</span>
                 <b>{user.friendCode}</b>
                 <Icon name="copy" size={16} />
@@ -64,18 +64,18 @@ export default function AccountSection() {
             )}
           </div>
           {guest && (
-            <p className="sa-muted">
+            <p className="cj-pro-muted">
               Guests cannot add friends, get invites or appear on the leaderboard, and lose their progress if browser data is cleared.{' '}
-              <Link to={paths.login(paths.profile())} className="st-link">
+              <Link to={paths.login(paths.profile())} className="cj-pro-link">
                 Sign in with Google
               </Link>
             </p>
           )}
         </>
       ) : (
-        <div className="hh2-account__row">
-          <p className="hub-muted hh2-account__text">You are not signed in yet. Sign in to save your progress, add friends and get invites.</p>
-          <Link to={paths.login(paths.profile())} className="hub-btn hub-btn--primary">
+        <div className="cj-pro-account__row">
+          <p className="cj-pro-muted cj-pro-account__text">You are not signed in yet. Sign in to save your progress, add friends and get invites.</p>
+          <Link to={paths.login(paths.profile())} className="cj-btn cj-btn--primary">
             <Icon name="login" size={18} /> Sign in
           </Link>
         </div>

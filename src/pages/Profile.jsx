@@ -2,7 +2,8 @@ import { useEffect, useMemo } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { isStaff } from '@/lib/adminApi.js';
 import { paths } from '@/platform/paths.js';
-import { featured, liveList } from '@/platform/home/catalog.js';
+import { featured, rankedList } from '@/platform/home/catalog.js';
+import HubIcon from '@/platform/game/HubIcon.jsx';
 import ProfileHeader from '@/platform/home/ProfileHeader.jsx';
 import GameStatCards, { RecentMatches } from '@/platform/home/GameStatCards.jsx';
 import BadgeGrid from '@/platform/home/BadgeGrid.jsx';
@@ -15,11 +16,7 @@ import HandleField from '@/platform/social/HandleField.jsx';
 import ProfileTour from '@/components/tour/ProfileTour.jsx';
 import { useAccountProgress } from '@/platform/home/accountProgress.js';
 import { useAccount, useReducedMotion } from '@/components/shell/hooks.js';
-import '@/styles/hubhome.css';
-import '@/styles/x-profile.css';
-import '@/styles/store-account.css';
-import IndiaArt from '@/components/art/IndiaArt.jsx';
-import '@/platform/home/adda.css';
+import '@/styles/cine/profile.css';
 
 const JUMPS = [
   { id: 'games', label: 'Games' },
@@ -31,34 +28,33 @@ const JUMPS = [
   { id: 'account', label: 'Account' },
 ];
 
-/** Skeleton shaped like the identity header while the session loads (no flash of a wrong name or level). */
+/** Skeleton shaped like the identity hero while the session loads (no flash of a wrong name or level). */
 function ProfileSkeleton() {
   return (
-    <div className="hub-panel sa-proskel" role="status" aria-busy="true">
-      <span className="hub-sr">Loading your profile...</span>
-      <div className="sa-proskel__top">
-        <span className="st-skel sa-proskel__ring" />
-        <span className="sa-proskel__lines">
-          <span className="st-skel" style={{ height: 24, width: '55%' }} />
-          <span className="st-skel" style={{ height: 14, width: '70%' }} />
-          <span className="st-skel" style={{ height: 22, width: '40%' }} />
-        </span>
-      </div>
-      <div className="sa-proskel__row">
-        <span className="st-skel" style={{ height: 64 }} />
-        <span className="st-skel" style={{ height: 64 }} />
-      </div>
+    <div className="cj-pro-hero cj-pro-hero--skel" role="status" aria-busy="true">
+      <span className="sr-only">Loading your profile...</span>
+      <span className="cj-pro-skel cj-pro-skel--ring" />
+      <span className="cj-pro-hero__skel-lines">
+        <span className="cj-pro-skel" style={{ height: 36, width: '46%' }} />
+        <span className="cj-pro-skel" style={{ height: 14, width: '28%' }} />
+        <span className="cj-pro-skel" style={{ height: 6, width: '60%' }} />
+        <span className="cj-pro-skel" style={{ height: 40, width: '40%', borderRadius: 999 }} />
+      </span>
     </div>
   );
 }
 
-/** `/profile`: identity (level ring, coins, streak, daily reward), per-game stats, recent matches, achievements, the invite card, badges, settings, account. */
+/**
+ * `/profile`: a calm hero (avatar and frame, name and @username, level and XP, coins, streak, daily reward) over the
+ * ambient backdrop, jump chips, then rows and glass panels: per-game stats, recent matches, achievements, the invite
+ * card, badges, settings, username, account and about.
+ */
 export default function Profile() {
   const { hash } = useLocation();
   const { user, signedIn, loading } = useAccount();
   const { level } = useAccountProgress();
   const reduced = useReducedMotion();
-  const games = useMemo(liveList, []);
+  const games = useMemo(rankedList, []); // games that keep stats (solo games do not)
   const lead = useMemo(featured, []);
 
   // `/profile#settings` (the old /settings link target) scrolls to the settings block.
@@ -81,28 +77,26 @@ export default function Profile() {
   };
 
   return (
-    <div className="hub-page hh2 hh2-profilepage adda-profile-page xp-page sa-profile st-scope">
-      <h1 className="hub-sr">Your profile</h1>
+    <div className="hub-page cj-pro">
+      <div className="cj-ambient cj-pro-ambient" aria-hidden="true" />
+      <h1 className="sr-only">Your profile</h1>
       <ProfileTour />
-      <div className="adda-profile-intro">
-        {loading ? <ProfileSkeleton /> : <ProfileHeader />}
-        <IndiaArt art="kolkata" className="adda-profile-intro__art" />
-      </div>
-      <nav className="sa-jump" aria-label="Profile sections">
-        {JUMPS.map((j) => (
-          <a key={j.id} href={`#${j.id}`} className="st-chip sa-jump__chip" onClick={(e) => jump(e, j.id)}>
-            {j.label}
-          </a>
-        ))}
-      </nav>
-      {isStaff(user) ? (
-        <p className="sa-staff">
-          <Link to={paths.admin()} className="hub-btn hub-btn--ghost">
-            Admin console
+      {loading ? <ProfileSkeleton /> : <ProfileHeader />}
+      <div className="cj-pro-jumpbar">
+        <nav className="cj-pro-jump" aria-label="Profile sections">
+          {JUMPS.map((j) => (
+            <a key={j.id} href={`#${j.id}`} className="cj-chip cj-pro-jump__chip" onClick={(e) => jump(e, j.id)}>
+              {j.label}
+            </a>
+          ))}
+        </nav>
+        {isStaff(user) ? (
+          <Link to={paths.admin()} className="cj-btn cj-btn--sm cj-pro-staff">
+            <HubIcon name="key" size={16} /> Admin console
           </Link>
-        </p>
-      ) : null}
-      <div className="xp-procols">
+        ) : null}
+      </div>
+      <div className="cj-pro-cols">
         <GameStatCards games={games} user={user} />
         <RecentMatches signedIn={signedIn} lead={lead} />
       </div>
@@ -110,11 +104,11 @@ export default function Profile() {
       <ReferralCard />
       <BadgeGrid games={games} user={user} level={level} />
       <SettingsSection />
-      <HandleField />
-      <div className="hh2-duo">
+      <div className="cj-pro-duo">
+        <HandleField />
         <AccountSection />
-        <AboutSection />
       </div>
+      <AboutSection />
     </div>
   );
 }

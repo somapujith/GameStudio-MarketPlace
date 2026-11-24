@@ -115,12 +115,12 @@ function PushToggle() {
         onChange={change}
       />
       {shown === 'signedout' && (
-        <Link to={paths.login(paths.profile())} className="hh2-textlink xp-set__link">
+        <Link to={paths.login(paths.profile())} className="cj-pro-link cj-pro-set__link">
           Sign in
         </Link>
       )}
       {(shown === 'error' || shown === 'offline') && (
-        <button type="button" className="hub-btn hub-btn--soft hub-btn--sm xp-set__link" onClick={() => change(true)}>
+        <button type="button" className="cj-btn cj-btn--sm cj-pro-set__link" onClick={() => change(true)}>
           <HubIcon name="refresh" size={16} /> Try again
         </button>
       )}
@@ -153,16 +153,16 @@ export default function SettingsSection() {
   };
 
   return (
-    <section id="settings" className="hub-section sa-anchor" aria-labelledby="hh2-settings-h">
-      <div className="hub-section__head">
-        <h2 id="hh2-settings-h" className="hub-section__title">
+    <section id="settings" className="cj-pro-sec" aria-labelledby="hh2-settings-h">
+      <div className="cj-pro-sec__head">
+        <h2 id="hh2-settings-h" className="cj-pro-sec__title">
           Settings
         </h2>
       </div>
 
-      <div className="hh2-setgrid">
-        <section className="hub-panel" aria-labelledby="hh2-snd-h" data-tour="settings-sound">
-          <h3 id="hh2-snd-h" className="hub-section__title">
+      <div className="cj-pro-setgrid">
+        <section className="cj-pro-panel" aria-labelledby="hh2-snd-h" data-tour="settings-sound">
+          <h3 id="hh2-snd-h" className="cj-pro-panel__title">
             <HubIcon name="bolt" size={18} /> Sound
           </h3>
           <Toggle
@@ -175,8 +175,8 @@ export default function SettingsSection() {
               if (v) setTimeout(() => playSfx('coin'), 80);
             }}
           />
-          <div className="hh2-range">
-            <label htmlFor="hh2-volume" className="hh2-range__label">
+          <div className="cj-pro-range">
+            <label htmlFor="hh2-volume" className="cj-pro-range__label">
               <span>Master volume</span>
               <b>{volume}%</b>
             </label>
@@ -194,8 +194,8 @@ export default function SettingsSection() {
               data-nosfx
             />
           </div>
-          <div className="hh2-range">
-            <label htmlFor="hh2-sfxvolume" className="hh2-range__label">
+          <div className="cj-pro-range">
+            <label htmlFor="hh2-sfxvolume" className="cj-pro-range__label">
               <span>Effects</span>
               <b>{Math.round((settings.sfxVolume ?? 1) * 100)}%</b>
             </label>
@@ -224,8 +224,8 @@ export default function SettingsSection() {
             }}
           />
           {settings.voiceLines !== false && (
-            <div className="hh2-range">
-              <label htmlFor="hh2-voicevolume" className="hh2-range__label">
+            <div className="cj-pro-range">
+              <label htmlFor="hh2-voicevolume" className="cj-pro-range__label">
                 <span>Voice volume</span>
                 <b>{Math.round((settings.voiceVolume ?? 1) * 100)}%</b>
               </label>
@@ -254,8 +254,8 @@ export default function SettingsSection() {
           />
         </section>
 
-        <section className="hub-panel" aria-labelledby="hh2-motion-h" data-tour="settings-motion">
-          <h3 id="hh2-motion-h" className="hub-section__title">
+        <section className="cj-pro-panel" aria-labelledby="hh2-motion-h" data-tour="settings-motion">
+          <h3 id="hh2-motion-h" className="cj-pro-panel__title">
             <HubIcon name="spark" size={18} /> Motion &amp; feel
           </h3>
           <Toggle
@@ -290,8 +290,8 @@ export default function SettingsSection() {
               return undefined;
             }}
           />
-          <div className="xp-set">
-            <span className="xp-set__label">
+          <div className="cj-pro-set">
+            <span className="cj-pro-set__label">
               <b>In-game animation speed</b>
               <small>Dice, moves and coin flights. Faster keeps turns snappy.</small>
             </span>
@@ -301,11 +301,11 @@ export default function SettingsSection() {
               onChange={(v) => update({ playbackSpeed: v })}
               options={SPEED_OPTS}
               size="sm"
-              className="xp-seg"
+              className="cj-pro-seg"
             />
           </div>
-          <div className="xp-set">
-            <span className="xp-set__label">
+          <div className="cj-pro-set">
+            <span className="cj-pro-set__label">
               <b>Board camera on phones</b>
               <small>Auto follows the pawn and zooms in on the tile you land on. Pinch only never moves by itself. Off turns zoom off.</small>
             </span>
@@ -315,26 +315,26 @@ export default function SettingsSection() {
               onChange={(v) => update({ boardCamera: v })}
               options={CAMERA_OPTS}
               size="sm"
-              className="xp-seg"
+              className="cj-pro-seg"
             />
           </div>
         </section>
 
-        <section className="hub-panel" aria-labelledby="xp-look-h" data-tour="settings-look">
-          <h3 id="xp-look-h" className="hub-section__title">
+        <section className="cj-pro-panel" aria-labelledby="xp-look-h" data-tour="settings-look">
+          <h3 id="xp-look-h" className="cj-pro-panel__title">
             <HubIcon name="star" size={18} /> Appearance
           </h3>
-          <div className="xp-set">
-            <span className="xp-set__label">
+          <div className="cj-pro-set">
+            <span className="cj-pro-set__label">
               <b>Theme</b>
               <small>Game tables always stay dark.</small>
             </span>
-            <Segmented label="Theme" value={settings.theme || 'system'} onChange={(v) => update({ theme: v })} options={THEME_OPTS} size="sm" className="xp-seg" />
+            <Segmented label="Theme" value={settings.theme || 'system'} onChange={(v) => update({ theme: v })} options={THEME_OPTS} size="sm" className="cj-pro-seg" />
           </div>
         </section>
 
-        <section className="hub-panel" aria-labelledby="xp-push-h" data-tour="settings-notify">
-          <h3 id="xp-push-h" className="hub-section__title">
+        <section className="cj-pro-panel" aria-labelledby="xp-push-h" data-tour="settings-notify">
+          <h3 id="xp-push-h" className="cj-pro-panel__title">
             <HubIcon name="bell" size={18} /> Notifications
           </h3>
           <PushToggle />
@@ -344,14 +344,14 @@ export default function SettingsSection() {
       </div>
 
       {!signedIn && (
-      <section className="hub-panel hh2-danger" aria-labelledby="hh2-reset-h">
+      <section className="cj-pro-panel cj-pro-danger" aria-labelledby="hh2-reset-h">
         <div>
-          <h3 id="hh2-reset-h" className="hub-section__title">
+          <h3 id="hh2-reset-h" className="cj-pro-panel__title">
             <HubIcon name="refresh" size={18} /> Reset progress
           </h3>
-          <p className="hub-muted">Clears your XP, level, coins, local stats and daily streak on this device. Settings and your name stay.</p>
+          <p className="cj-pro-muted">Clears your XP, level, coins, local stats and daily streak on this device. Settings and your name stay.</p>
         </div>
-        <button type="button" className="hub-btn hh2-danger-btn" onClick={() => setConfirmReset(true)}>
+        <button type="button" className="cj-btn cj-pro-danger__btn" onClick={() => setConfirmReset(true)}>
           <Icon name="trash" size={18} /> Reset progress
         </button>
       </section>

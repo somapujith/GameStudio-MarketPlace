@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { paths } from '@/platform/paths.js';
 import { gameSlug } from '@/platform/game/identity.js';
 import HubIcon from '@/platform/game/HubIcon.jsx';
-import { featured, gameById, liveList } from '@/platform/home/catalog.js';
+import { featured, gameById, rankedList } from '@/platform/home/catalog.js';
 import { fmtStat, resolveGameStats, statDefsWithRating, statValue } from '@/platform/home/gameStats.js';
 import { useAccountProgress } from '@/platform/home/accountProgress.js';
 import { useApi, useApiGate } from '@/platform/home/useApi.js';
@@ -16,11 +16,7 @@ import { getCurrentSeason } from '@/lib/api.js';
 import SeasonCard from '@/platform/engagement/SeasonCard.jsx';
 import { useNow } from '@/platform/engagement/useNow.jsx';
 import { SEASON_COLS, seasonCountdown, seasonRowToBoard, seasonStanding, seasonStatusAt } from '@/platform/engagement/engagementModel.js';
-import '@/styles/hubhome.css';
-import '@/platform/home/leaderboard-cinema.css';
-import '@/platform/home/leaderboard-tablet.css';
-import '@/platform/home/leaderboard-phone.css';
-import '@/platform/home/leaderboard-season.css';
+import '@/styles/cine/leaderboard.css';
 
 const OVERALL_COLS = [
   { key: 'wins', label: 'Wins' },
@@ -30,81 +26,80 @@ const isRow = (r) => !!r && typeof r === 'object' && typeof r.name === 'string';
 const PANEL_ID = 'hh2-lb-panel';
 /** `?tab=season`: the current season's points race (docs/ENGAGEMENT.md section 3). */
 const SEASON_TAB = 'season';
-const EXTRA_TABS = [{ id: SEASON_TAB, label: 'Season', icon: 'trophy' }];
+const EXTRA_TABS = [{ id: SEASON_TAB, label: 'Season' }];
 
 function Skeleton() {
   return (
-    <div aria-hidden="true">
-      <div className="hh2-podium hh2-podium--skel">
-        {[2, 1, 3].map((p) => (
-          <div key={p} className="hh2-podium__slot" style={{ gridColumn: p === 1 ? 2 : p === 2 ? 1 : 3 }}>
-            <span className="hub-skel hub-skel--dot" style={{ width: p === 1 ? 76 : 60, height: p === 1 ? 76 : 60 }} />
-            <span className="hub-skel hub-skel--line" style={{ width: '70%', height: 12 }} />
-            <span className="hub-skel" style={{ width: '100%', height: p === 1 ? 84 : 60, borderRadius: '14px 14px 0 0' }} />
-          </div>
-        ))}
-      </div>
-      <ul className="hh2-lb__list">
-        {[0, 1, 2, 3].map((i) => (
-          <li key={i} className="hh2-lb__row">
-            <span className="hub-skel hub-skel--line" style={{ width: 24 }} />
-            <span className="hub-skel hub-skel--dot" style={{ width: 44, height: 44 }} />
-            <span className="hh2-lb__who">
-              <span className="hub-skel hub-skel--line" style={{ width: '55%' }} />
-              <span className="hub-skel hub-skel--line" style={{ width: '30%', height: 10, marginTop: 8 }} />
-            </span>
+    <>
+      <ol className="cj-top10 cj-lb-top" aria-hidden="true">
+        {[1, 2, 3].map((p) => (
+          <li key={p} className="cj-lb-top__item">
+            <span className="cj-top10__num">{p}</span>
+            <span className="cj-lb-card cj-lb-skel" />
           </li>
         ))}
-      </ul>
-    </div>
+      </ol>
+      <div className="cj-lb-ranks cj-lb-ranks--skel" aria-hidden="true">
+        <ul className="cj-lb-skelrows">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <li key={i}>
+              <span className="cj-lb-skel" style={{ width: 18, height: 12 }} />
+              <span className="cj-lb-skel" style={{ width: 36, height: 36, borderRadius: '50%' }} />
+              <span className="cj-lb-skel" style={{ flex: 1, height: 12, maxWidth: 160 }} />
+            </li>
+          ))}
+        </ul>
+      </div>
+    </>
   );
 }
 
 function Notice({ icon, title, children, action }) {
   return (
-    <div className="hub-empty">
-      <span className="hub-empty__icon" aria-hidden="true">
-        <HubIcon name={icon} size={28} />
+    <div className="cj-empty cj-lb-empty">
+      <span className="cj-empty__art cj-lb-empty__art" aria-hidden="true">
+        <span className="cj-lb-empty__icon">
+          <HubIcon name={icon} size={22} />
+        </span>
       </span>
-      <p className="hub-empty__title">{title}</p>
-      <p className="hub-empty__text">{children}</p>
-      {action && <div className="hub-empty__actions">{action}</div>}
+      <p className="cj-empty__title">{title}</p>
+      <p className="cj-empty__body">{children}</p>
+      {action && <div className="cj-empty__actions">{action}</div>}
     </div>
   );
 }
 
-/** The paper scorecard uses account results for the selected game or platform totals. */
+/** "Your record" as a calm glass stat strip: account results for the selected game, or platform totals on Overall. */
 function YourRecord({ game, user, liveGames }) {
   // server level when signed in: the same number the top bar and Profile show
   const { level, coins } = useAccountProgress();
   let tiles;
-  let title;
   let note = null;
   if (!game) {
     const per = liveGames.map((g) => resolveGameStats({ user, gameId: g.id })).filter(Boolean);
     const games = per.reduce((n, s) => n + s.games, 0);
     const wins = per.reduce((n, s) => n + s.wins, 0);
-    title = 'Your record';
     tiles = [
-      { label: 'Level', icon: 'podium', value: fmtNum(level) },
-      { label: 'Games', icon: 'gamepad', value: fmtNum(games) },
-      { label: 'Wins', icon: 'trophy', value: fmtNum(wins) },
+      { label: 'Level', value: fmtNum(level) },
+      { label: 'Games', value: fmtNum(games) },
+      { label: 'Wins', value: fmtNum(wins) },
       { label: 'Coins', icon: 'coins', value: fmtNum(coins) },
-      { label: 'Win rate', icon: 'target', value: `${games ? Math.round(wins / games * 100) : 0}%` },
+      { label: 'Win rate', value: `${games ? Math.round((wins / games) * 100) : 0}%` },
     ];
   } else {
     const stats = resolveGameStats({ user, gameId: game.id });
-    title = 'Your record';
-    tiles = stats ? [
-      ...statDefsWithRating(game, 3).map((d) => ({ label: d.label, icon: d.key === 'wins' ? 'trophy' : d.key === 'games' ? 'gamepad' : 'star', value: fmtStat(stats[d.key] ?? (d.key === 'bestScore' ? stats.bestScore : null), d) })),
-      { label: 'Coins', icon: 'coins', value: fmtNum(coins) },
-      { label: 'Win rate', icon: 'target', value: `${stats.games ? Math.round(stats.wins / stats.games * 100) : 0}%` },
-    ] : null;
+    tiles = stats
+      ? [
+          ...statDefsWithRating(game, 3).map((d) => ({ label: d.label, value: fmtStat(stats[d.key] ?? (d.key === 'bestScore' ? stats.bestScore : null), d) })),
+          { label: 'Coins', icon: 'coins', value: fmtNum(coins) },
+          { label: 'Win rate', value: `${stats.games ? Math.round((stats.wins / stats.games) * 100) : 0}%` },
+        ]
+      : null;
     if (!tiles) {
       note = (
-        <p className="hub-muted">
+        <p className="cj-lb-rec__note">
           No {game.name} games yet.{' '}
-          <Link to={paths.game(game.id)} className="hh2-textlink">
+          <Link to={paths.game(game.id)} className="cj-lb-link">
             Play your first one
           </Link>
         </p>
@@ -112,17 +107,19 @@ function YourRecord({ game, user, liveGames }) {
     }
   }
   return (
-    <section className="leader-record" aria-labelledby="hh2-rec-h">
-      <span className="leader-record__eyes" aria-hidden="true"><i /><i /></span>
-      <h2 id="hh2-rec-h">
-        {title}
+    <section className="cj-lb-rec" aria-labelledby="hh2-rec-h">
+      <h2 id="hh2-rec-h" className="cj-lb-rec__title">
+        Your record
       </h2>
       {tiles && (
-        <dl className="leader-record__stats">
-          {tiles.map((t, i) => (
-            <div key={t.label} className={i > 2 ? 'leader-record__wide' : undefined}>
-              <dt>{t.icon === 'coins' ? <CoinIcon size={23} /> : <HubIcon name={t.icon} size={23} />}{t.label}</dt>
-              <dd>{t.value}</dd>
+        <dl className="cj-lb-rec__stats">
+          {tiles.map((t) => (
+            <div key={t.label}>
+              <dt>{t.label}</dt>
+              <dd>
+                {t.icon === 'coins' && <CoinIcon size={15} />}
+                {t.value}
+              </dd>
             </div>
           ))}
         </dl>
@@ -132,45 +129,125 @@ function YourRecord({ game, user, liveGames }) {
   );
 }
 
-/** Reading order remains first, second, third; the stage places the winner in the middle. */
-function ChampionPodium({ rows, cols, isMe }) {
-  const medals = ['#ffcf68', '#f3dcc0', '#df9b56'];
-  return <div className="leader-podium"><ol className="leader-podium__players" aria-label="Top three players">
-    {rows.slice(0,3).map((row,i)=><li key={`${row.rank}-${row.name}`} className={`leader-champion leader-champion--${i+1}${isMe(row)?' is-me':''}`}>
-      {i===0 && <span className="leader-champion__crown" aria-hidden="true"><HubIcon name="crown" size={48} /></span>}
-      <Ava preset={row.avatar} size={i===0?128:94} ring={medals[i]} frame={row.frame} />
-      <b className="leader-champion__name" title={row.name}>{row.name}</b>
-      {isMe(row) && <span className="leader-you">You</span>}
-      <Title title={row.title} />
-      <p className="leader-champion__stats">{cols.slice(0,2).map((c,j)=><span key={c.key}>{j>0 && <span aria-hidden="true"> &middot; </span>}{fmtStat(statValue(row,c.key),c)} {c.label.toLowerCase()}</span>)}</p>
-      <span className="hub-sr">Rank {row.rank}</span>
-    </li>)}
-  </ol><div className="leader-platform" aria-hidden="true"><img src="/art/cinematic/podium-stage.webp" width="1100" height="366" alt="" />{rows.slice(0,3).map((row,i)=><span key={row.rank} className={`leader-platform__rank leader-platform__rank--${i+1}`}>{row.rank}</span>)}</div></div>;
+const statLine = (row, cols) =>
+  cols
+    .slice(0, 2)
+    .map((c) => `${fmtStat(statValue(row, c.key), c)} ${c.label.toLowerCase()}`)
+    .join(' · ');
+
+/** The top three as Top-10 style poster cards over huge outlined numerals; reading order stays first, second, third. */
+function TopThree({ rows, cols, isMe }) {
+  return (
+    <ol className="cj-top10 cj-lb-top" aria-label="Top three players">
+      {rows.slice(0, 3).map((row, i) => {
+        const me = isMe(row);
+        return (
+          <li key={`${row.rank}-${row.name}`} className={`cj-lb-top__item${me ? ' is-me' : ''}`} style={{ '--i': i }}>
+            <span className="cj-top10__num" aria-hidden="true">
+              {row.rank}
+            </span>
+            <article className="cj-lb-card" data-place={i + 1}>
+              {i === 0 && (
+                <span className="cj-lb-card__crown" aria-hidden="true">
+                  <HubIcon name="crown" size={16} />
+                </span>
+              )}
+              <span className="cj-lb-card__ava">
+                <Ava preset={row.avatar} size={88} ring="rgba(255,255,255,0.16)" frame={row.frame} />
+              </span>
+              <span className="cj-lb-card__info">
+                <b className="cj-lb-card__name" title={row.name}>
+                  {row.name}
+                </b>
+                <span className="cj-lb-card__stats">{statLine(row, cols)}</span>
+                {(me || row.title) && (
+                  <span className="cj-lb-card__chips">
+                    {me && <span className="cj-lb-you">You</span>}
+                    <Title title={row.title} />
+                  </span>
+                )}
+              </span>
+              <span className="sr-only">Rank {row.rank}</span>
+            </article>
+          </li>
+        );
+      })}
+    </ol>
+  );
 }
 
-/** `season`: the season table has no Level column (its third column is Points, which the fit layouts keep visible). */
+/** Fourth place and below in a calm glass list: rank, player (level under the name), the tab's stat columns. */
 function RankingTable({ rows, cols, isMe, season = false }) {
-  if(!rows.length) return null;
-  return <div className={`leader-ranks${season?' leader-ranks--season':''}`} tabIndex={0} role="region" aria-label="Rankings from fourth place, scroll for more columns">
-    <table><caption className="hub-sr">{season?'Season standings from fourth place':'Players ranked fourth and below'}</caption><thead><tr><th scope="col">#</th><th scope="col">Player</th>{!season&&<th scope="col">Level</th>}{cols.map(c=><th scope="col" key={c.key}>{c.label}</th>)}</tr></thead>
-      <tbody>{rows.map((row,i)=><tr key={`${row.rank}-${row.name}`} className={isMe(row)?'is-me':undefined} style={{'--rank-delay':`${Math.min(i,8)*25}ms`}}>
-        <th scope="row">{row.rank}</th><td><div className="leader-ranks__player"><Ava preset={row.avatar} size={42} frame={row.frame} /><b title={row.name}>{row.name}</b>{isMe(row)&&<span className="leader-you">You</span>}<Title title={row.title} /></div></td>
-        {!season&&<td><span className="leader-ranks__level"><HubIcon name="star" size={18} />Lv {row.level??1}</span></td>}{cols.map(c=><td key={c.key}>{fmtStat(statValue(row,c.key),c)}</td>)}
-      </tr>)}</tbody>
-    </table>
-  </div>;
+  const box = useRef(null);
+  // bring the viewer's own row into view inside the list (the list scrolls, never the page)
+  useEffect(() => {
+    const el = box.current;
+    const me = el?.querySelector('tr.is-me');
+    if (!el || !me) return;
+    const head = el.querySelector('thead')?.offsetHeight || 0;
+    const top = me.offsetTop - head;
+    if (top < el.scrollTop || top + me.offsetHeight > el.scrollTop + el.clientHeight - head) el.scrollTop = Math.max(0, top - (el.clientHeight - head - me.offsetHeight) / 2);
+  }, [rows]);
+  if (!rows.length) return <p className="cj-lb-ranks__none">Only the top three so far. Win a match to join them.</p>;
+  return (
+    <div className="cj-lb-ranks__scroll" ref={box} tabIndex={0} role="region" aria-label="Rankings from fourth place, scroll for more">
+      <table className="cj-lb-table">
+        <caption className="sr-only">{season ? 'Season standings from fourth place' : 'Players ranked fourth and below'}</caption>
+        <thead>
+          <tr>
+            <th scope="col">#</th>
+            <th scope="col">Player</th>
+            {cols.map((c) => (
+              <th scope="col" key={c.key}>
+                {c.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => {
+            const me = isMe(row);
+            return (
+              <tr key={`${row.rank}-${row.name}`} className={me ? 'is-me' : undefined} style={{ '--i': Math.min(i, 8) }}>
+                <th scope="row">{row.rank}</th>
+                <td>
+                  <div className="cj-lb-player">
+                    <Ava preset={row.avatar} size={34} frame={row.frame} />
+                    <span className="cj-lb-player__text">
+                      <span className="cj-lb-player__line">
+                        <b title={row.name}>{row.name}</b>
+                        {me && <span className="cj-lb-you">You</span>}
+                      </span>
+                      <span className="cj-lb-player__sub">
+                        {!season && <span>Lv {row.level ?? 1}</span>}
+                        <Title title={row.title} />
+                      </span>
+                    </span>
+                  </div>
+                </td>
+                {cols.map((c) => (
+                  <td key={c.key}>{fmtStat(statValue(row, c.key), c)}</td>
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 /**
- * `/leaderboard` — Overall + one tab per live game (`?game=`) + the Season race (`?tab=season`), podium for the top
- * three, rows for the rest. On the Season tab the season card (status, countdown, prize tiers) takes the record's spot.
+ * `/leaderboard`: Overall + one tab per ranked game (`?game=`) + the Season race (`?tab=season`). A cine page head with the
+ * tabs as dim siblings, the top three as Top-10 numeral cards, the rest in a glass list that scrolls inside itself (the
+ * page always fits the viewport). On the Season tab the season card (status, countdown, prize tiers) takes the record's spot.
  */
 export default function Leaderboard() {
   const [params, setParams] = useSearchParams();
   const { account, guest, signedIn, user } = useAccount();
   const reduced = useReducedMotion();
   const { booting, ready, retry } = useApiGate();
-  const live = useMemo(liveList, []);
+  const live = useMemo(rankedList, []); // solo games keep no stats, so they get no tab
 
   const seasonOn = params.get('tab') === SEASON_TAB;
   const now = useNow();
@@ -178,7 +255,7 @@ export default function Leaderboard() {
   const wantedGame = gameById(wanted);
   const gameId = wantedGame && live.some((g) => g.id === wantedGame.id) ? wantedGame.id : 'overall';
   const game = gameId === 'overall' ? null : gameById(gameId);
-  // the rating column is guaranteed second (the podium shows the first two)
+  // the rating column is guaranteed second (the top-three cards show the first two)
   const cols = seasonOn ? SEASON_COLS : game ? statDefsWithRating(game, 3) : OVERALL_COLS;
   const tab = seasonOn ? SEASON_TAB : gameId;
 
@@ -208,18 +285,13 @@ export default function Leaderboard() {
   const mine = inTop || meRow;
   const lead = game || featured();
   const [entered, setEntered] = useState(false);
-  const [paused, setPaused] = useState(() => typeof document !== 'undefined' && document.hidden);
   useEffect(() => {
-    const change = () => setPaused(document.hidden);
-    document.addEventListener('visibilitychange', change);
-    return () => document.removeEventListener('visibilitychange', change);
-  }, []);
-  useEffect(() => {
-    if(state !== 'ok' || entered) return undefined;
-    const timer = setTimeout(() => setEntered(true), 700);
+    if (state !== 'ok' || entered) return undefined;
+    const timer = setTimeout(() => setEntered(true), 900);
     return () => clearTimeout(timer);
   }, [state, entered]);
 
+  const populated = state === 'ok' && rows.length > 0 && (!seasonOn || !!season);
   let body;
   if (state === 'loading') body = <Skeleton />;
   else if (state === 'auth') {
@@ -228,7 +300,7 @@ export default function Leaderboard() {
         icon="trophy"
         title={guest ? 'Rankings are for signed-in players' : 'Sign in to see the rankings'}
         action={
-          <Link to={paths.login(paths.leaderboard(game?.id))} className="hub-btn hub-btn--primary">
+          <Link to={paths.login(paths.leaderboard(game?.id))} className="cj-btn cj-btn--primary">
             {guest ? 'Sign in with Google' : 'Sign in'}
           </Link>
         }
@@ -242,7 +314,7 @@ export default function Leaderboard() {
         icon="wifiOff"
         title="You are offline"
         action={
-          <button type="button" className="hub-btn hub-btn--primary" onClick={retry}>
+          <button type="button" className="cj-btn cj-btn--primary" onClick={retry}>
             <HubIcon name="refresh" size={18} /> Try again
           </button>
         }
@@ -256,7 +328,7 @@ export default function Leaderboard() {
         icon="refresh"
         title="Could not load the rankings"
         action={
-          <button type="button" className="hub-btn hub-btn--primary" onClick={remote.reload}>
+          <button type="button" className="cj-btn cj-btn--primary" onClick={remote.reload}>
             <HubIcon name="refresh" size={18} /> Try again
           </button>
         }
@@ -279,7 +351,7 @@ export default function Leaderboard() {
         title={upcoming ? `${season.name} is coming` : 'No points yet'}
         action={
           lead ? (
-            <Link to={paths.game(lead.id)} className="hub-btn hub-btn--primary">
+            <Link to={paths.game(lead.id)} className="cj-btn cj-btn--primary">
               <HubIcon name="play" size={16} /> Play {lead.name}
             </Link>
           ) : null
@@ -297,7 +369,7 @@ export default function Leaderboard() {
         title="No champions yet"
         action={
           lead ? (
-            <Link to={paths.game(lead.id)} className="hub-btn hub-btn--primary">
+            <Link to={paths.game(lead.id)} className="cj-btn cj-btn--primary">
               <HubIcon name="play" size={16} /> Play {lead.name}
             </Link>
           ) : null
@@ -310,55 +382,66 @@ export default function Leaderboard() {
     body = (
       <>
         {!account && (
-          <div className="hh2-banner">
-            <HubIcon name="user" size={20} />
+          <div className="cj-lb-banner" role="note">
+            <HubIcon name="user" size={18} />
             <p>{signedIn && guest ? 'Guests are not ranked. Sign in with Google to get on the board.' : 'Sign in to get on the board and see where you stand.'}</p>
-            <Link to={paths.login(paths.leaderboard(game?.id))} className="hub-btn hub-btn--primary hub-btn--sm">
+            <Link to={paths.login(paths.leaderboard(game?.id))} className="cj-btn cj-btn--primary cj-btn--sm">
               Sign in
             </Link>
           </div>
         )}
-        <ChampionPodium rows={rows} cols={cols} isMe={isMe} />
-        <RankingTable rows={rows.slice(3)} cols={cols} isMe={isMe} season={seasonOn} />
-        {account && (
-          <p className="leader-standing" aria-live="polite">
-            {seasonOn ? (
-              mine && mine.rank ? (
+        <TopThree rows={rows} cols={cols} isMe={isMe} />
+        <section className="cj-lb-ranks" aria-labelledby="cj-lb-ranks-h">
+          <header className="cj-lb-ranks__head">
+            <h2 id="cj-lb-ranks-h" className="cj-lb-ranks__title">
+              {seasonOn ? 'Standings' : 'Rankings'}
+            </h2>
+            <span className="cj-lb-ranks__count">{rows.length > 3 ? `#4 to #${rows[rows.length - 1].rank}` : `${rows.length} ranked`}</span>
+          </header>
+          <RankingTable rows={rows.slice(3)} cols={cols} isMe={isMe} season={seasonOn} />
+          {account && (
+            <p className="cj-lb-standing" aria-live="polite">
+              {seasonOn ? (
+                mine && mine.rank ? (
+                  <>
+                    You are <b>#{mine.rank}</b> this season with {fmtNum(mine.points ?? 0)} {Number(mine.points) === 1 ? 'point' : 'points'}.
+                  </>
+                ) : (
+                  <>Finish an online match this season to get ranked.</>
+                )
+              ) : mine && mine.rank ? (
                 <>
-                  You are <b>#{mine.rank}</b> this season with {fmtNum(mine.points ?? 0)} {Number(mine.points) === 1 ? 'point' : 'points'}.
+                  You are <b>#{mine.rank}</b> {game ? `in ${game.name}` : 'overall'}.
                 </>
               ) : (
-                <>Finish an online match this season to get ranked.</>
-              )
-            ) : mine && mine.rank ? (
-              <>
-                You are <b>#{mine.rank}</b> {game ? `in ${game.name}` : 'overall'}.
-              </>
-            ) : (
-              <>You are not in the top {rows.length} yet. Win online matches to climb the board.</>
-            )}
-          </p>
-        )}
+                <>You are not in the top {rows.length} yet. Win online matches to climb the board.</>
+              )}
+            </p>
+          )}
+        </section>
       </>
     );
   }
 
   return (
-    <div className={`hub-page hh2 leader-cinema${seasonOn ? ' leader-cinema--season' : ''}`} data-state={state==='ok'&&rows.length?'populated':state} data-intro={!entered&&!reduced?'true':undefined} data-reduced={reduced?'':undefined} data-paused={paused?'':undefined}>
-      <img className="leader-cinema__scene" src="/art/cinematic/leaderboard-scene.webp" width="2048" height="1024" alt="" fetchPriority="high" decoding="async" />
-      <header className="leader-intro">
-        <HubIcon className="leader-intro__crown" name="crown" size={45} />
-        <h1>Leaderboard</h1><p>See who&rsquo;s winning across every game.</p>
+    <div
+      className={`hub-page cj-lb${seasonOn ? ' cj-lb--season' : ''}`}
+      data-state={populated ? 'populated' : state}
+      data-intro={!entered && !reduced ? 'true' : undefined}
+    >
+      <div className="cj-ambient cj-lb-ambient" aria-hidden="true" />
+      <header className="cj-pagehead cj-lb-head">
+        <h1 className="cj-pagehead__title">Leaderboard</h1>
         <LeaderTabs games={live} value={tab} onChange={pick} panelId={PANEL_ID} extra={EXTRA_TABS} />
       </header>
-        <section id={PANEL_ID} role="tabpanel" aria-labelledby={`hh2-tab-${tab}`} aria-busy={state === 'loading'} className="leader-board">
-          {body}
-        </section>
+      <section id={PANEL_ID} role="tabpanel" aria-labelledby={`hh2-tab-${tab}`} aria-busy={state === 'loading'} className="cj-lb-board">
+        {body}
         {seasonOn ? (
           state === 'ok' ? <SeasonCard season={season} now={now} avatar={user?.avatar} /> : null
         ) : (
           <YourRecord game={game} user={user} liveGames={live} />
         )}
+      </section>
     </div>
   );
 }

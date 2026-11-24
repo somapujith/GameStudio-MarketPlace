@@ -1,6 +1,7 @@
 import { Avatar } from '@/components/art/index.js';
 import { AvatarFrame, CosmeticPreview, DiceSwatch, TitleChip } from '@/components/art/cosmetics.jsx';
 import { cosmeticById } from '@shared/cosmetics.js';
+import '@/styles/cine/ava.css';
 
 const known = (id, kind) => {
   const item = id ? cosmeticById(id) : null;
