@@ -159,14 +159,38 @@ describe('host: the editor', () => {
   });
 });
 
-describe('the card: collapsed by default, the summary as chips', () => {
+describe('the card: a summary with a preview, the editor in a dialog', () => {
   const html = panel({ settings: CUSTOM });
 
-  it('a host sees "Edit rules" (collapsed, wired to the card), a guest "View rules"', () => {
+  it('a host sees "Edit rules" with a pen icon, a guest "View rules" with an eye; both open a dialog', () => {
     const edit = tags(html, 'button').find((t) => t.includes('lr-toggle'));
-    expect(edit).toMatch(/aria-expanded="false" aria-controls="[^"]+"/);
+    expect(edit).toMatch(/aria-haspopup="dialog"/);
+    expect(edit).toContain('aria-expanded="false"');
     expect(html).toContain('<span>Edit rules</span>');
-    expect(panel({ isHost: false })).toContain('<span>View rules</span>');
+    const toggle = html.slice(html.indexOf('class="lr-toggle"'), html.indexOf('</button>', html.indexOf('class="lr-toggle"')));
+    expect(toggle).toContain('class="lr-pen"'); // the pen sits next to the label
+    const guest = panel({ isHost: false });
+    expect(guest).toContain('<span>View rules</span>');
+    expect(guest).toContain('class="lr-pen"');
+  });
+
+  it('previews the selected rules on the card: the custom ones first, marked, then the first rules, six in all', () => {
+    const rows = [...html.matchAll(/<div class="lr-preview__row( is-custom)?"><dt>([^<]+)<\/dt><dd>([^<]+)<\/dd><\/div>/g)].map((m) => ({ custom: !!m[1], label: m[2], value: m[3] }));
+    expect(rows).toHaveLength(6);
+    // CUSTOM changes four rules: they lead the preview
+    expect(rows.slice(0, 4).every((r) => r.custom)).toBe(true);
+    expect(rows.slice(4).every((r) => !r.custom)).toBe(true);
+    expect(html).toContain('4 custom rules');
+    expect(html).toMatch(/\d+ more inside/);
+    // a stock room has nothing custom to mark
+    const stock = panel({});
+    expect(stock).toContain('Standard rules');
+    expect(stock).not.toContain('is-custom');
+  });
+
+  it('the editor sits in a dialog scope so the lobby skin reaches it (server render keeps it in the page, hidden)', () => {
+    expect(html).toContain('class="cj-rules-dialog"');
+    expect(html).toMatch(/class="cj-rules-dialog" role="group" aria-label="Game rules" hidden=""/);
   });
 
   it('one line of chips: the map, the game own summary parts, the custom count', () => {
@@ -180,8 +204,8 @@ describe('the card: collapsed by default, the summary as chips', () => {
     expect(html).toContain('>More rules<');
     expect(html).toContain('data-tour="lobby-rules-host"');
     expect(html).toContain('data-tour="lobby-rules-bar"');
-    // everything stays in the page, only inert while shut
-    expect((html.match(/class="lr-fold" inert=""/g) || []).length).toBe(2);
+    // the long list stays in the page of the dialog, only inert while shut (the card itself is no longer a fold)
+    expect((html.match(/class="lr-fold" inert=""/g) || []).length).toBe(1);
   });
 });
 
@@ -295,11 +319,11 @@ describe('guest: the same list, read only', () => {
     for (const control of ['type="range"', 'role="switch"', 'role="radio"', 'xl-preset', 'xl-rule__reset', 'xl-rules__reset', 'xl-slider']) expect(html, control).not.toContain(control);
   });
 
-  it('collapsed: a "View rules" button opens the card, a "Show all rules" button inside opens the list; both point at their region', () => {
+  it('a "View rules" button opens the dialog, a "Show all rules" button inside opens the list, which points at its region', () => {
     const view = tags(html, 'button').find((t) => t.includes('lr-toggle'));
     expect(view).toContain('aria-expanded="false"');
+    expect(view).toContain('aria-haspopup="dialog"');
     expect(html).toContain('View rules');
-    expect(html).toContain(`<div id="${/aria-controls="([^"]+)"/.exec(view)[1]}" class="lr-fold" inert="">`);
     const more = tags(html, 'button').find((t) => t.includes('lr-more'));
     expect(more).toContain('aria-expanded="false"');
     const id = /aria-controls="([^"]+)"/.exec(more)[1];

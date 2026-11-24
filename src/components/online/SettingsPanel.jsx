@@ -4,6 +4,7 @@ import {
   changedFields,
   customCount,
   fieldDefault,
+  formatValue,
   groupFields,
   groupNote,
   isDefaultValue,
@@ -25,9 +26,11 @@ import RulesTourButton from '@/components/tour/RulesTourButton.jsx';
 import { onStartTour } from '@/components/tour/tourEvents.js';
 import { LOBBY_GUEST_TOUR_ID, LOBBY_HOST_TOUR_ID, LOBBY_RULES_TOUR_ID } from '@/components/tour/steps/lobbySteps.js';
 import { CustomBadge, PresetPicker, RuleGroup, RulesReadOnly, useOpenGroups } from './RulesEditor.jsx';
+import Modal from '@/components/shell/Modal.jsx';
 import '@/styles/online.css';
 import '@/styles/x-lobby.css';
 import '@/styles/lobby-rules.css';
+import '@/styles/cine/rules-dialog.css';
 
 export { SettingField };
 
@@ -40,6 +43,38 @@ function Chevron() {
       <path d="m6 9 6 6 6-6" />
     </svg>
   );
+}
+
+function PenIcon() {
+  return (
+    <svg className="lr-pen" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg className="lr-pen" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+/**
+ * What is selected, at a glance, for the card (the dialog holds the full editor): the rules that differ from the
+ * defaults first (marked), then the first rules of the list, six in all. Derived from the schema, nothing hardcoded.
+ */
+export function rulePreview(groups, values, max = 6) {
+  const all = groups.flatMap((g) => g.fields.map((f) => ({ f, custom: !isDefaultValue(f, values[f.key], values) })));
+  const picked = [...all.filter((r) => r.custom), ...all.filter((r) => !r.custom)].slice(0, max);
+  return {
+    items: picked.map(({ f, custom }) => ({ key: f.key, label: f.label, value: formatValue(f, values[f.key], { compact: true }), custom })),
+    total: all.length,
+    custom: all.filter((r) => r.custom).length,
+  };
 }
 
 /**
@@ -188,6 +223,7 @@ export default function SettingsPanel({ game: baseGame, settings, isHost, disabl
     const count = customCount(fields, eff);
     const summary = summarizeSettings(game, eff);
     const chips = ruleChips(game, eff, mapField);
+    const preview = rulePreview(layout.groups, eff);
     const rootClass = `ho-card ho-settings xl-rules lr lr-rules${isHost ? ' is-host' : ''}${expanded ? ' is-expanded' : ''}${instant ? ' is-instant' : ''}`;
     const head = (
       <>
@@ -196,9 +232,9 @@ export default function SettingsPanel({ game: baseGame, settings, isHost, disabl
             <span className="st-eyebrow">{isHost ? 'You are the host' : 'Set by the host'}</span>
             <h2 className="ho-h2">Game rules</h2>
           </div>
-          <button type="button" className="lr-toggle" aria-expanded={expanded} aria-controls={`${listId}-card`} onClick={() => setExpanded((v) => !v)}>
+          <button type="button" className="lr-toggle" aria-haspopup="dialog" aria-expanded={expanded} onClick={() => setExpanded(true)}>
+            {isHost ? <PenIcon /> : <EyeIcon />}
             <span>{isHost ? 'Edit rules' : 'View rules'}</span>
-            <Chevron />
           </button>
         </div>
         <ul className="lr-chips" aria-hidden="true">
@@ -208,17 +244,60 @@ export default function SettingsPanel({ game: baseGame, settings, isHost, disabl
             </li>
           ))}
         </ul>
+        {preview.items.length > 0 && (
+          <div className="lr-preview">
+            <dl className="lr-preview__grid" aria-label="Selected rules">
+              {preview.items.map((r) => (
+                <div key={r.key} className={`lr-preview__row${r.custom ? ' is-custom' : ''}`}>
+                  <dt>{r.label}</dt>
+                  <dd>{r.value}</dd>
+                </div>
+              ))}
+            </dl>
+            <p className="lr-preview__foot">
+              {preview.custom > 0 ? `${preview.custom} custom ${preview.custom === 1 ? 'rule' : 'rules'}` : 'Standard rules'}
+              {preview.total > preview.items.length ? ` · ${preview.total - preview.items.length} more inside` : ''}
+            </p>
+          </div>
+        )}
         <p className="lr-sr" aria-live="polite">
           {summary || 'The host has not changed anything yet.'}
         </p>
       </>
     );
 
+    // The editor lives in a dialog: the shared glass Modal (portal, focus trap, Esc, scroll lock). It is wrapped in the
+    // lobby's own scope so the controls keep the lobby skin. A server render (tests) has no document to portal into:
+    // the content then stays in the page, hidden, so it can still be read.
+    const closeDialog = () => setExpanded(false);
+    const dialog = (body) =>
+      typeof document === 'undefined' ? (
+        <div className="cj-rules-dialog" role="group" aria-label="Game rules" hidden>
+          <div className="cj-lobby-main cj-lobby-main--dialog">{body}</div>
+        </div>
+      ) : (
+        <Modal
+          open={expanded}
+          onClose={closeDialog}
+          title={isHost ? 'Edit game rules' : 'Game rules'}
+          className="cj-rules-modal"
+          actions={
+            <button type="button" className="hub-btn hub-btn--primary" onClick={closeDialog}>
+              Done
+            </button>
+          }
+        >
+          <div className="cj-rules-dialog">
+            <div className="cj-lobby-main cj-lobby-main--dialog">{body}</div>
+          </div>
+        </Modal>
+      );
+
     if (!isHost) {
       return (
         <section className={rootClass} aria-label="Game settings">
           {head}
-          <Fold id={`${listId}-card`} open={expanded}>
+          {dialog(
             <div className="lr-body">
               {mapPicker}
               <div className="xl-rules__bar">
@@ -233,8 +312,8 @@ export default function SettingsPanel({ game: baseGame, settings, isHost, disabl
                 <RulesReadOnly groups={layout.groups} values={eff} schema={schema} notes={Object.fromEntries(layout.groups.map((g) => [g.id, groupNote(g, eff)]))} />
               </Fold>
               {rules}
-            </div>
-          </Fold>
+            </div>,
+          )}
         </section>
       );
     }
@@ -247,7 +326,7 @@ export default function SettingsPanel({ game: baseGame, settings, isHost, disabl
     return (
       <section className={rootClass} aria-label="Game settings" data-tour="lobby-rules-host">
         {head}
-        <Fold id={`${listId}-card`} open={expanded}>
+        {dialog(
           <div className="lr-body">
             {mapPicker}
 
@@ -321,8 +400,8 @@ export default function SettingsPanel({ game: baseGame, settings, isHost, disabl
               </div>
             </Fold>
             {rules}
-          </div>
-        </Fold>
+          </div>,
+        )}
       </section>
     );
   }
