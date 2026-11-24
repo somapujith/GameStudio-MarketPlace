@@ -36,7 +36,7 @@
 }
 .tc-hud button { font-family: inherit; color: inherit; cursor: pointer; touch-action: manipulation; }
 .tc-hud button:disabled { cursor: default; }
-.tc-hud button:focus-visible { outline: 3px solid var(--h-turmeric); outline-offset: 2px; }
+.tc-hud button:focus-visible { outline: 3px solid var(--h-turmeric); outline-offset: 2px; box-shadow: 0 0 0 2px var(--h-char); }
 .tc-hud b { font-weight: 800; }
 .tc-hud ul, .tc-hud ol { list-style: none; margin: 0; padding: 0; }
 .tc-hud-te { font-family: var(--h-te); font-weight: 700; line-height: 1.35; }
@@ -184,15 +184,17 @@
 
 /* ---- world bubbles --------------------------------------------------------------------------------------------------------------------- */
 .tc-hud-bubbles { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
-.tc-hud-bubble { position: absolute; left: 0; top: 0; display: inline-flex; align-items: center; gap: 1px; padding: 3px 7px; margin-top: -8px; border: 0; border-radius: 12px; color: var(--h-char); background: var(--h-cream); box-shadow: 0 2px 0 rgba(0, 0, 0, 0.3), 0 5px 10px rgba(0, 0, 0, 0.3); pointer-events: auto; will-change: transform; min-height: 36px; }
+.tc-hud-bubble { position: absolute; left: 0; top: 0; display: inline-flex; align-items: center; gap: 1px; padding: 3px 7px; margin-top: -8px; border: 0; border-radius: 12px; color: var(--h-char); background: var(--h-cream); box-shadow: 0 2px 0 rgba(0, 0, 0, 0.3), 0 5px 10px rgba(0, 0, 0, 0.3); pointer-events: auto; will-change: transform; min-height: 44px; min-width: 44px; justify-content: center; }
 .tc-hud-bubble::after { content: ''; position: absolute; left: 50%; bottom: -6px; margin-left: -6px; border: 6px solid transparent; border-top-color: var(--h-cream); border-bottom: 0; }
 .tc-hud-bubble[data-hidden='1'] { visibility: hidden; pointer-events: none; }
 .tc-hud-bubble.is-pay { background: #d8f0bd; font-size: 14px; animation: tc-hud-glow 1.2s ease-in-out infinite; }
 
 /* ---- bottom: pending chip, hands, stations dock ------------------------------------------------------------------------------------------ */
 .tc-hud-bottom { grid-area: bottom; position: relative; display: grid; gap: 6px; min-width: 0; pointer-events: none; }
-.tc-hud-pending { position: absolute; left: 0; bottom: 100%; margin-bottom: 4px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 10px; border-radius: 4px; font-size: 13px; font-weight: 800; color: var(--h-char); background: var(--h-steel); outline: 2px dotted var(--h-char); outline-offset: -4px; box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35); }
-.tc-hud-pending-x { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 50%; background: rgba(36, 26, 20, 0.15); }
+.tc-hud-pending { position: absolute; left: 0; bottom: 100%; margin-bottom: 4px; display: inline-flex; align-items: center; gap: 2px; padding: 0 0 0 10px; border-radius: 4px; font-size: 13px; font-weight: 800; color: var(--h-char); background: var(--h-steel); outline: 2px dotted var(--h-char); outline-offset: -4px; box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35); }
+.tc-hud-pending-x { position: relative; width: 44px; height: 44px; display: grid; place-items: center; border: 0; background: none; }
+.tc-hud-pending-x::before { content: ''; position: absolute; width: 28px; height: 28px; border-radius: 50%; background: rgba(36, 26, 20, 0.15); }
+.tc-hud-pending-x > * { position: relative; }
 .tc-hud-hands { display: flex; gap: 6px; align-items: stretch; }
 .tc-hud-hand { position: relative; flex: 1 1 0; min-width: 0; min-height: 52px; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: 'ico name' 'ico stars'; align-items: center; gap: 0 6px; padding: 4px 8px 4px 5px; border: 0; border-radius: 5px; text-align: left; color: var(--h-char); background: var(--h-plate); box-shadow: 0 3px 0 #556168, inset 0 1px 0 rgba(255, 255, 255, 0.85); }
 .tc-hud-hand::before, .tc-hud-hand::after { content: ''; position: absolute; top: 4px; width: 5px; height: 5px; border-radius: 50%; background: var(--h-rivet); }
@@ -282,16 +284,16 @@
   .tc-hud-top { grid-template-columns: minmax(260px, 1.2fr) minmax(200px, 1fr) auto auto; grid-template-areas: 'banner tin vitals btns'; align-items: stretch; gap: 6px; }
   .tc-hud-banner { padding: 3px 16px; gap: 1px 8px; } .tc-hud-paint { font-size: 14px; } .tc-hud-clock { font-size: 14px; } .tc-hud-shiftbar { height: 9px; }
   .tc-hud-tin { padding: 3px 10px 5px; } .tc-hud-money { font-size: 19px; }
-  .tc-hud-btn { width: 40px; height: 40px; }
+  .tc-hud-btn { width: 44px; height: 44px; }
   .tc-hud-coop { position: absolute; right: 8px; top: 62px; z-index: 3; }
   .tc-hud-rail { flex-direction: column; overflow-x: hidden; overflow-y: auto; max-height: calc(100vh - 128px); }
   .tc-hud-chit { width: 100%; padding: 10px 6px 6px; } .tc-hud-dishname .tc-hud-te { display: none; }
   .tc-hud-chips { flex-direction: column; overflow-x: hidden; overflow-y: auto; max-height: calc(100vh - 128px); padding: 4px; }
-  .tc-hud-chip { grid-template-columns: auto auto; grid-template-areas: 'ico ready' 'meta meta'; min-height: 40px; }
+  .tc-hud-chip { grid-template-columns: auto auto; grid-template-areas: 'ico ready' 'meta meta'; min-height: 44px; }
   .tc-hud-bottom { grid-template-columns: minmax(250px, 320px) minmax(0, 1fr); align-items: end; }
   .tc-hud-hand { min-height: 46px; } .tc-hud-hand-name .tc-hud-te { display: none; }
   .tc-hud-dock { padding: 4px 8px 6px; gap: 8px; }
-  .tc-hud-slot { width: 42px; height: 42px; } .tc-hud-station-name .tc-hud-te { display: none; }
+  .tc-hud-slot { width: 44px; height: 44px; } .tc-hud-station-name .tc-hud-te { display: none; }
   .tc-hud-toasts { top: 56px; }
   .tc-hud-sheetwrap { align-items: center; }
   .tc-hud-sheet { max-height: 94%; border-radius: 10px; }

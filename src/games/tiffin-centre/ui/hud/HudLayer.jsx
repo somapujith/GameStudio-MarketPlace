@@ -263,6 +263,7 @@ export default function HudLayer({ session, scene, state, tickAt, status, connec
   // ---- pointer on the canvas -----------------------------------------------------------------------------------------------------
   const pickRef = useRef(null);
   const hoverRaf = useRef(0);
+  const rootRef = useRef(null);
   const onPickClick = (e) => {
     if (sheetRef.current) {
       setSheet(null);
@@ -281,6 +282,40 @@ export default function HudLayer({ session, scene, state, tickAt, status, connec
   };
   useEffect(() => () => hoverRaf.current && cancelAnimationFrame(hoverRaf.current), []);
 
+  // Publish where the HUD's top bands end as `--tc-hud-top` on the game root, so the tutorial bubble (a sibling layer in ui/menus)
+  // starts below the banner, the takings plate and the full-width chalk board instead of covering them.
+  const hasState = !!state;
+  useEffect(() => {
+    const root = rootRef.current;
+    const host = root?.parentElement;
+    if (!root || !host) return undefined;
+    const measure = () => {
+      const top = host.getBoundingClientRect().top;
+      const w = root.clientWidth || 1;
+      let bottom = 0;
+      for (const sel of ['.tc-hud-top', '.tc-hud-coop', '.tc-hud-board']) {
+        const el = root.querySelector(sel);
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        if (r.height > 0 && r.width >= w * 0.6) bottom = Math.max(bottom, r.bottom - top);
+      }
+      host.style.setProperty('--tc-hud-top', `${Math.ceil(bottom + 8)}px`);
+    };
+    measure();
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null;
+    ro?.observe(root);
+    for (const sel of ['.tc-hud-top', '.tc-hud-board', '.tc-hud-coop']) {
+      const el = root.querySelector(sel);
+      if (el) ro?.observe(el);
+    }
+    window.addEventListener('resize', measure);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', measure);
+      host.style.removeProperty('--tc-hud-top');
+    };
+  }, [hasState, session?.mode, avail.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!state) return null;
   const online = session?.mode === 'online';
   const canPause = !online && typeof session?.pause === 'function';
@@ -291,7 +326,7 @@ export default function HudLayer({ session, scene, state, tickAt, status, connec
 
   return (
     <HudContext.Provider value={{ bus, live }}>
-      <div className={`tc-hud${reduced ? ' tc-hud--calm' : ''}`} data-mode={session?.mode || 'practice'} data-status={status} data-keyboard={kbOn.current ? '1' : '0'}>
+      <div ref={rootRef} className={`tc-hud${reduced ? ' tc-hud--calm' : ''}`} data-mode={session?.mode || 'practice'} data-status={status} data-keyboard={kbOn.current ? '1' : '0'}>
         <div ref={pickRef} className="tc-hud-pick" aria-hidden="true" onClick={onPickClick} onPointerMove={onPickMove} />
         <WorldBubbles scene={scene} state={state} onTarget={onTarget} />
         <TopBar

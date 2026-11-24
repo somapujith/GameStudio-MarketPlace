@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PROGRESS_LOCAL_KEY, TICK_MS, TUTORIAL_LOCAL_KEY } from '@shared/tiffin-centre/catalog.js';
+import * as realEngine from '@shared/tiffin-centre/index.js';
 import { chooseAutoAction } from '@shared/tiffin-centre/index.js';
 import { MAX_CATCHUP_TICKS, createLocalSession } from './localSession.js';
 import { TUTORIAL_PENDING_KEY } from './progress.js';
@@ -255,6 +256,24 @@ describe('createLocalSession (tutorial)', () => {
     expect(s.tutorial.done).toBe(false);
     expect(s.tutorial.step.id).toBe('welcome');
     expect(s.tutorial.hint).toMatch(/Got it/);
+    expect(r.storage.getItem(TUTORIAL_LOCAL_KEY)).toBe(null);
+    expect(r.post).not.toHaveBeenCalled();
+  });
+
+  it('a tutorial shift that keeps ending before the lessons are done is an error: never "tutorial complete", never the server flag', () => {
+    const r = rig();
+    const real = realEngine;
+    // an engine whose tutorial shift is over after the first tick
+    const engine = {
+      ...real,
+      applyAction: (st, a) => (a.type === 'tick' ? { state: { ...st, status: 'done', tick: st.tick + 1 }, events: [] } : real.applyAction(st, a)),
+    };
+    const s = createLocalSession({ mode: 'tutorial', seed: 8, engine, ...r.opts });
+    r.advance(TICK_MS * 30);
+    expect(s.status).toBe('error');
+    expect(s.result).toBeNull();
+    expect(s.tutorial.done).toBe(false);
+    expect(s.lastError).toMatch(/could not be finished/);
     expect(r.storage.getItem(TUTORIAL_LOCAL_KEY)).toBe(null);
     expect(r.post).not.toHaveBeenCalled();
   });

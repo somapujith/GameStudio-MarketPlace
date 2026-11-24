@@ -147,6 +147,14 @@ export function createLocalSession(options = {}) {
       schedule();
       return true;
     }
+    if (mode === 'tutorial' && driver && !driver.done && !driver.skipped) {
+      // the tutorial shift ended (or kept ending) before the lessons were finished: never show "tutorial complete" and never tell the
+      // server the tutorial is done; it is an error screen with a way to try again
+      status = 'error';
+      result = null;
+      lastError = 'The tutorial could not be finished. Please try again.';
+      return true;
+    }
     status = state.status === 'closed' ? 'closed' : 'done';
     result = engine.result(state);
     if (mode === 'practice' && !savedPractice) {

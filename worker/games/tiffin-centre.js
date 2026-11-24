@@ -7,6 +7,7 @@ import { validTarget } from '../../shared/tiffin-centre/movement.js';
 import { query } from '../db.js';
 
 export const ID = GAME_ID;
+export const NOOP_ERROR = 'Already there.';
 export const CAN_HOST_ERROR = 'Finish the Tiffin Centre tutorial first to open a table.';
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
@@ -137,6 +138,11 @@ const adapter = {
   applyAction(state, action) {
     try {
       const res = engine.applyAction(state, action);
+      // A well-formed action that changes nothing (a `move` to where the player already stands) must not look like a state change:
+      // the room would bump seq, save and broadcast it. Refuse it instead (the client never shows this one, see roomCore QUIET_ERRORS).
+      if (res && typeof res === 'object' && res.state === state && !res.error && !(res.events && res.events.length)) {
+        return { state, events: [], error: NOOP_ERROR };
+      }
       if (res && typeof res === 'object' && res.state) return res;
     } catch {
       /* fall through to the refusal below */
@@ -155,7 +161,7 @@ const adapter = {
    */
   deadlines(state) {
     if (!state || state.status !== 'playing') return [];
-    return [{ key: `tick-${state.tick}`, afterMs: TICK_MS, anchor: 'apply', playerId: null, action: { type: 'tick' } }];
+    return [{ key: `tick-${state.tick}`, afterMs: TICK_MS, anchor: 'apply', playerId: null, action: { type: 'tick', tick: state.tick } }];
   },
 
   isOver: (state) => engine.isOver(state),

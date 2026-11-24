@@ -119,7 +119,7 @@ export default function OrderRail({ state, hands, spot, walking, onTarget }) {
   return (
     <section className="tc-hud-railbox" aria-label="Orders">
       <div className="tc-hud-railwire" aria-hidden="true" />
-      <ol className="tc-hud-rail">
+      <ol className="tc-hud-rail" tabIndex={list.length === 0 ? -1 : undefined}>
         {list.length === 0 && <li className="tc-hud-rail-empty">No orders yet. Keep the tawa hot!</li>}
         {list.map((c) => {
           const t = ticketModel(c, state, hands);

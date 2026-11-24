@@ -1,3 +1,4 @@
+import { standX } from '@shared/tiffin-centre/movement.js';
 import { describe, it, expect } from 'vitest';
 import {
   hourFromState, formatClock, daypartView, shiftFrac, formatLeft, starTargets, starBar, tickFrac, easeCount, urgency,
@@ -310,6 +311,13 @@ describe('decideAction (what a tap does)', () => {
     s.stations.tawa1.slots[2] = mkSlot();
     expect(decideAction(s, { kind: 'station', id: 'tawa1' }, opts)).toEqual({ type: 'sheet', station: 'tawa1', slot: 0 });
   });
+  it('a station with a burnt pan clears it first (keyboard Space has no other way), then offers the empty slot', () => {
+    const s = base();
+    s.stations.tawa1.slots[1] = mkSlot({ st: 'burnt', dish: 'dosa' });
+    expect(decideAction(s, { kind: 'station', id: 'tawa1' }, opts).action).toEqual({ type: 'take', station: 'tawa1', slot: 1 });
+    s.stations.tawa1.slots[1] = mkSlot();
+    expect(decideAction(s, { kind: 'station', id: 'tawa1' }, opts)).toEqual({ type: 'sheet', station: 'tawa1', slot: 0 });
+  });
   it('customer: serves a needed held dish, collects when paying, explains otherwise', () => {
     const s = base();
     expect(decideAction(s, { kind: 'customer', id: 1 }, opts).text).toBe('Pick up a dish first');
@@ -342,18 +350,19 @@ describe('walking line and nearest target', () => {
     expect(stops.filter((x) => x.kind === 'spot')).toHaveLength(3);
   });
   it('steps to the next stop in a direction and stops at the ends', () => {
-    expect(nextStop(s(), -3, 1).x).toBeGreaterThan(-3);
-    expect(nextStop(s(), -3, -1)?.x ?? null).toBeLessThan(-3);
+    expect(nextStop(s(), -2.6, 1).x).toBeGreaterThan(-2.6);
+    expect(nextStop(s(), -2.6, -1).x).toBeLessThan(-2.6);
+    expect(nextStop(s(), -100, -1)).toBeNull();
     expect(nextStop(s(), 100, 1)).toBeNull();
     expect(nextStop(s(), 0, -1).x).toBeLessThan(0);
     expect(nextStop(s(), 0, 1).x).toBeGreaterThan(0);
   });
   it('faces the station, the customer at the spot, or the bin', () => {
-    expect(nearestTarget(s(), -3)).toEqual({ kind: 'station', id: 'tawa1', station: 'tawa1' });
-    expect(nearestTarget(s(), -2.25)).toEqual({ kind: 'customer', id: 7 });
-    expect(nearestTarget(s(), -3.75)).toBeNull(); // nobody at spot 0
-    expect(nearestTarget(s(), 3.8)).toEqual({ kind: 'bin' });
-    expect(nearestTarget(s(), -2.6, 0.2)).toBeNull();
+    expect(nearestTarget(s(), standX('tawa1'))).toEqual({ kind: 'station', id: 'tawa1', station: 'tawa1' });
+    expect(nearestTarget(s(), standX('spot:1'))).toEqual({ kind: 'customer', id: 7 });
+    expect(nearestTarget(s(), standX('spot:0'), 0.05)).toBeNull(); // nobody at spot 0 (and no station there)
+    expect(nearestTarget(s(), standX('bin'))).toEqual({ kind: 'bin' });
+    expect(nearestTarget(s(), standX('tawa1') + 0.5, 0.2)).toBeNull();
   });
   it('re-checks a queued action when the walk ends', () => {
     const st = mkState({ customers: [mkCustomer({ id: 1, order: ['dosa'] })] });

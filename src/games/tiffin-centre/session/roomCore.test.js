@@ -37,12 +37,18 @@ describe('roomStatus / helpers', () => {
     expect(roomStatus({ fatal: null, connection: 'open', room: room('lobby'), state: null })).toBe('loading');
     expect(roomStatus({ fatal: null, connection: 'open', room: room(), state: st })).toBe('playing');
     expect(roomStatus({ fatal: null, connection: 'connecting', room: room(), state: st })).toBe('disconnected');
-    expect(roomStatus({ fatal: { kind: 'kicked' }, connection: 'closed', room: room(), state: st })).toBe('disconnected');
+    expect(roomStatus({ fatal: { kind: 'kicked' }, connection: 'closed', room: room(), state: st })).toBe('closed');
+    expect(roomStatus({ fatal: { kind: 'closed' }, connection: 'closed', room: room(), state: st })).toBe('error');
+    expect(roomStatus({ fatal: { kind: 'auth' }, connection: 'closed', room: room(), state: st })).toBe('disconnected');
     expect(roomStatus({ fatal: { kind: 'join' }, connection: 'closed', room: null, state: null })).toBe('error');
     expect(roomStatus({ fatal: { kind: 'left' }, connection: 'closed', room: room(), state: st })).toBe('closed');
     expect(roomStatus({ fatal: { kind: 'closed' }, connection: 'closed', room: room('finished'), state: { ...st, status: 'done' } })).toBe('done');
     expect(roomStatus({ fatal: null, connection: 'open', room: room('lobby'), state: { ...st, status: 'done' } })).toBe('loading');
     expect(roomStatus({ fatal: null, connection: 'open', room: room(), state: { ...st, status: 'closed' } })).toBe('closed');
+    // the server called the shift off (abandoned): the room is finished, the engine state still says playing
+    expect(roomStatus({ fatal: null, connection: 'open', room: room('finished'), state: st })).toBe('closed');
+    expect(roomStatus({ fatal: null, connection: 'closed', room: room('finished'), state: st })).toBe('closed');
+    expect(roomStatus({ fatal: null, connection: 'open', room: room('finished'), state: null })).toBe('loading');
   });
   it('maps the connection and the players', () => {
     expect(sessionConnection('open')).toBe('open');
@@ -58,6 +64,43 @@ describe('roomStatus / helpers', () => {
 });
 
 describe('createRoomSessionCore', () => {
+  it('survives React StrictMode (mount, cleanup, mount): a revived core takes states again; a disposed one drops them', () => {
+    const { core } = setup();
+    core.setConnection('open');
+    core.setRoom(room());
+    core.dispose(); // the dev double-mount cleanup
+    core.handleState({ state: newState(), events: [], seq: 1, fresh: true });
+    expect(core.session.state).toBeNull();
+    core.revive(); // the second mount
+    core.handleState({ state: newState(), events: [], seq: 1, fresh: true });
+    expect(core.session.state).not.toBeNull();
+    expect(core.session.status).toBe('playing');
+  });
+
+  it('a server refusal for a no-op move is not shown as a toast', () => {
+    const { core } = setup();
+    const seen = [];
+    core.session.subscribe((p) => p.error && seen.push(p.error));
+    core.setError('Already there.');
+    expect(core.session.lastError).toBeNull();
+    core.setError('That spot is busy');
+    expect(seen).toEqual(['That spot is busy']);
+  });
+
+  it('an abandoned room (finished, state still playing) is closed with a failed result, never a frozen stall or a stars result', () => {
+    const { core } = setup();
+    core.setConnection('open');
+    core.setRoom(room());
+    core.handleState({ state: newState(), events: [], seq: 1, fresh: true });
+    expect(core.session.status).toBe('playing');
+    expect(core.session.result).toBeNull();
+    core.setRoom(room('finished'));
+    expect(core.session.status).toBe('closed');
+    expect(core.session.result).toMatchObject({ reason: 'closed', winnerId: null, stars: 0 });
+    expect(core.session.result.standings.map((r) => r.rank)).toEqual([2, 2]);
+    expect(core.session.dispatch({ type: 'move', to: 'tawa1' })).toBe(false);
+  });
+
   it('is loading until a state arrives, then playing once the link is open', () => {
     const { core } = setup();
     const s = core.session;
@@ -179,7 +222,7 @@ describe('createRoomSessionCore', () => {
     expect(seen.at(-1).error).toBe('Not ready yet');
     core.setFatal({ kind: 'kicked', message: 'The host removed you from this room.' });
     expect(core.session.fatal.kind).toBe('kicked');
-    expect(core.session.status).toBe('disconnected');
+    expect(core.session.status).toBe('closed');
   });
 
   it('pause / resume / restart are not available online; quit leaves the room', () => {

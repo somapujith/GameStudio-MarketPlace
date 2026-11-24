@@ -52,7 +52,11 @@ export function useRoomSession(code) {
   useEffect(() => {
     if (conn.error) core.setError(conn.error);
   }, [core, conn.error, conn.errorId]);
-  useEffect(() => () => core.dispose(), [core]);
+  // StrictMode mounts, cleans up and mounts again: revive on every mount so the second one still takes states
+  useEffect(() => {
+    core.revive();
+    return () => core.dispose();
+  }, [core]);
 
   const retryRef = useRef(conn.retry);
   retryRef.current = conn.retry;

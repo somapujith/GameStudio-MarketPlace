@@ -610,7 +610,7 @@
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  padding: calc(env(safe-area-inset-top, 0px) + var(--tc-hud-top, 64px)) max(10px, env(safe-area-inset-right, 0px)) 0 max(10px, env(safe-area-inset-left, 0px));
+  padding: var(--tc-hud-top, calc(env(safe-area-inset-top, 0px) + 120px)) max(10px, env(safe-area-inset-right, 0px)) 0 max(10px, env(safe-area-inset-left, 0px));
   pointer-events: none;
 }
 .tc-menu-chitbubble {
@@ -620,7 +620,7 @@
   align-items: flex-start;
   width: 100%;
   max-width: 440px;
-  padding: 14px 14px 12px;
+  padding: 10px 12px 8px;
   pointer-events: auto;
   color: var(--m-ink);
   background: repeating-linear-gradient(180deg, transparent 0 21px, rgba(60, 90, 160, 0.14) 21px 22px), #fbefd0;
@@ -634,16 +634,24 @@
 .tc-menu-chitbubble__main { flex: 1; min-width: 0; }
 .tc-menu-chitbubble__name { margin: 0 0 2px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font: 800 14px var(--m-paint); color: var(--m-red); }
 .tc-menu-chitbubble__name small { margin-left: auto; font: 700 12px var(--m-font); color: #5a4630; }
-.tc-menu-chitbubble__text { margin: 0; font-size: 16px; font-weight: 700; line-height: 1.3; }
-.tc-menu-chitbubble__te { margin: 2px 0 0; font-size: 14px; color: #4b3822; }
-.tc-menu-chitbubble__hint { margin: 6px 0 0; padding: 3px 8px; border-radius: 3px; background: var(--m-turmeric); border: 2px dashed #6b4410; font-size: 14px; font-weight: 800; }
-.tc-menu-chitbubble__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.tc-menu-chitbubble__who { width: 44px; height: 44px; flex: none; }
+.tc-menu-chitbubble__text { margin: 0; font-size: 15px; font-weight: 700; line-height: 1.3; }
+.tc-menu-chitbubble__te { margin: 2px 0 0; font-size: 13px; color: #4b3822; }
+.tc-menu-chitbubble__hint { margin: 4px 0 0; padding: 2px 8px; border-radius: 3px; background: var(--m-turmeric); border: 2px dashed #6b4410; font-size: 13px; font-weight: 800; }
+.tc-menu-chitbubble__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 4px; }
 .tc-menu-chitbubble__foot .tc-menu-btn--ghost { margin-left: auto; color: #3a2a18; border-color: rgba(42, 29, 16, 0.6); }
 .tc-menu-chitbubble__foot .tc-menu-btn--ghost:hover { background: rgba(42, 29, 16, 0.08); }
+.tc-menu-chitbubble.is-folded { align-items: center; padding: 6px 10px; }
+.tc-menu-chitbubble.is-folded .tc-menu-chitbubble__who { width: 32px; height: 32px; }
+.tc-menu-chitbubble.is-folded .tc-menu-chitbubble__main { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 10px; }
+.tc-menu-chitbubble.is-folded .tc-menu-chitbubble__name { margin: 0; }
+.tc-menu-chitbubble.is-folded .tc-menu-chitbubble__name small { margin-left: 0; }
+.tc-menu-chitbubble.is-folded .tc-menu-chitbubble__foot { margin: 0; }
+.tc-menu-chitbubble.is-folded .tc-menu-dots, .tc-menu-chitbubble.is-folded .tc-menu-chitbubble__skip { display: none; }
 .tc-menu-chitbubble__ask { margin-top: 8px; font-weight: 700; font-size: 14px; }
 .tc-menu-chitbubble__ask p { margin: 0 0 8px; }
-.tc-menu-dots { display: inline-flex; flex-wrap: wrap; gap: 4px; max-width: 150px; }
-.tc-menu-dots i { width: 10px; height: 10px; border-radius: 50%; border: 2px solid #1c120a; background: transparent; }
+.tc-menu-dots { display: inline-flex; flex-wrap: nowrap; gap: 2px; margin-right: auto; }
+.tc-menu-dots i { width: 8px; height: 8px; border-radius: 50%; border: 2px solid #1c120a; background: transparent; }
 .tc-menu-dots i.is-done { background: var(--m-leaf); }
 .tc-menu-dots i.is-active { background: var(--m-saffron); transform: scale(1.3); }
 @keyframes tc-menu-chit-in { from { opacity: 0; transform: translateY(-10px) rotate(-1deg) scale(0.96); } to { opacity: 1; transform: none; } }
@@ -675,7 +683,7 @@
   .tc-menu-banner__te { font-size: 20px; }
   .tc-menu-hero__tag { display: none; }
   .tc-menu-lvls { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
-  .tc-menu-coach { padding-top: calc(env(safe-area-inset-top, 0px) + var(--tc-hud-top, 48px)); }
+  .tc-menu-coach { padding-top: var(--tc-hud-top, calc(env(safe-area-inset-top, 0px) + 48px)); }
   .tc-menu-chitbubble { max-width: 400px; padding: 10px 12px 8px; }
   .tc-menu-chitbubble__who { width: 38px; height: 38px; }
   .tc-menu-chitbubble__text { font-size: 15px; }

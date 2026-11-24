@@ -112,7 +112,7 @@ export default function Results({ result, level, pace = 'normal', mode = 'practi
 
         {!tutorial && <Tally vm={vm} shown={shown} />}
 
-        {!closed || vm.stats.served > 0 ? (
+        {!tutorial && (!closed || vm.stats.served > 0) ? (
           <section className="tc-menu-chit" aria-label="Shift numbers">
             <h2 className="tc-menu-chit__h">Today's chit</h2>
             <dl className="tc-menu-chit__rows">

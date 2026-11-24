@@ -395,8 +395,9 @@ export function decideAction(state, target, { meId, selectedHand = 0 } = {}) {
     if (ready >= 0 && hands.length < HANDS_MAX) return decideSlot(state, id, ready, hands);
     const burnt = slots.findIndex((s) => s.st === 'burnt');
     const empty = slots.findIndex((s) => s.st === 'empty');
-    if (empty >= 0) return decideSlot(state, id, empty, hands);
+    // Clear smoking pans before cooking more: with the keyboard (Space at the station) this is the only way to reach a burnt slot.
     if (burnt >= 0) return decideSlot(state, id, burnt, hands);
+    if (empty >= 0) return decideSlot(state, id, empty, hands);
     if (ready >= 0) return decideSlot(state, id, ready, hands);
     return { type: 'hint', text: 'No free slot' };
   }

@@ -5,6 +5,8 @@
 import * as realEngine from '@shared/tiffin-centre/index.js';
 
 const COALESCE = new Set(['move', 'emote']); // only the newest of these matters
+/** Server refusals that are not worth a toast: a `move` to where the player already stands. */
+const QUIET_ERRORS = new Set(['Already there.']);
 const NEVER_FROM_CLIENT = new Set(['tick', 'spawn', 'tutorial-flags']);
 
 const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
@@ -97,9 +99,13 @@ export function createActionLimiter({ send, now = () => Date.now(), setTimer = s
 export function roomStatus({ fatal, connection, room, state }) {
   if (room && room.status === 'lobby') return 'loading'; // back in the lobby (also hides a stale finished game)
   if (state && (state.status === 'done' || state.status === 'closed')) return state.status;
+  // The room is over but the engine state never said so: the server called the shift off (everybody was away for too long, or a
+  // stuck game was abandoned). Without this the screen would show a frozen stall that still reads `playing`.
+  if (room && room.status === 'finished' && state) return 'closed';
   if (fatal) {
-    if (fatal.kind === 'left') return 'closed';
-    if (fatal.kind === 'join') return 'error';
+    // a link that cannot come back (removed by the host, left on purpose, refused, room closed): no Retry offered
+    if (fatal.kind === 'left' || fatal.kind === 'kicked') return 'closed';
+    if (fatal.kind === 'join' || fatal.kind === 'closed') return 'error';
     return 'disconnected';
   }
   if (!state) return connection === 'closed' ? 'disconnected' : 'loading';
@@ -149,6 +155,13 @@ export function createRoomSessionCore({ meId = '', send, leave, engine = realEng
   };
 
   const status = () => roomStatus({ fatal, connection, room, state });
+  // A finished engine state has its own result; a room the server ended without finishing the shift (abandoned) is a closed centre.
+  const resultOf = () => {
+    if (!state) return null;
+    if (engine.isOver(state)) return engine.result(state);
+    if (room && room.status === 'finished') return engine.result({ ...state, status: 'closed', stars: 0 });
+    return null;
+  };
 
   const session = {
     mode: 'online',
@@ -212,6 +225,7 @@ export function createRoomSessionCore({ meId = '', send, leave, engine = realEng
     },
     setRoom(next) {
       room = next || null;
+      result = resultOf();
       notify([]);
     },
     setConnection(next) {
@@ -225,6 +239,7 @@ export function createRoomSessionCore({ meId = '', send, leave, engine = realEng
     },
     /** A rejected action or other server error text (a toast). */
     setError(message) {
+      if (message && QUIET_ERRORS.has(String(message))) return;
       lastError = message ? String(message) : null;
       notify([], { error: lastError });
     },
@@ -239,8 +254,12 @@ export function createRoomSessionCore({ meId = '', send, leave, engine = realEng
       state = next;
       // the tick clock only moves on a NEW tick (an action echo arrives mid-tick and must not reset the bars)
       if (first || fresh || num(next.tick, -1) !== prevTick) tickAt = now();
-      result = engine.isOver(next) ? engine.result(next) : null;
+      result = resultOf();
       notify(fresh || first ? [] : Array.isArray(events) ? events : [], { fresh: !!fresh });
+    },
+    /** Undo `dispose()`: React StrictMode (dev) runs mount -> cleanup -> mount on the same hook state, so a disposed core must come back. */
+    revive() {
+      disposed = false;
     },
     dispose() {
       disposed = true;

@@ -390,12 +390,32 @@ describe('fuzz through the adapter (real engine)', () => {
 
 // ------------------------------------------------------------------------------------------------------------------ deadlines
 
+describe('a no-op action never reaches the room as a state change', () => {
+  it('a move to where the player already is is a refusal (same state, no events), so the room does not bump seq, save or broadcast', () => {
+    const s = fresh();
+    const moved = tiffin.applyAction(s, { type: 'move', to: 'tawa1', playerId: 'p1' });
+    expect(moved.error).toBeUndefined();
+    const again = tiffin.applyAction(moved.state, { type: 'move', to: 'tawa1', playerId: 'p1' });
+    expect(again).toEqual({ state: moved.state, events: [], error: 'Already there.' });
+    expect(again.state).toBe(moved.state);
+  });
+  it('the tick the server schedules carries the tick number, so a duplicate is the engine stale-tick refusal', () => {
+    const s = fresh();
+    const d = tiffin.deadlines(s)[0];
+    const next = tiffin.applyAction(s, d.action).state;
+    expect(next.tick).toBe(1);
+    const dup = tiffin.applyAction(next, d.action);
+    expect(dup.error).toBe('Stale tick');
+    expect(dup.state).toBe(next);
+  });
+});
+
 describe('deadlines (the server tick)', () => {
   it('is exactly one tick timer while the shift runs, keyed by the tick number', () => {
     const s = fresh();
-    expect(tiffin.deadlines(s)).toEqual([{ key: 'tick-0', afterMs: TICK_MS, anchor: 'apply', playerId: null, action: { type: 'tick' } }]);
+    expect(tiffin.deadlines(s)).toEqual([{ key: 'tick-0', afterMs: TICK_MS, anchor: 'apply', playerId: null, action: { type: 'tick', tick: 0 } }]);
     const next = tiffin.applyAction(s, { type: 'tick' }).state;
-    expect(tiffin.deadlines(next)).toEqual([{ key: 'tick-1', afterMs: 1000, anchor: 'apply', playerId: null, action: { type: 'tick' } }]);
+    expect(tiffin.deadlines(next)).toEqual([{ key: 'tick-1', afterMs: 1000, anchor: 'apply', playerId: null, action: { type: 'tick', tick: 1 } }]);
     // a player action does not change the key (the timer keeps running)
     const acted = tiffin.applyAction(next, { type: 'cook', playerId: 'p1', station: 'tawa1', slot: 0, dish: 'dosa' });
     expect(acted.error).toBeUndefined();
@@ -569,7 +589,7 @@ describe('driven through a real GameRoom', () => {
     expect(h.r.seq).toBe(1);
     expect(Object.keys(h.r.deadlines)).toEqual(['tick-0']);
     const plan = h.room.plan();
-    expect(plan.action).toEqual({ type: 'tick' });
+    expect(plan.action).toEqual({ type: 'tick', tick: 0 });
     expect(plan.id).toBeNull();
     expect(plan.timeout).toBe(false);
     expect(plan.at).toBe(h.r.lastApplyAt + TICK_MS);

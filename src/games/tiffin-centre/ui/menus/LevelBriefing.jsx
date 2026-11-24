@@ -2,12 +2,16 @@
 // and one tip from Chotu. Calls onGo after `ms` (or when "Go" is pressed).
 import { useEffect, useRef } from 'react';
 import { DishGlyph, SkyGlyph } from './art.jsx';
+import { useMotionReduced } from './hooks.js';
 import { briefingModel } from './menuModels.js';
 import './menus.css';
 
 /** Props: { level, pace, onGo(), ms? = 2000 (pass 0 to wait for the Go button) } */
-export default function LevelBriefing({ level, pace = 'normal', onGo, ms = 2000 }) {
+export default function LevelBriefing({ level, pace = 'normal', onGo, ms: msProp = 2000 }) {
   const vm = briefingModel(level, pace);
+  // The countdown bar is hidden under reduced motion, so a card that vanishes on a timer would give no warning: wait for "Open the stall".
+  const reduced = useMotionReduced();
+  const ms = reduced ? 0 : msProp;
   const go = useRef(onGo);
   go.current = onGo;
   useEffect(() => {
