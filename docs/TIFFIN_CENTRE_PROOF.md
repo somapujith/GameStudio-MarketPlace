@@ -194,3 +194,71 @@ screen; the socket backed off, reopened, and `08-coop-reconnected-*` shows the t
 * A keyboard-only run of the current 128-step tutorial (blocked by H1), and a human winning L4 and L12.
 * The scene work in `ec8e1bb` (prep counter, gas, weather, inspector models) was checked only through the lighting-hour shots, the tutorial run and no console errors, not the individual effects (rain, power cut visuals) up close.
 * Longer-than-three-minute memory behaviour.
+
+
+---
+
+# Final run (branch tip `69b5365`, production build, headless Chrome 158)
+
+Slice of the final QA covered by this section: **(1) keyboard-only tutorial, (2) touch run of the stock, heat and gas chapters, (7) game page and home screen, and the H1 to H10 table.**
+Practice-level operations visuals, layouts and co-op, pause/resume/no-WebGL and console/heap/perf are in `docs/TIFFIN_CENTRE_PROOF_B.md` and `docs/TIFFIN_CENTRE_PROOF_C.md`.
+Screenshots: `docs/tiffin-centre-proofs/final/` (JPEG, each under 120 KB; `final-01-kbd-*`, `final-02-touch-*`, `final-07-*`).
+
+How: detached worktree of `69b5365`, `vite build`, `vite preview` on :5471 (a dev server on :5472 only served the pure engine modules that a bundle does not expose; they were used to *decide*
+the next move, never to act). SwiftShader, so about 4 fps: keys are slow and the tutorial's own clock keeps running while the browser catches up, which is why the run took 1279 s of wall clock and 1272 ticks.
+
+| # | Area | Result | Evidence |
+|---|------|--------|----------|
+| 1 | Whole 128-step tutorial, keyboard only | **PASS** | `tutorial.finished = true`, final screen `final-01-kbd-tutorial-complete`. Tab+Enter on "Start tutorial", A/D walk, Space/E work, digits in the cook and prep sheets, T tend, B board, Tab+Enter on "Got it" and on the gauge's Swap button. No mouse, no `dispatch`. Keys: Space 209, Enter 54, digits 67, Escape 20 (my driver's own clean-ups), T 8, B 4. Console: 0 real errors, 6 expected (SwiftShader driver message, `KHR_parallel_shader_compile`, one 401 on the offline tutorial-complete POST). |
+| 2 | Touch (390x844, touch events, `pointer: coarse` and `hover: none` both true), stock, heat, gas chapters | **PASS with findings T2, T3** | taps on the scene (counter), dock Prep button and slots, prep sheet rows, dock Tend button, gauge Swap button; steps `stock-turn` to `gas-serve` reached `board-intro`. Session-dispatch fallbacks were needed for cook, take and serve (5 each, not ops controls) and for the sambar and chutney prep taps (T2). |
+| 7a | `/games/tiffin-centre` locked and unlocked | **PASS** | `final-07-gamepage-locked-1280`, `-390` (only "Play tutorial" and "Finish the tutorial to open a table with friends"); `final-07-gamepage-unlocked-1280`, `-390` ("Create table", "Play solo / practice"); no horizontal overflow at 390 |
+| 7b | Home screen `/play/tiffin-centre` | **PASS** | fresh: `final-07-home-fresh-1280x800`, `-390x844`, `-844x390` (Start tutorial "About 15 minutes", locked co-op teaser); with stars: `final-07-home-practice-*` (12 cards, no overflow) |
+
+## 1. Keyboard-only tutorial: every operations chapter used its on-screen control
+
+| Chapter | Control used (keys only) | Screenshot |
+|---|---|---|
+| Stock | stock bars in the top strip; A/D to the back counter, Space opens the prep sheet, digit key picks the ingredient, Space at the counter collects | `final-01-kbd-stock-bars`, `final-01-kbd-prep-sheet`, `final-01-kbd-prep-started` |
+| Heat | Wipe / Top up / Skim buttons in the dock, T at each pan | `final-01-kbd-heat-intro`, `final-01-kbd-heat-tend-tawa1`, `-kadai1`, `-steamer1` |
+| Gas | gauge in the strip; Tab (5 presses) to "Swap the cylinder for 90", Enter (log: `STEP gas-swap`, then `STEP gas-wait` one tick later, so the swap started); A/D to the cylinder stand and Space also works | `final-01-kbd-gas-gauge`, `final-01-kbd-gas-low` |
+| Board | B opens "Menu board", arrow keys move to the dish, Space toggles, B closes | `final-01-kbd-board-intro`, `-board-sheet-off`, `-board-sold-out`, `-board-sheet-on`, `-board-back-on` |
+| Special | parcel customer, same keys as serving | `final-01-kbd-special-parcel` |
+| Weather | event banner "Rain 39s" in the strip, power cut, inspector drill | `final-01-kbd-weather-rain-banner`, `-power-cut`, `-inspector` |
+| Profit | cost and profit under the takings in the top bar | `final-01-kbd-profit-books`, `-profit-profit` |
+
+Not captured as a clean frame: the gas cylinder mid-swap in the tutorial. My first two frames were taken one step late (the dosa had burnt while the slow browser tabbed to Swap, and the lesson had looped back to `gas-cook`), so I deleted them. The swap itself is proven by the step log and by the touch frames `final-02-touch-gas-before-swap`, `final-02-touch-gas-swapping`.
+
+## 2. Touch run
+
+`final-02-touch-stock-turn` (counter glowing in the scene), `-stock-bars`, `-prep-sheet-batter_dosa`, `-collect` (a tap on a ready job in the dock collects it), `-prep-sheet-sambar`, `-heat-intro`, `-heat-tend-tapped` (Top up and Skim in the dock), `-gas-intro`, `-gas-before-swap` (red "Low 20%" gauge with Swap), `-gas-swapping`, `-gas-cost`, `-end`.
+
+## H1 to H10
+
+| # | Status | Proof |
+|---|---|---|
+| H1 operations controls hidden in the tutorial | **CLOSED** | whole tutorial by keyboard (section 1) and the three ops chapters by touch (section 2). DOM probe at `heat-intro`: 10 stock bars, 3 tend buttons, Prep button, status strip and books all present (`final-01-kbd-heat-intro`) |
+| H2 pause copy | closed by source, not re-shot by me | `ui/menus/PauseMenu.jsx` line 34: "Leave the stall? Your shift is saved: resume it from the home screen." (see PROOF_C for a picture) |
+| H3 co-op Leave and emotes | not in my slice | see PROOF_B |
+| H4 tutorial soft-lock recoveries | **no soft lock seen** (partial) | 128 of 128 steps finished at 4 fps; the `lostDish` recovery fired three times in that run (a dosa burnt while the browser was slow, the lesson went back to `gas-cook` and carried on) |
+| H5 stations dock clipped | **still open at 1280 once the Tend buttons appear** | `final-01-kbd-heat-intro`, `final-01-kbd-board-intro`: with Wipe / Top up / Skim next to every pan the dock shows "Chai coun" cut off at the right edge and the Prep counter group is out of sight (scroll only). Before the heat chapter all five groups fit (`final-01-kbd-stock-bars`). B's L4/L12 measurement decides whether this is the same defect |
+| H6 bubbles over panels | not in my slice | see PROOF_B |
+| H7 "BOARI" clip | not in my slice (the strip reads "BOARD / All on" in `final-01-kbd-stock-bars`) | see PROOF_B |
+| H8 connection-lost icon | not in my slice | see PROOF_B |
+| H9 tutorial length copy | **CLOSED** | `final-07-home-fresh-*`: "About 15 minutes: you can stop and continue later, because the game saves." |
+| H10 compact landscape layout | not in my slice | see PROOF_B |
+
+## New findings from this run
+
+| # | Sev | File | Symptom and evidence | Suggested fix |
+|---|---|---|---|---|
+| T1 | Low-Med | `shared/tiffin-centre/tutorial.js`, step `look` (text and the 8 s hint) | The lesson says "press Q or E, or the left and right arrow keys" to turn the head. Q does nothing, E "works" (toast "Nothing here"), plain arrows walk. Measured: `scene.getLook()` is `{yaw:0,pitch:-0.1}` before and after holding Q 1.2 s then E 0.8 s. Real keys are Z / X or Shift+arrows (`look.js` `lookKeyIntent`, `KEY_HELP`). Not a soft lock (Z/X turned it, and "Got it" appears after 20 s). | Change the copy and the hint to "Z or X, or Shift plus the arrow keys". |
+| T2 | Medium (phones) | `ui/menus/CoachMark.jsx` and its CSS, `ui/hud/hud.css` (`.tc-hud-sheetwrap`) | 390x844, step `stock-sides`: the Chotu coach bar (`.tc-menu-coach`, fixed near y 590 to 615) sits on top of the prep sheet and swallows taps on the rows beneath it. `document.elementFromPoint` at the centre of the Sambar Prep button returned the coach card's `<p>`; 56 taps in two runs, the sambar and chutney jobs never started by finger (the step sat 2.5 min until I used a fallback) while Dosa batter, higher in the list, worked. `final-02-touch-prep-sheet-sambar` shows the bar covering the Idly batter row. A player can scroll the list, but nothing says so. | Collapse or hide the coach bar while a sheet is open, or give the sheet a bottom inset above the bar, or lift the sheet above the coach layer. |
+| T3 | Low | `ui/hud` (Prep button) and `shared/tiffin-centre/tutorial.js` `stock-turn` | On touch the dock Prep button at `stock-turn` answers "Chotu says: not yet!" (the gate allows only a move) while the card tells you to tap the glowing counter in the scene. The scene tap landed on the second try in both runs (the first, at screen centre, missed: `final-02-touch-stock-turn`), so the target is small. | Let the Prep button walk to the counter at this step, or enlarge the scene hit target. |
+| T4 | Low | `shared/tiffin-centre/tutorial.js` `gas-low` | The red 20% warning arrives 16 to 20 ticks after the lesson dosa goes on; a dosa nobody picks up burns first and the chapter loops back to `gas-cook` (recovered by design, but confusing; it happened twice in the keyboard run). | Stage the gauge a little lower so the warning comes inside the cook time, or say "take the dosa first". |
+| T5 | Info | site, not the game | A signed-in first visit to `/games/tiffin-centre` opens the 7-step site tour over the page; screenshots were taken after "Skip tour". | none |
+
+## Not verified here
+
+* Real GPU, Safari, iOS, Firefox, sound; real finger gestures (only synthetic touch events).
+* A person pressing keys at 60 fps; the keyboard run is at software-GL speed.
+* The gas cylinder mid-swap frame in the tutorial (see above). Operations visuals, layouts, co-op, pause/resume, no-WebGL and perf are the other two reports.
