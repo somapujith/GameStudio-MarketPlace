@@ -5,6 +5,7 @@ import {
   recipeFor, recipeSteps, recipeTip,
 } from './recipes.js';
 import { applyAction, createGame, isOver } from './index.js';
+import { KEY_HELP } from '../../src/games/tiffin-centre/ui/hud/look.js';
 import { tutorialBotAction } from './tutorial.bot.js';
 import {
   LOOK_TURN_RAD, TUTORIAL_ACTIONS, TUTORIAL_CHAPTERS, TUTORIAL_NOT_YET, TUTORIAL_RECIPE_DISHES, TUTORIAL_SETTINGS, TUTORIAL_STEPS,
@@ -558,7 +559,7 @@ describe('look around (first person)', () => {
     expect(sim.driver.hint).toBe(null);
     sim.tick();
     sim.tick();
-    expect(sim.driver.hint).toMatch(/Q or E/);
+    expect(sim.driver.hint).toMatch(/Hold Z to turn your head left and X to turn it right/);
     expect(sim.driver.hintFor('touch')).toMatch(/drag/);
     for (let i = 0; i < 12; i++) sim.tick();
     expect(sim.driver.ackable).toBe(true);
@@ -634,13 +635,50 @@ describe('keyboard and touch variants', () => {
     expect(kb.some((t) => /A \/ D/.test(t))).toBe(true);
   });
 
+  it('every keyboard line names the REAL keys (KEY_HELP): Z / X turn the head, Shift + arrows look, V recentres, plain arrows and A / D walk', () => {
+    const helpKeys = (what) => KEY_HELP.keyboard.find((r) => what.test(r.what)).keys;
+    expect(helpKeys(/Turn your head/)).toEqual(['Z', 'X', 'Shift + arrows']); // the scheme this test (and the tutorial copy) is written against
+    expect(helpKeys(/Look straight/)).toEqual(['V']);
+    expect(helpKeys(/Walk/)).toEqual(['A', 'D', '←', '→']);
+    // every keyboard variant the driver showed in a full play, plus every static one in the step table
+    const sim = play(makeSim());
+    const lines = new Set(sim.kbTexts.filter(Boolean));
+    for (const st of TUTORIAL_STEPS) {
+      for (const t of [st.text, st.controls.kb, ...st.hint.map((h) => h.text)]) if (typeof t === 'string') lines.add(t);
+    }
+    expect(lines.size).toBeGreaterThan(300);
+    const sentences = [...lines].flatMap((t) => t.split(/(?<=[.!?])\s+|: |\(/));
+    for (const t of lines) {
+      expect(t, 'Q / E never turn the head').not.toMatch(/\bQ\b[^a-z]{0,4}\bE\b|\bQ or E\b|\bQ\/E\b/);
+      expect(t, 'no key called Q').not.toMatch(/\b(?:press|hold|use) (?:the )?Q\b/i);
+      expect(t, 'E is only ever "work", never a turn key').not.toMatch(/\bE\b(?! ?[a-z])[^.]{0,20}\b(turn|look)\b|\b(turn|look)\b[^.]{0,20}\bE\b(?! ?[a-z])/);
+    }
+    for (const t of sentences) {
+      // a sentence that is about turning the head or looking says Z / X / V or Shift, and never offers the plain arrows for it
+      if (/\b(turn|look)\b[^.]*\b(head|left and right)\b|\bturn your head\b/i.test(t) && /arrow/i.test(t)) expect(t, t).toMatch(/Shift|plain arrow keys walk/);
+      // the plain arrows walk
+      if (/\barrow keys?\b/i.test(t) && !/Shift/.test(t)) expect(t, t).toMatch(/\bwalk|\bA\b|\bleft\b|\bright\b/i);
+    }
+    // the look step, the one that teaches it, names all three turning keys
+    const look = TUTORIAL_STEPS.find((x) => x.id === 'look');
+    expect(look.controls.kb).toMatch(/Z \/ X/);
+    expect(look.controls.kb).toMatch(/\bV\b/);
+    expect(look.text).toMatch(/Z[^.]*X/);
+    expect(look.hint[0].text).toMatch(/Z[^.]*left[^.]*X[^.]*right/);
+    expect(look.hint[0].text).toMatch(/Shift[^.]*arrow/);
+    expect(look.hint[0].text).toMatch(/\bV\b/);
+    expect(look.hint[0].text).toMatch(/plain arrow keys walk/i);
+    // the walk step really says A / D and the arrow keys WALK
+    expect(TUTORIAL_STEPS.find((x) => x.id === 'walk').text).toMatch(/A \/ D[^.]*arrow keys[^.]*walk/);
+  });
+
   it('textFor / hintFor / controlsFor and setPointer pick the variant', () => {
     const sim = makeSim();
     sim.driver.ack();
     sim.pump();
     expect(sim.driver.step.id).toBe('look');
     expect(sim.driver.text).toBe(sim.driver.textFor('keyboard'));
-    expect(sim.driver.textFor('keyboard')).toMatch(/Q or E/);
+    expect(sim.driver.textFor('keyboard')).toMatch(/press Z to look left and X to look right/);
     expect(sim.driver.textFor('touch')).toMatch(/drag/i);
     sim.driver.setPointer('touch');
     expect(sim.driver.pointer).toBe('touch');
@@ -648,7 +686,7 @@ describe('keyboard and touch variants', () => {
     expect(sim.driver.controls).toMatch(/Drag/);
     sim.driver.setPointer('mouse');
     expect(sim.driver.pointer).toBe('keyboard');
-    expect(sim.driver.controls).toMatch(/Q \/ E/);
+    expect(sim.driver.controls).toMatch(/Z \/ X/);
   });
 });
 
@@ -859,6 +897,33 @@ describe('the operations chapters teach every mechanic through the real engine',
     }
     expect(fuses).toEqual([20, 30]);
     expect(sim.driver.done).toBe(true);
+  });
+
+  it('gas: the red warning arrives right after the lesson dosa goes on, long before it can be ready or burn, and the chapter never loops back to gas-cook', () => {
+    for (const seed of [7, 3, 11, 29]) {
+      const sim = play(makeSim(seed));
+      expect(sim.driver.done, `seed ${seed}`).toBe(true);
+      const start = eventsOf(sim, 'cook-start').filter((e) => e.dish === 'dosa');
+      const low = eventsOf(sim, 'gas-low');
+      expect(low, `seed ${seed}`).toHaveLength(1);
+      // the lesson dosa is the one cooked while the stall is at gas-cook: the cook-start right before the warning
+      const lesson = start.filter((e) => sim.events.indexOf(e) < sim.events.indexOf(low[0])).pop();
+      const gap = sim.events.slice(sim.events.indexOf(lesson), sim.events.indexOf(low[0])).filter((e) => e.type === 'tick').length;
+      expect(gap, `seed ${seed}: ticks between the lesson dosa and the warning`).toBeLessThanOrEqual(3);
+      const lessonStation = sim.events.slice(sim.events.indexOf(lesson), sim.events.indexOf(low[0]));
+      expect(lessonStation.some((e) => e.type === 'burnt'), `seed ${seed}`).toBe(false);
+      expect(sim.visited.filter((id) => id === 'gas-cook'), `seed ${seed}: gas-cook entered once`).toHaveLength(1);
+    }
+  });
+
+  it('gas: a cylinder that never crosses the red line (the dosa was lifted off, or it is full) is pushed under it, so gas-low cannot wait for ever', () => {
+    for (const to of [GAS.cap, 600, 260]) {
+      const sim = playTo(makeSim(), 'gas-low', 900);
+      if (sim.driver.step.id !== 'gas-low') continue; // the warning already rang on the first tick: nothing to rescue
+      sim.state = { ...sim.state, gas: { ...sim.state.gas, u: to } };
+      for (let i = 0; i < 12 && sim.driver.step.id === 'gas-low'; i++) sim.tick();
+      expect(sim.driver.step.id, `from ${to}`).not.toBe('gas-low');
+    }
   });
 
   it('nothing in the operations chapters is finished by idling: a player who does nothing at a step stays at or before it', () => {

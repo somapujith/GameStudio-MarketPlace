@@ -187,18 +187,18 @@ const A_ALL = TUTORIAL_ACTIONS;
 
 // one-line reminders of the controls, per kind of step
 const CONTROLS = {
-  none: { kb: 'Q / E or the arrow keys turn your head', touch: 'Drag on empty space to turn your head' },
+  none: { kb: 'Z / X turn your head left and right (V looks straight again)', touch: 'Drag on empty space to turn your head' },
   ack: { kb: 'Click "Got it" to carry on', touch: 'Tap "Got it" to carry on' },
-  look: { kb: 'Q / E or the arrow keys turn your head', touch: 'Drag on empty space to turn your head' },
+  look: { kb: 'Z / X turn your head left and right (V looks straight again)', touch: 'Drag on empty space to turn your head' },
   walk: { kb: 'A / D walk along the counter, Space works at the glowing spot', touch: 'Tap a station and your cook walks there' },
   cook: { kb: 'A / D to walk, Space to cook at the glowing station', touch: 'Tap the glowing station, then pick the dish' },
   take: { kb: 'Space at the glowing dish picks it up', touch: 'Tap the glowing dish to pick it up' },
   serve: { kb: 'A / D to face a token, Space to serve', touch: 'Tap the customer or their chit to serve' },
   collect: { kb: 'Space at the customer holding the money', touch: 'Tap the customer holding the money note' },
-  prep: { kb: 'Face the glowing back counter behind you and press Space to work there', touch: 'Tap the glowing back counter and pick the job' },
+  prep: { kb: 'Press P to walk to the back counter behind you and pick a job', touch: 'Tap the glowing back counter and pick the job' },
   tend: { kb: 'Space at the glowing pan wipes it clean', touch: 'Tap the glowing pan to wipe it clean' },
   gas: { kb: 'Walk to the cylinder stand at the left end, Space changes the cylinder', touch: 'Tap the cylinder stand and your cook walks there' },
-  board: { kb: 'Space at the price board, then pick the dish', touch: 'Tap the price board, then pick the dish' },
+  board: { kb: 'Press B for the price board, then pick the dish', touch: 'Tap the price board, then pick the dish' },
   play: { kb: 'A / D to walk, Space to cook, pick up, serve and collect', touch: 'Tap stations, dishes and customers: your cook walks and works' },
 };
 
@@ -374,7 +374,7 @@ const LOOK_STEPS = [
   S({
     id: 'look', say: 'Pehle idhar-udhar dekho anna!',
     text: [
-      'You are standing behind the counter and you see through your own eyes. Turn your head: press Q or E, or the left and right arrow keys, and look around the stall.',
+      'You are standing behind the counter and you see through your own eyes. Turn your head: press Z to look left and X to look right, and look around the stall.',
       'You are standing behind the counter and you see through your own eyes. Turn your head: drag a finger on empty space and look around the stall.',
     ],
     te: 'తల తిప్పి చుట్టూ చూడండి.',
@@ -383,7 +383,7 @@ const LOOK_STEPS = [
     ackAfter: 20, // if the head cannot be turned on this device, Got it appears after a while
     done: (s, e, ctx) => ctx.lookDelta > LOOK_TURN_RAD || ctx.acked,
     hint: [
-      [8, 'Hold Q or E, or the arrow keys, to turn your head left and right.', 'Put a finger on empty space and drag sideways to turn your head.'],
+      [8, 'Hold Z to turn your head left and X to turn it right. Shift with the arrow keys works too, and V looks straight ahead again. (The plain arrow keys walk.)', 'Put a finger on empty space and drag sideways to turn your head.'],
       [20, 'Click "Got it" if your head will not turn.', 'Tap "Got it" if your head will not turn.'],
     ],
   }),
@@ -442,7 +442,7 @@ const TAWA_STEPS = [
   S({
     id: 'walk', say: 'Pehle tawa pe chalo!',
     text: [
-      'First, walk to the tawa. Use A / D (or the arrow keys) to walk along the counter until the tawa is in front of you.',
+      'First, walk to the tawa. Use A / D (or the left and right arrow keys) to walk along the counter until the tawa is in front of you.',
       'First, go to the tawa. Tap it: you walk there along the counter, and the view follows you.',
     ],
     te: 'పెనం దగ్గరకు వెళ్ళండి. నొక్కితే మీరు నడిచి వెళ్తారు.',
@@ -450,8 +450,8 @@ const TAWA_STEPS = [
     spotlight: () => sp('station', 'tawa1'),
     done: (s, e, ctx) => !!ctx.me && ctx.me.at === 'tawa1',
     hint: [
-      [8, 'Press A, or the left arrow, until you stand at the glowing tawa.', 'Tap the glowing tawa and you walk there.'],
-      [24, 'The tawa is on the far left. Keep walking left with A or the left arrow.', 'The tawa is on the far left. Turn your head to find it, then tap it.'],
+      [8, 'Press A or the left arrow key until you stand at the glowing tawa.', 'Tap the glowing tawa and you walk there.'],
+      [24, 'The tawa is on the far left. Keep walking left with A or the left arrow key.', 'The tawa is on the far left. Turn your head to find it, then tap it.'],
     ],
   }),
   DOSA.card,
@@ -813,7 +813,7 @@ const STOCK_STEPS = [
   S({
     id: 'stock-turn', say: 'Peeche mudo anna, ek aur counter hai!',
     text: [
-      'A real stall never cooks from an empty shelf. Behind you is the BACK COUNTER: the wet grinder, the chutney stone, the sambar pot and the dough tray. Turn round and walk to it.',
+      'A real stall never cooks from an empty shelf. Behind you is the BACK COUNTER: the wet grinder, the chutney stone, the sambar pot and the dough tray. Press P and you turn round and walk to it.',
       'A real stall never cooks from an empty shelf. Behind you is the BACK COUNTER: the wet grinder, the chutney stone, the sambar pot and the dough tray. Tap the glowing counter and you turn round and walk to it.',
     ],
     te: 'వెనక్కి తిరగండి: వెనుక కౌంటర్ ఉంది.',
@@ -822,7 +822,7 @@ const STOCK_STEPS = [
     onEnter: (s, ctx) => [...clearOnce(ctx), train({ stock: true, stage: { stock: SHELF, fresh: { batter_dosa: 31 } } })],
     done: (s, e, ctx) => !!ctx.me && ctx.me.at === PREP_STATION,
     hint: [
-      [8, 'Face the glowing back counter behind you and press Space.', 'Tap the glowing back counter behind you.'],
+      [8, 'Press P to walk to the glowing back counter behind you.', 'Tap the glowing back counter behind you.'],
       [24, 'The back counter is behind your cooking row. Turn right round to find it.'],
     ],
   }),
@@ -876,7 +876,7 @@ const STOCK_STEPS = [
   S({
     id: 'stock-sides', say: 'Sambar aur chutney bhi banao, dono ek saath!',
     text: [
-      'Sambar and coconut chutney run low too (see the bars). Start BOTH: the sambar pot needs the stove (gas) and takes 10 seconds, the chutney stone takes 6. The two jobs run at the same time. Press Space at the back counter and choose each one.',
+      'Sambar and coconut chutney run low too (see the bars). Start BOTH: the sambar pot needs the stove (gas) and takes 10 seconds, the chutney stone takes 6. The two jobs run at the same time. Press P to open the back counter and choose each one.',
       'Sambar and coconut chutney run low too (see the bars). Start BOTH: the sambar pot needs the stove (gas) and takes 10 seconds, the chutney stone takes 6. The two jobs run at the same time. Tap the back counter and choose each one.',
     ],
     te: 'సాంబార్, చట్నీ రెండూ ఒకేసారి మొదలుపెట్టండి.',
@@ -1188,6 +1188,11 @@ const HEAT_STEPS = [
 // Chapter: Gas
 
 const gasPct = (s) => (s.gas ? Math.round((s.gas.u / GAS.cap) * 100) : 100);
+// The lesson cylinder is staged one burner-tick above the red line: the first tick the lesson dosa is on the tawa drops it across 20% and the engine
+// rings the low-gas warning, long before that dosa can be ready (5 ticks), let alone burn (7 more).
+const GAS_LESSON = Math.round(GAS.cap * GAS.lowFrac) + GAS.drain;
+const GAS_LOW_PATIENCE = 4; // ticks the warning may take before Chotu lowers the cylinder himself
+const GAS_LESSON_PCT = Math.round((GAS_LESSON / GAS.cap) * 100);
 
 const GAS_STEPS = [
   S({
@@ -1204,36 +1209,37 @@ const GAS_STEPS = [
   S({
     id: 'gas-cook', say: 'Dosa daalo, gas jaltee dekho!',
     text: [
-      `Time passes at a busy stall. The cylinder is nearly empty now (about ${Math.round((206 / GAS.cap) * 100)}%). Cook a Plain Dosa for the customer and watch the gauge: the red low-gas warning will show up in a few seconds.`,
-      `Time passes at a busy stall. The cylinder is nearly empty now (about ${Math.round((206 / GAS.cap) * 100)}%). Tap the tawa and cook a Plain Dosa for the customer, and watch the gauge: the red low-gas warning will show up in a few seconds.`,
+      `Time passes at a busy stall. The cylinder is nearly empty now (about ${GAS_LESSON_PCT}%). Cook a Plain Dosa for the customer and watch the gauge: the red low-gas warning will come on within a second or two.`,
+      `Time passes at a busy stall. The cylinder is nearly empty now (about ${GAS_LESSON_PCT}%). Tap the tawa and cook a Plain Dosa for the customer, and watch the gauge: the red low-gas warning will come on within a second or two.`,
     ],
-    te: 'సిలిండర్ దాదాపు ఖాళీ. దోశ వేసి గేజ్ చూడండి.',
+    te: 'సిలిండర్ దాదాపు ఖాళీ. దోశ వేసి గేజ్ చూడండి: ఎరుపు హెచ్చరిక వెంటనే వస్తుంది.',
     controls: 'cook',
     allow: A_COOK,
     spotlight: () => stationSp('dosa'),
-    onEnter: (s, ctx) => [train({ stage: { gas: 206 } }), ...spawnTags(ctx, [{ tag: 'G1', kind: 'office', name: 'Imran bhai', order: ['dosa'] }])],
+    onEnter: (s, ctx) => [train({ stage: { gas: GAS_LESSON } }), ...spawnTags(ctx, [{ tag: 'G1', kind: 'office', name: 'Imran bhai', order: ['dosa'] }])],
     needsTags: ['G1'],
     done: (s, e, ctx) => haveDish(s, ctx.me, 'dosa') || (!!ctx.cust('G1') && ctx.cust('G1').got.length > 0),
     // junk dishes drain the nearly empty cylinder to nothing before the lesson dosa is on: back to the nearly empty cylinder the lesson is about
-    rescue: keepCookable(['G1'], [], 206),
+    rescue: keepCookable(['G1'], [], GAS_LESSON),
     hint: [[10, 'Walk to the tawa, press Space and choose Plain Dosa.', 'Tap the glowing tawa and choose Plain Dosa.'], TAWA_FULL_HINT],
   }),
   S({
     id: 'gas-low', say: 'Dekho, lal batti jal gayi: gas kam hai!',
-    text: (s) => `Watch the gauge while the dosa cooks: it is at ${gasPct(s)}% and dropping. At 20% the flame turns RED with a warning bell: that is your signal to change the cylinder before it runs dry.`,
-    te: 'గేజ్ చూడండి: 20% దాటితే ఎరుపు హెచ్చరిక.',
+    text: (s) => `Watch the gauge: it is at ${gasPct(s)}% and dropping. At 20% the flame turns RED with a warning bell: that is your signal to change the cylinder before it runs dry. The dosa is cooking meanwhile, so pick it up the moment it is ready, before it burns.`,
+    te: 'గేజ్ చూడండి: 20% దాటితే ఎరుపు హెచ్చరిక. దోశ సిద్ధం కాగానే తీసుకోండి, లేకపోతే మాడిపోతుంది.',
     allow: A_TAKE,
     spotlight: gasSp,
     done: (s) => !!s.gas && s.gas.u <= GAS.cap * GAS.lowFrac,
     recover: lostDish('G1', 'dosa', 'gas-cook'),
-    // a cylinder that is already full (changed early) goes back to nearly empty: the warning is the lesson
-    rescue: (s) => (s.gas && s.gas.sw === 0 && s.gas.u > GAS.cap * 0.4 ? [train({ stage: { gas: Math.round(GAS.cap * GAS.lowFrac) - 10 } })] : null),
-    hint: [[8, 'Wait a few seconds for the red low-gas warning. The dosa is cooking, so the burner drinks gas.']],
+    // a cylinder that is already full (changed early), or one that never crossed the red line (the dosa was lifted off, or the burner idled) goes under it:
+    // the warning is the lesson, and the dosa must not wait on the tawa for it
+    rescue: (s, ctx) => (s.gas && s.gas.sw === 0 && s.gas.u > GAS.cap * GAS.lowFrac && (s.gas.u > GAS.cap * 0.4 || ctx.stepTicks >= GAS_LOW_PATIENCE) ? [train({ stage: { gas: Math.round(GAS.cap * GAS.lowFrac) - 10 } })] : null),
+    hint: [[4, 'The red warning comes on at 20%. Pick the dosa up as soon as it is ready, before it burns.']],
   }),
   S({
     id: 'gas-swap', say: 'Silinder badlo, abhi!',
-    text: both((touch) => (s) => `LOW GAS! The gauge says ${gasPct(s)}%. Change the cylinder now: ${touch ? 'tap the cylinder stand at the left end of the counter and your cook walks there' : 'walk to the cylinder stand at the left end of the counter with A / D and press Space'}. It costs ${rs(GAS.swapCost)} and takes ${GAS.swapTicks} seconds.`),
-    te: 'గ్యాస్ తక్కువ! సిలిండర్ మార్చండి.',
+    text: both((touch) => (s) => `LOW GAS! The gauge says ${gasPct(s)}%. Change the cylinder now: ${touch ? 'tap the cylinder stand at the left end of the counter and your cook walks there' : 'walk to the cylinder stand at the left end of the counter with A / D and press Space'}. It costs ${rs(GAS.swapCost)} and takes ${GAS.swapTicks} seconds. Your dosa waits for the new cylinder, but take it first if it is already ready.`),
+    te: 'గ్యాస్ తక్కువ! సిలిండర్ మార్చండి. దోశ సిద్ధంగా ఉంటే ముందు తీసుకోండి.',
     controls: 'gas',
     allow: ['move', 'swapGas', 'take'],
     spotlight: gasSp,
@@ -1300,7 +1306,7 @@ const BOARD_STEPS = [
   S({
     id: 'board-off', say: 'Plain dosa khatam, board pe daalo!',
     text: [
-      'Mark Plain Dosa as SOLD OUT: press Space at the price board and switch Plain Dosa off.',
+      'Mark Plain Dosa as SOLD OUT: press B to open the price board and switch Plain Dosa off.',
       'Mark Plain Dosa as SOLD OUT: tap the price board and switch Plain Dosa off.',
     ],
     te: 'సాదా దోశను సోల్డ్ అవుట్ చేయండి.',
@@ -1314,7 +1320,7 @@ const BOARD_STEPS = [
       const acts = boardRestore(s, ['dosa']);
       return acts.length ? acts : null;
     },
-    hint: [[8, 'Press Space at the glowing board and switch Plain Dosa off.', 'Tap the glowing board and switch Plain Dosa off.']],
+    hint: [[8, 'Press B to open the glowing board and switch Plain Dosa off.', 'Tap the glowing board and switch Plain Dosa off.']],
   }),
   S({
     id: 'board-react', say: 'Dekho, customer ne kya kiya!',
@@ -1368,7 +1374,7 @@ const BOARD_STEPS = [
   S({
     id: 'board-on', say: 'Batter aa gaya, wapas board pe daalo!',
     text: [
-      'The batter is back, so put Plain Dosa back ON the board: press Space at the price board and switch it on again. A good cook marks a dish off when the stock is out and nothing is coming, and puts it back the moment it is.',
+      'The batter is back, so put Plain Dosa back ON the board: press B to open the price board and switch it on again. A good cook marks a dish off when the stock is out and nothing is coming, and puts it back the moment it is.',
       'The batter is back, so put Plain Dosa back ON the board: tap the price board and switch it on again. A good cook marks a dish off when the stock is out and nothing is coming, and puts it back the moment it is.',
     ],
     te: 'పిండి వచ్చింది: దోశను బోర్డులో మళ్లీ ఆన్ చేయండి.',
@@ -1381,7 +1387,7 @@ const BOARD_STEPS = [
       const acts = boardRestore(s, ['dosa']);
       return acts.length ? acts : null;
     },
-    hint: [[8, 'Press Space at the glowing board and switch Plain Dosa on.', 'Tap the glowing board and switch Plain Dosa on.']],
+    hint: [[8, 'Press B to open the glowing board and switch Plain Dosa on.', 'Tap the glowing board and switch Plain Dosa on.']],
   }),
 ];
 
