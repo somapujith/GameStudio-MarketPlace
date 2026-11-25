@@ -111,6 +111,13 @@ function PrepGroup({ prep, spot, walking, onPrep, register }) {
 /** More than this many station groups (counting the prep counter) and the dock tightens its slots so a 1280 px screen still shows them all. */
 export const DENSE_FROM = 5;
 
+/** How many rows a wrapped dock has: the number of distinct tops among its groups (1 when it does not wrap or is not laid out). */
+export function dockRows(children) {
+  const tops = new Set();
+  for (const c of children || []) tops.add(Math.round(c.offsetTop));
+  return tops.size;
+}
+
 /** Scroll a dock so the element `el` sits fully inside it (with a little margin). Only the dock scrolls, never the page. */
 export function scrollIntoDock(dock, el, margin = 8) {
   if (!dock || !el) return;
@@ -159,14 +166,16 @@ export default function StationsDock({ state, spot, walking, onSlot, onFocusTarg
   // The dock scrolls sideways when the stations do not fit (levels 4 and 12 on a 1280 px screen): edge fades say there is more, and the
   // station the tutorial points at or the cook walks to is brought into view.
   const dock = useRef(null);
-  const [more, setMore] = useState({ l: false, r: false });
+  const [more, setMore] = useState({ l: false, r: false, rows: 1 });
   useEffect(() => {
     const el = dock.current;
     if (!el) return undefined;
     const update = () => {
       const l = el.scrollLeft > 2;
       const r = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
-      setMore((m) => (m.l === l && m.r === r ? m : { l, r }));
+      // a wide screen wraps the groups into rows (hud.css H5): the number of rows lets the rest of the HUD give the height back
+      const rows = Math.max(1, dockRows(el.children));
+      setMore((m) => (m.l === l && m.r === r && m.rows === rows ? m : { l, r, rows }));
     };
     update();
     el.addEventListener('scroll', update, { passive: true });
@@ -186,7 +195,7 @@ export default function StationsDock({ state, spot, walking, onSlot, onFocusTarg
   }, [focusKey]);
   return (
     <div className="tc-hud-dockwrap" data-more-l={more.l ? '1' : undefined} data-more-r={more.r ? '1' : undefined}>
-    <nav ref={dock} className="tc-hud-dock" aria-label="Stations" data-dense={groups >= DENSE_FROM ? '1' : undefined}>
+    <nav ref={dock} className="tc-hud-dock" aria-label="Stations" data-dense={groups >= DENSE_FROM ? '1' : undefined} data-rows={more.rows > 1 ? String(more.rows) : undefined}>
       {stations.map((st) => (
         <div key={st.id} className={`tc-hud-station${spot.has(`station:${st.id}`) ? ' is-spot' : ''}${walking.has(`station:${st.id}`) ? ' is-walking' : ''}`} data-spot={`station:${st.id}`} data-kind={st.kind} role="group" aria-label={st.name}>
           <span className="tc-hud-station-name">

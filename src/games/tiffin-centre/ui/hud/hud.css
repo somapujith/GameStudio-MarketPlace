@@ -792,3 +792,29 @@
   .tc-hud-station-name { font-size: 10px; line-height: 13px; }
   .tc-hud-subs { margin-bottom: calc(var(--tc-coach-h, 0px) + 2px); }
 }
+
+/* =====================================================================================================================================
+   H5 (final): on a wide screen the dock WRAPS into rows instead of scrolling, so every station group, the Tend buttons and the PREP COUNTER
+   are in view at 1280 x 800 (5 stations + prep). Slots stay 44 px. Phones keep the scrolling dock (a second row would eat the stall).
+   ===================================================================================================================================== */
+@media (min-width: 900px) and (min-height: 521px) {
+  .tc-hud-dockwrap { max-width: 100%; }
+  .tc-hud-dock { flex-wrap: wrap; justify-content: center; align-content: flex-start; overflow: visible; gap: 8px 8px; scroll-snap-type: none; }
+  .tc-hud-dock > :first-child { margin-left: 0; }
+  .tc-hud-dock > :last-child { margin-right: 0; }
+  .tc-hud-dock[data-dense='1'] { gap: 7px 6px; }
+  .tc-hud-dock-fade { display: none; }
+  /* the second dock row costs height: the chit rail and the chalk board give it back */
+  .tc-hud:has(.tc-hud-dock[data-rows='2']) .tc-hud-rail { max-height: calc(100vh - 480px); }
+  .tc-hud:has(.tc-hud-dock[data-rows='2']) .tc-hud-chips { max-height: calc(100vh - 540px); }
+}
+
+/* =====================================================================================================================================
+   T2: no coach element ever lies over a sheet. The coach bar publishes where it sits (`--tc-coach-bottom-on` / `-h`, `--tc-coach-top-on` /
+   `-h`, see ui/menus/CoachMark.jsx) and an open sheet (prep, board, cook, action) is inset clear of it; the coach card also folds to its
+   one-line bar while a sheet is open (the HUD sets data-hud-sheet on the game root).
+   ===================================================================================================================================== */
+.tc-hud-sheetwrap, .tc-hud-sheetwrap.is-prep { padding-top: calc(var(--tc-coach-top-on, 0) * (var(--tc-hud-top, 0px) + 2px) + var(--tc-coach-top-h, 0px)); }
+@media (max-width: 899px) and (min-height: 521px), (max-width: 599px) {
+  .tc-hud-sheetwrap, .tc-hud-sheetwrap.is-prep { padding-bottom: calc(var(--tc-coach-bottom-on, 0) * var(--tc-hud-bottom, 0px) + var(--tc-coach-bottom-h, 0px)); }
+}

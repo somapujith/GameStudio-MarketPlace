@@ -412,6 +412,19 @@ export function controlsLine(controls, touch) {
   return '';
 }
 
+/**
+ * Where the coach bar sits, as the numbers the HUD sheets inset themselves by (CSS variables on the game root): `bar` and `host` are
+ * rects ({ top, height }). A bar in the lower half is "bottom" (its height plus 4 px is kept clear above the HUD's bottom bands), else "top"
+ * (the same under the HUD's top bands). A sheet inside the HUD can then never lie under the bar, nor the bar over a sheet's tappable rows.
+ */
+export function coachInsets(bar, host) {
+  const none = { bottomOn: 0, bottomH: 0, topOn: 0, topH: 0, subsH: 0 };
+  if (!bar || !host || !(bar.height > 0)) return none;
+  const h = Math.ceil(bar.height + 4);
+  const atBottom = bar.top + bar.height / 2 > host.top + host.height / 2;
+  return atBottom ? { ...none, bottomOn: 1, bottomH: h, subsH: h } : { ...none, topOn: 1, topH: h };
+}
+
 /** First sentence of a line, for the one-line coach bar. */
 export function firstSentence(text, max = 110) {
   const t = String(text || '').trim();

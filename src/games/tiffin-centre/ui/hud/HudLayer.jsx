@@ -30,7 +30,7 @@ import WorldBubbles from './WorldBubbles.jsx';
 import { HudContext, useActionRunner, useHudBus } from './hooks.js';
 import {
   BIN_TARGET, GATE_TEXT, activeCustomers, availability, bestTarget, cookAction, cookReason, customerTarget, decideAction, dishInfo, effectiveHand, eventNotice, gateDecision,
-  isActionAllowed, nearestTarget, patienceWarnings, pendingTarget, placeName, playerChanges, runOutAlerts, slotTarget, spotKeys, stationTarget, targetKey,
+  isActionAllowed, nearestTarget, patienceWarnings, pendingTarget, placeName, playerChanges, prepButtonGate, runOutAlerts, slotTarget, spotKeys, stationTarget, targetKey,
   teammates, urgentPaying,
 } from './hudLogic.js';
 import { boardMap, boardView, dishShort, gasView, opsOn, prepView, tendHotkeyTarget, tendView } from './opsLogic.js';
@@ -272,8 +272,11 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
   const openPrep = (item = null) => {
     const st = live.state;
     if (!st || live.status !== 'playing' || !opsOn(st)) return;
-    if (!isActionAllowed(allowedNow(), { type: 'prep' })) {
-      notYet();
+    const gate = prepButtonGate(allowedNow(), actions.runner.at() === PREP_STATION);
+    if (gate !== 'open') {
+      // a step that only allows walking ("tap the glowing counter"): the Prep button just walks to the back counter
+      if (gate === 'walk') actions.walkTo(PREP_STATION);
+      else notYet();
       return;
     }
     setSheet(null);
@@ -705,6 +708,16 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
       }
     });
   }, [bus, session]);
+
+  // While any sheet (cook / action sheet, prep, board) is open the game root says so (`data-hud-sheet`): the tutorial's coach card folds to
+  // its one-line bar and the sheet is inset clear of it, so no coach element can lie over a sheet's tappable rows.
+  const sheetOpen = !!sheet || !!panel;
+  useEffect(() => {
+    const host = rootRef.current?.parentElement;
+    if (!host || !sheetOpen) return undefined;
+    host.setAttribute('data-hud-sheet', '1');
+    return () => host.removeAttribute('data-hud-sheet');
+  }, [sheetOpen]);
 
   // Publish where the HUD's bands end on the game root: `--tc-hud-top` (the bottom edge of the banner, takings plate and chalk board) and
   // `--tc-hud-bottom` (the top of the chit strip and dock, as a distance from the bottom), so the coach bar (a sibling layer in

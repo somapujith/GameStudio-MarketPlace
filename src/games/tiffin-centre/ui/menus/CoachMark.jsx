@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import RecipeCard from '../hud/RecipeCard.jsx';
 import { ChotuAvatar } from './art.jsx';
-import { coachStepFromTutorial, coachViewModel } from './menuModels.js';
+import { coachInsets, coachStepFromTutorial, coachViewModel } from './menuModels.js';
 import './menus.css';
 
 const FOLD_MS = 9000;
@@ -115,18 +115,39 @@ export default function CoachMark({ step: stepProp, tutorial, index: indexProp, 
     return () => document.removeEventListener('keydown', onKey, true);
   }, [open, asking]);
 
-  // Tell the HUD how tall a bottom-anchored bar is, so its subtitle strip stays above it (`--tc-coach-h`, 0 when the bar is at the top).
+  // A HUD sheet (prep, board, cook sheet, action sheet) is open (the HUD marks the game root `data-hud-sheet`): the card folds to its
+  // one-line bar so it never hides the sheet's rows, and the sheet is inset clear of the bar (the variables below).
   const present = !!step;
+  const [covered, setCovered] = useState(false);
+  useEffect(() => {
+    const host = rootRef.current?.parentElement;
+    if (!host) return undefined;
+    const read = () => setCovered(host.hasAttribute('data-hud-sheet'));
+    read();
+    if (typeof MutationObserver !== 'function') return undefined;
+    const mo = new MutationObserver(read);
+    mo.observe(host, { attributes: true, attributeFilter: ['data-hud-sheet'] });
+    return () => mo.disconnect();
+  }, [present]);
+  const shown = open && !covered;
+
+  // Tell the HUD where the bar sits: `--tc-coach-h` (a bottom-anchored bar's height, so the subtitle strip stays above it, 0 at the top) and
+  // the sheet insets `--tc-coach-bottom-on/-h` and `--tc-coach-top-on/-h` (see coachInsets).
   useEffect(() => {
     const el = rootRef.current;
     const host = el?.parentElement;
     if (!el || !host) return undefined;
+    const names = ['--tc-coach-h', '--tc-coach-bottom-on', '--tc-coach-bottom-h', '--tc-coach-top-on', '--tc-coach-top-h'];
     const measure = () => {
       const bar = el.querySelector('.tc-menu-coachbar');
       const r = bar?.getBoundingClientRect();
       const h = host.getBoundingClientRect();
-      const atBottom = !!r && r.top + r.height / 2 > h.top + h.height / 2;
-      host.style.setProperty('--tc-coach-h', atBottom ? `${Math.ceil(r.height + 4)}px` : '0px');
+      const i = coachInsets(r, h);
+      host.style.setProperty('--tc-coach-h', `${i.subsH}px`);
+      host.style.setProperty('--tc-coach-bottom-on', String(i.bottomOn));
+      host.style.setProperty('--tc-coach-bottom-h', `${i.bottomH}px`);
+      host.style.setProperty('--tc-coach-top-on', String(i.topOn));
+      host.style.setProperty('--tc-coach-top-h', `${i.topH}px`);
     };
     measure();
     const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null;
@@ -136,29 +157,29 @@ export default function CoachMark({ step: stepProp, tutorial, index: indexProp, 
     return () => {
       ro?.disconnect();
       window.removeEventListener('resize', measure);
-      host.style.removeProperty('--tc-coach-h');
+      for (const n of names) host.style.removeProperty(n);
     };
-  }, [present, open, recipeOpen, asking]);
+  }, [present, shown, recipeOpen, asking]);
 
   if (!step) return null;
   const bodyId = `tc-coach-body-${vm.id}`;
   const gloss = [vm.say, vm.text, hinting ? vm.hint : ''].filter(Boolean).join(' ');
   const strip = vm.chapters;
   return (
-    <div ref={rootRef} className="tc-menu tc-menu-coach" data-hinting={hinting || undefined} data-open={open || undefined}>
-      <section className={`tc-menu-coachbar${hinting ? ' is-hinting' : ''}${open ? ' is-open' : ''}`} aria-label="Tutorial">
+    <div ref={rootRef} className="tc-menu tc-menu-coach" data-hinting={hinting || undefined} data-open={shown || undefined}>
+      <section className={`tc-menu-coachbar${hinting ? ' is-hinting' : ''}${shown ? ' is-open' : ''}`} aria-label="Tutorial">
         <div className="tc-menu-sr" role="status" aria-live="polite" aria-atomic="true">{`Chotu says: ${gloss}`}</div>
         <div className="tc-menu-coachbar__row">
           <ChotuAvatar size={34} className="tc-menu-coachbar__who" />
-          <button type="button" className="tc-menu-coachbar__line" aria-expanded={open} aria-controls={bodyId} onClick={() => setOpen((o) => !o)}>
+          <button type="button" className="tc-menu-coachbar__line" aria-expanded={shown} aria-controls={bodyId} onClick={() => setOpen((o) => !o)}>
             <span className="tc-menu-coachbar__name">
               Chotu says
               <span className="tc-menu-coachbar__pos">{strip.label ? `${strip.label} ${vm.chapterStep ? `${vm.chapterStep.at}/${vm.chapterStep.of}` : `${index + 1}/${total}`}` : `${index + 1}/${total}`}</span>
             </span>
             <span className={`tc-menu-coachbar__text${vm.ack ? ' is-ack' : ''}`}>{vm.line}</span>
-            {hinting && vm.hint && !open && <span className="tc-menu-coachbar__dot" aria-hidden="true" />}
+            {hinting && vm.hint && !shown && <span className="tc-menu-coachbar__dot" aria-hidden="true" />}
             <svg className="tc-menu-coachbar__chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
-              <path d={open ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6'} />
+              <path d={shown ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6'} />
             </svg>
           </button>
           {onNext && (
@@ -168,7 +189,7 @@ export default function CoachMark({ step: stepProp, tutorial, index: indexProp, 
           )}
         </div>
 
-        <div className="tc-menu-coachbar__body" id={bodyId} hidden={!open}>
+        <div className="tc-menu-coachbar__body" id={bodyId} hidden={!shown}>
           <p className="tc-menu-coachbar__full">{vm.say ? <b>{vm.say} </b> : null}{vm.text}</p>
           {vm.te && <p className="tc-menu-coachbar__te" lang="te">{vm.te}</p>}
           {hinting && vm.hint && <p className="tc-menu-coachbar__hint">{vm.hint}</p>}

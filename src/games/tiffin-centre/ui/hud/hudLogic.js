@@ -897,6 +897,17 @@ export function gateDecision(decision, target, allowed, state) {
   return { blocked: true };
 }
 
+/**
+ * What the dock's Prep button (or the stock bars) does under the tutorial gate: 'open' the sheet when prepping is allowed, 'walk' to the
+ * back counter when only walking is (a step that says "tap the glowing counter" must not answer "not yet"), or 'blocked' (the friendly
+ * refusal), also when the cook already stands there and prepping is still not taught.
+ */
+export function prepButtonGate(allowed, atPrep = false) {
+  if (isActionAllowed(allowed, { type: 'prep' })) return 'open';
+  if (!atPrep && isActionAllowed(allowed, { type: 'move' })) return 'walk';
+  return 'blocked';
+}
+
 /** The pick target a queued action is about (to turn the head to it when it is off screen). */
 export function pendingTarget(action) {
   if (!action) return null;

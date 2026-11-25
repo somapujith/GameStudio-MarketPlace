@@ -4,14 +4,15 @@ import { describe, it, expect } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readFileSync } from 'node:fs';
+import { coachInsets } from '../menus/menuModels.js';
 import { createGame } from '@shared/tiffin-centre/index.js';
 import HudLayer from './HudLayer.jsx';
 import TopBar from './TopBar.jsx';
 import StallStatus, { statusAlerts } from './StallStatus.jsx';
-import StationsDock, { DENSE_FROM, scrollIntoDock } from './StationsDock.jsx';
+import StationsDock, { DENSE_FROM, dockRows, scrollIntoDock } from './StationsDock.jsx';
 import { freeBounds } from './EdgeIndicators.jsx';
 import { clampBubble } from './offscreen.js';
-import { spotKeys } from './hudLogic.js';
+import { prepButtonGate, spotKeys } from './hudLogic.js';
 import { gasView, prepView, stockGroups } from './opsLogic.js';
 
 const css = readFileSync(new URL('./hud.css', import.meta.url), 'utf8');
@@ -197,3 +198,89 @@ function applyHeat(s) {
   next.stations.tawa1.tendAt = 0;
   return next;
 }
+
+// ---- H5 (final): the wide dock wraps, so 5 stations + prep + Tend buttons are all in view at 1280 x 800 ----------------------------------------------
+describe('H5 final: on a wide screen the dock wraps into rows instead of clipping', () => {
+  const wide = css.slice(css.lastIndexOf('H5 (final)'));
+  const block = wide.slice(wide.indexOf('@media (min-width: 900px)'), wide.indexOf('T2: no coach'));
+  it('level 12 renders every station group and the prep counter, each with its Tend button room', () => {
+    const s = game(12);
+    const html = renderToStaticMarkup(createElement(StationsDock, { state: s, spot: none, walking: none, onSlot() {}, onFocusTarget() {}, prep: prepView(s), onPrep() {}, renderExtra: () => createElement('button', { className: 'tc-hud-tendbtn' }, 'Tend') }));
+    expect((html.match(/class="tc-hud-station[ "]/g) || []).length).toBeGreaterThanOrEqual(5);
+    expect(html).toContain('aria-label="Prep counter"');
+    expect(html).toContain('Open the prep counter (P)');
+  });
+  it('the wide layout wraps (never scrolls or fades), centres, and keeps 44 px targets', () => {
+    expect(block).toMatch(/\.tc-hud-dock \{[^}]*flex-wrap: wrap/);
+    expect(block).toMatch(/\.tc-hud-dock \{[^}]*justify-content: center/);
+    expect(block).toMatch(/\.tc-hud-dock \{[^}]*overflow: visible/);
+    expect(block).toMatch(/\.tc-hud-dock > :first-child \{ margin-left: 0/);
+    expect(block).toMatch(/\.tc-hud-dock > :last-child \{ margin-right: 0/);
+    expect(block).toMatch(/\.tc-hud-dock-fade \{ display: none/);
+    expect(css).toMatch(/\.tc-hud-dock\[data-dense='1'\] \.tc-hud-slot \{ width: 44px; height: 44px/);
+    expect(css).toMatch(/\.tc-hud-tendbtn \{[^}]*min-height: 44px/);
+  });
+  it('the layout never exceeds the viewport: every ancestor of the dock can shrink, a group never grows past its row', () => {
+    expect(css).toMatch(/\.tc-hud-bottom \{[^}]*min-width: 0/);
+    expect(css).toMatch(/\.tc-hud-dockwrap \{[^}]*min-width: 0/);
+    expect(block).toMatch(/\.tc-hud-dockwrap \{ max-width: 100%/);
+    expect(css).toMatch(/\.tc-hud-station \{ flex: none;/);
+  });
+  it('the second row gives its height back to the chit rail and the chalk board', () => {
+    expect(block).toMatch(/:has\(\.tc-hud-dock\[data-rows='2'\]\) \.tc-hud-rail \{ max-height: calc\(100vh - 480px\)/);
+  });
+  it('dockRows counts the distinct tops of the groups', () => {
+    expect(dockRows([{ offsetTop: 8 }, { offsetTop: 8 }, { offsetTop: 8.4 }])).toBe(1);
+    expect(dockRows([{ offsetTop: 8 }, { offsetTop: 8 }, { offsetTop: 100 }, { offsetTop: 100 }])).toBe(2);
+    expect(dockRows([])).toBe(0);
+    expect(dockRows(null)).toBe(0);
+  });
+});
+
+// ---- T2: no coach element over a sheet ---------------------------------------------------------------------------------------------------------------
+describe('T2: the coach bar never lies over a sheet', () => {
+  const t2 = css.slice(css.lastIndexOf('T2: no coach element'));
+  const coachSrc = readFileSync(new URL('../menus/CoachMark.jsx', import.meta.url), 'utf8');
+  const hudSrc = readFileSync(new URL('./HudLayer.jsx', import.meta.url), 'utf8');
+  it('a bar in the lower half is a bottom inset, a bar in the upper half a top inset, and nothing is nothing', () => {
+    const host = { top: 0, height: 844 };
+    expect(coachInsets({ top: 560, height: 48 }, host)).toEqual({ bottomOn: 1, bottomH: 52, topOn: 0, topH: 0, subsH: 52 });
+    expect(coachInsets({ top: 100, height: 61.2 }, { top: 0, height: 800 })).toEqual({ bottomOn: 0, bottomH: 0, topOn: 1, topH: 66, subsH: 0 });
+    expect(coachInsets(null, host)).toMatchObject({ bottomOn: 0, topOn: 0 });
+    expect(coachInsets({ top: 0, height: 0 }, host)).toMatchObject({ bottomOn: 0, topOn: 0 });
+  });
+  it('every sheet wrapper (action, cook, prep, board) is inset below a top bar and, on phones, above a bottom bar', () => {
+    expect(t2).toMatch(/\.tc-hud-sheetwrap, \.tc-hud-sheetwrap\.is-prep \{ padding-top: calc\(var\(--tc-coach-top-on, 0\) \* \(var\(--tc-hud-top, 0px\) \+ 2px\) \+ var\(--tc-coach-top-h, 0px\)\)/);
+    expect(t2).toMatch(/@media \(max-width: 899px\) and \(min-height: 521px\), \(max-width: 599px\) \{\s*\.tc-hud-sheetwrap, \.tc-hud-sheetwrap\.is-prep \{ padding-bottom: calc\(var\(--tc-coach-bottom-on, 0\) \* var\(--tc-hud-bottom, 0px\) \+ var\(--tc-coach-bottom-h, 0px\)\)/);
+    // the sheet wrapper is the only HUD layer above the coach's reach: board, prep and action sheets share it
+    for (const f of ['PrepSheet.jsx', 'BoardSheet.jsx', 'ActionSheet.jsx']) expect(readFileSync(new URL(`./${f}`, import.meta.url), 'utf8')).toContain('tc-hud-sheetwrap');
+  });
+  it('the HUD flags an open sheet on the game root and the coach folds its card while it is flagged', () => {
+    expect(hudSrc).toMatch(/const sheetOpen = !!sheet \|\| !!panel;/);
+    expect(hudSrc).toContain("host.setAttribute('data-hud-sheet', '1')");
+    expect(coachSrc).toContain("attributeFilter: ['data-hud-sheet']");
+    expect(coachSrc).toContain('const shown = open && !covered;');
+    expect(coachSrc).toContain('hidden={!shown}');
+  });
+});
+
+// ---- T3: the dock's Prep button only walks when the step allows walking but not prepping ----------------------------------------------------------------
+describe('T3: the Prep button under the tutorial gate', () => {
+  it('opens the sheet when prepping is allowed or nothing is gated', () => {
+    expect(prepButtonGate(undefined)).toBe('open');
+    expect(prepButtonGate(null, true)).toBe('open');
+    expect(prepButtonGate(['move', 'prep', 'collectPrep'])).toBe('open');
+    expect(prepButtonGate((a) => a.type === 'prep')).toBe('open');
+  });
+  it('walks to the back counter when the step allows only move (stock-turn), not "not yet"', () => {
+    expect(prepButtonGate(['move'], false)).toBe('walk');
+    expect(prepButtonGate(['walk'], false)).toBe('walk');
+    expect(prepButtonGate((a) => a.type === 'move', false)).toBe('walk');
+  });
+  it('is the friendly refusal when already there (prepping not taught yet) or when walking is refused too', () => {
+    expect(prepButtonGate(['move'], true)).toBe('blocked');
+    expect(prepButtonGate(['cook'], false)).toBe('blocked');
+    expect(prepButtonGate([], false)).toBe('blocked');
+    expect(prepButtonGate(false, false)).toBe('blocked');
+  });
+});
