@@ -1,0 +1,86 @@
+{
+ "lang": "hi",
+ "model": "ElevenLabs v3 via imagine MCP generate_speech",
+ "lines": {
+  "hi-greet-01": {
+   "text": "[happy] नमस्ते भैया! कैसे हैं?",
+   "voice": "Liam",
+   "stability": 0.4,
+   "speed": 1,
+   "track": "01a2142d-8a2f-7dc1-8018-27556f6007ef",
+   "url": "https://asset.imagine.art/processed/01a2142d-8a2f-7dc1-8018-27556f6007ef"
+  },
+  "hi-waiting-hurry-02": {
+   "text": "[sighs] और कितना टाइम लगेगा यार?",
+   "voice": "Eric",
+   "stability": 0.35,
+   "speed": 1,
+   "track": "01a2142d-96d7-7970-8727-771e9fd0c8fe",
+   "url": "https://asset.imagine.art/processed/01a2142d-96d7-7970-8727-771e9fd0c8fe"
+  },
+  "hi-waiting-angry-03": {
+   "text": "[angry] आधा घंटा हो गया यहाँ खड़े हुए!",
+   "voice": "Brian",
+   "stability": 0.3,
+   "speed": 1,
+   "track": "01a2142d-a229-7530-aff8-bd546e8d412d",
+   "url": "https://asset.imagine.art/processed/01a2142d-a229-7530-aff8-bd546e8d412d"
+  },
+  "hi-serve-praise-14": {
+   "text": "[excited] कितना प्यारा लग रहा है!",
+   "voice": "Sarah",
+   "stability": 0.35,
+   "speed": 1,
+   "track": "01a2142f-dc28-7c20-b2ef-84058ff4b9b9",
+   "url": "https://asset.imagine.art/processed/01a2142f-dc28-7c20-b2ef-84058ff4b9b9"
+  },
+  "hi-serve-complain-04": {
+   "text": "[sarcastic] यही है आपकी रफ़्तार? ठीक है...",
+   "voice": "Jessica",
+   "stability": 0.35,
+   "speed": 1,
+   "track": "01a2142f-f403-7df2-a5e3-dc5c05b65fc0",
+   "url": "https://asset.imagine.art/processed/01a2142f-f403-7df2-a5e3-dc5c05b65fc0"
+  },
+  "hi-pay-change-keep-10": {
+   "text": "[calm] भगवान तुम्हारा भला करे!",
+   "voice": "George",
+   "stability": 0.5,
+   "speed": 1,
+   "track": "01a21430-1027-7cc2-8775-f3759b385852",
+   "url": "https://asset.imagine.art/processed/01a21430-1027-7cc2-8775-f3759b385852"
+  },
+  "hi-unpaid-leave-05": {
+   "text": "[nervous] अरे, भूल गया... कल पक्का!",
+   "voice": "Charlie",
+   "stability": 0.4,
+   "speed": 1,
+   "track": "01a21430-2d04-7e03-9d73-bfd36536d382",
+   "url": "https://asset.imagine.art/processed/01a21430-2d04-7e03-9d73-bfd36536d382"
+  },
+  "hi-angry-leave-01": {
+   "text": "[shouts] दोबारा कभी यहाँ नहीं आऊँगा!",
+   "voice": "Roger",
+   "stability": 0.3,
+   "speed": 1,
+   "track": "01a21430-554d-7660-8036-107c4de3aa0c",
+   "url": "https://asset.imagine.art/processed/01a21430-554d-7660-8036-107c4de3aa0c"
+  },
+  "hi-inspector-arrival-05": {
+   "text": "[whispers] धीरे बोल रहा हूँ, जीएचएमसी की चेकिंग है",
+   "voice": "Daniel",
+   "stability": 0.4,
+   "speed": 1,
+   "track": "01a21430-6ebb-7622-9e52-42b7ae76f1c7",
+   "url": "https://asset.imagine.art/processed/01a21430-6ebb-7622-9e52-42b7ae76f1c7"
+  },
+  "hi-festival-greeting-06": {
+   "text": "[happy] दीवाली की शुभकामनाएँ! ये मिठाई लीजिए",
+   "voice": "Laura",
+   "stability": 0.4,
+   "speed": 1,
+   "track": "01a21430-c581-7930-a442-e6b432fbba55",
+   "url": "https://asset.imagine.art/processed/01a21430-c581-7930-a442-e6b432fbba55"
+  }
+ }
+}
