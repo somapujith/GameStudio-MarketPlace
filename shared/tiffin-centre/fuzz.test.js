@@ -9,6 +9,8 @@ import {
 } from './index.js';
 
 vi.setConfig({ testTimeout: 240000 });
+// 200 seeds locally; CI (a 2-core runner with a 15 minute deploy job) runs a third of them, the same code paths
+const SEED_COUNT = process.env.CI ? 60 : 200;
 
 const JUNK = [undefined, null, NaN, Infinity, -Infinity, -1, 0, 1, 2, 3, 99, 1e30, -1e30, 0.5, '0', '1', '', 'x', '__proto__', 'constructor', 'toString',
   'prototype', 'spot:99', 'gas', 'prep1', true, false, {}, [], [0], { a: 1 }, { __proto__: { x: 1 } }, () => 1, 1e-9, -0, 2 ** 53, '1e3'];
@@ -161,10 +163,10 @@ function run(seed) {
 }
 
 describe('fuzz: random legal and illegal actions to game over', () => {
-  it('200 seeds, every level, 1-4 players, the operations layer included', () => {
+  it('many seeds, every level, 1-4 players, the operations layer included', () => {
     const ends = { done: 0, closed: 0 };
     const seen = new Set();
-    for (let seed = 1; seed <= 200; seed++) {
+    for (let seed = 1; seed <= SEED_COUNT; seed++) {
       const s = run(seed);
       expect(isOver(s), `seed ${seed} did not finish`).toBe(true);
       ends[s.status] += 1;
@@ -184,7 +186,7 @@ describe('fuzz: random legal and illegal actions to game over', () => {
       }
     }
     expect(seen.size).toBe(MAX_LEVEL + 1);
-    expect(ends.done + ends.closed).toBe(200);
+    expect(ends.done + ends.closed).toBe(SEED_COUNT);
     expect(ends.closed).toBeGreaterThan(0);
     expect(ends.done).toBeGreaterThan(0);
   });
