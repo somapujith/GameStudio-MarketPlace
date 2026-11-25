@@ -18,7 +18,8 @@ import { createTracker } from './tracker.js';
 import { whenFontsReady } from './textures.js';
 import { QUALITY, QUALITY_ORDER, pickQuality } from './quality.js';
 import { describeCaps, getGfxPref, probeBrowser, resolveTier, setGfxPref } from './capabilities.js';
-import { LOAD_STEPS, applyModelTier, createBatcher, runAsync, runSync } from './loader.js';
+import { LOAD_STEPS, applyModelTier, createBatcher, createProgramWarmer, runAsync, runSync } from './loader.js';
+import { DISH_IDS } from '../../../../shared/tiffin-centre/catalog.js';
 import { WebglUnavailableError } from './renderer.js';
 import { cameraProjector, pickFromProxies, pickBoxes, onScreen } from './picking.js';
 import { edgeHint } from './camera.js';
@@ -171,6 +172,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     if (!gfx.shouldRender(nowMs)) return; // the tier's frame cap (30 fps on lite)
     tick(nowMs);
     if (batcher && !batcher.done && ++framesWithState > 40) batcher.step(5);
+    else warmShaders();
   };
   // the tab was hidden: nothing to draw, nothing to adapt to
   let wantRun = false;
@@ -226,6 +228,27 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     };
     for (const n of ['setStations', 'setSpots', 'setMenu']) guard(n);
   };
+
+  // shader warm-up (loader.js): once the first state is in and the batcher is done, compile what the game really draws with, a slice per frame,
+  // so no program compiles mid-shift (it restarts after a tier change: the programs differ per tier)
+  let warmer = null;
+  let warmFrames = 0;
+  const warmShaders = () => {
+    if (!stateSeen || (batcher && !batcher.done) || disposed) return;
+    if (!warmer) {
+      if (++warmFrames < 30) return;
+      warmer = createProgramWarmer({
+        renderer: gfx.renderer, scene, camera, post: !!gfx.cfg.post, hiddenLights: !!gfx.cfg.lights,
+        extras: DISH_IDS.map((id) => () => models.buildDish(id, 'good')),
+      });
+    }
+    if (!warmer.done) warmer.step(3);
+  };
+  gfx.onChange(() => {
+    warmer?.cancel();
+    warmer = null;
+    warmFrames = 0;
+  });
 
   const api = {
     setState(state, tickAt) {
@@ -344,6 +367,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
       api.stop();
       fontsDoc?.removeEventListener?.('loadingdone', repaint);
       if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibility, false);
+      warmer?.cancel();
       batcher?.dispose();
       for (const a of parked) a.dispose?.();
       sync.dispose();
@@ -397,6 +421,15 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
         if (batcher && !batcher.done && ++framesWithState > 40) batcher.step(1000);
       },
       /** Runs the batcher to completion now (tests, benchmarks). */
+      /** Runs the shader warm-up to completion now (tests, benchmarks): { chunks, programs, ms, variants, extras }. */
+      warmNow() {
+        startBatcher();
+        while (batcher && !batcher.done) batcher.step(1000);
+        warmFrames = 1e3;
+        warmShaders();
+        while (warmer && !warmer.done) warmer.step(1e6);
+        return warmer?.stats;
+      },
       batchNow() {
         startBatcher();
         while (batcher && !batcher.done) batcher.step(1000);

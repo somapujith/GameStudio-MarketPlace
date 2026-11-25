@@ -11,8 +11,8 @@ while this was written. Everything about Firefox, Safari, iOS and Samsung Intern
 | Browsers | Chrome / Edge / Opera 107+, Firefox 104+, Safari and iOS Safari 16.4+, Samsung Internet 21+ | The Vite default build target (`baseline-widely-available`: Chrome 107, Edge 107, Firefox 104, Safari 16). iOS 16.4 is the declared floor (WebGL 2 with half-float render targets, `Object.hasOwn`, `:has()` and the pointer events the HUD uses are all there). Older browsers load the home screen but get the "cannot draw the 3D stall" screen. |
 | Graphics API | **WebGL 2** | three.js 0.187 has no WebGL 1 renderer. A browser with only WebGL 1 (or with WebGL off, a blocklisted GPU, or no free contexts) raises the existing `webgl` status screen ("This device cannot draw the 3D stall") with the reason recorded (`WebglUnavailableError`, `code: 'webgl'`). |
 | Render targets | Half-float colour targets (`EXT_color_buffer_float` or `EXT_color_buffer_half_float`) for the medium and high tiers | Without them the post pipeline cannot work: the tier is capped at `low` (direct render). |
-| GPU | Anything that gets WebGL 2 at all runs the **lite** tier; an integrated GPU from about 2016 on (Intel HD 5xx/UHD, Adreno 6xx, Mali-G5x+, Apple A12+) runs low to medium; a discrete GPU or Apple Silicon runs high | Software renderers (SwiftShader, llvmpipe, Microsoft Basic Render Driver) and a list of weak mobile / old integrated GPUs are detected and start on lite. |
-| RAM | 2 GB device (lite), 4 GB (low / medium), 8 GB (high) | `navigator.deviceMemory` is Chromium-only; Safari and Firefox do not report it and are judged by CPU cores and GPU instead. JS heap measured at 55 MB (lite) to 113 MB (high) with six customers; GPU memory is a few tens of MB of textures and geometry. |
+| GPU | Anything that gets WebGL 2 at all runs the **lite** tier; phones, tablets, Safari and iOS start on **low**; an integrated desktop / laptop GPU (Intel HD 5xx / UHD / Iris, AMD Radeon Graphics) starts on **medium**; only a discrete-looking GPU (GeForce GTX / RTX, Radeon RX, Arc A / B, Apple Silicon) with 8+ cores, 8+ GB and 4x MSAA starts on **high** | Software renderers (SwiftShader, llvmpipe, Microsoft Basic Render Driver) and a list of weak mobile / old integrated GPUs are detected and start on lite. A flagship Android phone (Adreno 7xx / 8xx or Mali-G710+, 8+ cores, 8 GB) may start on medium, never high. The player can pick any tier in Graphics; Auto steps down at run time (section 4). |
+| RAM | 2 GB device (lite), 4 GB (low / medium), 8 GB (high, and a flagship phone's medium) | `navigator.deviceMemory` is Chromium-only; Safari and Firefox do not report it and are judged by CPU cores and GPU instead. JS heap measured at 55 MB (lite) to 113 MB (high) with six customers; GPU memory is a few tens of MB of textures and geometry. |
 | CPU | 2 cores minimum; 4+ recommended | The simulation is tiny (an engine tick is well under a millisecond); the cost is the render submission, so draw calls matter more than clock speed. |
 | Input | Mouse + keyboard, or touch | The HUD owns this. |
 | Network | The 3D code is about 410 kB gzip on top of the home screen's ~90 kB, fetched once and cached | See section 5. No images, models, sounds or fonts are downloaded for the 3D scene: everything is generated at run time. |
@@ -22,16 +22,33 @@ while this was written. Everything about Firefox, Safari, iOS and Samsung Intern
 `scene/capabilities.js` (pure, unit tested with fake GL objects) probes the device once: WebGL 2 / WebGL 1, max texture size, anisotropy, float and
 half-float render targets, MSAA samples, derivatives, instancing, parallel shader compile, the unmasked GPU renderer string, `hardwareConcurrency`,
 `deviceMemory`, `devicePixelRatio`, coarse pointer, `prefers-reduced-data` / `saveData`, 2G, and (when the browser has it) the battery level.
-`chooseTier(caps)` starts at `high` and only steps DOWN, recording every reason:
+`chooseTier(caps)` starts at `high` and only steps DOWN, recording every reason. The policy is deliberately conservative: a six-customer frame costs
+189 draw calls / 142k triangles on lite, 293 / 152k on low, **1147 / 275k on medium and 1379 / 357k on high** (production QA, `docs/TIFFIN_CENTRE_PROOF_C.md`), which is
+far more than a phone GPU or an integrated GPU sustains. The old policy gave medium to every phone with a decent GPU and to every iPhone / iPad.
 
-| Rule | Tier cap |
+| Rule (first match that lowers the tier wins, every reason is recorded) | Tier cap |
 |---|---|
 | No WebGL 2 | unsupported (status screen) |
-| Software renderer; weak GPU string; max texture < 2048; 1 GB or less | lite |
-| Max texture < 4096; no half-float render targets; 2 GB (desktop); <= 2 cores on a desktop; 4 GB / <= 4 cores on a phone; phone with an unrecognised GPU | low |
-| Phone / tablet with a decent GPU (and every iPhone / iPad); < 8 cores; MSAA < 4x; `saveData` / reduced data; 4 GB desktop | medium |
+| Software renderer; weak GPU string; max texture < 2048; 1 GB or less; 2 GB or 2 cores on a phone | lite |
+| Max texture < 4096; no half-float render targets; 2 GB (desktop); <= 2 cores on a desktop; 4 GB / <= 4 cores on a phone | low |
+| **Any phone or tablet** (coarse pointer, iOS, Android) unless clearly flagship; **Safari / every iOS browser** (WebKit: unmeasured, GPU and memory hidden) | **low** |
+| Clearly flagship phone / tablet: not Safari / iOS, 8+ GB, 8+ cores and a 2022+ GPU (Adreno 7xx / 8xx, Mali-G710+, Xclipse, Immortalis) | **medium, never high on touch** |
+| Desktop / laptop without a discrete-looking GPU string (integrated Intel / AMD, unknown or hidden renderer); fewer than 8 cores (or not reported); under 8 GB (a browser that does not report memory, such as Firefox, is not held against an 8-core discrete machine); MSAA under 4x or not reported; 4 GB desktop; `saveData` / reduced data; no float targets | medium |
 | Battery <= 20 % and not charging | one tier lower |
-| otherwise (desktop-class GPU, 8+ cores, nothing reported against it) | high |
+| Discrete GPU (GeForce GTX / RTX, Quadro, Radeon RX / Pro, Arc A / B, Apple M-series) AND 8+ cores AND 8+ GB AND 4x MSAA, nothing reported against it | **high** |
+
+What the table gives for real device shapes (`capabilities.test.js`, "the Auto tier policy", 33 cases):
+
+| Device | Auto starts at |
+|---|---|
+| iPhone (Safari or Chrome), iPad, iPad Pro, Safari on a Mac | low |
+| Galaxy S24 / Pixel 9 class (Adreno 7xx / 8xx or Mali-G710+, 8 cores, 8 GB) | medium |
+| Any other Android phone: Adreno 6xx, Mali-G78, 6 GB, 6 cores | low |
+| Old phone (Mali-T, 2 GB, Intel HD 4000, 2012 laptop) | lite |
+| Office / thin laptop (Intel UHD 620, Iris Xe), Ryzen APU, a hidden renderer string | medium |
+| Gaming laptop with a discrete GPU but 6 cores, or 4 GB | medium |
+| Desktop with GeForce RTX / Radeon RX, 8+ threads, 8 GB; MacBook / Mac with Apple Silicon (Chrome); Firefox on the same | high |
+| SwiftShader / llvmpipe / headless CI | lite |
 
 The player's **Graphics** setting wins over the probe: `auto | high | medium | low | lite`, persisted in `localStorage` key `jalebi.tiffin.gfx.v1`
 (`getGfxPref` / `setGfxPref` / `GFX_PREFS` from `src/games/tiffin-centre/scene/capabilities.js`; import from that file, not from `scene/index.js`, so the
@@ -47,6 +64,10 @@ in full at the next shift. The probe's verdict and reasons are available in the 
 | Shadows | none | none | 1024 PCF | 2048 PCF |
 | Pixel ratio cap | 1 | 1 | 1.25 | 1.75 |
 | Frame cap | **30 fps** | uncapped | uncapped | uncapped |
+| Draw calls per frame, six customers (measured, QA) | 189 | 293 | 1147 | 1379 |
+| Draw-call budget of the run-time guard | 250 | 350 | 700 | 1000 |
+| Triangles per frame (measured, QA) | 142k | 152k | 275k | 357k |
+| Auto starts here on | old phones, software GL, weak GPUs | phones, tablets, iOS, Safari, 4 GB / 2-core machines | integrated-GPU laptops, flagship Android, < 8 cores | discrete GPU + 8 cores + 8 GB + MSAA 4x |
 | Dynamic resolution floor | 0.6 | 0.5 | 0.5 | 0.5 |
 | Procedural textures | 128 px, no normal maps | 128 px, no normal maps | 256 px | 512 px |
 | People | baked proxy, lite sculpt (22-column head, 5-sided limbs), flat shaded | baked proxy, low sculpt | static meshes merged per material, medium sculpt | merged, high sculpt |
@@ -61,6 +82,18 @@ in full at the next shift. The probe's verdict and reasons are available in the 
   under budget and never above the highest scale that held (a failed upscale lowers that ceiling: no flapping). If two downscales in a row buy less than
   4 % (the CPU is the limit), or the floor is reached, it asks for a **tier downgrade** (auto quality only, never an upgrade). In a live medium-tier scene on SwiftShader it stepped 1.0 -> 0.9 -> 0.8 -> 0.7 -> 0.6 -> 0.5 in 18 s and stopped at the floor. Frames during the first
   2.5 s after start, a tier change, a context restore or a tab switch are ignored.
+* **Draw-call guard** (`createDrawCallGuard` in `scene/quality.js`, fed by `scene/renderer.js`; Auto only, never an upgrade): the probe is a guess, the draw-call count is a fact. When the
+  smoothed `renderer.info.render.calls` of a frame (the whole frame: shadow pass and post passes included; `info.autoReset` is off and the renderer resets it once a frame) stays
+  above the tier's budget for 2 s AND the mean frame time over those 2 s exceeds the frame budget (about 38 fps; 34 on lite), the tier drops one step at once (without the 6 to 8 s of
+  resolution stepping, which cannot help a draw-call-bound frame). A strong desktop that submits 1400 calls and still holds its frame rate is never punished. Budgets: **lite 250, low 350, medium 700, high 1000**
+  (measured six-customer frames: 189 / 293 / 1147 / 1379). The pure function is unit tested; in a live scene (medium forced to auto, SwiftShader) it stepped medium -> low at 1110 calls and low -> lite at
+  631 calls (the customers built at medium stay in the scene until they leave), each after the 2.5 s warm-up plus 2 s.
+* **Shader warm-up** (`createProgramWarmer` in `scene/loader.js`, run by `scene/index.js` once the first state is in and the batcher is done): the programs compiled at load are not the ones the game draws
+  with (at that moment the stall has 5 point lights instead of 11, `scene.environment` is not set, and the output colour space differs from the HDR target). Measured at medium, level 12: 89 of the 151 load-time
+  programs were never used, and 30 to 80 more compiled mid-shift (events, weather, dishes, batched meshes). The warmer compiles the real scene in chunks (one per frame, 3 ms budget) with every hidden
+  object made visible for the call, the HDR render target bound when the tier has post, one of each dish built and parked below the street, and, when a light is hidden (the prep counter's), a second pass with every
+  light on. Result over 420 ticks of level 12 (programs compiled after the warm-up point, headless Chrome): medium 30 (70 in a run that met a late event) -> 17, high 30 -> 18, low 44 -> 11; the medium program count rises 151 -> 291 at warm-up (high 161 -> 306, low 91 -> 125) (about 0.25 s of compile calls on this machine, spread over frames and a dish build per frame).
+  Left over: the event and weather materials whose state (instance colours, fog / map flags) is set only when the event starts, and the 12-light variant of customers built later. A restart follows a tier change.
 * **Tab hidden**: the render loop stops on `visibilitychange` and restarts with a clean timer; adaptation is held for 2 s after the return.
 * **Frame cap**: `renderer.shouldRender(nowMs)`, 30 fps on lite.
 * **Context lost / restored**: rendering pauses (`lost`), the existing "error" status screen shows, three.js rebuilds its GL state on restore, the sky
@@ -115,6 +148,11 @@ Notes on the table:
   of a rigged customer saves only 10 to 25 % (62 -> 55 visible meshes at medium) and costs 70 to 370 ms per customer build, a hitch: it exists (`models/merge.js`,
   `setCharacterDrawMode({ merge: true })`) and is **off**. The stall's 99 and the street's 73 distinct materials set the floor for the scenery at about 170 draw calls without
   texture atlases (lite flattens them: 115 meshes -> 54 + 61 above).
+* **Medium and high are still heavy, and the cheap fixes were measured and do not close the gap.** Same scene, `renderer.info` of one render (shadow pass included), level 6, six customers, 640x360:
+  medium 977 calls / 299k triangles, high 1103 / 307k. (a) `setCharacterDrawMode({ merge: true })` while building at medium / high: 898 (-8 %) and 1024 (-7 %); it also costs 70 to 370 ms per customer build, and customers are
+  built mid-shift, not only in the staged loader, so it stays **off**. (b) Pinning shadow casters under 0.15 m radius off: -122 calls (-12 %), under 0.3 m: -181 (-19 %), but `sync.js` re-sets `castShadow`
+  after every build and the stall / street owners would have to agree: not done. The medium frame is 619 calls without the shadow pass and 977 with it (customers are 430 of them). Getting medium under 700 needs fewer meshes per
+  customer (58 now) or a shadow proxy for people, a change in `models/customers.js` and the stall. Until then the draw-call guard (section 4) is what keeps medium off devices that cannot afford it.
 * Customers at lite and low: 51 sources -> 4 meshes (office), family of two 87 -> 4; the cook 52 -> 1. Rig update rate 4 Hz waiting, 8 to 15 Hz otherwise.
 * Programs went UP (63 -> 89 on lite / low, 144 -> 217 on medium) because one of every customer kind and a cook are parked in the scene hidden so their shaders compile at load.
 * Shadow pass: tiny parts (eyes, lids, brows, glasses, fingers) are pinned out of the shadow casters on tiers with shadows.
@@ -175,9 +213,10 @@ with the staged loader and its progress bar, the no-WebGL path (`--disable-3d-ap
 dynamic resolution in a live scene (medium tier, scale 1.0 -> 0.5 in 18 s with the tier left alone because it was explicit), the batcher and the baked people with before / after
 screenshots at lite and medium, the production build and its chunk sizes, and 125 unit tests (`npx vitest run src/games/tiffin-centre`, PowerShell).
 
-**Analysis only, never run:** Firefox, Safari (macOS and iOS), Samsung Internet, any real GPU (so no real frame rates), any phone, `deviceMemory`, the Battery API, `prefers-reduced-data`,
-Data Saver, the auto tier downgrade path in a live scene (a software renderer already starts on the lowest tier; the scaler's tier verdict is unit tested, `renderer.setQuality` is the same
-code the explicit setting uses), iOS `touchend` audio unlock, the WebGL 1-only message (a fake context is unit tested; no real WebGL 1-only browser was available).
+**Analysis only, never run:** Firefox, Safari (macOS and iOS), Samsung Internet, any real GPU (so no real frame rates, and the Auto policy's GPU-string lists were checked against strings from documentation, not against
+real `WEBGL_debug_renderer_info` output from those devices), any phone, `deviceMemory`, the Battery API, `prefers-reduced-data`,
+Data Saver, the auto tier downgrade path on a real device (the draw-call guard was run in a live medium-tier scene on SwiftShader with Auto forced on, where it stepped down twice; the scaler's tier verdict is unit tested,
+`renderer.setQuality` is the same code the explicit setting uses), `KHR_parallel_shader_compile` (SwiftShader does not have it, so the warm-up's non-blocking behaviour is by reading three.js, not measured), iOS `touchend` audio unlock, the WebGL 1-only message (a fake context is unit tested; no real WebGL 1-only browser was available).
 
 **Known limits of the numbers:** SwiftShader makes draw submission and pixel work CPU cost, the machine was shared with other builds, and the dev server serves unbundled modules; frame rates and
 load times above are therefore ratios at best. The draw-call, triangle, geometry, texture and program counts are exact.

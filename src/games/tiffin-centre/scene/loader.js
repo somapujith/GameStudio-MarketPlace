@@ -13,6 +13,7 @@ import { setCharacterQuality, setCharacterDrawMode } from '../models/charquality
 import { setTextureQuality } from '../models/util.js';
 import { setQuality as setFoodQuality } from '../models/pbr.js';
 import { createStaticProbe, mergeStaticSteps } from '../models/merge.js';
+import { Group, HalfFloatType, WebGLRenderTarget } from 'three';
 
 const now = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
 
@@ -93,7 +94,8 @@ export function applyModelTier(q) {
   setCharacterQuality(cfg.characters);
   // people: lite / low bake (a few draw calls, cheap to build); medium / high keep the full rig and only pin tiny parts out of the shadow pass.
   // Merging static sub-meshes of a customer (merge: true) works (models/merge.js) but costs 70-370 ms per build (it probes 45 poses), a visible hitch when
-  // somebody walks up, for a 10-25 % saving: off.
+  // somebody walks up, for a 10-25 % saving: off. Re-measured for the draw-call policy: medium 977 -> 898 calls (-8 %), high 1103 -> 1024 (-7 %), nowhere near the
+  // medium budget (700), and customers are built mid-shift, not only inside the staged loader: still off (the run-time draw-call guard handles heavy tiers instead).
   setCharacterDrawMode({ merge: false, baked: !!cfg.bakedCustomers, limitShadows: cfg.shadow > 0 });
   setTextureQuality(TEX_TIER[q] || 'medium');
   setFoodQuality(FOOD_TIER[q] || 'medium');
@@ -202,5 +204,169 @@ export function prefetchChunks(loaders, { saveData = false } = {}) {
   return () => {
     cancelled = true;
     cancel();
+  };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// shader warm-up
+/**
+ * The programs the game really draws with are not the ones the load-time `compile` sees: that runs before the first state, so the stall has fewer lights
+ * (5 point lights, not 11), `scene.environment` is not set yet (no env-map variant) and the static scenery is not batched. Measured at medium, level 12: 89 of
+ * the 151 programs compiled at load were never used, while 30 to 80 more compiled mid-shift, the first time a dish, an event, the weather or a batched
+ * mesh was drawn (a visible hitch on a real GPU, where one program is 5 to 50 ms).
+ *
+ * createProgramWarmer({ renderer, scene, camera, post, extras, hiddenLights }) -> { step(budgetMs) -> done, cancel(), stats }
+ * Run it once the first state is in, the lights are applied and the batcher is done. Per step it compiles one chunk of the scene against the real scene's
+ * lights, with every hidden object made visible for the call (events, weather, torches, the generator) and, with the post pipeline, with a render target
+ * bound (the HDR target changes the output colour space: a different program from the canvas one). Then, when some light is hidden at the moment (the prep
+ * counter's lights are on only at some levels), the same again with every light on, so the light-count variant the next level needs exists too.
+ * `extras` are builders of things the game creates later (one of each dish): each is built once, parked out of sight, compiled, and left in the caches.
+ * All visibility changes are undone before the call returns. Without KHR_parallel_shader_compile a chunk can block for its compile time: chunks are
+ * small (a top-level child, or its children when it is big) and `step` stops at its time budget.
+ */
+export function createProgramWarmer({ renderer, scene, camera, post = false, extras = [], hiddenLights = true, bigChunk = 60 }) {
+  const stats = { chunks: 0, programs: 0, ms: 0, variants: 0, extras: 0, errors: 0 };
+  let units = null;
+  let phase = 0; // 0 extras, 1 current lights, 2 all lights, 3 done
+  let i = 0;
+  let x = 0;
+  let allOn = false;
+  let rt = null;
+  let parkGroup = null;
+  let cancelled = false;
+  const programCount = () => renderer?.info?.programs?.length ?? 0;
+
+  const chunkOf = (root) => {
+    let n = 0;
+    root.traverse((o) => {
+      if (o.isMesh || o.isPoints || o.isLine || o.isSprite) n++;
+    });
+    return n;
+  };
+  const planUnits = () => {
+    const out = [];
+    for (const child of scene.children) {
+      if (child === camera || child.isLight || child === parkGroup) continue;
+      if (child.children.length > 1 && chunkOf(child) > bigChunk) {
+        for (const g of child.children) out.push(g);
+        if (child.isMesh || child.isPoints || child.isLine || child.isSprite) out.push(child);
+      } else out.push(child);
+    }
+    return out;
+  };
+
+  /** Runs `fn` with every object under `root` visible (and, if `lights`, every light in the scene on, with its ancestors), then restores all of it. */
+  const withEverythingVisible = (root, lights, fn) => {
+    const saved = [];
+    root.traverse((o) => saved.push(o, o.visible));
+    root.traverse((o) => {
+      o.visible = true;
+    });
+    if (lights) {
+      scene.traverse((o) => {
+        if (!o.isLight) return;
+        for (let p = o; p && p !== scene; p = p.parent) {
+          if (p.visible) continue;
+          saved.push(p, false);
+          p.visible = true;
+        }
+      });
+    }
+    try {
+      return fn();
+    } finally {
+      for (let k = saved.length - 2; k >= 0; k -= 2) saved[k].visible = saved[k + 1];
+    }
+  };
+  const anyHiddenLight = () => {
+    let hidden = false;
+    scene.traverse((o) => {
+      if (o.isLight && !o.visible) hidden = true;
+      else if (o.isLight) for (let p = o.parent; p && p !== scene; p = p.parent) if (!p.visible) hidden = true;
+    });
+    return hidden;
+  };
+
+  const compileOne = (root, lights) => {
+    if (!root || !renderer?.compile) return;
+    const before = programCount();
+    const t0 = now();
+    const prev = renderer.getRenderTarget?.() ?? null;
+    try {
+      if (post && rt) renderer.setRenderTarget(rt);
+      withEverythingVisible(root, lights, () => renderer.compile(root, camera, scene));
+    } catch (err) {
+      stats.errors++;
+      if (stats.errors === 1) console.warn('[tiffin] shader warm-up chunk skipped', err);
+    } finally {
+      renderer.setRenderTarget?.(prev);
+    }
+    stats.chunks++;
+    stats.programs += Math.max(0, programCount() - before);
+    stats.ms += now() - t0;
+  };
+
+  return {
+    stats,
+    get done() { return phase >= 3 || cancelled; },
+    cancel() {
+      cancelled = true;
+      if (parkGroup) scene.remove(parkGroup);
+      rt?.dispose?.();
+      rt = null;
+    },
+    step(budgetMs = 4) {
+      if (phase >= 3 || cancelled || !renderer?.compile) return true;
+      const t0 = now();
+      if (!rt && post && typeof renderer.setRenderTarget === 'function') {
+        try {
+          rt = new WebGLRenderTarget(4, 4, { type: HalfFloatType, depthBuffer: true });
+        } catch {
+          rt = null;
+        }
+      }
+      do {
+        if (phase === 0) {
+          // one dish (or whatever the caller listed) per step: it is built, parked below the street, compiled with the rest, and its caches stay
+          if (x < extras.length) {
+            try {
+              const o = extras[x++]();
+              if (o) {
+                if (!parkGroup) {
+                  parkGroup = new Group();
+                  parkGroup.name = 'warm-park';
+                  parkGroup.position.set(0, -60, 0);
+                  scene.add(parkGroup);
+                }
+                parkGroup.add(o);
+                stats.extras++;
+              }
+            } catch {
+              stats.errors++;
+            }
+            break; // building a dish is a frame's work on its own
+          } else {
+            phase = 1;
+            units = planUnits();
+            if (parkGroup) units.push(parkGroup);
+            i = 0;
+          }
+        } else if (phase === 1 || phase === 2) {
+          if (i < units.length) compileOne(units[i++], allOn);
+          else if (phase === 1 && hiddenLights && anyHiddenLight()) {
+            phase = 2;
+            allOn = true;
+            i = 0;
+            stats.variants++;
+          } else {
+            phase = 3;
+            if (parkGroup) scene.remove(parkGroup);
+            rt?.dispose?.();
+            rt = null;
+          }
+        }
+      } while (phase < 3 && now() - t0 < budgetMs);
+      return phase >= 3;
+    },
   };
 }

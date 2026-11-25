@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { QUALITY, QUALITY_ORDER, KNOB_KEYS, pickQuality, lowerQuality, minTier, createQualitySampler, createScaler } from './quality.js';
+import { QUALITY, QUALITY_ORDER, KNOB_KEYS, pickQuality, lowerQuality, minTier, createQualitySampler, createScaler, createDrawCallGuard, DRAW_CALL_BUDGET, frameBudgetFor } from './quality.js';
 
 describe('quality tiers', () => {
   it('has lite <= low <= medium <= high on every numeric knob and a pipeline that grows with the tier', () => {
@@ -168,5 +168,83 @@ describe('dynamic resolution scaler', () => {
     for (let i = 0; i < 100; i++) expect(s.push(i % 2 ? 5 : NaN)).toBeNull();
     s.restart(0.8);
     expect(s.scale).toBe(0.8);
+  });
+});
+
+describe('draw-call guard', () => {
+  const FRAME = 1 / 38;
+  // feeds `sec` seconds of frames at `dt` with `calls` draw calls; returns the time the verdict came, or null
+  const run = (g, tier, sec, dt, calls, frame = FRAME) => {
+    for (let t = 0; t < sec; t += dt) if (g.push(dt, calls, tier, frame)) return +(t + dt).toFixed(3);
+    return null;
+  };
+
+  it('has an increasing per-tier budget below what the heavy tiers were measured at', () => {
+    expect(DRAW_CALL_BUDGET).toEqual({ lite: 250, low: 350, medium: 700, high: 1000 });
+    const b = QUALITY_ORDER.map((q) => DRAW_CALL_BUDGET[q]);
+    expect(b).toEqual([...b].sort((x, y) => x - y));
+    expect(frameBudgetFor(QUALITY.lite)).toBeCloseTo(1 / 34, 6);
+    expect(frameBudgetFor(QUALITY.medium)).toBeCloseTo(1 / 38, 6);
+  });
+
+  it('downgrades after 2 s over budget with frames slower than their budget', () => {
+    const g = createDrawCallGuard();
+    const at = run(g, 'medium', 5, 1 / 25, 1150); // 25 fps (40 ms) against a 26 ms budget
+    expect(at).toBeGreaterThanOrEqual(2);
+    expect(at).toBeLessThan(2.1);
+    const h = createDrawCallGuard();
+    expect(run(h, 'high', 5, 1 / 20, 1379)).toBeGreaterThanOrEqual(2);
+    const l = createDrawCallGuard();
+    expect(run(l, 'low', 5, 1 / 25, 450)).not.toBeNull();
+  });
+
+  it('does not punish a machine that holds its frame budget with many calls', () => {
+    const g = createDrawCallGuard();
+    expect(run(g, 'medium', 30, 1 / 120, 1150)).toBeNull();
+    expect(run(g, 'high', 30, 1 / 90, 1400)).toBeNull();
+  });
+
+  it('does not act under the budget, even with slow frames (the dynamic resolution handles those)', () => {
+    const g = createDrawCallGuard();
+    expect(run(g, 'medium', 20, 1 / 15, 650)).toBeNull();
+    expect(run(g, 'low', 20, 1 / 15, 300)).toBeNull();
+  });
+
+  it('a count that dips back under the budget restarts the 2 s clock; a one-frame spike does not count', () => {
+    const g = createDrawCallGuard();
+    expect(run(g, 'medium', 1.5, 1 / 25, 1100)).toBeNull();
+    expect(run(g, 'medium', 3, 1 / 25, 300)).toBeNull(); // the smoothed count falls under 700
+    expect(run(g, 'medium', 1.5, 1 / 25, 1100)).toBeNull(); // clock restarted: not yet 2 s again
+    const s = createDrawCallGuard();
+    for (let t = 0; t < 10; t += 1 / 25) expect(s.push(1 / 25, Math.abs(Math.round(t * 25)) % 50 === 0 ? 2000 : 300, 'medium', FRAME)).toBe(false);
+  });
+
+  it('never asks from the lowest tier, ignores hidden-tab frames and junk input, and restarts after reset()', () => {
+    const g = createDrawCallGuard();
+    expect(run(g, 'lite', 20, 1 / 15, 900)).toBeNull();
+    expect(g.push(5, 2000, 'medium', FRAME)).toBe(false); // a 5 s hiccup (tab hidden) is not a frame
+    expect(g.push(0, 2000, 'medium', FRAME)).toBe(false);
+    expect(g.push(NaN, NaN, 'medium', FRAME)).toBe(false);
+    expect(g.push(1 / 25, 2000, 'bogus', FRAME)).toBe(false);
+    run(g, 'medium', 1.9, 1 / 25, 1100);
+    g.reset();
+    expect(run(g, 'medium', 1.9, 1 / 25, 1100)).toBeNull();
+    expect(run(g, 'medium', 1, 1 / 25, 1100)).not.toBeNull();
+  });
+
+  it('walks a heavy device down one tier at a time and stops at lite (the caller resets the guard on a tier change)', () => {
+    const g = createDrawCallGuard();
+    let tier = 'high';
+    const seen = [tier];
+    const callsOf = { high: 1379, medium: 1147, low: 293, lite: 189 }; // the measured six-customer numbers
+    for (let n = 0; n < 40 && tier !== 'lite'; n++) {
+      if (run(g, tier, 3, 1 / 24, callsOf[tier])) {
+        tier = lowerQuality(tier);
+        seen.push(tier);
+        g.reset();
+      }
+    }
+    // low (293 calls) is under its own budget (350): the slow frames there are the resolution scaler's business, so the walk ends at low
+    expect(seen).toEqual(['high', 'medium', 'low']);
   });
 });

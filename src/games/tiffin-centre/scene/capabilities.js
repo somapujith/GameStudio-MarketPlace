@@ -59,9 +59,20 @@ const WEAK_GPU = [
 // middling: fine for medium
 const MID_GPU = [/adreno[^0-9]*6[0-4]\d\b/i, /mali-g(5[7-9]|6\d|7\d)/i, /intel.*(uhd|iris|hd graphics 5\d\d|hd graphics 6\d\d)/i, /apple gpu/i, /radeon (rx )?vega ?[3-8]\b/i];
 
+// discrete (or Apple Silicon) GPUs: the only ones the 'high' tier is offered to on Auto. Integrated Intel / "AMD Radeon(TM) Graphics" / Vega iGPUs never match.
+const DISCRETE_GPU = [
+  /(geforce|nvidia)[^,)]*\b(gtx|rtx)\b/i, /\bquadro\b/i, /\btitan\b/i, /\bnvidia (a|l)\d{2,4}\b/i,
+  /radeon(\(tm\))?( pro)? (rx|pro|w) ?\d{3,4}/i, /\barc\(?(tm)?\)? ?[ab]\d{3}/i,
+  /\bapple m\d/i,
+];
+// flagship phone GPUs (2022+): Adreno 7xx / 8xx, Mali-G710 and newer, Xclipse, Immortalis. Apple GPUs on iOS are never listed (iOS / Safari start low).
+const FLAGSHIP_MOBILE_GPU = [/adreno[^0-9]*[78]\d\d\b/i, /mali-g(7[1-9]\d|[89]\d\d)\b/i, /xclipse/i, /immortalis/i];
+
 export const isSoftwareRenderer = (s) => !!s && SOFTWARE.test(String(s));
 export const isWeakGpu = (s) => !!s && WEAK_GPU.some((r) => r.test(String(s)));
 export const isMidGpu = (s) => !!s && MID_GPU.some((r) => r.test(String(s)));
+export const isDiscreteGpu = (s) => !!s && !isSoftwareRenderer(s) && !isWeakGpu(s) && DISCRETE_GPU.some((r) => r.test(String(s)));
+export const isFlagshipMobileGpu = (s) => !!s && !isSoftwareRenderer(s) && FLAGSHIP_MOBILE_GPU.some((r) => r.test(String(s)));
 
 // ---------------------------------------------------------------------------------------------------------------------------------
 // GL probe. `gl` is a WebGL(2)RenderingContext (or a fake with the same getParameter / getExtension surface).
@@ -69,7 +80,7 @@ export function probeGl(gl) {
   const out = {
     webgl: 0, maxTexture: 0, maxAniso: 0, maxSamples: 0, maxVertexTex: 0, maxVaryings: 0, maxUniformVectors: 0,
     floatRT: false, halfFloatRT: false, floatLinear: false, derivatives: false, instancing: false, parallelCompile: false,
-    renderer: '', vendor: '', software: false, weakGpu: false, midGpu: false, loseContext: false,
+    renderer: '', vendor: '', software: false, weakGpu: false, midGpu: false, discreteGpu: false, flagshipGpu: false, loseContext: false,
   };
   if (!gl || typeof gl.getParameter !== 'function') return out;
   const isGl2 = typeof WebGL2RenderingContext !== 'undefined' ? gl instanceof WebGL2RenderingContext : typeof gl.texStorage2D === 'function' && typeof gl.drawArraysInstanced === 'function';
@@ -128,6 +139,8 @@ export function probeGl(gl) {
   out.software = isSoftwareRenderer(s);
   out.weakGpu = !out.software && isWeakGpu(out.renderer);
   out.midGpu = !out.software && !out.weakGpu && isMidGpu(out.renderer);
+  out.discreteGpu = isDiscreteGpu(out.renderer);
+  out.flagshipGpu = isFlagshipMobileGpu(out.renderer);
   return out;
 }
 
@@ -228,7 +241,9 @@ export const forgetProbe = () => {
 // ---------------------------------------------------------------------------------------------------------------------------------
 // The automatic tier
 /**
- * chooseTier(caps) -> { tier, reasons }. Starts from the best the hardware allows and only ever steps DOWN, recording why.
+ * chooseTier(caps) -> { tier, reasons }. Starts from 'high' and only ever steps DOWN, recording why. Conservative on purpose: phones, tablets, Safari and iOS start at
+ * 'low' (a clearly flagship Android phone: 'medium'), desktops get 'high' only with a discrete-looking GPU AND 8+ cores AND 8+ GB AND 4x MSAA, anything integrated or unknown
+ * is 'medium' at most. quality.js's draw-call guard corrects a wrong guess at run time.
  * `tier: null` means the scene cannot run (no WebGL2).
  */
 export function chooseTier(caps, { tiers = ORDER } = {}) {
@@ -244,6 +259,7 @@ export function chooseTier(caps, { tiers = ORDER } = {}) {
     }
   };
   const mobile = !!(caps.coarse || caps.ios || caps.android);
+  const safari = !!(caps.ios || caps.safari); // every browser on iOS is WebKit
   const cores = caps.cores || 0;
   const mem = caps.memoryGB || 0;
 
@@ -257,14 +273,36 @@ export function chooseTier(caps, { tiers = ORDER } = {}) {
   else if (mem && mem <= 4) cap(mobile ? 'low' : 'medium', `${mem} GB device memory`);
   if (cores && cores <= 2) cap(mobile || mem <= 2 ? 'lite' : 'low', `${cores} CPU cores`);
   else if (cores && cores <= 4 && mobile) cap('low', `${cores} CPU cores on a phone`);
-  if (mobile) cap(caps.midGpu || caps.ios ? 'medium' : 'low', caps.midGpu || caps.ios ? 'phone / tablet: no high tier' : 'phone / tablet with an unrecognised GPU');
-  if (cores && cores < 8 && mem && mem < 8) cap('medium', 'fewer than 8 cores and under 8 GB');
-  else if (cores && cores < 8) cap('medium', `${cores} CPU cores`);
-  if (caps.maxSamples && caps.maxSamples < 4) cap('medium', `MSAA limited to ${caps.maxSamples}x`);
+
+  // Phones and tablets start LOW: medium measured ~1150 draw calls and ~275k triangles per frame (high ~1380 / 357k), far more than a phone GPU or its
+  // driver's draw-call path sustains. Only a clearly flagship Android device (8+ GB, 8+ cores, a 2022+ GPU) may start at medium, and no touch device gets high.
+  const flagshipGpu = caps.flagshipGpu ?? isFlagshipMobileGpu(caps.renderer);
+  if (mobile) {
+    if (!safari && mem >= 8 && cores >= 8 && flagshipGpu) cap('medium', 'flagship phone / tablet (8+ GB, 8+ cores, recent GPU): medium at most, never high on touch');
+    else {
+      const why = [];
+      if (safari) why.push('iOS / Safari');
+      if (!(mem >= 8)) why.push(mem ? `${mem} GB` : 'memory not reported');
+      if (!(cores >= 8)) why.push(cores ? `${cores} cores` : 'cores not reported');
+      if (!flagshipGpu) why.push(`GPU not a known flagship (${caps.renderer || 'unknown'})`);
+      cap('low', `phone / tablet starts at low (${why.join(', ')})`);
+    }
+  }
+  // Safari is unmeasured and masks the GPU as 'Apple GPU': start low (the player can raise it in the Graphics setting)
+  if (safari) cap('low', 'Safari / WebKit: unmeasured, GPU and memory hidden, starts at low');
+
+  // Desktops and laptops: 'high' only with a discrete-looking GPU AND 8+ cores AND 8+ GB AND 4x MSAA. Integrated, unknown or smaller hardware gets medium at most.
+  const discrete = caps.discreteGpu ?? isDiscreteGpu(caps.renderer);
+  const lack = [];
+  if (!discrete) lack.push(caps.renderer ? `integrated or unrecognised GPU (${caps.renderer})` : 'GPU not identified');
+  if (!(cores >= 8)) lack.push(cores ? `${cores} CPU cores` : 'core count not reported');
+  if (mem && mem < 8) lack.push(`${mem} GB device memory`); // 0 = not reported (Firefox): not held against a discrete 8-core machine
+  if (!(caps.maxSamples >= 4)) lack.push(`MSAA limited to ${caps.maxSamples || 0}x`);
+  if (lack.length) cap('medium', `no high tier: ${lack.join('; ')}`);
   if (!caps.floatLinear && !caps.floatRT) cap('medium', 'no float render targets');
   if (caps.saveData) cap('medium', 'data saver / reduced data requested');
   if (caps.battery && caps.battery.level <= 0.2 && !caps.battery.charging) cap(tiers[Math.max(0, level - 1)], `battery ${Math.round(caps.battery.level * 100)}% and not charging`);
-  if (!reasons.length) reasons.push('desktop-class GPU, 8+ cores: full pipeline');
+  if (!reasons.length) reasons.push(`discrete GPU (${caps.renderer || 'unknown'}), ${cores} cores, ${mem ? `${mem} GB` : 'memory not reported'}, MSAA ${caps.maxSamples}x: full pipeline`);
   return { tier: tiers[level], reasons };
 }
 

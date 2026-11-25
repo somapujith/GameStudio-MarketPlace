@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { BoxGeometry, Group, Mesh, MeshStandardMaterial } from 'three';
-import { runSync, runAsync, applyModelTier, createBatcher, prefetchChunks, idle, whenIdle, yieldToBrowser, LOAD_STEPS } from './loader.js';
+import { BoxGeometry, Group, Mesh, MeshStandardMaterial, PointLight, Scene, PerspectiveCamera } from 'three';
+import { runSync, runAsync, applyModelTier, createBatcher, createProgramWarmer, prefetchChunks, idle, whenIdle, yieldToBrowser, LOAD_STEPS } from './loader.js';
 import { QUALITY } from './quality.js';
 import { getCharacterQuality, getCharacterDrawMode, setCharacterQuality, setCharacterDrawMode } from '../models/charquality.js';
 import { getTextureQuality, setTextureQuality } from '../models/util.js';
@@ -191,5 +191,144 @@ describe('renderer start-up failures', () => {
     expect(asked.length).toBeGreaterThanOrEqual(2);
     expect(asked[0][1]).toBe('high-performance');
     expect(asked.at(-1)[1]).not.toBe('high-performance'); // the retry asks for the plain context
+  });
+});
+
+describe('createProgramWarmer', () => {
+  // a renderer that records what each compile call saw: which meshes were visible, which lights were on, which target was bound
+  function fake() {
+    const calls = [];
+    let target = null;
+    const r = {
+      info: { programs: [] },
+      getRenderTarget: () => target,
+      setRenderTarget(t) { target = t; },
+      compile(root, cam, scene) {
+        const lights = [];
+        scene.traverseVisible((o) => { if (o.isLight) lights.push(o.name); });
+        const meshes = [];
+        root.traverse((o) => { if (o.isMesh) meshes.push([o.name, o.visible]); });
+        calls.push({ root: root.name, lights, meshes, target });
+        r.info.programs.push({});
+      },
+    };
+    return { r, calls };
+  }
+  function build() {
+    const scene = new Scene();
+    const camera = new PerspectiveCamera();
+    scene.add(camera);
+    const mk = (name, visible = true) => {
+      const g = new Group();
+      g.name = name;
+      g.visible = visible;
+      const m = new Mesh(new BoxGeometry(1, 1, 1), new MeshStandardMaterial());
+      m.name = `${name}-mesh`;
+      g.add(m);
+      return g;
+    };
+    const stall = mk('stall');
+    const events = mk('events', false); // hidden until an event: must still be compiled
+    const on = new PointLight(0xffffff, 1);
+    on.name = 'bulb';
+    const prep = new Group();
+    prep.name = 'prep';
+    prep.visible = false; // the prep counter's lights live in a hidden group
+    const prepLight = new PointLight(0xffffff, 1);
+    prepLight.name = 'prep-light';
+    prep.add(prepLight);
+    stall.add(on, prep);
+    scene.add(stall, events, new PointLight(0xffffff, 1));
+    scene.children[scene.children.length - 1].name = 'lamp';
+    return { scene, camera, stall, events, prep };
+  }
+  const drain = (w) => {
+    let n = 0;
+    while (!w.step(1e6) && n++ < 1000);
+    return n;
+  };
+
+  it('compiles hidden objects, once with the lights as they are and once with every light on, and puts every visibility flag back', () => {
+    const { scene, camera, stall, events, prep } = build();
+    const { r, calls } = fake();
+    const w = createProgramWarmer({ renderer: r, scene, camera });
+    drain(w);
+    expect(w.done).toBe(true);
+    const evCalls = calls.filter((c) => c.root === 'events');
+    expect(evCalls).toHaveLength(2); // current lights, then all on
+    expect(evCalls[0].meshes).toEqual([['events-mesh', true]]); // visible for the compile although it is hidden in the game
+    expect(evCalls[0].lights.sort()).toEqual(['bulb', 'lamp']);
+    expect(evCalls[1].lights.sort()).toEqual(['bulb', 'lamp', 'prep-light']);
+    expect(w.stats.variants).toBe(1);
+    expect(events.visible).toBe(false);
+    expect(prep.visible).toBe(false);
+    expect(stall.visible).toBe(true);
+    expect(events.children[0].visible).toBe(true);
+  });
+
+  it('skips the all-lights pass when no light is hidden or the tier has no lights', () => {
+    const a = build();
+    a.prep.visible = true;
+    const fa = fake();
+    drain(createProgramWarmer({ renderer: fa.r, scene: a.scene, camera: a.camera }));
+    expect(fa.calls.filter((c) => c.root === 'events')).toHaveLength(1);
+    const b = build();
+    const fb = fake();
+    drain(createProgramWarmer({ renderer: fb.r, scene: b.scene, camera: b.camera, hiddenLights: false }));
+    expect(fb.calls.filter((c) => c.root === 'events')).toHaveLength(1);
+  });
+
+  it('binds a render target (the HDR one changes the output colour space) only with the post pipeline, and releases it', () => {
+    const a = build();
+    const fa = fake();
+    drain(createProgramWarmer({ renderer: fa.r, scene: a.scene, camera: a.camera, post: true }));
+    expect(fa.calls.length).toBeGreaterThan(0);
+    expect(fa.calls.every((c) => c.target && c.target.isWebGLRenderTarget)).toBe(true);
+    expect(fa.r.getRenderTarget()).toBeNull();
+    const b = build();
+    const fb = fake();
+    drain(createProgramWarmer({ renderer: fb.r, scene: b.scene, camera: b.camera, post: false }));
+    expect(fb.calls.every((c) => c.target === null)).toBe(true);
+  });
+
+  it('builds the extras one per step, parks them out of sight for the compile, and removes the park group afterwards', () => {
+    const { scene, camera } = build();
+    const { r, calls } = fake();
+    const made = [];
+    const extras = [0, 1, 2].map((i) => () => {
+      const g = new Group();
+      g.add(new Mesh(new BoxGeometry(1, 1, 1), new MeshStandardMaterial()));
+      made.push(i);
+      return g;
+    });
+    const w = createProgramWarmer({ renderer: r, scene, camera, extras });
+    w.step(1e6);
+    expect(made).toEqual([0]); // one per step: a dish build is a frame's work
+    expect(scene.children.some((c) => c.name === 'warm-park')).toBe(true);
+    drain(w);
+    expect(made).toEqual([0, 1, 2]);
+    expect(w.stats.extras).toBe(3);
+    expect(calls.some((c) => c.root === 'warm-park')).toBe(true);
+    expect(scene.children.some((c) => c.name === 'warm-park')).toBe(false);
+  });
+
+  it('works in slices, survives a throwing compile or extra, and stops cleanly when cancelled', () => {
+    const { scene, camera } = build();
+    const { r } = fake();
+    const w = createProgramWarmer({ renderer: r, scene, camera, extras: [() => { throw new Error('dish'); }] });
+    let steps = 0;
+    while (!w.step(0) && steps++ < 1000); // a zero budget still makes progress, one chunk at a time
+    expect(steps).toBeGreaterThan(2);
+    expect(w.stats.errors).toBeGreaterThanOrEqual(1);
+    const bad = { ...r, compile() { throw new Error('gl'); } };
+    const w2 = createProgramWarmer({ renderer: bad, scene, camera });
+    expect(() => drain(w2)).not.toThrow();
+    expect(w2.done).toBe(true);
+    const w3 = createProgramWarmer({ renderer: r, scene, camera });
+    w3.step(0);
+    w3.cancel();
+    expect(w3.done).toBe(true);
+    expect(w3.step(100)).toBe(true);
+    expect(createProgramWarmer({ renderer: {}, scene, camera }).step(5)).toBe(true); // no compile(): nothing to do
   });
 });

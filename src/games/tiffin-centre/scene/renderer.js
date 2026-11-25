@@ -12,7 +12,7 @@
 import {
   AgXToneMapping, NoToneMapping, PCFShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, WebGLRenderer,
 } from 'three';
-import { QUALITY, createScaler, lowerQuality, tierIndex } from './quality.js';
+import { QUALITY, createScaler, createDrawCallGuard, frameBudgetFor, lowerQuality, tierIndex } from './quality.js';
 import { createSky } from './sky.js';
 import { createPost } from './post.js';
 
@@ -77,11 +77,13 @@ export function createRenderer(canvas, { quality = 'medium', auto = true, onQual
   let scale = 1; // dynamic resolution factor on top of the tier's pixel ratio
   const makeScaler = () => {
     const c = QUALITY[q];
-    const s = createScaler({ budget: c.fpsCap ? 1 / (c.fpsCap + 4) : 1 / 38, min: c.scaleMin ?? 0.5 });
+    const s = createScaler({ budget: frameBudgetFor(c), min: c.scaleMin ?? 0.5 });
     s.restart(1);
     return s;
   };
   let scaler = makeScaler();
+  const drawGuard = createDrawCallGuard(); // a tier that stays over its draw-call budget while missing the frame budget steps down (auto only)
+  renderer.info.autoReset = false; // the post passes render several times a frame: count the whole frame, reset it ourselves in render()
   const listeners = new Set();
   const scaleListeners = new Set();
   const lastTier = { from: null, reason: '' };
@@ -121,6 +123,7 @@ export function createRenderer(canvas, { quality = 'medium', auto = true, onQual
     q = next;
     scale = 1;
     scaler = makeScaler();
+    drawGuard.reset();
     warmUp = 2.5;
     build();
     scene.traverse((o) => {
@@ -153,6 +156,7 @@ export function createRenderer(canvas, { quality = 'medium', auto = true, onQual
   const render = (dt) => {
     if (lost) return;
     clock += dt;
+    renderer.info.reset();
     if (warmUp > 0) warmUp -= Math.min(dt, 1);
     else if (dt > 0 && dt < 1) {
       const verdict = scaler.push(dt);
@@ -163,6 +167,9 @@ export function createRenderer(canvas, { quality = 'medium', auto = true, onQual
     sky.follow(camera);
     if (QUALITY[q].post) post.render(dt);
     else renderer.render(scene, camera);
+    if (warmUp <= 0 && auto && dt > 0 && drawGuard.push(dt, renderer.info.render.calls, q, frameBudgetFor(QUALITY[q]))) {
+      setQuality(lowerQuality(q), `${renderer.info.render.calls} draw calls per frame over the ${q} budget with frame time ${(dt * 1000).toFixed(0)} ms`);
+    }
   };
 
   const onLost = (e) => {

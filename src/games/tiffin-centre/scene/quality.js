@@ -195,3 +195,63 @@ export function createScaler({ budget = 1 / 45, min = 0.5, step = 0.1, windowSec
     get lastWasUp() { return lastWasUp; },
   };
 }
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// The draw-call guard
+/**
+ * Draw calls per frame each tier is designed for (`renderer.info.render.calls`, shadow pass and post passes included). Measured six-customer
+ * counts at the time of writing: lite 189, low 293, medium 1147 (before the build-time merge), high 1379. A tier that stays over its budget
+ * on a device that is also missing its frame budget is too heavy for that device, whatever the capability probe guessed.
+ */
+export const DRAW_CALL_BUDGET = { lite: 250, low: 350, medium: 700, high: 1000 };
+
+/** The frame-time budget (seconds) the scaler and the guard hold a tier to: about 38 fps, or the tier's frame cap less 4 fps. */
+export const frameBudgetFor = (cfg) => (cfg && cfg.fpsCap ? 1 / (cfg.fpsCap + 4) : 1 / 38);
+
+/**
+ * createDrawCallGuard({ budgets, overSec, ema, maxDt }) -> { push(dt, calls, tier, frameBudget) -> boolean, reset(), state }
+ * Feed it every rendered frame: `dt` seconds, `calls` = draw calls of that frame, the current `tier` and its frame-time budget in seconds.
+ * Returns true ONCE when a tier downgrade is due: the (smoothed) draw-call count has been above the tier's budget for `overSec` (2 s) AND the mean frame
+ * time over those 2 s exceeded the frame budget. A fast machine that submits many calls but holds its frame rate is never punished; a count that dips back
+ * under the budget restarts the clock. The lowest tier never asks (nothing to go down to). Auto quality only: the caller ignores it for an explicit tier.
+ * It only ever requests a step DOWN.
+ */
+export function createDrawCallGuard({ budgets = DRAW_CALL_BUDGET, overSec = 2, ema = 0.15, maxDt = 1 } = {}) {
+  let avg = 0;
+  let span = 0;
+  let sum = 0;
+  let n = 0;
+  const reset = () => {
+    avg = 0;
+    span = 0;
+    sum = 0;
+    n = 0;
+  };
+  return {
+    reset,
+    get state() { return { avg, span }; },
+    push(dt, calls, tier, frameBudget = 1 / 38) {
+      const budget = budgets[tier];
+      if (!(dt > 0) || dt > maxDt || !(calls >= 0) || !budget || tier === QUALITY_ORDER[0]) {
+        if (!budget || tier === QUALITY_ORDER[0]) reset();
+        return false;
+      }
+      avg = avg ? avg + (calls - avg) * ema : calls;
+      if (avg <= budget) {
+        span = 0;
+        sum = 0;
+        n = 0;
+        return false;
+      }
+      span += dt;
+      sum += dt;
+      n += 1;
+      if (span < overSec) return false;
+      const slow = sum / n > frameBudget;
+      span = 0;
+      sum = 0;
+      n = 0;
+      return slow;
+    },
+  };
+}

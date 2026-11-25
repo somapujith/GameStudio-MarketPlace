@@ -163,7 +163,8 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
       if (session.state) push({ state: session.state, events: [], tickAt: session.tickAt });
       s.start();
       setScene(s);
-      window.__tiffin = { session, scene: s, audio }; // handy in the console and for the screenshot tooling
+      // a console/screenshot handle: only in dev builds or with ?tcdebug=1 in the URL (a solo shift is client-side anyway, but there is no reason to hand it out)
+      if (import.meta.env?.DEV || /[?&]tcdebug=1\b/.test(window.location.search)) window.__tiffin = { session, scene: s, audio };
     })().catch((err) => {
       if (!dead) {
         console.error('[tiffin] start-up failed', err);
@@ -247,6 +248,7 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
           muted={muted}
           onMute={onMute}
           audio={audio}
+          tierInfo={() => scene?.getTierInfo?.()}
           onResume={() => session.resume?.()}
           onRestart={() => session.restart?.()}
           onQuit={() => {
