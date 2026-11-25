@@ -1,0 +1,121 @@
+// Shared materials. The star is the building material: one MeshStandardMaterial per look, patched with onBeforeCompile so a
+// plain instanced box gets procedural windows (dark glass by day, lit after dark), floor ledges, a darker roof and a soft
+// ground shadow. No textures, so it works at any scale and every instance can have its own colour.
+import { Color, MeshBasicMaterial, MeshStandardMaterial, Vector2 } from 'three';
+
+/** Values every material reads each frame. The sky system writes these. */
+export function createShared() {
+  return { uNight: { value: 0 }, uTime: { value: 0 }, uWet: { value: 0 } };
+}
+
+const BUILDING_VERT_COMMON = /* glsl */ `
+  varying vec3 vBP; varying vec3 vBN; flat varying float vBSeed; flat varying float vBH;
+`;
+const BUILDING_VERT_BODY = /* glsl */ `
+  #ifdef USE_INSTANCING
+    vec3 bsc = vec3(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz), length(instanceMatrix[2].xyz));
+    vBSeed = fract(sin(dot(instanceMatrix[3].xz, vec2(12.9898, 78.233))) * 43758.5453);
+  #else
+    vec3 bsc = vec3(1.0); vBSeed = 0.5;
+  #endif
+  vBP = position * bsc; // metres in box space: x,z centred, y from 0 (the geometry sits on the ground)
+  vBN = normal;
+  vBH = bsc.y;
+`;
+const BUILDING_FRAG_COMMON = /* glsl */ `
+  uniform float uNight; uniform vec2 uCell; uniform float uGround; uniform vec3 uGlass; uniform float uLitBias; uniform float uWet;
+  varying vec3 vBP; varying vec3 vBN; flat varying float vBSeed; flat varying float vBH;
+  float h21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+  float gWin = 0.0; float gLit = 0.0; vec3 gLitCol = vec3(1.0, 0.75, 0.4);
+`;
+const BUILDING_FRAG_COLOR = /* glsl */ `
+  {
+    vec3 n = normalize(vBN);
+    float side = step(abs(n.y), 0.5);
+    vec2 uv = abs(n.x) > 0.5 ? vec2(vBP.z, vBP.y) : vec2(vBP.x, vBP.y);
+    vec2 cid = floor(uv / uCell);
+    vec2 f = fract(uv / uCell);
+    float inWin = step(0.17, f.x) * step(f.x, 0.83) * step(0.22, f.y) * step(f.y, 0.8);
+    float aboveGround = step(uGround, vBP.y);
+    float belowTop = step(vBP.y, vBH - 1.1);
+    gWin = side * inWin * aboveGround * belowTop;
+    float r = h21(cid + vBSeed * 91.7 + (abs(n.x) > 0.5 ? 17.0 : 0.0));
+    float r2 = h21(cid.yx + vBSeed * 13.1);
+    float dusk = clamp((uNight - 0.12) * 1.25, 0.0, 1.0);
+    gLit = gWin * step(r, dusk * 0.5 + uLitBias * smoothstep(0.12, 0.5, uNight));
+    gLitCol = r2 < 0.2 ? vec3(0.3, 0.75, 1.0) : (r2 < 0.32 ? vec3(1.0, 0.3, 0.7) : vec3(1.0, 0.42, 0.1));
+    // facade: darker glass in the window, a pale ledge on every floor line, a darker roof, a soft ground shadow
+    diffuseColor.rgb = mix(diffuseColor.rgb, uGlass, gWin);
+    diffuseColor.rgb *= 1.0 - 0.14 * side * step(f.y, 0.07) * aboveGround;
+    diffuseColor.rgb *= mix(1.0, 0.7, step(0.5, n.y));
+    diffuseColor.rgb *= mix(0.78, 1.0, smoothstep(0.0, 5.0, vBP.y));
+  }
+`;
+const BUILDING_FRAG_ROUGH = /* glsl */ `
+  roughnessFactor = mix(roughnessFactor, 0.14, gWin * (1.0 - gLit));
+`;
+const BUILDING_FRAG_METAL = /* glsl */ `
+  metalnessFactor = mix(metalnessFactor, 0.55, gWin);
+`;
+const BUILDING_FRAG_EMIT = /* glsl */ `
+  totalEmissiveRadiance += gLitCol * gLit * 1.0;
+`;
+
+/** Building facade material. `cell` = window module in metres, `ground` = shopfront height (no windows below it). */
+export function buildingMaterial(shared, { cell = [3.4, 3.7], ground = 3.8, glass = '#2a3a58', roughness = 0.85, litBias = 0.07, key = 'b' } = {}) {
+  const m = new MeshStandardMaterial({ color: 0xffffff, roughness, metalness: 0.02 });
+  m.customProgramCacheKey = () => `bldg-${key}`;
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.uNight = shared.uNight;
+    shader.uniforms.uWet = shared.uWet;
+    shader.uniforms.uCell = { value: new Vector2(cell[0], cell[1]) };
+    shader.uniforms.uGround = { value: ground };
+    shader.uniforms.uGlass = { value: new Color(glass) };
+    shader.uniforms.uLitBias = { value: litBias };
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>\n${BUILDING_VERT_COMMON}`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>\n${BUILDING_VERT_BODY}`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>\n${BUILDING_FRAG_COMMON}`)
+      .replace('#include <color_fragment>', `#include <color_fragment>\n${BUILDING_FRAG_COLOR}`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\n${BUILDING_FRAG_ROUGH}`)
+      .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>\n${BUILDING_FRAG_METAL}`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${BUILDING_FRAG_EMIT}`);
+  };
+  return m;
+}
+
+/** Foliage that sways in the wind (palms, trees, bunting): the vertex shader bends by height. */
+export function foliageMaterial(shared, { color = 0xffffff, sway = 0.35, roughness = 0.8, key = 'f', flat = true } = {}) {
+  const m = new MeshStandardMaterial({ color, roughness, metalness: 0, flatShading: flat, side: 2 });
+  m.customProgramCacheKey = () => `fol-${key}-${sway}`;
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = shared.uTime;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float uTime;')
+      .replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+        #ifdef USE_INSTANCING
+          float ph = instanceMatrix[3].x * 0.21 + instanceMatrix[3].z * 0.17;
+        #else
+          float ph = 0.0;
+        #endif
+        float bend = max(position.y, 0.0) * ${sway.toFixed(3)} * 0.06;
+        transformed.x += sin(uTime * 1.6 + ph) * bend;
+        transformed.z += cos(uTime * 1.3 + ph * 1.3) * bend * 0.8;`,
+      );
+  };
+  return m;
+}
+
+/** Glowing stuff (neon, lamp heads, tail lights): unlit, brighter than white so the bloom pass picks it up. */
+export function glowMaterial(color = 0xffffff, boost = 2.2, map = null) {
+  const m = new MeshBasicMaterial({ color: new Color(color).multiplyScalar(boost), map, toneMapped: true });
+  return m;
+}
+
+/** Lacquered paint for vehicles. */
+export function paintMaterial(color, { roughness = 0.32, metalness = 0.25 } = {}) {
+  return new MeshStandardMaterial({ color, roughness, metalness });
+}

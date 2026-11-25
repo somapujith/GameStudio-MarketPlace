@@ -220,7 +220,8 @@ All JSON, same-origin, cookie session `hyd_session` (`HttpOnly; SameSite=Lax; Pa
 | `GET /api/rooms/mine` | `{ rooms:[{ code, gameId, status:'lobby'\|'playing', players, maxPlayers }] }`: live rooms I am a human member of (signed in, guests included) |
 | `GET /api/rooms/:code` | `{ code, exists, status:'lobby'\|'playing'\|'finished', players (count), maxPlayers, hostName, isMember, gameId, visibility, settings }` |
 | `POST /api/invites {code, userId}` | friend + room-member checks; pushes `{t:'invite', from, code, gameId, gameName}` to that friend's `UserHub` |
-| `GET /api/leaderboard?game=<id>\|overall` | `{ rows:[{ rank, name, avatar, level, wins, games, bestScore, rating, bestWorth }] }`, top 50, cached 15 s. No parameter = `overall` (ranked by xp); a game id ranks by wins, then rating. Public to read (guests are never listed); an unknown game is `400 unknown game`. `bestWorth` repeats `bestScore` for older clients |
+| `GET /api/leaderboard?game=<id>\|overall` | `{ rows:[{ rank, name, avatar, level, wins, games, bestScore, rating, bestWorth }] }`, top 50, cached 15 s. No parameter = `overall` (ranked by xp); a game id ranks by wins, then rating (a solo game id, e.g. `autowala`, by best score). Public to read (guests are never listed); an unknown game is `400 unknown game`. `bestWorth` repeats `bestScore` for older clients |
+| `POST /api/solo/:gameId/start` · `POST /api/solo/:gameId/finish {token, earned, seconds, distance, quests, fares, style}` | solo-game run API (`autowala`): start -> `{ ok, token, seed, expiresAt }`; finish -> `{ ok, duplicate, earned, newBest, bestScore, games, wins, xp, coins, level }`. A token finishes once, scores are client-reported and only sanity-checked, solo runs pay XP / coins up to a daily cap (docs/ADDING_A_GAME.md section 9) |
 
 Friend codes are `HYD-XXXX` and room codes 6 characters, both from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`.
 
@@ -253,6 +254,8 @@ Every message, field, error string, event, timer and redaction rule is specified
 `/ws/user` pushes `{t:'friend_request',from}` `{t:'friend_accepted',by}` `{t:'invite',from,code,gameId,gameName}` `{t:'presence',userId,online}`.
 
 ### Adding a game (server side)
+
+> A **solo** game (no table, no server: Autowala) skips this: it is a manifest plus a full-screen game screen at `/play/<id>` (`loaders.soloGame`). See [`docs/ADDING_A_GAME.md`](docs/ADDING_A_GAME.md) section 9.
 
 1. Write `worker/games/<id>.js` whose default export is an adapter, and add it to `GAME_ADAPTERS` in `worker/games/index.js` (the interface is documented at the top of that file; `hyderabad-tycoon.js` is the reference implementation, `worker/gameroom.generic.test.js` defines a tiny second game). The id must equal the frontend manifest id.
 2. That is all the server needs: `POST /api/rooms {gameId}`, the lobby, idle/disconnect auto-play, timers, per-recipient secrecy, results, stats, ratings, the leaderboard tab and open tables all work through the adapter. Nothing in `GameRoom`, `match.js` or the routes names a game.

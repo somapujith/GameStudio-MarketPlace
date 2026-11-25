@@ -16,7 +16,8 @@
     "db:down": "docker compose down",
     "migrate": "node scripts/migrate.js",
     "migrate:staging": "node --env-file=.dev.vars.staging scripts/migrate.js",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && wrangler deploy",
+    "voices:gen": "node scripts/gen-voicelines.mjs"
   },
   "dependencies": {
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",

@@ -2,6 +2,7 @@
 // a game id ranks by wins, then rating, from user_game_stats. Guests are never listed.
 import { levelFromXp } from './xp.js';
 import { rowEquipped } from './users.js';
+import { getSoloGame } from './games/solo.js';
 
 export const OVERALL = 'overall';
 export const LEADERBOARD_LIMIT = 50;
@@ -33,8 +34,12 @@ function rankedSelect(game) {
       params: [],
     };
   }
+  // A solo game (worker/games/solo.js) is unrated: its board is ranked by best score. Room games rank by wins, then rating.
+  const order = getSoloGame(game)
+    ? 's.best_score DESC, s.wins DESC, s.games ASC, u.created_at ASC, u.id ASC'
+    : 's.wins DESC, s.rating DESC, s.games ASC, u.created_at ASC, u.id ASC';
   return {
-    text: `SELECT (ROW_NUMBER() OVER (ORDER BY s.wins DESC, s.rating DESC, s.games ASC, u.created_at ASC, u.id ASC))::int AS rank,
+    text: `SELECT (ROW_NUMBER() OVER (ORDER BY ${order}))::int AS rank,
               u.id, u.name, u.avatar, u.xp, u.equipped, s.wins, s.games, s.best_score, s.rating
          FROM user_game_stats s
          JOIN users u ON u.id = s.user_id

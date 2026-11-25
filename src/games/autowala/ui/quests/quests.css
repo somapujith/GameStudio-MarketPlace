@@ -1,0 +1,916 @@
+/* Autowala quests: the mission tracker, the tutorial card, the result card, the job board and the quest log.
+   Scoped under .aw, class prefix aw-quest-. Palette tokens come from autowala.css. */
+.aw .aw-quest-tracker,
+.aw .aw-quest-coach,
+.aw .aw-quest-result {
+  --q-panel: linear-gradient(180deg, rgba(42, 18, 72, 0.84), rgba(18, 8, 36, 0.88));
+  --q-edge: rgba(255, 255, 255, 0.15);
+  position: absolute;
+  z-index: 3;
+  box-sizing: border-box;
+  font-family: var(--aw-font);
+  color: var(--aw-text);
+  font-variant-numeric: tabular-nums;
+  background: var(--q-panel);
+  border: 1px solid var(--q-edge);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  border-radius: 14px;
+  pointer-events: none;
+}
+.aw .aw-quest-te,
+.aw .aw-quest-tracker .aw-te,
+.aw .aw-quest-coach .aw-te,
+.aw .aw-quest-menu .aw-te,
+.aw .aw-quest-result .aw-te {
+  font-family: var(--aw-font-te);
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+/* ---- the tracker (right side) ---------------------------------------------------------------------------------------------- */
+.aw .aw-quest-tracker {
+  top: 206px; /* under the wallet column: wallet, stars, job chip */
+  left: 16px;
+  width: 262px;
+  padding: 9px 12px 10px;
+  border-left: 3px solid var(--aw-cyan);
+  animation: aw-quest-in 0.3s ease-out;
+}
+.aw .aw-quest-tracker__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.aw .aw-quest-tracker__head .aw-quest-diff {
+  margin-left: auto;
+}
+.aw .aw-quest-tag {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  color: var(--aw-cyan);
+}
+.aw .aw-quest-tag.is-gold {
+  color: var(--aw-gold);
+}
+.aw .aw-quest-diff {
+  display: inline-flex;
+  gap: 3px;
+}
+.aw .aw-quest-diff i {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  transform: skewX(-14deg);
+  background: rgba(255, 255, 255, 0.16);
+}
+.aw .aw-quest-diff i.is-on {
+  background: var(--aw-pink);
+  box-shadow: 0 0 6px rgba(255, 61, 154, 0.7);
+}
+.aw .aw-quest-tracker__title {
+  margin: 3px 0 4px;
+  font-size: 16px;
+  font-weight: 800;
+  font-style: italic;
+  line-height: 1.15;
+}
+.aw .aw-quest-tracker__title .aw-te {
+  display: block;
+  font-size: 12px;
+  font-style: normal;
+  color: #ffd1ea;
+}
+.aw .aw-quest-now {
+  margin: 4px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.aw .aw-quest-step {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  font-weight: 800;
+  background: rgba(55, 230, 255, 0.18);
+  color: var(--aw-cyan);
+}
+.aw .aw-quest-te {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--aw-dim);
+}
+.aw .aw-quest-progress {
+  margin: 6px 0 0;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--aw-gold);
+}
+.aw .aw-quest-progress.is-warn {
+  color: #ff8aa0;
+}
+.aw .aw-quest-hint {
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  color: var(--aw-dim);
+  font-style: italic;
+}
+.aw .aw-quest-clock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.aw .aw-quest-clock b {
+  font-size: 22px;
+  font-style: italic;
+  min-width: 52px;
+  color: var(--aw-cyan);
+}
+.aw .aw-quest-clock.is-warn b {
+  color: var(--aw-gold);
+}
+.aw .aw-quest-clock.is-urgent b {
+  color: #ff5a6e;
+}
+.aw .aw-quest-bar {
+  position: relative;
+  flex: 1;
+  height: 7px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.aw .aw-quest-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 5px;
+  background: linear-gradient(90deg, var(--aw-cyan), #7fa6ff);
+  transition: width 0.25s linear;
+}
+.aw .aw-quest-clock.is-warn .aw-quest-bar i {
+  background: linear-gradient(90deg, var(--aw-gold), #ff9a5a);
+}
+.aw .aw-quest-clock.is-urgent .aw-quest-bar i {
+  background: linear-gradient(90deg, #ff5a6e, var(--aw-pink));
+}
+.aw .aw-quest-meter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.aw .aw-quest-meter small {
+  min-width: 52px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--aw-dim);
+}
+.aw .aw-quest-meter .aw-quest-bar i {
+  background: linear-gradient(90deg, #ff9a5a, var(--aw-gold));
+}
+.aw .aw-quest-meter.is-low .aw-quest-bar i {
+  background: linear-gradient(90deg, #5aa8ff, #9fd0ff);
+}
+.aw .aw-quest-tracker__foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.aw .aw-quest-next {
+  font-size: 11px;
+  color: var(--aw-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.aw .aw-quest-reward {
+  flex: none;
+  font-size: 14px;
+  font-style: italic;
+  color: var(--aw-gold);
+}
+
+/* ---- the tutorial card (left side, under the wallet block) ----------------------------------------------------------------------- */
+.aw .aw-quest-coach {
+  top: 206px;
+  left: 16px;
+  width: 292px;
+  padding: 10px 14px 11px;
+  border-left: 3px solid var(--aw-gold);
+  animation: aw-quest-in 0.3s ease-out;
+}
+.aw .aw-quest-coach header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: #ffd1ea;
+}
+.aw .aw-quest-dots {
+  display: flex;
+  gap: 5px;
+  margin: 7px 0 8px;
+  padding: 0;
+  list-style: none;
+}
+.aw .aw-quest-dots li {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.14);
+}
+.aw .aw-quest-dots li.is-done {
+  background: var(--aw-lime);
+}
+.aw .aw-quest-dots li.is-now {
+  background: var(--aw-gold);
+  box-shadow: 0 0 8px rgba(255, 200, 87, 0.7);
+}
+.aw .aw-quest-coach__text {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+.aw .aw-quest-coach__text .aw-key {
+  margin: 0 8px 0 0;
+}
+.aw .aw-quest-coach__te {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--aw-dim);
+}
+.aw .aw-quest-skip {
+  pointer-events: auto;
+  margin-top: 9px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--q-edge);
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--aw-dim);
+  font: 700 12px var(--aw-font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.aw .aw-quest-skip:hover,
+.aw .aw-quest-skip:focus-visible {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.4);
+  outline: none;
+}
+
+/* ---- the result card ------------------------------------------------------------------------------------------------------------ */
+.aw .aw-quest-result {
+  top: 92px;
+  left: 50%;
+  width: 300px;
+  margin-left: -150px;
+  padding: 12px 16px 13px;
+  text-align: center;
+  animation: aw-quest-pop 0.45s cubic-bezier(0.2, 1.3, 0.4, 1);
+}
+.aw .aw-quest-result.is-ok {
+  border-top: 3px solid var(--aw-gold);
+}
+.aw .aw-quest-result.is-bad {
+  border-top: 3px solid #ff5a6e;
+}
+.aw .aw-quest-result small {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  color: var(--aw-dim);
+}
+.aw .aw-quest-result h3 {
+  margin: 2px 0 0;
+  font-size: 26px;
+  font-style: italic;
+  font-weight: 800;
+  color: var(--aw-gold);
+}
+.aw .aw-quest-result.is-bad h3 {
+  color: #ff7a8a;
+}
+.aw .aw-quest-result h3 .aw-te {
+  font-size: 13px;
+  font-style: normal;
+  color: #ffd1ea;
+}
+.aw .aw-quest-result__title {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.aw .aw-quest-result__why {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--aw-dim);
+}
+.aw .aw-quest-parts {
+  margin: 0;
+  padding: 6px 0;
+  list-style: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+.aw .aw-quest-parts li {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 4px;
+  font-size: 12.5px;
+  color: var(--aw-dim);
+}
+.aw .aw-quest-parts b {
+  color: var(--aw-text);
+}
+.aw .aw-quest-result__total {
+  margin: 8px 0 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 10px;
+}
+.aw .aw-quest-result__total b {
+  font-size: 24px;
+  font-style: italic;
+  color: var(--aw-lime);
+}
+.aw .aw-quest-result__total em {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--aw-cyan);
+}
+
+/* ---- the job board and the quest log (full-screen menus) --------------------------------------------------------------------------- */
+.aw .aw-quest-menu {
+  background: radial-gradient(ellipse at 20% 0%, rgba(143, 107, 255, 0.28), transparent 55%), rgba(12, 5, 28, 0.88);
+  display: grid;
+  place-items: start center;
+  padding: 18px 16px 24px;
+  box-sizing: border-box;
+}
+.aw .aw-quest-sheet {
+  width: min(980px, 100%);
+}
+.aw .aw-quest-sheet__head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.aw .aw-quest-sheet__head small {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  color: var(--aw-cyan);
+}
+.aw .aw-quest-sheet__head h2 {
+  margin: 2px 0 0;
+  font-size: clamp(26px, 5vw, 40px);
+  font-style: italic;
+  font-weight: 800;
+  line-height: 1;
+  text-shadow: 0 0 22px rgba(255, 61, 154, 0.55);
+}
+.aw .aw-quest-sheet__head h2 .aw-te {
+  font-size: 0.45em;
+  font-style: normal;
+  color: #ffd1ea;
+  text-shadow: none;
+  margin-left: 6px;
+}
+.aw .aw-quest-rankchip {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 0 8px;
+  align-items: baseline;
+  padding: 8px 14px 9px;
+  border-radius: 12px;
+  background: rgba(18, 8, 36, 0.7);
+  border: 1px solid var(--aw-line);
+  border-left: 3px solid var(--aw-gold);
+}
+.aw .aw-quest-rankchip small {
+  grid-column: 1 / -1;
+  color: var(--aw-dim);
+}
+.aw .aw-quest-rankchip b {
+  font-size: 17px;
+  font-style: italic;
+  color: var(--aw-gold);
+}
+.aw .aw-quest-rankchip .aw-te {
+  font-size: 12px;
+  color: #ffd1ea;
+}
+.aw .aw-quest-rankchip em {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  font-style: normal;
+  color: var(--aw-dim);
+}
+.aw .aw-quest-rankchip .aw-quest-bar {
+  grid-column: 1 / -1;
+  margin-top: 5px;
+  height: 5px;
+}
+.aw .aw-quest-bar.is-rank i {
+  background: linear-gradient(90deg, var(--aw-gold), var(--aw-pink));
+}
+
+.aw .aw-quest-board {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.aw .aw-quest-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.aw .aw-quest-card {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  padding: 9px 14px;
+  text-align: left;
+  color: var(--aw-text);
+  cursor: pointer;
+  border-radius: 12px;
+  border: 1px solid var(--aw-line);
+  border-left: 3px solid var(--aw-violet);
+  background: rgba(18, 8, 36, 0.66);
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+.aw .aw-quest-card:hover {
+  background: rgba(42, 18, 72, 0.8);
+}
+.aw .aw-quest-card.is-selected {
+  border-color: var(--aw-cyan);
+  border-left-color: var(--aw-pink);
+  background: linear-gradient(90deg, rgba(255, 61, 154, 0.3), rgba(42, 18, 72, 0.85));
+  transform: translateX(3px);
+}
+.aw .aw-quest-card.is-daily {
+  border-left-color: var(--aw-gold);
+}
+.aw .aw-quest-card.is-locked,
+.aw .aw-quest-card.is-unavailable,
+.aw .aw-quest-card.is-done {
+  opacity: 0.62;
+}
+.aw .aw-quest-card__main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.aw .aw-quest-card__main b {
+  font-size: 16px;
+  font-weight: 800;
+  font-style: italic;
+}
+.aw .aw-quest-card__main .aw-te {
+  font-size: 12px;
+  color: #ffd1ea;
+}
+.aw .aw-quest-card__main em {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-style: normal;
+}
+.aw .aw-quest-card__side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  flex: none;
+}
+.aw .aw-quest-card__side b {
+  font-size: 16px;
+  font-style: italic;
+  color: var(--aw-gold);
+}
+.aw .aw-quest-card__side small {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--aw-dim);
+}
+.aw .aw-quest-chip {
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--aw-dim);
+}
+.aw .aw-quest-chip.is-gold {
+  background: rgba(255, 200, 87, 0.2);
+  color: var(--aw-gold);
+}
+.aw .aw-quest-chip.is-red {
+  background: rgba(255, 90, 110, 0.2);
+  color: #ff8aa0;
+}
+.aw .aw-quest-chip.is-lime {
+  background: rgba(166, 255, 61, 0.15);
+  color: var(--aw-lime);
+}
+.aw .aw-quest-empty {
+  padding: 18px;
+  color: var(--aw-dim);
+}
+
+.aw .aw-quest-detail,
+.aw .aw-quest-panel {
+  padding: 14px 16px 16px;
+  border-radius: 14px;
+  background: rgba(18, 8, 36, 0.74);
+  border: 1px solid var(--aw-line);
+  border-top: 3px solid var(--aw-cyan);
+  box-sizing: border-box;
+}
+.aw .aw-quest-kind {
+  margin: 0;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--aw-cyan);
+}
+.aw .aw-quest-detail h3,
+.aw .aw-quest-panel h3 {
+  margin: 3px 0 6px;
+  font-size: 20px;
+  font-style: italic;
+  font-weight: 800;
+}
+.aw .aw-quest-panel h3 {
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  color: var(--aw-gold);
+}
+.aw .aw-quest-panel h3 small {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--aw-dim);
+}
+.aw .aw-quest-detail h3 .aw-te,
+.aw .aw-quest-panel h3 .aw-te {
+  font-size: 12px;
+  font-style: normal;
+  color: #ffd1ea;
+  letter-spacing: 0;
+}
+.aw .aw-quest-blurb {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--aw-text);
+}
+.aw .aw-quest-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+  margin: 0 0 10px;
+}
+.aw .aw-quest-facts div {
+  padding: 6px 10px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.aw .aw-quest-facts dt {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--aw-dim);
+}
+.aw .aw-quest-facts dd {
+  margin: 1px 0 0;
+  font-size: 15px;
+  font-weight: 800;
+  font-style: italic;
+}
+.aw .aw-quest-steps {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--aw-dim);
+}
+.aw .aw-quest-steps li.is-done {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+.aw .aw-quest-steps li.is-now {
+  color: var(--aw-text);
+  font-weight: 800;
+}
+.aw .aw-quest-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.aw .aw-quest-btn {
+  min-height: 46px;
+  padding: 0 18px;
+  border-radius: 11px;
+  border: 1px solid var(--aw-line);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--aw-text);
+  font: 800 13px var(--aw-font);
+  font-style: italic;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.aw .aw-quest-btn .aw-te {
+  font-style: normal;
+  letter-spacing: 0;
+  margin-left: 4px;
+  font-size: 12px;
+}
+.aw .aw-quest-btn.is-primary {
+  flex: 1;
+  background: linear-gradient(180deg, #ff5fae, var(--aw-pink));
+  border-color: transparent;
+  color: #1a0a2e;
+}
+.aw .aw-quest-btn.is-danger {
+  border-color: rgba(255, 90, 110, 0.5);
+  color: #ff8aa0;
+}
+.aw .aw-quest-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--aw-dim);
+}
+.aw .aw-quest-btn:hover:not(:disabled),
+.aw .aw-quest-btn:focus-visible {
+  outline: 2px solid var(--aw-cyan);
+  outline-offset: 2px;
+}
+.aw .aw-quest-footnote {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--aw-dim);
+  text-align: center;
+}
+.aw .aw-quest-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.aw .aw-quest-active__title {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+.aw .aw-quest-active__reward {
+  margin: 10px 0;
+  font-size: 13px;
+  color: var(--aw-dim);
+}
+.aw .aw-quest-active__reward b {
+  color: var(--aw-gold);
+  font-size: 16px;
+  font-style: italic;
+}
+.aw .aw-quest-active__reward em {
+  font-style: normal;
+  color: var(--aw-cyan);
+  font-weight: 800;
+}
+.aw .aw-quest-none {
+  color: var(--aw-dim);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.aw .aw-quest-none p {
+  margin: 0 0 8px;
+}
+.aw .aw-quest-donelist {
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+.aw .aw-quest-donelist li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 13.5px;
+}
+.aw .aw-quest-donelist li span {
+  flex: 1;
+  min-width: 0;
+}
+.aw .aw-quest-donelist em {
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--aw-dim);
+}
+
+@keyframes aw-quest-in {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes aw-quest-pop {
+  from { opacity: 0; transform: translateY(-14px) scale(0.94); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ---- the BRIEF panel of the pause menu: a mission block above the current fare ----------------------------------------------------- */
+.aw .aw-quest-brief {
+  margin: 0 0 12px;
+  padding: 10px 14px 12px;
+  border-radius: 12px;
+  background: rgba(55, 230, 255, 0.07);
+  border: 1px solid rgba(55, 230, 255, 0.25);
+  border-left: 3px solid var(--aw-cyan);
+}
+.aw .aw-quest-brief b {
+  font-size: 15px;
+  font-style: italic;
+}
+.aw .aw-quest-brief .aw-quest-now {
+  font-size: 13px;
+}
+.aw .aw-quest-brief__rank {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--aw-dim);
+}
+.aw .aw-quest-brief__rank b {
+  font-size: 13px;
+  color: var(--aw-gold);
+}
+
+/* ---- small screens ------------------------------------------------------------------------------------------------------------------- */
+@media (max-width: 760px) {
+  .aw .aw-quest-board,
+  .aw .aw-quest-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .aw .aw-quest-sheet__head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  /* portrait phones: under the trip panel and the job chip (hud.css); compact, so the right-hand gauges stay clear */
+  .aw .aw-quest-tracker {
+    top: 298px;
+    left: 10px;
+    width: min(212px, calc(100vw - 20px));
+    padding: 6px 10px 7px;
+  }
+  .aw .aw-quest-tracker__foot,
+  .aw .aw-quest-hint,
+  .aw .aw-quest-tracker .aw-quest-te,
+  .aw .aw-quest-tracker__title .aw-te {
+    display: none;
+  }
+  .aw .aw-quest-tracker__title {
+    margin: 2px 0 2px;
+    font-size: 14px;
+  }
+  .aw .aw-quest-coach {
+    top: 298px;
+    left: 10px;
+    width: min(214px, calc(100vw - 20px));
+    padding: 8px 10px 8px 12px;
+  }
+  .aw .aw-quest-coach header,
+  .aw .aw-quest-dots,
+  .aw .aw-quest-coach__te {
+    display: none;
+  }
+  .aw .aw-quest-coach__text {
+    font-size: 14px;
+  }
+  .aw .aw-quest-skip {
+    margin-top: 5px;
+  }
+  .aw .aw-quest-result {
+    top: 78px;
+  }
+}
+@media (max-height: 520px) {
+  .aw .aw-quest-tracker {
+    top: 144px; /* under the wallet, the stars and the 44 px chai row */
+    left: 10px;
+    width: 218px;
+    padding: 5px 9px 6px;
+  }
+  .aw .aw-quest-tracker__title .aw-te {
+    display: none;
+  }
+  .aw .aw-quest-tracker__title {
+    margin: 0 0 1px;
+    font-size: 13px;
+  }
+  .aw .aw-quest-now {
+    margin: 1px 0 0;
+    font-size: 12px;
+  }
+  .aw .aw-quest-progress {
+    margin: 3px 0 0;
+    font-size: 12px;
+  }
+  .aw .aw-quest-clock {
+    margin-top: 3px;
+  }
+  .aw .aw-quest-clock b {
+    font-size: 16px;
+  }
+  .aw .aw-quest-tracker__foot,
+  .aw .aw-quest-hint,
+  .aw .aw-quest-tracker .aw-quest-te {
+    display: none;
+  }
+  .aw .aw-quest-coach {
+    top: 144px;
+    left: 10px;
+    width: 232px;
+    padding: 6px 8px 6px 10px;
+  }
+  .aw .aw-quest-coach__text {
+    font-size: 13px;
+  }
+
+  .aw .aw-quest-result {
+    top: 60px;
+  }
+}
+/* phones (portrait and landscape): the tutorial card becomes one short row (text + a 44 px skip chip); the tracker drops its header */
+@media (max-width: 760px), (max-height: 520px) {
+  .aw .aw-quest-tracker__head {
+    display: none;
+  }
+  .aw .aw-quest-coach {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .aw .aw-quest-coach header,
+  .aw .aw-quest-dots,
+  .aw .aw-quest-coach__te,
+  .aw .aw-quest-coach .aw-quest-progress {
+    display: none;
+  }
+  .aw .aw-quest-coach__text {
+    flex: 1;
+    min-width: 0;
+  }
+  .aw .aw-quest-skip {
+    flex: none;
+    width: 44px;
+    padding: 0;
+    margin: 0;
+    font-size: 0;
+    display: grid;
+    place-items: center;
+  }
+  .aw .aw-quest-skip .aw-key {
+    font-size: 13px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aw .aw-quest-tracker,
+  .aw .aw-quest-coach,
+  .aw .aw-quest-result {
+    animation: none;
+  }
+  .aw .aw-quest-bar i,
+  .aw .aw-quest-card {
+    transition: none;
+  }
+}

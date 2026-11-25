@@ -39,6 +39,7 @@ import announcementRoutes from './routes/announcements.js';
 import achievementRoutes from './routes/achievements.js';
 import eventRoutes from './routes/events.js';
 import seasonRoutes from './routes/seasons.js';
+import soloRoutes from './routes/solo.js';
 import tutorialRoutes from './routes/tutorial.js';
 
 export { GameRoom } from './GameRoom.js';
@@ -105,6 +106,7 @@ api.route('/announcements', announcementRoutes);
 api.route('/achievements', achievementRoutes);
 api.route('/events', eventRoutes); // GET /api/events/live is public and cached 60 s (like /api/announcements)
 api.route('/seasons', seasonRoutes);
+api.route('/solo', soloRoutes);
 api.notFound((c) => c.json({ error: 'Not found.' }, 404));
 
 app.route('/api', api);

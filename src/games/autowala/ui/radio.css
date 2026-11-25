@@ -1,0 +1,118 @@
+/* Autowala radio widget. Scoped under .aw, class prefix aw-radio-. */
+.aw .aw-radio {
+  position: absolute;
+  /* desktop / tablet: right of the minimap disc and its route pill, under the subtitle bar */
+  left: calc(250px + env(safe-area-inset-left, 0px));
+  bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+  z-index: 24;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(330px, calc(100vw - 32px));
+  padding: 4px;
+  border-radius: 26px;
+  background: var(--aw-panel);
+  border: 2px solid var(--aw-line);
+  box-shadow: 0 0 14px rgba(0, 0, 0, 0.35);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.aw .aw-radio.is-on {
+  border-color: var(--aw-radio-c, var(--aw-gold));
+  box-shadow: 0 0 16px color-mix(in srgb, var(--aw-radio-c, #ffc857) 55%, transparent);
+}
+.aw .aw-radio button {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid var(--aw-line);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--aw-text);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.aw .aw-radio button:hover { border-color: var(--aw-cyan); }
+.aw .aw-radio button:focus-visible { outline: 3px solid var(--aw-gold); outline-offset: 2px; }
+.aw .aw-radio.is-on .aw-radio-pw { color: var(--aw-radio-c, var(--aw-gold)); border-color: var(--aw-radio-c, var(--aw-gold)); }
+.aw .aw-radio .aw-radio-step { width: 36px; height: 36px; }
+.aw .aw-radio-key {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 4px;
+  background: var(--aw-ink);
+  border: 1px solid var(--aw-line);
+  font: 800 10px/13px var(--aw-font);
+  text-align: center;
+  color: var(--aw-dim);
+}
+.aw .aw-radio-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: 0 4px;
+}
+.aw .aw-radio-name {
+  font: 800 14px/1.15 var(--aw-font);
+  letter-spacing: 0.02em;
+  color: var(--aw-radio-c, var(--aw-gold));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 0 10px color-mix(in srgb, var(--aw-radio-c, #ffc857) 60%, transparent);
+}
+.aw .aw-radio-te { font: 600 12px/1 var(--aw-font-te); color: var(--aw-dim); margin-left: 2px; }
+.aw .aw-radio-track {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 12px/1.2 var(--aw-font);
+  color: var(--aw-dim);
+  min-width: 0;
+}
+.aw .aw-radio-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aw .aw-radio-eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; flex: none; }
+.aw .aw-radio-eq i {
+  display: block;
+  width: 3px;
+  height: 100%;
+  border-radius: 1px;
+  background: var(--aw-radio-c, var(--aw-gold));
+  transform-origin: bottom;
+  animation: aw-radio-eq 0.9s ease-in-out infinite alternate;
+}
+.aw .aw-radio-eq i:nth-child(2) { animation-duration: 0.62s; animation-delay: -0.2s; }
+.aw .aw-radio-eq i:nth-child(3) { animation-duration: 1.1s; animation-delay: -0.5s; }
+.aw .aw-radio-eq i:nth-child(4) { animation-duration: 0.74s; animation-delay: -0.1s; }
+@keyframes aw-radio-eq { from { transform: scaleY(0.25); } to { transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .aw .aw-radio-eq i { animation: none; transform: scaleY(0.6); }
+}
+@media (max-width: 720px) {
+  .aw .aw-radio-te { display: none; }
+}
+/* landscape phones: right of the steering slider's row, above it (the minimap and the slider own the bottom-left) */
+@media (max-height: 520px) {
+  .aw .aw-radio {
+    left: calc(176px + env(safe-area-inset-left, 0px));
+    bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+    max-width: min(300px, calc(100vw - 420px));
+  }
+}
+/* portrait phones: above the prompt chip, which sits above the steering slider */
+@media (max-width: 700px) and (min-height: 521px) {
+  .aw .aw-radio {
+    left: calc(10px + env(safe-area-inset-left, 0px));
+    bottom: calc(190px + env(safe-area-inset-bottom, 0px));
+    max-width: calc(100vw - 150px);
+  }
+}

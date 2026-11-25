@@ -1,0 +1,429 @@
+/* HUD additions of the third wave: the speed-limit sign, the rules strip (signal / camera / police check), the job chip and the rain chip.
+   Uses the .aw-hud tokens from ../hud.css (--hud-panel, --hud-edge ...). Prefixes: aw-limit, aw-rule(s), aw-lamp, aw-job, aw-wx. */
+
+/* ---- speed-limit sign: on the top-left corner of the speedometer ------------------------------------------------------------- */
+.aw-limit {
+  position: absolute;
+  left: -34px;
+  top: -4px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 50px;
+  height: 50px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 5px solid var(--hud-red);
+  background: #fff7e6;
+  color: #1a0a2e;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5);
+  transition: background 0.2s, border-color 0.2s;
+}
+.aw-limit b {
+  font-size: 20px;
+  font-weight: 800;
+  font-style: italic;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+.aw-limit.is-school {
+  border-color: #ff8a3d;
+  box-shadow: 0 0 0 2px rgba(255, 200, 87, 0.7), 0 3px 10px rgba(0, 0, 0, 0.5);
+}
+.aw-limit.is-over {
+  background: var(--hud-red);
+  color: #fff;
+  border-color: #fff7e6;
+  animation: aw-limit-pulse 0.7s ease-in-out infinite;
+}
+@keyframes aw-limit-pulse {
+  50% { box-shadow: 0 0 0 7px rgba(255, 77, 94, 0.35), 0 3px 10px rgba(0, 0, 0, 0.5); }
+}
+
+/* ---- rules strip: pills above the speedometer -------------------------------------------------------------------------------- */
+.aw-rules {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+}
+.aw-rule {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  box-sizing: border-box;
+  padding: 3px 11px 3px 9px;
+  border-radius: 999px;
+  background: var(--hud-panel);
+  border: 1px solid var(--hud-edge);
+  box-shadow: var(--hud-shadow);
+  font-size: 13px;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.aw-rule__txt {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.aw-rule__txt b {
+  font-size: 13px;
+  letter-spacing: 0.06em;
+}
+.aw-rule__txt em {
+  font-style: italic;
+  font-weight: 800;
+  font-size: 14px;
+}
+.aw-rule__te {
+  font-size: 11px;
+  color: #ffd1ea;
+}
+.aw-rule small {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--aw-dim);
+}
+.aw-rule__icon {
+  flex: none;
+}
+.aw-rule--signal {
+  border-left: 3px solid var(--aw-lime);
+}
+.aw-rule--signal.is-red {
+  border-left-color: var(--hud-red);
+}
+.aw-rule--signal.is-yellow {
+  border-left-color: var(--aw-gold);
+}
+.aw-lamp {
+  display: inline-flex;
+  gap: 3px;
+  padding: 3px 5px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+}
+.aw-lamp i {
+  display: block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+}
+.aw-lamp i:nth-child(1).on {
+  background: var(--hud-red);
+  box-shadow: 0 0 8px var(--hud-red);
+}
+.aw-lamp i:nth-child(2).on {
+  background: var(--aw-gold);
+  box-shadow: 0 0 8px var(--aw-gold);
+}
+.aw-lamp i:nth-child(3).on {
+  background: var(--aw-lime);
+  box-shadow: 0 0 8px var(--aw-lime);
+}
+.aw-rule__eye {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--hud-red);
+  box-shadow: 0 0 6px var(--hud-red);
+}
+.aw-rule--camera {
+  border-left: 3px solid var(--aw-cyan);
+}
+.aw-rule--camera .aw-rule__icon {
+  color: var(--aw-cyan);
+}
+.aw-rule--camera.is-over {
+  border-left-color: var(--hud-red);
+  background: linear-gradient(180deg, rgba(120, 20, 40, 0.88), rgba(60, 10, 30, 0.9));
+}
+.aw-rule--camera.is-over .aw-rule__icon {
+  color: #ff9aa4;
+}
+.aw-rule--check,
+.aw-rule--wanted {
+  border-left: 3px solid #5aa0ff;
+}
+.aw-rule--check .aw-rule__icon,
+.aw-rule--wanted .aw-rule__icon {
+  color: #8fc0ff;
+}
+.aw-rule--check.is-checking {
+  border-left-color: var(--aw-gold);
+}
+.aw-rule--wanted {
+  border-left-color: var(--hud-red);
+}
+.aw-rule--wanted .aw-rule__icon {
+  color: #ff9aa4;
+}
+
+/* ---- job chip: demand, today, rent, dents, tiredness + chai -------------------------------------------------------------------- */
+.aw-job {
+  display: grid;
+  gap: 4px;
+  box-sizing: border-box;
+  width: 262px;
+  max-width: calc(100vw - 32px);
+  padding: 6px 10px 7px;
+  border-radius: 12px;
+  background: var(--hud-panel);
+  border: 1px solid var(--hud-edge);
+  border-left: 3px solid var(--aw-violet);
+  box-shadow: var(--hud-shadow);
+  font-size: 12px;
+  line-height: 1.2;
+  pointer-events: none;
+}
+.aw-job__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.aw-job__demand b {
+  font-size: 12px;
+}
+.aw-job__demand .aw-te {
+  font-size: 11px;
+  color: #ffd1ea;
+}
+.aw-job__demand em {
+  margin-left: auto;
+  font-style: italic;
+  font-weight: 800;
+  color: var(--aw-cyan);
+}
+.aw-job__demand.is-peak,
+.aw-job__demand.is-peak em {
+  color: var(--aw-gold);
+}
+.aw-job__money {
+  justify-content: space-between;
+  color: var(--aw-dim);
+  font-size: 11px;
+}
+.aw-job__money b {
+  color: var(--aw-text);
+  font-size: 12px;
+  font-style: italic;
+}
+.aw-job__money .is-due b {
+  color: var(--aw-gold);
+}
+.aw-job__gauge {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--aw-lime);
+}
+.aw-job__gauge.is-warn {
+  color: var(--aw-gold);
+}
+.aw-job__gauge.is-bad {
+  color: var(--hud-red);
+}
+.aw-job__gauge svg {
+  flex: none;
+}
+.aw-job__bar {
+  position: relative;
+  flex: 1;
+  height: 7px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.aw-job__bar i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: currentColor;
+  transform-origin: left;
+  transition: transform 0.3s linear;
+}
+.aw-job__chai {
+  pointer-events: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 9px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 200, 87, 0.5);
+  background: rgba(255, 200, 87, 0.14);
+  color: var(--aw-gold);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.aw-job__chai kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: linear-gradient(180deg, #fff3d6, #ffc857);
+  color: #1a0a2e;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+}
+.aw-job__chai small {
+  font-size: 11px;
+  color: var(--aw-dim);
+}
+.aw-job__chai.is-urgent:not(:disabled) {
+  animation: aw-job-pulse 1.2s ease-in-out infinite;
+}
+.aw-job__chai:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.aw-job__chai:focus-visible {
+  outline: 2px solid var(--aw-cyan);
+  outline-offset: 2px;
+}
+@keyframes aw-job-pulse {
+  50% { box-shadow: 0 0 0 4px rgba(255, 200, 87, 0.28); }
+}
+
+/* ---- rain chip inside the clock ------------------------------------------------------------------------------------------------ */
+.aw-wx {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 10px;
+  margin-left: 2px;
+  border-left: 1px solid var(--hud-edge);
+  color: #8fd8ff;
+}
+.aw-wx.is-storm {
+  color: #c9b6ff;
+}
+.aw-wx.is-clear {
+  color: var(--aw-dim);
+}
+.aw-wx__icon {
+  flex: none;
+}
+.aw-wx__txt {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.05;
+}
+.aw-wx__txt b {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+.aw-wx__txt .aw-te {
+  font-size: 10px;
+  color: var(--aw-dim);
+}
+.aw-wx__wet {
+  display: block;
+  width: 46px;
+  height: 3px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+.aw-wx__wet i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: currentColor;
+  transform-origin: left;
+  transition: transform 0.4s linear;
+}
+
+/* ---- touch: 44 px targets, smaller sign, short pills ---------------------------------------------------------------------------- */
+.aw-hud--touch .aw-job__chai {
+  min-height: 44px;
+  padding: 0 11px;
+}
+.aw-hud--touch .aw-limit {
+  left: -28px;
+  top: -6px;
+  width: 40px;
+  height: 40px;
+  border-width: 4px;
+}
+.aw-hud--touch .aw-limit b {
+  font-size: 15px;
+}
+.aw-hud--touch .aw-rule {
+  min-height: 26px;
+  padding: 2px 9px 2px 7px;
+  font-size: 12px;
+}
+.aw-hud--touch .aw-rule__te,
+.aw-hud--touch .aw-rule--signal small {
+  display: none;
+}
+/* portrait phones: the chip sits under the trip panel, full width: demand and money share a line, the bars + chai below */
+@media (max-width: 700px) {
+  .aw-job {
+    width: 100%;
+    max-width: none;
+    grid-template-columns: auto 1fr;
+    gap: 2px 10px;
+    padding: 4px 8px 5px;
+  }
+  .aw-job__bars {
+    grid-column: 1 / -1;
+  }
+  .aw-job__money {
+    gap: 12px;
+    justify-content: flex-end;
+  }
+}
+/* short landscape screens: only the bars and the chai button (the demand and the money are in the pause menu / the Hisaab) */
+@media (max-height: 520px) {
+  .aw-job {
+    width: 218px;
+    padding: 3px 7px 4px;
+  }
+  .aw-job__demand,
+  .aw-job__money {
+    display: none;
+  }
+}
+/* the rain chip shrinks to an icon and a wetness bar where room is tight */
+@media (max-width: 700px), (max-height: 520px) {
+  .aw-wx__txt b,
+  .aw-wx__txt .aw-te {
+    display: none;
+  }
+  .aw-wx {
+    padding-left: 6px;
+    gap: 4px;
+  }
+  .aw-wx__wet {
+    width: 22px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aw-limit.is-over,
+  .aw-job__chai.is-urgent {
+    animation: none;
+  }
+  .aw-limit.is-over {
+    outline: 3px solid #fff7e6;
+  }
+  .aw-job__bar i,
+  .aw-wx__wet i {
+    transition: none;
+  }
+}

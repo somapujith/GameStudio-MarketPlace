@@ -26,6 +26,23 @@ export function matchRewards({ won, rank, playerCount }) {
   return { xp, coins };
 }
 
+/** Most XP / coins a player can earn from solo runs per IST day (worker/solo.js applies it). Coins are counted after any event boost. */
+export const SOLO_DAILY_CAP = Object.freeze({ xp: 600, coins: 300 });
+
+/**
+ * Rewards for one finished solo run (before the event coin multiplier and the daily cap). Pure.
+ *   xp    = min(120, 10 + floor(earned / 100) + quests * 5)
+ *   coins = min(60, floor(earned / 250) + quests * 2)
+ * `seconds` is accepted for symmetry with the run payload but does not pay (time alone is never rewarded).
+ * Inputs are clamped to non-negative integers, so junk can only ever give less.
+ */
+export function soloRewards({ earned, quests } = {}) {
+  const whole = (v) => Math.max(0, Math.floor(Number(v) || 0));
+  const e = whole(earned);
+  const q = whole(quests);
+  return { xp: Math.min(120, 10 + Math.floor(e / 100) + q * 5), coins: Math.min(60, Math.floor(e / 250) + q * 2) };
+}
+
 // ---- daily reward (server-side; mirrors src/lib/storage.js `dailyReward`) -------------------------
 
 export const DAILY_BASE = 100;

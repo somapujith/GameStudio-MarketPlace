@@ -85,6 +85,51 @@ export async function verifyWsTicket(env, token) {
   }
 }
 
+// ---------------------------------------------------------------- solo run tokens
+
+// A solo run token (POST /api/solo/:gameId/start) is a third kind of token: same secret and issuer, its own audience, so it
+// is never accepted as a session or a ticket (and a session is never a run token). Claims: sub (user), gid (game),
+// jti (random uuid, the id of the matches row: one finish per token), seed (random 32-bit int for the client's RNG), iat.
+const SOLO_AUDIENCE = 'hyd-solo';
+export const SOLO_TOKEN_SECONDS = 3 * 60 * 60;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** Issue a run token. `now` (seconds) is injectable for tests. Resolves to `{ token, jti, seed, iat, exp }`. */
+export async function signSoloToken(env, { userId, gameId, now = Math.floor(Date.now() / 1000) }) {
+  const jti = crypto.randomUUID();
+  const seed = crypto.getRandomValues(new Uint32Array(1))[0];
+  const exp = now + SOLO_TOKEN_SECONDS;
+  const token = await new SignJWT({ gid: gameId, seed })
+    .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })
+    .setSubject(userId)
+    .setIssuer(JWT_ISSUER)
+    .setAudience(SOLO_AUDIENCE)
+    .setJti(jti)
+    .setIssuedAt(now)
+    .setExpirationTime(exp)
+    .sign(secretKey(env));
+  return { token, jti, seed, iat: now, exp };
+}
+
+/** Verify a run token. Resolves to `{ sub, gid, jti, seed, iat, exp }` or null (never throws on a bad token). */
+export async function verifySoloToken(env, token) {
+  if (!token || typeof token !== 'string' || token.length > 2048) return null;
+  try {
+    const { payload } = await jwtVerify(token, secretKey(env), {
+      algorithms: ['HS256'],
+      issuer: JWT_ISSUER,
+      audience: SOLO_AUDIENCE,
+    });
+    const { sub, gid, jti, seed, iat, exp } = payload;
+    if (typeof sub !== 'string' || typeof gid !== 'string' || typeof jti !== 'string' || !UUID_RE.test(jti)) return null;
+    if (!Number.isInteger(iat) || !Number.isInteger(exp) || !Number.isInteger(seed)) return null;
+    return { sub, gid, jti, seed, iat, exp };
+  } catch (err) {
+    if (err instanceof HttpError) throw err;
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------- cookies
 
 export const isSecureRequest = (request) => new URL(request.url).protocol === 'https:';

@@ -75,6 +75,7 @@ agg AS (
     FROM matches m
     JOIN match_players mp ON mp.match_id = m.id
    WHERE m.ended_at >= $1::timestamptz AND m.ended_at < $2::timestamptz AND mp.user_id IS NOT NULL
+     AND m.room_code <> 'solo'
    GROUP BY mp.user_id
 ), ranked AS (
   SELECT a.user_id, a.games, a.wins, a.last_at, (3 * a.wins + a.games)::int AS points,

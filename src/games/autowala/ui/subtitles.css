@@ -1,0 +1,100 @@
+/* Autowala subtitles (voice agent). Scoped under .aw, class prefix aw-sub-. */
+.aw .aw-sub {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(96px, 17vh, 170px);
+  transform: translateX(-50%);
+  z-index: 6;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(640px, calc(100vw - 32px));
+  padding: 8px 18px 10px;
+  text-align: center;
+  pointer-events: none;
+  background: var(--aw-panel, rgba(18, 8, 36, 0.78));
+  border: 1px solid color-mix(in srgb, var(--aw-sub-c, #fff) 55%, transparent);
+  border-radius: 14px;
+  box-shadow: 0 0 22px color-mix(in srgb, var(--aw-sub-c, #fff) 28%, transparent), 0 6px 18px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: aw-sub-in 160ms ease-out both;
+  transition: opacity 320ms ease, transform 320ms ease;
+}
+.aw .aw-sub--out {
+  opacity: 0;
+  transform: translateX(-50%) translateY(6px);
+}
+.aw .aw-sub-chip {
+  display: inline-block;
+  margin-bottom: 4px;
+  padding: 1px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--aw-ink, #120824);
+  background: var(--aw-sub-c, #fff);
+}
+.aw .aw-sub p {
+  margin: 0;
+}
+.aw .aw-sub-te {
+  font-family: var(--aw-font-te, 'Noto Sans Telugu Variable', sans-serif);
+  font-size: clamp(17px, 2.4vw, 22px);
+  font-weight: 700;
+  line-height: 1.45;
+  color: var(--aw-text, #fff3d6);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5);
+}
+.aw .aw-sub-en {
+  margin-top: 1px;
+  font-size: clamp(12px, 1.6vw, 14px);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--aw-dim, #c9b6e8);
+}
+/* Mega Hero: neon gold, a bigger frame */
+.aw .aw-sub--hero {
+  --aw-sub-c: var(--aw-gold, #ffc857);
+  padding: 10px 24px 12px;
+  max-width: min(720px, calc(100vw - 32px));
+  border-width: 2px;
+  border-color: var(--aw-gold, #ffc857);
+  background: linear-gradient(180deg, rgba(60, 28, 6, 0.86), rgba(18, 8, 36, 0.86));
+  box-shadow: 0 0 14px rgba(255, 200, 87, 0.7), 0 0 38px rgba(255, 200, 87, 0.35), 0 8px 22px rgba(0, 0, 0, 0.5);
+}
+.aw .aw-sub--hero .aw-sub-te {
+  font-size: clamp(20px, 3vw, 28px);
+  font-weight: 800;
+  color: #ffe9a8;
+  text-shadow: 0 0 14px rgba(255, 200, 87, 0.8), 0 2px 0 rgba(0, 0, 0, 0.55);
+}
+.aw .aw-sub--hero .aw-sub-en {
+  color: #ffd98a;
+}
+@keyframes aw-sub-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+@media (max-width: 640px) {
+  .aw .aw-sub {
+    bottom: clamp(150px, 26vh, 220px);
+    padding: 6px 12px 8px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aw .aw-sub {
+    animation: none;
+    transition: opacity 120ms linear;
+  }
+  .aw .aw-sub--out {
+    transform: translateX(-50%);
+  }
+}

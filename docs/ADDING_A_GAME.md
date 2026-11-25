@@ -137,3 +137,50 @@ export them from its `index.js`. They take `className`/`style`, scale to their b
 | Art | `src/components/art/hub/` | cover + icon, dark and light backgrounds |
 | Stats | `result().standings` | wins, best score, rating appear in Profile and the Leaderboard |
 | QA | section 7 | all boxes ticked at both sizes |
+
+## 9. A solo game (no room, no server adapter): Autowala is the reference
+
+Not every game is an online table. A **solo** game is single-player and runs full screen on its own route. It needs a manifest and a screen; there is no `shared/<id>/`, no `worker/games/<id>.js` and no `OnlineGame.jsx`.
+
+```
+src/games/<id>/manifest.js    `solo: true`, `players: { min: 1, max: 1 }`, `modes: { friends: false, open: false }`,
+                              `loaders: { soloGame: () => import('./Game.jsx') }` (default export, props `{ game }`), no `settings`
+src/games/<id>/...            the game itself (Autowala: game/, render/, world/, sim/, gameplay/, audio/, ui/; see its ARCHITECTURE.md)
+```
+
+- The game screen lives at `paths.solo(id)` = `/play/<slug>` (route `/play/:gameId`, rendered by `src/pages/SoloGame.jsx`, full screen, dark game theme, no hub chrome). The game page shows "Play now" instead of "Create table".
+- **The hub's CSP applies** (`public/_headers`: `script-src 'self'`, `connect-src 'self'`, no `unsafe-eval`): bundle dependencies with Vite (Autowala uses `three`, lazy-loaded with the screen), no CDN, no inline script, no external fonts or audio, and never a secret in client code.
+- Scores: if the game saves them (see the run API below) give the manifest `stats` (and optional `badges`): a solo game with `stats` gets a leaderboard tab, profile stats and a Leaderboard section on its page (`rankedList()` in `src/platform/home/catalog.js`); one without stays out of them. Solo games are never offered in "Invite to game". The Browse "Players: 1" filter finds them.
+- Art, tags, the store-listing fields and registration are the same as for any game (sections 2, 4 and 6); leave out `ageRating`, `released` and anything you cannot state truthfully.
+
+### Solo games: the run API
+
+A solo game can save a finished run ("shift", "lap", ...) to the player's stats, earn XP and coins and appear on its own leaderboard. Register it in `worker/games/solo.js` (`SOLO_GAMES`, keyed by id; deliberately **not** in `GAME_ADAPTERS`, so it can never be created as a room) with its limits: `{ id, name, minSeconds, maxSeconds, maxEarnPerSecond, earnGrace, winEarned, maxDistancePerSecond, maxQuests }` (Autowala: 30, 7200, 25, 1500, 3000, 60, 200). Any signed-in user, guests included, may play.
+
+1. `POST /api/solo/:gameId/start` -> `{ ok, token, seed, expiresAt }`. `token` is a 3-hour signed token (claims `sub`, `gid`, `jti`, `seed`, `iat`; its own audience, so it is never a session). `seed` is a random 32-bit integer for the game's world / quest RNG.
+2. `POST /api/solo/:gameId/finish { token, earned, seconds, distance, quests, fares, style }` -> `{ ok, duplicate, earned, newBest, bestScore, games, wins, xp, coins, level }` (`xp` / `coins` = what this run paid, `level` = the player's level afterwards). Every number must be a whole number from 0 to 1,000,000,000 (else 400). Other refusals: 401 bad / expired token, 403 token of another player, 400 token of another game, 422 implausible run.
+3. A run is plausible when `minSeconds <= seconds <= maxSeconds`, `seconds <= (now - iat) + 5` (no claiming more play time than has passed), `earned <= seconds * maxEarnPerSecond + earnGrace`, `distance <= seconds * maxDistancePerSecond` and `quests <= maxQuests`.
+4. **A token finishes once.** Its `jti` is the id of the run's `matches` row (`room_code 'solo'`, one `match_players` row), so a replay is a no-op that answers with the stored outcome and `duplicate: true` and awards nothing.
+5. A finished run does `user_game_stats`: `games + 1`, `wins + 1` when `earned >= winEarned`, `best_score = GREATEST(...)`, totals of quests / fares / distance / seconds / style in `extra` (rating is left alone: solo games are unrated). Rewards (`soloRewards` in `worker/xp.js`): `xp = min(120, 10 + floor(earned / 100) + quests * 5)`, `coins = min(60, floor(earned / 250) + quests * 2)`; coins get the live `coin_boost` multiplier. **Daily cap**: 600 xp and 300 coins (after the boost) from solo runs per IST day, summed from the player's solo matches of that day (each stores what it paid in `matches.win_reason` as JSON); a run past the cap still saves its stats and pays 0 for the excess. The achievement check runs after a first save; referral rewards do not (too cheap to fake). Solo runs never count towards seasons.
+6. `GET /api/leaderboard?game=<id>` and `user.gameStats[<id>]` (`GET /api/me`) work for solo ids; the board is ranked by best score. `GET /api/games` still lists room games only.
+
+**Scores are client-reported and only sanity-checked.** The server cannot see the game, so anyone who reads the client can send a plausible-looking run (the limits only make absurd ones, and unlimited farming, impossible). Do not give solo runs rewards that matter beyond the daily cap.
+
+## 10. A solo tutorial that unlocks rooms (a hybrid game: Tiffin Centre is the reference)
+
+A game can have a solo screen **and** private rooms. Typical use: a short scripted tutorial the host must finish before they can open a table. The hub does the gating from the manifest; it never names a game.
+
+```js
+// manifest.js
+solo: true,                                  // a solo screen at paths.solo(id) = /play/<slug>
+tutorial: { requiredForRooms: true },        // rooms stay locked until the tutorial is done (omit for "practice only")
+players: { min: 2, max: 4 }, modes: { friends: true, open: false },
+loaders: { soloGame: () => import('./Solo.jsx'), onlineGame: () => import('./OnlineGame.jsx') },
+```
+
+- **Pages.** A game with `solo: true` **and** `loaders.onlineGame` gets the normal room title page (not the solo one). `src/pages/SoloGame.jsx` renders any game that has `loaders.soloGame` (props `{ game }`), also when it has an online mode. The solo route is a plain link (full page load), never a router `<Link>`, see section 9.
+- **The unlock.** `src/platform/game/tutorial.js`: `tutorialRequired(game)` (= `game.tutorial?.requiredForRooms === true`), `tutorialDone(user, game, storage = localStorage)` and `roomsLocked(user, game)` (= required and not done). A tutorial is done when the server says so (`user.gameStats[id].tutorialDone === true` from `GET /api/me`) **or** this browser says so (`localStorage['jalebi.tutorial.v1.<id>'] === '1'`, `tutorialKey(id)`). On finishing, the game screen must do both: write the local key (instant unlock, also works offline and for a signed-out visitor) and report it to the server (`POST /api/games/:gameId/tutorial/complete`, see `worker/games/tutorial.js`; the same flag is what the adapter's `canHost` checks, so a hostile client cannot skip the lock).
+- **While locked** the game page shows **Play tutorial** (a plain link to `paths.solo(id)`) instead of Create table, hides join-with-a-code, invite, the table setup, the open tables and the phone bar, and says "Finish the tutorial to open a table with friends"; the home hero's Play opens the tutorial and hides "Invite friends"; `inviteGames(user)` leaves the game out. **When unlocked** the page offers Create table (primary) and **Play solo / practice** (a link to the same solo route). Joining a friend's table never needs the tutorial.
+- **Refresh.** After the tutorial the unlock shows without a reload: `UserRefresh` in `src/App.jsx` re-reads `/api/me` whenever the player leaves a `/play/*` route in the app, and the local key covers the same browser immediately. A game that leaves with a full page load re-reads `/api/me` on boot anyway.
+- **Server.** Add the id to `TUTORIAL_GAMES` (`worker/games/tutorial.js`), give the adapter `canHost({ env, user })`, and expose `tutorialDone` in `gameStats` of `/api/me`.
+- A game without `tutorial.requiredForRooms` is untouched by all of this.

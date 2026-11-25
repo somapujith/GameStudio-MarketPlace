@@ -1,0 +1,369 @@
+/* Autowala career: the end-of-day Hisaab. Scoped under .aw; palette tokens come from autowala.css. Prefix aw-career-. */
+
+/* the always-visible job chip moved to the HUD (ui/hud/JobChip.jsx, styles in ui/hud/rules.css); this file is the Hisaab only. */
+.aw .aw-career-btn:focus-visible {
+  outline: 2px solid var(--aw-cyan);
+  outline-offset: 2px;
+}
+
+/* ---- Hisaab ----------------------------------------------------------------------------------------------------------------- */
+.aw .aw-career-hisaab {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  font-family: var(--aw-font);
+  color: var(--aw-text);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+.aw .aw-career-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% 100%, rgba(255, 200, 87, 0.2), transparent 60%),
+    linear-gradient(180deg, rgba(18, 8, 36, 0.8), rgba(18, 8, 36, 0.93));
+}
+.aw .aw-career-card {
+  width: min(680px, 100%);
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  text-align: center;
+  animation: aw-career-rise 0.45s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+@keyframes aw-career-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+.aw .aw-career-eyebrow {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.3em;
+  color: var(--aw-cyan);
+}
+.aw .aw-career-title {
+  margin: 0;
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  gap: 14px;
+  font-size: clamp(30px, 6vw, 46px);
+  font-style: italic;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #fff3d6;
+  text-shadow: 0 0 22px rgba(255, 61, 154, 0.55);
+}
+.aw .aw-career-title .aw-te {
+  font-size: 0.62em;
+  font-style: normal;
+  color: #ffd1ea;
+}
+.aw .aw-career-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.aw .aw-career-sheet {
+  padding: 8px 14px 10px;
+  border-radius: 14px;
+  background: rgba(18, 8, 36, 0.7);
+  border: 1px solid var(--aw-line);
+  text-align: left;
+}
+.aw .aw-career-sheet h2 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--aw-dim);
+}
+.aw .aw-career-sheet h2 .aw-te {
+  letter-spacing: 0;
+  text-transform: none;
+  margin-left: 4px;
+  color: #ffd1ea;
+}
+.aw .aw-career-sheet ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.aw .aw-career-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.12);
+  font-size: 14px;
+}
+.aw .aw-career-line .aw-te {
+  font-size: 12px;
+  color: var(--aw-dim);
+  margin-left: 3px;
+}
+.aw .aw-career-line.is-in b {
+  color: var(--aw-lime);
+}
+.aw .aw-career-line.is-out b {
+  color: #ff8aa0;
+}
+.aw .aw-career-sum {
+  display: flex;
+  justify-content: space-between;
+  margin: 8px 0 0;
+  font-size: 14px;
+  font-weight: 800;
+}
+.aw .aw-career-net {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px 16px;
+  padding: 6px 14px 8px;
+  border-radius: 14px;
+  background: rgba(18, 8, 36, 0.78);
+  border: 1px solid var(--aw-line);
+  border-left: 4px solid var(--aw-lime);
+}
+.aw .aw-career-net.is-loss {
+  border-left-color: #ff4d5e;
+}
+.aw .aw-career-net span {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  color: var(--aw-dim);
+}
+.aw .aw-career-net .aw-te {
+  letter-spacing: 0;
+  color: #ffd1ea;
+}
+.aw .aw-career-net b {
+  font-size: clamp(28px, 5vw, 36px);
+  font-style: italic;
+  font-weight: 800;
+  line-height: 1.05;
+  color: var(--aw-lime);
+}
+.aw .aw-career-net.is-loss b {
+  color: #ff6a7d;
+}
+.aw .aw-career-net em {
+  font-style: italic;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  padding: 2px 9px;
+  border-radius: 6px;
+  color: #1a0a2e;
+  background: linear-gradient(180deg, #fff3d6, #ffc857);
+}
+.aw .aw-career-verdict {
+  margin: 0;
+  font-size: 15px;
+  color: var(--aw-text);
+}
+.aw .aw-career-verdict .aw-te {
+  color: #ffd1ea;
+  font-size: 13px;
+  margin-left: 4px;
+}
+.aw .aw-career-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.aw .aw-career-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(18, 8, 36, 0.62);
+  border: 1px solid var(--aw-line);
+  border-left: 3px solid var(--aw-violet);
+  min-width: 0;
+}
+.aw .aw-career-stat small {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--aw-dim);
+}
+.aw .aw-career-stat small .aw-te {
+  letter-spacing: 0;
+  text-transform: none;
+  margin-left: 3px;
+  font-size: 11px;
+  color: #ffd1ea;
+}
+.aw .aw-career-stat b {
+  font-size: 19px;
+  font-style: italic;
+  font-weight: 800;
+}
+.aw .aw-career-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+.aw .aw-career-stars em {
+  margin-left: 5px;
+  font-size: 13px;
+  font-style: normal;
+  color: var(--aw-dim);
+}
+.aw .aw-career-lower {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  text-align: left;
+  align-items: start;
+}
+.aw .aw-career-side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.aw .aw-career-notes p,
+.aw .aw-career-ladder p {
+  margin: 4px 0;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+.aw .aw-career-notes .is-owed {
+  color: #ff8aa0;
+}
+.aw .aw-career-notes .is-ok {
+  color: var(--aw-lime);
+}
+.aw .aw-career-ladder {
+  padding: 8px 14px 10px;
+  border-radius: 12px;
+  background: rgba(255, 200, 87, 0.08);
+  border: 1px solid rgba(255, 200, 87, 0.3);
+}
+.aw .aw-career-ladder small {
+  color: var(--aw-dim);
+}
+.aw .aw-career-meter {
+  display: block;
+  height: 8px;
+  margin: 4px 0 8px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+.aw .aw-career-meter i {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+  background: linear-gradient(90deg, var(--aw-gold), var(--aw-pink));
+}
+.aw .aw-career-spark {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+}
+.aw .aw-career-spark span {
+  display: flex;
+  align-items: flex-end;
+  width: 18px;
+  height: 100%;
+}
+.aw .aw-career-spark i {
+  display: block;
+  width: 100%;
+  border-radius: 4px 4px 0 0;
+  background: var(--aw-cyan);
+  opacity: 0.85;
+}
+.aw .aw-career-spark .is-loss i {
+  background: #ff4d5e;
+}
+.aw .aw-career-best {
+  margin: 0;
+  font-size: 12px;
+  color: var(--aw-dim);
+}
+.aw .aw-career-acts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+.aw .aw-career-btn {
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: 12px;
+  border: 1px solid var(--aw-line);
+  background: rgba(18, 8, 36, 0.7);
+  color: var(--aw-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+.aw .aw-career-btn.is-primary {
+  color: #fff;
+  border-color: var(--aw-cyan);
+  background: linear-gradient(180deg, #ff3d9a, #c42a78);
+  box-shadow: 0 0 0 1px var(--aw-cyan), 0 6px 20px rgba(255, 61, 154, 0.35);
+}
+.aw .aw-career-btn.is-gold {
+  margin-top: 2px;
+  color: #1a0a2e;
+  background: linear-gradient(180deg, #fff3d6, #ffc857);
+  border-color: transparent;
+}
+.aw .aw-career-btn.is-small {
+  min-height: 44px;
+  padding: 0 12px;
+  letter-spacing: 0.04em;
+}
+.aw .aw-career-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.aw .aw-career-btn .aw-te {
+  letter-spacing: 0;
+  margin-left: 4px;
+  font-size: 12px;
+}
+@media (max-width: 560px) {
+  .aw .aw-career-grid,
+  .aw .aw-career-lower {
+    grid-template-columns: 1fr;
+  }
+  .aw .aw-career-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aw .aw-career-card {
+    animation: none;
+  }
+}

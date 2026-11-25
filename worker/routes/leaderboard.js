@@ -1,10 +1,14 @@
 import { Hono } from 'hono';
 import { query, HttpError } from '../db.js';
 import { getAdapter } from '../games/index.js';
+import { getSoloGame } from '../games/solo.js';
 import { limit } from '../ratelimit.js';
 import { parseGameParam, buildLeaderboardQuery, buildLeaderboardMeQuery, rowToLeaderboardRow } from '../leaderboard.js';
 
 const leaderboard = new Hono();
+
+// A board exists for every room game and every solo game (solo: ranked by best score, see worker/leaderboard.js).
+const lookupGame = (id) => getAdapter(id) || getSoloGame(id);
 
 const caches = new Map(); // game -> { at, entries: [{ uid, row }] }  (uid stays server-side)
 const TTL_MS = 15_000;
@@ -28,7 +32,7 @@ async function loadMyRow(env, game, uid, entries) {
 // Public (no sign-in): guests can look at the Rank tab; guests themselves are never listed (me = null).
 // isMe compares user ids on the server; ids are never sent.
 leaderboard.get('/', limit('leaderboard', 60, 60), async (c) => {
-  const game = parseGameParam(c.req.query('game'), getAdapter);
+  const game = parseGameParam(c.req.query('game'), lookupGame);
   if (game === null) throw new HttpError(400, 'unknown game');
   const now = Date.now();
   let hit = caches.get(game);

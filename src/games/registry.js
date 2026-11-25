@@ -3,6 +3,7 @@
 //
 // To add a game: create src/games/<id>/manifest.js and add one import + one entry to MANIFESTS below.
 import tycoon from './hyderabad-tycoon/manifest.js';
+import autowala from './autowala/manifest.js';
 import tiffinCentre from './tiffin-centre/manifest.js';
 import { SOON_GAMES } from './_soon/index.js';
 import { normalizeGameId } from '@/platform/game/identity.js';
@@ -18,7 +19,7 @@ export const CATEGORIES = [
 ];
 
 /** Ordered: live games first, then the teasers. */
-const MANIFESTS = [tycoon, tiffinCentre, ...SOON_GAMES];
+const MANIFESTS = [tycoon, autowala, tiffinCentre, ...SOON_GAMES];
 
 // Defensive: a malformed or duplicate manifest is dropped instead of breaking the whole catalogue.
 const seen = new Set();

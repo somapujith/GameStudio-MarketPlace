@@ -1,0 +1,211 @@
+/* On-screen touch controls. Scoped under .aw. Targets are 48px or more; the minimap owns bottom-left, so the steering slider sits
+   ABOVE it in portrait and BESIDE it in landscape. */
+.aw-tc {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  touch-action: none;
+  font-family: var(--aw-font);
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.aw-tc * {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.aw-tc > * {
+  pointer-events: auto;
+}
+
+/* steering slider */
+.aw-tc-steer {
+  position: absolute;
+  left: 14px;
+  bottom: 248px; /* the radio button fits between it and the minimap */
+  width: min(52vw, 230px);
+  height: 64px;
+  border-radius: 99px;
+  background: linear-gradient(180deg, rgba(42, 18, 72, 0.7), rgba(18, 8, 36, 0.78));
+  border: 1px solid var(--aw-line);
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 34px;
+  line-height: 1;
+}
+.aw-tc-steer.is-on {
+  border-color: rgba(55, 230, 255, 0.6);
+}
+.aw-tc-steer__tick {
+  width: 2px;
+  height: 22px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.25);
+}
+.aw-tc-steer__l,
+.aw-tc-steer__r {
+  position: relative;
+  top: -2px;
+}
+.aw-tc-steer__knob {
+  position: absolute;
+  left: calc(50% - 28px);
+  top: 4px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ff9ad0, #ff3d9a 60%, #c92b86);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35), 0 4px 10px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  will-change: transform;
+}
+.aw-tc-steer.is-on .aw-tc-steer__knob {
+  box-shadow: 0 0 0 2px var(--aw-cyan), 0 4px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* buttons */
+.aw-tc-btn {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 1px;
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgba(60, 26, 100, 0.78), rgba(22, 10, 42, 0.86));
+  color: var(--aw-text);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+  transition: transform 0.06s, background 0.06s;
+}
+.aw-tc-btn small {
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  line-height: 1;
+  opacity: 0.8;
+}
+.aw-tc-btn.is-on {
+  transform: scale(0.93);
+  background: linear-gradient(180deg, #ff5bad, #d6277f);
+  border-color: #fff;
+}
+.aw-tc-btn.is-boost.is-on {
+  background: linear-gradient(180deg, #ffd47a, #e59a1d);
+  color: #1a0a2e;
+}
+.aw-tc-btn.is-small {
+  width: 52px;
+  height: 52px;
+}
+.aw-tc-btn.is-use {
+  width: 64px;
+  height: 64px;
+  border-color: rgba(255, 61, 154, 0.7);
+}
+.aw-tc-btn.is-use small {
+  font-size: 11px;
+}
+
+.aw-tc-acts {
+  position: absolute;
+  right: 12px;
+  bottom: 124px;
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 8px;
+  align-items: center;
+  justify-items: center;
+}
+.aw-tc-gap {
+  width: 52px;
+  height: 1px;
+}
+
+/* pedals */
+.aw-tc-pedals {
+  position: absolute;
+  right: 12px;
+  bottom: 22px;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+.aw-tc-btn.is-gas,
+.aw-tc-btn.is-brake {
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 800;
+  font-style: italic;
+  letter-spacing: 0.14em;
+}
+.aw-tc-btn.is-gas {
+  width: 92px;
+  height: 92px;
+  border-color: rgba(166, 255, 61, 0.6);
+  color: #d8ffa3;
+}
+.aw-tc-btn.is-gas.is-on {
+  background: linear-gradient(180deg, #b7ff5c, #6fcf1d);
+  color: #11260a;
+}
+.aw-tc-btn.is-brake {
+  width: 72px;
+  height: 72px;
+  border-color: rgba(255, 77, 94, 0.6);
+  color: #ffb3ba;
+}
+.aw-tc-btn.is-brake.is-on {
+  background: linear-gradient(180deg, #ff6676, #d42b3c);
+  color: #fff;
+}
+
+/* the minimap is 150px on phones, 200px elsewhere; keep the slider clear of it */
+@media (min-width: 641px) and (min-height: 521px) {
+  .aw-tc-steer {
+    bottom: 262px;
+  }
+}
+/* landscape phones: the slider goes right of the minimap, buttons stay on the right */
+@media (max-height: 520px) {
+  .aw-tc-steer {
+    left: 176px;
+    bottom: 24px;
+    width: min(26vw, 190px);
+    height: 58px;
+  }
+  .aw-tc-steer__knob {
+    top: 1px;
+  }
+  .aw-tc-btn.is-gas {
+    width: 84px;
+    height: 84px;
+  }
+  .aw-tc-btn.is-brake {
+    width: 66px;
+    height: 66px;
+  }
+  .aw-tc-acts {
+    bottom: 114px;
+    gap: 6px;
+  }
+  .aw-tc-btn.is-small {
+    width: 48px;
+    height: 48px;
+  }
+  .aw-tc-btn.is-use {
+    width: 58px;
+    height: 58px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aw-tc-btn {
+    transition: none;
+  }
+}
