@@ -4,7 +4,8 @@
 // a cross lane that frames a hazy four-minaret monument far down the avenue, a city of far boxes, instanced traffic on a loop with head and
 // tail lights at night, pedestrians with walk cycles, a street dog, a midday cow and birds. Cheap: merged statics, instanced movers.
 import {
-  AdditiveBlending, BufferGeometry, Color, DoubleSide, Euler, Float32BufferAttribute, Group, InstancedMesh, MeshBasicMaterial, Object3D, PlaneGeometry,
+  AdditiveBlending, BufferGeometry, Color, ConeGeometry, CylinderGeometry, DoubleSide, Euler, Float32BufferAttribute, Group, InstancedMesh, MeshBasicMaterial,
+  MeshStandardMaterial, Object3D, PlaneGeometry,
   PointLight, Points, PointsMaterial, Quaternion, RepeatWrapping, SRGBColorSpace, Vector3, Vector2, BoxGeometry, DynamicDrawUsage,
 } from 'three';
 import * as models from '../models/index.js';
@@ -501,6 +502,21 @@ export function createStreet({ scene, art, tr, quality }) {
     m.frustumCulled = false;
     root.add(m);
   }
+  // umbrellas over the pedestrians when it rains (L.rain): a dome of bright cloth on a stick, tilted a little, one per walker, opened in turn
+  const umbGeo = T(new ConeGeometry(0.5, 0.24, 14, 1, true).translate(0, 0.12, 0));
+  const umbStick = T(new CylinderGeometry(0.012, 0.012, 0.9, 5).translate(0, -0.33, 0));
+  const umbMat = T(new MeshStandardMaterial({ color: '#ffffff', roughness: 0.6, side: DoubleSide }));
+  const umbrellas = new InstancedMesh(umbGeo, umbMat, nWalk);
+  const umbSticks = new InstancedMesh(umbStick, std('#2a2623', { roughness: 0.6 }), nWalk);
+  const umbCols = ['#d8392b', '#1f5fb4', '#e8b020', '#222222', '#2f8a4a', '#8a3fb0', '#f08a2a'];
+  for (let i = 0; i < nWalk; i++) umbrellas.setColorAt(i, tmp.set(umbCols[(i * 3) % umbCols.length]));
+  for (const m of [umbrellas, umbSticks]) {
+    m.instanceMatrix.setUsage(DynamicDrawUsage);
+    m.frustumCulled = false;
+    root.add(m);
+  }
+  let rainNow = 0;
+  let gridNow = 1;
   // birds
   const nBirds = quality.birds || 0;
   let birds = null;
@@ -621,7 +637,7 @@ export function createStreet({ scene, art, tr, quality }) {
     // pedestrians with a walk cycle: legs swing about the hip, a little body bob
     for (let i = 0; i < walkers.length; i++) {
       const w = walkers[i];
-      w.x += w.v * dt;
+      w.x += w.v * dt * (1 + 0.4 * rainNow); // people hurry in the rain
       if (w.x > 36) w.x = -36;
       if (w.x < -36) w.x = 36;
       const yaw = w.v > 0 ? 0 : Math.PI;
@@ -637,7 +653,15 @@ export function createStreet({ scene, art, tr, quality }) {
       const sy = Math.sin(yaw);
       setInst(legL, i, w.x + sy * side, hipY, w.z + cy * side, yaw, swing, s);
       setInst(legR, i, w.x - sy * side, hipY, w.z - cy * side, yaw, -swing, s);
+      // the umbrella opens for the n-th walker once the rain passes its threshold (every walker has one in a downpour), and bobs with the step
+      const open = on > 0.5 ? smoothstep(clamp((rainNow - 0.12 - 0.1 * (i % 4)) / 0.2, 0, 1)) : 0;
+      const us = Math.max(0.0001, open) * w.s;
+      setInst(umbrellas, i, w.x, FP + 1.66 * w.s + bob * s, w.z, yaw + i, 0.1 * Math.sin(w.ph + t * 0.7), us);
+      setInst(umbSticks, i, w.x, FP + 1.66 * w.s + bob * s, w.z, yaw + i, 0.1 * Math.sin(w.ph + t * 0.7), us);
     }
+    umbrellas.instanceMatrix.needsUpdate = true;
+    umbSticks.instanceMatrix.needsUpdate = true;
+    umbrellas.visible = umbSticks.visible = rainNow > 0.1;
     torso.instanceMatrix.needsUpdate = true;
     legL.instanceMatrix.needsUpdate = true;
     legR.instanceMatrix.needsUpdate = true;
@@ -690,10 +714,13 @@ export function createStreet({ scene, art, tr, quality }) {
     M.paving.roughness = 1 - 0.3 * wet;
     M.paving.color.setRGB(1 - 0.2 * wet, 1 - 0.2 * wet, 1 - 0.17 * wet);
     puddleM.opacity = 0.18 + 0.72 * smoothstep(wet);
+    rainNow = L.rain || 0;
+    gridNow = L.grid ?? 1;
     const night = smoothstep((L.night - 0.2) / 0.55);
-    for (const m of emissives) m.emissiveIntensity = 0.65 * night;
-    for (const m of hoard) m.emissiveIntensity = 0.55 * night;
-    tubeM.emissiveIntensity = (post ? 4 : 1.6) * night;
+    // a power cut darkens the shop signs, windows and tubes (the street lamps follow L.sodium, which the cut already took down)
+    for (const m of emissives) m.emissiveIntensity = 0.65 * night * gridNow;
+    for (const m of hoard) m.emissiveIntensity = 0.55 * night * gridNow;
+    tubeM.emissiveIntensity = (post ? 4 : 1.6) * night * gridNow;
     monoPlaster.emissiveIntensity = 0.12 * night;
     // sodium lamps
     const sod = L.sodium;
@@ -714,7 +741,7 @@ export function createStreet({ scene, art, tr, quality }) {
   function dispose() {
     scene.remove(root);
     for (const p of props) p.dispose?.();
-    for (const m of [city, torso, legL, legR, birds, shadows, parked[0], parked[1], ...Object.values(inst).flat()]) m?.dispose?.();
+    for (const m of [city, torso, legL, legR, umbrellas, umbSticks, birds, shadows, parked[0], parked[1], ...Object.values(inst).flat()]) m?.dispose?.();
   }
 
   return { root, update, setLight, dispose, STREET };

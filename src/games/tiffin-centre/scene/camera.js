@@ -15,6 +15,14 @@ export const HFOV_MIN = 62; // degrees: portrait phones get a taller vertical fo
 export const FOV_MAX = 100; // degrees (vertical) cap, beyond this the edges stretch too much
 export const AUTO_YAW_GAIN = 0.62; // how far (of the way to the target) the head leads while walking
 export const AUTO_YAW_MAX = 0.75;
+// Turning ROUND (the prep counter and the gas stand are behind the cook): free look stops at LAYOUT.view.yawMax, but an auto head-turn or a
+// lookAt may swing the whole way over the shoulder, up to TURN_MAX (170 degrees), and comes back by itself.
+export const TURN_MAX = (170 * Math.PI) / 180;
+export const TURN_START = 1.5; // radians: beyond this the head stops "leading" a target and turns the whole way
+export const TURN_FULL = 2.3; // radians: from here on it is a full turn
+export const VIEW_TURN = { ...LAYOUT.view, yawMax: TURN_MAX };
+export const TURN_SPEED = 5.6; // rad/s: the fastest the head swings round (170 degrees in about 0.7 s)
+export const TURN_ACCEL = 34; // rad/s^2: how quickly that speed builds, so the swing eases in
 export const AUTO_PITCH_GAIN = 0.55; // look down only part of the way at the work: the customers stay in the top of the picture
 export const MANUAL_HOLD_S = 2.4; // free look is held this long after the last input, then the head recentres on its own
 export const MANUAL_RELAX = 1.6; // 1/s, how fast it recentres
@@ -64,13 +72,43 @@ export function aimAt(fx, fy, fz, tx, ty, tz, out = { yaw: 0, pitch: 0 }) {
   return out;
 }
 
-/** The head's goal while the hands work on / walk to a point: leads the walk, settles ahead of the work, partly down. */
-export function autoGoal(eyeX, point, out = { yaw: 0, pitch: 0 }) {
+const smooth01 = (x) => {
+  const t = clamp(x, 0, 1);
+  return t * t * (3 - 2 * t);
+};
+
+/**
+ * A yaw from aimAt (-PI..PI) made safe for turning round: straight behind is +-PI, and which way the head goes round must not flip with
+ * rounding, so within STRAIGHT_BEHIND of it the sign of `ref` (the head now, or a hint) wins. Clamped to +-TURN_MAX.
+ */
+export const STRAIGHT_BEHIND = 2.6;
+export function turnYaw(raw, ref = 0) {
+  let a = Math.abs(raw);
+  let sign = raw < 0 ? -1 : 1;
+  if (a > STRAIGHT_BEHIND) sign = ref < 0 ? -1 : 1;
+  if (a > TURN_MAX) a = TURN_MAX;
+  return sign * a;
+}
+
+/**
+ * The head's goal while the hands work on / walk to a point: leads the walk, settles ahead of the work, partly down. A target BEHIND the cook
+ * (|yaw| > TURN_START) takes the whole turn (up to TURN_MAX) instead of the gentle lead, and looks down at it.
+ */
+export function autoGoal(eyeX, point, out = { yaw: 0, pitch: 0 }, ref = 0) {
   aimAt(eyeX, LAYOUT.eyeHeight, LAYOUT.cookZ, point.x, point.y, point.z, out);
-  out.yaw = clamp(out.yaw * AUTO_YAW_GAIN, -AUTO_YAW_MAX, AUTO_YAW_MAX);
-  out.pitch = clamp(out.pitch * AUTO_PITCH_GAIN, VIEW.pitchMin, VIEW.pitchMax);
+  const a = Math.abs(out.yaw);
+  const s = smooth01((a - TURN_START) / (TURN_FULL - TURN_START));
+  const gain = AUTO_YAW_GAIN + (1 - AUTO_YAW_GAIN) * s;
+  const max = AUTO_YAW_MAX + (TURN_MAX - AUTO_YAW_MAX) * s;
+  const sign = a > STRAIGHT_BEHIND ? (ref < 0 ? -1 : 1) : out.yaw < 0 ? -1 : 1;
+  out.yaw = sign * Math.min(a * gain, max);
+  const pg = AUTO_PITCH_GAIN + (0.85 - AUTO_PITCH_GAIN) * s;
+  out.pitch = clamp(out.pitch * pg, VIEW.pitchMin, VIEW.pitchMax);
   return out;
 }
+
+/** How far round the body is turned, 0..1 (0 within the normal field, 1 looking straight back): drives the shoulder-turn pose of the eye. */
+export const turnAmount = (yaw) => smooth01((Math.abs(yaw) - 1.3) / 1.5);
 
 export const damp = (a, b, rate, dt) => a + (b - a) * (1 - Math.exp(-rate * Math.max(0, dt)));
 
@@ -83,7 +121,9 @@ export function stepLook(look, goal, rate, dt, view = VIEW) {
 
 /** Free look: add a delta to the manual offset and keep the RESULT (auto goal + offset) inside the limits. */
 export function addManual(manual, dYaw, dPitch, base, view = VIEW) {
-  const y = clamp(base.yaw + manual.yaw + (Number.isFinite(dYaw) ? dYaw : 0), -view.yawMax, view.yawMax);
+  // while the auto turn has the head round at the back, a free-look nudge is measured from there (it never snaps the head forwards)
+  const lim = Math.max(view.yawMax, Math.abs(base.yaw));
+  const y = clamp(base.yaw + manual.yaw + (Number.isFinite(dYaw) ? dYaw : 0), -lim, lim);
   const p = clamp(base.pitch + manual.pitch + (Number.isFinite(dPitch) ? dPitch : 0), view.pitchMin, view.pitchMax);
   manual.yaw = y - base.yaw;
   manual.pitch = p - base.pitch;

@@ -1,7 +1,7 @@
 // The dosa life cycle on the tawa: batter puddle -> ladle spiral spread -> lacy golden crisp -> burnt, for every tawa dish
 // (plain, masala, ghee podi, set (3 thick discs), pesarattu). One DosaSlot per tawa slot; setSlot() drives the state from the
 // engine, playAction() lets the first-person viewmodel drive the pour / spread / oil / flip / fill / take beats.
-import { Group, IcosahedronGeometry, Mesh, Vector3 } from 'three';
+import { Group, IcosahedronGeometry, Mesh, MeshBasicMaterial, PlaneGeometry, Vector3 } from 'three';
 import { lathe, polarDisc } from './geo.js';
 import { hashNoise, num, clamp01 } from './food-util.js';
 import { createDosaMaterial, createFoodMaterial, foodUniforms, setPalette } from './shaders/food.js';
@@ -20,8 +20,16 @@ export function normSlot(info) {
     dish: info && typeof info.dish === 'string' ? info.dish : null,
     progress: clamp01(num(info && info.progress, 0)),
     burnFrac: clamp01(num(info && info.burnFrac, st === 'burnt' ? 1 : 0)),
+    // the operations layer: a dish that came off a dirty or cold pan is 'stuck' (pale, a few crumbs left behind) or 'torn' (pale, split, lopsided)
+    flaw: info && (info.flaw === 'stuck' || info.flaw === 'torn') ? info.flaw : '',
   };
 }
+
+const tearGeo = () => sharedGeo('dosa:tear', () => new PlaneGeometry(0.06, 0.011).rotateX(-Math.PI / 2));
+const crumbGeo = () => sharedGeo('dosa:crumb', () => new PlaneGeometry(0.02, 0.014).rotateX(-Math.PI / 2));
+// where the torn gaps and the crumbs left on the iron sit (local to the dosa, metres) and how they are turned
+const TEARS = [[-0.03, 0.02, 0.5], [0.035, -0.015, -0.9], [0.0, 0.055, 1.9]];
+const CRUMBS = [[0.105, 0.03, 0.4], [-0.09, -0.07, 1.2], [0.02, 0.118, 2.2], [-0.125, 0.02, 0.1]];
 
 const discGeo = () => sharedGeo('dosa:disc', () => polarDisc(DOSA_R, [0.34, 0.6, 0.78, 0.89, 0.955, 1], 32));
 const setDiscGeo = () =>
@@ -84,7 +92,33 @@ export class DosaSlot {
     this.root.add(this.smoke.points);
     this.ring = ring ? new ReadyRing(this.root, 0, 0.0035, 0, 0.125) : null;
     this.anchor = new Vector3(x, y + 0.016, z);
+    this.flawMeshes = null; // the tears and the crumbs, made the first time a flawed dish shows
     this.apply(0);
+  }
+
+  /** The torn gaps (children of the pose, so they move with the dosa) and the crumbs it left on the iron (children of the root). */
+  ensureFlaw() {
+    if (this.flawMeshes) return this.flawMeshes;
+    this.flawMat = new MeshBasicMaterial({ color: '#0e0c0a', toneMapped: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    this.crumbMat = new MeshBasicMaterial({ color: '#3a2412', toneMapped: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+    const tears = TEARS.map(([x, z, r]) => {
+      const m = new Mesh(tearGeo(), this.flawMat);
+      m.position.set(x, 0.0042, z);
+      m.rotation.y = r;
+      m.visible = false;
+      this.pose.add(m);
+      return m;
+    });
+    const crumbs = CRUMBS.map(([x, z, r]) => {
+      const m = new Mesh(crumbGeo(), this.crumbMat);
+      m.position.set(x, 0.0014, z);
+      m.rotation.y = r;
+      m.visible = false;
+      this.root.add(m);
+      return m;
+    });
+    this.flawMeshes = { tears, crumbs };
+    return this.flawMeshes;
   }
 
   ensureSet() {
@@ -140,6 +174,9 @@ export class DosaSlot {
     // cook / burn mapping: cooking 0..0.84, ready 0.84 -> 0.97 (burnFrac), burnt 1.15
     let cook = st === 'cooking' ? p * 0.84 : st === 'ready' ? 0.84 + 0.13 * burnFrac : st === 'burnt' ? 1.15 : 0;
     if (forced) cook = 0;
+    // a flawed dosa never crisps and browns: it stays pale, the torn one worst
+    const fl = st === 'empty' || st === 'burnt' ? '' : this.cur.flaw;
+    if (fl) cook *= fl === 'torn' ? 0.74 : 0.88;
     let spread = st === 'cooking' ? 0.3 + 0.7 * smooth(0, 0.12, p) : 1;
     let ridge = 1 - smooth(0.1, 0.7, pp) * 0.6;
     if (a && a.kind === 'pour') {
@@ -150,6 +187,14 @@ export class DosaSlot {
       ridge = 1;
     }
     const set = dish === 'set_dosa';
+    if (fl || this.flawMeshes) {
+      const fm = this.ensureFlaw();
+      const showTear = fl === 'torn' && vis && !set && st !== 'cooking';
+      fm.tears.forEach((m, i) => { m.visible = showTear && (i < 2 || st === 'ready'); });
+      const nCrumb = fl === 'torn' ? 4 : fl === 'stuck' ? 2 : 0;
+      fm.crumbs.forEach((m, i) => { m.visible = vis && i < nCrumb && st !== 'cooking'; });
+      this.dosa.scale.set(fl === 'torn' ? 1.1 : 1, 1, fl === 'torn' ? 0.82 : 1);
+    }
     this.dosa.visible = vis && !set;
     if (this.setGroup) this.setGroup.visible = vis && set;
     u.uCook.value = cook;
@@ -215,6 +260,8 @@ export class DosaSlot {
   }
 
   dispose() {
+    this.flawMat?.dispose();
+    this.crumbMat?.dispose();
     this.dm.dispose();
     this.sm?.dispose();
     this.mm?.dispose();

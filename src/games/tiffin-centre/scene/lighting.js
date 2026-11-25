@@ -80,7 +80,8 @@ function compile(k, hour) {
 export const HOUR_KEYS = [...SOURCE.map((k) => compile(k, k.h)), compile(SOURCE[0], 24)];
 
 export function makeLighting() {
-  const out = { hour: 0, sunDir: [0, 1, 0], sunTrue: [0, 1, 0], sunEl: 0 };
+  // grid: 1 while the mains are on, 0 in a power cut (the shop signs and lamps read it); rain: 0..1 how overcast and wet the world is
+  const out = { hour: 0, sunDir: [0, 1, 0], sunTrue: [0, 1, 0], sunEl: 0, grid: 1, rain: 0 };
   for (const c of COLS) out[c] = [0, 0, 0];
   for (const v of VECS) out[v] = [0, 0, 0];
   for (const n of NUMS) out[n] = 0;
@@ -137,8 +138,11 @@ export function trueSunDirection(hour, out = [0, 0, 0]) {
   return dirFrom(az, sunElevation(h) * D2R, out);
 }
 
-/** Everything the lights, sky, materials and post pipeline need at `hour` (any real number; wraps at 24). */
-export function lightingAt(hour, out = makeLighting()) {
+/**
+ * Everything the lights, sky, materials and post pipeline need at `hour` (any real number; wraps at 24). `weather` = { rain, power } (both 0..1, already
+ * smoothed by the caller: a fade in and out) layers an overcast, wet, darker world and / or a power cut over the hour's look.
+ */
+export function lightingAt(hour, out = makeLighting(), weather = null) {
   const h = ((hour % 24) + 24) % 24;
   let i = 0;
   while (i < HOUR_KEYS.length - 2 && h >= HOUR_KEYS[i + 1].h) i++;
@@ -162,7 +166,82 @@ export function lightingAt(hour, out = makeLighting()) {
   sunDirection(h, out.sunDir);
   trueSunDirection(h, out.sunTrue);
   out.sunEl = sunElevation(h);
+  out.grid = 1;
+  out.rain = 0;
+  if (weather) {
+    if (weather.rain > 0.001) applyWeather(out, weather.rain);
+    if (weather.power > 0.001) applyPower(out, weather.power);
+  }
   return out;
+}
+
+// the grey the sky turns in the rain, by luminance: cool, a little green
+const OVERCAST = [0.74, 0.8, 0.86];
+const lum3 = (c) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+function toOvercast(c, w, dark) {
+  const l = lum3(c) * dark;
+  c[0] = lerp(c[0], l * OVERCAST[0] * 1.15, w);
+  c[1] = lerp(c[1], l * OVERCAST[1] * 1.15, w);
+  c[2] = lerp(c[2], l * OVERCAST[2] * 1.15, w);
+}
+
+/**
+ * Rain over a snapshot (in place, allocation-free): a flat grey sky, soft weak sun with almost no shadow, no shafts or glare, denser fog,
+ * a wet shiny road, the lamps and shop lights switched on early. `w` 0..1 blends from dry to a steady downpour.
+ */
+export function applyWeather(L, w) {
+  const k = clamp(w, 0, 1);
+  if (k <= 0) return L;
+  L.rain = k;
+  toOvercast(L.top, k * 0.85, 0.62);
+  toOvercast(L.mid, k * 0.9, 0.66);
+  toOvercast(L.hor, k * 0.9, 0.74);
+  toOvercast(L.fog, k * 0.85, 0.7);
+  toOvercast(L.cloud, k * 0.95, 0.55);
+  toOvercast(L.hs, k * 0.7, 0.8);
+  toOvercast(L.sun, k * 0.8, 0.9);
+  toOvercast(L.hg, k * 0.4, 0.8);
+  L.si *= 1 - 0.9 * k; // the direct sun is gone behind the cloud: what is left is the sky
+  L.hi *= 1 - 0.36 * k;
+  L.shadow *= 1 - 0.88 * k;
+  L.shaft *= 1 - k;
+  L.glow *= 1 - k;
+  L.heat *= 1 - k;
+  L.stars *= 1 - 0.85 * k;
+  L.cover = lerp(L.cover, 1, k);
+  L.fd += 0.0055 * k;
+  L.haze = lerp(L.haze, 0.82, k);
+  L.wet = lerp(L.wet, 1, k);
+  L.env *= 1 - 0.5 * k;
+  L.sat *= 1 - 0.28 * k;
+  L.contrast *= 1 - 0.04 * k;
+  L.exposure *= 1 - 0.1 * k; // an overcast afternoon is simply darker
+  L.gg[0] = lerp(L.gg[0], 0.95, 0.7 * k); // and cooler: the warm gain of the sun gives way to a blue-grey one
+  L.gg[1] = lerp(L.gg[1], 0.99, 0.7 * k);
+  L.gg[2] = lerp(L.gg[2], 1.05, 0.7 * k);
+  L.bloom *= 1 + 0.12 * k;
+  // under a dark sky people switch the lights on early
+  L.bulb = Math.max(L.bulb, 0.7 * k);
+  L.tube = Math.max(L.tube, 0.55 * k);
+  L.neon = Math.max(L.neon, 0.5 * k);
+  L.sodium = Math.max(L.sodium, 0.45 * k);
+  L.night = Math.max(L.night, 0.3 * k);
+  return L;
+}
+
+/**
+ * A power cut (in place): the mains lights (bulbs on the wire, the tube, shop signs, neon, the sodium street lamps) go out by `off` 0..1. What is left is
+ * the sky (and, in the scene, a diya, candles and phone torches). `L.grid` tells the shop fronts and signs.
+ */
+export function applyPower(L, off) {
+  const k = clamp(off, 0, 1);
+  if (k <= 0) return L;
+  L.grid = 1 - k;
+  L.bulb *= 1 - k;
+  L.tube *= 1 - k;
+  L.neon *= 1 - k;
+  L.sodium *= 1 - k;
+  return L;
 }
 
 /**

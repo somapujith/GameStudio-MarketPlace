@@ -6,18 +6,34 @@ import { Group, Mesh, MeshBasicMaterial, PlaneGeometry, Vector3, Frustum, Matrix
 import { LAYOUT, STATIONS } from '../../../../shared/tiffin-centre/catalog.js';
 import { WORK_MS, standX } from '../../../../shared/tiffin-centre/movement.js';
 import { buildDish, buildCustomer, buildAvatar } from '../models/index.js';
+import { buildInspector, buildDeliveryBoy } from '../models/inspector.js';
+import { buildParcelBag, buildRegularStar } from '../models/marks.js';
+import * as modelsAll from '../models/index.js';
 import {
   clamp, lerp, easeInOut, angleDamp, tickFrac, patienceFrac, payFrac, slotVisual, moodOf, arrivalStart, departureEnd, hashSeed,
-  laneOffset, stepAvatarX, workForEvent, actionSeqFor, crowdOffset, avatarColor,
+  laneOffset, stepAvatarX, workForEvent, actionSeqFor, crowdOffset, avatarColor, hourAt,
 } from './interp.js';
 import { shade } from './kit.js';
 import { createActionPlayer, loadViewmodel } from './vm.js';
 import { boxAt } from './picking.js';
+import {
+  eventFlags, eventOf, gasView, panView, customerMarks, inspectorPos, deliveryBikePos, offKey,
+} from './ops-view.js';
+import { createEventsFx, makeLevels, stepLevels } from './events-fx.js';
+import { createWeather } from './weather.js';
 
 const PI = Math.PI;
+/** 0 (day) .. 1 (night) from the clock hour: dusk 18..19.5, dawn 4.6..6. */
+export const nightOf = (h) => {
+  const x = ((h % 24) + 24) % 24;
+  if (x >= 12) return clamp((x - 18) / 1.5, 0, 1);
+  return clamp((6 - x) / 1.4, 0, 1);
+};
 export const PLATE_Z = LAYOUT.counterZ + 0.1; // dishes served to a customer stand on the counter just inside its customer-side edge
 const AIM_HOLD = 1.3; // seconds the head stays on the work after the walk / the hands stop
 const CULL_STEP = 0.25; // an off-screen character still advances this often
+const TEND_S = 0.8; // how long the pad, skimmer or jug of a `tend` beat works
+const INSPECT_LINGER_S = 1.1; // the inspector shows his verdict this long before he leaves
 
 export function createSync({ scene, camera, stall, fx, art, tr, quality, reducedMotion, onShake }) {
   const root = new Group();
@@ -31,6 +47,57 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
   let reduced = !!reducedMotion;
   const arriveListeners = new Set();
   const first = { done: false };
+
+  // --- the operations layer: events in the world ---------------------------------------------------------------------------------------------------------------
+  // `world` holds the smoothed levels of rain / power cut / cricket / festival (the lighting reads them); the modules that draw them are built the first time
+  // an event runs (levels 1-2 never pay for them).
+  const world = makeLevels();
+  const evFlags = {};
+  const cueFns = new Set();
+  let ev = null;
+  let weather = null;
+  let hasWorldFx = false;
+  const nightL = { night: 0 }; // an L-like snapshot for the events (they only read .night)
+  function ensureWorldFx() {
+    if (hasWorldFx) return;
+    hasWorldFx = true;
+    try {
+      ev = createEventsFx({ scene, art, tr, quality, fx, reducedMotion: reduced, levels: world });
+      ev.onCue((cue) => {
+        for (const fn of cueFns) fn(cue);
+      });
+    } catch (err) {
+      console.error('[tiffin] events fx failed', err);
+      ev = null;
+    }
+    try {
+      weather = createWeather({ scene, camera, art, tr, quality, reducedMotion: reduced, roofGaps: stall.roofGaps || [] });
+    } catch (err) {
+      console.error('[tiffin] weather failed', err);
+      weather = null;
+    }
+  }
+  const gv = {};
+  const gvLast = { frac: -1, low: null, burners: null, swapping: null, swapT: -1 };
+  const panViews = {};
+  const panSig = {};
+  const visTmp = {};
+  const torchList = [{ x: 0, z: 0 }, { x: 0, z: 0 }, { x: 0, z: 0 }, { x: 0, z: 0 }];
+  let offSig = null;
+  // the pad / skimmer / jug beats of `tend` events (a pool: nothing is allocated per event)
+  const tends = [];
+  for (let i = 0; i < 4; i++) tends.push({ on: false, station: null, kind: '', el: 0, fired: false, by: null });
+  let nextTend = 0;
+  const startTend = (station, kind, by) => {
+    const o = tends[nextTend];
+    nextTend = (nextTend + 1) % tends.length;
+    o.on = true;
+    o.station = station;
+    o.kind = kind;
+    o.el = 0;
+    o.fired = false;
+    o.by = by;
+  };
 
   // --- view bookkeeping (frustum for culling) ------------------------------------------------------------------------------------------------
   const frustum = new Frustum();
@@ -86,7 +153,8 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
   function makeCustomer(c, snap) {
     let model;
     try {
-      model = buildCustomer(c.kind, hashSeed(`${c.id}:${c.name}`));
+      // the tiffin delivery rider has his own model (a red company tee, a big red bag); everybody else is a customer of their kind
+      model = c.delivery ? buildDeliveryBoy(hashSeed(`${c.id}:${c.name}`)) : buildCustomer(c.kind, hashSeed(`${c.id}:${c.name}`));
     } catch (err) {
       console.error('[tiffin] buildCustomer failed', err);
       return null;
@@ -101,7 +169,7 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
     const e = {
       id: c.id, c, model, holder, plates, platesKey: '', spot: c.spot, sx, side: c.spot % 2 === 0 ? -1 : 1,
       phase: 'stand', t0: clock, dur: 1, fx0: sx, fz0: LAYOUT.spotZ, fx1: sx, fz1: LAYOUT.spotZ, x: sx, z: LAYOUT.spotZ,
-      mood: '', pat: -1, yaw: 0, leave: null, stompDone: false, acc: 0, seen: true,
+      mood: '', pat: -1, yaw: 0, leave: null, stompDone: false, acc: 0, seen: true, bag: null, star: null,
     };
     if (!snap) arriveStart(e);
     holder.position.set(e.x, 0, e.z);
@@ -135,6 +203,32 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
     if (kind === 'unpaid') {
       fx.burst('nopay', e.x, 1.0, e.z + 0.3, 1);
       fx.floatText('No pay!', '#ff6a5a', e.x, 2.15, e.z + 0.3, { life: 1.6, rise: 0.7 });
+    }
+  }
+
+  const marks = {};
+  /** A packed bag in the hand of a customer who is taking away, a gold star over a regular's head (created the first time they are asked for). */
+  function syncMarks(e, c) {
+    customerMarks(c, marks);
+    if (marks.parcel && !e.bag) {
+      try {
+        e.bag = buildParcelBag(e.id);
+        // hung from the right hand at the hip: on the holder, so it does not ride along when that hand lifts a bite
+        e.bag.group.position.set(-0.27, 0.88, 0.06);
+        e.holder.add(e.bag.group);
+      } catch (err) {
+        console.error('[tiffin] parcel bag failed', err);
+      }
+    }
+    if (marks.regular && !e.star) {
+      try {
+        e.star = buildRegularStar();
+        e.star.group.position.set(0, (e.model.group.userData.height || 1.75) + 0.17, 0);
+        e.star.group.scale.setScalar(1.35);
+        e.holder.add(e.star.group);
+      } catch (err) {
+        console.error('[tiffin] regular star failed', err);
+      }
     }
   }
 
@@ -205,6 +299,7 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
     }
     h.position.set(e.x, 0, e.z);
     h.rotation.y = e.yaw;
+    if (e.star && vis) e.star.update(dt, t);
   }
   function gait(e, t, speed) {
     const g = e.model.group;
@@ -233,6 +328,192 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
       e.plates.add(o);
     });
   }
+
+  // --- the GHMC inspector: walks up to the end of the counter when the event starts, shows his verdict when the check comes, walks off when it ends ---------------
+  const inspector = (() => {
+    let model = null;
+    let holder = null;
+    let phase = 'none'; // none | in | stand | verdict | out
+    let t0 = 0;
+    let dur = 1.4;
+    let x = 0;
+    let z = 0;
+    let x0 = 0;
+    let z0 = 0;
+    let x1 = 0;
+    let z1 = 0;
+    let yaw = 0;
+    let verdict = null;
+    let acc = 0;
+    const pos = { x: 0, z: 0 };
+    const from = { x: 0, z: 0 };
+    const make = () => {
+      if (model) return true;
+      try {
+        model = buildInspector(7);
+      } catch (err) {
+        console.error('[tiffin] buildInspector failed', err);
+        return false;
+      }
+      holder = new Group();
+      holder.add(model.group);
+      shade(model.group);
+      addBlob(holder, 0.9);
+      root.add(holder);
+      return true;
+    };
+    const api = {
+      get phase() {
+        return phase;
+      },
+      get x() {
+        return x;
+      },
+      get z() {
+        return z;
+      },
+      get model() {
+        return model;
+      },
+      get verdict() {
+        return verdict;
+      },
+      /** The event is running: arrive (walk in, or stand there at once when `snap` = we joined late). */
+      arrive(spots, snap) {
+        if (phase === 'in' || phase === 'stand' || phase === 'verdict') return;
+        if (!make()) return;
+        inspectorPos(spots, pos);
+        arrivalStart(Math.max(0, (spots | 0) - 1), from);
+        x1 = pos.x;
+        z1 = pos.z;
+        verdict = null;
+        model.setMood('waiting');
+        if (snap) {
+          phase = 'stand';
+          x = x1;
+          z = z1;
+          yaw = 0;
+        } else {
+          phase = 'in';
+          t0 = clock;
+          dur = 1.8;
+          x0 = from.x + 1.2;
+          z0 = from.z;
+          x = x0;
+          z = z0;
+          yaw = Math.atan2(x1 - x0, z1 - z0);
+        }
+        holder.visible = true;
+        holder.position.set(x, 0, z);
+      },
+      /** The check is done: thumbs-up or a stern finger. */
+      verdictIs(pass) {
+        if (!model || phase === 'none' || phase === 'out') return;
+        verdict = pass ? 'pass' : 'fail';
+        model.setMood(pass ? 'happy' : 'angry');
+        phase = 'verdict';
+        t0 = clock;
+      },
+      /** The event is over: he walks off. */
+      leave() {
+        if (!model || phase === 'none' || phase === 'out') return;
+        phase = 'out';
+        t0 = clock;
+        dur = 2.2;
+        x0 = x;
+        z0 = z;
+        x1 = x + 3.4;
+        z1 = LAYOUT.spotZ - 3.0;
+        model.setMood('walkaway');
+      },
+      update(dt, t, vis) {
+        if (!model || phase === 'none') return;
+        if (phase === 'in') {
+          const u = clamp((clock - t0) / dur, 0, 1);
+          const k = easeInOut(u);
+          x = lerp(x0, x1, k);
+          z = lerp(z0, z1, k);
+          if (u >= 1) {
+            phase = 'stand';
+            yaw = 0;
+          }
+        } else if (phase === 'out') {
+          const u = clamp((clock - t0) / dur, 0, 1);
+          const k = u * u * (3 - 2 * u);
+          x = lerp(x0, x1, k);
+          z = lerp(z0, z1, k);
+          yaw = angleDamp(yaw, Math.atan2(x1 - x0, z1 - z0), 9, dt);
+          if (u >= 1) {
+            phase = 'none';
+            holder.visible = false;
+            return;
+          }
+        } else if (phase === 'verdict' && clock - t0 > INSPECT_LINGER_S * 3.2) {
+          // the event is still on after the verdict: he stands about with the clipboard
+          model.setMood('waiting');
+          phase = 'stand';
+        }
+        if (phase === 'stand' || phase === 'verdict') {
+          const goal = vis ? Math.atan2(camPos.x - x, camPos.z - z) * 0.5 : 0;
+          yaw = angleDamp(yaw, goal, 6, dt);
+        }
+        holder.position.set(x, 0, z);
+        holder.rotation.y = yaw;
+        acc += dt;
+        if (vis || acc > CULL_STEP) {
+          if (vis && phase !== 'out') model.lookAt?.(camPos);
+          model.update(acc, t);
+          acc = 0;
+        }
+      },
+      dispose() {
+        if (holder) root.remove(holder);
+        model?.dispose?.();
+        model = null;
+        holder = null;
+        phase = 'none';
+      },
+    };
+    return api;
+  })();
+
+  // the delivery rider's scooter, parked beside the counter while he is there
+  const bike = (() => {
+    let prop = null;
+    let tried = false;
+    const bp = { x: 0, z: 0, ry: 0 };
+    return {
+      set(on) {
+        if (on && !prop && !tried) {
+          tried = true;
+          try {
+            prop = modelsAll.buildStreetProp?.('scooter', { body: '#d3281c' }) ?? null;
+          } catch {
+            prop = null;
+          }
+          if (prop?.group) {
+            deliveryBikePos(bp);
+            prop.group.position.set(bp.x, 0, bp.z);
+            prop.group.rotation.y = bp.ry;
+            shade(prop.group);
+            root.add(prop.group);
+          }
+        }
+        if (prop?.group) prop.group.visible = !!on;
+      },
+      update(dt, t) {
+        if (prop?.group?.visible) prop.update?.(dt, t);
+      },
+      get prop() {
+        return prop;
+      },
+      dispose() {
+        if (prop?.group) root.remove(prop.group);
+        prop?.dispose?.();
+        prop = null;
+      },
+    };
+  })();
 
   // --- cooks: the local one is the camera (only its walker + hands live here), the others are avatars on the line ---------------------------------
   /** id -> entry (every player, me included; `model` is null for me: you never see your own body) */
@@ -306,6 +587,7 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
   /** Walkers and work timers: runs BEFORE the camera rig so the eye follows this frame's position. */
   function advance(dt) {
     clock += dt;
+    stepLevels(world, evFlags, dt);
     for (const e of avatars.values()) {
       const p = st?.players?.[e.id];
       const at = p ? (p.at ?? null) : e.at;
@@ -362,6 +644,7 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
     steamer: { cooking: ['steam', 5], ready: ['steam', 2.5] },
     kadai: { cooking: ['sizzle', 10], ready: ['oil', 2.5] },
     chai: { cooking: ['chai', 4], ready: ['chai', 1.8] },
+    prep: {}, // the back counter makes its own steam and glow (the prop)
   };
   function updateStations(dt, tickF) {
     if (!st) return;
@@ -371,10 +654,10 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
       if (!data) continue;
       const near = inView(s.group.position.x, 1.1, s.group.position.z, 1.1); // emit only where it can be seen (the pool is small)
       for (let i = 0; i < data.slots.length; i++) {
-        const vis = slotVisual(data.slots[i], tickF);
+        const vis = slotVisual(data.slots[i], tickF, visTmp);
         const key = `${sid}:${i}`;
         const c = slotCache.get(key);
-        if (!c || c.st !== vis.st || c.dish !== vis.dish || Math.abs(c.progress - vis.progress) > 0.01 || Math.abs(c.burnFrac - vis.burnFrac) > 0.02) {
+        if (!c || c.st !== vis.st || c.dish !== vis.dish || c.item !== vis.item || c.flaw !== vis.flaw || Math.abs(c.progress - vis.progress) > 0.01 || Math.abs(c.burnFrac - vis.burnFrac) > 0.02) {
           s.prop.setSlot(i, vis);
           slotCache.set(key, c ? Object.assign(c, vis) : { ...vis });
         }
@@ -396,6 +679,38 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
     }
   }
 
+  // --- the operations layer, per tick -------------------------------------------------------------------------------------------------------------------
+  /** The stock on the shelves, the condition of the pans, the events running (their levels fade in update), the inspector and the delivery boy's bike. */
+  function applyOps() {
+    if (!st) return;
+    stall.setShelf?.(st);
+    offSig = offKey(st);
+    if (st.cfg?.heat) {
+      for (const [sid, s] of stall.stations) {
+        const data = st.stations?.[sid];
+        if (!s.prop || !data || (s.kind !== 'tawa' && s.kind !== 'kadai' && s.kind !== 'steamer')) continue;
+        const v = panViews[sid] || (panViews[sid] = {});
+        panView(data, v);
+        const sig = `${(v.glow * 50) | 0}|${(v.gunk * 50) | 0}|${(v.hot * 20) | 0}|${(v.water * 50) | 0}|${v.dry ? 1 : 0}`;
+        if (panSig[sid] !== sig) {
+          panSig[sid] = sig;
+          stall.setPan?.(sid, v);
+        }
+      }
+    }
+    eventFlags(st, evFlags);
+    if (evFlags.rain || evFlags.power || evFlags.cricket || evFlags.festival) ensureWorldFx();
+    ev?.setFlags(evFlags);
+    // the inspector: present for the whole of the event
+    const ins = eventOf(st, 'inspector');
+    if (ins) inspector.arrive(st.cfg?.spots ?? LAYOUT.spots, !first.done);
+    else if (inspector.phase !== 'none' && inspector.phase !== 'out') inspector.leave();
+    // the delivery boy's scooter while he stands at the counter
+    let rider = false;
+    for (const c of st.customers || []) if (c.delivery && c.st !== 'left') rider = true;
+    bike.set(rider);
+  }
+
   // --- API -------------------------------------------------------------------------------------------------------------------------------------------
   function setState(next, at) {
     const prev = st;
@@ -405,11 +720,14 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
     if (!prev || prev.cfg?.stations?.join() !== st.cfg?.stations?.join()) {
       stall.setStations(st.cfg?.stations || []);
       slotCache.clear();
+      for (const id of Object.keys(panSig)) delete panSig[id];
     }
     stall.setSpots(st.cfg?.spots ?? LAYOUT.spots);
-    stall.setMenu(st.cfg?.menu);
+    stall.setMenu(st.cfg?.menu, st.off);
+    applyOps();
     const snap = !first.done; // first state of this scene: customers already standing there are not walked in again
     first.done = true;
+    first.snapInspector = snap;
     // customers
     const seen = new Set();
     for (const c of st.customers || []) {
@@ -422,6 +740,7 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
         if (!e) continue;
       }
       e.c = c;
+      if ((c.parcel || c.regular) && c.st !== 'left') syncMarks(e, c);
       if (c.st === 'left' && e.phase !== 'out') startLeave(e, c);
       else if (e.phase !== 'out') syncPlates(e, c);
     }
@@ -462,6 +781,62 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
     }
   };
 
+  /** Per frame: the cylinder (the change is animated across ticks), tending beats, the world's events, phone torches, the inspector. */
+  function updateOps(dt, t, frac) {
+    if (!st) return;
+    gasView(st, frac, gv);
+    if (gv.frac !== gvLast.frac || gv.low !== gvLast.low || gv.burners !== gvLast.burners || gv.swapping !== gvLast.swapping || gv.swapT !== gvLast.swapT) {
+      gvLast.frac = gv.frac;
+      gvLast.low = gv.low;
+      gvLast.burners = gv.burners;
+      gvLast.swapping = gv.swapping;
+      gvLast.swapT = gv.swapT;
+      stall.setGas?.(gv);
+    }
+    if (offSig !== offKey(st)) {
+      offSig = offKey(st);
+      stall.setMenu?.(st.cfg?.menu, st.off);
+    }
+    // the beats of tending: the pad over the iron, the skimmer over the oil, the jug over the pots, with a sizzle and a puff at the right moment
+    for (let i = 0; i < tends.length; i++) {
+      const o = tends[i];
+      if (!o.on) continue;
+      o.el += dt;
+      const t01 = clamp(o.el / TEND_S, 0, 1);
+      const prop = stall.stations.get(o.station)?.prop;
+      prop?.playTend?.(o.kind, t01);
+      if (!o.fired && t01 >= (o.kind === 'wipe' ? 0.22 : 0.45) && stall.slotWorld(o.station, 1, slotPos)) {
+        o.fired = true;
+        if (o.kind === 'wipe') {
+          fx.burst('sizzle', slotPos.x, slotPos.y + 0.04, slotPos.z, 4);
+          fx.burst('steam', slotPos.x, slotPos.y + 0.06, slotPos.z, 3);
+        } else if (o.kind === 'skim') fx.burst('oil', slotPos.x, slotPos.y + 0.05, slotPos.z, 3);
+        else fx.burst('steam', slotPos.x, slotPos.y + 0.2, slotPos.z, 4);
+      }
+      if (t01 >= 1) o.on = false;
+    }
+    if (hasWorldFx) {
+      nightL.night = nightOf(hourAt(st, frac));
+      weather?.update(dt, t, world.rain);
+      if (ev) {
+        let n = 0;
+        if (world.power > 0.05) {
+          for (const e of customers.values()) {
+            if (n >= torchList.length) break;
+            if (e.phase !== 'stand' || !e.c || e.c.st === 'left') continue;
+            torchList[n].x = e.x + 0.22;
+            torchList[n].z = e.z + 0.3;
+            n++;
+          }
+        }
+        ev.setTorches(torchList, n);
+        ev.update(dt, t, nightL);
+      }
+    }
+    bike.update(dt, t);
+    if (inspector.phase !== 'none') inspector.update(dt, t, inView(inspector.x, 0.95, inspector.z, 1.25));
+  }
+
   const meHands = [];
   /** Per frame, AFTER the camera rig: positions, animation of what is in view, the viewmodel. `look` = the head's change this frame. */
   function update(dt, t, now, look) {
@@ -470,6 +845,7 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
     const tickF = (st?.tick || 0) + frac;
     updateStations(dt, tickF);
     actions.update(dt, onActionFrame);
+    updateOps(dt, t, frac);
     for (const e of customers.values()) {
       const vis = inView(e.x, 0.95, e.z, 1.25);
       updateCustomer(e, dt, t, frac, vis);
@@ -483,6 +859,8 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
     for (const [id, e] of customers) {
       if (e.phase === 'out' && clock - e.t0 >= e.dur) {
         root.remove(e.holder, e.plates);
+        e.bag?.dispose?.();
+        e.star?.dispose?.();
         e.model.dispose?.();
         customers.delete(id);
       }
@@ -562,6 +940,45 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
           if (a && a !== meE) a.cheer = 1.0;
           break;
         }
+        case 'prep-start':
+          if (stall.slotWorld(ev.station, ev.slot, slotPos)) fx.burst('puff', slotPos.x, slotPos.y, slotPos.z, 0.6);
+          break;
+        case 'prep-done':
+          if (stall.slotWorld(ev.station, ev.slot, slotPos)) fx.burst('ping', slotPos.x, slotPos.y + 0.12, slotPos.z);
+          break;
+        case 'prep-collect':
+          if (stall.slotWorld(ev.station, ev.slot, slotPos)) fx.burst('puff', slotPos.x, slotPos.y + 0.1, slotPos.z, 0.7);
+          break;
+        case 'tend':
+          startTend(ev.station, ev.kind === 'skim' ? 'skim' : ev.kind === 'water' ? 'water' : 'wipe', ev.by);
+          break;
+        case 'heat-warning':
+          if (stall.slotWorld(ev.station, 1, slotPos)) {
+            fx.burst(ev.band === 'hot' ? 'smoke' : 'steam', slotPos.x, slotPos.y + 0.1, slotPos.z, 0.8);
+            if (ev.band === 'hot') onShake?.(0.05);
+          }
+          break;
+        case 'gas-low':
+          fx.floatText('Gas low', '#ffb02e', LAYOUT.gas.x, 1.15, LAYOUT.gas.z, { life: 1.8, rise: 0.4, scale: 0.9 });
+          break;
+        case 'gas-out':
+          fx.burst('puff', LAYOUT.gas.x, 0.7, LAYOUT.gas.z, 1.2);
+          fx.floatText('NO GAS', '#ff6a5a', LAYOUT.gas.x, 1.2, LAYOUT.gas.z, { life: 2.2, rise: 0.4, scale: 1.1 });
+          onShake?.(0.12);
+          break;
+        case 'gas-swap':
+          if (ev.phase === 'start') fx.floatText('New cylinder...', '#ffd34d', LAYOUT.gas.x, 1.15, LAYOUT.gas.z, { life: 2.2, rise: 0.3, scale: 0.9 });
+          else fx.burst('sparkle', LAYOUT.gas.x, 0.7, LAYOUT.gas.z, 1);
+          break;
+        case 'inspector': {
+          inspector.verdictIs(!!ev.pass);
+          const ix = inspector.x || 3.6;
+          const iz = inspector.z || LAYOUT.spotZ;
+          fx.floatText(ev.pass ? `PASSED  +\u20b9${ev.bonus ?? 0}` : `FINE  -\u20b9${ev.fine ?? 0}`, ev.pass ? '#9dff9d' : '#ff6a5a', ix, 2.2, iz, { life: 2.2, rise: 0.6, scale: 1.2 });
+          fx.burst(ev.pass ? 'sparkle' : 'angry', ix, 1.7, iz, 1.2);
+          if (!ev.pass) onShake?.(0.15);
+          break;
+        }
         case 'customer-arrive':
           break;
         case 'customer-angry':
@@ -607,9 +1024,17 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
     if (!target) return 0;
     switch (target.kind) {
       case 'station': {
-        const s = stall.stations.get(target.id ?? target.station);
+        const sid = target.id ?? target.station;
+        if (sid === 'gas') {
+          // the LPG stand at the end of the line (behind the cook's left)
+          centre.set(LAYOUT.gas.x, 0.55, LAYOUT.gas.z);
+          top.set(centre.x, 1.1, centre.z);
+          return 0.5;
+        }
+        const s = stall.stations.get(sid);
         if (!s) return 0;
-        centre.set(s.group.position.x, 1.0, s.group.position.z + 0.3);
+        // a station's front faces the cook (+0.3 towards them); the back counter's front faces the other way
+        centre.set(s.group.position.x, 1.0, s.group.position.z + 0.3 * (s.front ?? 1));
         top.set(centre.x, 1.55, centre.z);
         return 0.62;
       }
@@ -650,6 +1075,12 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
       out.x = stall.binPos.x;
       out.y = 0.85;
       out.z = stall.binPos.z;
+      return true;
+    }
+    if (at === 'gas') {
+      out.x = LAYOUT.gas.x;
+      out.y = 0.55;
+      out.z = LAYOUT.gas.z;
       return true;
     }
     if (typeof at === 'string' && Object.hasOwn(STATIONS, at)) {
@@ -696,6 +1127,10 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
       out.push({ kind: 'customer', target: { kind: 'customer', id: e.id }, a: { x: e.x, y: 0.95, z: e.z }, b: { x: e.x, y: 1.7, z: e.z }, radius: 0.3 });
       boxes.push({ target: { kind: 'customer', id: e.id }, box: boxAt(e.x, 0.9, e.z, 0.4, 0.9, 0.35) });
     }
+    if (st?.cfg?.gas) {
+      out.push({ kind: 'station', target: { kind: 'station', station: 'gas' }, a: { x: LAYOUT.gas.x, y: 0.5, z: LAYOUT.gas.z }, radius: 0.5 });
+      boxes.push({ target: { kind: 'station', station: 'gas' }, box: boxAt(LAYOUT.gas.x, 0.4, LAYOUT.gas.z, 0.25, 0.4, 0.25) });
+    }
     out.push({ kind: 'bin', target: { kind: 'bin' }, a: { x: stall.binPos.x, y: 0.5, z: stall.binPos.z }, radius: 0.5 });
     boxes.push({ target: { kind: 'bin' }, box: boxAt(stall.binPos.x, 0.5, stall.binPos.z, 0.45, 0.5, 0.45) });
     out.boxes = boxes;
@@ -710,8 +1145,16 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
       vm.dispose?.();
       vm = null;
     }
-    for (const e of customers.values()) e.model.dispose?.();
+    for (const e of customers.values()) {
+      e.bag?.dispose?.();
+      e.star?.dispose?.();
+      e.model.dispose?.();
+    }
     for (const a of avatars.values()) a.model?.dispose?.();
+    inspector.dispose();
+    bike.dispose();
+    ev?.dispose?.();
+    weather?.dispose?.();
     customers.clear();
     avatars.clear();
     for (const p of dishProto.values()) p.traverse?.((o) => {
@@ -742,6 +1185,21 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
     },
     setReducedMotion(b) {
       reduced = !!b;
+      ev?.setReduced?.(b);
+      weather?.setReduced?.(b);
+    },
+    /** The smoothed levels of the events (0..1 each): { rain, power (how far the mains are cut), cricket, festival }: the lighting reads them. */
+    world,
+    /** fn({ type: 'power' | 'generator', on }) for the audio (the cut itself, and the neighbour's generator a moment later). Returns an unsubscribe. */
+    onCue(fn) {
+      cueFns.add(fn);
+      return () => cueFns.delete(fn);
+    },
+    get inspector() {
+      return inspector;
+    },
+    get worldFx() {
+      return { ev, weather };
     },
     /** Make a customer's mouth move for `ms` (the dialogue director calls this when a line starts). */
     speak(id, ms, intensity = 1) {

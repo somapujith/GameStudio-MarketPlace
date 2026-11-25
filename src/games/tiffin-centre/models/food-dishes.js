@@ -2,7 +2,7 @@
 // blistered pooris, ring vadas, bonda balls, batter-coated chillies, plus stainless plates, katoris (sambar, chutneys), glass and leaf.
 // Geometry + materials per (dish, quality) live in ONE cached pack (util.sharedTexture) so every spawned dish is a cheap Group of
 // meshes sharing them; disposeModelCache() frees the packs.
-import { BufferGeometry, CylinderGeometry, Float32BufferAttribute, Group, IcosahedronGeometry, Mesh, SphereGeometry, TorusGeometry } from 'three';
+import { BufferGeometry, CylinderGeometry, Euler, Float32BufferAttribute, Group, IcosahedronGeometry, Matrix4, Mesh, SphereGeometry, TorusGeometry, Vector3 } from 'three';
 import { merge, paint, place, polarDisc, lathe, disc, boxUV } from './geo.js';
 import { buildTool } from './tools.js';
 import { createDosaMaterial, createFoodMaterial, dosaUniforms, foodUniforms, setPalette } from './shaders/food.js';
@@ -11,7 +11,8 @@ import { pbrMaterial, plainMaterial, quality } from './pbr.js';
 import { sharedMat, sharedTexture } from './util.js';
 import { hashNoise } from './food-util.js';
 
-export const QUALITIES = ['perfect', 'good', 'ok', 'burnt'];
+// 'broken' is what a torn dosa becomes (the operations layer): a pale 'ok' dish, torn apart, lopsided, with crumbs round it, selling for half
+export const QUALITIES = ['perfect', 'good', 'ok', 'burnt', 'broken'];
 const TAU = Math.PI * 2;
 const PLATE_R = 0.1228;
 
@@ -468,10 +469,49 @@ function toolParts(parts, id, opts) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
+/** Tear the food parts of a built dish apart in place: lopsided, ragged edges, a few crumbs on the plate. The ware (plate, leaf, paper) stays whole. */
+function breakParts(parts, id) {
+  const ware = (m) => m === steelMat || m === leafMat || m === paperMat;
+  let foodMat_ = null;
+  let k = 0;
+  for (const p of parts) {
+    if (ware(p.m) || !p.g?.attributes?.position) continue;
+    foodMat_ = foodMat_ || p.m;
+    const pos = p.g.attributes.position;
+    p.g.computeBoundingBox();
+    const c = p.g.boundingBox.getCenter(new Vector3());
+    const tilt = 0.1 + 0.05 * hashNoise(k, 1.7, 0.3);
+    const floor = p.g.boundingBox.min.y;
+    const m = new Matrix4().makeRotationFromEuler(new Euler(tilt * 0.8, 0.12 * k, -tilt, 'XYZ'));
+    const v = new Vector3();
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i).sub(c).applyMatrix4(m).add(c);
+      const n1 = hashNoise(v.x * 61 + k, v.y * 61, v.z * 61);
+      const n2 = hashNoise(v.x * 33, v.y * 33 + k, v.z * 33 + 5);
+      v.x += n1 * 0.012;
+      v.z += n2 * 0.012;
+      v.y += n1 * n2 * 0.006 - 0.003;
+      pos.setXYZ(i, v.x, Math.max(v.y, floor), v.z); // nothing sinks into the plate
+    }
+    pos.needsUpdate = true;
+    p.g.computeVertexNormals();
+    k++;
+  }
+  if (foodMat_) {
+    for (let i = 0; i < 6; i++) {
+      const a = i * 1.7 + 0.4;
+      const r = 0.045 + 0.035 * hashNoise(i, 2, 9);
+      parts.push({ g: at(new IcosahedronGeometry(0.0085 + 0.003 * hashNoise(i, 4, 1), 0), Math.cos(a) * r, 0.032, Math.sin(a) * r, a, 0, 0.3 * i, [1.3, 0.45, 0.9]), m: foodMat_ });
+    }
+  }
+  void id;
+}
+
 function buildPack(id, q) {
   const parts = [];
   const fn = BUILD[id] || BUILD.dosa;
-  fn(parts, q);
+  fn(parts, q === 'broken' ? 'ok' : q);
+  if (q === 'broken') breakParts(parts, id);
   const byMat = new Map();
   for (const p of parts) {
     const m = typeof p.m === 'function' ? p.m() : p.m;

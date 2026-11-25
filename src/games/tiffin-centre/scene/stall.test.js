@@ -59,12 +59,13 @@ describe('stall shell', { timeout: 60000 }, () => {
     low.setStations(['tawa1', 'chai1']);
     medium.setStations(['tawa1', 'chai1']);
     high.setStations(STATION_IDS);
-    expect(countMeshes(medium.root)).toBeLessThan(110);
-    expect(countMeshes(high.root)).toBeLessThan(130);
+    // the operations layer added live things (the gas stand and its spare, three batter buckets, the shelf jars, a fan, a cooler, candles): ~30 more
+    expect(countMeshes(medium.root)).toBeLessThan(145);
+    expect(countMeshes(high.root)).toBeLessThan(165);
     expect(countMeshes(low.root)).toBeLessThanOrEqual(countMeshes(medium.root) + 6);
     expect(lightsOf(low.root).length).toBe(0); // low: baked-looking pools instead of real lights
-    expect(lightsOf(medium.root).length).toBe(3); // two bulbs and the tube
-    expect(lightsOf(high.root).length).toBe(5); // four bulbs and the tube
+    expect(lightsOf(medium.root).length).toBe(6); // two bulbs, the tube, the back-counter bulb and the two candles (off until a power cut)
+    expect(lightsOf(high.root).length).toBe(8); // four bulbs, the tube, the back-counter bulb and the two candles
     expect(medium.roofGaps.length).toBeGreaterThanOrEqual(3);
   });
 

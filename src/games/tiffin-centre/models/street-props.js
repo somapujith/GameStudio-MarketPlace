@@ -1,7 +1,7 @@
 // Street props, set A: the stall kit seen at arm's length (LPG cylinder, steel drum, batter bucket, plates, stool, bench, thela, gallaa).
 // Real proportions in metres, PBR materials (materials-street.js), dents and wear baked into the geometry and the textures.
 // Each def: { key(o), build(kit, o) -> kit.build options, rig?({group, sub}, o, api), extra?(group, o, api) }.
-import { CylinderGeometry, PlaneGeometry } from 'three';
+import { AdditiveBlending, CircleGeometry, Color, ConeGeometry, CylinderGeometry, DoubleSide, Mesh, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry } from 'three';
 import { dents, folds, lumps } from './street-kit.js';
 import { lpgDecal, moneyBoxSticker } from './street-art.js';
 
@@ -39,6 +39,47 @@ export const PROPS_A = {
       k.add(new CylinderGeometry(0.1552, 0.1552, 0.138, 18, 1, true, -0.92, 1.84), lpgDecal(), { p: [0, 0.262, 0], proj: 'keep' });
       return { ao: 0.45, aoH: 0.12 };
     },
+    // the live parts: a pressure gauge on the regulator (the needle follows setLevel) and a tiny hissing flame at the valve when the gas runs low
+    extra(group, o, api, out) {
+      const faceMat = new MeshBasicMaterial({ color: '#f4f0e0', toneMapped: false });
+      const face = new Mesh(new CircleGeometry(0.021, 16), faceMat);
+      face.position.set(0, 0.7, 0.012);
+      const arcMat = new MeshBasicMaterial({ color: '#2fbf5a', toneMapped: false, side: DoubleSide });
+      const bar = new Mesh(new PlaneGeometry(0.03, 0.006), arcMat);
+      bar.position.set(0, -0.007, 0.0008);
+      face.add(bar);
+      const needleMat = new MeshBasicMaterial({ color: '#c0261c', toneMapped: false, side: DoubleSide });
+      const needle = new Mesh(new PlaneGeometry(0.0035, 0.019).translate(0, 0.0095, 0), needleMat);
+      needle.position.z = 0.0016;
+      face.add(needle);
+      group.add(face);
+      const flameMat = new MeshBasicMaterial({ color: '#7aaaff', transparent: true, opacity: 0.9, depthWrite: false, blending: AdditiveBlending, toneMapped: false });
+      const flame = new Mesh(new ConeGeometry(0.008, 0.05, 6).translate(0, 0.025, 0), flameMat);
+      flame.position.set(0.082, 0.64, 0);
+      flame.rotation.z = -Math.PI / 2 + 0.5;
+      flame.visible = false;
+      group.add(flame);
+      let level = 1;
+      let low = false;
+      out.setLevel = (f) => {
+        level = Math.max(0, Math.min(1, f));
+        needle.rotation.z = (0.5 - level) * 2.1; // full = swung right, empty = left
+        arcMat.color.set(level < 0.2 ? '#d93a2a' : level < 0.45 ? '#e0b020' : '#2fbf5a');
+      };
+      out.setLow = (b) => {
+        low = !!b;
+        if (!low) flame.visible = false;
+      };
+      out.setLevel(1);
+      api.anim((dt, t) => {
+        if (!low) return;
+        // a thin blue lick that gutters: on most of the time, a stutter now and then
+        const on = Math.sin(t * 23) * Math.sin(t * 7.3) > -0.55;
+        flame.visible = on;
+        flame.scale.set(1, 0.7 + 0.5 * Math.abs(Math.sin(t * 31)), 1);
+      });
+      api.own({ dispose: () => { faceMat.dispose(); arcMat.dispose(); needleMat.dispose(); flameMat.dispose(); face.geometry.dispose(); bar.geometry.dispose(); needle.geometry.dispose(); flame.geometry.dispose(); } });
+    },
   },
 
   // ---------------------------------------------------------------------------------------------------------------------------
@@ -67,7 +108,7 @@ export const PROPS_A = {
   // ---------------------------------------------------------------------------------------------------------------------------
   // White HDPE batter bucket under a cotton cloth, wire bail, a ladle through the cloth, dried batter runs.
   'batter-bucket': {
-    key: (o) => `${o.open ? 'open' : 'cloth'}`,
+    key: (o) => `${o.dyn ? 'dyn' : o.open ? 'open' : 'cloth'}`,
     build(k, o) {
       const prof = [[0, 0], [0.1, 0.0], [0.114, 0.008], [0.119, 0.03], [0.128, 0.12], [0.137, 0.21], [0.147, 0.28], [0.152, 0.296], [0.156, 0.302]];
       k.lathe('plastic', prof, 24, { tint: '#f1efe8', pre: lumps({ amp: 0.0015, freq: 12, oct: 1 }) });
@@ -77,7 +118,7 @@ export const PROPS_A = {
       k.tor('stainless', 0.158, 0.0026, 4, 28, { p: [0, 0.272, 0], r: [0, 0, 0] }, Math.PI);
       k.cyl('plastic', 0.0105, 0.0105, 0.1, 10, { p: [0, 0.43, 0], r: [0, 0, Math.PI / 2], tint: '#2b6fb3' });
       for (const sx of [-1, 1]) k.rbox('plastic', 0.012, 0.03, 0.03, 0.004, { p: [sx * 0.153, 0.272, 0], tint: '#e8e5da' }, 1);
-      if (!o.open) {
+      if (!o.open && !o.dyn) {
         // the cloth cover, tied under the rim with string, stained
         k.lathe('cloth', [[0, 0.326], [0.05, 0.329], [0.11, 0.326], [0.153, 0.316], [0.171, 0.29], [0.176, 0.25], [0.172, 0.222]], 24, {
           tint: '#efe9d8',
@@ -88,7 +129,7 @@ export const PROPS_A = {
         k.tube('stainless', [[0.04, 0.328, 0.0], [0.09, 0.35, 0.02], [0.17, 0.43, 0.04], [0.215, 0.49, 0.05], [0.245, 0.48, 0.055], [0.252, 0.455, 0.055]], 0.0052, undefined, 10, 5); // ladle handle
         k.sph('stainless', 0.011, 8, 6, { p: [0.04, 0.328, 0.0] });
       } else {
-        k.lathe('matte', [[0, 0.255], [0.14, 0.255], [0.148, 0.29]], 24, { tint: '#efe3c8' }); // batter surface
+        if (!o.dyn) k.lathe('matte', [[0, 0.255], [0.14, 0.255], [0.148, 0.29]], 24, { tint: '#efe3c8' }); // batter surface
         k.tube('stainless', [[0.02, 0.26, 0.0], [0.09, 0.33, 0.02], [0.17, 0.43, 0.04], [0.215, 0.49, 0.05], [0.245, 0.48, 0.055], [0.252, 0.455, 0.055]], 0.0052, undefined, 10, 5);
       }
       // batter runs down the outside
@@ -98,6 +139,31 @@ export const PROPS_A = {
         k.sph('enamel', 1, 6, 5, { p: [Math.cos(a) * r, y, Math.sin(a) * r], s: [w * 0.5, len / 2, w], r: [0, -a, 0], tint: '#f0e6cc' });
       }
       return { ao: 0.35, aoH: 0.1 };
+    },
+    // `dyn`: an open bucket whose batter has a level and a sourness that follow the stock (setFill(fill 0..1, sour 0..1))
+    extra(group, o, api, out) {
+      if (!o.dyn) return;
+      const mat = new MeshStandardMaterial({ color: '#efe3c8', roughness: 0.55, metalness: 0 });
+      const geo = new CircleGeometry(1, 24).rotateX(-Math.PI / 2);
+      const surf = new Mesh(geo, mat);
+      const foam = new Mesh(geo, new MeshStandardMaterial({ color: '#f6efd8', roughness: 0.9, transparent: true, opacity: 0.0, depthWrite: false }));
+      foam.position.y = 0.002;
+      surf.add(foam);
+      group.add(surf);
+      const fresh = new Color('#efe3c8');
+      const sourC = new Color('#cdb862');
+      out.setFill = (fill, sour = 0) => {
+        const f = Math.max(0, Math.min(1, fill));
+        const y = 0.035 + f * 0.225;
+        const r = 0.1 + 0.047 * (y / 0.28) - 0.008;
+        surf.position.y = y;
+        surf.scale.set(r, 1, r);
+        surf.visible = f > 0.001;
+        mat.color.copy(fresh).lerp(sourC, Math.max(0, Math.min(1, sour)));
+        foam.material.opacity = Math.max(0, Math.min(1, sour)) * 0.7; // sour batter froths
+      };
+      out.setFill(0.7, 0);
+      api.own({ dispose: () => { mat.dispose(); foam.material.dispose(); geo.dispose(); } });
     },
   },
 

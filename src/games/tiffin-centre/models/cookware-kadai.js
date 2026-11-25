@@ -13,13 +13,14 @@ import { sharedGeo } from './util.js';
 import { normSlot } from './food-dosa.js';
 import { clamp01, hashNoise } from './food-util.js';
 import { CHULHA, COUNTER_TOP, BRICK_H, chulhaGeometry, sootBrickMaterial } from './cookware-tawa.js';
+import { buildTendProp } from './cookware-tend.js';
 
 const V3 = (x, y, z) => new Vector3(x, y, z);
 const sg = (n) => Math.max(12, Math.round(n * quality().segScale));
 export const KADAI_Z = -0.03;
 const BRICK_TOP = COUNTER_TOP + BRICK_H;
 export const KADAI_Y = BRICK_TOP - 0.062; // the kadai's belly sits inside the pit
-const OIL_Y = KADAI_Y + 0.097;
+export const OIL_Y = KADAI_Y + 0.097;
 const OIL_R = 0.215;
 
 function kadaiGeo() {
@@ -276,7 +277,11 @@ export function buildKadaiSet() {
     s.z = s.root.position.z - KADAI_Z;
     s.apply();
   });
-  return {
+  const skim = buildTendProp('skim', { y: OIL_Y, z: KADAI_Z });
+  g.add(skim.group);
+  let burnerOn = true;
+  let flamePower = 1;
+  const api = {
     group: g,
     slots,
     anchors: slots.map((s) => s.anchor.clone()),
@@ -284,16 +289,41 @@ export function buildKadaiSet() {
     update(dt, t) {
       for (const s of slots) s.update(dt, t);
       const any = slots.some((s) => s.cur.st === 'cooking' || s.cur.st === 'ready');
-      oil.uniforms.uBoil.value += ((any ? 1 : 0.35) - oil.uniforms.uBoil.value) * Math.min(1, dt * 2);
-      if (light) light.intensity = 1.0 + 0.25 * Math.sin(t * 12) + 0.12 * Math.sin(t * 27);
+      oil.uniforms.uBoil.value += (((any && burnerOn) ? 1 : 0.35) - oil.uniforms.uBoil.value) * Math.min(1, dt * 2);
+      if (light) light.intensity = burnerOn ? (1.0 + 0.25 * Math.sin(t * 12) + 0.12 * Math.sin(t * 27)) * (0.35 + 0.65 * flamePower) : 0;
+    },
+    /** The gas burner (see the tawa set): flames, glow and the steam / smoke on or off, a shorter flame on a low cylinder. */
+    setBurner(on, power = 1) {
+      burnerOn = !!on;
+      flamePower = on ? Math.max(0.05, Math.min(1, power)) : 0;
+      rings.forEach((m) => (m.visible = burnerOn));
+      frontGlow.visible = burnerOn;
+      if (light) light.visible = burnerOn;
+      for (const m of fm) m.uniforms.uPower.value = flamePower;
+      for (const s of slots) {
+        s.steam.points.visible = burnerOn;
+        s.smoke.points.visible = burnerOn;
+      }
+    },
+    /** Seasoning of the kadai iron: the same burnt-on crust and cherry glow as the tawa. */
+    setHeat(v) {
+      const u = iron.uniforms;
+      u.uGunk.value = v && Number.isFinite(v.gunk) ? v.gunk : 0;
+      u.uHot.value = v && Number.isFinite(v.hot) ? v.hot : 0;
+      u.uHeat.value = 0.55 + (v && Number.isFinite(v.glow) ? v.glow : 0.5);
+    },
+    tend(kind, t01) {
+      if (kind === 'skim') skim.play(t01);
     },
     dispose() {
       for (const s of slots) s.dispose();
       for (const o of owned) o.dispose();
+      skim.dispose();
       light?.removeFromParent();
       g.removeFromParent();
     },
   };
+  return api;
 }
 
 export { Color };

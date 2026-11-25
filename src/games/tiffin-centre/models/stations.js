@@ -8,6 +8,14 @@
 //   tools: { [id]: { group, grip, tip, set } }  the resting tool props on the station (ladle, spatula, oil-bottle, ...);
 //   setToolHeld(id, held)  hides / shows the resting copy while the viewmodel holds its own.
 //   setQuality('low'|'medium'|'high')  (global for the food / cookware models; applies live to existing materials)
+// OPERATIONS LAYER (docs/TIFFIN_CENTRE_PLAN.md section 3b):
+//   setBurner(on, power = 1)  the gas under the pan: flame, glow, light and the steam / smoke of the dishes on or off (gas-out, a cylinder change); `power` 0..1
+//       shortens the flame (a low cylinder). The steamer and the wet grinder also stop with setPower(false) (a power cut).
+//   setPower(on)  mains power: the steamer's steam and the grinder's stone
+//   setHeat({ glow, hot, gunk, water, dry })  the pan's condition (scene/ops-view.panView): tawa / kadai colour, cherry glow and burnt-on crust; the
+//       steamer's sight gauge and dryness
+//   playTend('wipe'|'skim'|'water', t01)  one beat of tending (the pad and onion over the tawa, the skimmer over the oil, the jug over the steamer)
+//   setSlot(i, { st, dish?, item?, flaw?, progress, burnFrac })  flaw 'stuck' | 'torn' pales a dosa and leaves crumbs; prep jobs name their `item`
 // Station-local space: origin = floor centre of the 1.3 m wide station, +z faces the cook, counter top at COUNTER_TOP.
 import { Group, Mesh, MeshBasicMaterial, PlaneGeometry, Vector3 } from 'three';
 import { STATION_KINDS } from '../../../../shared/tiffin-centre/catalog.js';
@@ -35,6 +43,7 @@ function addCounter(group, kind) {
   group.add(new Mesh(pack.top, MAT.counterTop()));
   group.add(new Mesh(pack.plinth, MAT.plinth()));
   group.add(new Mesh(pack.stripe, MAT.vc()));
+  if (kind === 'prep') return; // the back counter has no cylinder of its own: the gas stand is at the end of the stall
   const lpg = new Mesh(lpgGeometry(), plainMaterial('lpgvc', { vertexColors: true, roughness: 0.42, metalness: 0.45, clearcoat: 0.5 }));
   lpg.position.set(-0.58, 0, -0.62);
   group.add(lpg);
@@ -96,6 +105,13 @@ function addKadaiProps(group, tools) {
   group.add(plates);
 }
 
+/** The viewmodel's action names -> the beats the slot models know (the hands and the stall share one sequence). */
+const BEAT = {
+  'tawa-oil': 'oil', 'tawa-pour': 'pour', 'tawa-spread': 'spread', 'tawa-flip': 'flip', 'tawa-fill': 'fill', 'tawa-take': 'take',
+  steamer: 'lid', kadai: 'skim', 'chai-pour': 'pour',
+};
+export const beatOf = (kind) => BEAT[kind] || String(kind);
+
 const SETS = { tawa: buildTawaSet, steamer: buildSteamerSet, kadai: buildKadaiSet, chai: buildChaiSet, prep: buildPrepSet };
 
 /** buildStationProp(kindId) -> { group, kind, slotAnchors, setSlot, playAction, update, slotWorld, tools, setToolHeld, setQuality, dispose } */
@@ -137,14 +153,31 @@ export function buildStationProp(kindId) {
     slotAnchors,
     tools,
     setSlot(i, info) {
+      if (disposed) return;
+      if (set.setSlot) {
+        set.setSlot(i, info);
+        return;
+      }
       const s = set.slots[i];
-      if (!s || disposed) return;
+      if (!s) return;
       s.set(info);
     },
     playAction(i, actionKind, t01) {
       const s = set.slots[i];
       if (!s || disposed || !s.playAction) return;
-      s.playAction(String(actionKind), num(t01, 0));
+      s.playAction(beatOf(actionKind), num(t01, 0));
+    },
+    setBurner(on, power = 1) {
+      if (!disposed) set.setBurner?.(on, power);
+    },
+    setPower(on) {
+      if (!disposed) set.setPower?.(on);
+    },
+    setHeat(v) {
+      if (!disposed) set.setHeat?.(v);
+    },
+    playTend(tendKind, t01) {
+      if (!disposed) set.tend?.(String(tendKind), num(t01, 0));
     },
     update(dt, t) {
       if (disposed) return;
@@ -177,7 +210,7 @@ export function buildStationProp(kindId) {
       disposeObject(group);
     },
   };
-  for (const s of set.slots) s.set(null);
+  for (let i = 0; i < set.slots.length; i++) prop.setSlot(i, null);
   prop.update(0.016, 0);
   return prop;
 }

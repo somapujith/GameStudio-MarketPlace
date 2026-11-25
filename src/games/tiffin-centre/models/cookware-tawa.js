@@ -12,6 +12,7 @@ import { patchMaterial } from './shaders/patch.js';
 import { sharedGeo } from './util.js';
 import { disposeObject } from './util.js';
 import { smooth } from './fx.js';
+import { buildTendProp } from './cookware-tend.js';
 
 export const COUNTER_TOP = 0.82;
 export const TAWA_Z = -0.03;
@@ -363,8 +364,14 @@ export function buildTawaSet() {
   });
   const anchors = slots.map((s) => new Vector3(s.root.position.x, TAWA_Y + 0.02, s.root.position.z));
 
+  const flameParts = [...flameMats, archFlameMat];
+  // pan tending: the cotton pad with half an onion that wipes the iron
+  const wipe = buildTendProp('wipe', { y: TAWA_Y, z: TAWA_Z });
+  g.add(wipe.group);
   let lightT = 0;
-  return {
+  let burnerOn = true;
+  let flamePower = 1;
+  const api = {
     group: g,
     slots,
     anchors,
@@ -373,7 +380,7 @@ export function buildTawaSet() {
     update(dt, t) {
       for (const s of slots) s.update(dt, t);
       lightT = t;
-      if (light) light.intensity = 1.1 + 0.25 * Math.sin(t * 13) + 0.15 * Math.sin(t * 29) + 0.1 * Math.sin(t * 7.3);
+      if (light) light.intensity = burnerOn ? (1.1 + 0.25 * Math.sin(t * 13) + 0.15 * Math.sin(t * 29) + 0.1 * Math.sin(t * 7.3)) * (0.35 + 0.65 * flamePower) : 0;
     },
     setFlame(on) {
       rings.forEach((m) => (m.visible = on));
@@ -382,14 +389,38 @@ export function buildTawaSet() {
       frontGlow.visible = on;
       if (light) light.visible = on;
     },
+    /** The gas burner: flame, glow and the steam / smoke of the dishes on or off; `power` 0..1 shortens the flame (a low cylinder). */
+    setBurner(on, power = 1) {
+      burnerOn = !!on;
+      flamePower = on ? Math.max(0.05, Math.min(1, power)) : 0;
+      api.setFlame(burnerOn);
+      for (const m of flameParts) m.uniforms.uPower.value = flamePower;
+      for (const s of slots) {
+        s.steam.points.visible = burnerOn;
+        s.smoke.points.visible = burnerOn;
+      }
+    },
+    /** Heat and seasoning of the iron (ops-view.panView): the scorch colour, the cherry glow when too hot, the burnt-on crust. */
+    setHeat(v) {
+      const u = tw.uniforms;
+      u.uGunk.value = v && Number.isFinite(v.gunk) ? v.gunk : 0;
+      u.uHot.value = v && Number.isFinite(v.hot) ? v.hot : 0;
+      u.uHeat.value = 0.55 + (v && Number.isFinite(v.glow) ? v.glow : 0.5);
+    },
+    /** One beat of the wiping (kind 'wipe', t01 0..1). */
+    tend(kind, t01) {
+      if (kind === 'wipe') wipe.play(t01);
+    },
     dispose() {
       for (const s of slots) s.dispose();
       for (const o of owned) o.dispose();
+      wipe.dispose();
       light?.dispose?.();
       light?.removeFromParent();
       g.removeFromParent();
     },
   };
+  return api;
 }
 
 export { Color, Vector2, disposeObject, smooth, mapSet };

@@ -251,14 +251,29 @@ export function buildChaiSet() {
   const glassTool = buildTool('steel-glass', { fill: 0, drink: 'none', lod: 'rest' });
   const slots = SLOT_X.map((x, i) => new ChaiSlot(g, i, x, glassTool));
   const tools = [kettle, pot, ...spare, glassTool];
-  return {
+  let burnerOn = true;
+  let flamePower = 1;
+  const api = {
     group: g,
     slots,
     anchors: slots.map((s) => s.anchor.clone()),
     tools: { 'chai-kettle': kettle, 'chai-pot': pot },
     update(dt, t) {
       for (const s of slots) s.update(dt, t);
-      if (light) light.intensity = 0.45 + 0.1 * Math.sin(t * 15);
+      if (light) light.intensity = burnerOn ? (0.45 + 0.1 * Math.sin(t * 15)) * (0.35 + 0.65 * flamePower) : 0;
+    },
+    /** The gas ring: the blue flame, its glow and light and the steam of the glasses on or off; `power` 0..1 shortens the flame. */
+    setBurner(on, power = 1) {
+      burnerOn = !!on;
+      flamePower = on ? Math.max(0.05, Math.min(1, power)) : 0;
+      flame.visible = burnerOn;
+      glow.visible = burnerOn;
+      if (light) light.visible = burnerOn;
+      fm.uniforms.uPower.value = flamePower;
+      for (const s of slots) {
+        s.steam.points.visible = burnerOn;
+        s.smoke.points.visible = burnerOn;
+      }
     },
     dispose() {
       for (const s of slots) s.dispose();
@@ -268,6 +283,7 @@ export function buildChaiSet() {
       g.removeFromParent();
     },
   };
+  return api;
 }
 
 export { lpgGeometry };

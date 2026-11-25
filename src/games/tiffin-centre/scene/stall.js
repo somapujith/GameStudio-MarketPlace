@@ -7,13 +7,14 @@
 // Everything is merged per material (a handful of draw calls); lights, shafts and dust motes respond to the hour via `setLight`.
 import {
   AdditiveBlending, BoxGeometry, BufferGeometry, Color, DoubleSide, Float32BufferAttribute, Group, InstancedMesh, Matrix4, Mesh, MeshBasicMaterial,
-  Object3D, PlaneGeometry, PointLight, Points, PointsMaterial, Quaternion, ShaderMaterial, SphereGeometry, SRGBColorSpace, Vector3, Vector2,
+  CylinderGeometry, Object3D, PlaneGeometry, PointLight, Points, PointsMaterial, Quaternion, ShaderMaterial, SphereGeometry, SRGBColorSpace, Vector3, Vector2,
 } from 'three';
 import { LAYOUT, STATIONS, STATION_IDS } from '../../../../shared/tiffin-centre/catalog.js';
 import * as models from '../models/index.js';
 import { createKit, shade } from './kit.js';
 import { tubeFlicker } from './lighting.js';
 import { mulberry } from './textures.js';
+import { SHELF_BATTERS, SHELF_JARS, approach, stockOf, swapPose } from './ops-view.js';
 
 const srgb = (c, rgb, k = 1) => c.setRGB(rgb[0] * k, rgb[1] * k, rgb[2] * k, SRGBColorSpace);
 
@@ -244,6 +245,17 @@ export function createStall({ scene, art, tr, quality, onPropCreated }) {
     B.cyl(m, r * 0.88, r * 0.88, h * 0.72, 12, [x, y + h * 0.4, z]);
     B.cyl(M.steelDull, r * 1.02, r * 1.02, 0.025, 14, [x, y + h + 0.012, z]);
   };
+  // the jars of chutney, sambar, podi and masala: glass and lid are static, the contents are live meshes that sink as the stock drops (setShelf)
+  const JAR_COLOR = { coconut_chutney: '#e4eed8', sambar: '#c8601c', podi_ghee: '#a8482a', potato_masala: '#e2b324' };
+  const dynJars = [];
+  let dynN = 0;
+  const dynJar = (x, y, z, r = 0.075, h = 0.2) => {
+    const item = SHELF_JARS[dynN++];
+    B.cyl(M.glass, r, r, h, 14, [x, y + h / 2, z]);
+    B.cyl(M.steelDull, r * 1.02, r * 1.02, 0.025, 14, [x, y + h + 0.012, z]);
+    dynJars.push({ item, x, y, z, r, h, mesh: null, fill: -1 });
+  };
+  const nextIsDyn = () => dynN < SHELF_JARS.length;
   const dabba = (x, y, z, r = 0.09, h = 0.13) => {
     B.cyl(M.steelDull, r, r * 0.96, h, 12, [x, y + h / 2, z]);
     B.cyl(M.steelPlain, r * 1.02, r * 1.02, 0.02, 12, [x, y + h + 0.01, z]);
@@ -254,11 +266,15 @@ export function createStall({ scene, art, tr, quality, onPropCreated }) {
     const jm = [M.jarA, M.jarB, M.jarC, M.jarD][i % 4];
     const y0 = shelfYs[0] + 0.02;
     if (i % 3 === 0) carrier(shelfX, y0, z, 3 + (i % 2), 0.1);
-    else if (i % 3 === 1) jar(shelfX, y0, z, jm);
-    else dabba(shelfX, y0, z, 0.1, 0.14);
+    else if (i % 3 === 1) {
+      if (nextIsDyn()) dynJar(shelfX, y0, z);
+      else jar(shelfX, y0, z, jm);
+    } else dabba(shelfX, y0, z, 0.1, 0.14);
     const y1 = shelfYs[1] + 0.02;
-    if (i % 2 === 0) jar(shelfX - 0.02, y1, z + 0.12, [M.jarC, M.jarA, M.jarB][i % 3], 0.07, 0.24);
-    else carrier(shelfX, y1, z, 2, 0.095);
+    if (i % 2 === 0) {
+      if (nextIsDyn()) dynJar(shelfX - 0.02, y1, z + 0.12, 0.07, 0.24);
+      else jar(shelfX - 0.02, y1, z + 0.12, [M.jarC, M.jarA, M.jarB][i % 3], 0.07, 0.24);
+    } else carrier(shelfX, y1, z, 2, 0.095);
     const y2 = shelfYs[2] + 0.02;
     if (i % 3 !== 2) dabba(shelfX, y2, z, 0.085, 0.11);
     else B.box(M.newsprint, [0.28, 0.12, 0.2], [shelfX, y2 + 0.06, z], { rot: [0, 0.2, 0] });
@@ -284,11 +300,11 @@ export function createStall({ scene, art, tr, quality, onPropCreated }) {
   B.cyl(M.brass, 0.02, 0.014, 0.012, 8, [3.98, 1.973, -1.86]);
 
   // --- floor kit: bucket, LPG cylinders and hose, stool, crates, a mop ------------------------------------------------------------------------------
-  // steel bucket with a rope handle, beside the counter at the cook's left
-  B.cyl(M.steelPlain, 0.17, 0.13, 0.28, 16, [-3.55, 0.14, 0.15]);
-  B.torus(M.steelDull, 0.172, 0.01, 4, 16, [-3.55, 0.28, 0.15], { rot: [Math.PI / 2, 0, 0] });
-  B.torus(M.steelDark, 0.17, 0.006, 4, 12, [-3.55, 0.3, 0.15], { rot: [0, 0.6, 0], scale: [1, 1, 1] });
-  B.cyl(M.bluePlastic, 0.05, 0.04, 0.08, 10, [-3.28, 0.04, 0.3]);
+  // steel bucket with a rope handle, beside the counter at the cook's left (the gas stand has the spot at the end of the line now)
+  B.cyl(M.steelPlain, 0.17, 0.13, 0.28, 16, [-2.95, 0.14, 0.38]);
+  B.torus(M.steelDull, 0.172, 0.01, 4, 16, [-2.95, 0.28, 0.38], { rot: [Math.PI / 2, 0, 0] });
+  B.torus(M.steelDark, 0.17, 0.006, 4, 12, [-2.95, 0.3, 0.38], { rot: [0, 0.6, 0], scale: [1, 1, 1] });
+  B.cyl(M.bluePlastic, 0.05, 0.04, 0.08, 10, [-2.7, 0.04, 0.5]);
   // plastic crate of onions
   B.box(M.redPlastic, [0.5, 0.26, 0.36], [3.55, 0.13, 0.55], { rot: [0, 0.15, 0] });
   for (let i = 0; i < 9; i++) B.sph(M.jarA, 0.055, 8, 6, [3.4 + (i % 3) * 0.14, 0.3, 0.45 + Math.floor(i / 3) * 0.1], { scale: [1, 0.8, 1], color: i % 2 ? '#a0402a' : '#c2603a' });
@@ -298,15 +314,11 @@ export function createStall({ scene, art, tr, quality, onPropCreated }) {
   B.box(M.brick, [0.62, 0.34, 0.5], [4.05, 0.17, -0.35], { tile: 0.69 });
   B.box(M.brick, [0.62, 0.34, 0.5], [4.12, 0.51, -0.35], { tile: 0.69 });
   B.cyl(M.soot, 0.16, 0.16, 0.02, 12, [4.1, 0.69, -0.35]);
-  // two LPG cylinders and the red rubber hose running to the counter
-  B.cyl(M.lpg, 0.15, 0.15, 0.36, 14, [-3.9, 0.22, 1.0]);
-  B.sph(M.lpg, 0.15, 12, 6, [-3.9, 0.4, 1.0], { scale: [1, 0.55, 1] });
-  B.cyl(M.steelDark, 0.045, 0.05, 0.06, 8, [-3.9, 0.5, 1.0]);
-  B.cyl(M.lpg, 0.15, 0.15, 0.36, 14, [-3.58, 0.22, 1.2]);
-  B.sph(M.lpg, 0.15, 12, 6, [-3.58, 0.4, 1.2], { scale: [1, 0.55, 1] });
-  B.cyl(M.steelDark, 0.045, 0.05, 0.06, 8, [-3.58, 0.5, 1.2]);
-  B.tube(M.rubber, [[-3.9, 0.53, 1.0], [-3.95, 0.7, 0.6], [-3.9, 0.3, 0.1], [-3.4, 0.08, -0.2], [-3.1, 0.2, -0.6], [-2.95, 0.55, -0.62]], 0.011, 28, 6);
-  B.tube(M.redPlastic, [[-3.58, 0.53, 1.2], [-3.6, 0.9, 0.9], [-3.8, 0.9, 0.5]], 0.009, 12, 5);
+  // the gas stand: a scuffed rubber mat with a chain, the live cylinder is placed on it below; the rubber hose runs from its valve to the counter
+  const GS = LAYOUT.gas;
+  B.cyl(M.rubber, 0.24, 0.24, 0.016, 18, [GS.x, 0.008, GS.z], {});
+  B.torus(M.steelDark, 0.2, 0.006, 4, 16, [GS.x, 0.02, GS.z], { rot: [Math.PI / 2, 0, 0] });
+  B.tube(M.rubber, [[GS.x + 0.02, 0.6, GS.z - 0.04], [GS.x + 0.2, 0.52, GS.z - 0.16], [GS.x + 0.38, 0.12, GS.z - 0.32], [-3.15, 0.07, -0.18], [-3.05, 0.3, -0.5], [-2.95, 0.55, -0.62]], 0.011, 28, 6);
   // mop leaning on the right post
   B.rod(M.timber, [HW - 0.1, 0.02, 0.2], [HW - 0.15, 1.5, 0.43], 0.014, 5);
   B.cyl(M.cloth, 0.08, 0.1, 0.18, 8, [HW - 0.098, 0.1, 0.2], { color: '#b8b0a0' });
@@ -352,6 +364,9 @@ export function createStall({ scene, art, tr, quality, onPropCreated }) {
   const menuMesh = put(plane(1.5, 1.2), menuM, 0, 0, 0, menuGroup);
   menuMesh.rotation.y = Math.PI;
   menuMesh.castShadow = true;
+  // the same board read from the footpath side (customers see the struck-through, sold-out dishes too)
+  const menuFront = put(plane(1.5, 1.2), menuM, 0, 0, -0.032, menuGroup);
+  menuFront.rotation.y = 0;
   const mb = k.batch();
   mb.box(M.timber, [1.62, 0.06, 0.05], [0, 0.63, -0.02]);
   mb.box(M.timber, [1.62, 0.06, 0.05], [0, -0.63, -0.02]);
@@ -424,8 +439,8 @@ export function createStall({ scene, art, tr, quality, onPropCreated }) {
   };
   prop('tiffin-drum', 4.2, 0, 1.15);
   prop('tiffin-drum', 3.75, 0, 1.45, 0.5);
-  prop('batter-bucket', -3.2, 0, 1.4, 0.3);
-  prop('batter-bucket', -4.2, 0, -0.2, 0.8);
+  // the batter buckets: open, with a level and a sourness that follow the stock (setShelf)
+  const buckets = SHELF_BATTERS.map((item, i) => ({ item, p: prop('batter-bucket', [-3.2, -4.2, -4.1][i], 0, [1.4, -0.2, 2.0][i], [0.3, 0.8, 1.9][i], { dyn: true }), fill: -1, sour: -1 }));
   prop('plate-stack', 3.7, S.counterTop, -1.25, 0.4);
   prop('money-box', -4.05, S.counterTop, -1.2, 0.2);
   prop('stool', 4.3, 0, 0.6, 0.4);
@@ -483,6 +498,15 @@ export function createStall({ scene, art, tr, quality, onPropCreated }) {
     lampB.cyl(M.rubber, 0.017, 0.017, 0.06, 6, [p[0], p[1] - 0.03, p[2]]);
     lampB.cyl(M.brass, 0.022, 0.022, 0.035, 8, [p[0], p[1] - 0.075, p[2]]);
   }
+  // a bulb on a drop cord over the back counter, so the prep work is lit
+  {
+    const px = STATIONS.prep1.x;
+    const pz = STATIONS.prep1.z - 0.1;
+    lampB.rod(M.iron, [px, beamY(pz) - 0.07, pz], [px, 2.42, pz], 0.006, 4);
+    lampB.cyl(M.rubber, 0.017, 0.017, 0.06, 6, [px, 2.4, pz]);
+    lampB.cyl(M.brass, 0.022, 0.022, 0.035, 8, [px, 2.355, pz]);
+    bulbPos.push([px, 2.31, pz]);
+  }
   lampB.build(root, { cast: false });
   const bulbMat = T(new MeshBasicMaterial({ color: 0xffd890 }));
   const bulbs = new InstancedMesh(new SphereGeometry(0.036, 12, 10), bulbMat, bulbPos.length);
@@ -539,6 +563,15 @@ export function createStall({ scene, art, tr, quality, onPropCreated }) {
     root.add(tl);
     lights.push({ l: tl, base: 14, kind: 'tube' });
   }
+  // a local light over the back counter (the cook's bulbs are a long way from it); on only when the level has a prep counter
+  let prepLight = null;
+  if (quality.lights) {
+    prepLight = new PointLight(0xffb055, 0, 5.5, 2);
+    prepLight.position.set(STATIONS.prep1.x, 2.12, STATIONS.prep1.z - 0.35);
+    prepLight.visible = false;
+    root.add(prepLight);
+    lights.push({ l: prepLight, base: 9, kind: 'bulb' });
+  }
   // low tier: baked-looking pools of warm light on the counter instead of real lights
   const pools = [];
   if (!lights.length) {
@@ -548,6 +581,10 @@ export function createStall({ scene, art, tr, quality, onPropCreated }) {
       p.rotation.x = -Math.PI / 2;
       pools.push(p);
     }
+    const pp = put(plane(2.0, 1.5), poolM, STATIONS.prep1.x, 0.9, STATIONS.prep1.z - 0.1, root);
+    pp.rotation.x = -Math.PI / 2;
+    pp.visible = false;
+    pools.prep = pp;
     pools.mat = poolM;
   }
 
@@ -630,26 +667,267 @@ export function createStall({ scene, art, tr, quality, onPropCreated }) {
     }
     stations.clear();
     let n = 0;
-    for (const id of STATION_IDS) {
+    // the five cooking stations always take their places (a station the level does not list is tidy empty counter space); the back counter
+    // behind the cook exists only on levels that track stock, turned round so its front (and its Telugu plate) faces the cook
+    for (const id of [...STATION_IDS, ...(ids.includes('prep1') ? ['prep1'] : [])]) {
       const st = STATIONS[id];
+      const back = st.kind === 'prep';
       if (ids.includes(id)) {
         const prop = models.buildStationProp(st.kind);
         prop.group.position.set(st.x, 0, st.z);
+        if (back) prop.group.rotation.y = Math.PI;
         shade(prop.group);
         stationsGroup.add(prop.group);
-        stations.set(id, { id, kind: st.kind, group: prop.group, prop, anchors: prop.slotAnchors || [] });
+        stations.set(id, { id, kind: st.kind, group: prop.group, prop, anchors: prop.slotAnchors || [], rotY: back ? Math.PI : 0, front: back ? -1 : 1 });
         onPropCreated?.(id, prop);
       } else {
         const g = emptySlot(st, n++ % 2);
         shade(g);
         stationsGroup.add(g);
-        stations.set(id, { id, kind: st.kind, group: g, prop: null, anchors: [] });
+        stations.set(id, { id, kind: st.kind, group: g, prop: null, anchors: [], rotY: 0, front: 1 });
       }
     }
+    const hasPrep = stations.has('prep1');
+    if (prepLight) prepLight.visible = hasPrep;
+    if (pools.prep) pools.prep.visible = hasPrep;
+    prepCandle.visible = hasPrep;
+    opsDirty = true;
   }
 
   function setSpots(n) {
     spotMarks.forEach((m, i) => { m.visible = i < n; });
+  }
+
+  // --- the operations layer (docs/TIFFIN_CENTRE_PLAN.md section 3b) ---------------------------------------------------------------------------------------------
+  // the gas stand: the live cylinder on its mat at LAYOUT.gas, a full spare beside it; a change carries the old one away and the spare onto the stand
+  let opsDirty = true;
+  const ops = { burners: true, flame: 1, power: true, pans: new Map() };
+  const mkLpg = () => {
+    try {
+      return models.buildStreetProp?.('lpg') ?? null;
+    } catch {
+      return null;
+    }
+  };
+  const GSX = LAYOUT.gas.x;
+  const GSZ = LAYOUT.gas.z;
+  const SPARE = { x: -4.2, z: 0.7, ry: 2.5 };
+  const gasA = mkLpg();
+  const gasB = mkLpg();
+  for (const [g, x, z, ry] of [[gasA, GSX, GSZ, Math.PI], [gasB, SPARE.x, SPARE.z, SPARE.ry]]) {
+    if (!g?.group) continue;
+    g.group.position.set(x, 0, z);
+    g.group.rotation.y = ry;
+    shade(g.group);
+    root.add(g.group);
+  }
+  props.push(...[gasA, gasB].filter(Boolean)); // they animate (the leak flame) and are disposed with the other props
+  let standIsA = true;
+  let wasSwapping = false;
+  const sp = { out: 0, inn: 0 };
+  const gasNow = { frac: 1, low: false };
+  /** The cylinder of the view (ops-view.gasView): gauge, the hiss flame when low, the change (old one carried off, the spare brought in), burners on / off. */
+  function setGas(gv) {
+    const stand = standIsA ? gasA : gasB;
+    const spare = standIsA ? gasB : gasA;
+    const flame = gv.burners ? (gv.low ? 0.55 + 0.45 * Math.min(1, gv.frac / 0.2) : 1) : 0;
+    if (gv.burners !== ops.burners || flame !== ops.flame) {
+      ops.burners = gv.burners;
+      ops.flame = flame;
+      opsDirty = true;
+    }
+    gasNow.frac = gv.frac;
+    gasNow.low = gv.low;
+    if (gv.swapping) {
+      swapPose(gv.swapT, sp);
+      if (stand?.group) {
+        stand.group.visible = sp.out < 0.97;
+        stand.group.position.set(GSX - 1.7 * sp.out, 0.5 * Math.sin(Math.PI * Math.min(1, sp.out * 1.05)), GSZ + 0.5 * sp.out);
+        stand.group.rotation.set(0, Math.PI + sp.out * 1.2, -0.45 * Math.sin(Math.PI * sp.out));
+        stand.setLow?.(false);
+      }
+      if (spare?.group) {
+        spare.group.position.set(SPARE.x + (GSX - SPARE.x) * sp.inn, 0.45 * Math.sin(Math.PI * sp.inn), SPARE.z + (GSZ - SPARE.z) * sp.inn);
+        spare.group.rotation.set(0, SPARE.ry + (Math.PI - SPARE.ry) * sp.inn, 0.4 * Math.sin(Math.PI * sp.inn));
+        spare.setLevel?.(1);
+      }
+      wasSwapping = true;
+      return;
+    }
+    if (wasSwapping) {
+      // done: the spare is on the stand now; the old cylinder goes back to the spare spot (a fresh full one is brought, out of sight)
+      wasSwapping = false;
+      standIsA = !standIsA;
+    }
+    const st2 = standIsA ? gasA : gasB;
+    const sp2 = standIsA ? gasB : gasA;
+    if (st2?.group) {
+      st2.group.visible = true;
+      st2.group.position.set(GSX, 0, GSZ);
+      st2.group.rotation.set(0, Math.PI, 0);
+      st2.setLevel?.(gv.frac);
+      st2.setLow?.(gv.low);
+    }
+    if (sp2?.group) {
+      sp2.group.visible = true;
+      sp2.group.position.set(SPARE.x, 0, SPARE.z);
+      sp2.group.rotation.set(0, SPARE.ry, 0);
+      sp2.setLevel?.(1);
+      sp2.setLow?.(false);
+    }
+  }
+
+  /** The pan's condition (ops-view.panView) for a station: tawa / kadai colour and crust, the steamer's gauge. */
+  function setPan(id, view) {
+    ops.pans.set(id, view);
+    stations.get(id)?.prop?.setHeat?.(view);
+  }
+
+  // the shelf: batter buckets (level + sourness) and the jars of chutney, sambar, podi and masala (contents sink with the stock)
+  const jarMats = {};
+  for (const j of dynJars) {
+    if (!jarMats[j.item]) jarMats[j.item] = std(JAR_COLOR[j.item] || '#dddddd', { roughness: 0.55 });
+    j.mesh = new Mesh(k.geo('jarfill' + j.r, () => new CylinderGeometry(j.r * 0.88, j.r * 0.88, 1, 12).translate(0, 0.5, 0)), jarMats[j.item]);
+    root.add(j.mesh);
+  }
+  const stk = { fill: 0, sour: 0, isSour: false };
+  /** The state's stock on the shelves. Without the operations layer (the tutorial) everything is full. */
+  function setShelf(state) {
+    const live = !!state?.cfg?.stock && !!state?.stock;
+    for (const b of buckets) {
+      const v = live ? stockOf(state, b.item, stk) : null;
+      const fill = live ? (v ? stk.fill : 0) : 0.85;
+      const sour = live && v ? stk.sour : 0;
+      if (Math.abs(fill - b.fill) > 0.004 || Math.abs(sour - b.sour) > 0.004) {
+        b.fill = fill;
+        b.sour = sour;
+        b.p?.setFill?.(fill, sour);
+      }
+    }
+    for (const j of dynJars) {
+      const v = live ? stockOf(state, j.item, stk) : null;
+      const fill = live ? (v ? stk.fill : 0) : 0.8;
+      if (Math.abs(fill - j.fill) > 0.004) {
+        j.fill = fill;
+        const hh = j.h * 0.82 * fill;
+        j.mesh.visible = fill > 0.001;
+        j.mesh.scale.y = Math.max(0.0001, hh);
+        j.mesh.position.set(j.x, j.y + 0.012, j.z);
+      }
+    }
+  }
+
+  // power: a table fan on the floor at the cook's right and a bottle cooler at the back, both of which stop in a cut; a candle on the counter end and the
+  // shrine diya are the only flames that matter then
+  const fan = new Group();
+  fan.position.set(3.3, 0, 1.0);
+  {
+    const fb = k.batch();
+    fb.cyl(M.steelDark, 0.2, 0.22, 0.03, 16, [0, 0.015, 0]);
+    fb.cyl(M.steelDull, 0.022, 0.022, 0.95, 8, [0, 0.5, 0]);
+    fb.cyl(M.steelDark, 0.07, 0.07, 0.16, 12, [0, 1.0, 0], { rot: [Math.PI / 2, 0, 0] });
+    fb.torus(M.steelDull, 0.2, 0.005, 4, 22, [0, 1.0, 0.1], {});
+    fb.torus(M.steelDull, 0.14, 0.004, 4, 20, [0, 1.0, 0.1], {});
+    fb.torus(M.steelDull, 0.07, 0.004, 4, 16, [0, 1.0, 0.1], {});
+    fb.build(fan);
+  }
+  const blades = new Group();
+  blades.position.set(0, 1.0, 0.1);
+  const bladeM = std('#5c7ea8', { roughness: 0.5, side: DoubleSide });
+  for (let b = 0; b < 3; b++) {
+    const bl = put(plane(0.17, 0.07), bladeM, 0.085, 0, 0, null);
+    bl.rotation.set(0.5, 0, 0);
+    const piv = new Group();
+    piv.rotation.z = (b / 3) * Math.PI * 2;
+    piv.add(bl);
+    blades.add(piv);
+  }
+  fan.add(blades);
+  root.add(fan);
+  shade(fan);
+
+  const cooler = new Group();
+  cooler.position.set(2.55, 0, 2.2);
+  const coolerGlowM = std('#8fb8c4', { roughness: 0.3, emissive: '#bfe6ff', emissiveIntensity: 0.3 });
+  const coolerLedM = std('#2fdc6a', { roughness: 0.4, emissive: '#2fdc6a', emissiveIntensity: 2 });
+  {
+    const cb = k.batch();
+    cb.box(M.bluePlastic, [0.66, 1.0, 0.56], [0, 0.5, 0], {});
+    cb.box(M.steelDark, [0.62, 0.04, 0.5], [0, 1.02, 0], {});
+    for (let i = 0; i < 3; i++) cb.box(M.whitePlastic, [0.5, 0.012, 0.36], [0, 0.3 + i * 0.28, 0], {});
+    const cols = [M.jarA, M.jarB, M.jarC, M.redPlastic];
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 5; c++) cb.cyl(cols[(r + c) % 4], 0.034, 0.034, 0.16, 8, [-0.2 + c * 0.1, 0.38 + r * 0.28, 0], {});
+    cb.build(cooler);
+  }
+  const door = put(plane(0.56, 0.82), coolerGlowM, 0, 0.5, -0.285, cooler);
+  door.rotation.y = Math.PI;
+  put(plane(0.56, 0.82), std('#cfe6ea', { roughness: 0.06, transparent: true, opacity: 0.18, depthWrite: false, side: DoubleSide }), 0, 0.5, -0.29, cooler).rotation.y = Math.PI;
+  put(box(0.025, 0.025, 0.01), coolerLedM, 0.26, 0.97, -0.284, cooler);
+  root.add(cooler);
+  shade(cooler);
+
+  // a candle on the counter end and the shrine diya: flames + glow + (on the lit tiers) a real warm light, all scaled by how far the mains are cut
+  const candleAt = [[-3.55, S.counterTop, -0.8], [3.98, 1.973, -1.86]];
+  const candleM = std('#efe6cc', { roughness: 0.8 });
+  put(cyl(0.017, 0.019, 0.1, 8), candleM, candleAt[0][0], S.counterTop + 0.05, candleAt[0][2], root);
+  put(box(0.1, 0.012, 0.1), M.steelDull, candleAt[0][0], S.counterTop + 0.006, candleAt[0][2], root);
+  const flameM = T(new MeshBasicMaterial({ color: 0xffc060, toneMapped: false }));
+  const candleFlames = candleAt.map(([x, y, z], i) => {
+    const f = new Mesh(k.geo('flame', () => new SphereGeometry(0.011, 8, 6).scale(1, 2.0, 1)), flameM);
+    f.position.set(x, y + (i ? 0.02 : 0.115), z);
+    f.visible = false;
+    root.add(f);
+    return f;
+  });
+  const candleGeo = T(new BufferGeometry());
+  candleGeo.setAttribute('position', new Float32BufferAttribute(candleAt.map(([x, y, z], i) => [x, y + (i ? 0.03 : 0.12), z]).flat(), 3));
+  const candleGlowM = T(new PointsMaterial({ map: glowTex, size: 0.55, transparent: true, depthWrite: false, blending: AdditiveBlending, color: 0xff9a40, opacity: 0, fog: false }));
+  const candleGlow = new Points(candleGeo, candleGlowM);
+  candleGlow.frustumCulled = false;
+  root.add(candleGlow);
+  let candleLight = null;
+  if (quality.lights) {
+    candleLight = new PointLight(0xff9a3a, 0, 4.5, 2);
+    candleLight.position.set(candleAt[0][0] + 0.2, S.counterTop + 0.45, candleAt[0][2] + 0.3);
+    root.add(candleLight);
+  }
+  // a second candle on the back counter, so the prep work is not in the dark in a cut (there only when the level has that counter)
+  const prepCandle = new Group();
+  prepCandle.visible = false;
+  root.add(prepCandle);
+  const pcx = STATIONS.prep1.x + 0.52;
+  const pcz = STATIONS.prep1.z - 0.18;
+  put(cyl(0.017, 0.019, 0.1, 8), candleM, pcx, S.counterTop + 0.05, pcz, prepCandle);
+  put(box(0.1, 0.012, 0.1), M.steelDull, pcx, S.counterTop + 0.006, pcz, prepCandle);
+  const prepFlame = new Mesh(k.geo('flame', () => new SphereGeometry(0.011, 8, 6).scale(1, 2.0, 1)), flameM);
+  prepFlame.position.set(pcx, S.counterTop + 0.115, pcz);
+  prepFlame.visible = false;
+  prepCandle.add(prepFlame);
+  const prepGlowG = T(new BufferGeometry());
+  prepGlowG.setAttribute('position', new Float32BufferAttribute([pcx, S.counterTop + 0.12, pcz], 3));
+  const prepGlow = new Points(prepGlowG, candleGlowM);
+  prepGlow.frustumCulled = false;
+  prepCandle.add(prepGlow);
+  let prepCandleLight = null;
+  if (quality.lights) {
+    prepCandleLight = new PointLight(0xff9a3a, 0, 4, 2);
+    prepCandleLight.position.set(pcx - 0.25, S.counterTop + 0.5, pcz - 0.1);
+    prepCandle.add(prepCandleLight);
+  }
+  let grid = 1;
+  let fanSpin = 0;
+  let fanRate = 1;
+
+  // re-apply what the stall knows about the operations layer to freshly built station props
+  function applyOps() {
+    for (const s of stations.values()) {
+      if (!s.prop) continue;
+      s.prop.setBurner?.(ops.burners, ops.flame);
+      s.prop.setPower?.(ops.power);
+      const pv = ops.pans.get(s.id);
+      if (pv) s.prop.setHeat?.(pv);
+    }
+    opsDirty = false;
   }
 
   // --- per-frame light response ------------------------------------------------------------------------------------------------------------------------------
@@ -668,6 +946,27 @@ export function createStall({ scene, art, tr, quality, onPropCreated }) {
     menuM.emissiveIntensity = 0.22 * L.neon;
     for (const lt of lights) lt.l.intensity = lt.kind === 'tube' ? lt.base * flick : lt.base * L.bulb * (0.97 + 0.03 * Math.sin(t * 7.3 + lt.l.position.x));
     if (pools.mat) pools.mat.opacity = 0.34 * L.bulb;
+    // the mains: a power cut (L.grid < 1) stops the fan and the cooler's light and lights the candle and the diya
+    grid = L.grid ?? 1;
+    const cut = 1 - grid;
+    const powered = grid > 0.5;
+    if (powered !== ops.power) {
+      ops.power = powered;
+      opsDirty = true;
+    }
+    coolerGlowM.emissiveIntensity = (post ? 1.5 : 1.0) * (0.22 + 0.78 * L.night) * grid;
+    coolerLedM.emissiveIntensity = 2 * grid;
+    const flick2 = 0.82 + 0.18 * Math.sin(t * 13.1) * Math.sin(t * 5.3 + 1);
+    candleGlowM.opacity = (post ? 0.5 : 0.8) * cut * flick2;
+    for (let i = 0; i < candleFlames.length; i++) {
+      candleFlames[i].visible = cut > 0.05;
+      candleFlames[i].scale.set(1, 0.85 + 0.3 * Math.sin(t * (11 + i * 3.7)), 1);
+    }
+    flameM.color.setRGB(1, 0.72, 0.34, SRGBColorSpace).multiplyScalar(post ? 3 : 1.2);
+    if (candleLight) candleLight.intensity = 6.5 * cut * flick2;
+    prepFlame.visible = cut > 0.05;
+    prepFlame.scale.set(1, 0.85 + 0.3 * Math.sin(t * 12.3 + 1), 1);
+    if (prepCandleLight) prepCandleLight.intensity = 5 * cut * flick2;
     // shafts follow the key light; only when it is a low warm sun (shaft > 0)
     const s = L.shaft;
     shaftU.uStrength.value = s * 0.28;
@@ -689,6 +988,12 @@ export function createStall({ scene, art, tr, quality, onPropCreated }) {
 
   const posAttr = dustGeo.attributes.position;
   function update(dt, t) {
+    if (opsDirty) applyOps();
+    // the fan runs up and winds down (inertia), oscillating on its pole
+    fanRate = approach(fanRate, grid > 0.5 ? 1 : 0, dt, 0.9, 2.6);
+    fanSpin += dt * 26 * fanRate;
+    blades.rotation.z = -fanSpin;
+    blades.parent.rotation.y = Math.sin(t * 0.35) * 0.55 * fanRate + 0.35;
     for (const s of stations.values()) s.prop?.update?.(dt, t);
     for (const p of props) p.update?.(dt, t);
     bulbs.rotation.z = Math.sin(t * 0.9) * 0.003;
@@ -718,13 +1023,19 @@ export function createStall({ scene, art, tr, quality, onPropCreated }) {
   }
   let binHop = 0;
 
-  /** World position of slot i of a station (anchor in the prop's local space + the prop's place). */
+  /** World position of slot i of a station (anchor in the prop's local space, turned with the prop, + the prop's place). */
   function slotWorld(stationId, i, out) {
     const s = stations.get(stationId);
     if (!s) return null;
     const a = s.anchors[i];
-    if (a) out.copy(a).add(s.group.position);
-    else out.set(s.group.position.x - 0.4 + i * 0.4, 1.1, s.group.position.z);
+    if (a) {
+      if (s.rotY) {
+        const c = Math.cos(s.rotY);
+        const sn = Math.sin(s.rotY);
+        out.set(a.x * c + a.z * sn, a.y, -a.x * sn + a.z * c);
+      } else out.copy(a);
+      out.add(s.group.position);
+    } else out.set(s.group.position.x - 0.4 + i * 0.4, 1.1, s.group.position.z);
     return out;
   }
 
@@ -741,7 +1052,8 @@ export function createStall({ scene, art, tr, quality, onPropCreated }) {
   void Vector2;
   void Mesh;
   return {
-    root, stations, binPos: new Vector3(LAYOUT.bin.x, 0, LAYOUT.bin.z), setStations, setSpots, setMenu: (m) => menu.set(m), setLight, update, slotWorld,
+    root, stations, binPos: new Vector3(LAYOUT.bin.x, 0, LAYOUT.bin.z), setStations, setSpots, setMenu: (m, off) => menu.set(m, off), setLight, update, slotWorld,
+    setGas, setPan, setShelf, gasNow,
     bumpBin: () => { binHop = 1; }, redrawText: () => { art.redrawAll?.(); menu.tex.userData.redraw?.(); }, murMat: null,
     counterY: S.counterTop, roofGaps, dispose,
   };

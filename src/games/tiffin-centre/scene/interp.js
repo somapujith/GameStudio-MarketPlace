@@ -51,18 +51,36 @@ export function payFrac(c, frac = 0, cfg = null) {
  * What a station slot looks like at fractional tick `tickF` (= state.tick + frac).
  * cooking: progress 0..1 to ready; ready: progress 1 and burnFrac 0..1 towards burning; burnt: both 1.
  */
-export function slotVisual(slot, tickF) {
-  if (!slot || slot.st === 'empty') return { st: 'empty', dish: null, progress: 0, burnFrac: 0, age: 0 };
+export function slotVisual(slot, tickF, out = null) {
+  const o = out || {};
+  o.item = null;
+  o.flaw = '';
+  if (!slot || slot.st === 'empty') {
+    o.st = 'empty'; o.dish = null; o.progress = 0; o.burnFrac = 0; o.age = 0;
+    return o;
+  }
+  // the operations layer: a back-counter job names its `item` (batter, sambar ...), a flawed dish carries `fl` bits (1 stuck, 2 torn, 4 sour)
+  o.item = slot.item ?? null;
+  o.flaw = flawOf(slot.fl);
   if (slot.st === 'cooking') {
     const span = Math.max(1, (slot.readyAt ?? 0) - (slot.t0 ?? 0));
-    return { st: 'cooking', dish: slot.dish, progress: clamp((tickF - (slot.t0 ?? 0)) / span, 0, 1), burnFrac: 0, age: 0 };
+    o.st = 'cooking'; o.dish = slot.dish ?? null; o.progress = clamp((tickF - (slot.t0 ?? 0)) / span, 0, 1); o.burnFrac = 0; o.age = 0;
+    return o;
   }
   if (slot.st === 'ready') {
     const span = Math.max(1, (slot.burnAt ?? 0) - (slot.readyAt ?? 0));
     const age = Math.max(0, tickF - (slot.readyAt ?? 0));
-    return { st: 'ready', dish: slot.dish, progress: 1, burnFrac: clamp(age / span, 0, 1), age };
+    o.st = 'ready'; o.dish = slot.dish ?? null; o.progress = 1; o.burnFrac = slot.item ? 0 : clamp(age / span, 0, 1); o.age = age;
+    return o;
   }
-  return { st: 'burnt', dish: slot.dish, progress: 1, burnFrac: 1, age: 0 };
+  o.st = 'burnt'; o.dish = slot.dish ?? null; o.progress = 1; o.burnFrac = 1; o.age = 0;
+  return o;
+}
+
+/** The flaw a dish came out with, from the slot's `fl` bits (1 stuck, 2 torn, 4 sour batter): 'torn' | 'stuck' | 'sour' | ''. */
+export function flawOf(fl) {
+  const f = Number(fl) | 0;
+  return f & 2 ? 'torn' : f & 1 ? 'stuck' : f & 4 ? 'sour' : '';
 }
 
 /** Mood name for a customer. */
@@ -152,6 +170,16 @@ export function workForEvent(ev) {
       return { by: ev.by, kind: 'collect', verb: 'collect' };
     case 'discard':
       return { by: ev.by, kind: 'discard', verb: 'discard' };
+    // the operations layer: avatars reuse the closest existing work pose (the ladle for the back counter, the pan's own for tending)
+    case 'prep-start':
+    case 'prep-collect':
+      return { by: ev.by, kind: 'tawa', station: ev.station, verb: ev.type === 'prep-start' ? 'prep' : 'take' };
+    case 'tend': {
+      const kind = STATIONS[ev.station]?.kind;
+      return kind ? { by: ev.by, kind, station: ev.station, verb: 'tend' } : null;
+    }
+    case 'gas-swap':
+      return ev.phase === 'start' ? { by: ev.by, kind: 'collect', verb: 'swap' } : null;
     default:
       return null;
   }
@@ -160,6 +188,11 @@ export function workForEvent(ev) {
 // --- first-person work: event -> a short sequence of viewmodel actions (kind, seconds). The SAME sequence drives the station prop's
 // playAction(slot, kind, t01), so the hands and the stall move together. Shared constant arrays: nothing is allocated per event.
 export const SEQ = {
+  // the operations layer reuses the twelve hands actions: pouring batter in the grinder looks like filling, the back counter like a take
+  prep: [['tawa-fill', 0.3], ['tawa-spread', 0.35]],
+  prepTake: [['tawa-take', 0.3], ['collect', 0.35]],
+  tendWipe: [['tawa-oil', 0.25], ['tawa-spread', 0.4]],
+  swapGas: [['discard', 0.3], ['collect', 0.35]],
   tawaCook: [['tawa-oil', 0.22], ['tawa-pour', 0.22], ['tawa-spread', 0.3]],
   tawaFlipTake: [['tawa-flip', 0.3], ['tawa-take', 0.3]],
   tawaFillTake: [['tawa-fill', 0.3], ['tawa-take', 0.3]],
@@ -188,6 +221,16 @@ export function actionSeqFor(ev) {
     }
     case 'burnt-cleared':
       return SEQ.discard;
+    case 'prep-start':
+      return STATIONS[ev.station]?.kind === 'prep' ? SEQ.prep : null;
+    case 'prep-collect':
+      return STATIONS[ev.station]?.kind === 'prep' ? SEQ.prepTake : null;
+    case 'tend': {
+      const k = STATIONS[ev.station]?.kind;
+      return k === 'tawa' ? SEQ.tendWipe : k === 'kadai' ? SEQ.kadai : k === 'steamer' ? SEQ.steamer : null;
+    }
+    case 'gas-swap':
+      return ev.phase === 'start' ? SEQ.swapGas : null;
     case 'serve':
       return SEQ.serve;
     case 'collect':

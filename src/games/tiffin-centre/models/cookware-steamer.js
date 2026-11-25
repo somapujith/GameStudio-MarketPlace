@@ -11,6 +11,7 @@ import { sharedGeo } from './util.js';
 import { normSlot } from './food-dosa.js';
 import { clamp01 } from './food-util.js';
 import { COUNTER_TOP } from './cookware-tawa.js';
+import { buildTendProp, buildWaterGauge } from './cookware-tend.js';
 
 const V3 = (x, y, z) => new Vector3(x, y, z);
 export const POT_R = 0.16;
@@ -155,16 +156,55 @@ export function buildSteamerSet() {
   const g = new Group();
   g.name = 'steamer-set';
   const slots = SLOT_X.map((x, i) => new SteamerSlot(g, i, x));
-  return {
+  // a sight gauge on the counter front (the water reservoir) and the jug that tops it up
+  const gauge = buildWaterGauge();
+  gauge.group.position.set(-0.6, COUNTER_TOP - 0.2, 0.452);
+  g.add(gauge.group);
+  const jug = buildTendProp('water', { y: COUNTER_TOP + TIER_TOP, z: SLOT_Z });
+  g.add(jug.group);
+  let gasOn = true;
+  let powerOn = true;
+  let dry = false;
+  const applySteam = () => {
+    const steaming = gasOn && powerOn && !dry;
+    for (const s of slots) {
+      s.steam.points.visible = steaming;
+      s.smoke.points.visible = steaming;
+    }
+  };
+  gauge.set(1);
+  const api = {
     group: g,
     slots,
     anchors: slots.map((s) => s.anchor.clone()),
     update(dt, t) {
       for (const s of slots) s.update(dt, t);
     },
+    /** The steamer is off (the cylinder is empty or being changed, or the power is cut): no steam, no smoke. */
+    setBurner(b) {
+      gasOn = !!b;
+      applySteam();
+    },
+    setPower(b) {
+      powerOn = !!b;
+      applySteam();
+    },
+    /** `water` 0..1 of the reservoir: the sight gauge; a dry steamer makes no steam. */
+    setHeat(v) {
+      const w = v && Number.isFinite(v.water) ? v.water : 1;
+      gauge.set(w);
+      dry = !!(v && v.dry);
+      applySteam();
+    },
+    tend(kind, t01) {
+      if (kind === 'water') jug.play(t01);
+    },
     dispose() {
       for (const s of slots) s.dispose();
+      gauge.dispose();
+      jug.dispose();
       g.removeFromParent();
     },
   };
+  return api;
 }

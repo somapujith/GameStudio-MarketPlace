@@ -136,7 +136,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     const now = performance.now();
     const st = sync.state;
     const hour = hourOverride ?? (st ? hourAt(st, tickFrac(now, lastTickAt)) : DEFAULT_HOUR);
-    lightingAt(hour, L);
+    lightingAt(hour, L, sync.world); // + the overcast / wet look of the rain event and the power cut (smoothed levels from the sync layer)
     lightApply.apply(L);
     stall.setLight(L, t);
     street.setLight(L);
@@ -312,6 +312,8 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
       fx.setReduced(reduced);
       sync.setReducedMotion(reduced);
     },
+    /** fn({ type: 'power' | 'generator', on }) for the audio: the power cut itself, and the neighbour's generator a moment later. Returns an unsubscribe. */
+    onCue: (fn) => sync.onCue(fn),
     /** A customer starts speaking for `ms` (their mouth and head move). */
     speak: (id, ms, intensity) => sync.speak(id, ms, intensity),
     setSpeaking: (id, ms, intensity) => sync.speak(id, ms, intensity),
@@ -383,6 +385,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
       setHour: (h) => { hourOverride = h; },
       get gfx() { return gfx; },
       stall,
+      street,
       sync,
       fx,
       rig,

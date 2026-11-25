@@ -5,7 +5,8 @@ import { LAYOUT } from '../../../../shared/tiffin-centre/catalog.js';
 import { HOME_X } from '../../../../shared/tiffin-centre/movement.js';
 import {
   REST_PITCH, MANUAL_HOLD_S, MANUAL_RELAX, FOLLOW_RATE, LOOK_RATE, PIN_RATE, BREATH,
-  viewFov, lensShift, clampLook, aimAt, autoGoal, stepLook, addManual, advancePhase, walkBob, speed01Of, damp, shakeAngles, VIEW,
+  viewFov, lensShift, clampLook, aimAt, autoGoal, stepLook, addManual, advancePhase, walkBob, speed01Of, damp, shakeAngles, VIEW, VIEW_TURN,
+  turnYaw, turnAmount, TURN_SPEED, TURN_ACCEL,
 } from './camera.js';
 
 export function createCameraRig(camera, { reducedMotion = false } = {}) {
@@ -27,6 +28,9 @@ export function createCameraRig(camera, { reducedMotion = false } = {}) {
   let autoOn = false;
   let pinnedOn = false;
   let viewmodelOn = true;
+  let turn = 0; // 0..1: how far round the body is turned (see place())
+  let yawVel = 0; // rad/s while the head swings round (see update)
+  let wasWide = false;
   const look = { yaw: 0, pitch: REST_PITCH };
   const prevLook = { yaw: 0, pitch: REST_PITCH };
   const manual = { yaw: 0, pitch: 0 };
@@ -63,8 +67,12 @@ export function createCameraRig(camera, { reducedMotion = false } = {}) {
   refit();
 
   function place() {
-    camera.position.set(eyeX + bob.x, LAYOUT.eyeHeight + bob.y, LAYOUT.cookZ);
-    camera.rotation.set(look.pitch + sh.pitch, -(look.yaw + sh.yaw), bob.roll + sh.roll, 'YXZ');
+    // turned round to the back counter / the gas stand: the shoulders come round with the head (a small lean back, a dip, the shoulder line tilts)
+    const tn = reduced ? turnAmount(look.yaw) * 0.4 : turnAmount(look.yaw);
+    const side = look.yaw < 0 ? -1 : 1;
+    turn = tn;
+    camera.position.set(eyeX + bob.x - side * 0.05 * tn, LAYOUT.eyeHeight + bob.y - 0.045 * tn, LAYOUT.cookZ + 0.07 * tn);
+    camera.rotation.set(look.pitch + sh.pitch, -(look.yaw + sh.yaw), bob.roll + sh.roll + side * 0.05 * tn, 'YXZ');
     camera.updateMatrixWorld();
   }
 
@@ -129,6 +137,8 @@ export function createCameraRig(camera, { reducedMotion = false } = {}) {
       look.pitch = REST_PITCH;
       prevLook.yaw = look.yaw;
       prevLook.pitch = look.pitch;
+      yawVel = 0;
+      wasWide = false;
       snap = true;
     },
     getLook(out = { yaw: 0, pitch: 0 }) {
@@ -174,7 +184,21 @@ export function createCameraRig(camera, { reducedMotion = false } = {}) {
       goalFor(goal);
       goal.yaw += manual.yaw;
       goal.pitch += manual.pitch;
-      stepLook(look, goal, pinnedOn ? PIN_RATE : LOOK_RATE, d, VIEW);
+      // turning round (the back counter, the gas stand) is a swing of the whole body, not a glance: its speed ramps up and is capped, so it eases in and out
+      const wide = Math.abs(goal.yaw) > VIEW.yawMax || Math.abs(look.yaw) > VIEW.yawMax;
+      if (wide) {
+        if (!wasWide && d > 1e-5) yawVel = (look.yaw - prevLook.yaw) / d;
+        const rate = pinnedOn ? PIN_RATE : LOOK_RATE;
+        const goalYaw = Math.max(-VIEW_TURN.yawMax, Math.min(VIEW_TURN.yawMax, goal.yaw));
+        const want = Math.max(-TURN_SPEED, Math.min(TURN_SPEED, (goalYaw - look.yaw) * rate * 0.8));
+        yawVel += Math.max(-TURN_ACCEL * d, Math.min(TURN_ACCEL * d, want - yawVel));
+        look.yaw = Math.max(-VIEW_TURN.yawMax, Math.min(VIEW_TURN.yawMax, look.yaw + yawVel * d));
+        look.pitch = damp(look.pitch, Math.max(VIEW.pitchMin, Math.min(VIEW.pitchMax, goal.pitch)), rate, d);
+      } else {
+        stepLook(look, goal, pinnedOn ? PIN_RATE : LOOK_RATE, d, VIEW_TURN);
+        yawVel = 0;
+      }
+      wasWide = wide;
       delta.yaw = look.yaw - prevLook.yaw;
       delta.pitch = look.pitch - prevLook.pitch;
       prevLook.yaw = look.yaw;
@@ -200,17 +224,23 @@ export function createCameraRig(camera, { reducedMotion = false } = {}) {
     get lensShift() {
       return shift;
     },
+    /** 0..1: how far round the body is turned (looking at the back counter / the gas stand). */
+    get turn() {
+      return turn;
+    },
   };
 
   /** The head's goal WITHOUT the manual offset, written into `out`. */
   function goalFor(out) {
-    if (pinnedOn) aimAt(eyeX, LAYOUT.eyeHeight, LAYOUT.cookZ, pin.x, pin.y, pin.z, out);
-    else if (autoOn) autoGoal(eyeX, autoPt, out);
+    if (pinnedOn) {
+      aimAt(eyeX, LAYOUT.eyeHeight, LAYOUT.cookZ, pin.x, pin.y, pin.z, out);
+      out.yaw = turnYaw(out.yaw, look.yaw);
+    } else if (autoOn) autoGoal(eyeX, autoPt, out, look.yaw);
     else {
       out.yaw = 0;
       out.pitch = REST_PITCH;
     }
-    return clampLook(out);
+    return clampLook(out, VIEW_TURN);
   }
   return rig;
 }

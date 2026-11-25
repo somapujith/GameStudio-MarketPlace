@@ -92,6 +92,7 @@ export function makeSigns(T, { canvasTexture, mulberry }) {
   // --- menu board (painted hardboard, chalk-white names and yellow prices) ---------------------------------------------------------------------
   const menuBoard = () => {
     let items = [];
+    let off = []; // the dishes taken off the board (sold out): struck through in red chalk
     const rnd = mulberry(5);
     const tex = track(canvasTexture(512, 400, (g, w, h) => {
       g.fillStyle = '#1a3a2e';
@@ -125,13 +126,31 @@ export function makeSigns(T, { canvasTexture, mulberry }) {
         const x0 = two ? 32 + col * 236 : 44;
         const x1 = two ? x0 + 206 : w - 44;
         const y = 122 + row * rowH;
+        const gone = off.includes(id);
         g.textAlign = 'left';
-        g.fillStyle = '#fff4dc';
+        g.fillStyle = gone ? 'rgba(255,244,220,0.45)' : '#fff4dc';
         g.font = `700 ${two ? 19 : 25}px ${FONT_UI}`;
-        g.fillText(d.name.replace(/ \(.*\)/, ''), x0, y);
+        const label = d.name.replace(/ \(.*\)/, '');
+        g.fillText(label, x0, y);
         g.textAlign = 'right';
-        g.fillStyle = '#ffd34d';
+        g.fillStyle = gone ? 'rgba(255,211,77,0.4)' : '#ffd34d';
         g.fillText(`₹${d.price}`, x1, y);
+        if (gone) {
+          // a hand-drawn red chalk strike through the whole line, and SOLD OUT in the margin
+          const sz = two ? 19 : 25;
+          g.strokeStyle = '#ff5a48';
+          g.lineWidth = 4;
+          g.lineCap = 'round';
+          g.beginPath();
+          g.moveTo(x0 - 6, y - sz * 0.32);
+          g.lineTo(x0 + (x1 - x0) * 0.5, y - sz * 0.38);
+          g.lineTo(x1 + 4, y - sz * 0.3);
+          g.stroke();
+          g.font = `900 ${two ? 12 : 15}px ${FONT_UI}`;
+          g.fillStyle = '#ff7a68';
+          g.textAlign = 'center';
+          g.fillText('SOLD OUT', x0 + (x1 - x0) * 0.5, y - sz * 0.62);
+        }
         g.strokeStyle = 'rgba(255,255,255,0.18)';
         g.setLineDash([3, 5]);
         g.beginPath();
@@ -143,10 +162,12 @@ export function makeSigns(T, { canvasTexture, mulberry }) {
     }, { anisotropy: 8 }));
     return {
       tex,
-      set(ids) {
+      set(ids, offIds) {
         const next = (ids || []).join(',');
-        if (next === items.join(',')) return;
+        const nextOff = (offIds || []).join(',');
+        if (next === items.join(',') && nextOff === off.join(',')) return;
         items = ids || [];
+        off = offIds || [];
         tex.userData.redraw();
       },
     };
@@ -521,7 +542,7 @@ export function makeSigns(T, { canvasTexture, mulberry }) {
 
   // --- ground decals (alpha) -----------------------------------------------------------------------------------------------------------------
   const decal = (kind) => {
-    const sizes = { pothole: [256, 256], patch: [256, 128], stain: [256, 256], kolam: [256, 256], zebra: [256, 256], dash: [256, 64], litter: [256, 128], puddle: [256, 128], water: [256, 256], leaf: [128, 128], shadow: [128, 128] };
+    const sizes = { pothole: [256, 256], patch: [256, 128], stain: [256, 256], kolam: [256, 256], zebra: [256, 256], dash: [256, 64], litter: [256, 128], puddle: [256, 128], water: [256, 256], leaf: [128, 128], shadow: [128, 128], rangoli: [256, 256], ripple: [128, 128], tv: [256, 144] };
     const [dw, dh] = sizes[kind] || [128, 128];
     return track(canvasTexture(dw, dh, (g, w, h) => {
       const r = mulberry(1000 + kind.length * 7);
@@ -583,6 +604,60 @@ export function makeSigns(T, { canvasTexture, mulberry }) {
         g.stroke();
         g.fillStyle = 'rgba(190,40,30,0.7)';
         g.beginPath(); g.arc(cx, cy, 7, 0, 7); g.fill();
+      } else if (kind === 'rangoli') {
+        // a festival rangoli: coloured powder petals round a lotus, dots between
+        const cx = w / 2;
+        const cy = h / 2;
+        const cols = ['#e0306a', '#f6c12a', '#2fa8a0', '#7a3fc0', '#ff7a1c'];
+        for (let ring = 4; ring >= 1; ring--) {
+          const n = 6 + ring * 3;
+          for (let i = 0; i < n; i++) {
+            const a = (i / n) * Math.PI * 2 + ring * 0.3;
+            const rad = ring * 26;
+            g.save();
+            g.translate(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad);
+            g.rotate(a);
+            g.fillStyle = cols[(i + ring) % cols.length];
+            g.beginPath();
+            g.ellipse(0, 0, 17 + ring * 2, 7 + ring, 0, 0, Math.PI * 2);
+            g.fill();
+            g.restore();
+          }
+        }
+        g.fillStyle = 'rgba(255,250,240,0.95)';
+        for (let i = 0; i < 36; i++) { const a = (i / 36) * Math.PI * 2; g.beginPath(); g.arc(cx + Math.cos(a) * 124, cy + Math.sin(a) * 124, 3, 0, 7); g.fill(); }
+        g.fillStyle = '#f6c12a';
+        g.beginPath(); g.arc(cx, cy, 14, 0, 7); g.fill();
+      } else if (kind === 'ripple') {
+        g.strokeStyle = 'rgba(255,255,255,0.9)';
+        g.lineWidth = 3;
+        g.beginPath(); g.arc(w / 2, h / 2, w * 0.38, 0, 7); g.stroke();
+        g.strokeStyle = 'rgba(255,255,255,0.45)';
+        g.beginPath(); g.arc(w / 2, h / 2, w * 0.22, 0, 7); g.stroke();
+      } else if (kind === 'tv') {
+        // a cricket match on the shop television: the green pitch seen from behind the bowler, the scoreboard strip, a crowd of dots
+        const gr = g.createLinearGradient(0, 0, 0, h);
+        gr.addColorStop(0, '#9cc8ee');
+        gr.addColorStop(0.28, '#cfe6f6');
+        gr.addColorStop(0.3, '#3f9a3c');
+        gr.addColorStop(1, '#2a7a2c');
+        g.fillStyle = gr;
+        g.fillRect(0, 0, w, h);
+        g.fillStyle = '#c8a064';
+        g.beginPath(); g.moveTo(w * 0.42, h * 0.3); g.lineTo(w * 0.58, h * 0.3); g.lineTo(w * 0.72, h); g.lineTo(w * 0.28, h); g.closePath(); g.fill();
+        g.strokeStyle = '#fff';
+        g.lineWidth = 2;
+        g.beginPath(); g.moveTo(w * 0.3, h * 0.82); g.lineTo(w * 0.7, h * 0.82); g.stroke();
+        for (let i = 0; i < 50; i++) { g.fillStyle = ['#e0306a', '#f6c12a', '#fff', '#2a62c4'][i % 4]; g.fillRect(r() * w, h * 0.22 + r() * h * 0.08, 3, 3); }
+        g.fillStyle = 'rgba(10,20,50,0.9)';
+        g.fillRect(0, h - 22, w, 22);
+        g.fillStyle = '#ffd34d';
+        g.font = '700 15px sans-serif';
+        g.textAlign = 'left';
+        g.fillText('HYD 187/4   17.3 OV', 8, h - 6);
+        g.textAlign = 'right';
+        g.fillStyle = '#fff';
+        g.fillText('LIVE', w - 8, h - 6);
       } else if (kind === 'zebra') {
         g.fillStyle = 'rgba(232,228,214,0.88)';
         for (let i = 0; i < 9; i++) g.fillRect(0, i * 28 + 4, w, 17);
@@ -806,10 +881,31 @@ export function makeSigns(T, { canvasTexture, mulberry }) {
       g.fillText(text, w / 2, h / 2 + 2);
     }, { mip: false });
 
+  /** A tiling film of slanted rain streaks (the low tier's rain, drifting down a plane in front of the eye). */
+  const rainStreak = () =>
+    canvasTexture(256, 256, (g, w, h) => {
+      const r = mulberry(333);
+      g.clearRect(0, 0, w, h);
+      g.lineCap = 'round';
+      for (let i = 0; i < 70; i++) {
+        const x = r() * w;
+        const y = r() * h;
+        const len = 18 + r() * 44;
+        g.strokeStyle = `rgba(255,255,255,${0.12 + r() * 0.28})`;
+        g.lineWidth = 1 + r() * 1.6;
+        for (const [ox, oy] of [[0, 0], [w, 0], [-w, 0], [0, h], [0, -h]]) {
+          g.beginPath();
+          g.moveTo(x + ox, y + oy);
+          g.lineTo(x + ox + len * 0.16, y + oy + len);
+          g.stroke();
+        }
+      }
+    }, { mip: false });
+
   void FONT_HI;
   return {
     banner, bannerBack, menuBoard, enamel, monument, fabric, poster, hoarding, kirana, medical, sweets, mobile, shutterShop, building, decal, foliage,
-    noteTex, softDot, ring, puddle, blob, label,
+    noteTex, softDot, ring, puddle, blob, label, rainStreak,
     redrawText() {
       for (const t of redraws) t.userData.redraw?.();
     },
