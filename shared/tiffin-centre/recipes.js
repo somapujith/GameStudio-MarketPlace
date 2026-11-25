@@ -7,13 +7,50 @@
 //     te:     the same lines in Telugu       (index i is the translation of steps[i])
 //     hi:     the same lines in Hindi        (index i is the translation of steps[i])
 //     tip, tipTe, tipHi              one line: what "ready" looks like and what to watch
+//     uses:   [{ item, name, te, hi, qty, label }]   what ONE dish takes from the shelf (DISHES[id].uses; `label` is the portion as 1/2, 1 1/4 ...)
+//   }
+//
+//   PREP_RECIPES[ingredientId] = {   the back-counter jobs (INGREDIENTS[id].prep): what goes in and how it is made
+//     item, station: 'prep1', needs: null | 'power' | 'gas',
+//     goes / goesTe / goesHi         [2-4 lines] what goes INTO it (the ingredient list)
+//     steps / te / hi                [3 lines]   how it is made, same index = same line in each language
+//     tip, tipTe, tipHi
 //   }
 //
 // NOTE for reviewers: the Telugu and Hindi lines are written to sound like a street stall, not word for word; they are flagged for
-// review by a native speaker, like the dialogue lines.
-import { DISHES } from './catalog.js';
+// review by a native speaker, like the dialogue lines. RECIPE_REVIEW lists what still needs that review (the prep recipes are new).
+import { DISHES, INGREDIENTS } from './catalog.js';
 
-const R = (dish, def) => Object.freeze({ station: DISHES[dish].station, ...def });
+export { PREP_RECIPES, prepRecipeFor, prepRecipeSteps, prepRecipeGoes, prepRecipeTip } from './recipes.prep.js';
+
+/** Native-speaker review status: `te` / `hi` true = the lines are still to be checked by a native speaker (the HUD may show a small badge in dev builds). */
+export const RECIPE_REVIEW = Object.freeze({ te: true, hi: true, scope: 'all recipe lines, ingredient names and prep recipes' });
+
+/** Hindi names of the ingredients (the English and Telugu names live in the catalogue). */
+export const INGREDIENT_HI = Object.freeze({
+  batter_dosa: 'डोसा घोल', batter_idly: 'इडली घोल', batter_pesarattu: 'पेसरट्टू घोल', potato_masala: 'आलू मसाला', coconut_chutney: 'नारियल चटनी',
+  sambar: 'सांभर', podi_ghee: 'पोडी और घी', poori_dough: 'पूरी का आटा', vada_batter: 'वड़ा घोल', besan_batter: 'बेसन घोल', mirchi: 'बज्जी मिर्च',
+  tea_decoction_milk: 'चाय काढ़ा और दूध', coffee_decoction: 'कॉफ़ी डिकॉक्शन', biscuits: 'उस्मानिया बिस्कुट', oil: 'खाने का तेल',
+});
+
+const FRACTION = { 0.25: '1/4', 0.5: '1/2', 0.75: '3/4' };
+/** A portion as a short label: 0.25 -> '1/4', 1.25 -> '1 1/4', 2 -> '2'. */
+export function portionLabel(q) {
+  const whole = Math.floor(q);
+  const part = Math.round((q - whole) * 100) / 100;
+  const f = part ? FRACTION[part] || String(part) : '';
+  return whole && f ? `${whole} ${f}` : f || String(whole);
+}
+
+/** What one dish takes from the shelf: [{ item, name, te, hi, qty, label }] in the catalogue's order. */
+export function ingredientsOf(dishId) {
+  if (!Object.hasOwn(DISHES, dishId) || !DISHES[dishId].uses) return [];
+  return Object.entries(DISHES[dishId].uses).map(([item, qty]) => ({
+    item, name: INGREDIENTS[item].name, te: INGREDIENTS[item].te, hi: INGREDIENT_HI[item], qty, label: portionLabel(qty),
+  }));
+}
+
+const R = (dish, def) => Object.freeze({ station: DISHES[dish].station, uses: Object.freeze(ingredientsOf(dish)), ...def });
 
 export const RECIPES = Object.freeze({
   dosa: R('dosa', {

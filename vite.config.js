@@ -82,5 +82,7 @@ export default defineConfig({
   test: {
     include: ['shared/**/*.test.js', 'worker/**/*.test.js', 'src/**/*.test.js'],
     environment: 'node',
+    // the game simulations (bots, fuzz, whole tutorials) are heavy: 5 s flaked whenever the machine was busy
+    testTimeout: 30000,
   },
 });

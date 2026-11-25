@@ -2,6 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { PROGRESS_LOCAL_KEY, TICK_MS, TUTORIAL_LOCAL_KEY } from '@shared/tiffin-centre/catalog.js';
 import * as realEngine from '@shared/tiffin-centre/index.js';
 import { chooseAutoAction } from '@shared/tiffin-centre/index.js';
+import { tutorialBotAction } from '@shared/tiffin-centre/tutorial.bot.js';
+
+// a tutorial session needs the scripted lesson bot (it walks to the prep counter, swaps gas ...); a practice shift the plain bot
+const autoAction = (s) => (s.tutorial ? tutorialBotAction(s.state, s.tutorial, 'me') : chooseAutoAction(s.state, 'me'));
 import { MAX_CATCHUP_TICKS, createLocalSession } from './localSession.js';
 import { TUTORIAL_PENDING_KEY } from './progress.js';
 
@@ -142,7 +146,7 @@ describe('createLocalSession (practice)', () => {
     const s = createLocalSession({ mode: 'practice', level: 1, seed: 4, ...r.opts });
     let guard = 0;
     while (s.status === 'playing' && guard++ < 2000) {
-      const a = chooseAutoAction(s.state, 'me');
+      const a = autoAction(s);
       if (a) s.dispatch(a);
       r.advance(TICK_MS);
     }
@@ -205,7 +209,7 @@ describe('createLocalSession (tutorial)', () => {
       if (t.ackable) t.ack();
       else if (t.step.id === 'walk') s.dispatch({ type: 'move', to: 'tawa1' });
       else {
-        const a = onAction ? onAction(s) : chooseAutoAction(s.state, 'me');
+        const a = onAction ? onAction(s) : autoAction(s);
         if (a) s.dispatch(a);
       }
       r.advance(TICK_MS);

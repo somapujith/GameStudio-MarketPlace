@@ -2,6 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TICK_MS, TUTORIAL_LOCAL_KEY } from '@shared/tiffin-centre/catalog.js';
 import * as engineNs from '@shared/tiffin-centre/index.js';
 import { chooseAutoAction } from '@shared/tiffin-centre/index.js';
+import { tutorialBotAction } from '@shared/tiffin-centre/tutorial.bot.js';
+
+// a tutorial session needs the scripted lesson bot (it walks to the prep counter, swaps gas ...); a practice shift the plain bot
+const autoAction = (s) => (s.tutorial ? tutorialBotAction(s.state, s.tutorial, 'me') : chooseAutoAction(s.state, 'me'));
 import { SHIFT_KEY, loadShift, saveShift } from './autosave.js';
 import { SAVE_DEBOUNCE_MS, SAVE_EVERY_TICKS, createLocalSession } from './localSession.js';
 import { TUTORIAL_PENDING_KEY } from './progress.js';
@@ -39,7 +43,7 @@ function rig(extra = {}) {
 
 /** one "turn" of a player: the bot's move (if any), then a second of time */
 const botStep = (s, r) => {
-  const a = chooseAutoAction(s.state, 'me');
+  const a = autoAction(s);
   if (a) s.dispatch(a);
   r.advance(TICK_MS);
 };
@@ -68,7 +72,7 @@ describe('auto-save: when it writes', () => {
     let a = null;
     for (let i = 0; i < 40 && !a; i++) {
       r.advance(TICK_MS);
-      a = chooseAutoAction(s.state, 'me');
+      a = autoAction(s);
     }
     expect(a).toBeTruthy();
     r.storage.writes = 0;
@@ -421,7 +425,7 @@ function tutorialTurn(s, r) {
   if (t.ackable) t.ack();
   else if (t.step.id === 'walk') s.dispatch({ type: 'move', to: 'tawa1' });
   else {
-    const a = chooseAutoAction(s.state, 'me');
+    const a = autoAction(s);
     if (a && t.allows(a.type)) s.dispatch(a);
   }
   r.advance(TICK_MS);

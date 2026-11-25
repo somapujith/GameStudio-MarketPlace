@@ -6,6 +6,8 @@
 //  - invalid actions return the SAME state object, `events: []` and an `error` string; nothing here throws on hostile input.
 //  - `tick` may carry `tick: n`; it is then only applied when state.tick === n (so a duplicated tick is a harmless no-op).
 //  - `tutorial-flags {patience, pay}`: a boolean says whether that clock RUNS (false = frozen). Tutorial games start frozen.
+//    `tutorial-flags {stock, gas, heat, events, market, stage}` (booleans, default off) lets the tutorial driver teach the operations layer
+//    one lesson at a time (ops.js `trainingFlags`); `spawn` takes optional request fields (parcel, extra, spice, regular, big, delivery, fit).
 //  - tutorial games (level 0) have no scheduled crowd: customers come only from `spawn {customer}`, and none of the operations layer
 //    (stock, gas, heat, events, requests, the board) exists there: it plays exactly as it did before that layer was added.
 import {
@@ -19,7 +21,7 @@ import { validTarget } from './movement.js';
 import { carryOver, earn, profitOf, summary } from './economy.js';
 import { tickEvents, tipMult } from './events.js';
 import {
-  OPS_H, binDish, consumeFor, cookBlocker, fitOrder, flawName, flawsAtReady, opsInit, paceMods, tickOps, unmetOf, useExtra,
+  OPS_H, binDish, consumeFor, cookBlocker, fitOrder, flawName, flawsAtReady, opsInit, paceMods, tickOps, trainingFlags, unmetOf, useExtra,
 } from './ops.js';
 
 export const STATE_VERSION = 1;
@@ -538,7 +540,7 @@ const H = {
 
   /** The price board: `{dish, on}`. off = nobody will order it; waiting customers who still want it swap or leave politely. */
   board(s, a, ev, p) {
-    if (s.cfg.tutorial) return TRAINING;
+    if (s.cfg.tutorial && !s.cfg.stock) return TRAINING; // the board comes with the training shift's stock switch
     if (typeof a.dish !== 'string' || !hasOwn(DISHES, a.dish) || !s.cfg.menu.includes(a.dish)) return 'Unknown dish';
     if (typeof a.on !== 'boolean') return 'Say whether it is on or off the board';
     const i = s.off.indexOf(a.dish);
@@ -562,8 +564,18 @@ const H = {
     if (!d || typeof d !== 'object' || Array.isArray(d)) return 'Bad customer';
     const kindId = d.kind === undefined ? 'student' : d.kind;
     if (typeof kindId !== 'string' || !hasOwn(CUSTOMER_KINDS, kindId)) return 'Unknown customer kind';
-    if (!Array.isArray(d.order) || d.order.length < 1 || d.order.length > 4) return 'Bad order';
+    // training extras (all optional, all default off): a parcel, an extra, a spice request, a regular, the big office parcel, the delivery boy,
+    // and `fit` (the arrival goes through the sold-out board and the stock like a real one)
+    const big = d.big === true;
+    const delivery = d.delivery === true;
+    if (!Array.isArray(d.order) || d.order.length < 1 || d.order.length > (big || delivery ? 6 : 4)) return 'Bad order';
     for (const dish of d.order) if (typeof dish !== 'string' || !hasOwn(DISHES, dish) || !s.cfg.menu.includes(dish)) return 'Bad order';
+    if ((d.parcel !== undefined && typeof d.parcel !== 'boolean') || (d.regular !== undefined && typeof d.regular !== 'boolean')
+      || (d.fit !== undefined && typeof d.fit !== 'boolean') || (d.big !== undefined && !big && d.big !== false)
+      || (d.delivery !== undefined && !delivery && d.delivery !== false)) return 'Bad request';
+    if (d.extra !== undefined && d.extra !== 'coconut_chutney' && d.extra !== 'sambar') return 'Bad request';
+    if (d.spice !== undefined && d.spice !== 'less' && d.spice !== 'more') return 'Bad request';
+    if (d.loyal !== undefined && (!Number.isInteger(d.loyal) || d.loyal < 0 || d.loyal > REQUEST.regularMax)) return 'Bad request';
     if (s.customers.filter((c) => c.st !== 'left').length >= s.cfg.spots) return 'No free spot';
     let spot = Number.isInteger(d.spot) && d.spot >= 0 && d.spot < s.cfg.spots && !s.customers.some((c) => c.st !== 'left' && c.spot === d.spot) ? d.spot : -1;
     if (spot < 0) spot = freeSpot(s);
@@ -571,20 +583,49 @@ const H = {
     const level = levelDef(s.level);
     const pm = Number.isInteger(d.patienceMax) && d.patienceMax > 0 && d.patienceMax <= 9999 ? d.patienceMax : patienceFor(kindId, level, s.pace);
     const kind = CUSTOMER_KINDS[kindId];
-    const id = seat(s, {
-      kind: kindId, look: typeof d.look === 'string' ? d.look.slice(0, 24) : kind.look, order: d.order,
+    let order = d.order;
+    let fit = null;
+    if (d.fit === true) {
+      fit = fitOrder(s, d.order, s.nid);
+      if (fit.left) {
+        ev.push({ type: 'sold-out', customer: s.nid++, dish: d.order[0], swap: null, left: true });
+        return undefined;
+      }
+      order = fit.order;
+    }
+    const e = {
+      kind: kindId, look: typeof d.look === 'string' ? d.look.slice(0, 24) : kind.look, order,
       name: typeof d.name === 'string' && d.name ? d.name.slice(0, 40) : CUSTOMER_NAMES[s.nid % CUSTOMER_NAMES.length],
       patienceMax: pm,
-    }, spot, ev);
+    };
+    if (d.parcel === true || big || delivery) e.parcel = 1;
+    if (d.extra) e.extra = d.extra;
+    if (d.spice) e.spice = d.spice;
+    if (big) e.big = 1;
+    if (delivery) e.delivery = 1;
+    if (d.regular === true) {
+      if (!s.regs[0]) s.regs[0] = [0, 0];
+      if (d.loyal !== undefined) s.regs[0][0] = d.loyal;
+      e.regular = 1; e.rid = 0;
+    }
+    const id = seat(s, e, spot, ev);
     ev.push({ type: 'tutorial-spawn', customer: id });
+    if (fit) for (const w of fit.swaps) ev.push({ type: 'sold-out', customer: id, dish: w.dish, swap: w.swap, left: false });
+    if (big) ev.push({ type: 'parcel-order', customer: id, n: order.length, big: true });
+    if (delivery) ev.push({ type: 'parcel-order', customer: id, n: order.length, delivery: true });
     return undefined;
   },
 
-  'tutorial-flags'(s, a) {
+  /**
+   * The training clocks and switches. `patience` / `pay`: booleans, whether that clock RUNS. `stock gas heat events market`: booleans, switch that
+   * part of the operations layer ON (true) or OFF (false) for the training shift (see `trainingFlags` in ops.js, which also documents the optional
+   * `stage` object that sets exact values for a lesson). Anything that is not a boolean changes nothing; with every switch off level 0 plays as before.
+   */
+  'tutorial-flags'(s, a, ev) {
     if (!s.cfg.tutorial) return 'Not allowed here';
     if (typeof a.patience === 'boolean') s.cfg.noPatience = !a.patience;
     if (typeof a.pay === 'boolean') s.cfg.noPayExpiry = !a.pay;
-    return undefined;
+    return trainingFlags(s, a, ev);
   },
 };
 

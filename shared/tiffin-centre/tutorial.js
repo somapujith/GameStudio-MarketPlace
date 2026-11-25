@@ -1,7 +1,13 @@
 // Tiffin Centre: the scripted tutorial (level 0). ONE lesson that teaches everything: the first-person view, the order TOKENS,
 // every station (tawa, idly steamer, kadai, chai counter), every dish with its recipe card, hands, serving, collecting, tips,
-// hearts, stars, the clock, the practice shifts, co-op, and a final timed rush. Pure data + a deterministic driver: no DOM, no
-// clock, no randomness.
+// the REAL-LIFE OPERATIONS of a Hyderabad tiffin centre (stock and the back counter, a tawa that needs tending, the LPG cylinder, the sold-out
+// board, special orders, rain / power cut / the food-safety inspector, and what profit means), hearts, stars, the clock, the practice
+// shifts, co-op, and a final timed rush that uses prep and tend. Pure data + a deterministic driver: no DOM, no clock, no randomness.
+//
+// The operations chapters switch their mechanic ON for the training shift with `tutorial-flags` actions (`{ stock, gas, heat, events,
+// market, stage }`, engine.js / ops.js `trainingFlags`) the moment their lesson starts, and let the player DO it through the real engine:
+// prep, collectPrep, tend, swapGas, board and the staged events are real engine actions, so every refusal ("Out of dosa batter", "The
+// cylinder is still heavy", "Already clean") is the engine's own.
 //
 // The driver never touches the engine itself. A session calls `driver.advance(state, events, { meId, look })` after every
 // engine change (tick or action) and applies the `actions` it returns (spawn a customer, collect for the player, tutorial-flags)
@@ -24,9 +30,13 @@
 //   allow: ['move', 'cook', ...]  the game actions the player may do in this step; the HUD refuses the rest with the toast
 //          'Chotu says: not yet!' (driver.allowed / driver.allows(type)). `move` is allowed in every step; looking around always is.
 //   spotlight: { kind, id?, slot?, look? } | null | (state, ctx) => same. `look: true` = the target may be off-screen: the scene
-//          turns the head to it (scene.lookAt).
+//          turns the head to it (scene.lookAt). Kinds: 'station' (id: tawa1 steamer1 kadai1 chai1, and the BACK COUNTER 'prep1', which is behind
+//          the cook), 'slot' (id + slot), 'customer' (id), 'hands', 'bin', 'gas' (the LPG cylinder stand, no id), 'board' (the price / sold-out
+//          board by the counter, no id).
+//   prepRecipe: an ingredient id (INGREDIENTS): the HUD shows its back-counter card (PREP_RECIPES in recipes.js: what goes in, how it is made)
 //   flags: { patience, pay } | (ctx) => same   the tutorial clocks while this step runs (true = the clock RUNS)
-//   onEnter: action[] | (state, ctx) => action[] | { actions, set }   applied once when the step starts. A spawn action may carry
+//   onEnter: action[] | (state, ctx) => action[] | { actions, set: { demo?, kv? } }   applied once when the step starts (`kv` is the driver's
+//          scratch memory: ctx.kv). A spawn action may carry
 //          `tag: 'A'`: the driver remembers which customer it became (ctx.cust('A')), and sends the spawn again (every few ticks)
 //          if the stall had no free spot, so a lesson cannot be lost
 //   autoCollect (default true; false in serve2, collect and rush)  Chotu collects money for the player in this step, so a lesson
@@ -35,8 +45,8 @@
 //   when(state, ctx) -> false skips the step; done(state, events, ctx) -> boolean
 //   failed(state, ctx) -> { to, attempt? } | null   a recoverable failure: go back to step `to` (and count an attempt)
 //   recover(state, ctx) -> stepId | null            the situation became unwinnable: go back to that step
-import { CUSTOMER_KINDS, DISHES, PACE, PATIENCE_BASE, STATIONS, STATION_KINDS, levelDef } from './catalog.js';
-import { RECIPES } from './recipes.js';
+import { CUSTOMER_KINDS, DISHES, GAS, INGREDIENTS, PACE, PATIENCE_BASE, PREP_STATION, REQUEST, STATIONS, STATION_KINDS, levelDef } from './catalog.js';
+import { PREP_RECIPES, RECIPES, ingredientsOf } from './recipes.js';
 
 export const TUTORIAL_LEVEL = 0;
 export const TUTORIAL_SETTINGS = Object.freeze({ level: 0, pace: 'normal' });
@@ -44,7 +54,8 @@ export const TUTORIAL_HOST = 'Chotu';
 export const RUSH_RETRIES = 1; // after a failed live rush the clocks freeze, so it cannot fail again
 export const LOOK_TURN_RAD = 0.35; // the head must have turned more than this (yaw) for the "look around" step
 export const TUTORIAL_NOT_YET = 'Chotu says: not yet!'; // the toast for a refused action
-export const TUTORIAL_ACTIONS = Object.freeze(['move', 'cook', 'take', 'serve', 'collect', 'discard']); // the actions `allow` gates
+/** The actions `allow` gates. The first six are the cooking basics; the rest belong to the operations chapters (a step that does not list them refuses them). */
+export const TUTORIAL_ACTIONS = Object.freeze(['move', 'cook', 'take', 'serve', 'collect', 'discard', 'prep', 'collectPrep', 'tend', 'swapGas', 'board']);
 const SPAWN_RETRY = 3; // ticks before a spawn that did not produce a customer is sent again
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -58,6 +69,13 @@ export const TUTORIAL_CHAPTERS = Object.freeze([
   { id: 'kadai', label: 'Kadai', te: 'కడాయి' },
   { id: 'chai', label: 'Chai', te: 'చాయ్' },
   { id: 'serve', label: 'Serve and collect', te: 'వడ్డన, వసూలు' },
+  { id: 'stock', label: 'Stock and the prep counter', te: 'స్టాక్, వెనుక కౌంటర్' },
+  { id: 'heat', label: 'Keep the tawa happy', te: 'పెనం జాగ్రత్త' },
+  { id: 'gas', label: 'Gas', te: 'గ్యాస్' },
+  { id: 'board', label: 'Sold out board', te: 'సోల్డ్ అవుట్ బోర్డు' },
+  { id: 'special', label: 'Special orders', te: 'ప్రత్యేక ఆర్డర్లు' },
+  { id: 'weather', label: 'Weather and the inspector', te: 'వాతావరణం, ఇన్‌స్పెక్టర్' },
+  { id: 'profit', label: 'Money: profit', te: 'డబ్బు: లాభం' },
   { id: 'flow', label: 'Game flow', te: 'ఆట తీరు' },
   { id: 'rush', label: 'Rush', te: 'రష్' },
 ].map((c) => Object.freeze(c)));
@@ -100,17 +118,35 @@ for (const id of levelDef(0).stations) if (!KIND_STATION[STATIONS[id].kind]) KIN
 const stationLabel = (dish) => STATION_KINDS[DISHES[dish].station].name;
 
 /** A spawn action. `patienceMax` is computed like the schedule does (level 0, normal pace) so it matches a real customer. `tag` is the driver's own bookkeeping (stripped before the action leaves the driver). */
-export function spawnAction({ kind = 'student', name, order, look, tag }) {
+export function spawnAction({ kind = 'student', name, order, look, tag, parcel, extra, spice, regular, loyal, big, delivery, fit }) {
   const k = CUSTOMER_KINDS[kind];
   const lv = levelDef(TUTORIAL_LEVEL);
-  const patienceMax = Math.max(1, Math.round(PATIENCE_BASE * k.patience * lv.patience * PACE.normal.patience));
-  const a = { type: 'spawn', customer: { kind, name, look: look || k.look, order: order.slice(), patienceMax } };
+  let patienceMax = Math.max(1, Math.round(PATIENCE_BASE * k.patience * lv.patience * PACE.normal.patience));
+  // special requests (the engine's `spawn` takes them in the training shift): patience as the schedule gives it
+  if (delivery) patienceMax = Math.max(1, Math.round(REQUEST.delivery.patience * PACE.normal.patience));
+  else if (big) patienceMax = Math.max(1, Math.round(patienceMax * REQUEST.big.patience));
+  else if (parcel) patienceMax = Math.max(1, Math.round(patienceMax * REQUEST.parcelPatience));
+  const c = { kind, name, look: look || k.look, order: order.slice(), patienceMax };
+  if (parcel) c.parcel = true;
+  if (extra) c.extra = extra;
+  if (spice) c.spice = spice;
+  if (regular) { c.regular = true; if (loyal !== undefined) c.loyal = loyal; }
+  if (big) c.big = true;
+  if (delivery) c.delivery = true;
+  if (fit) c.fit = true;
+  const a = { type: 'spawn', customer: c };
   if (tag) a.tag = tag;
   return a;
 }
 
 /** The tutorial-flags action for `{patience, pay}` (true = that clock runs). */
 export const flagsAction = (f) => ({ type: 'tutorial-flags', patience: !!f.patience, pay: !!f.pay });
+
+/**
+ * The tutorial-flags action for the operations layer: `{ stock, gas, heat, events, market }` booleans (switch that mechanic on / off for the
+ * training shift) and `stage` (exact values for a lesson, see ops.js `trainingFlags`). It leaves the patience / pay clocks alone.
+ */
+export const trainAction = (spec) => ({ type: 'tutorial-flags', ...spec });
 
 const FROZEN = Object.freeze({ patience: false, pay: false });
 const LIVE = Object.freeze({ patience: true, pay: true });
@@ -123,6 +159,11 @@ const A_SERVE = Object.freeze(['move', 'serve', 'discard']);
 const A_COLLECT = Object.freeze(['move', 'collect']);
 const A_CARRY = Object.freeze(['move', 'take', 'serve', 'discard']);
 const A_ORDERS = Object.freeze(['move', 'serve', 'collect', 'discard']);
+const A_PLAY = Object.freeze(['move', 'cook', 'take', 'serve', 'collect', 'discard']); // free play at the stations (no operations jobs)
+const A_PREP = Object.freeze(['move', 'prep']);
+const A_PICKUP = Object.freeze(['move', 'collectPrep']);
+const A_TEND = Object.freeze(['move', 'tend']);
+const A_BOARD = Object.freeze(['move', 'board']);
 const A_ALL = TUTORIAL_ACTIONS;
 
 // one-line reminders of the controls, per kind of step
@@ -135,6 +176,11 @@ const CONTROLS = {
   take: { kb: 'Space at the glowing dish picks it up', touch: 'Tap the glowing dish to pick it up' },
   serve: { kb: 'A / D to face a token, Space to serve', touch: 'Tap the customer or their chit to serve' },
   collect: { kb: 'Space at the customer holding the money', touch: 'Tap the customer holding the money note' },
+  prep: { kb: 'Face the glowing back counter behind you and press Space to work there', touch: 'Tap the glowing back counter and pick the job' },
+  tend: { kb: 'Space at the glowing pan wipes it clean', touch: 'Tap the glowing pan to wipe it clean' },
+  gas: { kb: 'Walk to the cylinder stand at the left end, Space changes the cylinder', touch: 'Tap the cylinder stand and your cook walks there' },
+  board: { kb: 'Space at the price board, then pick the dish', touch: 'Tap the price board, then pick the dish' },
+  play: { kb: 'A / D to walk, Space to cook, pick up, serve and collect', touch: 'Tap stations, dishes and customers: your cook walks and works' },
 };
 
 /** Build a step from a compact definition: `text: [kb, touch]` and `hint: [[after, kb, touch], ...]` (touch defaults to kb). */
@@ -557,10 +603,830 @@ const SERVE_STEPS = [
 // Game flow: ack-only pages (nothing to cook), one idea each
 const infoStep = (id, say, text, te) => S({ id, say, text, te, ack: true, hint: [ACK_HINT], done: (s, e, ctx) => ctx.acked });
 
+// ---------------------------------------------------------------------------------------------------------------------
+// the operations chapters. Each one switches its mechanic ON for the training shift (tutorial-flags) when its lesson starts and lets the player
+// DO the real thing; every failure has a way back, and nothing here is finished by waiting.
+
+const train = trainAction;
+/** Chotu brings a fresh delivery: every ingredient back to 10 portions and every batter fresh again (with exceptions). */
+const restock = (stock = {}, fresh = {}) => trainAction({ stage: { stock: { '*': 10, ...stock }, fresh: { '*': 100, ...fresh } } });
+const fmt = (n) => String(Math.round(n * 100) / 100);
+const rs = (n) => `Rs ${Math.round(n)}`;
+const stockN = (s, item) => (s.stock && typeof s.stock[item] === 'number' ? s.stock[item] : 0);
+const prepSlots = (s) => (s.stations[PREP_STATION] ? s.stations[PREP_STATION].slots : []);
+const prepJobs = (s, item) => prepSlots(s).filter((j) => j.st !== 'empty' && j.item === item);
+const usesLine = (dish) => ingredientsOf(dish).map((u) => `${u.label} ${u.name.toLowerCase()}`).join(', ');
+const prepSp = () => sp('station', PREP_STATION);
+const gasSp = () => ({ kind: 'gas', look: true });
+const boardSp = () => ({ kind: 'board', look: true });
+const stationSp = (dish) => sp('station', KIND_STATION[DISHES[dish].station]);
+const clearOnce = (ctx) => (ctx.visits === 1 ? clearHands(ctx) : []);
+/** Text that differs only in the verb: f(touch) gives the string or the (state, ctx) function. */
+const both = (f) => [f(false), f(true)];
+const pressAt = (touch) => (touch ? 'Tap' : 'Press Space at');
+
+// what is on the stations or in the hands, as a dish -> count map (the supply of a lesson)
+function supplyMap(state, me) {
+  const m = {};
+  const add = (d) => { m[d] = (m[d] || 0) + 1; };
+  if (me) for (const h of me.hands) add(h.dish);
+  for (const x of allSlots(state)) if (x.dish && SLOT_BUSY.has(x.st)) add(x.dish);
+  return m;
+}
+/** The first dish a waiting customer of `tags` needs that nothing held or cooking covers, or null. */
+function firstUncovered(state, ctx, tags) {
+  const sup = supplyMap(state, ctx.me);
+  for (const t of tags) {
+    const c = ctx.cust(t);
+    if (!live(c) || c.st !== 'waiting') continue;
+    for (const d of needsOf(c)) {
+      if (sup[d] > 0) sup[d] -= 1;
+      else return d;
+    }
+  }
+  return null;
+}
+const allCovered = (state, ctx, tags) => tags.every((t) => ctx.cust(t) || ctx.outcome(t)) && firstUncovered(state, ctx, tags) === null;
+const allPast = (ctx, tags) => tags.every((t) => pairPast(ctx, t));
+const coverSpot = (tags) => (state, ctx) => {
+  const d = firstUncovered(state, ctx, tags);
+  return d ? stationSp(d) : { kind: 'hands' };
+};
+/** A held or ready dish for one of `tags` to carry over: the ready slot first, else the customer who can be served. */
+const serveSpot = (tags) => (state, ctx) => {
+  const c = tags.map((t) => ctx.cust(t)).find((x) => live(x) && x.st === 'waiting' && needsOf(x).some((d) => heldCount(ctx.me, d) > 0));
+  if (c) return custSp(c);
+  const r = allSlots(state).find((x) => x.st === 'ready' && x.dish);
+  return r ? sp('slot', r.station, r.slot) : { kind: 'hands' };
+};
+const spawnTags = (ctx, list) => list.filter((r) => !live(ctx.cust(r.tag))).map((r) => spawnAction(r));
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Chapter: Stock and the prep counter
+
+const SHELF = Object.freeze({ batter_dosa: 6, sambar: 2, coconut_chutney: 2 });
+const BATTER = INGREDIENTS.batter_dosa;
+const SIDE_ITEMS = ['sambar', 'coconut_chutney'];
+const OUT_ORDER = ['dosa', 'dosa'];
+
+const STOCK_STEPS = [
+  S({
+    id: 'stock-turn', say: 'Peeche mudo anna, ek aur counter hai!',
+    text: [
+      'A real stall never cooks from an empty shelf. Behind you is the BACK COUNTER: the wet grinder, the chutney stone, the sambar pot and the dough tray. Turn round and walk to it.',
+      'A real stall never cooks from an empty shelf. Behind you is the BACK COUNTER: the wet grinder, the chutney stone, the sambar pot and the dough tray. Tap the glowing counter and you turn round and walk to it.',
+    ],
+    te: 'వెనక్కి తిరగండి: వెనుక కౌంటర్ ఉంది.',
+    controls: 'prep',
+    spotlight: prepSp,
+    onEnter: (s, ctx) => [...clearOnce(ctx), train({ stock: true, stage: { stock: SHELF, fresh: { batter_dosa: 31 } } })],
+    done: (s, e, ctx) => !!ctx.me && ctx.me.at === PREP_STATION,
+    hint: [
+      [8, 'Face the glowing back counter behind you and press Space.', 'Tap the glowing back counter behind you.'],
+      [24, 'The back counter is behind your cooking row. Turn right round to find it.'],
+    ],
+  }),
+  S({
+    id: 'stock-bars', say: 'Shelf dekho: har dish ka saaman lagta hai!',
+    text: (s) => `Look at the shelf bars. Every dish eats ingredients: one Plain Dosa takes ${usesLine('dosa')}. Right now the shelf has dosa batter ${fmt(stockN(s, 'batter_dosa'))}, sambar ${fmt(stockN(s, 'sambar'))} and chutney ${fmt(stockN(s, 'coconut_chutney'))} portions. A bar goes red at 3 portions or less, and when one ingredient is short that dish cannot be cooked at all.`,
+    te: 'ప్రతి వంటకానికి సరుకు కావాలి. షెల్ఫ్ బార్లు చూడండి.',
+    spotlight: prepSp,
+    ack: true,
+    hint: [ACK_HINT],
+    done: (s, e, ctx) => ctx.acked,
+  }),
+  S({
+    id: 'stock-batter', say: 'Dosa ka batter banao anna, chakki chalao!',
+    text: [
+      `Make a fresh batch of DOSA BATTER. Press Space at the back counter and choose Dosa batter: rice and urad dal, ground in the wet grinder. The ingredients are paid up front (${rs(BATTER.cost * BATTER.prep.yield)} for ${BATTER.prep.yield} portions) and the job takes ${BATTER.prep.ticks} seconds. The counter has two job slots, so two things can be made at once.`,
+      `Make a fresh batch of DOSA BATTER. Tap the back counter and choose Dosa batter: rice and urad dal, ground in the wet grinder. The ingredients are paid up front (${rs(BATTER.cost * BATTER.prep.yield)} for ${BATTER.prep.yield} portions) and the job takes ${BATTER.prep.ticks} seconds. The counter has two job slots, so two things can be made at once.`,
+    ],
+    te: 'దోశ పిండి తయారు చేయండి: గ్రైండర్ నడపండి.',
+    prepRecipe: 'batter_dosa',
+    controls: 'prep',
+    allow: A_PREP,
+    spotlight: prepSp,
+    done: (s) => prepJobs(s, 'batter_dosa').length > 0,
+    hint: [
+      [10, 'Press Space at the glowing back counter, then choose Dosa batter.', 'Tap the glowing back counter, then choose Dosa batter.'],
+      [30, 'Pick an empty job slot on the back counter and choose Dosa batter.'],
+    ],
+  }),
+  S({
+    id: 'stock-grind', say: 'Batter jaldi khatta ho jata hai, garmi mein!',
+    text: both((touch) => (s) => {
+      const j = prepJobs(s, 'batter_dosa')[0];
+      const fresh = s.fresh && typeof s.fresh.batter_dosa === 'number' ? s.fresh.batter_dosa : 100;
+      if (j && j.st === 'ready') return `The new batter is READY on the counter. ${pressAt(touch)} it to collect: it joins the shelf and mixes with the old batter, so the freshness of the jar goes UP (it is ${fresh} now, out of 100).`;
+      const left = j ? Math.max(0, j.readyAt - s.tick) : 0;
+      return `The grinder is turning, ${left} seconds to go. Why batter goes SOUR: it ferments in the Hyderabad heat, a little more every few seconds. Freshness now ${fresh} of 100. Under 30 it is SOUR: dosas from it come out only OK and tip less. At zero the whole jar is thrown away and the money is wasted. Fresh batter mixed in lifts the average.`;
+    }),
+    te: 'పిండి ఎండలో త్వరగా పులుస్తుంది. కొత్త పిండి తీసుకోండి.',
+    controls: 'prep',
+    allow: A_PICKUP,
+    spotlight: prepSp,
+    done: (s) => prepJobs(s, 'batter_dosa').length === 0,
+    hint: [
+      [12, 'Wait for the batter to be ready, then press Space at the back counter.', 'Wait for the batter to be ready, then tap the back counter.'],
+      [30, 'The job slot glows when it is ready. Collect it.'],
+    ],
+  }),
+  S({
+    id: 'stock-sides', say: 'Sambar aur chutney bhi banao, dono ek saath!',
+    text: [
+      'Sambar and coconut chutney run low too (see the bars). Start BOTH: the sambar pot needs the stove (gas) and takes 10 seconds, the chutney stone takes 6. The two jobs run at the same time. Press Space at the back counter and choose each one.',
+      'Sambar and coconut chutney run low too (see the bars). Start BOTH: the sambar pot needs the stove (gas) and takes 10 seconds, the chutney stone takes 6. The two jobs run at the same time. Tap the back counter and choose each one.',
+    ],
+    te: 'సాంబార్, చట్నీ రెండూ ఒకేసారి మొదలుపెట్టండి.',
+    prepRecipe: 'sambar',
+    controls: 'prep',
+    allow: A_PREP,
+    spotlight: prepSp,
+    done: (s) => SIDE_ITEMS.every((i) => prepJobs(s, i).length > 0),
+    hint: [
+      [10, 'Start Sambar, then Coconut chutney: two jobs at once.', 'Tap the back counter and start Sambar, then Coconut chutney.'],
+      [30, 'Each job needs its own empty slot on the back counter.'],
+    ],
+  }),
+  S({
+    id: 'stock-sides-collect', say: 'Jab ready ho jaye, utha lo anna!',
+    text: both((touch) => (s) => {
+      const parts = SIDE_ITEMS.map((i) => {
+        const j = prepJobs(s, i)[0];
+        const name = INGREDIENTS[i].name;
+        if (!j) return `${name} is on the shelf`;
+        return j.st === 'ready' ? `${name} is READY` : `${name} needs ${Math.max(0, j.readyAt - s.tick)} more seconds`;
+      });
+      return `${parts.join('; ')}. ${pressAt(touch)} each finished job to move it to the shelf. Nothing here goes to waste: the portions you paid for are yours.`;
+    }),
+    te: 'సిద్ధమైనవి షెల్ఫ్‌లోకి తీసుకోండి.',
+    controls: 'prep',
+    allow: A_PICKUP,
+    spotlight: prepSp,
+    done: (s) => SIDE_ITEMS.every((i) => prepJobs(s, i).length === 0),
+    hint: [
+      [12, 'Press Space at the back counter when a job is ready.', 'Tap the back counter when a job is ready.'],
+      [30, 'Sambar takes 10 seconds, chutney 6. Collect both.'],
+    ],
+  }),
+  S({
+    id: 'stock-out-order', say: 'Ab dekho jab batter khatam ho jaye!',
+    text: (s, ctx) => `Now see what happens when an ingredient RUNS OUT. ${tokenOf(ctx.cust('S'))} wants TWO Plain Dosas, but the shelf has only ${fmt(stockN(s, 'batter_dosa'))} portion of dosa batter (see the bar).`,
+    te: 'పిండి అయిపోతే ఏమవుతుందో చూడండి.',
+    spotlight: (s, ctx) => custSp(ctx.cust('S')),
+    onEnter: (s, ctx) => [
+      train({ stage: { stock: { batter_dosa: 1 } } }),
+      ...(live(ctx.cust('S')) ? [] : [spawnAction({ kind: 'office', name: 'Padma', order: OUT_ORDER, tag: 'S' })]),
+    ],
+    ack: true,
+    hint: [ACK_HINT],
+    done: (s, e, ctx) => !!ctx.cust('S') && ctx.acked,
+  }),
+  S({
+    id: 'stock-out-cook', say: 'Pehla dosa daalo, ek hi ka batter hai!',
+    text: [
+      'Cook the first Plain Dosa on the tawa: walk there with A / D, press Space and choose it. It takes the last portion of batter.',
+      'Cook the first Plain Dosa: tap the tawa and choose it. It takes the last portion of batter.',
+    ],
+    te: 'మొదటి దోశ వేయండి: ఇదే చివరి పిండి.',
+    controls: 'cook',
+    allow: A_COOK,
+    spotlight: () => stationSp('dosa'),
+    done: (s) => stockN(s, 'batter_dosa') < 1,
+    hint: [[10, 'Walk to the glowing tawa, press Space and choose Plain Dosa.', 'Tap the glowing tawa and choose Plain Dosa.']],
+  }),
+  S({
+    id: 'stock-out-serve', say: 'Ek dosa tayyar hai, pehle usko do!',
+    text: both((touch) => (s, ctx) => `The batter is gone (the bar is empty). Pick up the first dosa and serve it to ${tokenOf(ctx.cust('S'))}: they still wait for a second one. ${touch ? 'Tap' : 'Press Space at'} the glowing dish, then the customer.`),
+    te: 'మొదటి దోశ వడ్డించండి.',
+    controls: 'take',
+    allow: A_CARRY,
+    spotlight: serveSpot(['S']),
+    done: (s, e, ctx) => !!ctx.cust('S') && ctx.cust('S').got.length > 0,
+    recover: (s, ctx) => {
+      const c = ctx.cust('S');
+      return live(c) && c.st === 'waiting' && c.got.length === 0 && !haveDish(s, ctx.me, 'dosa') ? 'stock-out-order' : null;
+    },
+    hint: [[10, 'Press Space at the glowing dosa, then at the customer.', 'Tap the glowing dosa, then the customer.']],
+  }),
+  S({
+    id: 'stock-out-refused', say: 'Dusra dosa? Batter nahi hai, machine mana karegi!',
+    text: [
+      'Try it: walk to the tawa and cook the second dosa. The stall refuses with "Out of dosa batter". No batter, no dosa: you cannot cook it however hard you try. The customer is waiting, so you must make more batter.',
+      'Try it: tap the tawa and cook the second dosa. The stall refuses with "Out of dosa batter". No batter, no dosa: you cannot cook it however hard you try. The customer is waiting, so you must make more batter.',
+    ],
+    te: 'పిండి లేదు: రెండో దోశ వేయలేరు. కొత్త పిండి చేయండి.',
+    controls: 'cook',
+    allow: A_COOK,
+    spotlight: () => stationSp('dosa'),
+    ack: true,
+    hint: [
+      [8, 'Try cooking a Plain Dosa. It is refused, and that is the lesson.', 'Try cooking a Plain Dosa. It is refused, and that is the lesson.'],
+      [16, 'Click "Got it" when you have seen the refusal.', 'Tap "Got it" when you have seen the refusal.'],
+    ],
+    done: (s, e, ctx) => ctx.acked,
+  }),
+  S({
+    id: 'stock-out-prep', say: 'Wapas peeche jao, naya batter pisao!',
+    text: [
+      `Recover: make dosa batter again. Turn round, press Space at the back counter and choose Dosa batter (${BATTER.prep.ticks} seconds). A good cook starts the batch BEFORE the bar is empty, and watches the red warning at 3 portions. (In the bigger shifts you can also send a runner to the market: instant, but 40% dearer.)`,
+      `Recover: make dosa batter again. Turn round, tap the back counter and choose Dosa batter (${BATTER.prep.ticks} seconds). A good cook starts the batch BEFORE the bar is empty, and watches the red warning at 3 portions. (In the bigger shifts you can also send a runner to the market: instant, but 40% dearer.)`,
+    ],
+    te: 'మళ్లీ పిండి తయారు చేయండి.',
+    prepRecipe: 'batter_dosa',
+    controls: 'prep',
+    allow: A_PREP,
+    spotlight: prepSp,
+    done: (s) => prepJobs(s, 'batter_dosa').length > 0 || stockN(s, 'batter_dosa') >= 1,
+    hint: [[10, 'Press Space at the glowing back counter and choose Dosa batter.', 'Tap the glowing back counter and choose Dosa batter.']],
+  }),
+  S({
+    id: 'stock-out-collect', say: 'Batter ready hote hi utha lo!',
+    text: both((touch) => (s) => {
+      const j = prepJobs(s, 'batter_dosa')[0];
+      if (!j) return 'The batter is on the shelf again.';
+      return j.st === 'ready' ? `Ready! ${pressAt(touch)} the back counter to collect the batter, then the customer can have the second dosa.` : `The grinder is turning: ${Math.max(0, j.readyAt - s.tick)} seconds to go. The customer waits (Chotu keeps the patience clock still while you learn).`;
+    }),
+    te: 'కొత్త పిండి షెల్ఫ్‌లోకి తీసుకోండి.',
+    controls: 'prep',
+    allow: A_PICKUP,
+    spotlight: prepSp,
+    done: (s) => prepJobs(s, 'batter_dosa').length === 0 && stockN(s, 'batter_dosa') >= 1,
+    hint: [[14, 'Press Space at the back counter when the batter is ready.', 'Tap the back counter when the batter is ready.']],
+  }),
+  S({
+    id: 'stock-out-finish', say: 'Ab dusra dosa banao aur do!',
+    text: both((touch) => (s, ctx) => `Back in business. Cook the second Plain Dosa, pick it up and serve ${tokenOf(ctx.cust('S'))}. ${touch ? 'Tap the tawa, the dish and the customer.' : 'Press Space at the tawa, at the dish and at the customer.'}`),
+    te: 'రెండో దోశ వేసి వడ్డించండి.',
+    controls: 'cook',
+    allow: A_CARRY.concat(['cook']),
+    spotlight: (s, ctx) => {
+      const c = ctx.cust('S');
+      if (!live(c) || c.st !== 'waiting') return null;
+      if (heldCount(ctx.me, 'dosa') > 0) return custSp(c);
+      const r = readySlot(s, 'dosa');
+      return r ? sp('slot', r.station, r.slot) : stationSp('dosa');
+    },
+    done: (s, e, ctx) => pairPast(ctx, 'S'),
+    recover: (s, ctx) => {
+      const c = ctx.cust('S');
+      return live(c) && c.st === 'waiting' && c.got.length === 1 && !haveDish(s, ctx.me, 'dosa') && stockN(s, 'batter_dosa') < 1 ? 'stock-out-prep' : null;
+    },
+    hint: [[12, 'Cook a Plain Dosa, pick it up, serve it.', 'Tap the tawa, then the dish, then the customer.']],
+  }),
+];
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Chapter: Keep the tawa happy
+
+const TAWA_FOUL = Object.freeze({ heat: 26, gunk: 72 }); // cold and caked
+const PANS = Object.freeze({ tawa: TAWA_FOUL, kadai: { heat: 52, gunk: 30 }, steamer: { water: 55, gunk: 0 } });
+const flawOf = (sl) => (!sl || !sl.fl ? null : sl.fl & 2 ? 'torn' : sl.fl & 1 ? 'stuck' : sl.fl & 4 ? 'sour' : null);
+const tendAtOf = (s, id) => (s.stations[id] && typeof s.stations[id].tendAt === 'number' ? s.stations[id].tendAt : 0);
+const tended = (s, id) => tendAtOf(s, id) > 0;
+
+const HEAT_STEPS = [
+  S({
+    id: 'heat-intro', say: 'Tawa ko khush rakho anna, warna dosa phat jayega!',
+    text: (s) => {
+      const t = s.stations.tawa1;
+      const band = t && typeof t.heat === 'number' ? (t.heat < 30 ? 'COLD' : t.heat > 72 ? 'too HOT' : 'ideal') : 'ideal';
+      return `A tawa is not just a plate: it has a HEAT (cold, ideal, hot) and GUNK, the old batter that cakes on it with every dosa. Look at this tawa's dials: it is ${band} and caked with gunk. A cold pan cooks at half speed, a dirty pan sticks or tears the dosa. Let us cook one anyway and see.`;
+    },
+    te: 'పెనం వేడి, మురికి చూడండి. ఈ పెనం చల్లగా, మురికిగా ఉంది.',
+    spotlight: () => stationSp('dosa'),
+    onEnter: (s, ctx) => [
+      ...clearOnce(ctx),
+      restock(),
+      train({ heat: true, stage: { pans: PANS } }),
+      ...spawnTags(ctx, [{ tag: 'H1', kind: 'student', name: 'Kiran', order: ['dosa'] }]),
+    ],
+    ack: true,
+    hint: [ACK_HINT],
+    done: (s, e, ctx) => !!ctx.cust('H1') && ctx.acked,
+  }),
+  S({
+    id: 'heat-cook', say: 'Isi gande tawa pe dosa daalo, dekho kya hota hai!',
+    text: [
+      'Cook the Plain Dosa on this dirty tawa: walk there with A / D, press Space and choose it. Notice it takes twice as long, because a cold pan runs at half speed.',
+      'Cook the Plain Dosa on this dirty tawa: tap the tawa and choose it. Notice it takes twice as long, because a cold pan runs at half speed.',
+    ],
+    te: 'ఈ మురికి పెనంపై దోశ వేయండి.',
+    controls: 'cook',
+    allow: A_COOK,
+    spotlight: () => stationSp('dosa'),
+    done: (s, e, ctx) => haveDish(s, ctx.me, 'dosa') || (!!ctx.cust('H1') && ctx.cust('H1').got.length > 0),
+    hint: [[10, 'Walk to the glowing tawa, press Space and choose Plain Dosa.', 'Tap the glowing tawa and choose Plain Dosa.']],
+  }),
+  S({
+    id: 'heat-take', say: 'Dekho, dosa phat gaya na!',
+    text: both((touch) => (s) => {
+      const r = slotOfDish(s, 'dosa');
+      const sl = r ? slotAt(s, r) : null;
+      if (sl && sl.st === 'ready') return `Look: the dosa came off TORN. Gunk of 70 or more tears the batter, and a torn dosa is only worth HALF. ${pressAt(touch)} the dish to pick it up.`;
+      if (sl && sl.st === 'cooking') return 'Slow, isn\'t it? The cold pan is cooking at half speed, and the gunk will tear this dosa when it comes off. Wait for it.';
+      return 'Pick up the dosa.';
+    }),
+    te: 'దోశ చిరిగింది: సగం ధరే వస్తుంది.',
+    controls: 'take',
+    allow: A_TAKE,
+    spotlight: (s) => {
+      const r = slotOfDish(s, 'dosa');
+      return r && r.st !== 'burnt' ? sp('slot', r.station, r.slot) : stationSp('dosa');
+    },
+    done: (s, e, ctx) => heldCount(ctx.me, 'dosa') > 0 || (!!ctx.cust('H1') && ctx.cust('H1').got.length > 0),
+    recover: lostDish('H1', 'dosa', 'heat-cook'),
+    hint: [[8, 'Press Space at the dosa when it is ready.', 'Tap the dosa when it is ready.']],
+  }),
+  S({
+    id: 'heat-serve', say: 'Phate hue dosa ka aadha paisa milega!',
+    text: both((touch) => (s, ctx) => {
+      const c = ctx.cust('H1');
+      const price = DISHES.dosa.price;
+      if (c && c.got.length > 0) return `${tokenOf(c)} pays ${rs(c.total)} instead of ${rs(price)}: a torn dish pays half and earns no perfect tip.`;
+      return `Serve it to ${tokenOf(c)}. They will still take it, but a torn dosa pays only half of its ${rs(price)} price. ${touch ? 'Tap the customer.' : 'Face them with A / D and press Space.'}`;
+    }),
+    te: 'చిరిగిన దోశకు సగం డబ్బు మాత్రమే.',
+    controls: 'serve',
+    allow: A_SERVE,
+    spotlight: (s, ctx) => custSp(ctx.cust('H1')),
+    done: (s, e, ctx) => pairPast(ctx, 'H1'),
+    recover: lostDish('H1', 'dosa', 'heat-cook'),
+    hint: [[8, 'Face the glowing customer with A / D and press Space.', 'Tap the glowing customer.']],
+  }),
+  S({
+    id: 'heat-tend', say: 'Ab tawa saaf karo: pyaaz tel mein dubo ke ragdo!',
+    text: [
+      'Now TEND the tawa, the way every Hyderabad dosa-wala does: rub it with half an onion dipped in oil, then sprinkle a little water so it hisses. Press Space at the glowing tawa. That sets the heat right and clears the gunk.',
+      'Now TEND the tawa, the way every Hyderabad dosa-wala does: rub it with half an onion dipped in oil, then sprinkle a little water so it hisses. Tap the glowing tawa. That sets the heat right and clears the gunk.',
+    ],
+    te: 'ఉల్లిపాయ, నూనెతో పెనం తుడవండి, నీళ్లు చల్లండి.',
+    controls: 'tend',
+    allow: A_TEND,
+    spotlight: () => stationSp('dosa'),
+    done: (s) => tended(s, 'tawa1'),
+    hint: [[8, 'Press Space at the glowing tawa to wipe it.', 'Tap the glowing tawa to wipe it.']],
+  }),
+  S({
+    id: 'heat-others', say: 'Kadai aur idli ka paani bhi dekho!',
+    text: both((touch) => (s) => {
+      const todo = [];
+      if (!tended(s, 'kadai1')) todo.push('skim the scum off the KADAI oil');
+      if (!tended(s, 'steamer1')) todo.push('top up the water in the IDLY STEAMER');
+      return `The other pans need care too: ${todo.join(' and ') || 'both are done'}. The steamer boils its water away while it cooks, and below 30 it runs slow and sticks. ${pressAt(touch)} each glowing pan.`;
+    }),
+    te: 'కడాయి నురగ తీయండి, ఇడ్లీ పాత్రలో నీళ్లు నింపండి.',
+    controls: 'tend',
+    allow: A_TEND,
+    spotlight: (s) => (!tended(s, 'kadai1') ? sp('station', 'kadai1') : sp('station', 'steamer1')),
+    done: (s) => tended(s, 'kadai1') && tended(s, 'steamer1'),
+    hint: [
+      [8, 'Press Space at the kadai and at the steamer.', 'Tap the kadai and the steamer.'],
+      [24, 'Both pans glow when they need care.'],
+    ],
+  }),
+  S({
+    id: 'heat-cook2', say: 'Saaf tawa pe dosa daalo, farak dekho!',
+    text: (s, ctx) => `Now the same dosa on a clean, hot tawa for ${tokenOf(ctx.cust('H2'))}. Cook it and watch the difference: it is quicker and comes off whole.`,
+    te: 'శుభ్రమైన పెనంపై మళ్లీ దోశ వేయండి.',
+    controls: 'cook',
+    allow: A_COOK,
+    spotlight: () => stationSp('dosa'),
+    onEnter: (s, ctx) => spawnTags(ctx, [{ tag: 'H2', kind: 'uncle', name: 'Srinivas garu', order: ['dosa'] }]),
+    done: (s, e, ctx) => haveDish(s, ctx.me, 'dosa') || (!!ctx.cust('H2') && ctx.cust('H2').got.length > 0),
+    hint: [[10, 'Walk to the tawa, press Space and choose Plain Dosa.', 'Tap the tawa and choose Plain Dosa.']],
+  }),
+  S({
+    id: 'heat-serve2', say: 'Poora paisa aur tip, dekha anna!',
+    text: both((touch) => (s, ctx) => `A whole dosa, a full ${rs(DISHES.dosa.price)} bill and a perfect-pickup tip if you are quick. ${pressAt(touch)} the dish, then the customer.`),
+    te: 'పూర్తి దోశ: పూర్తి ధర, టిప్.',
+    controls: 'take',
+    allow: A_CARRY,
+    spotlight: serveSpot(['H2']),
+    done: (s, e, ctx) => pairPast(ctx, 'H2'),
+    recover: lostDish('H2', 'dosa', 'heat-cook2'),
+    hint: [[10, 'Press Space at the glowing dosa, then at the customer.', 'Tap the glowing dosa, then the customer.']],
+  }),
+  infoStep(
+    'heat-rules', 'Tawa ke teen niyam: garam, saaf, samay pe!',
+    'Pan rules: gunk of 40 or more makes dishes STICK (only OK quality, smaller tips), 70 or more TEARS them (half price, no perfect tip). A cold pan (under 30) cooks at half speed, a too-hot pan (over 72) burns food faster. Every dish chills the pan and adds gunk, so tend when the dial turns amber, not when the dosa tears. Wiping an already clean pan is refused: "Already clean".',
+    'గంక్ 40 దాటితే అంటుకుంటుంది, 70 దాటితే చిరిగిపోతుంది. సమయానికి తుడవండి.',
+  ),
+];
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Chapter: Gas
+
+const gasPct = (s) => (s.gas ? Math.round((s.gas.u / GAS.cap) * 100) : 100);
+
+const GAS_STEPS = [
+  S({
+    id: 'gas-intro', say: 'Silinder dekho anna, gas khatam toh sab band!',
+    text: (s) => `Every burner drinks LPG from the cylinder at the left end of the counter (it is ${gasPct(s)}% full). Each station with a dish cooking uses gas, and the sambar pot too. When the gauge falls to 20% the flame turns red: that is the low-gas warning. At zero EVERY burner goes cold. You change the cylinder in ${GAS.swapTicks} seconds for ${rs(GAS.swapCost)}, but only when it is under 70%: a heavy cylinder is refused.`,
+    te: 'ప్రతి పొయ్యి గ్యాస్ తాగుతుంది. 20% కింద ఎరుపు హెచ్చరిక.',
+    controls: 'gas',
+    spotlight: gasSp,
+    onEnter: (s, ctx) => [...clearOnce(ctx), restock(), train({ gas: true, stage: { gas: 800 } })],
+    ack: true,
+    hint: [ACK_HINT],
+    done: (s, e, ctx) => ctx.acked,
+  }),
+  S({
+    id: 'gas-cook', say: 'Dosa daalo, gas jaltee dekho!',
+    text: [
+      `Time passes at a busy stall. The cylinder is nearly empty now (about ${Math.round((206 / GAS.cap) * 100)}%). Cook a Plain Dosa for the customer and watch the gauge: the red low-gas warning will show up in a few seconds.`,
+      `Time passes at a busy stall. The cylinder is nearly empty now (about ${Math.round((206 / GAS.cap) * 100)}%). Tap the tawa and cook a Plain Dosa for the customer, and watch the gauge: the red low-gas warning will show up in a few seconds.`,
+    ],
+    te: 'సిలిండర్ దాదాపు ఖాళీ. దోశ వేసి గేజ్ చూడండి.',
+    controls: 'cook',
+    allow: A_COOK,
+    spotlight: () => stationSp('dosa'),
+    onEnter: (s, ctx) => [train({ stage: { gas: 206 } }), ...spawnTags(ctx, [{ tag: 'G1', kind: 'office', name: 'Imran bhai', order: ['dosa'] }])],
+    done: (s, e, ctx) => haveDish(s, ctx.me, 'dosa') || (!!ctx.cust('G1') && ctx.cust('G1').got.length > 0),
+    hint: [[10, 'Walk to the tawa, press Space and choose Plain Dosa.', 'Tap the glowing tawa and choose Plain Dosa.']],
+  }),
+  S({
+    id: 'gas-low', say: 'Dekho, lal batti jal gayi: gas kam hai!',
+    text: (s) => `Watch the gauge while the dosa cooks: it is at ${gasPct(s)}% and dropping. At 20% the flame turns RED with a warning bell: that is your signal to change the cylinder before it runs dry.`,
+    te: 'గేజ్ చూడండి: 20% దాటితే ఎరుపు హెచ్చరిక.',
+    allow: A_TAKE,
+    spotlight: gasSp,
+    done: (s) => !!s.gas && s.gas.u <= GAS.cap * GAS.lowFrac,
+    recover: lostDish('G1', 'dosa', 'gas-cook'),
+    hint: [[8, 'Wait a few seconds for the red low-gas warning. The dosa is cooking, so the burner drinks gas.']],
+  }),
+  S({
+    id: 'gas-swap', say: 'Silinder badlo, abhi!',
+    text: both((touch) => (s) => `LOW GAS! The gauge says ${gasPct(s)}%. Change the cylinder now: ${touch ? 'tap the cylinder stand at the left end of the counter and your cook walks there' : 'walk to the cylinder stand at the left end of the counter with A / D and press Space'}. It costs ${rs(GAS.swapCost)} and takes ${GAS.swapTicks} seconds.`),
+    te: 'గ్యాస్ తక్కువ! సిలిండర్ మార్చండి.',
+    controls: 'gas',
+    allow: ['move', 'swapGas', 'take'],
+    spotlight: gasSp,
+    done: (s) => !!s.gas && (s.gas.sw > 0 || s.gas.u >= GAS.cap),
+    recover: lostDish('G1', 'dosa', 'gas-cook'),
+    hint: [
+      [8, 'Walk to the cylinder at the far left and press Space.', 'Tap the cylinder stand at the far left.'],
+      [24, 'The cylinder stand glows. Change the cylinder before the burners go cold.'],
+    ],
+  }),
+  S({
+    id: 'gas-wait', say: 'Chhe second burner band, intezaar karo!',
+    text: both((touch) => (s) => `The new cylinder is going in: ${s.gas ? s.gas.sw : 0} seconds. Every burner is OFF meanwhile: nothing cooks, and nothing burns either, because the dishes wait. Cooking is refused until it is done ("The cylinder is being changed").`),
+    te: 'సిలిండర్ మారుతోంది: అప్పటిదాకా పొయ్యిలు ఆరిపోయి ఉంటాయి.',
+    allow: ['move', 'take'],
+    done: (s) => !!s.gas && s.gas.sw === 0 && s.gas.u >= GAS.cap,
+    recover: lostDish('G1', 'dosa', 'gas-cook'),
+    hint: [[10, 'Wait a few seconds: the burners come back on their own.']],
+  }),
+  S({
+    id: 'gas-serve', say: 'Burner wapas, ab dosa do!',
+    text: both((touch) => (s, ctx) => `Full cylinder, burners back. Pick up the dosa and serve it to ${tokenOf(ctx.cust('G1'))}. ${touch ? 'Tap the dish, then the customer.' : 'Press Space at the dish, then at the customer.'}`),
+    te: 'పొయ్యి మళ్లీ వెలిగింది: దోశ వడ్డించండి.',
+    controls: 'take',
+    allow: A_CARRY,
+    spotlight: serveSpot(['G1']),
+    done: (s, e, ctx) => pairPast(ctx, 'G1'),
+    recover: lostDish('G1', 'dosa', 'gas-cook'),
+    hint: [[10, 'Press Space at the glowing dosa, then at the customer.', 'Tap the glowing dosa, then the customer.']],
+  }),
+  S({
+    id: 'gas-cost', say: 'Silinder ka kharcha bhi hisaab mein!',
+    text: (s) => `That cylinder cost ${rs(GAS.swapCost)}, and it is already in your cost book (cost so far: ${rs(s.cost || 0)}). A cylinder lasts a few busy shifts, so change it early, in a quiet moment, never in the middle of a rush: ${GAS.swapTicks} seconds with cold burners is a long time when five tokens are waiting. The sambar and tea pots at the back counter stop without gas too.`,
+    te: 'సిలిండర్ ఖర్చు ఖర్చు పుస్తకంలో ఉంది.',
+    spotlight: gasSp,
+    ack: true,
+    hint: [ACK_HINT],
+    done: (s, e, ctx) => ctx.acked,
+  }),
+];
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Chapter: Sold out board
+
+const BOARD_TAGS = ['B1', 'B2'];
+const dishList = (c) => (c ? needsOf(c).map((d) => DISHES[d].name).join(' and ') : 'something else');
+
+const BOARD_STEPS = [
+  S({
+    id: 'board-intro', say: 'Board pe likh do: khatam!',
+    text: (s, ctx) => `When something runs out you do not make the customer wait for nothing: you mark it SOLD OUT on the board. ${tokenOf(ctx.cust('B1'))} is waiting for a Plain Dosa. Let us see what the board does.`,
+    te: 'అయిపోయినది బోర్డులో సోల్డ్ అవుట్ అని రాయండి.',
+    controls: 'board',
+    spotlight: boardSp,
+    onEnter: (s, ctx) => [...clearOnce(ctx), restock(), ...spawnTags(ctx, [{ tag: 'B1', kind: 'student', name: 'Swathi', order: ['dosa'] }])],
+    ack: true,
+    hint: [ACK_HINT],
+    done: (s, e, ctx) => !!ctx.cust('B1') && ctx.acked,
+  }),
+  S({
+    id: 'board-off', say: 'Plain dosa khatam, board pe daalo!',
+    text: [
+      'Mark Plain Dosa as SOLD OUT: press Space at the price board and switch Plain Dosa off.',
+      'Mark Plain Dosa as SOLD OUT: tap the price board and switch Plain Dosa off.',
+    ],
+    te: 'సాదా దోశను సోల్డ్ అవుట్ చేయండి.',
+    controls: 'board',
+    allow: A_BOARD,
+    spotlight: boardSp,
+    done: (s) => (s.off || []).includes('dosa'),
+    hint: [[8, 'Press Space at the glowing board and switch Plain Dosa off.', 'Tap the glowing board and switch Plain Dosa off.']],
+  }),
+  S({
+    id: 'board-react', say: 'Dekho, customer ne kya kiya!',
+    text: (s, ctx) => `${ctx.cust('B1') ? `${ctx.cust('B1').name} was waiting for a Plain Dosa. Seeing the board, they changed their order to ${dishList(ctx.cust('B1'))}.` : 'The waiting customer changed their order.'} A NEW customer, ${ctx.cust('B2') ? ctx.cust('B2').name : 'Gopal garu'}, walked up wanting a Plain Dosa too: the board stopped them, and they picked ${dishList(ctx.cust('B2'))}. Nobody storms off angry and nobody costs you a heart. If nothing else were available they would just go home politely.`,
+    te: 'బోర్డు చూసి కస్టమర్లు ఆర్డర్ మార్చుకున్నారు.',
+    spotlight: (s, ctx) => custSp(ctx.cust('B1')),
+    onEnter: (s, ctx) => spawnTags(ctx, [{ tag: 'B2', kind: 'uncle', name: 'Gopal garu', order: ['dosa'], fit: true }]),
+    ack: true,
+    hint: [ACK_HINT],
+    done: (s, e, ctx) => !!ctx.cust('B1') && !!ctx.cust('B2') && ctx.acked,
+  }),
+  S({
+    id: 'board-cook', say: 'Jo naya order hai, wohi banao!',
+    text: (s, ctx) => `Cook what they ordered now: ${tokenOf(ctx.cust('B1'))} wants ${dishList(ctx.cust('B1'))}, ${tokenOf(ctx.cust('B2'))} wants ${dishList(ctx.cust('B2'))}. Read the chits.`,
+    te: 'కొత్త ఆర్డర్లు వండండి.',
+    controls: 'cook',
+    allow: A_COOK,
+    spotlight: coverSpot(BOARD_TAGS),
+    done: (s, e, ctx) => allCovered(s, ctx, BOARD_TAGS),
+    hint: [
+      [12, 'Walk to the glowing station, press Space and choose the dish on the chit.', 'Tap the glowing station and choose the dish on the chit.'],
+      [34, 'Both customers need a dish cooking or in your hands.'],
+    ],
+  }),
+  S({
+    id: 'board-serve', say: 'Dono ko sahi dish do!',
+    text: [
+      'Pick the dishes up and serve each customer the dish on THEIR chit. Press Space at a ready dish, then at the customer.',
+      'Pick the dishes up and serve each customer the dish on THEIR chit. Tap a ready dish, then the customer.',
+    ],
+    te: 'ప్రతి ఒక్కరికి వారి ఆర్డర్ వడ్డించండి.',
+    controls: 'serve',
+    allow: A_CARRY,
+    spotlight: serveSpot(BOARD_TAGS),
+    done: (s, e, ctx) => allPast(ctx, BOARD_TAGS),
+    recover: (s, ctx) => (BOARD_TAGS.every((t) => ctx.cust(t) || ctx.outcome(t)) && firstUncovered(s, ctx, BOARD_TAGS) ? 'board-cook' : null),
+    hint: [[12, 'Press Space at each ready dish, then at its customer.', 'Tap each ready dish, then its customer.']],
+  }),
+  S({
+    id: 'board-on', say: 'Batter aa gaya, wapas board pe daalo!',
+    text: [
+      'The batter is back, so put Plain Dosa back ON the board: press Space at the price board and switch it on again. A good cook marks a dish off when the stock is out and nothing is coming, and puts it back the moment it is.',
+      'The batter is back, so put Plain Dosa back ON the board: tap the price board and switch it on again. A good cook marks a dish off when the stock is out and nothing is coming, and puts it back the moment it is.',
+    ],
+    te: 'పిండి వచ్చింది: దోశను బోర్డులో మళ్లీ ఆన్ చేయండి.',
+    controls: 'board',
+    allow: A_BOARD,
+    spotlight: boardSp,
+    done: (s) => !(s.off || []).includes('dosa'),
+    hint: [[8, 'Press Space at the glowing board and switch Plain Dosa on.', 'Tap the glowing board and switch Plain Dosa on.']],
+  }),
+];
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Chapter: Special orders (free play at the stations: the lesson is the order, not the walk)
+
+const playStep = (def) => S({ allow: A_PLAY, controls: 'play', ...def });
+const ORDER_HINT = [[16, 'Cook what the chit asks for, carry it, serve it.', 'Tap the stations, the dishes and the customer.']];
+
+const SPECIAL_STEPS = [
+  playStep({
+    id: 'parcel', say: 'Parcel order hai: pack karke do, jaldi!',
+    text: (s, ctx) => `PARCEL: ${ctx.cust('P') ? ctx.cust('P').name : 'Imran bhai'} wants it takeaway, packed. A parcel costs Rs ${REQUEST.parcelFee} extra per dish for the packing, the customer is in a hurry (patience ${Math.round((1 - REQUEST.parcelPatience) * 100)}% shorter), and instead of eating at the counter they wait while it is packed. Cook and serve the whole order.`,
+    te: 'పార్సెల్: ప్యాకింగ్ ఖర్చు ఎక్కువ, తొందర ఎక్కువ.',
+    spotlight: (s, ctx) => (allPast(ctx, ['P']) ? null : serveSpot(['P'])(s, ctx)),
+    onEnter: (s, ctx) => [...clearOnce(ctx), restock(), ...spawnTags(ctx, [{ tag: 'P', kind: 'office', name: 'Imran bhai', order: ['masala_dosa', 'irani_chai'], parcel: true }])],
+    done: (s, e, ctx) => pairPast(ctx, 'P'),
+    hint: ORDER_HINT,
+  }),
+  playStep({
+    id: 'extra', say: 'Thoda extra chutney, bhaiya!',
+    text: (s, ctx) => `EXTRA and SPICE: ${ctx.cust('X') ? ctx.cust('X').name : 'Gopal garu'} asks for extra coconut chutney and wants it spicier. The extra comes out of your chutney stock (half a portion), and when the dish is served well he tips ${rs(REQUEST.extraTip)} more. A spice request is a small bonus tip when you serve it fresh. Look for the little tags on the chit.`,
+    te: 'ఎక్స్‌ట్రా చట్నీ, కారం ఎక్కువ: చిన్న టిప్.',
+    spotlight: (s, ctx) => (allPast(ctx, ['X']) ? null : serveSpot(['X'])(s, ctx)),
+    onEnter: (s, ctx) => spawnTags(ctx, [{ tag: 'X', kind: 'uncle', name: 'Gopal garu', order: ['dosa'], extra: 'coconut_chutney', spice: 'more' }]),
+    done: (s, e, ctx) => pairPast(ctx, 'X'),
+    hint: ORDER_HINT,
+  }),
+  playStep({
+    id: 'regular', say: 'Pehchaano, ye apna regular customer hai!',
+    text: (s, ctx) => `A REGULAR: ${ctx.cust('R') ? ctx.cust('R').name : 'Raju'} comes every day. Regulars remember how you treated them: serve them well and they come back LOYAL, and a loyal regular tips more each visit. Serve them badly and the loyalty is gone. Look for the star on the chit. This is the first visit.`,
+    te: 'రెగ్యులర్ కస్టమర్: బాగా చూసుకుంటే రోజూ వస్తారు, ఎక్కువ టిప్.',
+    spotlight: (s, ctx) => (allPast(ctx, ['R']) ? null : serveSpot(['R'])(s, ctx)),
+    onEnter: (s, ctx) => spawnTags(ctx, [{ tag: 'R', kind: 'autowala', name: 'Raju', order: ['vada'], regular: true, loyal: 0 }]),
+    done: (s, e, ctx) => ctx.outcome('R') === 'paid',
+    hint: ORDER_HINT,
+  }),
+  playStep({
+    id: 'regular-back', say: 'Raju wapas aaya, ab loyal hai!',
+    text: (s) => `Raju is BACK, and now he is a loyal regular (loyalty ${s.regs && s.regs[0] ? s.regs[0][0] : 1}). His tip is multiplied: every loyalty level adds 30% to what he tips when you serve him well and quickly. Keep him happy visit after visit.`,
+    te: 'రాజు మళ్లీ వచ్చాడు: ఇప్పుడు లాయల్, టిప్ ఎక్కువ.',
+    spotlight: (s, ctx) => (allPast(ctx, ['R2']) ? null : serveSpot(['R2'])(s, ctx)),
+    onEnter: (s, ctx) => spawnTags(ctx, [{ tag: 'R2', kind: 'autowala', name: 'Raju', order: ['vada'], regular: true }]),
+    done: (s, e, ctx) => ctx.outcome('R2') === 'paid',
+    hint: ORDER_HINT,
+  }),
+  playStep({
+    id: 'big', say: 'Office ka bada parcel, chaar dish ek saath!',
+    text: (s, ctx) => `The BIG OFFICE PARCEL: ${ctx.cust('Q') ? ctx.cust('Q').name : 'Ravi anna'} is ordering for the whole office. Real ones are 4 to 10 dishes, and this one is 4. The customer is patient (about ${REQUEST.big.patience} times as long) and pays a bonus tip of ${rs(REQUEST.big.bonus)} when it is done. You only have two hands, so plan the trips and start the slow dishes first.`,
+    te: 'ఆఫీస్ పెద్ద పార్సెల్: ఓపిక ఎక్కువ, బోనస్ టిప్.',
+    spotlight: (s, ctx) => (allPast(ctx, ['Q']) ? null : serveSpot(['Q'])(s, ctx)),
+    onEnter: (s, ctx) => spawnTags(ctx, [{ tag: 'Q', kind: 'office', name: 'Ravi anna', order: ['dosa', 'dosa', 'idly', 'irani_chai'], big: true }]),
+    done: (s, e, ctx) => pairPast(ctx, 'Q'),
+    hint: ORDER_HINT,
+  }),
+  playStep({
+    id: 'delivery', say: 'Delivery boy aaya, paanch parcel jaldi!',
+    text: (s, ctx) => `The TIFFIN DELIVERY BOY: he wants ${REQUEST.delivery.dishes} parcels at once for his customers, he is in a big hurry (in a real shift his patience is ${REQUEST.delivery.patience} seconds), and he tips ${rs(REQUEST.delivery.bonus)} extra if you are in time. Cook the dishes of different stations side by side, and carry two at a time.`,
+    te: 'డెలివరీ బాయ్: ఐదు పార్సెల్స్, తొందర, బోనస్.',
+    spotlight: (s, ctx) => (allPast(ctx, ['D']) ? null : serveSpot(['D'])(s, ctx)),
+    onEnter: (s, ctx) => spawnTags(ctx, [{ tag: 'D', kind: 'autowala', name: 'Delivery boy', order: ['idly', 'osmania', 'irani_chai', 'vada', 'dosa'], delivery: true }]),
+    done: (s, e, ctx) => pairPast(ctx, 'D'),
+    hint: ORDER_HINT,
+  }),
+];
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Chapter: Weather and the inspector
+
+const DRILL_DEMO = 'masala_dosa';
+const drillFuse = (ctx) => Math.min(60, 20 + 10 * (ctx.attempts.inspect || 0)); // each failed drill gets a longer warning
+
+const WEATHER_STEPS = [
+  playStep({
+    id: 'rain', say: 'Baarish aa gayi, chai bajji ka mausam!',
+    text: (s, ctx) => `RAIN! The sky just opened over the street. Fewer people walk by (about 60% of the usual crowd) but those who stop want chai, coffee, bajji, bonda and vada, hot. ${ctx.cust('W1') ? ctx.cust('W1').name : 'Naseer miyan'} wants an Irani chai and a mirchi bajji. In the real shifts the weather changes what the crowd orders: read it and cook ahead.`,
+    te: 'వర్షం: జనం తగ్గుతారు, కానీ చాయ్, బజ్జీ ఎక్కువ.',
+    spotlight: (s, ctx) => (allPast(ctx, ['W1']) ? null : serveSpot(['W1'])(s, ctx)),
+    onEnter: (s, ctx) => [
+      ...clearOnce(ctx),
+      restock(),
+      train({ events: true, stage: { event: { id: 'rain', ticks: 60 } } }),
+      ...spawnTags(ctx, [{ tag: 'W1', kind: 'student', name: 'Naseer miyan', order: ['irani_chai', 'mirchi_bajji'] }]),
+    ],
+    done: (s, e, ctx) => pairPast(ctx, 'W1'),
+    hint: ORDER_HINT,
+  }),
+  infoStep(
+    'power-card', 'Current gayi toh chakki aur steamer band!',
+    'A POWER CUT is coming. When the current goes the lights, the idly steamer and the wet grinder stop: idly cooking is refused, and any batter you are grinding pauses until the power is back. The gas burners (tawa, kadai, the sambar pot) carry on. Keep working with what still runs.',
+    'కరెంట్ కట్: గ్రైండర్, ఇడ్లీ పాత్ర ఆగుతాయి. గ్యాస్ పొయ్యిలు నడుస్తాయి.',
+  ),
+  S({
+    id: 'power-cut', say: 'Light gayi! Chakki ruk gayi!',
+    text: [
+      'POWER CUT! Start a batch of dosa batter at the back counter anyway: the grinder is silent, so the job will pause until the power comes back. Press Space at the back counter and choose Dosa batter.',
+      'POWER CUT! Start a batch of dosa batter at the back counter anyway: the grinder is silent, so the job will pause until the power comes back. Tap the back counter and choose Dosa batter.',
+    ],
+    te: 'కరెంట్ పోయింది! గ్రైండర్ ఆగింది, పిండి ఆగి ఆగి సాగుతుంది.',
+    prepRecipe: 'batter_dosa',
+    controls: 'prep',
+    allow: A_PREP,
+    spotlight: prepSp,
+    onEnter: (s, ctx) => [
+      train({ stage: { event: { id: 'power', ticks: 18 } } }),
+      ...spawnTags(ctx, [{ tag: 'W2', kind: 'office', name: 'Ravi anna', order: ['masala_dosa', 'idly'] }]),
+    ],
+    done: (s) => prepJobs(s, 'batter_dosa').length > 0,
+    hint: [[10, 'Press Space at the back counter and choose Dosa batter.', 'Tap the back counter and choose Dosa batter.']],
+  }),
+  playStep({
+    id: 'power-serve', say: 'Jo chal raha hai woh karo: tawa chalu hai!',
+    text: both((touch) => (s, ctx) => {
+      const down = (s.events || []).some((e) => e.id === 'power');
+      return down
+        ? `The power is still OFF: the steamer is dead, so the idly cannot start (the stall refuses it). The tawa runs on gas, so cook the Masala Dosa now and wait for the current for the idly. ${tokenOf(ctx.cust('W2'))} waits.`
+        : `The power is back! The steamer works again, the grinder carries on. Finish ${tokenOf(ctx.cust('W2'))}'s order: ${touch ? 'tap the idly steamer' : 'press Space at the steamer'} and cook the idly.`;
+    }),
+    te: 'కరెంట్ లేకపోయినా తవా నడుస్తుంది. ముందు దోశ.',
+    allow: A_PLAY.concat(['collectPrep']),
+    spotlight: (s, ctx) => (allPast(ctx, ['W2']) ? null : coverSpot(['W2'])(s, ctx)),
+    done: (s, e, ctx) => pairPast(ctx, 'W2'),
+    hint: ORDER_HINT,
+  }),
+  S({
+    id: 'power-batter', say: 'Batter ab bana, utha lo!',
+    text: both((touch) => (s) => {
+      const j = prepJobs(s, 'batter_dosa')[0];
+      if (!j) return 'The batter is on the shelf. A power cut only delays the grinder, it does not ruin the batch.';
+      return j.st === 'ready' ? `The grinder finished once the power was back. ${pressAt(touch)} the back counter and collect the batter.` : `The grinder is turning again: ${Math.max(0, j.readyAt - s.tick)} seconds to go.`;
+    }),
+    te: 'కరెంట్ వచ్చాక పిండి తయారైంది: తీసుకోండి.',
+    controls: 'prep',
+    allow: A_PICKUP,
+    spotlight: prepSp,
+    done: (s) => prepJobs(s, 'batter_dosa').length === 0,
+    hint: [[12, 'Press Space at the back counter when the batter is ready.', 'Tap the back counter when the batter is ready.']],
+  }),
+  infoStep(
+    'inspect-card', 'GHMC inspector aa raha hai, tawa chamkao!',
+    'The GHMC FOOD-SAFETY INSPECTOR does the rounds of every street stall. He gives a short warning, then checks: no burnt food lying on the counter, and the dosa tawa wiped clean in the last 30 seconds. Pass and you get a bonus tip; fail and you pay a fine and, in a real shift, lose a heart. This is a drill: the fine is real money in your books, but no heart is lost.',
+    'GHMC ఇన్‌స్పెక్టర్: కాలిన ఆహారం ఉండకూడదు, పెనం శుభ్రంగా ఉండాలి.',
+  ),
+  S({
+    id: 'inspect-drill', say: 'Inspector gate pe hai! Jala hua hatao, tawa saaf karo!',
+    text: both((touch) => (s, ctx) => {
+      const left = Math.max(0, ((s.events || []).find((e) => e.id === 'inspector') || { until: s.tick }).until - s.tick);
+      const retry = ctx.attempts.inspect > 0 ? ' The inspector came back for a second look, with more warning this time.' : '';
+      return `The inspector is at the gate: ${left} seconds. Do TWO things: clear any burnt or forgotten dish from the counter (${touch ? 'tap' : 'press Space at'} the smoking dish, or pick up a ready one and bin it), and wipe the dirty tawa clean.${retry}`;
+    }),
+    te: 'ఇన్‌స్పెక్టర్ వస్తున్నాడు: కాలిన వాటిని తీసేయండి, పెనం తుడవండి.',
+    controls: 'tend',
+    allow: ['move', 'take', 'tend', 'discard'],
+    spotlight: (s) => {
+      for (const x of allSlots(s)) if (x.dish === DRILL_DEMO && x.st !== 'empty') return sp('slot', x.station, x.slot);
+      return !tended(s, 'tawa1') || (s.stations.tawa1 && s.tick - tendAtOf(s, 'tawa1') > 25) ? stationSp('dosa') : null;
+    },
+    flags: FROZEN,
+    onEnter: (s, ctx) => {
+      const acts = [
+        train({ stage: { pans: { tawa: { heat: 52, gunk: 55 } }, event: { id: 'inspector', ticks: drillFuse(ctx) } } }),
+      ];
+      const station = s.stations.tawa1;
+      const slot = station ? station.slots.findIndex((sl) => sl.st === 'empty') : -1;
+      if (slot >= 0) acts.push({ type: 'cook', station: 'tawa1', slot, dish: DRILL_DEMO });
+      return { actions: acts, set: { kv: { fines0: s.fines || 0, drillAt: s.tick } } };
+    },
+    done: (s, e, ctx) => inspectorOver(s, ctx) && (s.fines || 0) === (ctx.kv.fines0 || 0),
+    failed: (s, ctx) => (inspectorOver(s, ctx) && (s.fines || 0) > (ctx.kv.fines0 || 0) ? { to: 'inspect-drill', attempt: 'inspect' } : null),
+    hint: [
+      [8, 'Wipe the tawa (press Space at it) and bin or clear the dish on the counter.', 'Wipe the tawa (tap it) and bin or clear the dish on the counter.'],
+      [20, 'Pick up the ready dish and throw it in the bin, then tend the tawa before the inspector checks.'],
+    ],
+  }),
+  S({
+    id: 'inspect-clean', say: 'Counter se bacha hua saaf kar do!',
+    text: both((touch) => () => `Passed, with a bonus tip! One last tidy: the drill dish is still lying about. ${touch ? 'Tap' : 'Press Space at'} the smoking or ready dish and clear it. A tidy counter is half of the food-safety rules.`),
+    te: 'మిగిలిన వంటకాన్ని తీసేయండి.',
+    controls: 'take',
+    allow: A_TAKE,
+    when: (s) => allSlots(s).some((x) => x.dish === DRILL_DEMO && x.st !== 'empty'),
+    spotlight: (s) => {
+      const r = allSlots(s).find((x) => x.dish === DRILL_DEMO && x.st !== 'empty');
+      return r ? sp('slot', r.station, r.slot) : null;
+    },
+    done: (s, e, ctx) => !allSlots(s).some((x) => x.dish === DRILL_DEMO && x.st !== 'empty') || heldCount(ctx.me, DRILL_DEMO) > 0,
+    hint: [[10, 'Press Space at the dish to clear it.', 'Tap the dish to clear it.']],
+  }),
+];
+
+// the inspector has had its say: his event ran out (and the drill began a moment ago)
+function inspectorOver(s, ctx) {
+  return ctx.stepTicks >= 2 && !(s.events || []).some((e) => e.id === 'inspector');
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Chapter: Money: profit
+
+const PROFIT_DEMO = 'osmania';
+
+const PROFIT_STEPS = [
+  S({
+    id: 'profit-books', say: 'Paisa kahan se aata hai, aur kahan jaata hai!',
+    text: (s) => `Your BOOKS so far. REVENUE is the bills you collected: ${rs(s.revenue || 0)}. TIPS are the extras, combo bonuses and the inspector's reward: ${rs(s.tips || 0)}. Together that is the cash in hand at the top of the screen: ${rs(s.money || 0)}. But there is a COST side too, ${rs(s.cost || 0)} so far: every dish eats ingredients (a Masala Dosa sells for ${rs(DISHES.masala_dosa.price)} and its ingredients cost about ${rs(Object.entries(DISHES.masala_dosa.uses).reduce((n, [i, q]) => n + q * INGREDIENTS[i].cost, 0))}), the batches you prepared were paid up front, the gas cylinder was ${rs(GAS.swapCost)}, and food-safety fines (${rs(s.fines || 0)} so far) count as cost too.`,
+    te: 'ఆదాయం: బిల్లులు, టిప్స్. ఖర్చు: సరుకు, గ్యాస్, జరిమానా.',
+    onEnter: (s, ctx) => clearOnce(ctx),
+    ack: true,
+    hint: [ACK_HINT],
+    done: (s, e, ctx) => ctx.acked,
+  }),
+  S({
+    id: 'profit-bin', say: 'Phenka hua khana bhi kharcha hai!',
+    text: both((touch) => (s, ctx) => `WASTE is money you spent on food nobody ate: burnt dishes, dishes you throw away, batter that went bad. Let us see it: Chotu put a biscuit plate on the chai counter. ${pressAt(touch)} it to pick it up, then throw it in the bin at the right end of the counter, and watch the waste number grow (it is ${rs(s.waste || 0)} now).`),
+    te: 'వృథా: పారవేసిన ఆహారం కూడా ఖర్చే.',
+    controls: 'take',
+    allow: A_TAKE,
+    spotlight: (s) => {
+      const r = allSlots(s).find((x) => x.dish === PROFIT_DEMO && x.st !== 'empty');
+      return r ? sp('slot', r.station, r.slot) : { kind: 'bin', look: true };
+    },
+    onEnter: (s) => {
+      const station = s.stations.chai1;
+      const slot = station ? station.slots.findIndex((sl) => sl.st === 'empty') : -1;
+      return { actions: slot >= 0 ? [{ type: 'cook', station: 'chai1', slot, dish: PROFIT_DEMO }] : [], set: { kv: { waste0: s.waste || 0 } } };
+    },
+    // the waste must be real AND the dish gone (binned, or burnt and cleared): the player has to act
+    done: (s, e, ctx) => (s.waste || 0) > (ctx.kv.waste0 || 0) && !allSlots(s).some((x) => x.dish === PROFIT_DEMO && x.st !== 'empty'),
+    hint: [
+      [8, 'Pick up the biscuits, then press Space at the bin.', 'Tap the biscuits, then tap the bin.'],
+      [24, 'Take the biscuit dish and discard it into the bin.'],
+    ],
+  }),
+  S({
+    id: 'profit-profit', say: 'Asli kamaai: profit! Sitare profit se milte hain.',
+    text: (s) => `PROFIT is what is left: cash in hand ${rs(s.money || 0)} minus cost ${rs(s.cost || 0)} = ${rs((s.money || 0) - (s.cost || 0))}. That is the number the STARS are measured on, not the cash. So wasting food, a skipped tend that tears dosas, an empty-batter walk-out, a fine or a cylinder changed at the wrong moment all take stars away, while tips and a full, happy stall bring them. Half the value of unused paid-for stock comes back at closing time.`,
+    te: 'స్టార్లు లాభంపై ఆధారపడతాయి: డబ్బు మైనస్ ఖర్చు.',
+    ack: true,
+    hint: [ACK_HINT],
+    done: (s, e, ctx) => ctx.acked,
+  }),
+];
+
+
 const FLOW_STEPS = [
-  infoStep('money', 'Paisa ka hisaab, anna!', 'Every token pays the price of its dishes, plus a tip for perfect pickups, quick service and a happy face. Your money for the shift is at the top of the screen.', 'ప్రతి టోకెన్ వంటకాల ధర చెల్లిస్తుంది, టిప్ అదనం.'),
+  infoStep('money', 'Paisa ka hisaab, anna!', 'Every token pays the price of its dishes, plus a tip for perfect pickups, quick service and a happy face. Your money for the shift is at the top of the screen. What you keep is the PROFIT, money minus cost, as you saw in the books.', 'ప్రతి టోకెన్ వంటకాల ధర చెల్లిస్తుంది, టిప్ అదనం.'),
   infoStep('hearts', 'Paanch dil hain anna, sambhal ke!', 'You have 5 hearts. A customer who storms off angry, or walks away without paying, costs one heart. At zero the centre closes for the day. This training shift has no hearts, but every real shift does.', 'ఐదు హృదయాలు: కోపంగా వెళ్ళినా, చెల్లించకుండా వెళ్ళినా ఒకటి పోతుంది.'),
-  infoStep('stars', 'Har shift mein sitare milte hain!', 'Each shift has money targets for one, two and three stars. Reach the first target and the next shift unlocks, reach the third and you are a star cook.', 'ప్రతి షిఫ్ట్‌లో ఒకటి, రెండు, మూడు స్టార్ల లక్ష్యాలు.'),
+  infoStep('stars', 'Har shift mein sitare milte hain!', 'Each shift has PROFIT targets for one, two and three stars: money collected minus what you spent on ingredients, gas and fines. Reach the first target and the next shift unlocks, reach the third and you are a star cook.', 'ప్రతి షిఫ్ట్‌లో ఒకటి, రెండు, మూడు స్టార్ల లక్ష్యాలు.'),
   infoStep('clock', 'Ghadi dekho, din badalta hai!', 'The shift clock runs at the top, and the sky changes with it: morning, afternoon, evening and night. Customers keep coming until the shift ends, so serve everyone before closing.', 'షిఫ్ట్ గడియారం నడుస్తుంది, ఆకాశం మారుతుంది.'),
   infoStep('levels', 'Practice shifts aur menu board!', 'After this training there are 12 practice shifts in the menu, each one unlocking when you clear the one before. The availability board by the counter shows which dishes and stations are open today: a dish that is not on it will not be ordered.', '12 ప్రాక్టీస్ షిఫ్ట్‌లు, ఒక్కొక్కటి తెరుచుకుంటుంది. బోర్డులో ఈరోజు వంటకాలు ఉంటాయి.'),
   infoStep('walkcost', 'Ek baat yaad rakhna: chalna bhi time leta hai!', 'Walking takes time. In a rush a long walk can cost you a customer, so cook the dishes that go together side by side, and pick up before you walk to serve.', 'నడవడానికి కూడా సమయం పడుతుంది.'),
@@ -577,14 +1443,16 @@ const RUSH_ORDERS = [
 const RUSH_STEPS = [
   S({
     id: 'rush', say: 'Rush aa gaya! Teen customer ek saath!',
-    text: 'RUSH time: three tokens at once, and the order needs the tawa, steamer, kadai and chai counter. Cook, carry two at a time, serve the right token and collect. The clock and the pay window are real now, but you have enough time.',
-    te: 'రష్ టైమ్! ముగ్గురు కస్టమర్లు, నాలుగు స్టేషన్లు.',
+    text: 'RUSH time: three tokens at once, and the order needs the tawa, steamer, kadai and chai counter. Everything you learned is in play: the dosa batter is nearly out (make more at the back counter and collect it), the tawa is caked (tend it before it tears your dosas), and the cylinder, the board and the power are yours to watch. Cook, carry two at a time, serve the right token and collect. The clock and the pay window are real now, but you have enough time.',
+    te: 'రష్ టైమ్! పిండి దాదాపు అయిపోయింది, పెనం మురికిగా ఉంది: తయారు చేయండి, తుడవండి.',
     allow: A_ALL,
     autoCollect: false,
     controls: 'cook',
     flags: (ctx) => (ctx.attempts.rush === 0 ? LIVE : FROZEN),
     onEnter: (s, ctx) => {
       const acts = ctx.visits === 1 ? clearHands(ctx) : [];
+      // the stall the rush needs prep and tend for: one portion of dosa batter on the shelf, a tawa on the edge of tearing
+      acts.push(restock({ batter_dosa: 1 }), train({ stage: { pans: { tawa: { heat: 52, gunk: 68 } } } }));
       for (const r of RUSH_ORDERS) if (!live(ctx.cust(r.tag))) acts.push(spawnAction(r));
       return acts;
     },
@@ -597,7 +1465,7 @@ const RUSH_STEPS = [
       return o.every(Boolean) && o.every((x) => x !== 'paid') ? { to: 'rush', attempt: 'rush' } : null;
     },
     hint: [
-      [20, 'Cook what the order chits ask for, serve each token, then collect the money.'],
+      [20, 'Cook what the order chits ask for. Out of batter? Make more at the back counter. Dirty tawa? Wipe it. Then serve each token and collect the money.'],
       [60, 'Press Space at a station to cook, at ready dishes to pick up, at a customer to serve or collect.', 'Tap a station to cook, ready dishes to pick up, a customer to serve or collect.'],
     ],
   }),
@@ -622,6 +1490,13 @@ export const TUTORIAL_STEPS = [
   ...chapter('kadai', KADAI_STEPS),
   ...chapter('chai', CHAI_STEPS),
   ...chapter('serve', SERVE_STEPS),
+  ...chapter('stock', STOCK_STEPS),
+  ...chapter('heat', HEAT_STEPS),
+  ...chapter('gas', GAS_STEPS),
+  ...chapter('board', BOARD_STEPS),
+  ...chapter('special', SPECIAL_STEPS),
+  ...chapter('weather', WEATHER_STEPS),
+  ...chapter('profit', PROFIT_STEPS),
   ...chapter('flow', FLOW_STEPS),
   ...chapter('rush', RUSH_STEPS),
 ];
@@ -629,6 +1504,8 @@ export const TUTORIAL_STEPS = [
 export const TUTORIAL_STEP_IDS = Object.freeze(TUTORIAL_STEPS.map((s) => s.id));
 /** The dishes that get their own recipe lesson (every dish of the catalogue). */
 export const TUTORIAL_RECIPE_DISHES = Object.freeze(TUTORIAL_STEPS.filter((s) => s.recipe).map((s) => s.recipe));
+/** The back-counter ingredients that get a prep card (PREP_RECIPES). */
+export const TUTORIAL_PREP_RECIPES = Object.freeze([...new Set(TUTORIAL_STEPS.filter((s) => s.prepRecipe).map((s) => s.prepRecipe))]);
 
 // ---------------------------------------------------------------------------------------------------------------------
 // the driver
@@ -646,7 +1523,8 @@ const isTouch = (p) => p === 'touch';
  *   driver.say / te                 Chotu's street line and the Telugu line
  *   driver.text / hint / controls   the current step's variant for the pointer set with setPointer('touch' | 'keyboard')
  *   driver.textFor(p) / hintFor(p) / controlsFor(p)   the same for an explicit pointer
- *   driver.recipe                   { dish, name, te, station, steps, te, hi, tip ... } for the recipe card of this step, or null
+ *   driver.recipe                   { dish, name, nameTe, station, steps, te, hi, tip, uses ... } for the recipe card of this step, or null. A back-counter
+ *                                   step (`prepRecipe`) gives { dish: <ingredient id>, prep: true, name, nameTe, goes, goesTe, goesHi, steps, te, hi, tip ... }
  *   driver.allowed                  the game actions the player may do now (array), or null when anything goes (skipped, finished)
  *   driver.allows(type)             may the player do this action now? the HUD refuses the rest with driver.notYet
  *   driver.spotlight                { kind, id?, slot?, look? } for the scene/HUD; `look: true` = turn the head to it (scene.lookAt)
@@ -670,7 +1548,7 @@ export function createTutorialDriver({ steps = TUTORIAL_STEPS } = {}) {
     acked: false,
     pointer: 'keyboard',
     visits: {}, // step id -> times entered
-    attempts: { collect: 0, rush: 0 },
+    attempts: { collect: 0, rush: 0, inspect: 0 },
     seen: new Set(), // customer ids already accounted for
     tags: {}, // 'A' -> customer id
     pending: [], // [{ tag, action }] spawns whose customer has not appeared yet, in order
@@ -678,6 +1556,7 @@ export function createTutorialDriver({ steps = TUTORIAL_STEPS } = {}) {
     outcomes: {}, // customer id -> 'paid' | 'angry' | 'unpaid'
     auto: new Set(), // customers Chotu already collected from
     demo: null,
+    kv: {}, // scratch memory a step's onEnter may set (set: { kv })
     flags: null, // the last flags sent to the engine
     notice: null,
     look: null, // the last { yaw, pitch }
@@ -732,6 +1611,7 @@ export function createTutorialDriver({ steps = TUTORIAL_STEPS } = {}) {
       acked: mem.acked,
       attempts: mem.attempts,
       demo: mem.demo,
+      kv: mem.kv,
       look: mem.look,
       lookDelta: mem.lookDelta,
       cust: (tag) => byId(mem.tags[tag]),
@@ -764,6 +1644,7 @@ export function createTutorialDriver({ steps = TUTORIAL_STEPS } = {}) {
     let on = resolve(step.onEnter, state, ctx) || [];
     if (!Array.isArray(on)) {
       if (on.set && Object.hasOwn(on.set, 'demo')) mem.demo = on.set.demo;
+      if (on.set && on.set.kv) mem.kv = { ...mem.kv, ...on.set.kv };
       on = on.actions || [];
     }
     // tagged spawns: remember which customer each becomes (a retry brings new customers, so old tags must not point at the ones who left)
@@ -869,9 +1750,12 @@ export function createTutorialDriver({ steps = TUTORIAL_STEPS } = {}) {
     get hint() { return hintOf(mem.pointer); },
     hintFor(pointer) { return hintOf(pointer); },
     get recipe() {
-      const id = steps[mem.index].recipe;
-      if (!id || !Object.hasOwn(RECIPES, id)) return null;
-      return { dish: id, name: DISHES[id].name, nameTe: DISHES[id].te, ...RECIPES[id] };
+      const step = steps[mem.index];
+      const id = step.recipe;
+      if (id && Object.hasOwn(RECIPES, id)) return { dish: id, name: DISHES[id].name, nameTe: DISHES[id].te, ...RECIPES[id] };
+      const item = step.prepRecipe;
+      if (item && Object.hasOwn(PREP_RECIPES, item)) return { dish: item, prep: true, name: INGREDIENTS[item].name, nameTe: INGREDIENTS[item].te, ...PREP_RECIPES[item] };
+      return null;
     },
     get ackable() {
       const step = steps[mem.index];

@@ -2,8 +2,8 @@
 // the market, customers' special requests. One behaviour per test; level 0 (the tutorial) must stay exactly as it was.
 import { describe, it, expect, vi } from 'vitest';
 import {
-  createGame, applyAction, slotInfo, customerInfo, stockInfo, gasInfo, tendInfo, needs, chooseAutoAction, result,
-  DISHES, DISH_IDS, INGREDIENTS, INGREDIENT_IDS, STOCK_CAP, GAS, HEAT, FERMENT, MARKET_MARKUP, EAT_TICKS, REQUEST, LEVELS, MAX_LEVEL,
+  createGame, applyAction, slotInfo, customerInfo, stockInfo, gasInfo, tendInfo, needs, chooseAutoAction, result, eventsNow,
+  DISHES, DISH_IDS, EVENTS, INGREDIENTS, INGREDIENT_IDS, STOCK_CAP, GAS, HEAT, FERMENT, MARKET_MARKUP, EAT_TICKS, REQUEST, LEVELS, MAX_LEVEL,
   levelOps, menuFor, openingStock, levelItems, dishCost, foodCostFrac, LAYOUT, STATIONS, STATION_KINDS, STATION_IDS,
 } from './index.js';
 import { validTarget, standX } from './movement.js';
@@ -999,5 +999,425 @@ describe('state stays sane', () => {
       return s;
     };
     expect(run()).toEqual(run());
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// the training switches: `tutorial-flags { stock, gas, heat, events, market, stage }` and the request fields of `spawn` (the tutorial driver's hooks)
+
+describe('training switches: tutorial-flags (the tutorial driver teaches one mechanic at a time)', () => {
+  const tut = () => game(0, 1, [{ id: 'a', name: 'Asha' }]);
+  const flags = (s, f) => ap(s, { type: 'tutorial-flags', ...f });
+  const spawn = (s, customer) => ap(s, { type: 'spawn', customer });
+  const act = (s, a) => ap(s, { playerId: 'a', ...a });
+  const ID = (stage) => ({ stage });
+
+  it('with every switch off, absent or not a boolean, level 0 is exactly as before', () => {
+    const s0 = tut();
+    expect(flags(s0, {}).state).toEqual(s0);
+    expect(flags(s0, { stock: false, gas: false, heat: false, events: false, market: false }).state).toEqual(s0);
+    expect(flags(s0, { stock: 'yes', gas: 1, heat: null, events: [], market: {} }).state).toEqual(s0);
+    expect(flags(s0, { patience: true, pay: true }).state.cfg).toMatchObject({ noPatience: false, noPayExpiry: false, stock: false, gas: false, heat: false, market: false, events: [] });
+    // the same actions give the same game with or without the no-op flags in between
+    const run = (withFlags) => {
+      let s = withFlags ? flags(s0, { stock: false, heat: false }).state : s0;
+      s = spawn(s, { order: ['masala_dosa'], kind: 'office', name: 'Ravi' }).state;
+      s = act(s, { type: 'cook', station: 'tawa1', slot: 0, dish: 'masala_dosa' }).state;
+      s = tk(s, 7).s;
+      s = act(s, { type: 'take', station: 'tawa1', slot: 0 }).state;
+      s = act(s, { type: 'serve', customer: 1, hand: 0 }).state;
+      return tk(s, 6).s;
+    };
+    expect(run(true)).toEqual(run(false));
+    expect(run(true).cost).toBe(0);
+  });
+
+  it('every flag is training-only and hostile stage input is refused without changing anything', () => {
+    const live = game(1, 1);
+    for (const f of [{ stock: true }, { gas: true }, { heat: true }, { events: true }, { market: true }]) {
+      const r = applyAction(live, { type: 'tutorial-flags', ...f });
+      expect(r.error).toBeTruthy();
+      expect(r.state).toBe(live);
+    }
+    const s = flags(tut(), { stock: true, gas: true, heat: true, events: true }).state;
+    for (const stage of [5, 'x', [], null, { stock: 3 }, { stock: { oil: -1 } }, { stock: { oil: 49 } }, { stock: { nope: 1 } }, { stock: { oil: 'x' } },
+      { fresh: { oil: 50 } }, { fresh: { batter_dosa: 101 } }, { gas: -1 }, { gas: 1001 }, { gas: '5' }, { pans: [] }, { pans: { ghost: {} } },
+      { pans: { tawa: { water: 5 } } }, { pans: { steamer: { heat: 5 } } }, { pans: { tawa: { heat: 101 } } }, { pans: { tawa: 5 } },
+      { event: 'rain' }, { event: { id: 'ghost' } }, { event: { id: 'rain', ticks: 0 } }, { event: { id: 'rain', ticks: 91 } }, { event: { id: 'rain', ticks: 1.5 } },
+      { event: { id: '__proto__' } }]) {
+      const r = applyAction(s, { type: 'tutorial-flags', stage });
+      expect(r.error, JSON.stringify(stage)).toBeTruthy();
+      expect(r.state).toBe(s);
+    }
+    // a stage key needs its mechanic switched on
+    const off = tut();
+    for (const stage of [{ stock: { '*': 3 } }, { fresh: { '*': 3 } }, { gas: 100 }, { pans: { tawa: { gunk: 1 } } }, { event: { id: 'rain' } }]) {
+      expect(applyAction(off, { type: 'tutorial-flags', stage }).error, JSON.stringify(stage)).toBeTruthy();
+    }
+    expect(applyAction(off, { type: 'tutorial-flags', market: true }).error).toBe('The market needs the stock switched on');
+  });
+
+  it('stock: a shelf of 10 portions, fresh batter and the back counter; prep, collect, refusals and the board all work; off restores level 0', () => {
+    const s0 = tut();
+    let s = flags(s0, { stock: true }).state;
+    expect(s.cfg).toMatchObject({ stock: true, market: false });
+    expect(s.cfg.stations).toEqual([...s0.cfg.stations, 'prep1']);
+    expect(s.stations.prep1.slots).toHaveLength(2);
+    expect(Object.keys(s.stock).sort()).toEqual([...levelItems(s.cfg.menu)].sort());
+    for (const q of Object.values(s.stock)) expect(q).toBe(10);
+    expect(s.fresh).toEqual({ batter_dosa: 100, batter_idly: 100, batter_pesarattu: 100, vada_batter: 100 });
+    expect(stockInfo(s).find((i) => i.item === 'batter_dosa')).toMatchObject({ n: 10, fresh: 100, low: false, out: false });
+    expect(validTarget('prep1', s.cfg.stations, s.cfg.spots, s.cfg.gas)).toBe(true);
+    expect(act(s, { type: 'move', to: 'prep1' }).state.players.a.at).toBe('prep1');
+    // a batch of dosa batter: paid up front, 12 ticks, collected onto the shelf
+    s = act(s, { type: 'prep', station: 'prep1', slot: 0, item: 'batter_dosa' }).state;
+    expect(s.cost).toBe(60);
+    s = tk(s, 11).s;
+    expect(applyAction(s, { type: 'collectPrep', playerId: 'a', station: 'prep1', slot: 0 }).error).toBe('Not ready yet');
+    const done = tk(s, 1);
+    s = done.s;
+    expect(types(done.ev)).toContain('prep-done');
+    const got = act(s, { type: 'collectPrep', station: 'prep1', slot: 0 });
+    s = got.state;
+    expect(types(got.events)).toEqual(['prep-collect']);
+    expect(s.stock.batter_dosa).toBe(22);
+    // cooking uses the shelf; an empty jar refuses
+    s = spawn(s, { order: ['dosa'] }).state;
+    s = act(s, { type: 'cook', station: 'tawa1', slot: 0, dish: 'dosa' }).state;
+    expect(s.stock.batter_dosa).toBe(21);
+    expect(s.cost).toBe(60); // the dosa came out of the batch that was already paid for
+    expect(s.pre).toBe(60 - dishCost('dosa'));
+    s = flags(s, ID({ stock: { batter_dosa: 0 } })).state;
+    expect(s.stock.batter_dosa).toBe(0);
+    expect(applyAction(s, { type: 'cook', playerId: 'a', station: 'tawa1', slot: 1, dish: 'dosa' }).error).toBe('Out of dosa batter');
+    expect(stockInfo(s).find((i) => i.item === 'batter_dosa').out).toBe(true);
+    // the board comes with the stock: a waiting customer swaps, nobody loses a heart
+    s = flags(s, ID({ stock: { '*': 10 } })).state;
+    const off = act(s, { type: 'board', dish: 'dosa', on: false });
+    expect(off.state.off).toEqual(['dosa']);
+    expect(off.events.find((e) => e.type === 'sold-out')).toMatchObject({ dish: 'dosa', left: false });
+    expect(off.state.customers[0].order[0]).not.toBe('dosa');
+    expect(off.state.lives).toBe(5);
+    expect(applyAction(s, { type: 'buy', playerId: 'a', item: 'oil', n: 1 }).error).toBe('Not available in the training shift');
+    // switching it all off again gives level 0 back (the stock paid so far stays in the books)
+    const clean = flags(flags(tut(), { stock: true }).state, { stock: false }).state;
+    expect(clean).toEqual(tut());
+    for (const a of [{ type: 'prep', station: 'prep1', slot: 0, item: 'oil' }, { type: 'board', dish: 'dosa', on: false }, { type: 'move', to: 'prep1' }]) {
+      expect(applyAction(clean, { ...a, playerId: 'a' }).error).toBeTruthy();
+    }
+  });
+
+  it('stock stage: "*" sets every item, a name sets one, fresh sets freshness, and sour batter makes a sour dish', () => {
+    let s = flags(tut(), { stock: true, stage: { stock: { '*': 4, sambar: 1 }, fresh: { '*': 90, batter_dosa: 31 } } }).state;
+    expect(s.stock.oil).toBe(4);
+    expect(s.stock.sambar).toBe(1);
+    expect(s.fresh).toMatchObject({ batter_dosa: 31, batter_idly: 90, vada_batter: 90 });
+    // 31 -> 30 -> 29: the batter turns sour within a few ticks and says so once
+    const t = tk(s, 8);
+    expect(t.ev.filter((e) => e.type === 'batter-sour')).toEqual([{ type: 'batter-sour', item: 'batter_dosa' }]);
+    s = t.s;
+    expect(stockInfo(s).find((i) => i.item === 'batter_dosa').sour).toBe(true);
+    s = spawn(s, { order: ['dosa'] }).state;
+    s = act(s, { type: 'cook', station: 'tawa1', slot: 0, dish: 'dosa' }).state;
+    expect(slotInfo(tk(s, 5).s, 'tawa1', 0).flaw).toBe('sour');
+  });
+
+  it('market: needs the stock, then a runner can be sent (40% dearer), and off removes it', () => {
+    let s = flags(tut(), { stock: true, market: true }).state;
+    expect(s.cfg.market).toBe(true);
+    const r = act(s, { type: 'buy', item: 'oil', n: 2 });
+    expect(r.state.stock.oil).toBe(12);
+    expect(r.state.cost).toBe(Math.ceil(2 * INGREDIENTS.oil.cost * MARKET_MARKUP));
+    s = flags(s, { market: false }).state;
+    expect(applyAction(s, { type: 'buy', playerId: 'a', item: 'oil', n: 1 }).error).toBe('Not available in the training shift');
+  });
+
+  it('gas: half a cylinder, the stand is a legal place, a swap works, a heavy cylinder is refused, an empty one stops the burners; off restores', () => {
+    const s0 = tut();
+    expect(applyAction(s0, { type: 'move', playerId: 'a', to: 'gas' }).error).toBe('Cannot go there');
+    let s = flags(s0, { gas: true }).state;
+    expect(s.cfg.gas).toBe(true);
+    expect(s.gas).toEqual({ u: 500, sw: 0 });
+    expect(gasInfo(s)).toMatchObject({ frac: 0.5, canSwap: true, low: false });
+    expect(act(s, { type: 'move', to: 'gas' }).state.players.a.at).toBe('gas');
+    // a swap: 6 ticks of cold burners, Rs 90, then a full cylinder
+    const sw = act(s, { type: 'swapGas' });
+    expect(sw.events[0]).toMatchObject({ type: 'gas-swap', phase: 'start', cost: 90 });
+    expect(sw.state.cost).toBe(90);
+    const after = tk(sw.state, 6);
+    expect(after.ev.find((e) => e.type === 'gas-swap' && e.phase === 'done')).toMatchObject({ units: 1000 });
+    expect(after.s.gas).toEqual({ u: 1000, sw: 0 });
+    // heavy: refused
+    expect(applyAction(after.s, { type: 'swapGas', playerId: 'a' }).error).toBe('The cylinder is still heavy');
+    // low: a dish cooking drinks gas and the warning comes once, at 20%
+    s = flags(s, ID({ gas: 206 })).state;
+    s = spawn(s, { order: ['dosa'] }).state;
+    s = act(s, { type: 'cook', station: 'tawa1', slot: 0, dish: 'dosa' }).state;
+    const low = tk(s, 3);
+    expect(low.ev.filter((e) => e.type === 'gas-low')).toEqual([{ type: 'gas-low', units: 200 }]);
+    expect(gasInfo(low.s)).toMatchObject({ low: true, canSwap: true });
+    // empty: cooking is refused until the cylinder is changed
+    s = flags(s, ID({ gas: 0 })).state;
+    expect(applyAction(s, { type: 'cook', playerId: 'a', station: 'tawa1', slot: 1, dish: 'dosa' }).error).toBe('No gas: change the cylinder');
+    expect(act(s, { type: 'swapGas' }).state.gas.sw).toBe(6);
+    expect(tk(flags(s0, { gas: true }).state, 50).s.gas.u).toBe(500); // nothing cooks, nothing burns
+    expect(flags(flags(s0, { gas: true }).state, { gas: false }).state).toEqual(s0);
+  });
+
+  it('heat: a cold, caked tawa, a torn dosa that pays half, tend with its own verbs, the pans staged; off restores', () => {
+    const s0 = tut();
+    let s = flags(s0, { heat: true }).state;
+    expect(s.cfg.heat).toBe(true);
+    expect(s.stations.tawa1).toMatchObject({ heat: 40, gunk: 72, tendAt: 0 });
+    expect(s.stations.kadai1).toMatchObject({ heat: 52, gunk: 0 });
+    expect(s.stations.steamer1).toMatchObject({ water: 100, gunk: 0 });
+    expect(tendInfo(s, 'tawa1')).toMatchObject({ kind: 'heat', canTend: true, torn: true });
+    // cook on the caked tawa: the dosa tears and pays half
+    s = spawn(s, { order: ['dosa'] }).state;
+    s = act(s, { type: 'cook', station: 'tawa1', slot: 0, dish: 'dosa' }).state;
+    const rd = tk(s, 5);
+    expect(rd.ev.find((e) => e.type === 'ready')).toMatchObject({ dish: 'dosa', flaw: 'torn' });
+    s = act(rd.s, { type: 'take', station: 'tawa1', slot: 0 }).state;
+    expect(s.players.a.hands[0].q).toBe('broken');
+    const sv = act(s, { type: 'serve', customer: 1, hand: 0 });
+    expect(sv.events[0]).toMatchObject({ type: 'serve', q: 'broken' });
+    expect(sv.state.customers[0].total).toBe(DISHES.dosa.price / 2);
+    // wipe it: heat and gunk are right again, a second wipe is "already clean"
+    const w = act(sv.state, { type: 'tend', station: 'tawa1' });
+    expect(w.events).toEqual([{ type: 'tend', station: 'tawa1', kind: 'wipe', by: 'a' }]);
+    expect(w.state.stations.tawa1).toMatchObject({ heat: 52, gunk: 0 });
+    expect(applyAction(w.state, { type: 'tend', playerId: 'a', station: 'tawa1' }).error).toBe('Already clean');
+    // staged pans: a cold tawa, a gunky kadai, a dry steamer, each with its own verb
+    s = flags(s0, { heat: true, stage: { pans: { tawa: { heat: 26, gunk: 10 }, kadai: { gunk: 50 }, steamer: { water: 55 } } } }).state;
+    expect(tendInfo(s, 'tawa1')).toMatchObject({ band: 'cold' });
+    expect(act(s, { type: 'tend', station: 'kadai1' }).events[0]).toMatchObject({ kind: 'skim' });
+    expect(act(s, { type: 'tend', station: 'steamer1' }).events[0]).toMatchObject({ kind: 'water' });
+    expect(tendInfo(s, 'steamer1')).toMatchObject({ kind: 'water', value: 55, canTend: true });
+    expect(applyAction(s, { type: 'tend', playerId: 'a', station: 'chai1' }).error).toBe('Nothing to tend here');
+    expect(flags(flags(s0, { heat: true }).state, { heat: false }).state).toEqual(s0);
+  });
+
+  it('events: nothing happens by itself, a staged rain / power cut / delivery runs its short fuse, and the inspector drill passes or fines gently', () => {
+    const s0 = tut();
+    let s = flags(s0, { events: true }).state;
+    expect(s.cfg.events).toEqual(['staged']);
+    expect(tk(s, 120).s.events).toEqual([]); // the seeded plan is empty: no event ever starts on its own
+    // rain
+    const rain = flags(s, ID({ event: { id: 'rain' } }));
+    expect(rain.events).toEqual([{ type: 'event-start', id: 'rain', until: 40 }]);
+    expect(eventsNow(rain.state)).toMatchObject([{ id: 'rain', left: 40 }]);
+    expect(tk(rain.state, 39).s.events).toHaveLength(1);
+    const end = tk(rain.state, 40);
+    expect(end.ev.find((e) => e.type === 'event-end')).toEqual({ type: 'event-end', id: 'rain' });
+    expect(end.s.events).toEqual([]);
+    // power cut: the steamer is refused, the grinder pauses and the batch is late by as long as the cut
+    let p = flags(flags(s0, { events: true, stock: true }).state, ID({ event: { id: 'power', ticks: 16 } })).state;
+    expect(applyAction(p, { type: 'cook', playerId: 'a', station: 'steamer1', slot: 0, dish: 'idly' }).error).toBe('Power cut: the steamer is off');
+    p = act(p, { type: 'prep', station: 'prep1', slot: 0, item: 'batter_dosa' }).state;
+    expect(tk(p, 26).s.stations.prep1.slots[0].st).toBe('cooking');
+    expect(tk(p, 27).s.stations.prep1.slots[0].st).toBe('ready');
+    // inspector: nothing burnt lying about and no untended tawa = a bonus tip
+    const pass = tk(flags(s, ID({ event: { id: 'inspector' } })).state, 20);
+    expect(pass.ev.find((e) => e.type === 'inspector')).toEqual({ type: 'inspector', pass: true, bonus: 60, fine: 0, why: [] });
+    expect(pass.s.tips).toBe(60);
+    expect(pass.s.fines).toBeUndefined();
+    // ... a burnt dish on the counter fails it: a fine, no heart
+    let f = flags(s, ID({ event: { id: 'inspector' } })).state;
+    f = spawn(f, { order: ['masala_dosa'] }).state;
+    f = act(f, { type: 'cook', station: 'tawa1', slot: 0, dish: 'masala_dosa' }).state;
+    const fail = tk(f, 20);
+    expect(fail.ev.find((e) => e.type === 'inspector')).toMatchObject({ pass: false, fine: 50, why: ['burnt'] });
+    expect(fail.s.fines).toBe(50);
+    expect(fail.s.cost).toBe(50);
+    expect(fail.s.lives).toBe(5);
+    // ... and with the heat on a caked, untended tawa fails it too, a wiped one passes
+    const aged = tk(flags(s0, { events: true, heat: true }).state, 40).s; // the tawa was last wiped long ago
+    const heated = flags(aged, ID({ event: { id: 'inspector' } })).state;
+    expect(tk(heated, 20).ev.find((e) => e.type === 'inspector')).toMatchObject({ pass: false, why: ['untended'] });
+    expect(tk(act(heated, { type: 'tend', station: 'tawa1' }).state, 20).ev.find((e) => e.type === 'inspector')).toMatchObject({ pass: true });
+    // the delivery boy: five parcels for a free spot, and the event ends by itself
+    const d = tk(flags(flags(s0, { events: true, stock: true }).state, ID({ event: { id: 'delivery' } })).state, 1);
+    expect(d.ev.find((e) => e.type === 'parcel-order')).toMatchObject({ delivery: true });
+    expect(d.s.customers[0]).toMatchObject({ delivery: true, parcel: true });
+    expect(d.s.customers[0].order.length).toBeGreaterThan(0);
+    // off: no events
+    expect(flags(flags(s, ID({ event: { id: 'rain' } })).state, { events: false }).state).toEqual(s0);
+  });
+
+  it('spawn takes the special requests: parcel, extra, spice, regular, the big order and the delivery boy, and refuses nonsense', () => {
+    const s0 = flags(tut(), { stock: true }).state;
+    // a parcel: Rs 5 packing per dish
+    const parcel = spawn(s0, { order: ['dosa', 'irani_chai'], parcel: true }).state.customers[0];
+    expect(parcel).toMatchObject({ parcel: true, total: DISHES.dosa.price + DISHES.irani_chai.price + REQUEST.parcelFee * 2 });
+    expect(customerInfo(spawn(s0, { order: ['dosa'], parcel: true }).state, 1).parcel).toBe(true);
+    // extra and spice
+    const ex = spawn(s0, { order: ['osmania'], extra: 'coconut_chutney', spice: 'more' });
+    expect(ex.state.customers[0]).toMatchObject({ extra: 'coconut_chutney', spice: 'more' });
+    let s = act(ex.state, { type: 'cook', station: 'chai1', slot: 0, dish: 'osmania' }).state;
+    s = act(tk(s, 2).s, { type: 'take', station: 'chai1', slot: 0 }).state;
+    const served = act(s, { type: 'serve', customer: 1, hand: 0 });
+    expect(types(served.events)).toEqual(['serve', 'extra', 'eating']);
+    expect(served.state.stock.coconut_chutney).toBe(10 - REQUEST.extraUse);
+    // a regular remembers: loyalty from the spawn, +1 when paid (capped), and a tip that grows with it
+    const tipOf = (c) => {
+      let t = spawn(s0, c).state;
+      t = act(t, { type: 'cook', station: 'chai1', slot: 0, dish: 'osmania' }).state;
+      t = act(tk(t, 2).s, { type: 'take', station: 'chai1', slot: 0 }).state;
+      t = act(t, { type: 'serve', customer: 1, hand: 0 }).state;
+      t = tk(t, EAT_TICKS).s;
+      const c1 = t.customers[0];
+      const paid = act(t, { type: 'collect', customer: 1 });
+      return { tip: c1.tip, regs: paid.state.regs };
+    };
+    const plain = tipOf({ order: ['osmania'], kind: 'office' });
+    const reg = tipOf({ order: ['osmania'], kind: 'office', regular: true, loyal: 2 });
+    expect(reg.tip).toBeGreaterThan(plain.tip);
+    expect(reg.regs[0][0]).toBe(REQUEST.regularMax);
+    expect(plain.regs).toEqual([]);
+    expect(customerInfo(spawn(s0, { order: ['osmania'], regular: true, loyal: 1 }).state, 1)).toMatchObject({ regular: true, loyal: 1 });
+    // the big order and the delivery boy may be longer than a normal order
+    const big = spawn(s0, { order: ['dosa', 'dosa', 'idly', 'idly', 'osmania', 'irani_chai'], big: true, kind: 'office' });
+    expect(big.state.customers[0]).toMatchObject({ big: true, parcel: true });
+    expect(big.events.find((e) => e.type === 'parcel-order')).toEqual({ type: 'parcel-order', customer: 1, n: 6, big: true });
+    expect(spawn(s0, { order: ['dosa', 'idly', 'osmania', 'vada', 'poori'], delivery: true }).events.at(-1)).toEqual({ type: 'parcel-order', customer: 1, n: 5, delivery: true });
+    // nonsense is refused, the same state comes back
+    for (const customer of [
+      { order: ['dosa', 'dosa', 'dosa', 'dosa', 'dosa'] }, { order: ['dosa', 'dosa', 'dosa', 'dosa', 'dosa', 'dosa', 'dosa'], big: true },
+      { order: ['dosa'], extra: 'pizza' }, { order: ['dosa'], spice: 'medium' }, { order: ['dosa'], parcel: 'yes' }, { order: ['dosa'], regular: 1 },
+      { order: ['dosa'], loyal: 9 }, { order: ['dosa'], loyal: -1 }, { order: ['dosa'], big: 'big' }, { order: ['dosa'], delivery: 1 }, { order: ['dosa'], fit: 1 },
+    ]) {
+      const r = applyAction(s0, { type: 'spawn', customer });
+      expect(r.error, JSON.stringify(customer)).toBeTruthy();
+      expect(r.state).toBe(s0);
+    }
+    // the request fields do nothing to a plain spawn
+    expect(spawn(tut(), { order: ['dosa'] }).events).toEqual([{ type: 'customer-arrive', customer: 1, spot: 0 }, { type: 'tutorial-spawn', customer: 1 }]);
+  });
+
+  it('spawn with fit goes through the board and the stock like a real arrival: swapped, or sent home politely', () => {
+    let s = flags(tut(), { stock: true }).state;
+    s = act(s, { type: 'board', dish: 'dosa', on: false }).state;
+    const r = spawn(s, { order: ['dosa'], fit: true });
+    const sw = r.events.find((e) => e.type === 'sold-out');
+    expect(sw).toMatchObject({ dish: 'dosa', left: false });
+    expect(DISHES[sw.swap].station).toBe('tawa');
+    expect(r.state.customers[0].order).toEqual([sw.swap]);
+    // without fit the order is taken as written (the tutorial scripts it)
+    expect(spawn(s, { order: ['dosa'] }).state.customers[0].order).toEqual(['dosa']);
+    // everything off the board: nobody to serve, no customer, no heart
+    let all = s;
+    for (const d of s.cfg.menu) if (d !== 'dosa') all = act(all, { type: 'board', dish: d, on: false }).state;
+    const none = spawn(all, { order: ['dosa'], fit: true });
+    expect(none.state.customers).toEqual([]);
+    expect(none.events).toEqual([{ type: 'sold-out', customer: 1, dish: 'dosa', swap: null, left: true }]);
+    expect(none.state.lives).toBe(5);
+  });
+
+  it('is deterministic: the same flags and actions give the same game', () => {
+    const run = () => {
+      let s = flags(tut(), { stock: true, gas: true, heat: true, events: true, stage: { gas: 206, event: { id: 'rain', ticks: 10 } } }).state;
+      s = spawn(s, { order: ['dosa'], parcel: true }).state;
+      s = act(s, { type: 'cook', station: 'tawa1', slot: 0, dish: 'dosa' }).state;
+      return tk(s, 30).s;
+    };
+    expect(run()).toEqual(run());
+    expect(JSON.parse(JSON.stringify(run()))).toEqual(run());
+  });
+});
+
+describe('training switches: fuzz (any order of switches, stages, requests and plays never breaks the state)', () => {
+  const mulberry = (a) => () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const JUNK = [undefined, null, NaN, -1, 1e9, 'x', [], {}, true, '__proto__'];
+
+  function randomTraining(s, r) {
+    const pick = (a) => a[Math.floor(r() * a.length)];
+    const g = (v) => (r() < 0.12 ? pick(JUNK) : v);
+    const roll = r();
+    const who = pick(['a', 'a', 'a', 'ghost']);
+    const dish = pick(Object.keys(DISHES));
+    if (roll < 0.14) {
+      const f = { type: 'tutorial-flags' };
+      for (const k of ['stock', 'gas', 'heat', 'events', 'market']) if (r() < 0.5) f[k] = g(r() < 0.6);
+      if (r() < 0.7) {
+        f.stage = {};
+        if (r() < 0.5) f.stage.stock = g({ '*': Math.floor(r() * 52), [pick(INGREDIENT_IDS)]: Math.floor(r() * 5) });
+        if (r() < 0.3) f.stage.fresh = g({ '*': Math.floor(r() * 105) });
+        if (r() < 0.4) f.stage.gas = g(Math.floor(r() * 1100));
+        if (r() < 0.4) f.stage.pans = g({ tawa: { heat: Math.floor(r() * 105), gunk: Math.floor(r() * 105) }, kadai: { gunk: Math.floor(r() * 100) }, steamer: { water: Math.floor(r() * 100) } });
+        if (r() < 0.5) f.stage.event = g({ id: pick(['rain', 'power', 'inspector', 'delivery', 'festival', 'cricket', 'ghost']), ticks: 1 + Math.floor(r() * 95) });
+      }
+      return f;
+    }
+    if (roll < 0.28) {
+      const c = { order: [dish, ...(r() < 0.4 ? [pick(Object.keys(DISHES))] : [])], kind: pick(['student', 'office', 'ghost', 'family']) };
+      if (r() < 0.3) c.parcel = g(true);
+      if (r() < 0.3) c.extra = g(pick(['sambar', 'coconut_chutney']));
+      if (r() < 0.2) c.spice = g(pick(['less', 'more']));
+      if (r() < 0.3) { c.regular = g(true); c.loyal = g(Math.floor(r() * 4)); }
+      if (r() < 0.15) c.big = g(true);
+      if (r() < 0.15) c.delivery = g(true);
+      if (r() < 0.4) c.fit = g(true);
+      return { type: 'spawn', customer: c };
+    }
+    if (roll < 0.40) return { type: 'cook', playerId: who, station: pick(['tawa1', 'steamer1', 'kadai1', 'chai1']), slot: Math.floor(r() * 4), dish };
+    if (roll < 0.50) return { type: 'take', playerId: who, station: pick(['tawa1', 'steamer1', 'kadai1', 'chai1']), slot: Math.floor(r() * 4) };
+    if (roll < 0.58) return { type: 'serve', playerId: who, customer: 1 + Math.floor(r() * 6), hand: Math.floor(r() * 2) };
+    if (roll < 0.64) return { type: 'collect', playerId: who, customer: 1 + Math.floor(r() * 6) };
+    if (roll < 0.68) return { type: 'discard', playerId: who, hand: Math.floor(r() * 2) };
+    if (roll < 0.72) return { type: 'move', playerId: who, to: pick([null, 'gas', 'prep1', 'bin', 'tawa1', 'spot:1']) };
+    if (roll < 0.78) return { type: 'prep', playerId: who, station: 'prep1', slot: Math.floor(r() * 3), item: pick(INGREDIENT_IDS) };
+    if (roll < 0.83) return { type: 'collectPrep', playerId: who, station: 'prep1', slot: Math.floor(r() * 3) };
+    if (roll < 0.88) return { type: 'tend', playerId: who, station: pick(['tawa1', 'steamer1', 'kadai1', 'chai1']) };
+    if (roll < 0.91) return { type: 'swapGas', playerId: who };
+    if (roll < 0.95) return { type: 'board', playerId: who, dish, on: r() < 0.5 };
+    return { type: 'buy', playerId: who, item: pick(INGREDIENT_IDS), n: 1 + Math.floor(r() * 11) };
+  }
+
+  function sound(s, label) {
+    const bad = (m) => { throw new Error(`${label}: ${m}`); };
+    if (JSON.stringify(JSON.parse(JSON.stringify(s))) !== JSON.stringify(s)) bad('state is not plain JSON');
+    for (const [k, v] of Object.entries(s.stock)) if (!(v >= 0 && v <= STOCK_CAP) || !INGREDIENTS[k]) bad(`stock ${k} ${v}`);
+    for (const [k, v] of Object.entries(s.fresh)) if (!(v >= 0 && v <= 100) || !(k in s.stock)) bad(`fresh ${k} ${v}`);
+    if (s.cfg.gas ? !(s.gas && s.gas.u >= 0 && s.gas.u <= GAS.cap && s.gas.sw >= 0) : s.gas !== null) bad(`gas ${JSON.stringify(s.gas)}`);
+    if (s.cfg.stock !== s.cfg.stations.includes('prep1') || s.cfg.stock !== ('prep1' in s.stations)) bad('prep counter out of step with the stock switch');
+    if (s.cfg.market && !s.cfg.stock) bad('market without stock');
+    for (const sid of s.cfg.stations) {
+      const st = s.stations[sid];
+      for (const k of ['heat', 'water', 'gunk']) if (k in st && !(st[k] >= 0 && st[k] <= 100)) bad(`${sid} ${k} ${st[k]}`);
+      if (s.cfg.heat !== (st.kind === 'tawa' || st.kind === 'kadai' ? 'heat' in st : st.kind === 'steamer' ? 'water' in st : s.cfg.heat)) bad(`${sid} heat fields`);
+    }
+    for (const e of s.events) if (!EVENTS[e.id] || !(e.until > 0)) bad(`event ${JSON.stringify(e)}`);
+    if (!s.cfg.events.length && s.events.length) bad('events without the switch');
+    if (!(s.cost >= 0) || !(s.waste >= 0) || s.waste > s.cost + 1e-9) bad(`books ${s.cost} ${s.waste}`);
+    const spots = new Set();
+    for (const c of s.customers) {
+      if (!(c.total >= 0)) bad(`bill ${c.total}`);
+      if (c.st !== 'left') { if (spots.has(c.spot)) bad('spot twice'); spots.add(c.spot); }
+    }
+    if (s.lives !== 5) bad('a heart was lost in the training shift');
+  }
+
+  it('60 seeds of random switches, stages, requests and plays on the training shift', () => {
+    for (let seed = 1; seed <= 60; seed++) {
+      const r = mulberry(seed * 104729);
+      let s = createGame({ players: [{ id: 'a', name: 'Asha' }], settings: { level: 0 }, seed });
+      for (let i = 0; i < 220; i++) {
+        const a = randomTraining(s, r);
+        const before = JSON.stringify(s);
+        const res = applyAction(s, a);
+        if (res.error) {
+          expect(res.state, `seed ${seed} step ${i} ${JSON.stringify(a)}`).toBe(s);
+          expect(JSON.stringify(s)).toBe(before);
+        } else s = res.state;
+        if (r() < 0.45) s = applyAction(s, { type: 'tick' }).state;
+        sound(s, `seed ${seed} step ${i} ${JSON.stringify(a)}`);
+        if (s.status !== 'playing') break;
+      }
+    }
   });
 });

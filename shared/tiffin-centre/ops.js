@@ -8,7 +8,7 @@
 //   stations.<tawa|kadai>: heat, gunk, tendAt     stations.steamer: water, gunk, tendAt     stations.prep1: 2 prep jobs
 //   slot.fl: bit 1 stuck, 2 torn, 4 sour batter (only present when non-zero)
 import {
-  DISHES, FERMENT, GAS, HEAT, INGREDIENTS, INGREDIENT_IDS, MARKET_MARKUP, MARKET_MAX, PACE, PREP_STATION, STATION_KINDS, STOCK_CAP,
+  DISHES, EVENTS, FERMENT, GAS, HEAT, INGREDIENTS, INGREDIENT_IDS, MARKET_MARKUP, MARKET_MAX, PACE, PREP_STATION, STATION_KINDS, STOCK_CAP,
   STOCK_LOW, CUSTOMER_KINDS, coopScale, daypartOf,
 } from './catalog.js';
 import { dishCost, spend, wasteOnly } from './economy.js';
@@ -98,6 +98,158 @@ export function opsInit(s, level, ops, menu, players, pace) {
       else if (st.kind === 'steamer') { st.water = HEAT.waterStart; st.gunk = 0; st.tendAt = 0; }
     }
   }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// the training switches (the tutorial driver's `tutorial-flags` action; level 0 only, every switch starts OFF)
+
+/** Marker in `cfg.events` while the training shift's events are switched on: not a real event id, so the seeded plan is empty and events only happen when staged. */
+export const STAGED = 'staged';
+/** Training values: a shelf of 10 portions of everything, batter fresh, half a cylinder, a tawa that needs wiping, and short fuses for staged events. */
+export const TRAIN = Object.freeze({
+  stock: 10,
+  fresh: 100,
+  gas: 500,
+  tawa: Object.freeze({ heat: 40, gunk: 72 }),
+  fuse: Object.freeze({ rain: 40, power: 16, inspector: 20, delivery: 5, cricket: 40, festival: 40 }),
+  fuseMax: 90,
+});
+
+const isNum = (v, lo, hi) => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
+const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+
+function trainPrepStation(s) {
+  if (!s.cfg.stations.includes(PREP_STATION)) s.cfg.stations.push(PREP_STATION);
+  s.stations[PREP_STATION] = { id: PREP_STATION, kind: PREP_KIND, slots: Array.from({ length: STATION_KINDS.prep.slots }, () => ({ st: 'empty', item: null })) };
+}
+
+function trainStock(s, on) {
+  if (on === s.cfg.stock) return;
+  if (on) {
+    s.cfg.stock = true;
+    for (const item of levelItems(s.cfg.menu)) {
+      s.stock[item] = TRAIN.stock;
+      if (INGREDIENTS[item].ferments) s.fresh[item] = TRAIN.fresh;
+    }
+    trainPrepStation(s);
+    return;
+  }
+  s.cfg.stock = false; s.cfg.market = false;
+  s.stock = {}; s.fresh = {}; s.pre = 0; s.off = [];
+  s.cfg.stations = s.cfg.stations.filter((id) => id !== PREP_STATION);
+  delete s.stations[PREP_STATION];
+  for (const id of s.order) if (s.players[id].at === PREP_STATION) s.players[id].at = null;
+}
+
+function trainGas(s, on) {
+  if (on === s.cfg.gas) return;
+  if (on) { s.cfg.gas = true; s.gas = { u: TRAIN.gas, sw: 0 }; return; }
+  s.cfg.gas = false; s.gas = null;
+  for (const id of s.order) if (s.players[id].at === 'gas') s.players[id].at = null;
+}
+
+function trainHeat(s, on) {
+  if (on === s.cfg.heat) return;
+  if (on) {
+    s.cfg.heat = true;
+    for (const sid of s.cfg.stations) {
+      const st = s.stations[sid];
+      if (st.kind === 'tawa') { st.heat = TRAIN.tawa.heat; st.gunk = TRAIN.tawa.gunk; st.tendAt = 0; }
+      else if (st.kind === 'kadai') { st.heat = HEAT.start; st.gunk = 0; st.tendAt = 0; }
+      else if (st.kind === 'steamer') { st.water = HEAT.waterStart; st.gunk = 0; st.tendAt = 0; }
+    }
+    return;
+  }
+  s.cfg.heat = false;
+  for (const sid of s.cfg.stations) {
+    const st = s.stations[sid];
+    delete st.heat; delete st.water; delete st.gunk; delete st.tendAt;
+  }
+}
+
+function trainEvents(s, on) {
+  if (on === (s.cfg.events.length > 0)) return;
+  s.cfg.events = on ? [STAGED] : [];
+  if (!on) s.events = [];
+}
+
+/** `{ item | '*': value }` -> [[item, value]] for the items in `have`, or null when malformed / unknown. */
+function itemValues(map, have, lo, hi) {
+  if (!isObj(map)) return null;
+  const out = [];
+  for (const [k, v] of Object.entries(map)) {
+    if (!isNum(v, lo, hi)) return null;
+    if (k === '*') { for (const item of Object.keys(have)) out.push([item, v]); } else if (hasOwn(have, k)) out.push([k, v]); else return null;
+  }
+  return out;
+}
+
+/**
+ * The ops part of the `tutorial-flags` action (engine.js calls it in a tutorial game only). Booleans `stock gas heat events market` switch that
+ * mechanic ON (true) or back OFF (false) for the training shift; anything else changes nothing. `a.stage` (optional) then sets exact values so a
+ * lesson can stage a situation: `{ stock: { item|'*': portions }, fresh: { item|'*': 0..100 }, gas: units, pans: { tawa|kadai: { heat, gunk },
+ * steamer: { water, gunk } }, event: { id, ticks } }`. Each stage key needs its mechanic ON. Returns an error string or undefined.
+ */
+export function trainingFlags(s, a, ev) {
+  const st = a.stage;
+  if (st !== undefined && !isObj(st)) return 'Bad training stage';
+  if (typeof a.stock === 'boolean') trainStock(s, a.stock);
+  if (typeof a.gas === 'boolean') trainGas(s, a.gas);
+  if (typeof a.heat === 'boolean') trainHeat(s, a.heat);
+  if (typeof a.events === 'boolean') trainEvents(s, a.events);
+  if (typeof a.market === 'boolean') {
+    if (a.market && !s.cfg.stock) return 'The market needs the stock switched on';
+    s.cfg.market = a.market;
+  }
+  if (!st) return undefined;
+  if (st.stock !== undefined) {
+    if (!s.cfg.stock) return 'Switch the stock on first';
+    const list = itemValues(st.stock, s.stock, 0, STOCK_CAP);
+    if (!list) return 'Bad training stock';
+    // a batch that is still under way has to fit on the shelf when it is collected
+    const pending = (item) => (s.stations[PREP_STATION] ? s.stations[PREP_STATION].slots.reduce((n, j) => n + (j.st !== 'empty' && j.item === item ? INGREDIENTS[item].prep.yield : 0), 0) : 0);
+    for (const [item, n] of list) s.stock[item] = r2(Math.min(n, STOCK_CAP - pending(item)));
+  }
+  if (st.fresh !== undefined) {
+    if (!s.cfg.stock) return 'Switch the stock on first';
+    const list = itemValues(st.fresh, s.fresh, 0, 100);
+    if (!list) return 'Bad training freshness';
+    for (const [item, n] of list) s.fresh[item] = Math.round(n);
+  }
+  if (st.gas !== undefined) {
+    if (!s.cfg.gas) return 'Switch the gas on first';
+    if (!isNum(st.gas, 0, GAS.cap)) return 'Bad training gas';
+    s.gas.u = Math.round(st.gas); s.gas.sw = 0;
+  }
+  if (st.pans !== undefined) {
+    if (!s.cfg.heat) return 'Switch the heat on first';
+    if (!isObj(st.pans)) return 'Bad training pans';
+    for (const [kind, v] of Object.entries(st.pans)) {
+      if ((kind !== 'tawa' && kind !== 'kadai' && kind !== 'steamer') || !isObj(v)) return 'Bad training pans';
+      for (const [k, n] of Object.entries(v)) {
+        const ok = k === 'gunk' || (kind === 'steamer' ? k === 'water' : k === 'heat');
+        if (!ok || !isNum(n, 0, 100)) return 'Bad training pans';
+      }
+    }
+    for (const sid of s.cfg.stations) {
+      const pan = s.stations[sid];
+      const v = st.pans[pan.kind];
+      if (v) for (const [k, n] of Object.entries(v)) pan[k] = Math.round(n);
+    }
+  }
+  if (st.event !== undefined) {
+    if (!s.cfg.events.length) return 'Switch the events on first';
+    const e = st.event;
+    if (!isObj(e) || typeof e.id !== 'string' || !hasOwn(EVENTS, e.id)) return 'Unknown training event';
+    const ticks = e.ticks === undefined ? (TRAIN.fuse[e.id] || 30) : e.ticks;
+    if (!isNum(ticks, 1, TRAIN.fuseMax) || !Number.isInteger(ticks)) return 'Bad training event';
+    s.events = s.events.filter((x) => x.id !== e.id);
+    const entry = { id: e.id, until: s.tick + ticks };
+    if (e.id === 'delivery') entry.w = 1;
+    s.events.push(entry);
+    ev.push({ type: 'event-start', id: e.id, until: entry.until });
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -370,7 +522,7 @@ const bump = (p, i) => {
 
 export const OPS_H = {
   prep(s, a, ev, p) {
-    if (s.cfg.tutorial) return TUTORIAL_NO;
+    if (s.cfg.tutorial && !s.cfg.stock) return TUTORIAL_NO; // the training shift has the back counter only once `tutorial-flags {stock}` switched it on
     if (!s.cfg.stock) return 'Nothing to prepare today';
     const st = asStation(s, a, PREP_KIND);
     if (!st) return 'No prep counter';
@@ -390,7 +542,7 @@ export const OPS_H = {
   },
 
   collectPrep(s, a, ev, p) {
-    if (s.cfg.tutorial) return TUTORIAL_NO;
+    if (s.cfg.tutorial && !s.cfg.stock) return TUTORIAL_NO;
     const st = asStation(s, a, PREP_KIND);
     if (!st) return 'No prep counter';
     const sl = asSlot(st, a);
@@ -406,7 +558,7 @@ export const OPS_H = {
   },
 
   buy(s, a, ev, p) {
-    if (s.cfg.tutorial) return TUTORIAL_NO;
+    if (s.cfg.tutorial && !s.cfg.market) return TUTORIAL_NO;
     if (!s.cfg.market) return 'Nobody to send to the market';
     if (typeof a.item !== 'string' || !hasOwn(INGREDIENTS, a.item) || !hasOwn(s.stock, a.item)) return 'Not needed today';
     if (!Number.isInteger(a.n) || a.n < 1 || a.n > MARKET_MAX) return 'Buy 1 to ' + MARKET_MAX;
@@ -423,7 +575,7 @@ export const OPS_H = {
   },
 
   tend(s, a, ev, p) {
-    if (s.cfg.tutorial || !s.cfg.heat) return 'Nothing to tend here';
+    if (!s.cfg.heat) return 'Nothing to tend here';
     const st = asStation(s, a, null);
     if (!st || !hasOwn(HEATED, st.kind)) return 'Nothing to tend here';
     if (needOf(st) < HEAT.tendMin) return 'Already clean';
@@ -437,7 +589,7 @@ export const OPS_H = {
   },
 
   swapGas(s, a, ev, p) {
-    if (s.cfg.tutorial || !s.cfg.gas) return 'No cylinder here';
+    if (!s.cfg.gas) return 'No cylinder here';
     if (s.gas.sw > 0) return 'Already changing the cylinder';
     if (s.gas.u > GAS.cap * GAS.swapMaxFrac) return 'The cylinder is still heavy';
     s.gas.sw = GAS.swapTicks;

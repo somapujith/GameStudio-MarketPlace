@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { DISHES, DISH_IDS, LEVELS } from './catalog.js';
-import { RECIPES, RECIPE_LANGS, recipeFor, recipeSteps, recipeTip } from './recipes.js';
-import { applyAction, chooseAutoAction, createGame, isOver } from './index.js';
+import { DISHES, DISH_IDS, GAS, INGREDIENTS, INGREDIENT_IDS, LEVELS, REQUEST } from './catalog.js';
+import {
+  INGREDIENT_HI, PREP_RECIPES, RECIPES, RECIPE_LANGS, RECIPE_REVIEW, ingredientsOf, portionLabel, prepRecipeFor, prepRecipeGoes, prepRecipeSteps, prepRecipeTip,
+  recipeFor, recipeSteps, recipeTip,
+} from './recipes.js';
+import { applyAction, createGame, isOver } from './index.js';
+import { tutorialBotAction } from './tutorial.bot.js';
 import {
   LOOK_TURN_RAD, TUTORIAL_ACTIONS, TUTORIAL_CHAPTERS, TUTORIAL_NOT_YET, TUTORIAL_RECIPE_DISHES, TUTORIAL_SETTINGS, TUTORIAL_STEPS,
-  TUTORIAL_STEP_IDS, createTutorialDriver,
+  TUTORIAL_STEP_IDS, TUTORIAL_PREP_RECIPES, createTutorialDriver, spawnAction, trainAction,
 } from './tutorial.js';
 
 const ME = 'me';
+const CHAPTER_IDS = ['look', 'tokens', 'tawa', 'idly', 'kadai', 'chai', 'serve', 'stock', 'heat', 'gas', 'board', 'special', 'weather', 'profit', 'flow', 'rush'];
 
 /** One solo tutorial game plus a driver, pumped exactly like the local session does (and the camera looking straight ahead). */
 function makeSim(seed = 7) {
@@ -25,6 +30,7 @@ function makeSim(seed = 7) {
     kbTexts: [],
     spots: [],
     refused: 0,
+    stepAt: {}, // step id -> how many events had happened when the driver first stood on it
   };
   const apply = (action) => {
     const r = applyAction(sim.state, { ...action, playerId: ME });
@@ -42,6 +48,7 @@ function makeSim(seed = 7) {
     sim.kbTexts.push(d.textFor('keyboard'), d.hintFor('keyboard'), d.controlsFor('keyboard'));
     const sp = d.spotlight;
     if (sp) sim.spots.push({ id: d.step.id, sp });
+    if (!Object.hasOwn(sim.stepAt, d.step.id)) sim.stepAt[d.step.id] = sim.events.length;
   };
   sim.pump = (events = []) => {
     let evs = events;
@@ -86,8 +93,7 @@ function personAction(sim, extra) {
     driver.ack();
     return null;
   }
-  if (driver.step.id === 'walk') return { type: 'move', to: 'tawa1' };
-  const a = chooseAutoAction(state, ME);
+  const a = tutorialBotAction(state, driver, ME); // the scripted player: lessons, walks, preps, tends, swaps, serves
   if (a && !driver.allows(a.type)) {
     sim.refused += 1;
     return null;
@@ -95,7 +101,7 @@ function personAction(sim, extra) {
   return a;
 }
 
-function play(sim, { maxTicks = 1200, extra } = {}) {
+function play(sim, { maxTicks = 3400, extra } = {}) {
   while (!sim.driver.finished && !isOver(sim.state) && sim.state.tick < maxTicks) {
     const a = personAction(sim, extra);
     if (a) sim.act(a);
@@ -163,7 +169,7 @@ describe('tutorial steps data', () => {
     expect(new Set(TUTORIAL_STEP_IDS).size).toBe(TUTORIAL_STEPS.length);
     expect(TUTORIAL_STEPS.length).toBeGreaterThan(60);
     const chapterIds = TUTORIAL_CHAPTERS.map((c) => c.id);
-    expect(chapterIds).toEqual(['look', 'tokens', 'tawa', 'idly', 'kadai', 'chai', 'serve', 'flow', 'rush']);
+    expect(chapterIds).toEqual(CHAPTER_IDS);
     let last = -1;
     for (const s of TUTORIAL_STEPS) {
       const ci = chapterIds.indexOf(s.chapter);
@@ -203,6 +209,13 @@ describe('tutorial steps data', () => {
     for (const d of ['irani_chai', 'filter_coffee', 'osmania']) expect(at(`${d}-card`).chapter).toBe('chai');
     for (const id of ['orders', 'cook2', 'carry', 'serve2', 'collect', 'tips']) expect(at(id).chapter).toBe('serve');
     for (const id of ['money', 'hearts', 'stars', 'clock', 'levels', 'walkcost', 'coop']) expect(at(id).chapter).toBe('flow');
+    for (const id of ['stock-turn', 'stock-bars', 'stock-batter', 'stock-grind', 'stock-sides', 'stock-out-refused', 'stock-out-prep', 'stock-out-finish']) expect(at(id).chapter, id).toBe('stock');
+    for (const id of ['heat-intro', 'heat-cook', 'heat-take', 'heat-serve', 'heat-tend', 'heat-others', 'heat-rules']) expect(at(id).chapter, id).toBe('heat');
+    for (const id of ['gas-intro', 'gas-low', 'gas-swap', 'gas-wait', 'gas-cost']) expect(at(id).chapter, id).toBe('gas');
+    for (const id of ['board-intro', 'board-off', 'board-react', 'board-on']) expect(at(id).chapter, id).toBe('board');
+    for (const id of ['parcel', 'extra', 'regular', 'regular-back', 'big', 'delivery']) expect(at(id).chapter, id).toBe('special');
+    for (const id of ['rain', 'power-card', 'power-cut', 'inspect-card', 'inspect-drill']) expect(at(id).chapter, id).toBe('weather');
+    for (const id of ['profit-books', 'profit-bin', 'profit-profit']) expect(at(id).chapter, id).toBe('profit');
     expect(at('rush').chapter).toBe('rush');
     expect(at('outro').complete).toBe(true);
     expect(at('look').ackAfter).toBeGreaterThan(0);
@@ -243,7 +256,7 @@ describe('the driver through the real engine', () => {
     expect(sim.state.tick).toBeLessThan(sim.state.shiftTicks);
     const visited = new Set(sim.visited);
     for (const s of TUTORIAL_STEPS) {
-      if (s.id === 'burn') continue; // only when the demo dish is still on the tawa
+      if (s.id === 'burn' || s.id === 'inspect-clean') continue; // only when the demo dish is still on the tawa
       expect(visited.has(s.id), s.id).toBe(true);
     }
     const chapters = new Set(TUTORIAL_STEPS.filter((s) => visited.has(s.id)).map((s) => s.chapter));
@@ -255,6 +268,10 @@ describe('the driver through the real engine', () => {
     for (const id of DISH_IDS) expect(served.has(id), id).toBe(true);
     const duration = sim.state.tick;
     expect(duration).toBeGreaterThan(120); // a real lesson, not a flash (a bot never reads)
+    // game-clock seconds for a bot that reads nothing; a person reading every card roughly doubles it: about 12-18 minutes in all
+    expect(duration).toBeLessThan(600);
+    expect(duration).toBeGreaterThan(300);
+    expect(TUTORIAL_STEPS.length).toBeLessThan(140);
   });
 
   it('teaches burning: the demo dish burns and the burn step waits until it is cleared', () => {
@@ -316,7 +333,7 @@ describe('the driver through the real engine', () => {
     const idleOk = new Set(['welcome', 'look', 'hands', 'tour', 'token', 'walk', 'dosa-card', 'dosa-cook', 'dosa-serve', 'masala_dosa-cook', 'poori-cook', 'orders', 'money']);
     const checked = new Set();
     let guard = 0;
-    while (!sim.driver.finished && !isOver(sim.state) && sim.state.tick < 1200 && guard++ < 900) {
+    while (!sim.driver.finished && !isOver(sim.state) && sim.state.tick < 3400 && guard++ < 3000) {
       const step = sim.driver.step;
       if (idleOk.has(step.id) && !checked.has(step.id)) {
         checked.add(step.id);
@@ -637,28 +654,29 @@ describe('keyboard and touch variants', () => {
 describe('spotlights', () => {
   it('are plain data the scene understands, and every station, slot or customer target may turn the head (look: true)', () => {
     const sim = play(makeSim());
-    const kinds = new Set(['station', 'slot', 'customer', 'bin', 'hands']);
+    const kinds = new Set(['station', 'slot', 'customer', 'bin', 'hands', 'gas', 'board']);
     expect(sim.spots.length).toBeGreaterThan(100);
     for (const { id, sp } of sim.spots) {
       expect(kinds.has(sp.kind), id).toBe(true);
-      if (sp.kind === 'station' || sp.kind === 'slot' || sp.kind === 'customer') expect(sp.look, `${id} ${sp.kind}`).toBe(true);
-      if (sp.kind === 'station') expect(['tawa1', 'steamer1', 'kadai1', 'chai1']).toContain(sp.id);
+      if (['station', 'slot', 'customer', 'gas', 'board'].includes(sp.kind)) expect(sp.look, `${id} ${sp.kind}`).toBe(true);
+      if (sp.kind === 'station') expect(['tawa1', 'steamer1', 'kadai1', 'chai1', 'prep1']).toContain(sp.id);
     }
     const touched = new Set(sim.spots.map((x) => x.sp.id));
-    for (const s of ['steamer1', 'kadai1', 'chai1']) expect(touched.has(s), s).toBe(true);
+    for (const s of ['steamer1', 'kadai1', 'chai1', 'prep1']) expect(touched.has(s), s).toBe(true);
+    expect(new Set(sim.spots.map((x) => x.sp.kind))).toEqual(new Set(['station', 'slot', 'customer', 'hands', 'gas', 'board', 'bin']));
   });
 });
 
 describe('chapters and progress', () => {
-  it('lists the nine chapters with counts, advances them in order and fills the meter to the end', () => {
+  it('lists the sixteen chapters with counts, advances them in order and fills the meter to the end', () => {
     const sim = makeSim();
     let prev = sim.driver.progress.done;
-    expect(sim.driver.chapters.map((c) => c.id)).toEqual(['look', 'tokens', 'tawa', 'idly', 'kadai', 'chai', 'serve', 'flow', 'rush']);
+    expect(sim.driver.chapters.map((c) => c.id)).toEqual(CHAPTER_IDS);
     expect(sim.driver.chapters.reduce((n, c) => n + c.count, 0)).toBe(TUTORIAL_STEPS.length);
     expect(sim.driver.chapter).toMatchObject({ id: 'look', index: 0, step: 0 });
     expect(sim.driver.chapters[0]).toMatchObject({ active: true, complete: false, done: 0 });
     const activeSeen = new Set();
-    while (!sim.driver.finished && !isOver(sim.state) && sim.state.tick < 1200) {
+    while (!sim.driver.finished && !isOver(sim.state) && sim.state.tick < 3400) {
       const a = personAction(sim);
       if (a) sim.act(a);
       else sim.pump();
@@ -712,5 +730,289 @@ describe('tokens and spawn safety', () => {
     }
     expect(again).toEqual(spawn);
     expect(sim.state.customers).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// the operations chapters: stock and the back counter, the tawa, gas, the board, special orders, weather, profit
+
+const OPS_CHAPTERS = ['stock', 'heat', 'gas', 'board', 'special', 'weather', 'profit'];
+const eventsOf = (sim, type, pred) => sim.events.filter((e) => e.type === type && (!pred || pred(e)));
+
+describe('the operations chapters teach every mechanic through the real engine', () => {
+  it('a full play really prepares, tends, swaps the cylinder, uses the board, serves special orders and passes the inspector', () => {
+    const sim = play(makeSim());
+    expect(sim.driver.done).toBe(true);
+    expect(sim.errors).toEqual([]);
+    // stock and the back counter
+    expect(eventsOf(sim, 'prep-start').length).toBeGreaterThanOrEqual(6);
+    expect(eventsOf(sim, 'prep-collect').map((e) => e.item)).toEqual(expect.arrayContaining(['batter_dosa', 'sambar', 'coconut_chutney']));
+    expect(eventsOf(sim, 'batter-sour').length).toBeGreaterThanOrEqual(1);
+    expect(eventsOf(sim, 'stock-out', (e) => e.item === 'batter_dosa').length).toBeGreaterThanOrEqual(1);
+    // the tawa: a torn dosa pays half, then every pan is tended with its own verb
+    expect(eventsOf(sim, 'ready', (e) => e.flaw === 'torn')).toHaveLength(1);
+    const broken = eventsOf(sim, 'serve', (e) => e.q === 'broken');
+    expect(broken).toHaveLength(1);
+    const paid = eventsOf(sim, 'collect', (e) => e.customer === broken[0].customer)[0];
+    expect(paid.amount).toBe(DISHES.dosa.price / 2);
+    expect(new Set(eventsOf(sim, 'tend').map((e) => e.kind))).toEqual(new Set(['wipe', 'skim', 'water']));
+    // gas
+    expect(eventsOf(sim, 'gas-low')).toHaveLength(1);
+    expect(eventsOf(sim, 'gas-swap').map((e) => e.phase)).toEqual(['start', 'done']);
+    expect(eventsOf(sim, 'gas-swap')[0].cost).toBe(GAS.swapCost);
+    // the board: off, customers swap their order, back on
+    expect(eventsOf(sim, 'board').map((e) => e.on)).toEqual([false, true]);
+    expect(eventsOf(sim, 'sold-out', (e) => e.swap && !e.left).length).toBeGreaterThanOrEqual(2);
+    // special orders
+    expect(eventsOf(sim, 'extra')).toHaveLength(1);
+    expect(eventsOf(sim, 'parcel-order', (e) => e.big)).toHaveLength(1);
+    expect(eventsOf(sim, 'parcel-order', (e) => e.delivery)).toHaveLength(1);
+    expect(eventsOf(sim, 'eating', (e) => e.parcel).length).toBeGreaterThanOrEqual(3);
+    expect(sim.state.regs[0][0]).toBe(2); // Raju came twice and was served well both times
+    // weather
+    expect(eventsOf(sim, 'event-start').map((e) => e.id)).toEqual(['rain', 'power', 'inspector']);
+    expect(eventsOf(sim, 'inspector').map((e) => e.pass)).toEqual([true]);
+    // profit: costs, waste and the books add up
+    expect(sim.state.cost).toBeGreaterThan(GAS.swapCost);
+    expect(sim.state.waste).toBeGreaterThan(0);
+    expect(sim.state.profit).toBe(sim.state.money - sim.state.cost);
+    expect(sim.state.fines || 0).toBe(0);
+  });
+
+  it('the final rush uses prep and tend', () => {
+    const sim = play(makeSim());
+    const rush = sim.events.slice(sim.stepAt.rush, sim.stepAt.outro);
+    expect(rush.some((e) => e.type === 'prep-start' && e.item === 'batter_dosa')).toBe(true);
+    expect(rush.some((e) => e.type === 'prep-collect' && e.item === 'batter_dosa')).toBe(true);
+    expect(rush.some((e) => e.type === 'tend' && e.station === 'tawa1')).toBe(true);
+    expect(rush.some((e) => e.type === 'collect')).toBe(true);
+  });
+
+  it('every chapter switches its mechanic on with a tutorial-flags action when its lesson starts (and the level starts with all of it off)', () => {
+    const sim = makeSim();
+    expect(sim.state.cfg).toMatchObject({ stock: false, gas: false, heat: false, market: false, events: [] });
+    play(sim);
+    const flagged = (key) => sim.log.filter((l) => l.includes('"tutorial-flags"') && l.includes(`"${key}":true`));
+    for (const key of ['stock', 'heat', 'gas', 'events']) expect(flagged(key), key).toHaveLength(1);
+    expect(sim.state.cfg).toMatchObject({ stock: true, gas: true, heat: true, events: ['staged'] });
+    expect(sim.state.cfg.market).toBe(false); // the market is a real-shift thing, only explained
+  });
+
+  it('shows the engine\'s own refusals: a heavy cylinder, an already clean pan, a dead steamer and an empty batter jar', () => {
+    const sim = makeSim(4);
+    const tried = new Set();
+    const attempt = (id, action) => (state, driver) => {
+      if (driver.step.id === id && !tried.has(id)) {
+        tried.add(id);
+        return action(state);
+      }
+      return undefined;
+    };
+    const tries = [
+      attempt('gas-intro', () => ({ type: 'swapGas' })),
+      attempt('heat-others', () => ({ type: 'tend', station: 'tawa1' })),
+      attempt('stock-out-refused', (s) => ({ type: 'cook', station: 'tawa1', slot: s.stations.tawa1.slots.findIndex((x) => x.st === 'empty'), dish: 'dosa' })),
+      (state, driver) => {
+        if (driver.step.id === 'power-serve' && !tried.has('power') && state.events.some((e) => e.id === 'power') && state.stations.steamer1.slots[0].st === 'empty') {
+          tried.add('power');
+          return { type: 'cook', station: 'steamer1', slot: 0, dish: 'idly' };
+        }
+        return undefined;
+      },
+    ];
+    play(sim, { extra: (state, driver) => { for (const t of tries) { const a = t(state, driver); if (a !== undefined) return a; } return undefined; } });
+    expect(sim.errors.map((e) => e.error)).toEqual([
+      'Out of dosa batter', 'Already clean', 'The cylinder is still heavy', 'Power cut: the steamer is off', // in the order of the chapters
+    ]);
+    expect(sim.driver.done).toBe(true);
+  });
+
+  it('out of batter is recoverable: losing the first dosa sends the player back to restage the lesson, and it still completes', () => {
+    const sim = makeSim(5);
+    let lost = false;
+    play(sim, {
+      extra: (state, driver) => {
+        if (!lost && driver.step.id === 'stock-out-serve' && state.players[ME].hands.length) { lost = true; return { type: 'discard', hand: 0 }; }
+        return undefined;
+      },
+    });
+    expect(lost).toBe(true);
+    expect(sim.errors).toEqual([]);
+    expect(sim.driver.visits['stock-out-order']).toBeGreaterThan(1);
+    expect(sim.driver.done).toBe(true);
+  });
+
+  it('a failed inspector drill costs a fine, comes back with a longer warning, and passes the second time', () => {
+    const sim = makeSim(6);
+    play(sim, { extra: (state, driver) => (driver.step.id === 'inspect-drill' && driver.attempts.inspect === 0 ? null : undefined) });
+    expect(sim.driver.attempts.inspect).toBe(1);
+    expect(sim.driver.visits['inspect-drill']).toBe(2);
+    expect(sim.state.fines).toBeGreaterThan(0);
+    expect(eventsOf(sim, 'inspector').map((e) => e.pass)).toEqual([false, true]);
+    expect(sim.state.lives).toBe(5); // the training shift never costs a heart
+    let last = 0;
+    const fuses = [];
+    for (const e of sim.events) {
+      if (e.type === 'tick') last = e.tick;
+      if (e.type === 'event-start' && e.id === 'inspector') fuses.push(e.until - last);
+    }
+    expect(fuses).toEqual([20, 30]);
+    expect(sim.driver.done).toBe(true);
+  });
+
+  it('nothing in the operations chapters is finished by idling: a player who does nothing at a step stays at or before it', () => {
+    const waits = new Set(['gas-low', 'gas-wait']); // these end by themselves once the player's own action has run
+    const ids = TUTORIAL_STEPS.filter((s) => OPS_CHAPTERS.includes(s.chapter) && !s.ack && !waits.has(s.id) && s.id !== 'inspect-clean').map((s) => s.id);
+    expect(ids.length).toBeGreaterThan(30);
+    for (const id of ids) {
+      const sim = playTo(makeSim(5), id, 1200);
+      expect(sim.driver.step.id, `reached ${id}`).toBe(id);
+      const at = sim.driver.index;
+      for (let i = 0; i < 160; i++) {
+        sim.tick();
+        sim.driver.ack(); // even a player who keeps pressing Got it
+      }
+      expect(sim.driver.index, `idle at ${id}`).toBeLessThanOrEqual(at);
+      expect(sim.driver.done, `idle at ${id}`).toBe(false);
+    }
+  });
+
+  it('every operations step names what is allowed, and only the lesson\'s own operations action', () => {
+    const at = (id) => TUTORIAL_STEPS.find((s) => s.id === id);
+    expect(at('stock-turn').allow).toEqual(['move']);
+    expect(at('stock-batter').allow).toEqual(['move', 'prep']);
+    expect(at('stock-grind').allow).toEqual(['move', 'collectPrep']);
+    expect(at('stock-out-cook').allow).toContain('cook');
+    expect(at('stock-out-cook').allow).not.toContain('prep');
+    expect(at('heat-tend').allow).toEqual(['move', 'tend']);
+    expect(at('gas-swap').allow).toContain('swapGas');
+    expect(at('gas-cook').allow).not.toContain('swapGas');
+    expect(at('board-off').allow).toEqual(['move', 'board']);
+    expect(at('power-cut').allow).toEqual(['move', 'prep']);
+    expect(at('inspect-drill').allow).toEqual(['move', 'take', 'tend', 'discard']);
+    for (const op of ['prep', 'collectPrep', 'tend', 'swapGas', 'board']) {
+      expect(TUTORIAL_ACTIONS).toContain(op);
+      const where = TUTORIAL_STEPS.filter((s) => s.allow.includes(op)).map((s) => s.chapter);
+      expect(where.length, op).toBeGreaterThan(0);
+      for (const c of where) expect([...OPS_CHAPTERS, 'rush']).toContain(c); // never in the cooking lessons that come before the mechanic exists
+    }
+  });
+
+  it('step texts show the live numbers (batter freshness, the gas gauge, the books)', () => {
+    const sim = playTo(makeSim(), 'stock-grind', 900);
+    expect(sim.driver.text).toMatch(/Freshness now \d+ of 100|READY/);
+    const sim2 = playTo(makeSim(), 'gas-intro', 900);
+    sim2.pump();
+    expect(sim2.driver.text).toContain('% full');
+    const sim3 = playTo(makeSim(), 'profit-profit', 1500);
+    expect(sim3.driver.text).toMatch(/PROFIT is what is left: cash in hand Rs \d+ minus cost Rs \d+ = Rs \d+/);
+  });
+
+  it('prep cards come with the back-counter steps (driver.recipe) and every one is a real ingredient', () => {
+    const sim = playTo(makeSim(), 'stock-batter', 900);
+    const card = sim.driver.recipe;
+    expect(card).toMatchObject({ dish: 'batter_dosa', prep: true, name: INGREDIENTS.batter_dosa.name, station: 'prep1', needs: 'power' });
+    expect(card.goes.length).toBeGreaterThanOrEqual(2);
+    expect(card.steps).toHaveLength(3);
+    expect(TUTORIAL_PREP_RECIPES).toEqual(expect.arrayContaining(['batter_dosa', 'sambar']));
+    for (const item of TUTORIAL_PREP_RECIPES) expect(INGREDIENT_IDS).toContain(item);
+    expect([...TUTORIAL_RECIPE_DISHES].sort()).toEqual([...DISH_IDS].sort()); // prep cards are not dish cards
+    const dosa = playTo(makeSim(), 'dosa-card');
+    expect(dosa.driver.recipe.uses.map((u) => u.item)).toEqual(Object.keys(DISHES.dosa.uses));
+  });
+
+  it('special orders arrive with their requests: parcel fee, extra, loyalty, the big order and the delivery boy', () => {
+    const sim = playTo(makeSim(), 'parcel', 1500);
+    sim.pump();
+    const p = sim.state.customers.find((c) => c.parcel);
+    expect(p).toMatchObject({ name: 'Imran bhai', parcel: true, total: DISHES.masala_dosa.price + DISHES.irani_chai.price + REQUEST.parcelFee * 2 });
+    const x = playTo(makeSim(), 'extra', 1500);
+    x.pump();
+    expect(x.state.customers.find((c) => c.extra)).toMatchObject({ extra: 'coconut_chutney', spice: 'more' });
+    const r = playTo(makeSim(), 'regular', 1500);
+    r.pump();
+    expect(r.state.customers.find((c) => c.regular)).toMatchObject({ regular: true, loyal: 0 });
+    const b = playTo(makeSim(), 'big', 1500);
+    b.pump();
+    expect(b.state.customers.find((c) => c.big)).toMatchObject({ big: true, parcel: true });
+    const d = playTo(makeSim(), 'delivery', 1500);
+    d.pump();
+    const boy = d.state.customers.find((c) => c.delivery);
+    expect(boy.order).toHaveLength(REQUEST.delivery.dishes);
+    expect(boy.patienceMax).toBe(REQUEST.delivery.patience);
+  });
+});
+
+describe('spawn and flag actions the operations chapters send', () => {
+  it('spawnAction carries the special requests with the patience the schedule would give, and stays plain without them', () => {
+    const plain = spawnAction({ kind: 'student', name: 'Kiran', order: ['dosa'], tag: 'A' });
+    expect(Object.keys(plain.customer).sort()).toEqual(['kind', 'look', 'name', 'order', 'patienceMax']);
+    const parcel = spawnAction({ kind: 'student', name: 'Kiran', order: ['dosa'], parcel: true });
+    expect(parcel.customer.parcel).toBe(true);
+    expect(parcel.customer.patienceMax).toBe(Math.round(plain.customer.patienceMax * REQUEST.parcelPatience));
+    const big = spawnAction({ kind: 'office', name: 'X', order: ['dosa'], big: true });
+    expect(big.customer).toMatchObject({ big: true, patienceMax: Math.round(spawnAction({ kind: 'office', name: 'X', order: ['dosa'] }).customer.patienceMax * REQUEST.big.patience) });
+    const boy = spawnAction({ kind: 'autowala', name: 'D', order: ['dosa'], delivery: true });
+    expect(boy.customer).toMatchObject({ delivery: true, patienceMax: REQUEST.delivery.patience });
+    expect(spawnAction({ kind: 'student', name: 'R', order: ['dosa'], regular: true, loyal: 2, extra: 'sambar', spice: 'less', fit: true }).customer).toMatchObject({ regular: true, loyal: 2, extra: 'sambar', spice: 'less', fit: true });
+    expect(trainAction({ stock: true, stage: { stock: { '*': 4 } } })).toEqual({ type: 'tutorial-flags', stock: true, stage: { stock: { '*': 4 } } });
+  });
+});
+
+describe('prep recipes and the per-dish ingredient list', () => {
+  it('has a back-counter recipe for EVERY ingredient: what goes in, how it is made, Telugu and Hindi, flagged for native review', () => {
+    expect(Object.keys(PREP_RECIPES).sort()).toEqual([...INGREDIENT_IDS].sort());
+    expect(RECIPE_REVIEW).toMatchObject({ te: true, hi: true });
+    for (const id of INGREDIENT_IDS) {
+      const r = prepRecipeFor(id);
+      expect(r.item, id).toBe(id);
+      expect(r.station, id).toBe('prep1');
+      expect(r.needs, id).toBe(INGREDIENTS[id].prep.needs);
+      expect(r.goes.length, id).toBeGreaterThanOrEqual(2);
+      expect(r.goes.length, id).toBeLessThanOrEqual(3);
+      expect(r.steps, id).toHaveLength(3);
+      expect(r.goesTe, id).toHaveLength(r.goes.length);
+      expect(r.goesHi, id).toHaveLength(r.goes.length);
+      expect(r.te, id).toHaveLength(3);
+      expect(r.hi, id).toHaveLength(3);
+      for (const l of [...r.goesTe, ...r.te, r.tipTe]) expect(l, id).toMatch(/[ఀ-౿]/);
+      for (const l of [...r.goesHi, ...r.hi, r.tipHi]) expect(l, id).toMatch(/[ऀ-ॿ]/);
+      for (const l of [...r.goes, ...r.steps, r.tip]) expect(l.length, `${id} ${l}`).toBeGreaterThan(8);
+      expect(prepRecipeSteps(id, 'te')).toEqual(r.te);
+      expect(prepRecipeSteps(id, 'hi')).toEqual(r.hi);
+      expect(prepRecipeSteps(id, 'zz')).toEqual(r.steps);
+      expect(prepRecipeGoes(id, 'hi')).toEqual(r.goesHi);
+      expect(prepRecipeTip(id, 'te')).toBe(r.tipTe);
+      expect(prepRecipeTip(id)).toBe(r.tip);
+    }
+    expect(prepRecipeFor('nope')).toBe(null);
+    expect(prepRecipeSteps('nope')).toEqual([]);
+    expect(prepRecipeTip('nope')).toBe('');
+    // the ones the brief names
+    expect(prepRecipeGoes('batter_dosa')[0]).toMatch(/rice/);
+    expect(prepRecipeGoes('potato_masala').join(' ')).toMatch(/potato/i);
+    expect(prepRecipeGoes('poori_dough').join(' ')).toMatch(/flour|atta/i);
+    expect(prepRecipeGoes('sambar').join(' ')).toMatch(/dal/i);
+    expect(prepRecipeGoes('coconut_chutney').join(' ')).toMatch(/coconut/i);
+  });
+
+  it('lists the ingredients of every dish from the catalogue, in the three languages, with portion labels', () => {
+    for (const id of DISH_IDS) {
+      const list = ingredientsOf(id);
+      expect(list.map((u) => u.item), id).toEqual(Object.keys(DISHES[id].uses));
+      expect(recipeFor(id).uses, id).toEqual(list);
+      for (const u of list) {
+        expect(u.qty).toBe(DISHES[id].uses[u.item]);
+        expect(u.name).toBe(INGREDIENTS[u.item].name);
+        expect(u.te).toMatch(/[ఀ-౿]/);
+        expect(u.hi).toMatch(/[ऀ-ॿ]/);
+        expect(u.label.length).toBeGreaterThan(0);
+      }
+    }
+    for (const id of INGREDIENT_IDS) expect(INGREDIENT_HI[id], id).toMatch(/[ऀ-ॿ]/);
+    expect(ingredientsOf('nope')).toEqual([]);
+    expect([0.25, 0.5, 1, 1.25, 2].map(portionLabel)).toEqual(['1/4', '1/2', '1', '1 1/4', '2']);
+    expect(ingredientsOf('masala_dosa').find((u) => u.item === 'potato_masala').label).toBe('1');
+    expect(ingredientsOf('dosa').find((u) => u.item === 'oil').label).toBe('1/4');
   });
 });
