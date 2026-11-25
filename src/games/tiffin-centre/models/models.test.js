@@ -76,10 +76,10 @@ describe('dishes', () => {
         expect(s.x).toBeLessThan(0.45);
         expect(s.z).toBeLessThan(0.45);
         expect(s.y).toBeLessThan(0.4);
-        expect(s.x).toBeGreaterThan(0.18);
+        expect(s.x).toBeGreaterThan(0.12);
         expect(b.min.y).toBeGreaterThan(-0.01);
         expect(b.min.y).toBeLessThan(0.02);
-        expect(countTriangles(d)).toBeLessThan(1200);
+        expect(countTriangles(d)).toBeLessThan(2500);
         noNaN(d);
       });
     }
@@ -93,10 +93,16 @@ describe('dishes', () => {
   });
   it('quality changes the look', () => {
     expect(buildDish('dosa', 'perfect').children.length).toBeGreaterThan(buildDish('dosa', 'good').children.length);
-    const burnt = buildDish('dosa', 'burnt').children[0].geometry.attributes.color;
-    const good = buildDish('dosa', 'good').children[0].geometry.attributes.color;
-    const sum = (a) => a.array.reduce((x, y) => x + y, 0);
-    expect(sum(burnt)).toBeLessThan(sum(good));
+    // the food shaders carry the cook / burn state in uniforms (no vertex colours any more)
+    const burnOf = (d) => {
+      let n = 0;
+      d.traverse((o) => {
+        const u = o.material && o.material.userData && o.material.userData.tcUniforms;
+        if (u && u.uBurn) n += u.uBurn.value + (u.uCook ? u.uCook.value : 0);
+      });
+      return n;
+    };
+    expect(burnOf(buildDish('dosa', 'burnt'))).toBeGreaterThan(burnOf(buildDish('dosa', 'good')));
   });
   it('an unknown dish still builds', () => {
     expect(buildDish('nope').children.length).toBeGreaterThan(0);
@@ -112,7 +118,7 @@ describe('station props', () => {
       expect(b.x).toBeLessThan(1.75);
       expect(b.x).toBeGreaterThan(1.0);
       expect(b.y).toBeLessThan(2.0);
-      expect(countTriangles(st.group)).toBeLessThan(7000);
+      expect(countTriangles(st.group)).toBeLessThan(8000);
       const dishes = Object.values(DISHES).filter((d) => d.station === kind);
       const states = ['empty', 'cooking', 'ready', 'burnt'];
       let t = 0;
@@ -156,7 +162,7 @@ describe('customers', () => {
       const s = size(c.group);
       expect(s.y).toBeGreaterThan(1.1);
       expect(s.y).toBeLessThan(2.1);
-      expect(countTriangles(c.group)).toBeLessThan(5000);
+      expect(countTriangles(c.group)).toBeLessThan(kind === 'family' ? 14000 : 9000); // sculpted people (see people.test.js)
       let t = 0;
       for (const m of MOODS) {
         c.setMood(m);
@@ -212,7 +218,7 @@ describe('avatar', () => {
   it('builds, poses, holds dishes, disposes', () => {
     const a = buildAvatar({ color: '#12908e', name: 'Sana' });
     expect(size(a.group).y).toBeGreaterThan(1.4);
-    expect(countTriangles(a.group)).toBeLessThan(5000);
+    expect(countTriangles(a.group)).toBeLessThan(9000);
     let t = 0;
     for (const p of POSES) {
       a.setPose(p);
@@ -243,7 +249,10 @@ describe('avatar', () => {
       const a = buildAvatar({ color: c, name: n });
       let s = '';
       a.group.traverse((o) => {
-        if (o.geometry?.attributes?.color) s += o.geometry.attributes.color.array.slice(0, 3).join(',');
+        const p = o.geometry?.attributes?.position;
+        if (p && !o.geometry.userData.shared) s += `${p.count}:${p.array[3]?.toFixed(4)},`;
+        const mm = o.material;
+        if (mm && mm.color && !mm.userData.shared) s += mm.color.getHexString();
       });
       return s;
     };

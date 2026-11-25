@@ -1,236 +1,265 @@
-// Customers: ~1.6 m low-poly Hyderabadi street-stall regulars, one distinct silhouette per kind, deterministic variation per seed.
-// The returned group FACES -z (towards the stall); rotate group.rotation.y for any other heading. Origin = between the feet.
-import { AdditiveBlending, CircleGeometry, DoubleSide, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry, RingGeometry, Color } from 'three';
+// Customers: Hyderabadi street-stall regulars with sculpted faces, real proportions (about 7.5 heads) and clothes, one distinct person per
+// kind and per seed. The returned group FACES +z (towards the cook, first person); origin = between the feet.
+//
+//   buildCustomer(kindId, seed) -> { group, kind, mood, setMood, setPatience, setExpression, setSpeaking(ms, intensity), lookAt(vec3|null),
+//                                    update(dt, t), dispose, triangles }
+import { AdditiveBlending, CircleGeometry, Color, DoubleSide, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry, RingGeometry, Vector3 } from 'three';
 import { CUSTOMER_KINDS } from '../../../../shared/tiffin-centre/catalog.js';
-import { Parts, clamp01, damp, disposeObject, materials, num, rng, sharedGeo, sharedMat } from './util.js';
-import { buildPerson, resetPose, shade } from './person.js';
+import { clamp01, countTriangles, damp, disposeObject, materials, num, rng, sharedGeo, sharedMat } from './util.js';
+import { buildPerson } from './person.js';
+import { makeFaceParams } from './facegen.js';
+import { CH } from './bodies.js';
+import { expressionForMood, EXPRESSION_NAMES } from './expressions.js';
 import { Puffs } from './fx.js';
 import { noteTexture } from './textures.js';
+import { tiffinCarrier, walkingStick } from './clothes.js';
+import { holdTool, makeTool } from './toolhost.js';
+import { buildDish } from './dishes.js';
+import { getCharacterQuality } from './charquality.js';
 
 export const MOODS = ['waiting', 'eating', 'paying', 'happy', 'angry', 'walkaway'];
+export const CUSTOMER_KIND_IDS = Object.keys(CUSTOMER_KINDS);
 
-const SKIN = ['#f0c8a0', '#e3ab7c', '#c98a50', '#a8723e', '#8a5a2e', '#6e4526'];
-const HAIR = ['#17100c', '#241811', '#33241a', '#0f0f12'];
-const BRIGHTS = ['#e0392b', '#ff8a1f', '#12908e', '#2f9e5b', '#7a4bb8', '#d6336c', '#ffc83d'];
+const SHIRTS = ['#e8eef5', '#b7d0ea', '#f1e2e2', '#d9e8d2', '#cdd5ee', '#efe6c8', '#c9d8c5', '#e9d4c0'];
+const DARKS = ['#2c3345', '#3a3a3c', '#4a3f35', '#51555f', '#3b4660'];
+const BRIGHTS = ['#e0392b', '#ff8a1f', '#12908e', '#2f9e5b', '#7a4bb8', '#d6336c', '#e0a81f', '#2f6fd0'];
+const TEES = ['#ff8a1f', '#12908e', '#e0392b', '#2f9e5b', '#7a4bb8', '#f2f2f2', '#2f6fd0', '#d6336c'];
+const WHITES = ['#efeadb', '#f4efe0', '#dfe5db', '#ded3bd'];
 
-function officeSpec(r) {
-  const female = r.chance(0.42);
-  const hair = r.pick(HAIR);
-  return {
-    scale: r.range(0.97, 1.05),
-    skin: r.pick(SKIN),
-    top: female ? { kind: 'kurti', color: r.pick(BRIGHTS), sleeve: 'short' } : { kind: 'shirt', color: r.pick(['#e8eef5', '#b7d0ea', '#f1e2e2', '#d9e8d2', '#cdd5ee']), sleeve: 'long', pocket: true },
-    bottom: { kind: 'trousers', color: r.pick(['#2c3345', '#3a3a3c', '#4a3f35']) },
-    shoes: { kind: 'shoe', color: '#1d1612' },
-    hair: { style: female ? r.pick(['long', 'plait', 'bun']) : 'short', color: hair },
-    face: { moustache: !female && r.chance(0.35), glasses: r.chance(0.25), bindi: female && r.chance(0.6), hairColor: hair },
-    extras: (ctx) => {
-      if (!female) ctx.body.box(0.05, 0.26, 0.02, r.pick(['#c0392b', '#1f3a6e', '#6a2c70']), { p: [0, 0.3, 0.108] }); // tie
-    },
-    after: (p) => {
-      // steel tiffin carrier (3 tiers, clip and handle) in the left hand
-      const T = new Parts();
-      for (let i = 0; i < 3; i++) T.cyl(0.075, 0.075, 0.058, 9, i % 2 ? '#aeb8be' : '#c9d1d6', { p: [0, -0.15 - i * 0.062, 0] });
-      T.cyl(0.078, 0.078, 0.012, 9, '#8f9aa1', { p: [0, -0.115, 0] });
-      T.cyl(0.004, 0.004, 0.2, 4, '#6f7a80', { p: [0.072, -0.2, 0] });
-      T.torus(0.07, 0.005, '#6f7a80', { p: [0, -0.09, 0], r: [0, Math.PI / 2, 0] }, 3, 8, Math.PI);
-      p.ctx.attach(p.arms[0].hand, T);
-    },
-  };
-}
+const mm = (lo, hi, r) => lo + (hi - lo) * r();
 
-function studentSpec(r) {
-  const female = r.chance(0.45);
-  const hair = r.pick(HAIR);
-  const pack = r.pick(['#ff8a1f', '#12908e', '#e0392b', '#2f6fd0']);
-  return {
-    scale: r.range(0.93, 1.0),
-    skin: r.pick(SKIN),
-    top: { kind: 'tee', color: r.pick(['#ff8a1f', '#12908e', '#e0392b', '#2f9e5b', '#7a4bb8', '#f2f2f2']), sleeve: 'short' },
-    bottom: { kind: r.chance(0.2) ? 'shorts' : 'trousers', color: r.pick(['#3b5b8c', '#2d4670', '#404552']) },
-    shoes: { kind: 'shoe', color: '#e8e3da' },
-    hair: { style: female ? r.pick(['long', 'plait']) : 'short', color: hair },
-    face: { glasses: r.chance(0.2), bindi: female && r.chance(0.3), hairColor: hair },
-    extras: (ctx) => {
-      ctx.body.box(0.3, 0.4, 0.15, pack, { p: [0, 0.3, -0.15] }); // backpack
-      ctx.body.box(0.24, 0.16, 0.05, shade(pack, 0.8), { p: [0, 0.2, -0.24] });
-      ctx.body.box(0.2, 0.05, 0.1, shade(pack, 0.7), { p: [0, 0.53, -0.15] });
-      for (const x of [-0.1, 0.1]) ctx.body.box(0.045, 0.42, 0.02, shade(pack, 0.65), { p: [x, 0.32, 0.105] });
-    },
-  };
-}
-
-function personFamilyParent(r) {
-  const mother = r.chance(0.55);
-  const hair = r.pick(HAIR);
-  if (mother) {
-    return {
-      scale: r.range(0.97, 1.02),
-      skin: r.pick(SKIN),
-      top: { kind: 'saree', color: r.pick(['#d6336c', '#12908e', '#7a4bb8', '#e0392b']), sleeve: 'short' },
-      bottom: { kind: 'skirt', color: r.pick(['#e0392b', '#2f9e5b', '#ff8a1f', '#2f6fd0']), trim: '#f4c542' },
-      shoes: { kind: 'slipper', color: '#3b2a20' },
-      hair: { style: r.pick(['bun', 'plait']), color: hair },
-      face: { bindi: true, hairColor: hair },
-    };
+/** The person spec of one customer of `kind` (deterministic in r). `role` 'child' builds the family's kid. */
+function specFor(kind, seed, r, role) {
+  const faceKind = role === 'child' ? 'child' : kind;
+  const P = makeFaceParams(faceKind, seed);
+  const f = P.gender === 'f';
+  const spec = { kind: faceKind, seed, params: P, hair: {}, outfit: { extras: [] } };
+  const o = spec.outfit;
+  const hr = spec.hair;
+  const col = P.hairColor;
+  hr.color = col;
+  if (role === 'child') {
+    spec.height = mm(1.0, 1.16, r);
+    hr.style = f ? 'pigtails' : 'bowl';
+    hr.tieColor = r.pick(BRIGHTS);
+    o.top = { kind: 'tee', color: r.pick(TEES), sleeve: 'short' };
+    o.bottom = { kind: f ? 'skirt' : 'shorts', color: r.pick(BRIGHTS), hem: 0.62 };
+    o.shoes = { kind: 'slipper', color: r.pick(BRIGHTS) };
+    return spec;
   }
-  return {
-    scale: r.range(1.0, 1.06),
-    skin: r.pick(SKIN),
-    top: { kind: 'shirt', color: r.pick(['#d9e8d2', '#f3e3b6', '#b7d0ea']), sleeve: 'short', pocket: true },
-    bottom: { kind: 'trousers', color: r.pick(['#4a3f35', '#2c3345']) },
-    shoes: { kind: 'slipper', color: '#3b2a20' },
-    hair: { style: 'short', color: hair },
-    face: { moustache: r.chance(0.6), hairColor: hair },
-  };
+  switch (kind) {
+    case 'office':
+      spec.height = f ? mm(1.54, 1.64, r) : mm(1.66, 1.78, r);
+      spec.belly = f ? 0 : r() < 0.35 ? mm(0.2, 0.55, r) : 0;
+      if (f) {
+        hr.style = r.pick(['long', 'plait', 'bunLow']);
+        hr.gajra = r() < 0.25;
+        o.top = { kind: 'kurti', color: r.pick(BRIGHTS), color2: '#f4f0e0', sleeve: r.pick(['short', 'half']), pattern: 'plain' };
+        o.bottom = { kind: 'salwar', color: r.pick(DARKS) };
+        o.extras.push({ id: 'dupatta', color: r.pick(BRIGHTS), pattern: 'sari', color2: '#e6c25a' }, { id: 'lanyard' });
+        o.shoes = { kind: 'sandal', color: '#3b2a20' };
+      } else {
+        hr.style = r.pick(['combed', 'short', 'short']);
+        o.top = { kind: 'shirt', color: r.pick(SHIRTS), sleeve: r() < 0.3 ? 'half' : 'long', pocket: true, tucked: true };
+        o.bottom = { kind: 'trousers', color: r.pick(DARKS) };
+        o.shoes = { kind: 'shoe', color: '#1d1612' };
+        if (r() < 0.55) o.extras.push({ id: 'tie', color: r.pick(['#c0392b', '#1f3a6e', '#6a2c70', '#2f6e5a']) });
+        else o.extras.push({ id: 'lanyard' });
+        o.extras.push({ id: 'watch', side: 'R', color: '#b8bcc0' });
+        spec.carry = 'tiffin';
+      }
+      break;
+    case 'student':
+      spec.height = f ? mm(1.52, 1.62, r) : mm(1.62, 1.74, r);
+      if (f) {
+        hr.style = r.pick(['plait', 'long', 'bun']);
+        o.top = r() < 0.5 ? { kind: 'kurti', color: r.pick(BRIGHTS), sleeve: 'short', hem: 0.7 } : { kind: 'tee', color: r.pick(TEES), sleeve: 'short', untucked: true };
+        o.bottom = { kind: 'jeans', color: r.pick(['#3b5b8c', '#2d4670', '#404552']) };
+        if (r() < 0.4) o.extras.push({ id: 'dupatta', color: r.pick(BRIGHTS), pattern: 'plain' });
+      } else {
+        hr.style = r.pick(['short', 'combed', 'short']);
+        o.top = { kind: 'tee', color: r.pick(TEES), sleeve: 'short' };
+        o.bottom = { kind: r() < 0.2 ? 'shorts' : 'jeans', color: r.pick(['#3b5b8c', '#2d4670', '#404552']) };
+      }
+      o.shoes = { kind: r() < 0.5 ? 'shoe' : 'sandal', color: r() < 0.5 ? '#e8e3da' : '#2a4f9e' };
+      o.extras.push({ id: 'backpack', color: r.pick(['#ff8a1f', '#12908e', '#e0392b', '#2f6fd0']) });
+      spec.phone = true;
+      break;
+    case 'family':
+      if (f) {
+        spec.height = mm(1.52, 1.6, r);
+        hr.style = r() < 0.2 ? 'none' : r.pick(['bun', 'plait', 'bunLow']);
+        hr.gajra = r() < 0.6;
+        if (r() < 0.22) hr.headwear = 'dupatta';
+        hr.clothColor = r.pick(BRIGHTS);
+        o.top = { kind: 'blouse', color: r.pick(BRIGHTS), sleeve: 'short' };
+        const sc = r.pick(['#d6336c', '#12908e', '#7a4bb8', '#e0392b', '#2f9e5b']);
+        o.bottom = { kind: 'saree', color: sc, pattern: 'sari', color2: '#e6c25a' };
+        o.extras.push({ id: 'sariPallu', color: sc, color2: '#e6c25a' });
+        o.shoes = { kind: 'sandal', color: '#3b2a20' };
+      } else {
+        spec.height = mm(1.64, 1.74, r);
+        spec.belly = mm(0.1, 0.5, r);
+        hr.style = r.pick(['short', 'combed']);
+        o.top = { kind: 'shirt', color: r.pick(SHIRTS), sleeve: 'short', pocket: true };
+        o.bottom = { kind: 'trousers', color: r.pick(DARKS) };
+        o.shoes = { kind: 'slipper', color: '#3b2a20' };
+      }
+      break;
+    case 'uncle':
+      spec.height = mm(1.58, 1.68, r);
+      spec.belly = mm(0.3, 0.8, r);
+      hr.style = r.pick(['receding', 'receding', 'crop']);
+      hr.grey = 0.8 + 0.2 * r();
+      if (r() < 0.6) {
+        hr.headwear = 'topi';
+        hr.clothColor = r.pick(WHITES);
+        hr.clothColor2 = '#cfc8b6';
+      }
+      o.top = { kind: 'kurta', color: r.pick(WHITES), sleeve: 'long', untucked: true };
+      o.bottom = r() < 0.7 ? { kind: 'pyjama', color: r.pick(WHITES) } : { kind: 'lungi', color: r.pick(['#2f5da8', '#1f7a5c', '#8a2d2d']), color2: '#f0e6c8', hem: 0.18 };
+      o.shoes = { kind: 'slipper', color: '#6b4a2b' };
+      if (r() < 0.5) o.extras.push({ id: 'gamchha', color: '#e8e0cf', color2: '#8a8f99', side: -1 });
+      o.extras.push({ id: 'watch', side: 'R', color: '#c0c4c8' });
+      spec.stick = true;
+      break;
+    case 'autowala':
+      spec.height = mm(1.62, 1.72, r);
+      spec.belly = mm(0, 0.4, r);
+      hr.style = r.pick(['short', 'short', 'crop']);
+      if (r() < 0.45) {
+        hr.headwear = 'cap';
+        hr.clothColor = '#bfa95a';
+      }
+      o.top = { kind: 'shirt', color: '#bfa95a', sleeve: 'short', pocket: true, untucked: true };
+      o.bottom = { kind: 'trousers', color: '#8f8247' };
+      o.shoes = { kind: r() < 0.6 ? 'slipper' : 'sandal', color: '#2a4f9e' };
+      o.extras.push({ id: 'gamchha', color: '#c0392b', color2: '#f3ede0', side: 1 });
+      o.extras.push({ id: 'kada', side: 'R' });
+      break;
+    case 'techie':
+    default:
+      spec.height = f ? mm(1.56, 1.66, r) : mm(1.66, 1.78, r);
+      if (f) {
+        hr.style = r.pick(['long', 'bun', 'plait']);
+        o.top = r() < 0.5 ? { kind: 'kurti', color: r.pick(['#6f7f6f', '#3d4e6b', '#a65d5d', '#7a4bb8']), sleeve: 'half', hem: 0.72 } : { kind: 'tee', color: r.pick(['#6f7f6f', '#8a8f99', '#3d4e6b']), sleeve: 'short', untucked: true };
+        o.bottom = { kind: 'jeans', color: r.pick(['#3b5b8c', '#404552']) };
+      } else {
+        hr.style = r.pick(['short', 'combed']);
+        o.top = { kind: 'tee', color: r.pick(['#6f7f6f', '#8a8f99', '#3d4e6b', '#a65d5d']), sleeve: 'short' };
+        o.bottom = { kind: 'trousers', color: r.pick(['#b8a888', '#4a4f5a']) };
+      }
+      o.shoes = { kind: 'shoe', color: '#f1efe9' };
+      o.extras.push({ id: 'lanyard' }, { id: 'laptopBag' });
+      spec.phone = true;
+  }
+  return spec;
 }
-
-function childSpec(r) {
-  const hair = r.pick(HAIR);
-  return {
-    scale: 0.58,
-    headScale: 1.22,
-    skin: r.pick(SKIN),
-    top: { kind: 'tee', color: r.pick(['#ffc83d', '#e0392b', '#12908e', '#ff8a1f']), sleeve: 'short' },
-    bottom: { kind: 'shorts', color: r.pick(['#2f6fd0', '#2f9e5b', '#7a4bb8']) },
-    shoes: { kind: 'slipper', color: '#e0392b' },
-    hair: { style: r.chance(0.5) ? 'short' : 'plait', color: hair },
-    face: { hairColor: hair },
-  };
-}
-
-function uncleSpec(r) {
-  const white = '#ece7da';
-  const beard = r.chance(0.55);
-  return {
-    scale: r.range(0.94, 0.99),
-    skin: r.pick(SKIN.slice(1, 5)),
-    top: { kind: 'kurta', color: r.pick([white, '#f1ead6', '#cfd8cf', '#d7cdbb']), sleeve: 'long' },
-    bottom: { kind: 'pyjama', color: white },
-    shoes: { kind: 'slipper', color: '#6b4a2b' },
-    hair: { style: 'none', color: '#d8d8d8', side: '#d8d8d8' },
-    headgear: { kind: 'topi', color: '#f6f2e6' },
-    face: { moustache: true, beard, glasses: r.chance(0.5), hairColor: '#e4e4e4' },
-    after: (p) => {
-      // walking stick planted beside the left foot, left hand resting on the crook
-      const S = new Parts();
-      S.cyl(0.015, 0.012, 0.88, 5, '#6b4a2b', { p: [0, 0.44, 0] });
-      S.torus(0.045, 0.014, '#5a3d22', { p: [0.045, 0.9, 0], r: [0, 0, 0] }, 4, 8, Math.PI);
-      S.cyl(0.018, 0.018, 0.03, 5, '#2a2a2a', { p: [0, 0.015, 0] });
-      const m = p.ctx.attach(p.root, S, -0.27, 0, 0.16);
-      m.rotation.z = -0.04;
-    },
-  };
-}
-
-function autowalaSpec(r) {
-  const hair = r.pick(HAIR);
-  return {
-    scale: r.range(0.98, 1.05),
-    skin: r.pick(SKIN.slice(2)),
-    top: { kind: 'shirt', color: '#bfa95a', sleeve: 'short', pocket: true },
-    bottom: { kind: 'trousers', color: '#8f8247' },
-    shoes: { kind: 'slipper', color: '#2a4f9e' },
-    hair: { style: 'short', color: hair },
-    headgear: r.chance(0.45) ? { kind: 'cap', color: '#bfa95a' } : null,
-    face: { moustache: true, hairColor: hair },
-    extras: (ctx) => {
-      // red-and-white gamchha over the shoulder
-      ctx.body.box(0.12, 0.035, 0.2, '#c0392b', { p: [0.14, 0.545, 0], r: [0, 0, -0.35] });
-      ctx.body.box(0.075, 0.24, 0.02, '#c0392b', { p: [0.19, 0.4, 0.108] });
-      ctx.body.box(0.077, 0.02, 0.022, '#f3ede0', { p: [0.19, 0.36, 0.108] });
-      ctx.body.box(0.077, 0.02, 0.022, '#f3ede0', { p: [0.19, 0.28, 0.108] });
-    },
-  };
-}
-
-function techieSpec(r) {
-  const female = r.chance(0.4);
-  const hair = r.pick(HAIR);
-  return {
-    scale: r.range(0.97, 1.04),
-    skin: r.pick(SKIN),
-    top: { kind: 'tee', color: r.pick(['#6f7f6f', '#8a8f99', '#3d4e6b', '#a65d5d']), sleeve: 'short' },
-    bottom: { kind: 'trousers', color: r.pick(['#b8a888', '#4a4f5a']) },
-    shoes: { kind: 'shoe', color: '#f1efe9' },
-    hair: { style: female ? r.pick(['long', 'bun']) : 'short', color: hair },
-    face: { glasses: r.chance(0.6), hairColor: hair, bindi: female && r.chance(0.3) },
-    extras: (ctx) => {
-      // red lanyard + ID badge, messenger laptop bag on a cross strap
-      for (const sx of [-1, 1]) ctx.body.box(0.014, 0.34, 0.012, '#d0182c', { p: [sx * 0.05, 0.38, 0.112], r: [0, 0, -sx * 0.16] });
-      ctx.body.box(0.075, 0.1, 0.012, '#f3f3f3', { p: [0, 0.2, 0.116] });
-      ctx.body.box(0.075, 0.025, 0.014, '#12908e', { p: [0, 0.245, 0.117] });
-      ctx.body.box(0.04, 0.68, 0.014, '#2c2f36', { p: [0.02, 0.28, 0.108], r: [0, 0, 0.74] });
-      ctx.body.box(0.04, 0.68, 0.014, '#2c2f36', { p: [0.02, 0.28, -0.108], r: [0, 0, 0.74] });
-      ctx.body.box(0.1, 0.26, 0.36, '#2c2f36', { p: [0.25, 0.0, -0.04] });
-      ctx.body.box(0.104, 0.07, 0.3, '#3a3f49', { p: [0.25, 0.1, -0.04] });
-      ctx.body.box(0.02, 0.04, 0.06, '#c9d1d6', { p: [0.305, 0.06, -0.04] });
-    },
-  };
-}
-
-const SPECS = { office: officeSpec, student: studentSpec, family: personFamilyParent, uncle: uncleSpec, autowala: autowalaSpec, techie: techieSpec };
-// per-kind resting posture
-const BASE = {
-  uncle: { hx: 0.1, aLx: -0.45 },
-  student: { hx: 0.03 },
-  techie: { hx: 0.02 },
-};
 
 const C_GREEN = new Color('#3ddc84');
 const C_AMBER = new Color('#ffb02e');
 const C_RED = new Color('#ef3b2d');
 const _col = new Color();
 const RING_SEG = 40;
+const _tgt = new Vector3();
+const _wp = new Vector3();
 
 function patienceColor(f, out) {
   if (f > 0.5) return out.copy(C_AMBER).lerp(C_GREEN, (f - 0.5) / 0.5);
   return out.copy(C_RED).lerp(C_AMBER, Math.min(1, f / 0.5));
 }
 
-/** buildCustomer(kindId, seed) -> { group, setMood, setPatience, update(dt,t), dispose() } */
-export function buildCustomer(kindId, seed = 0) {
-  const kind = SPECS[kindId] ? kindId : 'office';
+const sm = (a, b, x) => {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+
+/** buildCustomer(kindId, seed, { quality }) */
+export function buildCustomer(kindId, seed = 0, opts = {}) {
+  const kind = SPEC_KINDS.has(kindId) ? kindId : 'office';
+  const quality = opts.quality || getCharacterQuality();
   const r = rng(`${kind}:${seed}`);
   const group = new Group();
   group.name = `customer-${kind}`;
   group.userData.kind = kind;
-  const rig = new Group();
-  rig.rotation.y = Math.PI; // face -z
+  const rig = new Group(); // turns away when they walk off
   group.add(rig);
 
-  const main = buildPerson(SPECS[kind](r));
-  rig.add(main.root);
-  const people = [main];
-  let child = null;
+  const people = [];
+  const mainSpec = specFor(kind, seed, r, 'main');
+  mainSpec.quality = quality;
+  const main = buildPerson(mainSpec);
+  rig.add(main.group);
+  people.push({ p: main, spec: mainSpec, ph: r() * 6.28, kid: false });
   if (kind === 'family') {
-    child = buildPerson(childSpec(r));
-    child.root.position.set(0.42, 0, 0.03);
-    rig.add(child.root);
-    people.push(child);
-    main.root.position.x = -0.12;
+    const kidSpec = specFor(kind, `${seed}:kid`, r, 'child');
+    kidSpec.quality = quality === 'high' ? 'medium' : quality;
+    const kid = buildPerson(kidSpec);
+    kid.group.position.set(0.5, 0, 0.04);
+    main.group.position.x = -0.16;
+    rig.add(kid.group);
+    people.push({ p: kid, spec: kidSpec, ph: r() * 6.28, kid: true });
   }
-  const ph = [r() * 6.28, r() * 6.28];
-  const height = 1.62 * main.root.scale.y;
-  group.userData.height = height;
+  group.userData.height = main.height + 0.04;
 
-  // paying: a glowing rupee note held out in the right hand (arm index 1 = +x local)
+  // ---- props
+  const M = people[0];
+  const mp = main;
+  const handL = mp.body.arms[0].hand;
+  const handR = mp.body.arms[1].hand;
+  let tiffin = null;
+  if (mainSpec.carry === 'tiffin') {
+    tiffin = tiffinCarrier(mp.body.S);
+    tiffin.rotation.x = Math.PI;
+    tiffin.position.set(0, 0.03, 0.0);
+    handL.grip.add(tiffin);
+  }
+  let stick = null;
+  if (mainSpec.stick) {
+    stick = walkingStick(0.9 * mp.body.S);
+    mp.group.add(stick);
+  }
+  let phone = null;
+  if (mainSpec.phone) {
+    phone = new Mesh(sharedGeo('cust:phone', () => new PlaneGeometry(0.07, 0.145)), sharedMat('cust:phoneMat', () => new MeshStandardMaterial({ color: '#111418', emissive: '#4a7cff', emissiveIntensity: 0.55, roughness: 0.3, side: DoubleSide })));
+    phone.visible = false;
+    phone.position.set(0, 0.07, 0.03);
+    phone.rotation.set(0, 0, 0);
+    handL.grip.add(phone);
+  }
+  let plate = null;
+  const ensurePlate = () => {
+    if (plate) return plate;
+    try {
+      plate = buildDish(r.pick(['idly', 'dosa', 'masala_dosa', 'vada', 'poori']), 'good');
+    } catch {
+      plate = new Group();
+    }
+    plate.scale.setScalar(0.62 * Math.min(1.05, mp.body.S));
+    plate.rotation.x = Math.PI / 2;
+    plate.position.set(0, 0.06, 0.035);
+    plate.visible = false;
+    handL.grip.add(plate);
+    return plate;
+  };
+
+  // paying: a glowing rupee note held out in the right hand
   const noteMat = new MeshStandardMaterial({ color: '#ffffff', map: noteTexture(), emissive: '#3dff8c', emissiveMap: noteTexture(), emissiveIntensity: 0.9, roughness: 0.6, side: DoubleSide });
-  const note = new Mesh(sharedGeo('cust:note', () => new PlaneGeometry(0.2, 0.1)), noteMat);
-  note.position.set(0, -0.12, 0.025);
-  note.rotation.x = 0.0;
+  const note = new Mesh(sharedGeo('cust:note2', () => new PlaneGeometry(0.2, 0.1).rotateX(-Math.PI / 2)), noteMat);
+  note.position.set(0, 0.11, 0.0);
+  note.rotation.set(0, 0, Math.PI / 2);
   note.visible = false;
-  main.arms[1].hand.add(note);
+  handR.grip.add(note);
   const haloMat = new MeshBasicMaterial({ color: '#3dff8c', transparent: true, opacity: 0.3, blending: AdditiveBlending, depthWrite: false, toneMapped: false });
-  const halo = new Mesh(sharedGeo('cust:halo', () => new CircleGeometry(0.17, 16)), haloMat);
-  halo.position.set(0, -0.12, 0.012);
+  const halo = new Mesh(sharedGeo('cust:halo2', () => new CircleGeometry(0.17, 16)), haloMat);
+  halo.position.set(0, 0.11, 0.012);
   halo.visible = false;
-  main.arms[1].hand.add(halo);
+  handR.grip.add(halo);
 
   // angry: steam from both ears
   const earSteam = [
-    new Puffs(main.headG, materials.steam(), 3, { x: -0.14, y: 0.1, z: 0, rise: 0.28, size: 0.07, speed: 0.9, drift: 0.05 }),
-    new Puffs(main.headG, materials.steam(), 3, { x: 0.14, y: 0.1, z: 0, rise: 0.28, size: 0.07, speed: 0.9, drift: 0.05 }),
+    new Puffs(mp.head.group, materials.steam(), 3, { x: -0.085, y: -0.01, z: 0, rise: 0.14, size: 0.036, speed: 0.9, drift: 0.03 }),
+    new Puffs(mp.head.group, materials.steam(), 3, { x: 0.085, y: -0.01, z: 0, rise: 0.14, size: 0.036, speed: 0.9, drift: 0.03 }),
   ];
 
   // coin-shaped patience ring on the ground in front of the feet
@@ -248,95 +277,197 @@ export function buildCustomer(kindId, seed = 0) {
   const fill = new Mesh(fillGeo, fillMat);
   fill.position.y = 0.004;
   ringG.add(fill);
-  ringG.visible = true;
 
   let mood = 'waiting';
   let patience = 1;
-  let angry = 0;
   let disposed = false;
   let lastSegs = -1;
+  let turn = 0; // 0 faces the cook, PI faces away
+  let exprOverride = null;
+  let lookOverride = null;
+  let lastExpr = '';
+  let shown = '';
+  let hop = 0;
 
-  const poseFor = (p, m, t, k, who) => {
-    const T = p.target;
-    resetPose(T);
-    const b = who === 0 ? BASE[kind] : null;
-    if (b) for (const key of Object.keys(b)) T[key] = b[key];
-    const phs = ph[who];
-    T.breathe = Math.sin(t * 1.8 + phs) * 0.012;
-    T.headY = Math.sin(t * 0.7 + phs) * 0.28;
-    const kid = who === 1;
-    switch (m) {
+  const expressionNow = () => exprOverride || expressionForMood(mood, patience);
+  const refreshExpression = (force) => {
+    const e = expressionNow();
+    if (e === lastExpr && !force) return;
+    lastExpr = e;
+    const ms = e === 'angry' || e === 'surprised' ? 160 : 320;
+    for (const q of people) q.p.setExpression(q.kid && e === 'angry' ? 'sad' : e, 1, ms);
+  };
+
+  // --------------------------------------------------------------------------------------------------------------------------------
+  // body language: every frame the targets are rebuilt from the mood, the channels smooth them
+  const armRest = (b, sd) => {
+    b.setArm(sd, { aw: 0, pole: 0 });
+  };
+  const poseFor = (q, t) => {
+    const p = q.p;
+    const b = p.body;
+    const S = b.S;
+    const T = b.pose.tgt;
+    b.resetPose();
+    const phs = q.ph;
+    const kid = q.kid;
+    const set = (n, v) => {
+      T[CH[n]] = v;
+    };
+    // breathing and weight shift
+    set('spPitch', 0.012 * Math.sin(t * 1.9 + phs));
+    set('hipX', 0.012 * S * Math.sin(t * 0.45 + phs));
+    set('hipRoll', 0.02 * Math.sin(t * 0.45 + phs + 1));
+    set('hipYaw', 0.05 * Math.sin(t * 0.3 + phs));
+    let bias = p.headBias;
+    bias.pitch = 0;
+    bias.yaw = 0;
+    bias.roll = 0;
+    if (kind === 'uncle' && !kid) {
+      set('spPitch', 0.07 + 0.012 * Math.sin(t * 1.9 + phs));
+      bias.pitch = -0.06;
+    }
+    const sx = (side) => (side === 'L' ? 1 : -1);
+    const arm = (side, o) => b.setArm(side, o);
+    const sc = (v) => v * S;
+    let phoneUp = false;
+    let showPlate = false;
+    let showNote = false;
+    const calm = kid ? 0.0 : 1;
+    // carried things keep the left hand busy in the resting pose
+    const restCarry = () => {
+      if (tiffin && !kid) arm('L', { pos: [sc(0.21), sc(-0.02), sc(0.07)], dir: [0, -1, 0.05], palm: [-1, 0, 0.2], aw: 1, curl: [0.78, 0.82, 0.86, 0.9, 0.6], spread: 0 });
+      if (stick && !kid) arm('L', { pos: [sc(0.2), sc(0.0), sc(0.15)], dir: [0.1, -1, 0.1], palm: [-1, 0, 0.1], aw: 1, curl: [0.75, 0.8, 0.85, 0.9, 0.55], spread: 0 });
+    };
+    switch (mood) {
       case 'waiting': {
         const rate = 5 + (1 - patience) * 6;
-        T.lR = Math.max(0, Math.sin(t * rate + phs)) * -0.2;
-        if (kid) T.hy = Math.abs(Math.sin(t * 4 + phs)) * 0.04;
-        if (!kid && patience < 0.4) {
-          T.aLx = -0.5;
-          T.eL = -2.0 + Math.sin(t * 2 + phs) * 0.06; // checking the wrist / watch
-          T.headX = 0.2;
+        if (kid) {
+          set('hipY', Math.abs(Math.sin(t * 3 + phs)) * 0.025 * S);
+          arm('L', { pos: [sc(0.2), sc(0.0), sc(0.1)], aw: 0 });
+          arm('R', { pos: [sc(-0.2), sc(0.0), sc(0.1)], aw: 0 });
+          break;
         }
-        if (!kid && patience < 0.2) T.hx += 0.06 + Math.sin(t * 9) * 0.02;
+        restCarry();
+        if (patience > 0.66) {
+          // calm: eyes on the menu, now and then a shift of weight and a glance at the phone
+          if (q.p.params.gender === 'f' && kind !== 'uncle') set('hipRoll', 0.035 * Math.sin(t * 0.45 + phs + 1));
+          if (phone && sm(0.0, 0.5, Math.sin(t * 0.21 + phs * 3)) > 0.82) phoneUp = true;
+        } else if (patience > 0.4) {
+          // bored: hand on the hip, shifting about
+          arm('R', { pos: [sc(-0.205), sc(-0.02), sc(-0.01)], dir: [-0.1, -0.7, 0.55], palm: [1, 0, -0.1], aw: 1, pole: 1, curl: [0.3, 0.4, 0.45, 0.5, 0.2] });
+          set('hipRoll', 0.05 * Math.sin(t * 0.7 + phs));
+          set('fRz', 0.03 * Math.max(0, Math.sin(t * 1.4 + phs)));
+          if (phone) phoneUp = true;
+        } else if (patience > 0.2) {
+          // impatient: arms crossed, foot tapping, a look at the wrist
+          const tap = Math.max(0, Math.sin(t * rate + phs));
+          set('fRz', 0.07 * S * tap);
+          set('fRy', 0.01 * tap);
+          set('fRtoe', tap * 0.35);
+          if (Math.sin(t * 0.8 + phs) > 0.7 && !tiffin && !stick) {
+            arm('L', { pos: [sc(0.07), sc(0.27), sc(0.26)], dir: [-0.5, 0.45, 0.4], palm: [0, 0.6, -0.8], aw: 1, pole: 0.4, curl: [0.15, 0.2, 0.25, 0.3, 0.1] });
+            arm('R', { pos: [sc(-0.13), sc(0.14), sc(0.17)], dir: [1, 0.1, 0], palm: [0, 0, -1], aw: 1, pole: 0.8, curl: [0.2, 0.25, 0.3, 0.35, 0.2] });
+            bias.pitch = 0.2;
+          } else if (!tiffin && !stick) {
+            arm('L', { pos: [sc(-0.12), sc(0.15), sc(0.165)], dir: [-1, 0.1, 0], palm: [0, 0, -1], aw: 1, pole: 0.9, curl: [0.25, 0.3, 0.35, 0.4, 0.2] });
+            arm('R', { pos: [sc(0.13), sc(0.125), sc(0.18)], dir: [1, 0.1, 0], palm: [0, 0, -1], aw: 1, pole: 0.9, curl: [0.25, 0.3, 0.35, 0.4, 0.2] });
+          } else {
+            arm('R', { pos: [sc(-0.14), sc(0.14), sc(0.2)], dir: [1, 0.1, 0], palm: [0, 0, -1], aw: 1, pole: 0.8, curl: [0.25, 0.3, 0.35, 0.4, 0.2] });
+          }
+          bias.roll = 0.06;
+          set('spPitch', 0.03);
+        } else {
+          // furious: fists, hunched shoulders, shaking
+          const sh = Math.sin(t * 24) * 0.012;
+          set('spPitch', 0.1 + sh);
+          arm('L', { pos: [sc(0.2), sc(-0.0 + sh), sc(0.17)], dir: [0, -0.5, 0.8], palm: [-1, 0, 0], aw: 0.4, pole: 0.7, curl: [1, 1, 1, 1, 0.95], spread: 0 });
+          arm('R', { pos: [sc(-0.2), sc(-0.0 - sh), sc(0.17)], dir: [0, -0.5, 0.8], palm: [1, 0, 0], aw: 0.4, pole: 0.7, curl: [1, 1, 1, 1, 0.95], spread: 0 });
+          bias.pitch = 0.08;
+        }
         break;
       }
       case 'eating': {
-        const bite = Math.sin(t * 4.2 + phs);
-        T.aRx = -0.5;
-        T.eR = -2.35 - bite * 0.22;
-        T.headX = 0.1 + bite * 0.06;
-        T.hy = bite * 0.006;
+        showPlate = true;
+        const bite = 0.5 + 0.5 * Math.sin(t * 2.0 + phs);
+        const up = sm(0.15, 0.55, bite) - sm(0.7, 0.95, bite);
+        const mz = sc(0.2);
+        arm('L', { pos: [sc(0.08), sc(0.14), sc(0.27)], dir: [0, 0, 1], palm: [0, 1, 0], aw: 1, pole: 0.3, curl: [0.28, 0.3, 0.33, 0.38, 0.1], spread: 0.22 });
+        arm('R', { pos: [sc(-0.05 + 0.03 * up), sc(0.17 + 0.25 * up), mz + sc(0.12) * (1 - up)], dir: [0.05, 0.6 + 0.4 * up, 0.8 - 0.5 * up], palm: [0.6, 0.3, 0], aw: 1, pole: 0.6, curl: [0.45, 0.6, 0.65, 0.7, 0.55], spread: 0.05 });
+        bias.pitch = 0.1 + 0.05 * bite;
         break;
       }
       case 'paying': {
-        T.aRx = -1.5;
-        T.eR = -0.12;
-        T.aRz = 0.14;
-        T.hx += 0.07;
-        T.headY = 0;
-        if (kid) {
-          T.aRx = 0;
-          T.eR = -0.1;
-          T.hy = Math.abs(Math.sin(t * 5 + phs)) * 0.03;
-        }
+        showNote = true;
+        restCarry();
+        if (!kid) arm('L', tiffin || stick ? {} : { pos: [sc(0.2), sc(-0.03), sc(0.02)], aw: 0 });
+        const reach = 0.5 + 0.03 * Math.sin(t * 3);
+        arm('R', { pos: [sc(-0.07), sc(0.25), sc(0.18) + sc(reach) * (kid ? 0.55 : 0.6)], dir: [0, 0.12, 1], palm: [0.4, 1, 0], aw: 1, pole: 0.3, curl: [0.4, 0.55, 0.62, 0.7, 0.55], spread: 0.05 });
+        set('spPitch', 0.05);
+        bias.pitch = -0.04;
         break;
       }
       case 'happy': {
-        const hop = Math.abs(Math.sin(t * 7 + phs));
-        T.hy = hop * (kid ? 0.14 : 0.1);
-        T.aLx = T.aRx = -2.7 + Math.sin(t * 14) * 0.15;
-        T.aLz = T.aRz = 0.35;
-        T.eL = T.eR = -0.15;
-        T.lL = T.lR = hop * -0.25;
-        T.headX = -0.12;
+        const hp = Math.abs(Math.sin(t * 7 + phs));
+        hop = hp;
+        set('hipY', hp * (kid ? 0.07 : 0.05) * S);
+        const sw = Math.sin(t * 14) * 0.03 * S;
+        arm('L', { pos: [sc(0.29), sc(0.6) + sw, sc(0.1)], dir: [0.2, 1, 0.2], palm: [0, 0, 1], aw: 1, pole: 0.5, curl: [0.1, 0.1, 0.12, 0.15, 0.05], spread: 0.4 });
+        arm('R', { pos: [sc(-0.29), sc(0.6) - sw, sc(0.1)], dir: [-0.2, 1, 0.2], palm: [0, 0, 1], aw: 1, pole: 0.5, curl: [0.1, 0.1, 0.12, 0.15, 0.05], spread: 0.4 });
+        set('fLy', hp * 0.05);
+        set('fRy', hp * 0.05);
+        set('spPitch', -0.06);
         break;
       }
       case 'angry': {
-        const s = Math.sin(t * 8 + phs);
-        T.lL = Math.max(0, s) * -0.5;
-        T.lR = Math.max(0, -s) * -0.5;
-        T.hy = -Math.abs(s) * 0.02;
-        T.hz = Math.sin(t * 26) * 0.03;
-        T.aLx = T.aRx = -0.35;
-        T.eL = T.eR = -1.5;
-        T.aLz = T.aRz = 0.25;
-        T.headX = 0.12;
-        T.hx += 0.08;
-        T.headY = Math.sin(t * 20) * 0.08;
+        const sh = Math.sin(t * 26 + phs) * 0.01;
+        set('spPitch', 0.12 + sh);
+        if (!kid && r.range(0, 1) >= 0) {
+          arm('L', { pos: [sc(0.22), sc(0.05 + sh), sc(0.2)], dir: [0, -0.4, 0.9], palm: [-1, 0, 0], aw: 0.6, pole: 0.9, curl: [1, 1, 1, 1, 0.95], spread: 0 });
+          arm('R', { pos: [sc(-0.2), sc(0.2), sc(0.3)], dir: [0, 0.4, 0.9], palm: [1, -0.2, 0], aw: 0.7, pole: 0.7, curl: [0.04, 1, 1, 1, 0.9], spread: 0 }); // pointing at the cook
+        } else {
+          arm('L', { pos: [sc(0.18), sc(0.0), sc(0.15)], dir: [0, -0.4, 0.9], palm: [-1, 0, 0], aw: 0.5, curl: [1, 1, 1, 1, 0.95] });
+          arm('R', { pos: [sc(-0.18), sc(0.0), sc(0.15)], dir: [0, -0.4, 0.9], palm: [1, 0, 0], aw: 0.5, curl: [1, 1, 1, 1, 0.95] });
+        }
+        const st = Math.max(0, Math.sin(t * 9 + phs));
+        set('fLz', 0.03 * st);
+        set('hipRoll', 0.04 * Math.sin(t * 6));
+        bias.pitch = 0.1;
+        bias.yaw = Math.sin(t * 17) * 0.05;
         break;
       }
       case 'walkaway': {
-        const w = Math.sin(t * 7 + phs);
-        T.lL = -w * 0.7;
-        T.lR = w * 0.7;
-        T.aLx = w * 0.5;
-        T.aRx = -w * 0.5;
-        T.hy = -Math.abs(Math.cos(t * 7 + phs)) * 0.025;
-        T.headX = 0.05;
-        T.headY = 0;
+        const ph = t * 6.5 + phs;
+        const w = Math.sin(ph);
+        const stride = (mainSpec.outfit?.bottom?.kind === 'lungi' ? 0.12 : 0.2) * S;
+        set('fLz', stride * w);
+        set('fRz', -stride * w);
+        set('fLy', Math.max(0, Math.cos(ph)) * 0.075 * S);
+        set('fRy', Math.max(0, -Math.cos(ph)) * 0.075 * S);
+        set('hipY', -Math.abs(Math.cos(ph)) * 0.02 * S);
+        set('hipYaw', 0.08 * w);
+        set('spYaw', -0.12 * w);
+        arm('L', { pos: [sc(0.2), sc(-0.02), sc(0.02 - 0.13 * w)], aw: 0 });
+        arm('R', { pos: [sc(-0.2), sc(-0.02), sc(0.02 + 0.13 * w)], aw: 0 });
+        set('spPitch', 0.07);
+        bias.pitch = 0.1;
+        bias.yaw = 0.1;
         break;
       }
       default:
     }
-    void k;
+    q.phoneUp = phoneUp;
+    if (!kid) {
+      if (phone) phone.visible = phoneUp && mood === 'waiting';
+      if (q === M) {
+        if (plate || showPlate) ensurePlate().visible = showPlate;
+        note.visible = halo.visible = showNote;
+        if (tiffin) tiffin.visible = true;
+      }
+    }
+    void calm;
+    void armRest;
+    void CUSTOMER_KINDS;
   };
 
   const api = {
@@ -345,29 +476,66 @@ export function buildCustomer(kindId, seed = 0) {
     get mood() {
       return mood;
     },
+    people,
     setMood(m) {
-      mood = MOODS.includes(m) ? m : 'waiting';
-      const face = mood === 'happy' || mood === 'paying' ? 'smile' : mood === 'eating' || mood === 'angry' ? 'open' : 'flat';
-      for (const p of people) p.setFace(face, mood === 'angry');
-      note.visible = halo.visible = mood === 'paying';
+      const next = MOODS.includes(m) ? m : 'waiting';
+      if (next !== mood) {
+        mood = next;
+        for (const q of people) q.p.body.rate = mood === 'angry' || mood === 'walkaway' ? 16 : 11;
+      }
       ringG.visible = mood === 'waiting' || mood === 'paying';
+      exprOverride = null;
+      refreshExpression(true);
       lastSegs = -1;
     },
     setPatience(f) {
       patience = clamp01(num(f, 1));
+      refreshExpression(false);
+    },
+    /** Direct expression override (any of EXPRESSION_NAMES); setMood() clears it. */
+    setExpression(name, weight = 1, blendMs = 250) {
+      if (!EXPRESSION_NAMES.includes(name)) return;
+      exprOverride = name;
+      lastExpr = name;
+      for (const q of people) q.p.setExpression(name, weight, blendMs);
+    },
+    /** The mouth moves (and the head nods) for `ms` milliseconds. */
+    setSpeaking(ms, intensity = 0.7) {
+      main.setSpeaking(ms, intensity);
+      if (people[1] && num(ms, 0) > 1500) people[1].p.setSpeaking(ms * 0.3, intensity * 0.6);
+    },
+    /** World-space point the eyes and head follow (the cook's eyes). null returns to the default (straight at the cook line). */
+    lookAt(v) {
+      lookOverride = v && Number.isFinite(v.x + v.y + v.z) ? v.clone() : null;
     },
     update(dt, t) {
       if (disposed) return;
       const d = Math.min(0.1, Math.max(0, num(dt, 0.016)));
       const tt = num(t, 0);
+      // heading: they turn their back when they walk off
+      turn = damp(turn, mood === 'walkaway' ? Math.PI : 0, mood === 'walkaway' ? 5 : 8, d);
+      rig.rotation.y = turn;
+      group.updateWorldMatrix(true, false);
+      group.getWorldPosition(_wp);
       for (let i = 0; i < people.length; i++) {
-        poseFor(people[i], mood, tt, 0, i);
-        people[i].step(d, mood === 'walkaway' || mood === 'angry' ? 14 : 9);
+        const q = people[i];
+        poseFor(q, tt);
+        if (lookOverride) q.p.lookAt(lookOverride);
+        else if (q.phoneUp) {
+          handL.group.getWorldPosition(_tgt);
+          q.p.lookAt(_tgt);
+        } else q.p.lookAt(_tgt.set(_wp.x * 0.6, 1.5 * (i ? 0.7 : 1), _wp.z + 2.6));
+        q.p.update(d, tt + i * 0.37);
       }
-      angry = damp(angry, mood === 'angry' ? 1 : 0, 6, d);
-      for (const p of people) {
-        p.vc.emissive.setRGB(1, 0.1, 0.05);
-        p.vc.emissiveIntensity = angry * (0.35 + 0.1 * Math.sin(tt * 14));
+      // the stick is planted on the ground beside the left foot
+      if (stick) {
+        mp.body.torsoToRoot(_tgt.copy(handL.group.position), _wp);
+        stick.position.set(_wp.x, _wp.y - 0.0, _wp.z);
+        stick.rotation.set(0, 0, 0);
+        // tilt a little so the tip stays near the foot
+        const dx = 0.2 * mp.body.S - _wp.x;
+        stick.rotation.z = Math.atan2(-dx, Math.max(0.3, _wp.y)) * 0.6;
+        stick.rotation.x = -0.05;
       }
       earSteam[0].update(tt, mood === 'angry');
       earSteam[1].update(tt, mood === 'angry', 0.3);
@@ -393,26 +561,35 @@ export function buildCustomer(kindId, seed = 0) {
         const rate = f < 0.25 ? 14 : 4;
         noteMat.emissiveIntensity = 0.75 + 0.45 * Math.sin(tt * rate);
         haloMat.opacity = 0.22 + 0.18 * Math.sin(tt * rate + 1);
-        note.rotation.z = Math.sin(tt * 3) * 0.05;
+        note.rotation.y = Math.sin(tt * 3) * 0.08;
         const s = 0.7 + 0.3 * f; // the note visibly shrinks as the pay window runs out
-        note.scale.set(s, s, 1);
+        note.scale.set(s, s, s);
         halo.scale.setScalar(0.6 + 0.4 * f);
       }
+      void shown;
+      void hop;
+    },
+    get triangles() {
+      return countTriangles(group);
     },
     dispose() {
       if (disposed) return;
       disposed = true;
+      for (const q of people) q.p.dispose();
       disposeObject(group);
     },
   };
-  for (const p of people) {
-    resetPose(p.target);
-    resetPose(p.cur);
-    p.step(0.016);
+  for (const q of people) {
+    q.p.body.pose.snap();
+    poseFor(q, 0);
+    q.p.body.pose.snap();
+    q.p.update(0.016, 0);
   }
   api.setMood('waiting');
   api.update(0.016, 0);
   return api;
 }
 
-export const CUSTOMER_KIND_IDS = Object.keys(CUSTOMER_KINDS);
+const SPEC_KINDS = new Set(['office', 'student', 'family', 'uncle', 'autowala', 'techie']);
+void holdTool;
+void makeTool;

@@ -1,81 +1,60 @@
-// The player's cook: a street-stall wallah in a half-sleeve shirt, lungi or trousers, a gamchha towel on the shoulder, a stained
-// apron in the player's colour, a headcloth and slippers. Procedural poses (idle/walk/carry/cheer + seven WORK poses).
-// Facing: +z is the front of the model. setFacing(dir) turns to face +x (1) / -x (-1) while walking; dir 0 uses the pose's own
-// heading (stations: back to the camera, serve/collect: towards the customers). Rotations about x are negative = forward.
-import { CylinderGeometry, Color, Group, Mesh, Quaternion, Sprite, SpriteMaterial, Vector3 } from 'three';
+// The other cooks of a table, seen from first person: a full person (sculpted face, real body, IK arms) in a half-sleeve shirt, lungi or
+// trousers, a stained apron in the player's colour, a gamchha, a headcloth and slippers. Eleven poses (idle, walk, carry, cheer and seven
+// WORK poses that hold the real tools). Facing: the model's front is +z; setFacing(dir) turns to face +x (1) / -x (-1) while walking;
+// dir 0 uses the pose's own heading (at the stations they face the counter, i.e. -z, with their back to the player's camera).
+import { Color, Group, Sprite, SpriteMaterial, Vector3 } from 'three';
 import { HANDS_MAX } from '../../../../shared/tiffin-centre/catalog.js';
 import { WORK_MS } from '../../../../shared/tiffin-centre/movement.js';
-import { Parts, clamp01, damp, disposeObject, hashSeed, materials, num, rng, sharedGeo } from './util.js';
-import { buildPerson, resetPose, shade } from './person.js';
+import { clamp01, countTriangles, damp, disposeObject, hashSeed, num, rng } from './util.js';
+import { buildPerson, shade } from './person.js';
+import { CH } from './bodies.js';
 import { buildDish } from './dishes.js';
 import { nameTagTexture } from './textures.js';
+import { holdTool, makeFarTool } from './toolhost.js';
+import { getCharacterQuality } from './charquality.js';
 
 export const POSES = ['idle', 'walk', 'carry', 'cheer', 'work-tawa', 'work-steamer', 'work-kadai', 'work-chai', 'work-serve', 'work-collect', 'work-discard'];
 
 const WORK_S = WORK_MS / 1000;
 const TAU = Math.PI * 2;
+const PI = Math.PI;
 const sm = (x) => {
   const c = x < 0 ? 0 : x > 1 ? 1 : x;
   return c * c * (3 - 2 * c);
 };
+const seg = (u, a, b) => sm((u - a) / (b - a));
 const wrapPi = (a) => {
-  let x = (a + Math.PI) % TAU;
+  let x = (a + PI) % TAU;
   if (x < 0) x += TAU;
-  return x - Math.PI;
+  return x - PI;
 };
 
-// --- tools held in the hand. Local frame: the grip is the origin, the tool continues along -y (the forearm direction). ---
-function toolGeo(key, build) {
-  return sharedGeo(`tool:${key}`, () => {
-    const P = new Parts();
-    build(P);
-    return P.build('solid');
-  });
-}
-const TOOLS = {
-  ladle: () =>
-    toolGeo('ladle', (P) => {
-      P.cyl(0.008, 0.008, 0.34, 5, '#cfd6db', { p: [0, -0.17, 0] });
-      P.dome(0.05, '#c3ccd1', { p: [0, -0.36, 0.02], r: [Math.PI / 2 + 0.2, 0, 0], s: [1, 0.8, 1] }, 8, 3);
-      P.sph(0.012, '#3a3a3a', { p: [0, -0.01, 0] }, 4, 3);
-    }),
-  spatula: () =>
-    toolGeo('spatula', (P) => {
-      P.cyl(0.009, 0.009, 0.3, 5, '#6b4a2b', { p: [0, -0.15, 0] });
-      P.box(0.09, 0.13, 0.008, '#cfd6db', { p: [0, -0.37, 0.0], r: [0.1, 0, 0] });
-    }),
-  jhara: () =>
-    toolGeo('jhara', (P) => {
-      P.cyl(0.009, 0.009, 0.42, 5, '#cfd6db', { p: [0, -0.21, 0] });
-      P.cyl(0.075, 0.075, 0.008, 10, '#c3ccd1', { p: [0, -0.5, 0], r: [Math.PI / 2, 0, 0] });
-      for (const [x, y] of [[-0.03, -0.48], [0.03, -0.48], [0, -0.52], [-0.035, -0.53], [0.035, -0.53]]) P.cyl(0.008, 0.008, 0.012, 4, '#2a2a2a', { p: [x, y, 0], r: [Math.PI / 2, 0, 0] });
-    }),
-  plate: () =>
-    toolGeo('plate', (P) => {
-      P.lathe([[0, 0], [0.09, 0], [0.13, 0.014], [0.14, 0.03], [0.12, 0.018], [0, 0.008]], 12, '#cfd6db', { p: [0, -0.07, 0], r: [Math.PI / 2, 0, 0] });
-    }),
-  mug: () =>
-    toolGeo('mug', (P) => {
-      P.lathe([[0, 0], [0.04, 0], [0.05, 0.1], [0.046, 0.1], [0.037, 0.01]], 8, '#d7dde1', { p: [0, -0.05, -0.04], r: [Math.PI / 2, 0, 0] });
-      P.torus(0.05, 0.005, '#8f9aa1', { p: [0, -0.05, 0.06], r: [0, 0, 0] }, 3, 8);
-    }),
-  note: () =>
-    toolGeo('note', (P) => {
-      P.box(0.14, 0.07, 0.004, '#3aa65a', { p: [0, -0.07, 0.012] });
-      P.box(0.12, 0.05, 0.005, '#f6d36a', { p: [0, -0.07, 0.01] });
-    }),
+// tools held in the hands by each work pose: [left (+x), right (-x)] with a grip style (1 power diag, 2 tray, 3 upright)
+const POSE_TOOLS = {
+  'work-tawa': [null, ['ladle', 1]],
+  'work-steamer': [null, ['spatula', 1]],
+  'work-kadai': [null, ['jhara', 1]],
+  'work-chai': [['steel-glass', 3], ['chai-kettle', 3]],
+  'work-serve': [['plate', 2], ['plate', 2]],
+  'work-collect': [['money-box', 2], ['note', 2]],
+  'work-discard': [['plate', 2], null],
+};
+// hand-local grip frames of the avatar (unmirrored group frame): [dir of the working end, up, grip position]
+const GRIPS = {
+  1: (side) => [[0.7071 * side, 0.7071, 0], [0, 0, -1], [0, 0.052, 0.014]],
+  2: () => [[0, 1, 0], [0, 0, 1], [0, 0.07, 0.02]],
+  3: (side) => [[0, 1, 0], [side, 0, 0], [0, 0.05, 0.016]],
 };
 
-const _a = new Vector3();
-const _b = new Vector3();
-const _q = new Quaternion();
-const UP = new Vector3(0, 1, 0);
+const _v = new Vector3();
+const _w = new Vector3();
 
-/** buildAvatar({ color, name }) -> { group, setPose, setHands, setFacing, setLane, update, dispose } */
-export function buildAvatar({ color = '#ff8a1f', name = '' } = {}) {
+/** buildAvatar({ color, name, quality }) -> { group, pose, setPose, setHands, setFacing, setLane, setExpression, lookAt, update, dispose } */
+export function buildAvatar({ color = '#ff8a1f', name = '', quality } = {}) {
   const hexColor = `#${new Color(color).getHexString()}`;
+  const seed = hashSeed(`avatar:${name}:${hexColor}`);
   const r = rng(`avatar:${name}:${hexColor}`);
-  const lungi = r.chance(0.6);
+  const lungi = r.chance(0.55);
   const group = new Group();
   group.name = 'avatar';
   const lane = new Group();
@@ -84,67 +63,65 @@ export function buildAvatar({ color = '#ff8a1f', name = '' } = {}) {
   lane.add(yawG);
 
   const person = buildPerson({
-    scale: 1,
-    skin: r.pick(['#e3ab7c', '#c98a50', '#a8723e', '#8a5a2e', '#f0c8a0']),
-    top: { kind: 'shirt', color: r.pick(['#efe9d8', '#cfe0ef', '#e8d9a8', '#d9d4c8']), sleeve: 'short', pocket: true },
-    bottom: lungi
-      ? { kind: 'lungi', color: r.pick(['#2f5da8', '#1f7a5c', '#8a2d2d', '#4d3a8a']), trim: '#f0e6c8' }
-      : { kind: 'trousers', color: r.pick(['#3a3f4a', '#4a3f35']) },
-    shoes: { kind: 'slipper', color: r.pick(['#ff8a1f', '#2a6fd0', '#d0392b']) },
-    hair: { style: 'short', color: '#1a120e' },
-    headgear: { kind: 'cloth', color: r.pick(['#f4eacb', '#c0392b', '#ffc83d', '#e8e8e8']) },
-    face: { moustache: r.chance(0.65), hairColor: '#1a120e' },
-    extras: (ctx) => {
-      // stained apron in the player's colour, tied at the back, with a halter strap
-      const c = hexColor;
-      ctx.body.box(0.31, 0.58, 0.022, c, { p: [0, 0.1, 0.112] });
-      ctx.body.box(0.2, 0.2, 0.022, c, { p: [0, 0.4, 0.108] });
-      ctx.body.box(0.31, 0.03, 0.024, shade(c, 0.7), { p: [0, -0.19, 0.113] });
-      ctx.body.box(0.3, 0.025, 0.2, shade(c, 0.75), { p: [0, 0.14, 0], r: [0, 0, 0] }); // waist tie
-      for (const sx of [-1, 1]) ctx.body.box(0.02, 0.2, 0.012, shade(c, 0.7), { p: [sx * 0.07, 0.52, 0.09], r: [0.35, 0, -sx * 0.25] });
-      for (const [x, y, w, h, col] of [[-0.06, 0.04, 0.06, 0.04, '#6b3d12'], [0.07, -0.05, 0.05, 0.05, '#e4b33a'], [-0.02, -0.14, 0.07, 0.035, '#8d1f14'], [0.05, 0.3, 0.04, 0.03, '#6b3d12'], [-0.08, 0.24, 0.035, 0.05, '#e4b33a']]) ctx.body.box(w, h, 0.004, col, { p: [x, y, 0.125] });
-      // red-and-white gamchha over the left shoulder
-      ctx.body.box(0.12, 0.035, 0.2, '#c0392b', { p: [-0.14, 0.545, 0], r: [0, 0, 0.35] });
-      ctx.body.box(0.075, 0.28, 0.02, '#c0392b', { p: [-0.19, 0.36, -0.108] });
-      ctx.body.box(0.077, 0.02, 0.022, '#f3ede0', { p: [-0.19, 0.3, -0.108] });
-      ctx.body.box(0.077, 0.02, 0.022, '#f3ede0', { p: [-0.19, 0.2, -0.108] });
+    kind: 'cook',
+    seed,
+    height: r.range(1.64, 1.76),
+    belly: r.range(0, 0.35),
+    quality: quality || (getCharacterQuality() === 'high' ? 'medium' : getCharacterQuality()), // seen at a distance, beside the player
+    hair: { style: r.pick(['short', 'crop', 'combed']), headwear: 'cloth', clothColor: hexColor, clothColor2: '#f4eacb', pattern: 'gamchha' },
+    outfit: {
+      top: { kind: 'shirt', color: r.pick(['#efe9d8', '#cfe0ef', '#e8d9a8', '#d9d4c8']), sleeve: 'short', pocket: true, untucked: true },
+      bottom: lungi ? { kind: 'lungi', color: r.pick(['#2f5da8', '#1f7a5c', '#8a2d2d', '#4d3a8a']), color2: '#f0e6c8', hem: 0.2 } : { kind: 'trousers', color: r.pick(['#3a3f4a', '#4a3f35']) },
+      shoes: { kind: 'slipper', color: r.pick(['#ff8a1f', '#2a6fd0', '#d0392b']) },
+      extras: [{ id: 'apron', color: hexColor }, { id: 'gamchha', color: '#c0392b', color2: '#f3ede0', side: 1 }, { id: 'kada', side: 'R' }],
     },
   });
-  yawG.add(person.root);
-  person.setFace('flat');
+  yawG.add(person.group);
+  const body = person.body;
+  const S = body.S;
+  const handL = body.arms[0].hand; // character's left (+x)
+  const handR = body.arms[1].hand;
+  person.setExpression('neutral', 1, 0);
 
-  // tools (one mesh each, toggled)
-  const vtx = materials.vertex({ metal: 0.2, rough: 0.5 });
-  const mkTool = (key, hand) => {
-    const m = new Mesh(TOOLS[key](), vtx);
-    m.visible = false;
-    hand.add(m);
-    return m;
+  // tools: built on demand, one per (hand, id)
+  const tools = [new Map(), new Map()];
+  const toolFor = (hi, id, style) => {
+    let t = tools[hi].get(id);
+    if (!t) {
+      t = makeFarTool(id); // far LOD: the real tools are 1-3k triangles each
+      t.group.visible = false;
+      const hand = hi === 0 ? handL : handR;
+      const side = hi === 0 ? -1 : 1; // the right hand is the unmirrored one in the body frame
+      const g = GRIPS[style](side);
+      // orient the tool: working end (-z) along g[0], up along g[1]
+      const z = [-g[0][0], -g[0][1], -g[0][2]];
+      const y = g[1];
+      const x = [y[1] * z[2] - y[2] * z[1], y[2] * z[0] - y[0] * z[2], y[0] * z[1] - y[1] * z[0]];
+      t.group.matrix.set(x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, 0, 0, 0, 1);
+      t.group.quaternion.setFromRotationMatrix(t.group.matrix);
+      t.group.position.set(g[2][0] * S, g[2][1] * S, g[2][2] * S).sub(hand.grip.position);
+      t.group.scale.setScalar(S * 0.95);
+      hand.grip.add(t.group);
+      tools[hi].set(id, t);
+    }
+    return t;
   };
-  const hR = person.arms[1].hand;
-  const hL = person.arms[0].hand;
-  const tools = {
-    ladle: mkTool('ladle', hR),
-    spatula: mkTool('spatula', hR),
-    jhara: mkTool('jhara', hR),
-    plateR: mkTool('plate', hR),
-    plateL: mkTool('plate', hL),
-    mugR: mkTool('mug', hR),
-    mugL: mkTool('mug', hL),
-    note: mkTool('note', hR),
+  const showTools = (pose) => {
+    const want = POSE_TOOLS[pose] || [null, null];
+    for (let hi = 0; hi < 2; hi++) {
+      const w = want[hi];
+      for (const [id, t] of tools[hi]) t.group.visible = !!w && id === w[0];
+      if (w) toolFor(hi, w[0], w[1]).group.visible = true;
+    }
   };
-  const streamGeo = sharedGeo('avatar:stream', () => new CylinderGeometry(1, 1, 1, 6, 1, true));
-  const stream = new Mesh(streamGeo, materials.solid('#d9a066', { rough: 0.3 }));
-  stream.visible = false;
-  lane.add(stream);
 
-  // carried dishes
+  // carried dishes sit on the open hands
   const holders = [new Group(), new Group()];
-  holders[0].position.set(-0.17, 0.4, 0.5);
-  holders[1].position.set(0.17, 0.4, 0.5);
-  for (const h of holders) {
-    h.scale.setScalar(0.55);
-    person.upper.add(h);
+  for (let i = 0; i < 2; i++) {
+    holders[i].rotation.x = PI / 2;
+    holders[i].position.set(0, 0.06 * S, 0.04 * S);
+    holders[i].scale.setScalar(0.55 * S);
+    (i === 0 ? handL : handR).grip.add(holders[i]);
   }
   let handsKey = '';
   let handCount = 0;
@@ -153,207 +130,179 @@ export function buildAvatar({ color = '#ff8a1f', name = '' } = {}) {
   const tagTex = nameTagTexture(name, hexColor);
   const tagMat = new SpriteMaterial({ map: tagTex, transparent: true, depthTest: false, toneMapped: false });
   const tag = new Sprite(tagMat);
-  tag.position.y = 2.0;
+  tag.position.y = person.height + 0.32;
   tag.scale.set(0.95, 0.24, 1);
   tag.renderOrder = 10;
   group.add(tag);
 
   let pose = 'idle';
   let poseT0 = null;
-  let yaw = 0.25;
+  let yaw = PI - 0.2;
   let faceDir = 0;
   let laneTarget = 0;
   let disposed = false;
-  const toolVis = { ladle: false, spatula: false, jhara: false, plateR: false, plateL: false, mugR: false, mugL: false, note: false, stream: false };
+  let exprName = 'neutral';
+  let lookTarget = null;
 
   const headingFor = (p) => {
-    if (faceDir !== 0 && (p === 'walk' || p === 'carry' || p === 'idle')) return faceDir * (Math.PI / 2);
-    if (faceDir !== 0) return faceDir * (Math.PI / 2);
+    if (faceDir !== 0) return faceDir * (PI / 2);
     switch (p) {
       case 'work-serve':
       case 'work-collect':
-        return 0;
+        return PI;
       case 'work-discard':
-        return 2.2;
+        return PI * 0.72;
       case 'work-tawa':
+        return PI - 0.12;
       case 'work-steamer':
+        return PI + 0.05;
       case 'work-kadai':
+        return PI + 0.1;
       case 'work-chai':
-        return 2.85;
+        return PI + 0.18;
+      case 'cheer':
+        return PI - 0.5;
       default:
-        return 0.25;
+        return PI - 0.25;
     }
   };
 
-  const setTools = (o) => {
-    for (const k of Object.keys(toolVis)) toolVis[k] = !!o[k];
-  };
-
-  const solvePose = (T, t) => {
-    const carrying = handCount > 0;
-    const u = poseT0 === null ? 0 : (((t - poseT0) / WORK_S) % 1 + 1) % 1;
-    T.breathe = Math.sin(t * 1.9) * 0.01;
-    setTools({});
-    holders[0].visible = holders[1].visible = pose === 'idle' || pose === 'walk' || pose === 'carry';
-    const carryArms = () => {
-      T.aLx = T.aRx = -1.4;
-      T.eL = T.eR = -0.35;
-      T.aLz = T.aRz = 0.04;
+  const solve = (t) => {
+    const T = body.pose.tgt;
+    const set = (n, v) => {
+      T[CH[n]] = v;
     };
+    const arm = (sd, o) => body.setArm(sd, o);
+    const sc = (v) => v * S;
+    body.resetPose();
+    const u = poseT0 === null ? 0 : (((t - poseT0) / WORK_S) % 1 + 1) % 1;
+    set('spPitch', 0.012 * Math.sin(t * 1.9));
+    const carrying = handCount > 0;
+    const carryArms = () => {
+      arm('L', { pos: [sc(0.14), sc(0.13), sc(0.3)], dir: [0, 0.05, 1], palm: [0, 1, 0], aw: 1, pole: 0.3, curl: [0.28, 0.3, 0.33, 0.38, 0.1], spread: 0.22 });
+      arm('R', { pos: [sc(-0.14), sc(0.13), sc(0.3)], dir: [0, 0.05, 1], palm: [0, 1, 0], aw: 1, pole: 0.3, curl: [0.28, 0.3, 0.33, 0.38, 0.1], spread: 0.22 });
+    };
+    let expr = 'neutral';
+    let bias = [0, 0, 0];
+    const gripCurl = [0.72, 0.78, 0.84, 0.9, 0.55];
     switch (pose) {
       case 'idle':
-        T.headY = Math.sin(t * 0.8) * 0.2;
         if (carrying) carryArms();
         break;
       case 'carry':
         carryArms();
-        T.hx = -0.03;
-        T.hy = Math.sin(t * 2.2) * 0.004;
+        set('spPitch', -0.03);
         break;
       case 'walk': {
-        const s = Math.sin(t * 10);
-        T.lL = -s * 0.75;
-        T.lR = s * 0.75;
-        T.hy = -Math.abs(Math.cos(t * 10)) * 0.03;
-        T.hz = s * 0.025;
+        const ph = t * 8.5;
+        const w = Math.sin(ph);
+        const stride = (lungi ? 0.13 : 0.22) * S;
+        set('fLz', stride * w);
+        set('fRz', -stride * w);
+        set('fLy', Math.max(0, Math.cos(ph)) * 0.08 * S);
+        set('fRy', Math.max(0, -Math.cos(ph)) * 0.08 * S);
+        set('hipY', -Math.abs(Math.cos(ph)) * 0.022 * S);
+        set('hipYaw', 0.09 * w);
+        set('spYaw', -0.13 * w);
         if (carrying) carryArms();
         else {
-          T.aLx = s * 0.6;
-          T.aRx = -s * 0.6;
-          T.eL = -0.3;
-          T.eR = -0.3;
+          arm('L', { pos: [sc(0.2), sc(-0.02), sc(0.02 - 0.15 * w)], aw: 0 });
+          arm('R', { pos: [sc(-0.2), sc(-0.02), sc(0.02 + 0.15 * w)], aw: 0 });
         }
-        T.hx = 0.05;
+        set('spPitch', 0.04);
         break;
       }
       case 'cheer': {
         const hop = Math.abs(Math.sin(t * 7));
-        T.hy = hop * 0.12;
-        T.aLx = T.aRx = -2.75 + Math.sin(t * 15) * 0.18;
-        T.aLz = T.aRz = 0.3;
-        T.eL = T.eR = -0.15;
-        T.lL = T.lR = -hop * 0.3;
-        T.headX = -0.15;
+        set('hipY', hop * 0.06 * S);
+        const sw = Math.sin(t * 15) * 0.03 * S;
+        arm('L', { pos: [sc(0.29), sc(0.6) + sw, sc(0.1)], dir: [0.2, 1, 0.2], palm: [0, 0, 1], aw: 1, pole: 0.5, curl: [0.1, 0.1, 0.12, 0.15, 0.05], spread: 0.4 });
+        arm('R', { pos: [sc(-0.29), sc(0.6) - sw, sc(0.1)], dir: [-0.2, 1, 0.2], palm: [0, 0, 1], aw: 1, pole: 0.5, curl: [0.1, 0.1, 0.12, 0.15, 0.05], spread: 0.4 });
+        set('fLy', hop * 0.05);
+        set('fRy', hop * 0.05);
+        expr = 'delighted';
+        bias = [-0.1, 0, 0];
         break;
       }
       case 'work-tawa': {
-        T.hx = 0.14;
-        T.headX = 0.25;
-        T.aLx = -0.75;
-        T.eL = -0.55;
-        T.aLz = 0.2;
-        if (u < 0.5) {
-          const a = u * 4 * TAU; // two circles while spreading the batter
-          setTools({ ladle: true });
-          T.aRx = -1.15 + Math.cos(a) * 0.1;
-          T.aRz = 0.1 + Math.sin(a) * 0.22;
-          T.eR = -0.85 + Math.sin(a) * 0.1;
-        } else {
-          const f = sm((u - 0.5) / 0.5);
-          const lift = Math.sin(Math.PI * Math.min(1, f * 1.4));
-          setTools({ spatula: true });
-          T.aRx = -1.05 - lift * 0.55;
-          T.eR = -0.55 - lift * 0.55;
-          T.aRz = 0.12;
-        }
+        // pour and spread the batter in circles, then flip with the spatula
+        const spread = u < 0.5;
+        const a = u * 4 * TAU;
+        arm('R', { pos: [sc(-0.1) + (spread ? Math.cos(a) * sc(0.05) : 0), sc(0.15) + (spread ? 0 : sc(0.1) * Math.sin(seg(u, 0.5, 1) * PI)), sc(0.42) + (spread ? Math.sin(a) * sc(0.04) : sc(0.06) * seg(u, 0.5, 0.7))], dir: [0.1, -0.5, 1], palm: [1, 0.3, 0], aw: 1, pole: 0.2, curl: gripCurl });
+        arm('L', { pos: [sc(0.14), sc(0.1), sc(0.34)], dir: [-0.1, -0.3, 1], palm: [-1, 0.4, 0], aw: 1, pole: 0.3, curl: [0.1, 0.1, 0.12, 0.15, 0.1] });
+        set('spPitch', 0.16);
+        bias = [0.22, 0, 0];
         break;
       }
       case 'work-steamer': {
-        const a = u < 0.5 ? sm(u / 0.5) : 1 - sm((u - 0.5) / 0.5) * 0.4;
-        T.aRx = -1.0 - 1.25 * a;
-        T.eR = -0.4 - 0.2 * a;
-        T.aRz = 0.2;
-        T.headX = -0.38 * a; // head back from the steam
-        T.hx = 0.1 - 0.16 * a;
-        T.aLx = -1.1;
-        T.eL = -0.45 + Math.sin(u * 40) * 0.18; // tapping the trays
-        T.aLz = 0.15;
+        const lid = u < 0.5 ? seg(u, 0, 0.5) : 1 - seg(u, 0.5, 1) * 0.4;
+        arm('L', { pos: [sc(0.12), sc(0.12 + 0.34 * lid), sc(0.4 - 0.1 * lid)], dir: [0, 0.4 + 0.6 * lid, 1], palm: [-1, 0.2, 0], aw: 1, pole: 0.3, curl: lid > 0.4 ? [0.6, 0.65, 0.7, 0.75, 0.4] : [0.1, 0.1, 0.12, 0.15, 0.1] });
+        arm('R', { pos: [sc(-0.12), sc(0.14) + 0.02 * Math.sin(u * 40), sc(0.4)], dir: [0, -0.3, 1], palm: [1, 0.2, 0], aw: 1, pole: 0.2, curl: gripCurl });
+        set('spPitch', 0.06 - 0.14 * lid);
+        bias = [-0.12 * lid, 0, 0];
         break;
       }
       case 'work-kadai': {
-        T.headX = -0.1;
-        T.hx = 0.1;
-        T.aLx = -0.5;
-        T.eL = -0.6;
-        if (u < 0.25) {
-          T.aRx = -1.35 + u * 1.2; // drop the dough
-          T.eR = -0.5;
-          T.aRz = 0.15;
-        } else if (u < 0.62) {
-          const a = ((u - 0.25) / 0.37) * TAU * 1.5; // swirl with the jhara
-          setTools({ jhara: true });
-          T.aRx = -1.1 + Math.cos(a) * 0.1;
-          T.aRz = 0.12 + Math.sin(a) * 0.22;
-          T.eR = -0.7;
-        } else {
-          const f = sm((u - 0.62) / 0.38); // lift the fried item out
-          setTools({ jhara: true });
-          T.aRx = -1.1 - f * 0.6;
-          T.eR = -0.7 - f * 0.4;
-          T.aRz = 0.1;
-          T.hx = 0.1 - f * 0.1;
-        }
+        const a = seg(u, 0.25, 0.62) * TAU * 1.5;
+        const lift = seg(u, 0.62, 1);
+        arm('R', { pos: [sc(-0.1) + Math.cos(a) * sc(0.04), sc(0.16) + sc(0.14) * lift, sc(0.45) + Math.sin(a) * sc(0.04)], dir: [0, -0.45 + 0.45 * lift, 1], palm: [1, 0.3, 0], aw: 1, pole: 0.2, curl: gripCurl });
+        arm('L', { pos: [sc(0.15), sc(0.0), sc(0.28)], dir: [0, -0.4, 1], palm: [-1, 0.3, 0], aw: 1, pole: 0.5, curl: [0.3, 0.35, 0.4, 0.45, 0.2] });
+        set('spPitch', 0.1);
+        bias = [0.12, 0, 0];
         break;
       }
       case 'work-chai': {
-        const s = Math.sin(u * TAU);
-        setTools({ mugR: true, mugL: true, stream: true });
-        T.aRx = -2.0 + s * 0.2;
-        T.aRz = 0.55;
-        T.eR = -0.45;
-        T.aLx = -1.05 - s * 0.1;
-        T.aLz = 0.5;
-        T.eL = -0.3;
-        T.headX = -0.1;
-        T.hx = -0.03;
+        const sw = Math.sin(u * TAU);
+        arm('R', { pos: [sc(-0.14), sc(0.46) + sc(0.04) * sw, sc(0.3)], dir: [0.2, 0.1 - 0.6 * (0.5 + 0.5 * sw), 1], palm: [1, 0.2, 0], aw: 1, pole: 0.6, curl: gripCurl });
+        arm('L', { pos: [sc(0.1), sc(0.12), sc(0.34)], dir: [-0.2, 0.3, 1], palm: [-1, 0.2, 0], aw: 1, pole: 0.4, curl: gripCurl });
+        bias = [-0.05, 0, 0];
+        set('spPitch', -0.02);
         break;
       }
       case 'work-serve': {
         const f = u < 0.55 ? sm(u / 0.55) : 1 - sm((u - 0.55) / 0.45);
-        setTools({ plateR: true, plateL: true });
-        T.aRx = T.aLx = -1.2 - 0.2 * f;
-        T.eR = T.eL = -0.9 + 0.7 * f; // arms straighten as the plate slides across
-        T.aRz = T.aLz = 0.12;
-        T.hx = 0.05 + 0.14 * f;
+        arm('L', { pos: [sc(0.1), sc(0.12), sc(0.3 + 0.18 * f)], dir: [-0.2, 0, 1], palm: [0, 1, 0], aw: 1, pole: 0.3, curl: [0.2, 0.22, 0.25, 0.3, 0.05], spread: 0.2 });
+        arm('R', { pos: [sc(-0.1), sc(0.12), sc(0.3 + 0.18 * f)], dir: [0.2, 0, 1], palm: [0, 1, 0], aw: 1, pole: 0.3, curl: [0.2, 0.22, 0.25, 0.3, 0.05], spread: 0.2 });
+        set('spPitch', 0.06 + 0.1 * f);
         break;
       }
       case 'work-collect': {
         const reach = u < 0.35 ? sm(u / 0.35) : 0;
         const tuck = u < 0.35 ? 0 : sm((u - 0.35) / 0.4);
-        setTools({ note: u < 0.78 });
-        T.aRx = -1.5 * reach - 0.7 * tuck + (1 - reach) * (1 - tuck) * -0.2;
-        T.eR = -0.15 - 1.1 * tuck;
-        T.aRz = 0.12;
-        T.hx = 0.08 + 0.05 * tuck;
-        T.headX = 0.12;
-        T.aLx = -0.6;
-        T.eL = -0.9; // left hand steadies the box
+        arm('R', { pos: [sc(-0.1) - sc(0.1) * tuck, sc(0.2) - sc(0.08) * tuck, sc(0.3 + 0.2 * reach * (1 - tuck))], dir: [0, -0.1, 1], palm: [0.3, 1, 0], aw: 1, pole: 0.3, curl: [0.4, 0.55, 0.62, 0.7, 0.55] });
+        arm('L', { pos: [sc(0.14), sc(0.07), sc(0.33)], dir: [-0.2, 0, 1], palm: [0, 1, 0], aw: 1, pole: 0.4, curl: [0.2, 0.22, 0.25, 0.3, 0.05], spread: 0.2 });
+        set('spPitch', 0.1);
+        bias = [0.12, 0, 0];
         break;
       }
       case 'work-discard': {
-        const f = sm((u - 0.3) / 0.45);
-        setTools({ plateR: true, plateL: true });
-        T.aRx = T.aLx = -1.3 - 0.35 * f;
-        T.eR = T.eL = -0.5;
-        T.aRz = 0.1 + 0.5 * f;
-        T.aLz = 0.1 + 0.2 * f;
-        T.hx = 0.06 + 0.1 * f;
-        T.headX = 0.1;
+        const f = seg(u, 0.3, 0.75);
+        arm('R', { pos: [sc(-0.16) - sc(0.1) * f, sc(0.12) + sc(0.1) * f, sc(0.3)], dir: [-0.3, 0, 1], palm: [0.3, 1, 0], aw: 1, pole: 0.5, curl: [0.2, 0.22, 0.25, 0.3, 0.05], spread: 0.2 });
+        arm('L', { pos: [sc(0.14), sc(0.12), sc(0.3)], dir: [0.1, 0, 1], palm: [0, 1, 0], aw: 1, pole: 0.3, curl: [0.2, 0.22, 0.25, 0.3, 0.05], spread: 0.2 });
+        set('spYaw', -0.35 * f);
+        bias = [0.1, 0, 0];
         break;
       }
       default:
     }
-    for (const k of Object.keys(tools)) tools[k].visible = !!toolVis[k];
-    tools.plateR.rotation.z = pose === 'work-discard' ? -sm((u - 0.3) / 0.45) * 1.1 : 0;
-    stream.visible = toolVis.stream;
+    if (pose.startsWith('work-')) expr = pose === 'work-chai' || pose === 'work-collect' ? 'paying' : 'neutral';
+    if (expr !== exprName) {
+      exprName = expr;
+      person.setExpression(expr, expr === 'paying' ? 0.6 : 1, 280);
+    }
+    person.headBias.pitch = bias[0];
+    person.headBias.yaw = bias[1];
+    person.headBias.roll = bias[2];
   };
 
   const api = {
     group,
+    person,
     pose: () => pose,
     setPose(p) {
       const next = POSES.includes(p) ? p : 'idle';
       if (next !== pose || next.startsWith('work-')) poseT0 = null; // restart the work animation on every call
+      if (next !== pose) showTools(next);
       pose = next;
     },
     /** dishes: [{ dish, q }] (at most HANDS_MAX are shown) */
@@ -365,9 +314,15 @@ export function buildAvatar({ color = '#ff8a1f', name = '' } = {}) {
       handCount = list.length;
       for (let i = 0; i < holders.length; i++) {
         const h = holders[i];
-        while (h.children.length) h.remove(h.children[h.children.length - 1]);
+        while (h.children.length) disposeObject(h.children[h.children.length - 1]);
         const d = list[i];
-        if (d && d.dish) h.add(buildDish(d.dish, d.q || 'good'));
+        if (d && d.dish) {
+          try {
+            h.add(buildDish(d.dish, d.q || 'good'));
+          } catch {
+            /* ignore */
+          }
+        }
       }
     },
     /** dir -1 | 0 | 1: the walking direction (0 = the pose decides the heading). */
@@ -378,48 +333,53 @@ export function buildAvatar({ color = '#ff8a1f', name = '' } = {}) {
     setLane(z) {
       laneTarget = num(z, 0);
     },
+    setExpression(n, w = 1, ms = 250) {
+      exprName = n;
+      person.setExpression(n, w, ms);
+    },
+    lookAt(v) {
+      lookTarget = v && Number.isFinite(v.x + v.y + v.z) ? v.clone() : null;
+    },
     update(dt, t) {
       if (disposed) return;
       const d = Math.min(0.1, Math.max(0, num(dt, 0.016)));
       const tt = num(t, 0);
       if (poseT0 === null) poseT0 = tt;
-      const T = person.target;
-      resetPose(T);
-      solvePose(T, tt);
+      solve(tt);
       const working = pose.startsWith('work-');
-      person.step(d, working ? 24 : 14);
-      yaw += wrapPi(headingFor(pose) - yaw) * Math.min(1, d * 11);
+      body.rate = working ? 20 : 12;
+      const hp = headingFor(pose);
+      yaw += wrapPi(hp - yaw) * Math.min(1, d * 11);
       yawG.rotation.y = yaw;
       lane.position.z = damp(lane.position.z, laneTarget, 10, d);
-      if (stream.visible) {
-        lane.updateWorldMatrix(true, true);
-        hR.getWorldPosition(_a);
-        hL.getWorldPosition(_b);
-        lane.worldToLocal(_a);
-        lane.worldToLocal(_b);
-        _a.y += 0.05;
-        _b.y += 0.12;
-        _a.sub(_b);
-        const len = _a.length();
-        if (len > 0.001) {
-          stream.position.copy(_b).addScaledVector(_a, 0.5);
-          _a.multiplyScalar(1 / len);
-          stream.quaternion.copy(_q.setFromUnitVectors(UP, _a));
-          const wob = 0.0055 + 0.0015 * Math.sin(tt * 40);
-          stream.scale.set(wob, len, wob);
-        } else stream.visible = false;
+      // look where they work (or where told)
+      group.updateWorldMatrix(true, false);
+      if (lookTarget) person.lookAt(lookTarget);
+      else {
+        _w.set(Math.sin(yaw), 0, Math.cos(yaw));
+        group.getWorldPosition(_v);
+        _v.addScaledVector(_w, 1.2);
+        _v.y = person.height * (working ? 0.62 : 0.9);
+        person.lookAt(_v);
       }
+      person.update(d, tt);
+    },
+    get triangles() {
+      return countTriangles(group);
     },
     dispose() {
       if (disposed) return;
       disposed = true;
-      for (const h of holders) while (h.children.length) h.remove(h.children[0]);
+      for (const h of holders) while (h.children.length) disposeObject(h.children[0]);
+      for (const m of tools) for (const t2 of m.values()) t2.dispose?.();
+      person.dispose();
       disposeObject(group);
     },
   };
+  void holdTool;
   void clamp01;
-  void hashSeed;
-  person.step(0.016, 100);
+  void shade;
+  person.body.pose.snap();
   api.update(0.016, 0);
   return api;
 }
