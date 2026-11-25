@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { createElement as h } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
+import { leaveCopy } from './PauseMenu.jsx';
 import { SoloHome, Results, PauseMenu, QuitConfirm, CoachMark, StatusScreen, LevelBriefing } from './index.js';
 
 const html = (el) => renderToStaticMarkup(h(MemoryRouter, null, el));
@@ -13,6 +14,9 @@ describe('SoloHome', () => {
   it('before the tutorial: a Start tutorial card, a locked co-op teaser, no level cards', () => {
     const s = html(h(SoloHome, { progress: null, tutorialDone: false, unlockedLevel: 1, onStartTutorial: noop, onStartLevel: noop, onInvite: noop, onBack: noop }));
     expect(s).toContain('Start tutorial');
+    expect(s).toContain('About 15 minutes');
+    expect(s).toContain('the game saves');
+    expect(s).not.toContain('three minutes');
     expect(s).toContain('Unlocks co-op with friends');
     expect(s).toContain('టిఫిన్ సెంటర్');
     expect(s).toContain('Tiffin Centre');
@@ -119,6 +123,21 @@ describe('PauseMenu and QuitConfirm', () => {
   });
 });
 
+describe('what leaving says (it is true: solo and tutorial progress is saved)', () => {
+  it('solo: the shift is saved; tutorial: continue later; co-op: the seat ends', () => {
+    expect(leaveCopy('practice')).toBe('Leave the stall? Your shift is saved: resume it from the home screen.');
+    expect(leaveCopy()).toBe(leaveCopy('practice'));
+    expect(leaveCopy('tutorial')).toBe('Leave the stall? You can continue the tutorial later.');
+    expect(leaveCopy('online')).toMatch(/seat/);
+    for (const m of ['practice', 'tutorial', 'online']) expect(leaveCopy(m)).not.toMatch(/not be saved/);
+  });
+  it('QuitConfirm takes a count or the list of names', () => {
+    expect(html(h(QuitConfirm, { open: true, teammates: ['Anu', 'Ravi'] }))).toContain('2 friends are still serving');
+    expect(html(h(QuitConfirm, { open: true, teammates: 1 }))).toContain('1 friend is still serving');
+    expect(html(h(QuitConfirm, { open: true, teammates: [] }))).toContain('invite link');
+  });
+});
+
 describe('CoachMark', () => {
   const step = { id: 's1', say: 'Pehle tawa pe chalo!', text: 'Tap the tawa, anna.', textTouch: 'Tap the glowing tawa.', te: 'పెనం నొక్కండి', hint: 'The big round pan on the left', recipe: 'dosa' };
   const chapters = ['Look', 'Tokens', 'Tawa', 'Idly'];
@@ -183,6 +202,9 @@ describe('StatusScreen', () => {
     const d = html(h(StatusScreen, { kind: 'disconnected', onRetry: noop, onExit: noop }));
     expect(d).toContain('Reconnect');
     expect(d).toContain('Leave table');
+    expect(d).toContain('<svg class="tc-menu-status__glyph"'); // a drawn icon, not the text squiggle
+    expect(d).toContain('width="44"');
+    expect(d).not.toContain('>~<');
     const w = html(h(StatusScreen, { kind: 'webgl', onRetry: noop, onExit: noop }));
     expect(w).toContain('WebGL');
     expect(w).toContain('Back to games');

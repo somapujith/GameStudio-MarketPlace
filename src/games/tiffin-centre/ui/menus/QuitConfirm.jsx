@@ -4,8 +4,9 @@ import { useDialog } from './hooks.js';
 import './menus.css';
 
 /** Props: { open, onStay, onQuit, teammates?: number } (teammates = how many others are still at the stall). */
-export default function QuitConfirm({ open = false, onStay, onQuit, teammates = 0 }) {
+export default function QuitConfirm({ open = false, onStay, onQuit, teammates: mates = 0 }) {
   const root = useRef(null);
+  const teammates = Array.isArray(mates) ? mates.length : Number(mates) || 0; // a count, or the list of names
   useDialog(root, { active: open, onEscape: () => onStay?.() });
   if (!open) return null;
   return (

@@ -227,13 +227,7 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
   return (
     <div className="tc" ref={wrapRef} data-mode={mode}>
       <canvas ref={canvasRef} className="tc-canvas" aria-label="Your tiffin stall" />
-      {scene && state && !blocker ? <Hud session={session} scene={scene} audio={audio} muted={muted} onMute={onMute} /> : null}
-
-      {online && state && !showResults && !blocker ? (
-        <button type="button" className="tc-leave" onClick={() => setLeaving(true)} aria-label="Leave the table">
-          Leave
-        </button>
-      ) : null}
+      {scene && state && !blocker ? <Hud session={session} scene={scene} audio={audio} muted={muted} onMute={onMute} onLeave={online ? () => setLeaving(true) : undefined} /> : null}
 
       {tutorial && !tutorial.finished && !tutorial.skipped && state && !showResults && !blocker ? (
         <CoachMark
@@ -249,6 +243,7 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
       {paused ? (
         <PauseMenu
           open
+          mode={mode}
           muted={muted}
           onMute={onMute}
           audio={audio}

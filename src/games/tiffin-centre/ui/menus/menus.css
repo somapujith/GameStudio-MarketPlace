@@ -787,3 +787,7 @@ html[data-motion='reduced'] .tc-menu-brief__timer { display: none; }
 @media (max-width: 380px) {
   .tc-menu-books { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* status tiles: a real line icon, not a text squiggle (StatusScreen) */
+.tc-menu-status .ho-status__icon { width: 72px; height: 72px; }
+.tc-menu-status__glyph { display: block; width: 44px; height: 44px; }

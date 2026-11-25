@@ -157,7 +157,7 @@ export default function SoloHome({ progress = null, tutorialDone = false, unlock
                 <ChotuAvatar size={72} className="tc-menu-tutorial__chotu" />
                 <div className="tc-menu-tutorial__text">
                   <h2 id="tc-tut-h" className="tc-menu-paint">Start tutorial</h2>
-                  <p className="tc-menu-lede">Chotu shows you the stall, one customer at a time. About three minutes.</p>
+                  <p className="tc-menu-lede">Chotu shows you the stall, one customer at a time. About 15 minutes: you can stop and continue later, because the game saves.</p>
                   <p className="tc-menu-unlock"><Padlock size={16} /> Unlocks co-op with friends</p>
                 </div>
                 <button type="button" className="tc-menu-btn tc-menu-btn--plank tc-menu-btn--big" {...(hasSave ? {} : { 'data-autofocus': true, autoFocus: true })} onClick={() => onStartTutorial?.()}>

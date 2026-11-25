@@ -1,7 +1,7 @@
 // The Stations dock: every station of the shift with its slots as real buttons, so the whole game is playable without touching the
 // canvas. Cooking / ready bars are driven per frame from the shared bus (CSS variables only). Levels with stock also get the PREP COUNTER group
 // at the end (two job slots + a button that opens the prep sheet), and `renderExtra(station)` puts a Tend button on each pan.
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import DishIcon from './DishIcon.jsx';
 import HudIcon from './HudIcon.jsx';
 import { useFrame } from './hooks.js';
@@ -108,6 +108,18 @@ function PrepGroup({ prep, spot, walking, onPrep, register }) {
   );
 }
 
+/** More than this many station groups (counting the prep counter) and the dock tightens its slots so a 1280 px screen still shows them all. */
+export const DENSE_FROM = 5;
+
+/** Scroll a dock so the element `el` sits fully inside it (with a little margin). Only the dock scrolls, never the page. */
+export function scrollIntoDock(dock, el, margin = 8) {
+  if (!dock || !el) return;
+  const d = dock.getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  if (r.left < d.left + margin) dock.scrollLeft -= d.left + margin - r.left;
+  else if (r.right > d.right - margin) dock.scrollLeft += r.right - (d.right - margin);
+}
+
 // `renderExtra(station)` is the room kept after a station's slots for a per-station control (a Tend button on the tawa, kadai and steamer).
 // `prep` is prepView(state) (or null) and `onPrep({ slot?, ready? })` opens the prep sheet / collects a ready job.
 export default function StationsDock({ state, spot, walking, onSlot, onFocusTarget, renderExtra, prep = null, onPrep }) {
@@ -143,8 +155,38 @@ export default function StationsDock({ state, spot, walking, onSlot, onFocusTarg
     }
   });
   const stations = stationList(state);
+  const groups = stations.length + (prep && onPrep ? 1 : 0);
+  // The dock scrolls sideways when the stations do not fit (levels 4 and 12 on a 1280 px screen): edge fades say there is more, and the
+  // station the tutorial points at or the cook walks to is brought into view.
+  const dock = useRef(null);
+  const [more, setMore] = useState({ l: false, r: false });
+  useEffect(() => {
+    const el = dock.current;
+    if (!el) return undefined;
+    const update = () => {
+      const l = el.scrollLeft > 2;
+      const r = el.scrollLeft + el.clientWidth < el.scrollWidth - 2;
+      setMore((m) => (m.l === l && m.r === r ? m : { l, r }));
+    };
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(update) : null;
+    ro?.observe(el);
+    return () => {
+      el.removeEventListener('scroll', update);
+      ro?.disconnect();
+    };
+  }, [groups]);
+  const focusKey = [...spot, ...walking].find((k) => /^(station|slot|tend):/.test(k)) || '';
+  useEffect(() => {
+    const el = dock.current;
+    if (!el || !focusKey) return;
+    const [kind, id] = focusKey.split(':');
+    scrollIntoDock(el, el.querySelector(`[data-spot="${kind === 'station' ? `station:${id}` : focusKey}"]`));
+  }, [focusKey]);
   return (
-    <nav className="tc-hud-dock" aria-label="Stations">
+    <div className="tc-hud-dockwrap" data-more-l={more.l ? '1' : undefined} data-more-r={more.r ? '1' : undefined}>
+    <nav ref={dock} className="tc-hud-dock" aria-label="Stations" data-dense={groups >= DENSE_FROM ? '1' : undefined}>
       {stations.map((st) => (
         <div key={st.id} className={`tc-hud-station${spot.has(`station:${st.id}`) ? ' is-spot' : ''}${walking.has(`station:${st.id}`) ? ' is-walking' : ''}`} data-spot={`station:${st.id}`} data-kind={st.kind} role="group" aria-label={st.name}>
           <span className="tc-hud-station-name">
@@ -170,5 +212,8 @@ export default function StationsDock({ state, spot, walking, onSlot, onFocusTarg
       ))}
       {prep && onPrep && <PrepGroup prep={prep} spot={spot} walking={walking} onPrep={onPrep} register={register} />}
     </nav>
+    <span className="tc-hud-dock-fade is-l" aria-hidden="true" />
+    <span className="tc-hud-dock-fade is-r" aria-hidden="true" />
+    </div>
   );
 }

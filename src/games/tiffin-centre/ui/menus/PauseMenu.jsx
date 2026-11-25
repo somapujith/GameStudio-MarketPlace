@@ -27,12 +27,19 @@ function ControlsHelp() {
   );
 }
 
+/** What leaving does, in words that are true: a solo shift and the tutorial are SAVED (the home screen offers Resume), a co-op seat ends. */
+export function leaveCopy(mode) {
+  if (mode === 'tutorial') return 'Leave the stall? You can continue the tutorial later.';
+  if (mode === 'online') return 'Leave the stall? Your seat at the table ends.';
+  return 'Leave the stall? Your shift is saved: resume it from the home screen.';
+}
+
 /**
  * Solo pause: "Chai break". Props: { open, onResume, onRestart, onQuit, muted, onMute(next: boolean), audio? }.
- * Restart and Quit ask once more before they throw the shift away. `audio` (optional) lets the voices switch say when a language has no
+ * `mode` ('practice' | 'tutorial' | 'online') only words the Leave confirm. Restart asks once more before it throws the shift away; Leave saves it. `audio` (optional) lets the voices switch say when a language has no
  * voice on this device (audio.isSpeechAvailable(lang) / audio.speech.isAvailable(lang)).
  */
-export default function PauseMenu({ open = false, onResume, onRestart, onQuit, muted = false, onMute, audio = null }) {
+export default function PauseMenu({ open = false, onResume, onRestart, onQuit, muted = false, onMute, audio = null, mode = 'practice' }) {
   const root = useRef(null);
   const [ask, setAsk] = useState(null); // null | 'restart' | 'quit'
   const [prefs, setPrefs] = usePrefs();
@@ -44,7 +51,7 @@ export default function PauseMenu({ open = false, onResume, onRestart, onQuit, m
     if (open) root.current?.querySelector('[data-autofocus]')?.focus?.({ preventScroll: true });
   }, [ask, open]);
   if (!open) return null;
-  const confirm = ask === 'restart' ? { text: 'Restart this shift? Today\'s tally so far is lost.', yes: 'Restart shift', run: onRestart } : ask === 'quit' ? { text: 'Leave the stall? This shift will not be saved.', yes: 'Leave', run: onQuit } : null;
+  const confirm = ask === 'restart' ? { text: 'Restart this shift? Today\'s tally so far is lost.', yes: 'Restart shift', run: onRestart } : ask === 'quit' ? { text: leaveCopy(mode), yes: 'Leave', run: onQuit } : null;
   const note = voiceNotice(prefs, audio);
 
   return (

@@ -1,6 +1,6 @@
 // Tiffin Centre HUD: the OPERATIONS layer as pure view-models (docs/TIFFIN_CENTRE_PLAN.md section 3b): ingredient stock groups, the LPG gauge,
 // pan tending, the prep counter, the market, the sold-out board, the events banner and the chit badges. No React, no DOM: tested in opsLogic.test.js.
-// Every function is defensive (optional chaining, safe fallbacks) and returns null / [] while the layer is off: level 0 (the tutorial) has none of it.
+// Every function is defensive (optional chaining, safe fallbacks) and returns null / [] while its mechanic is off (a bare training shift has none of it).
 import { DISHES, FERMENT, HEAT, INGREDIENTS, MARKET_MARKUP, MARKET_MAX, PREP_STATION, STATIONS, STATION_KINDS, STOCK_CAP } from '@shared/tiffin-centre/catalog.js';
 import { flawName, gasInfo, shortOf, stockInfo, tendInfo } from '@shared/tiffin-centre/ops.js';
 import { eventsNow, isDown } from '@shared/tiffin-centre/events.js';
@@ -20,14 +20,19 @@ const safe = (fn, d) => {
 export { PREP_STATION, MARKET_MAX };
 
 // ---- which parts of the layer are on --------------------------------------------------------------------------------------------------
-/** Stock + the prep counter exist (levels 1..12). */
-export const opsOn = (s) => !!s && !s.cfg?.tutorial && !!s.cfg?.stock && !!s.stock;
-export const gasOnLevel = (s) => !!s && !s.cfg?.tutorial && !!s.cfg?.gas && !!s.gas;
-export const heatOnLevel = (s) => !!s && !s.cfg?.tutorial && !!s.cfg?.heat;
+// Gated on the MECHANICS that are switched on in the state (cfg.stock / cfg.gas / cfg.heat / cfg.events / cfg.market), never on `cfg.tutorial`:
+// the training shift (level 0) starts with every switch off and the tutorial chapters turn them on one by one (`tutorial-flags`), and the
+// HUD must show exactly the controls of the lessons that are on, so they can be done from the UI.
+/** Stock + the prep counter exist (levels 1..12, and the tutorial once its stock switch is on). */
+export const opsOn = (s) => !!s && !!s.cfg?.stock && !!s.stock;
+export const gasOnLevel = (s) => !!s && !!s.cfg?.gas && !!s.gas;
+export const heatOnLevel = (s) => !!s && !!s.cfg?.heat;
 export const marketOn = (s) => opsOn(s) && !!s.cfg?.market;
+/** The events switch: levels list their event ids, the training shift holds the 'staged' marker. */
+export const eventsOn = (s) => !!s && Array.isArray(s.cfg?.events) && s.cfg.events.length > 0;
 
-/** Is there anything of the operations layer to show? (false in the tutorial and in a hand-built state with none of it) */
-export const hasOps = (s) => opsOn(s) || gasOnLevel(s) || heatOnLevel(s) || (Array.isArray(s?.events) && s.events.length > 0 && !s?.cfg?.tutorial);
+/** Is there anything of the operations layer to show? (false in a bare training shift and in a hand-built state with none of it) */
+export const hasOps = (s) => opsOn(s) || gasOnLevel(s) || heatOnLevel(s) || eventsOn(s) || (Array.isArray(s?.events) && s.events.length > 0);
 
 // ---- stock groups ---------------------------------------------------------------------------------------------------------------------
 export const STOCK_BAR_FULL = 20; // portions that fill a bar
@@ -324,7 +329,7 @@ export function dishShort(state, dish) {
 
 /** The board panel: every dish on the menu with its switch, price, and what it is short of. `suggest` = on the board but cannot be made. */
 export function boardView(state) {
-  if (!state || state.cfg?.tutorial) return null;
+  if (!state || (state.cfg?.tutorial && !state.cfg?.stock)) return null; // the training shift has no board until its stock switch is on
   const off = boardOff(state);
   const rows = (state.cfg?.menu || []).filter((d) => DISHES[d]).map((d) => {
     const short = dishShort(state, d);
@@ -351,7 +356,7 @@ const EVENT_LOOK = {
 
 /** The running events for the banner: [{ id, name, te, left, secs, icon, tone, note, headline, waiting }]. */
 export function eventBanner(state) {
-  if (!state || state.cfg?.tutorial) return [];
+  if (!state || (state.cfg?.tutorial && !eventsOn(state))) return []; // the training shift shows events only once its events switch is on
   const waiting = new Set((Array.isArray(state.events) ? state.events : []).filter((e) => e && e.w).map((e) => e.id));
   return safe(() => eventsNow(state), []).map((e) => {
     const look = EVENT_LOOK[e.id] || { icon: 'info', tone: 'info', note: '' };

@@ -37,6 +37,13 @@ describe('stars are PROFIT', () => {
     expect(booksView(game(0)).show).toBe(false);
     expect(starTargets(game(0))).toBeNull();
   });
+
+  it('the books appear in the tutorial once a lesson has switched the costs on (stock or gas)', () => {
+    const train = (f) => applyAction(game(0), { type: 'tutorial-flags', ...f }).state;
+    expect(booksView(train({ stock: true })).show).toBe(true);
+    expect(booksView(train({ gas: true })).show).toBe(true);
+    expect(booksView(train({ stock: false })).show).toBe(false);
+  });
 });
 
 describe('what a tap on the back counter and the gas stand does', () => {
@@ -259,6 +266,8 @@ describe('the engine drives the same actions the HUD sends', () => {
     s.events = [{ id: 'power', until: 99 }];
     expect(cookReason(s, 'steamer1', 'idly')).toBe('Power cut: the steamer is off');
     expect(cookReason(game(0), 'tawa1', 'dosa')).toBeNull();
+    const t = applyAction(game(0), { type: 'tutorial-flags', stock: true, stage: { stock: { batter_dosa: 0 } } }).state;
+    expect(cookReason(t, 'tawa1', 'dosa')).toBe('Out of dosa batter'); // the stock lessons get the engine's reason too
     expect(cookReason(null, 'tawa1', 'dosa')).toBeNull();
   });
 });

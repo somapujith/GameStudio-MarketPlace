@@ -33,7 +33,7 @@ import {
   isActionAllowed, nearestTarget, patienceWarnings, pendingTarget, placeName, playerChanges, runOutAlerts, slotTarget, spotKeys, stationTarget, targetKey,
   teammates, urgentPaying,
 } from './hudLogic.js';
-import { boardMap, dishShort, gasView, opsOn, prepView, tendHotkeyTarget, tendView } from './opsLogic.js';
+import { boardMap, boardView, dishShort, gasView, opsOn, prepView, tendHotkeyTarget, tendView } from './opsLogic.js';
 import { LOOK, createGesture, isTurned, lookKeyIntent, stepInertia } from './look.js';
 import { pickBubbles, pickSubtitle } from './dialogue.js';
 import { createProjector } from './projector.js';
@@ -59,7 +59,7 @@ function useCoarse() {
   return coarse;
 }
 
-export default function HudLayer({ session, scene, audio = null, state, tickAt, status, connection, onMute, muted, onRunner, reducedOverride }) {
+export default function HudLayer({ session, scene, audio = null, state, tickAt, status, connection, onMute, muted, onRunner, onLeave, reducedOverride }) {
   const osReduced = useReducedMotion();
   const reduced = reducedOverride ?? osReduced;
   const { bus, live } = useHudBus();
@@ -282,7 +282,11 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
     lookToPrep();
   };
   const openBoard = () => {
-    if (!live.state || live.status !== 'playing' || live.state.cfg?.tutorial) return;
+    if (!live.state || live.status !== 'playing' || !boardView(live.state)) return; // no board until the stock switch is on (tutorial)
+    if (!isActionAllowed(allowedNow(), { type: 'board' })) {
+      notYet();
+      return;
+    }
     setSheet(null);
     setPanel({ kind: 'board' });
   };
@@ -752,6 +756,7 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
   if (!state) return null;
   const online = session?.mode === 'online';
   const canPause = !online && typeof session?.pause === 'function';
+  const leave = online && typeof onLeave === 'function' ? onLeave : null; // co-op: Leave takes the pause button's slot in the top bar
   const link = session?.link || { everOpen: true };
   const sessionConn = connection === 'open' ? 'open' : connection === 'closed' ? 'closed' : 'connecting';
   const mates = online ? teammates(state, session?.players || [], meId) : [];
@@ -764,7 +769,7 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
 
   return (
     <HudContext.Provider value={{ bus, live }}>
-      <div ref={rootRef} className={`tc-hud${reduced ? ' tc-hud--calm' : ''}`} data-mode={session?.mode || 'practice'} data-status={status} data-keyboard={kbOn.current ? '1' : '0'}>
+      <div ref={rootRef} className={`tc-hud${reduced ? ' tc-hud--calm' : ''}${leave ? ' tc-hud--has-leave' : ''}`} data-mode={session?.mode || 'practice'} data-status={status} data-keyboard={kbOn.current ? '1' : '0'}>
         <div
           ref={pickRef}
           className="tc-hud-pick"
@@ -785,6 +790,7 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
           speech={dlg.active}
           bubbleIds={bubbleIds}
           subs={prefs.subs}
+          rootRef={rootRef}
         />
         <EdgeIndicators scene={scene} state={state} projector={projector} rootRef={rootRef} getCookX={() => actions.runner.x()} spotXOf={spotXOf} onLook={lookAtCustomer} reduced={reduced} />
         <TopBar
@@ -797,6 +803,7 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
           onPause={() => session?.pause?.()}
           onMute={onMute}
           muted={muted}
+          onLeave={leave}
         />
         {online && (
           <CoopBar
@@ -811,7 +818,7 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
           />
         )}
         <Availability rows={avail} onChip={onChip} board={board} onBoard={doBoard}>
-          <StallStatus state={state} onStock={openPrep} onSwap={doSwap} onBoard={openBoard} />
+          <StallStatus state={state} onStock={openPrep} onSwap={doSwap} onBoard={openBoard} forceOpen={walking.has('gas')} spot={spot} />
         </Availability>
         <SubtitleStrip entry={subEntry} subs={prefs.subs} token={subEntry?.u.customer} />
         <OrderRail state={state} hands={hands} spot={spot} walking={walking} onTarget={onTarget} onLook={lookAtCustomer} />

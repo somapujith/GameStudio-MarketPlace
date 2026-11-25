@@ -10,7 +10,7 @@ import { CHIP_H, CHIP_W, layoutEdgeChips } from './offscreen.js';
 
 const SIDE_WORD = { left: 'on your left', right: 'on your right', behind: 'behind you' };
 
-/** The free rectangle between the HUD bands, in the HUD's own coordinates (the chips must not sit on the banner or the dock). */
+/** The free rectangle between the HUD panels, in the HUD's own coordinates (edge chips and head bubbles must not sit on the banner, the dock, the chit rail or the chalk board). */
 export function freeBounds(root, w, h) {
   const out = { top: 0, bottom: h, left: 0, right: w };
   if (!root) return out;
@@ -26,6 +26,7 @@ export function freeBounds(root, w, h) {
   if (board && board.width >= w * 0.6) out.top = Math.max(out.top, board.bottom);
   const bottom = rect('.tc-hud-bottom');
   if (bottom) out.bottom = Math.min(out.bottom, bottom.top);
+  if (board && board.width < w * 0.6 && board.left > w * 0.5) out.right = Math.min(out.right, board.left); // wide / landscape: the chalk board is a column on the right
   const rail = rect('.tc-hud-railbox'); // a bottom strip of chits (phones) takes room; a side rail takes a column
   if (rail && rail.width >= w * 0.6) out.bottom = Math.min(out.bottom, rail.top);
   else if (rail && rail.left < w * 0.5) out.left = Math.max(out.left, rail.right);

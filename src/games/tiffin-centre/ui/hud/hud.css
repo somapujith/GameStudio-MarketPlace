@@ -661,3 +661,134 @@
   .tc-hud-sheetwrap.is-prep { align-items: stretch; justify-content: flex-end; padding: 0; }
   .tc-hud-prepsheet { width: min(480px, 60%); max-height: 100%; border-radius: 10px 0 0 10px; }
 }
+
+/* =====================================================================================================================================
+   QA FIXES (docs/TIFFIN_CENTRE_PROOF.md H3 H5 H6 H7 H10): panel stacking, the dock that scrolls, the Board chip, the co-op Leave slot,
+   and the compact layout for short screens (phone landscape).
+   ===================================================================================================================================== */
+
+/* H6: the head bubbles and the edge arrows live under every HUD panel (a panel is never painted over; WorldBubbles also clamps them clear of the panels). */
+.tc-hud-bubbles, .tc-hud-edges { z-index: 1; }
+.tc-hud-board, .tc-hud-railbox, .tc-hud-bottom, .tc-hud-coop { position: relative; z-index: 2; }
+
+/* H7: the Board chip sizes to its text (it used to be a fixed 64 px and clipped the last letter: "BOARI"). */
+.tc-hud-stockbar.is-board { width: auto; min-width: 74px; }
+.tc-hud-stockbar.is-board .tc-hud-sb-name { justify-content: flex-start; gap: 4px; overflow: visible; }
+.tc-hud-stockbar.is-board .tc-hud-sb-name svg { flex: none; }
+@media (min-width: 900px) and (min-height: 521px), (max-height: 520px) and (min-width: 600px) {
+  .tc-hud-stockbar.is-board { width: 100%; }
+}
+.tc-hud-stockbar.is-board.is-spot, .tc-hud-gas-swap.is-spot { box-shadow: 0 0 0 3px var(--h-turmeric), 0 0 18px rgba(255, 200, 61, 0.8); animation: tc-hud-spot 1.1s ease-in-out infinite; }
+
+/* H5: the stations dock never clips its first or last station: it starts at the left edge and scrolls (the first and last group take the
+   free space as auto margins, which is "centre when it fits" without the lost left half), with edge fades that say there is more. */
+.tc-hud-dockwrap { position: relative; min-width: 0; pointer-events: none; }
+.tc-hud-dock { justify-content: flex-start; overscroll-behavior-x: contain; scroll-padding: 0 10px; }
+.tc-hud-dock > :first-child { margin-left: auto; }
+.tc-hud-dock > :last-child { margin-right: auto; }
+.tc-hud-dock-fade { position: absolute; top: 0; bottom: 0; width: 30px; opacity: 0; pointer-events: none; transition: opacity 0.15s ease; border-radius: 4px; }
+.tc-hud-dock-fade.is-l { left: 0; background: linear-gradient(90deg, rgba(20, 12, 6, 0.78), rgba(20, 12, 6, 0)); }
+.tc-hud-dock-fade.is-r { right: 0; background: linear-gradient(270deg, rgba(20, 12, 6, 0.78), rgba(20, 12, 6, 0)); }
+.tc-hud-dockwrap[data-more-l='1'] .tc-hud-dock-fade.is-l, .tc-hud-dockwrap[data-more-r='1'] .tc-hud-dock-fade.is-r { opacity: 1; }
+/* five or more groups (level 4 and up): slots at the 44 px minimum, gaps and labels tightened */
+.tc-hud-dock[data-dense='1'] { gap: 6px; }
+.tc-hud-dock[data-dense='1'] .tc-hud-slots { gap: 4px; }
+.tc-hud-dock[data-dense='1'] .tc-hud-slot { width: 44px; height: 44px; }
+.tc-hud-dock[data-dense='1'] .tc-hud-station-name .tc-hud-te { display: none; }
+.tc-hud-dock[data-dense='1'] .tc-hud-tend-txt small { display: none; }
+.tc-hud-dock[data-dense='1'] .tc-hud-tendbtn { min-width: 48px; padding: 3px 6px 3px 4px; }
+
+/* H3: co-op. Leave takes the pause button's slot in the top bar (TopBar onLeave); the glue's own floating `.tc-leave` is hidden once it does. */
+.tc-hud--has-leave ~ .tc-leave, .tc:has(.tc-hud--has-leave) .tc-leave { display: none; }
+.tc-hud-leave { width: auto; min-width: 44px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; font-size: 13px; font-weight: 800; }
+.tc-hud-leave:hover { color: #fff; background: linear-gradient(180deg, #e8402f, #b02417); }
+@media (max-width: 420px) { .tc-hud-leave { padding: 0 8px; font-size: 12px; } }
+/* phone landscape: the team bar (mates, connection, emotes) sits in the free top of the scene column, not on the stall status or the dock */
+@media (max-height: 520px) and (min-width: 600px) {
+  .tc-hud-coop { position: relative; right: auto; top: auto; grid-area: mid; align-self: start; justify-self: center; justify-content: center; max-width: 100%; z-index: 2; }
+}
+
+/* H10: COMPACT, for short screens (phone landscape, height 460 px or less): a 44 px top bar, the chits a narrow side rail (token, coin, dish icons),
+   the availability strip folded to icons with their ready counts, the stall status behind one button. At 844 x 390 the stall keeps 65% of the height. */
+.tc-hud-status-toggle { display: none; }
+@media (max-height: 460px) and (min-width: 600px) {
+  .tc-hud { grid-template-columns: 152px minmax(0, 1fr) 144px; gap: 3px 6px; padding: max(3px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(3px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left)); }
+  /* the top bar: banner, takings, hearts and buttons in one 44 px row */
+  .tc-hud-top { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) auto auto; gap: 4px; }
+  .tc-hud-banner { padding: 2px 14px; gap: 0 8px; grid-template-columns: auto minmax(30px, 1fr); }
+  .tc-hud-grommet { top: 3px; width: 6px; height: 6px; }
+  .tc-hud-paint { font-size: 12.5px; }
+  .tc-hud-shift .tc-hud-te, .tc-hud-lvl, .tc-hud-daypart { display: none; }
+  .tc-hud-clock { font-size: 12.5px; gap: 3px; }
+  .tc-hud-clock svg { width: 16px; height: 16px; }
+  .tc-hud-shiftbar { height: 8px; }
+  .tc-hud-shiftbar-left { display: none; }
+  .tc-hud-tin { padding: 2px 8px 3px; gap: 2px; align-content: center; }
+  .tc-hud-money { font-size: 16px; }
+  .tc-hud-rupee { width: 18px; height: 18px; }
+  .tc-hud-books { flex-wrap: nowrap; gap: 0 8px; font-size: 10px; white-space: nowrap; }
+  .tc-hud-book b { font-size: 11px; }
+  .tc-hud-stars { height: 8px; }
+  .tc-hud-star-tick { top: -5px; }
+  .tc-hud-star-tick svg { width: 11px; height: 11px; }
+  .tc-hud-heart svg { width: 16px; height: 16px; }
+  .tc-hud-hearts { padding: 2px 4px; }
+  .tc-hud-combo { padding: 2px 6px; font-size: 12px; }
+  /* the chits: a narrow rail */
+  .tc-hud-railbox { padding-top: 7px; }
+  .tc-hud-rail { gap: 9px; max-height: calc(100vh - 132px); padding: 6px 4px 8px; }
+  .tc-hud-chit { padding: 9px 4px 5px; }
+  .tc-hud-chit-main { grid-template-columns: auto auto; grid-template-areas: 'token coin' 'dishes dishes'; justify-content: start; gap: 3px 5px; padding: 0 48px 0 0; min-height: 40px; }
+  .tc-hud-chit-main[data-badges='1'] { grid-template-areas: 'token coin' 'badges badges' 'dishes dishes'; }
+  .tc-hud-token { min-width: 44px; padding: 2px 6px 1px 15px; }
+  .tc-hud-token small { font-size: 7px; }
+  .tc-hud-token b { font-size: 20px; }
+  .tc-hud-token-hole { left: 4px; width: 7px; height: 7px; margin-top: -3.5px; }
+  .tc-hud-coin { width: 36px; height: 36px; }
+  .tc-hud-coin::before { inset: 5px; }
+  .tc-hud-coin-num { font-size: 12px; }
+  .tc-hud-chit-look { top: 6px; right: 0; }
+  .tc-hud-dishes { margin: 3px 0 0 0; width: calc(100% + 48px); padding-right: 0; gap: 3px; }
+  .tc-hud-dishchip { padding: 1px 2px; }
+  .tc-hud-who, .tc-hud-dishname, .tc-hud-dishchip .tc-hud-tick { display: none; }
+  .tc-hud-dishchip.is-served { opacity: 0.6; }
+  .tc-hud-badges { padding-right: 0; width: calc(100% + 48px); }
+  .tc-hud-badge > svg + span { display: none; }
+  .tc-hud-badge { padding: 0 4px; }
+  .tc-hud-collect { min-height: 44px; margin-top: 4px; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 5px; padding: 3px 6px; }
+  .tc-hud-note { width: 28px; height: 28px; }
+  .tc-hud-note::before { inset: 4px; }
+  .tc-hud-note::after { font-size: 12px; }
+  .tc-hud-collect-txt small { font-size: 8.5px; }
+  .tc-hud-collect-txt b { font-size: 17px; }
+  .tc-hud-collect-secs { font-size: 11px; }
+  /* the availability strip: dish icons with the ready count (the full line is on each chip's aria-label) */
+  .tc-hud-chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 4px; padding: 4px; max-height: calc(100vh - 180px); }
+  .tc-hud-chipli { min-width: 0; }
+  .tc-hud-chip { min-width: 0; width: 100%; padding: 2px 4px; gap: 0 3px; }
+  .tc-hud-chip .tc-hud-dish { width: 26px; height: 26px; }
+  .tc-hud-ready b { font-size: 19px; }
+  .tc-hud-ready small, .tc-hud-chip-meta, .tc-hud-chipli > .tc-hud-chip-board { display: none; }
+  .tc-hud-chip[data-short] { border-color: #ff6a5a; border-style: solid; }
+  .tc-hud-chip { grid-template-areas: 'ico ready'; }
+  /* the stall status: one button, the strip unfolds under it */
+  .tc-hud-status { gap: 3px; max-height: 70%; }
+  .tc-hud-status-toggle { position: relative; display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 44px; padding: 3px 8px; border: 0; border-radius: 6px; font-size: 12px; font-weight: 900; color: var(--h-char); background: var(--h-plate); box-shadow: 0 3px 0 #556168, inset 0 1px 0 rgba(255, 255, 255, 0.8); pointer-events: auto; }
+  .tc-hud-status-toggle[data-alert='2'] { box-shadow: 0 3px 0 #556168, 0 0 0 3px #f0a71a; }
+  .tc-hud-status-toggle[data-alert='1'] { box-shadow: 0 3px 0 #556168, 0 0 0 3px var(--h-chilli); animation: tc-hud-alarm 0.9s ease-in-out infinite; }
+  .tc-hud-status-toggle-n { min-width: 20px; padding: 0 5px; border-radius: 10px; font-size: 12px; line-height: 20px; text-align: center; color: #fff; background: var(--h-chilli); }
+  .tc-hud-status-toggle[data-alert='2'] .tc-hud-status-toggle-n { background: #b8770a; }
+  .tc-hud-status[data-open='0'] .tc-hud-status-body { display: none; }
+  .tc-hud-stock-li, .tc-hud-stock-li.is-gas { flex-basis: 100%; }
+  .tc-hud-gas { gap: 3px; padding: 2px 3px 2px 5px; }
+  .tc-hud-gas > svg { width: 14px; height: 14px; }
+  .tc-hud-gas-meter { min-width: 0; flex: 1 1 0; }
+  .tc-hud-gas-swap, .tc-hud-gas-ticks { min-width: 46px; padding: 2px 4px; }
+  .tc-hud-sb-n { gap: 2px; }
+  /* the bottom row: hands and quick buttons, the dock beside them, both slim */
+  .tc-hud-bottom { grid-template-columns: minmax(310px, 340px) minmax(0, 1fr); gap: 4px; }
+  .tc-hud-dock { padding: 3px 6px 5px; gap: 6px; }
+  .tc-hud-station { padding: 2px 4px 5px; gap: 3px; }
+  .tc-hud-station-name { font-size: 10px; line-height: 13px; }
+  .tc-hud-subs { margin-bottom: calc(var(--tc-coach-h, 0px) + 2px); }
+}

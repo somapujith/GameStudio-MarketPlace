@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createGame } from '@shared/tiffin-centre/index.js';
+import { applyAction, createGame } from '@shared/tiffin-centre/index.js';
 import { HEAT, MARKET_MAX, STOCK_CAP } from '@shared/tiffin-centre/catalog.js';
 import {
   BUY_SIZES, boardMap, boardView, buyBlock, buyPrice, chitBadges, eventBanner, freshBand, fmtPortions, gasView, hasOps, opsOn, prepBlock, prepView, shortName,
@@ -26,6 +26,43 @@ describe('the layer is off on level 0 and on a hand-built state', () => {
     expect(eventBanner(s)).toEqual([]);
     expect(tendHotkeyTarget(s, 0)).toBeNull();
     expect(boardMap(s).size).toBe(0);
+  });
+  it('each tutorial switch turns exactly its own layer on (P, T, B and the Swap button follow the flags, not cfg.tutorial)', () => {
+    const train = (s, f) => applyAction(s, { type: 'tutorial-flags', ...f }).state;
+    const stock = train(game(0), { stock: true });
+    expect(opsOn(stock)).toBe(true);
+    expect(hasOps(stock)).toBe(true);
+    expect(stockGroups(stock).length).toBeGreaterThan(0);
+    expect(prepView(stock)).not.toBeNull();
+    expect(boardView(stock)).not.toBeNull();
+    expect(boardMap(stock).size).toBeGreaterThan(0);
+    expect(gasView(stock)).toBeNull();
+    expect(tendView(stock, 'tawa1')).toBeNull();
+    expect(prepView(stock).market).toBe(false);
+    expect(prepView(train(stock, { market: true })).market).toBe(true);
+
+    const gas = train(game(0), { gas: true });
+    expect(opsOn(gas)).toBe(false);
+    expect(hasOps(gas)).toBe(true);
+    expect(gasView(gas)).toMatchObject({ canSwap: expect.any(Boolean), tone: 'ok' });
+    expect(prepView(gas)).toBeNull();
+
+    const heat = train(game(0), { heat: true });
+    expect(hasOps(heat)).toBe(true);
+    expect(tendView(heat, 'tawa1')).toMatchObject({ verb: 'Wipe', canTend: true });
+    expect(tendHotkeyTarget(heat, 0)).toBe('tawa1');
+    expect(opsOn(heat)).toBe(false);
+    expect(gasView(heat)).toBeNull();
+
+    const ev = train(train(game(0), { events: true }), { stage: { event: { id: 'rain', ticks: 30 } } });
+    expect(hasOps(ev)).toBe(true);
+    expect(eventBanner(ev).map((e) => e.id)).toEqual(['rain']);
+    expect(eventBanner(train(game(0), { events: true }))).toEqual([]);
+
+    const off = train(stock, { stock: false });
+    expect(opsOn(off)).toBe(false);
+    expect(prepView(off)).toBeNull();
+    expect(boardView(off)).toBeNull();
   });
   it('is defensive about missing fields', () => {
     for (const s of [null, undefined, {}, { cfg: {} }, { cfg: { stock: true } }, { cfg: { stock: true }, stock: {} }]) {

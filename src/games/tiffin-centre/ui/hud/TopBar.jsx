@@ -39,7 +39,11 @@ export function StarBar({ profit, targets }) {
   );
 }
 
-export default function TopBar({ state, reduced, pops = [], lostN = 0, lostIdx = -1, canPause, onPause, onMute, muted }) {
+/**
+ * Props: { state, reduced, pops, lostN, lostIdx, canPause, onPause, onMute, muted, onLeave }. `onLeave` (co-op tables only: a room has no pause) fills the
+ * pause button's slot with a Leave button, so the glue needs no floating Leave button over the dock.
+ */
+export default function TopBar({ state, reduced, pops = [], lostN = 0, lostIdx = -1, canPause, onPause, onMute, muted, onLeave }) {
   const level = LEVELS[state.level];
   const hour = hourFromState(state);
   const clock = formatClock(hour);
@@ -121,9 +125,15 @@ export default function TopBar({ state, reduced, pops = [], lostN = 0, lostIdx =
             <HudIcon name={muted ? 'volumeOff' : 'volume'} size={20} />
           </button>
         )}
-        {canPause && (
+        {canPause && !onLeave && (
           <button type="button" className="tc-hud-btn" onClick={onPause} aria-label="Pause (Esc)">
             <HudIcon name="pause" size={20} />
+          </button>
+        )}
+        {onLeave && (
+          <button type="button" className="tc-hud-btn tc-hud-leave" onClick={onLeave} aria-label="Leave the table" title="Leave the table">
+            <HudIcon name="exit" size={20} />
+            <span>Leave</span>
           </button>
         )}
       </div>

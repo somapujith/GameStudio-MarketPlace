@@ -4,7 +4,7 @@ import { standX, validTarget, walkSeconds, workTarget } from '@shared/tiffin-cen
 import { starTargets as engineStars } from '@shared/tiffin-centre/scoring.js';
 import { DISHES, STATION_KINDS, STATIONS, CUSTOMER_KINDS, DAYPARTS, daypartOf, PACE, LEVELS, coopScale, LIVES, HANDS_MAX, PAY_WINDOW, TICK_MS, EAT_TICKS, INGREDIENTS, LAYOUT, PREP_STATION, EVENTS } from '@shared/tiffin-centre/catalog.js';
 import { cookBlocker } from '@shared/tiffin-centre/ops.js';
-import { chitBadges, gasOnLevel, gasView, opsOn, slotFlaw, tendHint } from './opsLogic.js';
+import { chitBadges, gasOnLevel, gasView, hasOps, heatOnLevel, opsOn, slotFlaw, tendHint, tendView } from './opsLogic.js';
 
 export { LIVES, HANDS_MAX, PAY_WINDOW, TICK_MS, EAT_TICKS };
 
@@ -57,9 +57,12 @@ export function profitOf(state) {
   return Math.round(num(state?.money) - num(state?.cost));
 }
 
-/** The books line of the takings plate: { cash, cost, profit, show }. Hidden in the tutorial (no costs there). */
+/** A bare training shift: the tutorial before any of its operations switches (stock, gas, heat, events) is on. It has no costs and no books. */
+const bareTraining = (state) => !!state?.cfg?.tutorial && !hasOps(state);
+
+/** The books line of the takings plate: { cash, cost, profit, show }. Hidden in a bare training shift (no costs there); the stock lessons switch the costs on. */
 export function booksView(state) {
-  return { cash: Math.round(num(state?.money)), cost: Math.round(num(state?.cost)), profit: profitOf(state), show: !!state && !state.cfg?.tutorial };
+  return { cash: Math.round(num(state?.money)), cost: Math.round(num(state?.cost)), profit: profitOf(state), show: !!state && !bareTraining(state) };
 }
 
 /** PROFIT needed for 1/2/3 stars in this state (catalog stars * pace * co-op), or null for a level with no targets (tutorial). */
@@ -482,7 +485,7 @@ function decideSlot(state, station, slot, hands) {
 /** Why a cook would be refused right now, in the engine's own words ('Out of dosa batter', 'No gas: change the cylinder', 'Power cut: the steamer is off'), or null. */
 export function cookReason(state, stationId, dishId) {
   const st = state?.stations?.[stationId];
-  if (!st || !DISHES[dishId] || state?.cfg?.tutorial) return null;
+  if (!st || !DISHES[dishId] || bareTraining(state)) return null;
   try {
     return cookBlocker(state, st, dishId) || null;
   } catch {
@@ -523,6 +526,9 @@ export function spotKeys(spotlight, state) {
   }
   if (spotlight.kind === 'hands') keys.add('hands');
   if (spotlight.kind === 'bin') keys.add('bin');
+  if (spotlight.kind === 'gas') keys.add('gas'); // the Swap button on the stall status strip
+  if (spotlight.kind === 'board') keys.add('board'); // the Board chip that opens the menu board
+  if (spotlight.kind === 'station' && id && heatOnLevel(state) && tendView(state, id)?.canTend) keys.add(`tend:${id}`); // a pan the lesson points at that needs tending: its Tend button pulses
   return keys;
 }
 

@@ -86,3 +86,23 @@ export function layoutEdgeChips(items, bounds, size = { w: CHIP_W, h: CHIP_H }) 
 export function fallbackSideFor(spotX, cookX) {
   return spotX < cookX ? 'left' : 'right';
 }
+
+/**
+ * Keep a head bubble clear of the HUD panels: `p` is where its bottom-centre tip points ({ x, y }, CSS px), `size` its { w, h }, `bounds` the free
+ * scene rectangle between the panels ({ top, bottom, left, right }, see EdgeIndicators.freeBounds). Returns the clamped { x, y } of that tip.
+ * Bounds that are missing or not a rectangle leave the point alone; a bubble wider than the free strip is centred in it.
+ */
+export function clampBubble(p, size, bounds, pad = 4) {
+  const x0 = fin(p?.x) ? p.x : 0;
+  const y0 = fin(p?.y) ? p.y : 0;
+  if (!bounds || !(bounds.right > bounds.left) || !(bounds.bottom > bounds.top)) return { x: x0, y: y0 };
+  const hw = Math.max(0, fin(size?.w) ? size.w : 0) / 2;
+  const h = Math.max(0, fin(size?.h) ? size.h : 0);
+  const minX = bounds.left + hw + pad;
+  const maxX = bounds.right - hw - pad;
+  const x = minX > maxX ? (bounds.left + bounds.right) / 2 : clamp(x0, minX, maxX);
+  const minY = bounds.top + h + pad;
+  const maxY = bounds.bottom - pad;
+  const y = minY > maxY ? y0 : clamp(y0, minY, maxY);
+  return { x, y };
+}

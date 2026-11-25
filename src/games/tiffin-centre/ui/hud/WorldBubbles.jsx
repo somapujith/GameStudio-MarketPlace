@@ -4,6 +4,8 @@
 //   coloured by mood: angry red, happy warm, impatient amber. At most three are shown; off-screen customers get none (their arrow chip
 //   at the screen edge stands in for them).
 import { useRef } from 'react';
+import { freeBounds } from './EdgeIndicators.jsx';
+import { clampBubble } from './offscreen.js';
 import { formatINR } from '@shared/format.js';
 import DishIcon from './DishIcon.jsx';
 import HudIcon from './HudIcon.jsx';
@@ -11,8 +13,9 @@ import { subtitleLines, moodTone } from './dialogue.js';
 import { useFrame } from './hooks.js';
 import { activeCustomers, customerTarget, needsOf, tokenOf } from './hudLogic.js';
 
-export default function WorldBubbles({ scene, state, onTarget, projector, getCookX, spotXOf, speech = [], bubbleIds = null, subs = 'both' }) {
+export default function WorldBubbles({ scene, state, onTarget, projector, getCookX, spotXOf, speech = [], bubbleIds = null, subs = 'both', rootRef = null }) {
   const els = useRef(new Map());
+  const bounds = useRef({ top: 0, bottom: 0, left: 0, right: 0, at: -1e9 });
   const register = (id, el) => {
     if (el) els.current.set(id, { el, last: '' });
     else els.current.delete(id);
@@ -20,17 +23,28 @@ export default function WorldBubbles({ scene, state, onTarget, projector, getCoo
   useFrame((t, _frac, st) => {
     if (!projector || !scene?.project) return;
     const map = projector.frame(t, scene, st?.customers, { cookX: getCookX?.() ?? 0, spotXOf });
+    // bubbles never paint over a HUD panel: they are held inside the free scene rectangle (re-measured a few times a second)
+    const b = bounds.current;
+    const w = projector.size.w || (typeof window !== 'undefined' ? window.innerWidth : 0);
+    const h = projector.size.h || (typeof window !== 'undefined' ? window.innerHeight : 0);
+    const remeasure = t - b.at > 400;
+    if (remeasure) Object.assign(b, rootRef?.current ? freeBounds(rootRef.current, w, h) : { top: 0, bottom: h, left: 0, right: w }, { at: t });
     for (const [id, rec] of els.current) {
       const hit = map.get(id);
       const ok = !!hit && hit.on;
-      const key = ok ? `${Math.round(hit.p.x)},${Math.round(hit.p.y)}` : 'off';
+      if (remeasure || !rec.w) {
+        rec.w = rec.el.offsetWidth || 0;
+        rec.h = rec.el.offsetHeight || 0;
+      }
+      const at = ok ? clampBubble(hit.p, { w: rec.w, h: rec.h }, b) : null;
+      const key = at ? `${Math.round(at.x)},${Math.round(at.y)},${b.left},${b.right},${b.top},${b.bottom}` : 'off';
       if (key === rec.last) continue;
       rec.last = key;
-      if (!ok) {
+      if (!at) {
         rec.el.dataset.hidden = '1';
       } else {
         rec.el.dataset.hidden = '0';
-        rec.el.style.transform = `translate3d(${Math.round(hit.p.x)}px, ${Math.round(hit.p.y)}px, 0) translate(-50%, -100%)`;
+        rec.el.style.transform = `translate3d(${Math.round(at.x)}px, ${Math.round(at.y)}px, 0) translate(-50%, -100%)`;
       }
     }
   });

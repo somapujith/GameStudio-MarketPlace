@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { createGame } from '@shared/tiffin-centre/index.js';
+import { applyAction, createGame } from '@shared/tiffin-centre/index.js';
 import HudLayer from './HudLayer.jsx';
 import PrepSheet from './PrepSheet.jsx';
 import BoardSheet from './BoardSheet.jsx';
@@ -113,11 +113,78 @@ describe('the HUD on a shift with the operations layer', () => {
   });
 });
 
-describe('level 0 and a bare shift hide the layer', () => {
-  it('the tutorial has no stall status, no tend, no prep group, no cost or profit', () => {
-    const s = game(0);
-    s.customers = [mkCustomer({ id: 1 })];
+// the tutorial's lessons switch one mechanic on at a time (`tutorial-flags`): the HUD shows the controls of exactly the switches that are on
+const train = (s, flags) => {
+  const r = applyAction(s, { type: 'tutorial-flags', ...flags });
+  expect(r.error).toBeUndefined();
+  return r.state;
+};
+const tutorial = (flags = null) => {
+  const s = game(0);
+  s.customers = [mkCustomer({ id: 1 })];
+  return flags ? train(s, flags) : s;
+};
+const PLAIN = ['Stall status', 'tc-hud-tendbtn', 'Prep counter', 'Profit toward', 'tc-hud-books', 'tc-hud-stockbar', 'Mark sold out', 'LPG cylinder', 'Menu board'];
+
+describe('the tutorial shows the operations controls its lessons have switched on', () => {
+  it('a bare training shift (before the switches) has no stall status, no tend, no prep group, no cost or profit', () => {
+    const h = render(tutorial(), { mode: 'tutorial' });
+    for (const w of PLAIN) expect(h).not.toContain(w);
+  });
+  it('stock on: stock bars, the prep counter in the dock, the menu board button and the books', () => {
+    const h = render(tutorial({ stock: true }), { mode: 'tutorial' });
+    expect(h).toContain('aria-label="Stall status"');
+    expect(h).toContain('tc-hud-stockbar');
+    expect(h).toContain('aria-label="Prep counter"');
+    expect(h).toContain('aria-label="Open the prep counter (P)"');
+    expect(h).toContain('Menu board:');
+    expect(h).toContain('tc-hud-books');
+    expect(h).not.toContain('LPG cylinder');
+    expect(h).not.toContain('tc-hud-tendbtn is-tend');
+  });
+  it('heat on: a Tend button on each pan (and none for stock or gas)', () => {
+    const h = render(tutorial({ heat: true }), { mode: 'tutorial' });
+    expect(h).toContain('tc-hud-tendbtn is-tend');
+    expect(h).toMatch(/Dosa tawa: [^"]*\. Press to wipe \(T\)/);
+    expect(h).not.toContain('Prep counter');
+    expect(h).not.toContain('LPG cylinder');
+  });
+  it('gas on: the LPG gauge and the Swap button', () => {
+    const h = render(tutorial({ gas: true }), { mode: 'tutorial' });
+    expect(h).toContain('aria-label="Stall status"');
+    expect(h).toMatch(/LPG cylinder: \d+ percent/);
+    expect(h).toContain('aria-label="Swap the cylinder for ₹');
+    expect(h).not.toContain('Prep counter');
+  });
+  it('events on: the banner shows a staged event (and nothing until one runs)', () => {
+    const quiet = render(tutorial({ events: true }), { mode: 'tutorial' });
+    expect(quiet).not.toContain('Happening now');
+    const s = tutorial({ events: true });
+    const h = render(train(s, { stage: { event: { id: 'rain', ticks: 30 } } }), { mode: 'tutorial' });
+    expect(h).toContain('aria-label="Happening now"');
+    expect(h).toContain('వర్షం');
+  });
+  it('market on: the prep sheet offers the market runner', () => {
+    const s = tutorial({ stock: true, market: true });
+    const w = renderToStaticMarkup(createElement(PrepSheet, { state: s, onClose() {}, onPrep() {}, onCollect() {}, onBuy() {}, onNotify() {} }));
+    expect(w).toContain('Market runner (40% dearer)');
+    const off = renderToStaticMarkup(createElement(PrepSheet, { state: tutorial({ stock: true }), onClose() {}, onPrep() {}, onCollect() {}, onBuy() {}, onNotify() {} }));
+    expect(off).not.toContain('Market runner');
+  });
+  it('switching a mechanic back off takes its controls away again', () => {
+    const s = train(tutorial({ stock: true, gas: true, heat: true }), { stock: false, gas: false, heat: false });
     const h = render(s, { mode: 'tutorial' });
+    for (const w of PLAIN) expect(h).not.toContain(w);
+  });
+  it('the board sheet opens in the tutorial once the stock is on, and not before', () => {
+    expect(renderToStaticMarkup(createElement(BoardSheet, { state: tutorial({ stock: true }), onClose() {}, onToggle() {} }))).toContain('role="switch"');
+    expect(renderToStaticMarkup(createElement(BoardSheet, { state: tutorial(), onClose() {}, onToggle() {} }))).toBe('');
+  });
+});
+
+describe('level 0 and a bare shift hide the layer', () => {
+  it('the bare tutorial has no stall status, no tend, no prep group, no cost or profit', () => {
+    const h = render(tutorial(), { mode: 'tutorial' });
     for (const w of ['Stall status', 'tc-hud-tendbtn', 'Prep counter', 'Profit toward', 'tc-hud-books', 'tc-hud-stockbar', 'Mark sold out']) expect(h).not.toContain(w);
   });
   it('level 1 shows stock and the prep counter but no gas and no tend', () => {
