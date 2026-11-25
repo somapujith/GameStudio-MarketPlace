@@ -637,6 +637,205 @@ describe('reconnect and absence', () => {
   });
 });
 
+// ------------------------------------------------------------------------------------------------------------------ operations layer
+
+const OPS_TYPES = ['prep', 'collectPrep', 'tend', 'swapGas', 'board', 'buy'];
+
+describe('operations layer through the wire (prep, tend, gas, board, buy) with two cooks', () => {
+  /**
+   * One game second like playSecond, but every action is checked: the bot only issues what is legal on the state its seat saw, so
+   * neither the sanitizer ("Invalid action.") nor the engine may refuse any of it. Returns the per-type counts of applied actions.
+   */
+  async function playChecked(h, seats, tally) {
+    const base = Date.now();
+    for (let i = 0; i < seats.length; i += 1) {
+      vi.setSystemTime(base + 120 + i * 200);
+      const seen = seats[i].ws.last('state')?.state;
+      const action = seen ? engine.chooseAutoAction(seen, seats[i].id) : null;
+      if (!action) continue;
+      const errs = seats[i].ws.of('error').length;
+      const seq = h.r.seq;
+      await h.say(seats[i].ws, { t: 'action', action });
+      const after = seats[i].ws.of('error');
+      if (after.length > errs) tally.rejected.push({ tick: seen.tick, action, message: after.at(-1).message });
+      else {
+        expect(h.r.seq, `${action.type} applied`).toBe(seq + 1);
+        tally.applied[action.type] = (tally.applied[action.type] || 0) + 1;
+      }
+    }
+    const before = h.seats.map((s) => s.ws.bytes.state);
+    await h.tick();
+    // what one tick costs on the wire: the state message each socket gets
+    const per = h.seats.map((s, i) => s.ws.bytes.state - before[i]);
+    tally.tickBytes.push(per[0]);
+  }
+
+  it.each([3, 5, 12])('level %i: bot actions of every kind pass the allow-list and the engine; both sockets hold the same state at every seq; the result has profit', async (level) => {
+    const h = await table({ level, pace: 'normal', n: 2 });
+    const tally = { applied: {}, rejected: [], tickBytes: [] };
+    let seconds = 0;
+    while (h.r.status === 'playing' && seconds < 900) {
+      await playChecked(h, h.seats, tally);
+      seconds += 1;
+      expectInSync(h);
+    }
+    expect(h.r.status).toBe('finished');
+    expect(tally.rejected, JSON.stringify(tally.rejected.slice(0, 3))).toEqual([]);
+    for (const s of h.seats) {
+      expectNoGaps(s.ws);
+      expect(s.ws.of('error').filter((m) => m.message === 'Invalid action.')).toEqual([]);
+    }
+    // every seq both seats saw carries the very same state and events
+    const [a, b] = h.seats.map((s) => new Map(s.ws.of('state').map((m) => [m.seq, json(m.state) + json(m.events)])));
+    expect(a.size).toBe(b.size);
+    for (const [seq, v] of a) expect(b.get(seq), `seq ${seq}`).toBe(v);
+    // the operations really happened: they show in the events both seats saw, and in the per-player counters
+    const evTypes = new Set(h.seats[0].ws.of('state').flatMap((m) => m.events.map((e) => e.type)));
+    const opsDone = OPS_TYPES.filter((t) => tally.applied[t]);
+    const s = h.r.state;
+    const counters = s.order.reduce((n, id) => n + (s.players[id].ops ? s.players[id].ops.reduce((x, y) => x + y, 0) : 0), 0);
+    expect(counters).toBe((tally.applied.prep || 0) + (tally.applied.tend || 0) + (tally.applied.swapGas || 0) + (tally.applied.buy || 0));
+    expect(opsDone.length, JSON.stringify(tally.applied)).toBeGreaterThanOrEqual(level === 3 ? 1 : 2);
+    if (tally.applied.prep) expect(evTypes.has('prep-start')).toBe(true);
+    if (tally.applied.collectPrep) expect(evTypes.has('prep-collect')).toBe(true);
+    if (tally.applied.tend) expect(evTypes.has('tend')).toBe(true);
+    if (tally.applied.swapGas) expect(evTypes.has('gas-swap')).toBe(true);
+    if (tally.applied.board) expect(evTypes.has('board')).toBe(true);
+    if (tally.applied.buy) expect(evTypes.has('buy')).toBe(true);
+    // the persisted match carries the result built from this very state: profit included, ranks follow the profit-based stars
+    for (let i = 0; i < 6 && !h.r.persisted; i += 1) await h.tick();
+    expect(persistMatch).toHaveBeenCalledTimes(1);
+    const { default: adapter } = await import('./games/tiffin-centre.js');
+    const res = adapter.result(h.r.state);
+    expect(Number.isInteger(res.profit)).toBe(true);
+    expect(res.profit).toBe(s.money - res.cost);
+    expect(res.standings.every((r) => r.stats.profit === res.profit && Number.isInteger(r.stats.cost))).toBe(true);
+    const rec = persisted[0];
+    const want = res.stars >= 1 ? 1 : 2;
+    expect(rec.players.map((p) => p.rank)).toEqual([want, want]);
+    expect(rec.winnerId).toBe(res.winnerId);
+    // a player's score = the money THEY collected; the inspector's reward is cash in hand that belongs to nobody in particular
+    expect(rec.players.reduce((n, p) => n + p.final_worth, 0)).toBeLessThanOrEqual(s.money);
+    expect(rec.players.reduce((n, p) => n + p.final_worth, 0)).toBe(s.order.reduce((n, id) => n + s.players[id].earned, 0));
+    expect(rec.winReason).toBe(res.reason);
+    const sizes = tally.tickBytes;
+    stats[`ops${level}`] = {
+      applied: tally.applied, ticks: s.tick, stars: res.stars, money: s.money, profit: res.profit, cost: res.cost, waste: res.waste, status: s.status,
+      tickMsgBytesAvg: Math.round(sizes.reduce((n, x) => n + x, 0) / sizes.length), tickMsgBytesMax: Math.max(...sizes), resultBytes: json(res).length,
+    };
+  }, 90_000);
+
+  it('a directed round at level 5: both seats prep, collect, tend, board, buy and swap the cylinder through the wire; refusals reach only the sender', async () => {
+    const h = await table({ level: 5, pace: 'relaxed', n: 2 });
+    const [a, b] = h.seats;
+    const act = async (seat, action) => {
+      const errs = seat.ws.of('error').length;
+      const seq = h.r.seq;
+      await h.say(seat.ws, { t: 'action', action });
+      const e = seat.ws.of('error');
+      return { ok: h.r.seq === seq + 1 && e.length === errs, error: e.length > errs ? e.at(-1).message : null };
+    };
+    const stock = h.r.state.stock;
+    const [item1, item2] = Object.keys(stock);
+    // A preps into slot 0, B into slot 1 (spoofed playerId is ignored), a third job has no slot
+    expect(await act(a, { type: 'prep', station: 'prep1', slot: 0, item: item1 })).toMatchObject({ ok: true });
+    expect(await act(b, { type: 'prep', station: 'prep1', slot: 1, item: item2, playerId: a.id })).toMatchObject({ ok: true });
+    const slots = h.r.state.stations.prep1.slots;
+    expect(slots.map((s) => [s.st, s.item, s.by])).toEqual([['cooking', item1, a.id], ['cooking', item2, b.id]]);
+    expect(h.r.state.players[b.id].ops[0]).toBe(1);
+    expect(h.r.state.players[a.id].ops[0]).toBe(1);
+    expect((await act(a, { type: 'prep', station: 'prep1', slot: 0, item: item1 })).error).toBe('That job is busy');
+    expect((await act(a, { type: 'prep', station: 'prep1', slot: 2, item: item1 })).error).toBe('Invalid action.'); // the allow-list: slot is 0 or 1
+    expect((await act(a, { type: 'collectPrep', station: 'prep1', slot: 0 })).error).toBe('Not ready yet');
+    expect(b.ws.of('error').length).toBe(0); // only the sender hears a refusal
+    // board: A takes a dish off, B (same wire, other seat) puts it back; a repeat is the quiet no-op refusal
+    const dish = h.r.state.cfg.menu[0];
+    expect(await act(a, { type: 'board', dish, on: false })).toMatchObject({ ok: true });
+    expect(h.r.state.off).toContain(dish);
+    expect((await act(a, { type: 'board', dish, on: false })).ok).toBe(false);
+    expect(await act(b, { type: 'board', dish, on: true })).toMatchObject({ ok: true });
+    expect(h.r.state.off).not.toContain(dish);
+    // buy: instant, dearer than making it, counts in cost and in the buyer's counter
+    const cost0 = h.r.state.cost;
+    expect(await act(b, { type: 'buy', item: item1, n: 2 })).toMatchObject({ ok: true });
+    expect(h.r.state.cost).toBeGreaterThan(cost0);
+    expect(h.r.state.players[b.id].ops[3]).toBe(1);
+    expect((await act(b, { type: 'buy', item: item1, n: 11 })).error).toBe('Invalid action.');
+    expect((await act(b, { type: 'buy', item: '__proto__', n: 1 })).error).toBe('Invalid action.');
+    // the cylinder is full: the engine says so (a legal-looking action, a refusal)
+    h.r.state = { ...h.r.state, gas: { ...h.r.state.gas, u: 1000 } };
+    expect((await act(a, { type: 'swapGas' })).error).toBe('The cylinder is still heavy');
+    // walk to the new places
+    expect(await act(a, { type: 'move', to: 'prep1' })).toMatchObject({ ok: true });
+    expect(await act(b, { type: 'move', to: 'gas' })).toMatchObject({ ok: true });
+    expect(h.r.state.players[a.id].at).toBe('prep1');
+    expect(h.r.state.players[b.id].at).toBe('gas');
+    // jobs finish on the server clock; A collects what B started and vice versa (co-op)
+    const longest = Math.max(...slots.map((s) => s.readyAt - s.t0));
+    for (let i = 0; i < longest + 1; i += 1) await h.tick();
+    expect(h.r.state.stations.prep1.slots.map((s) => s.st)).toEqual(['ready', 'ready']);
+    const have0 = { ...h.r.state.stock };
+    expect(await act(a, { type: 'collectPrep', station: 'prep1', slot: 1 })).toMatchObject({ ok: true });
+    expect(await act(b, { type: 'collectPrep', station: 'prep1', slot: 0 })).toMatchObject({ ok: true });
+    expect(h.r.state.stock[item1]).toBeGreaterThan(have0[item1]);
+    expect(h.r.state.stock[item2]).toBeGreaterThan(have0[item2]);
+    expect(h.r.state.stations.prep1.slots.map((s) => s.st)).toEqual(['empty', 'empty']);
+    // run the gas down by playing, then change the cylinder; both seats stay in sync throughout
+    let guard = 0;
+    while (h.r.status === 'playing' && guard++ < 25) await playSecond(h, h.seats);
+    expectInSync(h);
+    const events = new Set(a.ws.of('state').flatMap((m) => m.events.map((e) => e.type)));
+    for (const t of ['prep-start', 'prep-collect', 'board', 'buy']) expect(events.has(t), t).toBe(true);
+    expect(events.has('gas-swap')).toBe(false); // the cylinder was refused as too heavy and never low enough to change in this short run
+  });
+
+  it('swapGas goes through the wire once the cylinder is low, and the burners are off while it is changed', async () => {
+    const h = await table({ level: 3, pace: 'normal', n: 2 });
+    const [a, b] = h.seats;
+    // low the cylinder directly in the server record (no public way to do it): the room state is the engine state
+    h.r.state = { ...h.r.state, gas: { ...h.r.state.gas, u: 100 } };
+    const seq = h.r.seq;
+    await h.say(a.ws, { t: 'action', action: { type: 'swapGas', station: 'tawa1', n: 5 } });
+    expect(a.ws.of('error')).toHaveLength(0);
+    expect(h.r.seq).toBe(seq + 1);
+    expect(h.r.state.gas.sw).toBeGreaterThan(0);
+    expect(h.r.state.players[a.id].ops[2]).toBe(1);
+    // cooking is refused for the other seat while the cylinder is being changed
+    await h.say(b.ws, { t: 'action', action: { type: 'cook', station: 'tawa1', slot: 0, dish: 'dosa' } });
+    expect(b.ws.last('error').message).toBe('The cylinder is being changed');
+    // a second swap is refused for either seat
+    await h.say(b.ws, { t: 'action', action: { type: 'swapGas' } });
+    expect(b.ws.last('error').message).toBe('Already changing the cylinder');
+    const swapTicks = h.r.state.gas.sw;
+    for (let i = 0; i < swapTicks; i += 1) await h.tick();
+    expect(h.r.state.gas.sw).toBe(0);
+    expect(h.r.state.gas.u).toBeGreaterThan(900);
+    expectInSync(h);
+    const ev = a.ws.of('state').flatMap((m) => m.events).filter((e) => e.type === 'gas-swap');
+    expect(ev.map((e) => e.phase)).toEqual(['start', 'done']);
+  });
+
+  it('tend resets a dirty pan through the wire and is refused (Already clean) when there is nothing to do', async () => {
+    const h = await table({ level: 3, pace: 'normal', n: 2 });
+    const [a, b] = h.seats;
+    await h.say(a.ws, { t: 'action', action: { type: 'tend', station: 'tawa1' } });
+    expect(a.ws.last('error').message).toBe('Already clean');
+    // pour and let it cook: the pan chills and gets gunk; keep pouring until it needs a wipe
+    for (let slot = 0; slot < 3; slot += 1) await h.say(b.ws, { t: 'action', action: { type: 'cook', station: 'tawa1', slot, dish: 'dosa' } });
+    const need = engine.tendInfo(h.r.state, 'tawa1');
+    expect(need.need).toBeGreaterThan(0);
+    if (need.canTend) {
+      const seq = h.r.seq;
+      await h.say(a.ws, { t: 'action', action: { type: 'tend', station: 'tawa1' } });
+      expect(h.r.seq).toBe(seq + 1);
+      expect(h.r.state.stations.tawa1.gunk).toBe(0);
+      expect(h.r.state.players[a.id].ops[1]).toBe(1);
+      expect(engine.tendInfo(h.r.state, 'tawa1').need).toBe(0);
+    }
+    expectInSync(h);
+  });
+});
+
 // ------------------------------------------------------------------------------------------------------------------ cost
 
 describe('payload sizes and storage traffic (logged)', () => {

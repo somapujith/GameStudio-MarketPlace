@@ -2,7 +2,7 @@
 // The rules live in shared/tiffin-centre (pure engine); this file is the only place the Worker learns them. The game has no turns:
 // the room server ticks the stall once per TICK_MS through `deadlines`, and every player acts at any time.
 import * as engine from '../../shared/tiffin-centre/index.js';
-import { GAME_ID, TICK_MS, SETTINGS_SPEC, DEFAULT_SETTINGS, PACE, STATIONS, DISHES, levelDef } from '../../shared/tiffin-centre/catalog.js';
+import { GAME_ID, TICK_MS, SETTINGS_SPEC, DEFAULT_SETTINGS, PACE, STATIONS, DISHES, INGREDIENTS, levelDef } from '../../shared/tiffin-centre/catalog.js';
 import { validTarget } from '../../shared/tiffin-centre/movement.js';
 import { query } from '../db.js';
 
@@ -54,11 +54,19 @@ const CUSTOMER_MAX = 1_000_000;
 const isSmallInt = (v, max) => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= max;
 const isStation = (v) => typeof v === 'string' && hasOwn(STATIONS, v);
 const isDish = (v) => typeof v === 'string' && hasOwn(DISHES, v);
+const isIngredient = (v) => typeof v === 'string' && hasOwn(INGREDIENTS, v);
+/** The back counter (operations layer): the only station `prep` / `collectPrep` take, with its two job slots. */
+const PREP_ID = 'prep1';
+const PREP_SLOTS = 2;
+const BUY_MAX = 10;
+const isPrepSlot = (v) => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < PREP_SLOTS;
+const isPrepStation = (v) => v === PREP_ID;
 
 /**
- * Clean an action received from a client: only `cook take serve collect discard move emote` pass, every field is strictly
- * typed and everything else is dropped. `tick`, `spawn`, `tutorial-flags` and unknown types are refused (null); the
- * `playerId` is forced to the sender. Whether the action is legal right now is the engine's job.
+ * Clean an action received from a client: only `cook take serve collect discard move emote` and the operations actions
+ * `prep collectPrep tend swapGas board buy` pass, every field is strictly typed and everything else is dropped. `tick`, `spawn`,
+ * `tutorial-flags` and unknown types are refused (null); the `playerId` is forced to the sender. Whether the action is legal right
+ * now (level, stock, gas, heat, tutorial) is the engine's job.
  */
 export function sanitizeAction(input, playerId) {
   if (!isPlain(input) || typeof playerId !== 'string' || !playerId) return null;
@@ -84,6 +92,24 @@ export function sanitizeAction(input, playerId) {
       const to = f('to');
       if (to === undefined || to === null) return { type, to: null, playerId };
       return validTarget(to) ? { type, to, playerId } : null; // a station id, `spot:N` (N < 6) or 'bin'; the engine checks the level
+    }
+    case 'prep':
+      return isPrepStation(f('station')) && isPrepSlot(f('slot')) && isIngredient(f('item'))
+        ? { type, station: PREP_ID, slot: f('slot'), item: f('item'), playerId }
+        : null;
+    case 'collectPrep':
+      return isPrepStation(f('station')) && isPrepSlot(f('slot')) ? { type, station: PREP_ID, slot: f('slot'), playerId } : null;
+    case 'tend':
+      return isStation(f('station')) ? { type, station: f('station'), playerId } : null; // the engine says whether it is a pan / steamer
+    case 'swapGas':
+      return { type, playerId };
+    case 'board':
+      return isDish(f('dish')) && typeof f('on') === 'boolean' ? { type, dish: f('dish'), on: f('on'), playerId } : null;
+    case 'buy': {
+      const n = f('n');
+      return isIngredient(f('item')) && typeof n === 'number' && Number.isInteger(n) && n >= 1 && n <= BUY_MAX
+        ? { type, item: f('item'), n, playerId }
+        : null;
     }
     case 'emote':
       return typeof f('e') === 'string' && engine.EMOTES.includes(f('e')) ? { type, e: f('e'), playerId } : null;
@@ -168,11 +194,29 @@ const adapter = {
 
   /**
    * Co-op result: the whole team shares rank 1 when the shift earned at least a star (rank = team size otherwise); `winnerId` is the
-   * top earner on success, null on failure; `score` = the money that player collected, `stats` = served / collected / earned / tips.
-   * `rounds` = ticks played.
+   * top earner on success, null on failure; `score` = the money that player collected. Stars and rank come from the team's PROFIT
+   * (the engine decides). `stats` per player = served / collected / earned / tips / prepped / tended / gasSwaps / bought (their own
+   * work) plus the team's books (revenue cost waste fines profit lost unpaid bestCombo, the same on every row). The books also sit
+   * once at the top level, with `team` (small flat integers only). `rounds` = ticks played.
    */
   result(state) {
     const res = engine.result(state);
+    const num = (v) => (Number.isFinite(v) ? Math.round(v) : 0);
+    const books = {
+      revenue: num(res.revenue),
+      tips: num(res.tips),
+      cost: num(res.cost),
+      waste: num(res.waste),
+      fines: num(res.fines),
+      profit: num(res.profit),
+      served: num(res.served),
+      lost: num(res.lost),
+      unpaid: num(res.unpaid),
+      bestCombo: num(res.bestCombo),
+    };
+    const t = res.team && typeof res.team === 'object' ? res.team : {};
+    const team = { ...books, prepped: num(t.prepped), tended: num(t.tended), gasSwaps: num(t.gasSwaps), bought: num(t.bought) };
+    const teamBooks = { revenue: books.revenue, cost: books.cost, waste: books.waste, fines: books.fines, profit: books.profit, lost: books.lost, unpaid: books.unpaid, bestCombo: books.bestCombo };
     return {
       winnerId: res.winnerId ?? null,
       reason: res.reason,
@@ -180,11 +224,13 @@ const adapter = {
       stars: res.stars,
       money: res.money,
       level: res.level,
+      ...books,
+      team,
       standings: res.standings.map((row) => ({
         id: row.id,
         rank: row.rank,
         score: Math.max(0, Math.round(row.score) || 0),
-        stats: { ...row.stats, finished: true },
+        stats: { ...teamBooks, ...row.stats, finished: true }, // a player's own served / tips / prepped ... win over the team's
       })),
     };
   },

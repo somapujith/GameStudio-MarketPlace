@@ -271,7 +271,195 @@ describe('sanitizeAction (the client allow-list)', () => {
   });
 });
 
+// ------------------------------------------------------------------------------------------------------------------ operations actions
+
+describe('sanitizeAction: the operations-layer actions (prep collectPrep tend swapGas board buy, move to prep1 / gas)', () => {
+  const ME = 'player-1';
+  const INGREDIENT_IDS = Object.keys(engine.INGREDIENTS);
+  const FOLLOW = { playerId: 'victim', money: 9e9, extra: {}, __proto__x: 1 };
+
+  it('passes every well-formed one, forces playerId and drops extra fields', () => {
+    for (const item of INGREDIENT_IDS) {
+      for (const slot of [0, 1]) {
+        expect(sanitizeAction({ type: 'prep', station: 'prep1', slot, item, ...FOLLOW }, ME)).toEqual({ type: 'prep', station: 'prep1', slot, item, playerId: ME });
+      }
+      for (const n of [1, 2, 5, 10]) expect(sanitizeAction({ type: 'buy', item, n, ...FOLLOW }, ME)).toEqual({ type: 'buy', item, n, playerId: ME });
+    }
+    for (const slot of [0, 1]) expect(sanitizeAction({ type: 'collectPrep', station: 'prep1', slot, ...FOLLOW }, ME)).toEqual({ type: 'collectPrep', station: 'prep1', slot, playerId: ME });
+    for (const station of Object.keys(engine.STATIONS)) expect(sanitizeAction({ type: 'tend', station, ...FOLLOW }, ME)).toEqual({ type: 'tend', station, playerId: ME });
+    expect(sanitizeAction({ type: 'swapGas' }, ME)).toEqual({ type: 'swapGas', playerId: ME });
+    expect(sanitizeAction({ type: 'swapGas', station: 'tawa1', n: 4, playerId: 'victim' }, ME)).toEqual({ type: 'swapGas', playerId: ME }); // no fields at all
+    for (const dish of DISH_IDS) {
+      for (const on of [true, false]) expect(sanitizeAction({ type: 'board', dish, on, ...FOLLOW }, ME)).toEqual({ type: 'board', dish, on, playerId: ME });
+    }
+    for (const to of ['prep1', 'gas']) expect(sanitizeAction({ type: 'move', to }, ME)).toEqual({ type: 'move', to, playerId: ME });
+  });
+
+  it('refuses malformed prep / collectPrep (wrong station, slot out of 0|1, unknown or prototype item, floats, NaN, huge)', () => {
+    const slots = [-1, 2, 3, 9, 1e9, 0.5, 1.0000001, NaN, Infinity, -Infinity, '0', '1', null, undefined, true, [], [0], {}];
+    for (const slot of slots) {
+      expect(sanitizeAction({ type: 'prep', station: 'prep1', slot, item: 'oil' }, ME), `prep slot ${String(slot)}`).toBeNull();
+      expect(sanitizeAction({ type: 'collectPrep', station: 'prep1', slot }, ME), `collectPrep slot ${String(slot)}`).toBeNull();
+    }
+    const stations = ['tawa1', 'steamer1', 'kadai1', 'tawa2', 'chai1', 'PREP1', 'prep2', 'prep1 ', ' prep1', '', '__proto__', 'constructor', 'toString', null, undefined, 7, ['prep1'], { toString: () => 'prep1' }];
+    for (const station of stations) {
+      expect(sanitizeAction({ type: 'prep', station, slot: 0, item: 'oil' }, ME), `prep station ${String(station)}`).toBeNull();
+      expect(sanitizeAction({ type: 'collectPrep', station, slot: 0 }, ME), `collectPrep station ${String(station)}`).toBeNull();
+    }
+    const items = ['pizza', '', 'OIL', ' oil', 'oil ', '__proto__', 'constructor', 'hasOwnProperty', 'toString', 'valueOf', 'x'.repeat(100000), 'dosa', 'tawa1', null, undefined, 3, ['oil'], { id: 'oil' }];
+    for (const item of items) {
+      expect(sanitizeAction({ type: 'prep', station: 'prep1', slot: 0, item }, ME), `prep item ${String(item).slice(0, 12)}`).toBeNull();
+      expect(sanitizeAction({ type: 'buy', item, n: 1 }, ME), `buy item ${String(item).slice(0, 12)}`).toBeNull();
+    }
+    for (const raw of [{ type: 'prep', station: 'prep1', slot: 0 }, { type: 'prep', station: 'prep1', item: 'oil' }, { type: 'prep', slot: 0, item: 'oil' }, { type: 'collectPrep', station: 'prep1' }, { type: 'collectPrep', slot: 0 }]) {
+      expect(sanitizeAction(raw, ME), JSON.stringify(raw)).toBeNull();
+    }
+  });
+
+  it('refuses malformed tend (unknown / prototype / non-string station)', () => {
+    for (const station of ['nope', '__proto__', 'constructor', 'toString', 'hasOwnProperty', 'TAWA1', 'tawa1 ', '', null, undefined, 4, ['tawa1'], { toString: () => 'tawa1' }, 'spot:1', 'bin', 'gas']) {
+      expect(sanitizeAction({ type: 'tend', station }, ME), String(station)).toBeNull();
+    }
+    expect(sanitizeAction({ type: 'tend' }, ME)).toBeNull();
+  });
+
+  it('refuses malformed board (unknown / prototype dish, on that is not a real boolean)', () => {
+    for (const dish of ['pizza', '', 'DOSA', '__proto__', 'constructor', 'toString', 'hasOwnProperty', 'x'.repeat(100000), 'oil', null, undefined, 5, ['dosa'], { id: 'dosa' }]) {
+      expect(sanitizeAction({ type: 'board', dish, on: true }, ME), String(dish).slice(0, 12)).toBeNull();
+    }
+    for (const on of [0, 1, 'true', 'false', 'on', null, undefined, NaN, [], {}, [true], new Boolean(true)]) {
+      expect(sanitizeAction({ type: 'board', dish: 'dosa', on }, ME), String(on)).toBeNull();
+    }
+    expect(sanitizeAction({ type: 'board', dish: 'dosa' }, ME)).toBeNull();
+    expect(sanitizeAction({ type: 'board', on: true }, ME)).toBeNull();
+  });
+
+  it('refuses malformed buy (n must be a whole number 1..10; no strings, floats, NaN, Infinity, huge, missing)', () => {
+    for (const n of [0, -1, 11, 99, 1e9, Number.MAX_SAFE_INTEGER, 1.5, 0.1, 9.999999, NaN, Infinity, -Infinity, '1', '5', '', null, undefined, true, [], [3], {}, new Number(3)]) {
+      expect(sanitizeAction({ type: 'buy', item: 'oil', n }, ME), `n=${String(n)}`).toBeNull();
+    }
+    expect(sanitizeAction({ type: 'buy', item: 'oil' }, ME)).toBeNull();
+    expect(sanitizeAction({ type: 'buy', n: 2 }, ME)).toBeNull();
+    expect(sanitizeAction({ type: 'buy' }, ME)).toBeNull();
+  });
+
+  it('move to prep1 / gas passes, near misses do not (the engine decides whether the level has them)', () => {
+    for (const to of ['PREP1', 'Gas', 'GAS', 'gas ', 'prep2', 'prep', 'gas1', 'spot:6', 'constructor', '__proto__', 5, false, ['gas'], {}]) {
+      expect(sanitizeAction({ type: 'move', to }, ME), String(to)).toBeNull();
+    }
+    const s = fresh({ level: 1 }, 2);
+    expect(tiffin.applyAction(s, { type: 'move', to: 'gas', playerId: 'p1' }).error).toBeTruthy(); // level 1 has no cylinder
+    const s3 = fresh({ level: 3 }, 2);
+    expect(tiffin.applyAction(s3, { type: 'move', to: 'gas', playerId: 'p1' }).error).toBeUndefined();
+    expect(tiffin.applyAction(s3, { type: 'move', to: 'prep1', playerId: 'p2' }).state.players.p2.at).toBe('prep1');
+  });
+
+  it('still refuses tick / spawn / tutorial flags and prototype tricks next to the new types', () => {
+    const body = { station: 'prep1', slot: 0, item: 'oil', dish: 'dosa', on: true, n: 2 };
+    for (const type of ['tick', 'spawn', 'tutorial-flags', 'Prep', 'PREP', 'collectprep', 'collect_prep', 'swapgas', 'SwapGas', 'swap-gas', 'Buy', 'Board', 'Tend', 'prep ', '__proto__', 'constructor']) {
+      expect(sanitizeAction({ type, ...body }, ME), type).toBeNull();
+    }
+    // fields read through a JSON `__proto__` key or an inherited property do not count
+    expect(sanitizeAction(JSON.parse('{"type":"buy","__proto__":{"item":"oil","n":2}}'), ME)).toBeNull();
+    expect(sanitizeAction(JSON.parse('{"type":"board","dish":"dosa","__proto__":{"on":true}}'), ME)).toBeNull();
+    expect(sanitizeAction(Object.assign(Object.create({ slot: 0 }), { type: 'prep', station: 'prep1', item: 'oil' }), ME)).toBeNull();
+    expect(sanitizeAction(Object.assign(Object.create({ n: 2 }), { type: 'buy', item: 'oil' }), ME)).toBeNull();
+    expect(sanitizeAction(Object.create({ type: 'swapGas' }), ME)).toBeNull();
+    expect(Object.prototype.polluted).toBeUndefined();
+  });
+
+  it('the engine, not the sanitizer, says when a clean action is not allowed now: the training shift, the level, the stock', () => {
+    // level 1: stock and prep exist, no cylinder, no heat, no market
+    const s1 = fresh({ level: 1 }, 2);
+    const ok = (s, raw, who = 'p1') => tiffin.applyAction(s, sanitizeAction(raw, who));
+    const stockItem = Object.keys(s1.stock)[0];
+    const prepped = ok(s1, { type: 'prep', station: 'prep1', slot: 0, item: stockItem });
+    expect(prepped.error).toBeUndefined();
+    expect(prepped.events.map((e) => e.type)).toEqual(['prep-start']);
+    expect(ok(s1, { type: 'swapGas' }).error).toBeTruthy();
+    expect(ok(s1, { type: 'tend', station: 'tawa1' }).error).toBeTruthy();
+    expect(ok(s1, { type: 'buy', item: stockItem, n: 2 }).error).toBeTruthy();
+    // the engine refuses an item the level does not use, with the sanitizer happy about it
+    const unused = INGREDIENT_IDS.find((id) => !(id in s1.stock));
+    expect(unused).toBeDefined();
+    expect(sanitizeAction({ type: 'prep', station: 'prep1', slot: 0, item: unused }, ME)).not.toBeNull();
+    expect(ok(s1, { type: 'prep', station: 'prep1', slot: 0, item: unused }).error).toBeTruthy();
+    // the training shift (level 0) has none of it
+    const tut = engine.createGame({ players: players(2), settings: { level: 0, pace: 'normal' }, seed: 1 });
+    for (const raw of [
+      { type: 'prep', station: 'prep1', slot: 0, item: 'oil' }, { type: 'collectPrep', station: 'prep1', slot: 0 }, { type: 'tend', station: 'tawa1' },
+      { type: 'swapGas' }, { type: 'board', dish: 'dosa', on: false }, { type: 'buy', item: 'oil', n: 1 },
+    ]) {
+      const r = ok(tut, raw);
+      expect(r.error, JSON.stringify(raw)).toBeTruthy();
+      expect(r.state).toBe(tut);
+    }
+  });
+});
+
 // ------------------------------------------------------------------------------------------------------------------ fuzz
+
+describe('fuzz of the operations actions through the adapter (real engine)', () => {
+  function rawOps(rnd, s) {
+    const pick = (list) => list[Math.floor(rnd() * list.length)];
+    const items = Object.keys(s.stock || {});
+    const junk = [undefined, null, -1, 2, 11, 1.5, 'x', '__proto__', NaN, {}, [], 'prep2'];
+    const f = (good, p = 0.15) => (rnd() < p ? pick(junk) : good);
+    const item = () => f(items.length ? pick(items) : 'oil');
+    switch (Math.floor(rnd() * 10)) {
+      case 0:
+      case 1:
+        return { type: 'prep', station: f('prep1'), slot: f(Math.floor(rnd() * 2)), item: item() };
+      case 2:
+      case 3:
+        return { type: 'collectPrep', station: f('prep1'), slot: f(Math.floor(rnd() * 2)) };
+      case 4:
+        return { type: 'tend', station: f(pick(Object.keys(s.stations))) };
+      case 5:
+        return { type: 'swapGas', extra: f(1) };
+      case 6:
+        return { type: 'board', dish: f(pick(s.cfg.menu)), on: f(rnd() < 0.5) };
+      case 7:
+        return { type: 'buy', item: item(), n: f(1 + Math.floor(rnd() * 10)) };
+      case 8:
+        return { type: 'move', to: f(pick(['prep1', 'gas', 'tawa1', null])) };
+      default:
+        return { type: 'cook', station: pick(Object.keys(s.stations)), slot: Math.floor(rnd() * 3), dish: pick(s.cfg.menu) };
+    }
+  }
+
+  it('random clean ops actions plus bot play and ticks never throw, never mutate on a refusal and keep the books sane', () => {
+    let opsApplied = 0;
+    for (const [level, n, seed] of [[3, 2, 21], [5, 3, 22], [8, 4, 23], [12, 2, 24], [12, 4, 25]]) {
+      const rnd = mulberry32(seed * 104729 + 7);
+      let s = tiffin.createGame({ players: players(n), settings: { level, pace: 'normal' }, seed });
+      let guard = 0;
+      while (!tiffin.isOver(s) && guard++ < 3000) {
+        for (let i = 0; i < Math.floor(rnd() * 5); i++) {
+          const who = `p${1 + Math.floor(rnd() * n)}`;
+          const raw = rnd() < 0.7 ? rawOps(rnd, s) : engine.chooseAutoAction(s, who);
+          const clean = raw && sanitizeAction(raw, who);
+          if (!clean) continue;
+          const before = JSON.stringify(s);
+          const res = tiffin.applyAction(s, clean);
+          if (res.error) {
+            expect(res.state).toBe(s);
+            expect(JSON.stringify(s)).toBe(before);
+          } else if (['prep', 'collectPrep', 'tend', 'swapGas', 'board', 'buy'].includes(clean.type)) opsApplied += 1;
+          s = res.state;
+        }
+        s = tiffin.applyAction(s, tiffin.deadlines(s)[0].action).state;
+        expect(() => JSON.stringify(s)).not.toThrow();
+        for (const v of Object.values(s.stock || {})) expect(v).toBeGreaterThanOrEqual(0);
+      }
+      expect(tiffin.isOver(s), `level ${level}`).toBe(true);
+      const r = tiffin.result(s);
+      expect(Number.isInteger(r.profit)).toBe(true);
+      expect(r.profit).toBe(r.money - r.cost);
+    }
+    expect(opsApplied).toBeGreaterThan(40);
+  });
+});
 
 describe('fuzz through the adapter (real engine)', () => {
   /** A raw client message: mostly nearly-valid, sometimes hostile junk. Everything goes through sanitizeAction like a room does. */
@@ -721,6 +909,51 @@ describe('result()', () => {
     expect(res.level).toBe(1);
     expect(res.rounds).toBe(s.tick);
     expect(JSON.parse(JSON.stringify(res))).toEqual(res);
+  });
+
+  it('carries the books (profit, cost, waste, revenue, tips, fines) and the operations counters; rank and stars follow PROFIT', () => {
+    for (const [level, n, seed] of [[1, 2, 3], [5, 3, 4], [12, 4, 5]]) {
+      const s = playWithBots({ level, pace: 'normal' }, n, seed);
+      const res = tiffin.result(s);
+      const eng = engine.result(s);
+      expect(res).toMatchObject({ level, stars: eng.stars, money: s.money, reason: eng.reason, winnerId: eng.winnerId ?? null });
+      for (const k of ['revenue', 'tips', 'cost', 'waste', 'fines', 'profit', 'served', 'lost', 'unpaid', 'bestCombo']) {
+        expect(Number.isInteger(res[k]), `${k} at level ${level}`).toBe(true);
+        expect(res[k]).toBe(Math.round(eng[k]));
+      }
+      expect(res.profit).toBe(s.money - res.cost);
+      expect(res.waste).toBeLessThanOrEqual(res.cost);
+      expect(res.revenue + res.tips).toBe(s.money);
+      expect(res.team).toEqual({ ...Object.fromEntries(['revenue', 'tips', 'cost', 'waste', 'fines', 'profit', 'served', 'lost', 'unpaid', 'bestCombo'].map((k) => [k, res[k]])), prepped: eng.team.prepped, tended: eng.team.tended, gasSwaps: eng.team.gasSwaps, bought: eng.team.bought });
+      expect(res.standings).toHaveLength(n);
+      let prepped = 0;
+      for (const row of res.standings) {
+        const p = s.players[row.id];
+        expect(row.rank).toBe(res.stars >= 1 ? 1 : n); // stars are decided by profit, not by money
+        expect(row.score).toBe(p.earned);
+        expect(row.stats).toMatchObject({
+          served: p.served, collected: p.collected, earned: p.earned, tips: p.tips, finished: true,
+          prepped: p.ops ? p.ops[0] : 0, tended: p.ops ? p.ops[1] : 0, gasSwaps: p.ops ? p.ops[2] : 0, bought: p.ops ? p.ops[3] : 0,
+          revenue: res.revenue, cost: res.cost, waste: res.waste, fines: res.fines, profit: res.profit, lost: res.lost, unpaid: res.unpaid, bestCombo: res.bestCombo,
+        });
+        for (const v of Object.values(row.stats)) expect(typeof v === 'number' || v === true).toBe(true); // flat and small
+        prepped += row.stats.prepped;
+      }
+      expect(prepped).toBe(res.team.prepped);
+      if (level >= 5) expect(res.team.prepped + res.team.tended + res.team.bought + res.team.gasSwaps).toBeGreaterThan(0); // the bot really ran the stall
+      const json = JSON.stringify(res);
+      expect(JSON.parse(json)).toEqual(res);
+      expect(json.length).toBeLessThan(1800 + 520 * n);
+    }
+  });
+
+  it('a negative profit (a shift run at a loss) is kept as is; money collected stays a non-negative score', () => {
+    let s = fresh({ level: 5 }, 2, 9);
+    s = { ...s, status: 'closed', stars: 0, money: 10, cost: 90, players: { ...s.players, p1: { ...s.players.p1, earned: 10 } } };
+    const res = tiffin.result(s);
+    expect(res.profit).toBe(-80);
+    expect(res.standings.every((r) => r.rank === 2 && r.score >= 0)).toBe(true);
+    expect(res.standings[0].stats.profit).toBe(-80);
   });
 
   it('feeds the generic match record (worker/match.js): a team win pays everyone as rank 1, the winner is the top earner', () => {
