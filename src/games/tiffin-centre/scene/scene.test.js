@@ -379,7 +379,8 @@ describe('quality', () => {
     expect(pickQuality('auto', { mobile: false, cores: 12 })).toBe('high');
     expect(pickQuality('auto', { mobile: false, cores: 4 })).toBe('medium');
     expect(lowerQuality('high')).toBe('medium');
-    expect(lowerQuality('low')).toBe('low');
+    expect(lowerQuality('low')).toBe('lite');
+    expect(lowerQuality('lite')).toBe('lite');
     expect(QUALITY.low.particles).toBeLessThan(QUALITY.high.particles);
   });
   it('steps down only after a window of mostly slow frames and ignores hidden-tab gaps', () => {

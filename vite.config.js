@@ -66,6 +66,20 @@ function siteUrlPlugin() {
   };
 }
 
+/**
+ * Tiffin Centre's 3D code is split into chunks so the solo home loads only the small shell (src/games/tiffin-centre/TiffinGame.jsx) and the heavy
+ * parts load in parallel / on demand: three.js, the scene core, the models by family, the audio and the dialogue lines. Tiffin-only groups: nothing
+ * else in the app is touched (rolldown's advancedChunks; `test` matches the module path).
+ */
+const TIFFIN_CHUNKS = [
+  { name: 'tiffin-three', test: /[\\/]node_modules[\\/]three[\\/]/, priority: 50 },
+  { name: 'tiffin-audio', test: /[\\/]src[\\/]games[\\/]tiffin-centre[\\/]audio[\\/]/, priority: 40 },
+  { name: 'tiffin-dialogue', test: /[\\/]shared[\\/]tiffin-centre[\\/]dialogue[\\/]/, priority: 40 },
+  { name: 'tiffin-people', test: /[\\/]tiffin-centre[\\/]models[\\/](face|facegen|hair|skin|bodies|limbs|clothes|customers|avatar|person|viewmodel|expressions|fabric|characters-index|charquality|baked|merge)[^\\/]*$/, priority: 30 },
+  { name: 'tiffin-models', test: /[\\/]tiffin-centre[\\/]models[\\/]/, priority: 20 },
+  { name: 'tiffin-scene', test: /[\\/]src[\\/]games[\\/]tiffin-centre[\\/]scene[\\/]/, priority: 20 },
+];
+
 export default defineConfig({
   plugins: [react(), siteUrlPlugin()],
   resolve: { alias: { '@shared': r('shared'), '@': r('src') } },
@@ -78,7 +92,15 @@ export default defineConfig({
       '/ws': { target: `ws://127.0.0.1:${API_PORT}`, ws: true },
     },
   },
-  build: { outDir: 'dist', sourcemap: false },
+  build: {
+    outDir: 'dist',
+    sourcemap: false,
+    rolldownOptions: {
+      output: {
+        advancedChunks: { groups: TIFFIN_CHUNKS },
+      },
+    },
+  },
   test: {
     include: ['shared/**/*.test.js', 'worker/**/*.test.js', 'src/**/*.test.js'],
     environment: 'node',

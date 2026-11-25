@@ -1,5 +1,5 @@
 // Character quality tiers (people: faces, bodies, hands, hair). Node-safe, no three import.
-// `setCharacterQuality('low'|'medium'|'high')` is global and read when a character is BUILT (existing ones keep their tier).
+// `setCharacterQuality('lite'|'low'|'medium'|'high')` is global and read when a character is BUILT (existing ones keep their tier).
 // Every factory also accepts an explicit `{ quality }` option which wins over the global.
 
 export const TIERS = {
@@ -37,6 +37,24 @@ export const TIERS = {
     ears: true,
     clothFolds: 0.7,
   },
+  // lite: the minimum-requirements tier (software renderers, old phones): coarse heads and limbs, no extras, built to be merged into few draw calls
+  lite: {
+    id: 'lite',
+    headCols: 22,
+    headDetail: 0.55,
+    morphs: 'min',
+    normalMaps: false,
+    handSides: 3,
+    fingerSegs: 1,
+    limbSides: 5,
+    limbRings: 4,
+    eyeSeg: [8, 6],
+    hairCards: 0.25,
+    lashes: false,
+    teeth: false,
+    ears: false,
+    clothFolds: 0.15,
+  },
   low: {
     id: 'low',
     headCols: 26,
@@ -62,5 +80,16 @@ export function setCharacterQuality(q) {
   return current;
 }
 export const getCharacterQuality = () => current;
+
+// Draw-call merging of people (merge.js): off by default so a bare buildCustomer() is exactly what it always was; the scene turns it on per tier.
+const draw = { merge: false, limitShadows: false, baked: false };
+/** setCharacterDrawMode({ merge, limitShadows }): merge static sub-meshes of newly built people; keep tiny parts (eyes, lids, fingers) out of the shadow pass. */
+export function setCharacterDrawMode(o = {}) {
+  if (typeof o.merge === 'boolean') draw.merge = o.merge;
+  if (typeof o.limitShadows === 'boolean') draw.limitShadows = o.limitShadows;
+  if (typeof o.baked === 'boolean') draw.baked = o.baked;
+  return { ...draw };
+}
+export const getCharacterDrawMode = () => ({ ...draw });
 /** Resolve an option (string or undefined) to a tier object. */
 export const tierOf = (q) => TIERS[q] || TIERS[current];

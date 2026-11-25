@@ -15,7 +15,9 @@ import { noteTexture } from './textures.js';
 import { tiffinCarrier, walkingStick } from './clothes.js';
 import { holdTool, makeTool } from './toolhost.js';
 import { buildDish } from './dishes.js';
-import { getCharacterQuality } from './charquality.js';
+import { getCharacterQuality, getCharacterDrawMode } from './charquality.js';
+import { mergeModel, limitShadowCasters } from './merge.js';
+import { bakeRig } from './baked.js';
 
 export const MOODS = ['waiting', 'eating', 'paying', 'happy', 'angry', 'walkaway'];
 export const CUSTOMER_KIND_IDS = Object.keys(CUSTOMER_KINDS);
@@ -223,6 +225,7 @@ export function buildCustomer(kindId, seed = 0, opts = {}) {
   if (mainSpec.phone) {
     phone = new Mesh(sharedGeo('cust:phone', () => new PlaneGeometry(0.07, 0.145)), sharedMat('cust:phoneMat', () => new MeshStandardMaterial({ color: '#111418', emissive: '#4a7cff', emissiveIntensity: 0.55, roughness: 0.3, side: DoubleSide })));
     phone.visible = false;
+    phone.userData.noMerge = true;
     phone.position.set(0, 0.07, 0.03);
     phone.rotation.set(0, 0, 0);
     handL.grip.add(phone);
@@ -246,12 +249,14 @@ export function buildCustomer(kindId, seed = 0, opts = {}) {
   // paying: a glowing rupee note held out in the right hand
   const noteMat = new MeshStandardMaterial({ color: '#ffffff', map: noteTexture(), emissive: '#3dff8c', emissiveMap: noteTexture(), emissiveIntensity: 0.9, roughness: 0.6, side: DoubleSide });
   const note = new Mesh(sharedGeo('cust:note2', () => new PlaneGeometry(0.2, 0.1).rotateX(-Math.PI / 2)), noteMat);
+  note.userData.noMerge = true;
   note.position.set(0, 0.11, 0.0);
   note.rotation.set(0, 0, Math.PI / 2);
   note.visible = false;
   handR.grip.add(note);
   const haloMat = new MeshBasicMaterial({ color: '#3dff8c', transparent: true, opacity: 0.3, blending: AdditiveBlending, depthWrite: false, toneMapped: false });
   const halo = new Mesh(sharedGeo('cust:halo2', () => new CircleGeometry(0.17, 16)), haloMat);
+  halo.userData.noMerge = true;
   halo.position.set(0, 0.11, 0.012);
   halo.visible = false;
   handR.grip.add(halo);
@@ -587,6 +592,43 @@ export function buildCustomer(kindId, seed = 0, opts = {}) {
   }
   api.setMood('waiting');
   api.update(0.016, 0);
+  const mode = opts.draw || getCharacterDrawMode();
+  if (mode.baked) {
+    // lite: a hidden rig drives 1-3 shared dynamic meshes (baked.js)
+    api.baked = bakeRig(api, { roots: people.map((q) => q.p.group) });
+  } else if (mode.merge) {
+    // measure what never moves relative to its rigid frame across every mood, patience band, expression and a spoken line, then merge it per material
+    const states = [['waiting', 1], ['waiting', 0.55], ['waiting', 0.3], ['waiting', 0.1], ['eating', 0.8], ['paying', 0.8], ['paying', 0.1], ['happy', 1], ['angry', 0.05], ['walkaway', 0.5]];
+    api.merge = mergeModel(group, (sample) => {
+      let t = 0.2;
+      for (const [m, p] of states) {
+        api.setMood(m);
+        api.setPatience(p);
+        for (let i = 0; i < 3; i++) {
+          t += 0.37;
+          api.update(0.05, t);
+          sample();
+        }
+      }
+      for (const e of EXPRESSION_NAMES) {
+        api.setExpression(e, 1, 100);
+        api.update(0.1, (t += 0.3));
+        sample();
+      }
+      api.setSpeaking(800, 0.8);
+      api.update(0.1, (t += 0.2));
+      sample();
+      api.setMood('waiting');
+      api.setPatience(1);
+      for (const q of people) {
+        q.p.body.pose.snap();
+        poseFor(q, 0);
+        q.p.body.pose.snap();
+      }
+      api.update(0.016, 0);
+    });
+  }
+  if (mode.limitShadows) limitShadowCasters(group);
   return api;
 }
 

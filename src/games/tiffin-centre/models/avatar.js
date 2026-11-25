@@ -11,7 +11,9 @@ import { CH } from './bodies.js';
 import { buildDish } from './dishes.js';
 import { nameTagTexture } from './textures.js';
 import { holdTool, makeFarTool } from './toolhost.js';
-import { getCharacterQuality } from './charquality.js';
+import { getCharacterQuality, getCharacterDrawMode } from './charquality.js';
+import { mergeModel, limitShadowCasters } from './merge.js';
+import { bakeRig } from './baked.js';
 
 export const POSES = ['idle', 'walk', 'carry', 'cheer', 'work-tawa', 'work-steamer', 'work-kadai', 'work-chai', 'work-serve', 'work-collect', 'work-discard'];
 
@@ -381,5 +383,26 @@ export function buildAvatar({ color = '#ff8a1f', name = '', quality } = {}) {
   void shade;
   person.body.pose.snap();
   api.update(0.016, 0);
+  const mode = getCharacterDrawMode();
+  if (mode.baked) {
+    api.baked = bakeRig(api, { roots: [person.group], rate: () => 15 }); // cooks walk and work: always the fast rate
+  } else if (mode.merge) {
+    api.merge = mergeModel(group, (sample) => {
+      let t = 0.2;
+      for (const p of POSES) {
+        api.setPose(p);
+        for (let i = 0; i < 4; i++) {
+          t += 0.23;
+          api.update(0.05, t);
+          sample();
+        }
+      }
+      api.setPose('idle');
+      api.setFacing(0);
+      person.body.pose.snap();
+      api.update(0.016, 0);
+    });
+  }
+  if (mode.limitShadows) limitShadowCasters(group);
   return api;
 }

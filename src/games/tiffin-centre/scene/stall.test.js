@@ -41,7 +41,7 @@ const lightsOf = (root) => {
 
 describe('stall shell', { timeout: 60000 }, () => {
   it('builds at every tier and exposes the API the scene layer reads', () => {
-    for (const tier of ['low', 'medium', 'high']) {
+    for (const tier of ['lite', 'low', 'medium', 'high']) {
       const { scene, stall } = make(tier);
       for (const key of ['root', 'stations', 'binPos', 'setStations', 'setSpots', 'setMenu', 'setLight', 'update', 'slotWorld', 'bumpBin', 'redrawText', 'counterY', 'dispose']) expect(stall[key], key).toBeDefined();
       expect(scene.children).toContain(stall.root);
