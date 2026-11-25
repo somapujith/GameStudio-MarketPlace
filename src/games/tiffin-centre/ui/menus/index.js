@@ -9,5 +9,6 @@ export { default as LevelBriefing } from './LevelBriefing.jsx';
 export {
   resultViewModel, levelMapModel, levelCardModel, briefingModel, coachViewModel, statusCopy, starThresholds, unlockedLevelOf,
   starsOfLevel, totalStars, hourRange, shiftLength, tipOfLevel, levelSky, DEFAULT_HINT_MS, coachStepFromTutorial, chapterStrip, controlsLine, resumeViewModel, savedAgo,
+  levelFeatures, levelHighlights, mechanicsIntroduced,
 } from './menuModels.js';
 export { default as Segmented } from './Segmented.jsx';

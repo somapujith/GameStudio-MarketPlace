@@ -122,6 +122,9 @@ export const KEY_HELP = {
     { keys: ['Z', 'X', 'Shift + arrows'], what: 'Turn your head left, right (and up, down)' },
     { keys: ['V'], what: 'Look straight ahead again' },
     { keys: ['C'], what: 'Collect from the customer about to leave' },
+    { keys: ['T'], what: 'Tend the nearest pan: wipe the tawa, skim the kadai, top up the steamer' },
+    { keys: ['P'], what: 'Open the prep counter behind you (batter, chutney, sambar...)' },
+    { keys: ['B'], what: 'Open the menu board to mark a dish sold out' },
     { keys: ['1-9'], what: 'Choose a dish in the cook menu' },
     { keys: ['?'], what: 'Show or hide this help' },
     { keys: ['Esc'], what: 'Pause' },
@@ -131,6 +134,7 @@ export const KEY_HELP = {
     { keys: ['Drag'], what: 'Drag on empty space to look around' },
     { keys: ['Arrow chips'], what: 'Customers off screen: tap their arrow to turn towards them' },
     { keys: ['Double-tap'], what: 'Double-tap a token chit to look at that customer' },
+    { keys: ['Stock bars'], what: 'Tap a stock bar to walk to the prep counter and make more; tap Swap when the gas runs low' },
     { keys: ['Look straight'], what: 'The target button puts your head back to centre' },
   ],
 };

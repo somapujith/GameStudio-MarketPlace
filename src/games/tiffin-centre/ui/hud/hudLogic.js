@@ -2,7 +2,9 @@
 // unit-tested in hudLogic.test.js. Inputs are the engine STATE shape of docs/TIFFIN_CENTRE_PLAN.md section 3 (read-only here).
 import { standX, validTarget, walkSeconds, workTarget } from '@shared/tiffin-centre/movement.js';
 import { starTargets as engineStars } from '@shared/tiffin-centre/scoring.js';
-import { DISHES, STATION_KINDS, STATIONS, CUSTOMER_KINDS, DAYPARTS, daypartOf, PACE, LEVELS, coopScale, LIVES, HANDS_MAX, PAY_WINDOW, TICK_MS, EAT_TICKS } from '@shared/tiffin-centre/catalog.js';
+import { DISHES, STATION_KINDS, STATIONS, CUSTOMER_KINDS, DAYPARTS, daypartOf, PACE, LEVELS, coopScale, LIVES, HANDS_MAX, PAY_WINDOW, TICK_MS, EAT_TICKS, INGREDIENTS, LAYOUT, PREP_STATION, EVENTS } from '@shared/tiffin-centre/catalog.js';
+import { cookBlocker } from '@shared/tiffin-centre/ops.js';
+import { chitBadges, gasOnLevel, gasView, opsOn, slotFlaw, tendHint } from './opsLogic.js';
 
 export { LIVES, HANDS_MAX, PAY_WINDOW, TICK_MS, EAT_TICKS };
 
@@ -49,21 +51,32 @@ export function formatLeft(state) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-/** Money needed for 1/2/3 stars in this state (catalog stars * pace * co-op), or null for a level with no targets (tutorial). */
+/** PROFIT (cash in hand minus what the stall spent): what the stars are measured against. Falls back to money for a state without the books. */
+export function profitOf(state) {
+  if (Number.isFinite(state?.profit)) return Math.round(state.profit);
+  return Math.round(num(state?.money) - num(state?.cost));
+}
+
+/** The books line of the takings plate: { cash, cost, profit, show }. Hidden in the tutorial (no costs there). */
+export function booksView(state) {
+  return { cash: Math.round(num(state?.money)), cost: Math.round(num(state?.cost)), profit: profitOf(state), show: !!state && !state.cfg?.tutorial };
+}
+
+/** PROFIT needed for 1/2/3 stars in this state (catalog stars * pace * co-op), or null for a level with no targets (tutorial). */
 export function starTargets(state) {
   if (!state || LEVELS[state.level] === undefined) return null;
   const t = engineStars(state.level, state.pace, Math.max(1, (state.order || []).length));
   return t.some((n) => n > 0) ? t : null;
 }
 
-/** The star bar: fill 0..1 of the 3-star target, tick positions (0..1) of each threshold, and stars already earned. */
-export function starBar(money, targets) {
+/** The star bar: fill 0..1 of the 3-star target, tick positions (0..1) of each threshold, and stars already earned. `profit` = cash minus costs. */
+export function starBar(profit, targets) {
   if (!targets) return null;
   const top = Math.max(1, targets[2]);
   return {
-    fill: clamp(num(money) / top, 0, 1),
+    fill: clamp(num(profit) / top, 0, 1),
     ticks: targets.map((t) => clamp(t / top, 0, 1)),
-    earned: targets.filter((t) => num(money) >= t && t > 0).length,
+    earned: targets.filter((t) => num(profit) >= t && t > 0).length,
     targets,
   };
 }
@@ -163,13 +176,14 @@ export const tokenText = (c) => `Token ${tokenOf(c)}`;
 
 /** View model of one chit: chips in order with a served flag, and whether it is `mine to serve` with the held dishes. */
 export function ticketModel(c, state, hands = []) {
-  const got = [...(c?.got || [])];
+  const got = (c?.got || []).map((d, j) => ({ d, q: c?.qs?.[j] }));
   const held = hands.map((h) => h?.dish);
   const chips = (c?.order || []).map((dish) => {
-    const i = got.indexOf(dish);
+    const i = got.findIndex((g) => g.d === dish);
     const served = i >= 0;
+    const q = served ? got[i].q : undefined;
     if (served) got.splice(i, 1);
-    return { dish, ...dishInfo(dish), served, inHand: !served && held.includes(dish) };
+    return { dish, ...dishInfo(dish), served, q, broken: q === 'broken', inHand: !served && held.includes(dish) };
   });
   return {
     id: c.id,
@@ -183,6 +197,7 @@ export function ticketModel(c, state, hands = []) {
     needs: chips.filter((x) => !x.served).map((x) => x.dish),
     total: num(c.total),
     initial: String(c.name || '?').trim().charAt(0).toUpperCase() || '?',
+    badges: chitBadges(c, state),
   };
 }
 
@@ -206,6 +221,7 @@ export const QUALITY = {
   perfect: { label: 'Perfect', stars: 3 },
   good: { label: 'Good', stars: 2 },
   ok: { label: 'OK', stars: 1 },
+  broken: { label: 'Broken, half price', stars: 0 },
 };
 export const qualityView = (q) => QUALITY[q] || QUALITY.ok;
 
@@ -226,10 +242,10 @@ export function stationDishes(state, stationId) {
 export function stationList(state) {
   const ids = state?.cfg?.stations || [];
   return ids
-    .filter((id) => STATIONS[id])
+    .filter((id) => STATIONS[id] && STATIONS[id].kind !== 'prep') // the back counter has its own dock group and sheet
     .map((id) => {
       const kind = STATION_KINDS[STATIONS[id].kind];
-      const slots = (state.stations?.[id]?.slots || []).map((s, idx) => ({ idx, st: s.st, dish: s.dish || null, by: s.by ?? null }));
+      const slots = (state.stations?.[id]?.slots || []).map((s, idx) => ({ idx, st: s.st, dish: s.dish || null, by: s.by ?? null, flaw: s.dish ? slotFlaw(s) : null }));
       return {
         id,
         kind: kind.id,
@@ -373,6 +389,7 @@ export const slotTarget = (station, slot) => ({ kind: 'slot', id: station, stati
 export const stationTarget = (station) => ({ kind: 'station', id: station, station });
 export const customerTarget = (id) => ({ kind: 'customer', id });
 export const BIN_TARGET = { kind: 'bin' };
+export const GAS_TARGET = { kind: 'gas' };
 
 export function targetKey(t) {
   if (!t) return '';
@@ -392,6 +409,8 @@ export function targetKey(t) {
 export function decideAction(state, target, { meId, selectedHand = 0 } = {}) {
   if (!state || !target) return null;
   const hands = state.players?.[meId]?.hands || [];
+  if (target.kind === 'gas') return decideGas(state);
+  if ((target.kind === 'slot' || target.kind === 'station') && STATIONS[target.station ?? target.id]?.kind === 'prep') return decidePrep(state, target);
   if (target.kind === 'slot') return decideSlot(state, target.station ?? target.id, target.slot, hands);
   if (target.kind === 'station') {
     const id = target.station ?? target.id;
@@ -425,19 +444,50 @@ export function decideAction(state, target, { meId, selectedHand = 0 } = {}) {
   return null;
 }
 
+/** The back counter: a ready job is collected (walk-then-act), anything else opens the prep sheet. */
+function decidePrep(state, target) {
+  if (!opsOn(state)) return { type: 'hint', text: 'Nothing to prepare today' };
+  const slots = state.stations?.[PREP_STATION]?.slots || [];
+  const at = target.kind === 'slot' && Number.isInteger(target.slot) ? target.slot : slots.findIndex((s) => s.st === 'ready');
+  if (at >= 0 && slots[at]?.st === 'ready') return { type: 'dispatch', action: { type: 'collectPrep', station: PREP_STATION, slot: at } };
+  return { type: 'prepsheet', station: PREP_STATION };
+}
+
+/** The LPG stand: swap the cylinder (walk to it first), or say why not. */
+function decideGas(state) {
+  const g = gasView(state);
+  if (!g) return { type: 'hint', text: 'No cylinder here' };
+  if (g.reason) return { type: 'hint', text: g.reason };
+  return { type: 'dispatch', action: { type: 'swapGas' } };
+}
+
 function decideSlot(state, station, slot, hands) {
   const s = state.stations?.[station]?.slots?.[slot];
   if (!s) return null;
   if (s.st === 'empty') {
     return stationDishes(state, station).length ? { type: 'sheet', station, slot } : { type: 'hint', text: 'Nothing on the menu here' };
   }
-  if (s.st === 'cooking') return { type: 'hint', text: 'Still cooking' };
+  if (s.st === 'cooking') {
+    const tail = tendHint(state, station);
+    return { type: 'hint', text: tail ? `Still cooking.${tail}` : 'Still cooking' };
+  }
   if (s.st === 'ready') {
     if (hands.length >= HANDS_MAX) return { type: 'hint', text: 'Hands full' };
     return { type: 'dispatch', action: { type: 'take', station, slot }};
   }
   if (s.st === 'burnt') return { type: 'dispatch', action: { type: 'take', station, slot }};
   return null;
+}
+
+/** Why a cook would be refused right now, in the engine's own words ('Out of dosa batter', 'No gas: change the cylinder', 'Power cut: the steamer is off'), or null. */
+export function cookReason(state, stationId, dishId) {
+  const st = state?.stations?.[stationId];
+  if (!st || !DISHES[dishId] || state?.cfg?.tutorial) return null;
+  try {
+    return cookBlocker(state, st, dishId) || null;
+  } catch {
+    return null;
+  }
 }
 
 /** The cook action for a dish chosen in the sheet. */
@@ -490,6 +540,11 @@ const nameOf = (state, id) => {
   return c ? `Token ${c.id} (${c.name || 'customer'})` : 'A customer';
 };
 const dishName = (id) => DISHES[id]?.name || 'dish';
+const ingName = (id) => INGREDIENTS[id]?.name || 'stock';
+const fmtN = (n) => String(Math.round(num(n) * 100) / 100);
+const FLAW_WORD = { stuck: 'stuck to the pan (OK at best)', torn: 'torn (half price)', sour: 'from sour batter (OK at best)' };
+const HEAT_WORD = { cold: 'too cold', hot: 'too hot', dry: 'running dry' };
+const EVENT_ICON = { rain: 'rain', cricket: 'flame', power: 'bolt', festival: 'star', inspector: 'clip', delivery: 'truck' };
 const playerName = (state, id, meId) => (id === meId ? 'You' : state?.players?.[id]?.name || 'A teammate');
 
 /**
@@ -527,7 +582,67 @@ export function eventNotice(ev, state, meId, formatMoney = (n) => `₹${n}`) {
     case 'burnt':
       return { text: `${dishName(ev.dish)} burnt!`, tone: 'bad', icon: 'smoke', toast: true };
     case 'ready':
+      if (ev.flaw) return { text: `${dishName(ev.dish)} is ready but ${FLAW_WORD[ev.flaw] || ev.flaw}`, tone: 'warn', icon: 'alarm', toast: true };
       return { text: `${dishName(ev.dish)} is ready`, tone: 'info', icon: 'check', toast: false };
+    case 'take':
+      return ev.q === 'broken' && ev.by === meId ? { text: `${dishName(ev.dish)} came out broken: it pays half price`, tone: 'warn', icon: 'alarm', toast: true } : null;
+    case 'serve':
+      return ev.q === 'broken' ? { text: `Broken ${dishName(ev.dish).toLowerCase()} served: half price`, tone: 'warn', icon: 'alarm', toast: false } : null;
+    // ---- the operations layer ------------------------------------------------------------------------------------------------------
+    case 'stock-low':
+      return { text: `${ingName(ev.item)} running low: ${fmtN(ev.n)} left`, tone: 'warn', icon: 'basket', toast: true };
+    case 'stock-out':
+      return { text: `Out of ${ingName(ev.item).toLowerCase()}. Prep some, or mark the dish sold out`, tone: 'bad', icon: 'basket', toast: true, item: ev.item };
+    case 'stock-spoiled':
+      return { text: `${ingName(ev.item)} spoiled and was thrown away`, tone: 'bad', icon: 'smoke', toast: true };
+    case 'batter-sour':
+      return { text: `${ingName(ev.item)} has gone sour: dishes will come out only OK`, tone: 'warn', icon: 'drop', toast: true };
+    case 'prep-start':
+      return { text: `${playerName(state, ev.by, meId)} started ${ingName(ev.item).toLowerCase()} (${ev.ticks}s)`, tone: 'info', icon: 'prep', toast: false };
+    case 'prep-done':
+      return { text: `${ingName(ev.item)} is ready at the prep counter: collect it`, tone: 'good', icon: 'prep', toast: true };
+    case 'prep-collect':
+      return { text: `${playerName(state, ev.by, meId)} stocked ${fmtN(ev.n)} ${ingName(ev.item).toLowerCase()}`, tone: 'good', icon: 'basket', toast: false };
+    case 'buy':
+      return { text: `${playerName(state, ev.by, meId)} bought ${fmtN(ev.n)} ${ingName(ev.item).toLowerCase()} for ${formatMoney(ev.cost)}`, tone: 'info', icon: 'basket', toast: ev.by === meId };
+    case 'tend': {
+      const what = ev.kind === 'water' ? 'topped up the steamer' : ev.kind === 'skim' ? 'skimmed the kadai' : 'wiped the tawa';
+      return { text: `${playerName(state, ev.by, meId)} ${what}`, tone: 'good', icon: 'wipe', toast: false };
+    }
+    case 'heat-warning':
+      return { text: `${placeName(ev.station, state)} is ${HEAT_WORD[ev.band] || ev.band}`, tone: 'warn', icon: 'alarm', toast: true };
+    case 'gas-low':
+      return { text: 'Gas is running low: change the cylinder', tone: 'warn', icon: 'gas', toast: true, pulse: true };
+    case 'gas-out':
+      return { text: 'Out of gas! The burners are cold: change the cylinder', tone: 'bad', icon: 'gas', toast: true, pulse: true };
+    case 'gas-swap':
+      return ev.phase === 'start'
+        ? { text: `Changing the cylinder (${formatMoney(ev.cost)}): burners off for ${ev.ticks}s`, tone: 'info', icon: 'gas', toast: true }
+        : { text: 'New cylinder on: the burners are back', tone: 'good', icon: 'gas', toast: true };
+    case 'board':
+      return { text: `${dishName(ev.dish)} is ${ev.on ? 'back on' : 'off'} the board`, tone: 'info', icon: 'board', toast: false };
+    case 'sold-out': {
+      const swap = ev.swap ? ` and had ${dishName(ev.swap)} instead` : ev.left ? ' and left politely' : '';
+      return { text: `${nameOf(state, ev.customer)} wanted ${dishName(ev.dish)}: sold out${swap}`, tone: 'info', icon: 'board', toast: true };
+    }
+    case 'extra':
+      return { text: `Extra ${ingName(ev.item).toLowerCase()} for ${nameOf(state, ev.customer)}`, tone: 'good', icon: 'plus', toast: false };
+    case 'parcel-order':
+      if (ev.delivery) return { text: 'The delivery boy is here: parcels in a hurry', tone: 'good', icon: 'truck', toast: true };
+      if (ev.big) return { text: `Big office order: ${nameOf(state, ev.customer)}, ${ev.n} dishes`, tone: 'good', icon: 'building', toast: true };
+      return null;
+    case 'event-start': {
+      const def = EVENTS[ev.id];
+      return def ? { text: `${def.name} (${def.te})${ev.id === 'inspector' ? ': clear burnt dishes and wipe the tawas' : ev.id === 'power' ? ': no steamer, no grinder' : ''}`, tone: ev.id === 'power' || ev.id === 'inspector' ? 'warn' : 'info', icon: EVENT_ICON[ev.id] || 'info', toast: true } : null;
+    }
+    case 'event-end': {
+      const def = EVENTS[ev.id];
+      return def && ev.id !== 'inspector' ? { text: `${def.name} is over`, tone: 'info', icon: EVENT_ICON[ev.id] || 'info', toast: false } : null;
+    }
+    case 'inspector':
+      return ev.pass
+        ? { text: `The inspector was pleased: +${formatMoney(ev.bonus)}`, tone: 'good', icon: 'clip', toast: true }
+        : { text: `The inspector fined you ${formatMoney(ev.fine)} (${(ev.why || []).map((w) => (w === 'burnt' ? 'burnt dish left lying' : 'tawa not tended')).join(', ') || 'unclean'}) and a heart is lost`, tone: 'bad', icon: 'clip', toast: true };
     case 'customer-arrive':
       return { text: `${nameOf(state, ev.customer)} arrived`, tone: 'info', icon: 'users', toast: false };
     case 'emote': {
@@ -604,6 +719,7 @@ export function walkStops(state) {
   for (const id of state?.cfg?.stations || []) if (STATIONS[id]) stops.push({ to: id, x: standX(id), kind: 'station' });
   for (let i = 0; i < num(state?.cfg?.spots); i += 1) stops.push({ to: `spot:${i}`, x: standX(`spot:${i}`), kind: 'spot', spot: i });
   stops.push({ to: 'bin', x: standX('bin'), kind: 'bin' });
+  if (gasOnLevel(state)) stops.push({ to: 'gas', x: standX('gas'), kind: 'gas' });
   return stops.sort((a, b) => a.x - b.x || (a.kind === 'station' ? -1 : 1));
 }
 
@@ -626,6 +742,7 @@ export function nearestTarget(state, x, reach = 0.6) {
   const { s } = best;
   if (s.kind === 'station') return stationTarget(s.to);
   if (s.kind === 'bin') return BIN_TARGET;
+  if (s.kind === 'gas') return GAS_TARGET;
   const c = activeCustomers(state).find((x2) => x2.spot === s.spot);
   return c ? customerTarget(c.id) : null;
 }
@@ -655,12 +772,27 @@ export function refineAction(action, state, meId, selectedHand = 0) {
     const i = hands[action.hand] ? action.hand : effectiveHand(hands, selectedHand);
     return i < 0 ? null : { ...action, hand: i };
   }
+  if (action.type === 'prep') {
+    // the job slot may have been taken by a teammate while we walked round to the back counter
+    const slots = state.stations?.[action.station]?.slots || [];
+    if (slots[action.slot]?.st === 'empty') return action;
+    const i = slots.findIndex((s) => s.st === 'empty');
+    return i < 0 ? null : { ...action, slot: i };
+  }
+  if (action.type === 'collectPrep') {
+    const slots = state.stations?.[action.station]?.slots || [];
+    if (slots[action.slot]?.st === 'ready') return action;
+    const i = slots.findIndex((s) => s.st === 'ready');
+    return i < 0 ? null : { ...action, slot: i };
+  }
+  // tend / swapGas / board / buy go straight to the engine, which answers "Already clean", "The cylinder is still heavy" ... itself
   return action;
 }
 
 /** What to call the place a queued action is walking to ("Dosa tawa", "Ravi anna", "the bin"). */
 export function placeName(to, state) {
   if (to === 'bin') return 'the bin';
+  if (to === 'gas') return 'the gas stand';
   if (typeof to === 'string' && to.startsWith('spot:')) {
     const spot = Number(to.slice(5));
     const c = (state?.customers || []).find((x) => x.spot === spot && onStall(x));
@@ -675,6 +807,10 @@ export function pendingLabel(action, to, state) {
   const where = placeName(to, state);
   if (action?.type === 'serve') return `Walking to serve ${where}`;
   if (action?.type === 'collect') return `Walking to collect from ${where}`;
+  if (action?.type === 'swapGas') return 'Walking to change the cylinder';
+  if (action?.type === 'tend') return `Walking to tend ${where}`;
+  if (action?.type === 'prep') return 'Walking to the prep counter';
+  if (action?.type === 'collectPrep') return 'Walking to collect the prep';
   return `Walking to ${where}`;
 }
 
@@ -691,6 +827,12 @@ export function pendingKeys(action, to) {
     keys.add(`collect:${action.customer}`);
   }
   if (action.type === 'discard') keys.add('bin');
+  if (action.type === 'tend') {
+    keys.add(`station:${action.station}`);
+    keys.add(`tend:${action.station}`);
+  }
+  if (action.type === 'prep' || action.type === 'collectPrep') keys.add(`station:${PREP_STATION}`);
+  if (action.type === 'swapGas') keys.add('gas');
   if (to && !keys.size) keys.add(to);
   return keys;
 }
@@ -726,6 +868,7 @@ export function walkToFor(target, state) {
   if (!target) return null;
   if (target.kind === 'slot' || target.kind === 'station') return target.station ?? target.id ?? null;
   if (target.kind === 'bin') return 'bin';
+  if (target.kind === 'gas') return gasOnLevel(state) ? 'gas' : null;
   if (target.kind === 'customer') {
     const c = (state?.customers || []).find((x) => x.id === target.id);
     return c && Number.isInteger(c.spot) ? `spot:${c.spot}` : null;
@@ -739,7 +882,7 @@ export function walkToFor(target, state) {
  */
 export function gateDecision(decision, target, allowed, state) {
   if (!decision) return { go: decision };
-  const need = decision.type === 'sheet' ? 'cook' : decision.type === 'dispatch' ? decision.action?.type : null;
+  const need = decision.type === 'sheet' ? 'cook' : decision.type === 'prepsheet' ? 'prep' : decision.type === 'dispatch' ? decision.action?.type : null;
   if (!need || isActionAllowed(allowed, { type: need })) return { go: decision };
   if (isActionAllowed(allowed, { type: 'move' })) {
     const to = walkToFor(target, state);
@@ -754,6 +897,10 @@ export function pendingTarget(action) {
   if (action.type === 'cook' || action.type === 'take') return slotTarget(action.station, action.slot);
   if (action.type === 'serve' || action.type === 'collect') return customerTarget(action.customer);
   if (action.type === 'discard') return BIN_TARGET;
+  // the back counter is BEHIND the cook: the scene turns the head round to it (scene.lookAt({ kind: 'station', id: 'prep1' }))
+  if (action.type === 'prep' || action.type === 'collectPrep') return stationTarget(action.station || PREP_STATION);
+  if (action.type === 'tend') return stationTarget(action.station);
+  if (action.type === 'swapGas') return { x: LAYOUT.gas.x, y: 0.7, z: LAYOUT.gas.z }; // the cylinder stand, as a world point
   return null;
 }
 

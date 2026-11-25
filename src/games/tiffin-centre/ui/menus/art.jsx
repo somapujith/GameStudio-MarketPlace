@@ -196,3 +196,29 @@ export function ShutterArt() {
     </svg>
   );
 }
+
+const FEATURE_PATHS = {
+  gas: 'M8 9h8v10a1.5 1.5 0 0 1-1.5 1.5h-5A1.5 1.5 0 0 1 8 19zM9.5 9V7a2.5 2.5 0 0 1 5 0v2M12 4.5V3M8 13.5h8',
+  rain: 'M7 14.5a4 4 0 0 1-.5-7.9A5.5 5.5 0 0 1 17 7.5a3.5 3.5 0 0 1 0 7zM9 17.5 8 20M13 17.5 12 20M17 17.5 16 20',
+  power: 'M13 3 5 13.5h6L10 21l8-10.5h-6z',
+  festival: 'M12 3.8l2.5 5.2 5.7.8-4.1 4 1 5.7-5.1-2.7-5.1 2.7 1-5.7-4.1-4 5.7-.8z',
+  inspector: 'M8 4.5h8v3H8zM6.5 6h11v14h-11zM9 12h6M9 15.5h4',
+  delivery: 'M3 6.5h11v9H3zM14 10h4l3 3v2.5h-7zM7 18.5h.01M17 18.5h.01',
+  cricket: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM6.5 7c3 2.5 3 7.500 0 10M17.5 7c-3 2.500-3 7.500 0 10',
+  stock: 'M4 10h16l-1.5 9.5h-13zM8 10l3-5.5M16 10l-3-5.5',
+  heat: 'M12 3c1 3.5 4.5 5 4.5 9.2A4.5 4.5 0 0 1 12 17a4.5 4.5 0 0 1-4.5-4.8c0-2 1-3.2 2-4.2.2 1.2.8 2 1.6 2.5',
+  market: 'M6 8h12l1 12.5H5zM9 8V6.5a3 3 0 0 1 6 0V8',
+  requests: 'M12 5v14M5 12h14',
+  regulars: 'M12 3.8l2.5 5.2 5.7.8-4.1 4 1 5.7-5.1-2.7-5.1 2.7 1-5.7-4.1-4 5.7-.8z',
+  big: 'M5 20V6l7-2.5V20M12 9h7v11M8.5 9h.01M8.5 12.5h.01M8.5 16h.01M15.5 13h.01M15.5 16.5h.01M3 20h18',
+};
+
+/** A tiny stroke icon for one of the shift features (gas, rain, power cut, inspector ...). Decorative: the chip carries the words. */
+export function FeatureGlyph({ id, size = 14 }) {
+  const d = FEATURE_PATHS[id] || FEATURE_PATHS.requests;
+  return (
+    <svg className="tc-menu-art" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <path d={d} />
+    </svg>
+  );
+}

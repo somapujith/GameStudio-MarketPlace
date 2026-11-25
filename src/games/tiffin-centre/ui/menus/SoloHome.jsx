@@ -2,7 +2,7 @@
 // and the practice-shift map: painted signboards grouped by time of day, stars chalked on a board.
 import { useState } from 'react';
 import { PACE_OPTIONS, levelMapModel, paceOf, resumeViewModel, totalStars, unlockedLevelOf } from './menuModels.js';
-import { ChotuAvatar, DishGlyph, Padlock, SkyGlyph, StallHeroArt, StarRow } from './art.jsx';
+import { ChotuAvatar, DishGlyph, FeatureGlyph, Padlock, SkyGlyph, StallHeroArt, StarRow } from './art.jsx';
 import { radioKeys } from './hooks.js';
 import { paths } from '@/platform/paths.js';
 import { GAME_ID } from '@shared/tiffin-centre/catalog.js';
@@ -47,6 +47,17 @@ function LevelCard({ c, pace, onStart }) {
             <span className="tc-menu-lvl__hours">{c.hours}</span>
             <span className="tc-menu-lvl__menu"><DishGlyph station="tawa" size={16} /> {c.menuCount} dishes</span>
           </span>
+          {c.highlights?.chips?.length > 0 && (
+            <span className="tc-menu-lvl__feats" aria-hidden="true">
+              {c.highlights.chips.map((f) => (
+                <span key={f.id} className={`tc-menu-feat is-${f.kind}`} data-feat={f.id}>
+                  <FeatureGlyph id={f.icon} size={13} />
+                  {f.label}
+                </span>
+              ))}
+              {c.highlights.more > 0 && <span className="tc-menu-feat is-more">{`+${c.highlights.more}`}</span>}
+            </span>
+          )}
           <span className="tc-menu-lvl__chalk">
             {c.locked ? <span className="tc-menu-lvl__locktext">Locked</span> : <StarRow value={c.stars} size={20} />}
             {!c.locked && c.best > 0 && <span className="tc-menu-lvl__best">Best {'₹'}{c.best.toLocaleString('en-IN')}</span>}
@@ -54,7 +65,7 @@ function LevelCard({ c, pace, onStart }) {
           </span>
         </span>
       </button>
-      <span id={descId} className="tc-menu-sr">{c.locked ? c.lockNote : `${c.length} shift`}</span>
+      <span id={descId} className="tc-menu-sr">{c.locked ? c.lockNote : `${c.length} shift. Expect: ${c.highlights?.line || 'cooking and serving'}`}</span>
     </li>
   );
 }

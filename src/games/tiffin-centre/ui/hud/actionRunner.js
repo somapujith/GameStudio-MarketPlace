@@ -1,4 +1,5 @@
-// The action runner: nobody teleports. Every interaction (cook / take / serve / collect / discard) is "walk, then work":
+// The action runner: nobody teleports. Every interaction (cook / take / serve / collect / discard, and the operations layer's prep / collectPrep / tend /
+// swapGas) is "walk, then work" (board and buy have no place to walk to: they act at once):
 //   1. target = workTarget(action, state); `move {to}` is sent at once so teammates see the walk (coalesced: at most one per second,
 //      the latest wish wins, so a burst of taps cannot eat the room's 40 messages / 5 s);
 //   2. the local avatar's x is tracked with the SAME stepWalker the scene uses (from standX of the previous `at`), so the HUD knows
@@ -29,7 +30,8 @@ export function createActionRunner({ now, dispatch, getState, meId, refine = (a)
   const me = () => getState()?.players?.[meId] || null;
   const valid = (to) => {
     const s = getState();
-    return validTarget(to, s?.cfg?.stations, s?.cfg?.spots);
+    // 'gas' (the LPG stand) is a legal place only on levels that have a cylinder
+    return validTarget(to, s?.cfg?.stations, s?.cfg?.spots, !!s?.cfg?.gas);
   };
 
   function publish() {

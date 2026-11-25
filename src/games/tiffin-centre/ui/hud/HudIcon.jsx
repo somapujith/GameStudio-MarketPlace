@@ -18,6 +18,18 @@ const OWN = {
   behind: 'M6 9l6 6 6-6M6 14.5l6 6 6-6',
   cc: 'M3.5 6.5h17v11h-17zM10 10.5a2 2 0 1 0 0 3M16 10.5a2 2 0 1 0 0 3',
   walk: 'M13 5a1.6 1.6 0 1 0 0-3.2A1.6 1.6 0 0 0 13 5zM10 21l1.5-6-2.5-2 1-5 3 1 2 3M9 9.5 6.5 12',
+  // operations layer: LPG cylinder, rain, wiping a pan, a drop of water, a parcel bag, the delivery bike, the menu board, the prep counter, a clipboard, a chilli
+  gas: 'M8 9h8v10a1.5 1.5 0 0 1-1.5 1.5h-5A1.5 1.5 0 0 1 8 19zM9.5 9V7a2.5 2.5 0 0 1 5 0v2M12 4.5V3M8 13.5h8',
+  rain: 'M7 14.5a4 4 0 0 1-.5-7.9A5.5 5.5 0 0 1 17 7.5a3.5 3.5 0 0 1 0 7zM9 17.5 8 20M13 17.5 12 20M17 17.5 16 20',
+  wipe: 'M5 20h14M8 16 14.5 4.5l3.5 2L11.5 18zM6.5 20 8 16',
+  drop: 'M12 3.5s6 6.2 6 10.7a6 6 0 0 1-12 0C6 9.7 12 3.5 12 3.5z',
+  bag: 'M6 8h12l1 12.5H5zM9 8V6.5a3 3 0 0 1 6 0V8',
+  truck: 'M3 6.5h11v9H3zM14 10h4l3 3v2.5h-7zM7 18.5h.01M17 18.5h.01',
+  board: 'M4 5h16v11H4zM8 20l1.5-4M16 20l-1.5-4M8.5 9h7M8.5 12h4.5',
+  prep: 'M4 11h16l-1.5 6a3 3 0 0 1-3 2.2h-7A3 3 0 0 1 5.5 17zM15 11l4-6.5',
+  clip: 'M8 4.5h8v3H8zM6.5 6h11v14h-11zM9 12h6M9 15.5h4',
+  chilli: 'M16.5 5.5c-.6-1.2-2-1.8-3.2-1.2M15 6.5c3 1.8 3.4 6.4-.4 9.9C11.600 19.400 6.600 19.900 4.500 19.500c3-1.400 4.500-3.600 5-6.600.4-2.400 2.600-4.400 5.500-6.400z',
+  basket: 'M4 10h16l-1.500 9.500h-13zM8 10l3-5.500M16 10l-3-5.500',
 };
 const FILLED = new Set(['heart', 'heartCrack']);
 

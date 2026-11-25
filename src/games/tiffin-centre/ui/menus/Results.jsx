@@ -13,6 +13,13 @@ const ROWS = [
   ['unpaid', 'Walked away unpaid', 'bad'],
   ['bestCombo', 'Best combo', 'combo'],
 ];
+// the stall's work behind the cooking (only on shifts that had it)
+const OPS_ROWS = [
+  ['prepped', 'Batches prepped'],
+  ['tended', 'Pans tended'],
+  ['gasSwaps', 'Gas swaps'],
+  ['bought', 'Market buys'],
+];
 
 function Stars({ vm }) {
   if (vm.kind === 'tutorial') return null;
@@ -27,21 +34,49 @@ function Stars({ vm }) {
   );
 }
 
-function Tally({ vm, shown }) {
+/** The books: what came in, what went out, and what is left (stars are PROFIT). */
+function Books({ vm }) {
+  const b = vm.books;
+  const items = [
+    ['Takings', b.revenue, ''],
+    ['Tips', b.tips, 'good'],
+    ['Cost', b.cost, 'bad'],
+    ['Wasted', b.waste, 'bad'],
+    ['Fines', b.fines, 'bad'],
+  ];
+  return (
+    <dl className="tc-menu-books" aria-label="The books">
+      {items.map(([label, v, tone]) => (
+        <div key={label} className={`tc-menu-books__row${tone ? ` is-${tone}` : ''}${tone === 'bad' && v > 0 ? ' is-hot' : ''}`}>
+          <dt>{label}</dt>
+          <dd>{rupees(v)}</dd>
+        </div>
+      ))}
+      <div className={`tc-menu-books__row is-profit${b.profit < 0 ? ' is-neg' : ''}`}>
+        <dt>Profit</dt>
+        <dd>{rupees(b.profit)}</dd>
+      </div>
+    </dl>
+  );
+}
+
+function Tally({ vm, shown, shownProfit }) {
   return (
     <section className="tc-menu-galla" aria-label="Money earned">
       <div className="tc-menu-galla__top">
         <span className="tc-menu-galla__label">Galla</span>
         <b className="tc-menu-galla__money" aria-hidden="true">{rupees(shown)}</b>
         <span className="tc-menu-sr">{`Money earned: ${rupees(vm.money)}`}</span>
+        {vm.books.show && <span className="tc-menu-sr">{`Profit: ${rupees(vm.profit)}`}</span>}
         <span className="tc-menu-galla__pile" aria-hidden="true">
           <RupeeNote tilt={-8} /><RupeeNote tilt={5} tone="orange" /><Coin size={20} /><Coin size={20} /><Coin size={20} />
         </span>
       </div>
+      {vm.books.show && <Books vm={vm} />}
       {vm.hasBar && (
         <div className="tc-menu-tape">
-          <div className="tc-menu-tape__track" role="img" aria-label={`${rupees(vm.money)} earned. Star targets ${vm.thresholds.map(rupees).join(', ')}.`}>
-            <span className="tc-menu-tape__fill" style={{ width: `${Math.min(100, (vm.bar.max ? (shown / vm.bar.max) * 100 : 0))}%` }} />
+          <div className="tc-menu-tape__track" role="img" aria-label={`${rupees(vm.profit)} profit. Star targets ${vm.thresholds.map(rupees).join(', ')}.`}>
+            <span className="tc-menu-tape__fill" style={{ width: `${Math.max(0, Math.min(100, vm.bar.max ? (shownProfit / vm.bar.max) * 100 : 0))}%` }} />
             {vm.bar.marks.map((m) => (
               <span key={m.star} className={`tc-menu-tape__mark${m.reached ? ' is-reached' : ''}`} style={{ left: `${m.at * 100}%` }}>
                 <ChalkStar on={m.reached} size={18} />
@@ -50,7 +85,7 @@ function Tally({ vm, shown }) {
             ))}
           </div>
           <p className="tc-menu-tape__note">
-            {vm.nextStar ? `${rupees(vm.nextStar.need)} more for star ${vm.nextStar.star}` : 'Every star chalked up. Full galla!'}
+            {vm.nextStar ? `${rupees(vm.nextStar.need)} more profit for star ${vm.nextStar.star}` : 'Every star chalked up. Full galla!'}
           </p>
         </div>
       )}
@@ -66,6 +101,7 @@ export default function Results({ result, level, pace = 'normal', mode = 'practi
   const vm = resultViewModel(result, level, pace, { players, mode });
   const reduced = useMotionReduced();
   const shown = useCountUp(vm.money, { instant: reduced, ms: 1300, delay: 900 });
+  const shownProfit = useCountUp(vm.profit, { instant: reduced, ms: 1300, delay: 900 });
   const root = useRef(null);
   useEffect(() => {
     root.current?.querySelector('[data-autofocus]')?.focus?.({ preventScroll: true });
@@ -110,16 +146,22 @@ export default function Results({ result, level, pace = 'normal', mode = 'practi
           </section>
         )}
 
-        {!tutorial && <Tally vm={vm} shown={shown} />}
+        {!tutorial && <Tally vm={vm} shown={shown} shownProfit={shownProfit} />}
 
         {!tutorial && (!closed || vm.stats.served > 0) ? (
           <section className="tc-menu-chit" aria-label="Shift numbers">
             <h2 className="tc-menu-chit__h">Today's chit</h2>
             <dl className="tc-menu-chit__rows">
-              {ROWS.map(([k, label, tone]) => (
+              {ROWS.filter(([k]) => !(k === 'tips' && vm.books.show)).map(([k, label, tone]) => (
                 <div key={k} className={`tc-menu-chit__row${tone ? ` is-${tone}` : ''}${(tone === 'bad' && vm.stats[k] > 0) ? ' is-hot' : ''}`}>
                   <dt>{label}</dt>
                   <dd>{tone === 'money' ? rupees(vm.stats[k]) : k === 'bestCombo' ? `x${vm.stats[k]}` : vm.stats[k]}</dd>
+                </div>
+              ))}
+              {vm.ops.show && OPS_ROWS.map(([k, label]) => (
+                <div key={k} className="tc-menu-chit__row is-ops">
+                  <dt>{label}</dt>
+                  <dd>{vm.ops[k]}</dd>
                 </div>
               ))}
             </dl>

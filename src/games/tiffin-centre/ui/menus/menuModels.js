@@ -1,7 +1,7 @@
 // Tiffin Centre menus: pure view-models (no React, no DOM). Everything the menu screens show is computed here so it can be unit-tested
 // in Node: level map, hour labels, star thresholds, the end-of-shift numbers, briefing, coach marks and status copy.
 import {
-  DAYPARTS, DISHES, GAME_ID, LEVELS, MAX_LEVEL, PACE, STATIONS, STATION_KINDS, TICK_MS, coopScale, daypartOf, levelDef,
+  DAYPARTS, DISHES, EVENTS, GAME_ID, GAS, LEVELS, LEVEL_OPS, MAX_LEVEL, PACE, STATIONS, STATION_KINDS, TICK_MS, coopScale, daypartOf, levelDef,
 } from '@shared/tiffin-centre/catalog.js';
 
 export const PACE_IDS = ['relaxed', 'normal', 'rush'];
@@ -70,6 +70,41 @@ export function unlockedLevelOf(progress) {
   return clamp(Math.max(top, Math.trunc(num(progress?.unlocked, 1))), 1, MAX_LEVEL);
 }
 
+// ---- what a shift brings: the operations layer per level (LEVEL_OPS in the catalogue) ------------------------------------------------------------
+
+const opsOf = (n) => LEVEL_OPS[levelDef(n).id] || LEVEL_OPS[0];
+const EVENT_SHORT = { rain: 'Rain', cricket: 'Cricket night', power: 'Power cut', festival: 'Festival rush', inspector: 'Inspector', delivery: 'Delivery boy' };
+const EVENT_ICON = { rain: 'rain', cricket: 'cricket', power: 'power', festival: 'festival', inspector: 'inspector', delivery: 'delivery' };
+
+/**
+ * The expected events and features of a level, from LEVEL_OPS: [{ id, label, te?, kind: 'event' | 'gas' | 'feature', icon }].
+ * Gas and the events come first (they are the surprises); then stock, pan care, the market, requests, regulars and office parcels.
+ */
+export function levelFeatures(n) {
+  const l = levelDef(n);
+  const ops = opsOf(l.id);
+  const out = [];
+  if (ops.gas > 0) out.push({ id: 'gas', label: 'LPG gas', kind: 'gas', icon: 'gas' });
+  for (const id of ops.events || []) {
+    if (EVENTS[id]) out.push({ id, label: EVENT_SHORT[id] || EVENTS[id].name, te: EVENTS[id].te, kind: 'event', icon: EVENT_ICON[id] || 'event' });
+  }
+  if (ops.stock > 0) out.push({ id: 'stock', label: 'Stock and prep', kind: 'feature', icon: 'stock' });
+  if (ops.heat) out.push({ id: 'heat', label: 'Pan care', kind: 'feature', icon: 'heat' });
+  if (ops.market) out.push({ id: 'market', label: 'Market runner', kind: 'feature', icon: 'market' });
+  if (ops.requests) out.push({ id: 'requests', label: 'Special requests', kind: 'feature', icon: 'requests' });
+  if (ops.regulars > 0) out.push({ id: 'regulars', label: 'Regulars', kind: 'feature', icon: 'regulars' });
+  if (ops.big) out.push({ id: 'big', label: 'Office parcels', kind: 'feature', icon: 'big' });
+  return out;
+}
+
+/** The chips a level card shows: gas and the events (at most `max`), or the stock note on a shift with none; `more` counts the rest. */
+export function levelHighlights(n, max = 4) {
+  const all = levelFeatures(n);
+  const loud = all.filter((f) => f.kind !== 'feature');
+  const pool = loud.length ? loud : all.slice(0, 1);
+  return { chips: pool.slice(0, max), more: Math.max(0, all.length - Math.min(pool.length, max)), line: all.map((f) => f.label).join(', ') };
+}
+
 export function levelCardModel(n, { progress = null, unlockedLevel } = {}) {
   const l = levelDef(n);
   const open = Math.max(1, num(unlockedLevel, unlockedLevelOf(progress)));
@@ -92,6 +127,8 @@ export function levelCardModel(n, { progress = null, unlockedLevel } = {}) {
     locked,
     current: !locked && stars === 0 && l.id === open,
     lockNote: locked ? `Earn a star on level ${l.id - 1} to open this shift` : '',
+    features: levelFeatures(l.id),
+    highlights: levelHighlights(l.id),
     label: `Level ${l.id}, ${l.name}, ${hourRange(l.hour)}, ${l.menu.length} dishes, ${locked ? 'locked' : `${stars} of 3 stars`}`,
   };
 }
@@ -123,7 +160,7 @@ export function totalStars(progress) {
 
 // ---- end of shift ----------------------------------------------------------------------------------------------------------
 
-/** Star targets in whole rupees for this pace and table size (the engine tests `money >= base * PACE.stars * coopScale`). */
+/** PROFIT targets in whole rupees for this pace and table size (the engine tests `profit >= base * PACE.stars * coopScale`, profit = cash - costs). */
 export function starThresholds(level, pace, players = 1) {
   const l = levelDef(level);
   const k = PACE[paceOf(pace)].stars * coopScale(players);
@@ -156,7 +193,12 @@ export function resultViewModel(result, level, pace, opts = {}) {
 
   const money = Math.max(0, Math.round(r.money !== undefined && r.money !== null ? num(r.money) : standings.reduce((a, s) => a + num(s.score), 0)));
   const tutorial = r.reason === 'tutorial' || lvl.id === 0;
-  const scored = thresholds.filter((t) => money >= t).length;
+  // STARS ARE PROFIT (cash in hand minus what the stall spent): money alone is shown on the galla but is not what the targets compare with
+  const bookSrcs = [r, r.team, r.stats];
+  const has = (k) => bookSrcs.some((s) => s && typeof s === 'object' && s[k] !== undefined && s[k] !== null && s[k] !== '');
+  const cost = Math.max(0, Math.round(pick(bookSrcs, ['cost'], 0)));
+  const profit = Math.round(pick(bookSrcs, ['profit'], money - cost));
+  const scored = thresholds.filter((t) => profit >= t).length;
   const stars = tutorial ? 0 : clamp(Math.trunc(num(r.stars, scored)), 0, 3);
   const kind = tutorial ? 'tutorial' : r.reason === 'closed' || stars === 0 ? 'closed' : 'cleared';
 
@@ -189,8 +231,26 @@ export function resultViewModel(result, level, pace, opts = {}) {
   rows.forEach((x) => { x.mvp = x.id === mvpId && x.collected > 0; });
 
   const hasBar = !tutorial && thresholds[2] > 0;
-  const barMax = Math.max(Math.round(thresholds[2] * 1.1), money, 1);
-  const nextIdx = hasBar ? thresholds.findIndex((t) => money < t) : -1;
+  const barMax = Math.max(Math.round(thresholds[2] * 1.1), profit, 1);
+  const nextIdx = hasBar ? thresholds.findIndex((t) => profit < t) : -1;
+  const books = {
+    show: !tutorial && (has('cost') || has('profit') || has('revenue')),
+    revenue: Math.round(pick(bookSrcs, ['revenue'], money - stats.tips)),
+    tips: stats.tips,
+    cost,
+    waste: Math.round(pick(bookSrcs, ['waste'], 0)),
+    fines: Math.round(pick(bookSrcs, ['fines'], 0)),
+    carry: Math.round(pick(bookSrcs, ['carry'], 0)),
+    profit,
+    cash: money,
+  };
+  const opsStats = {
+    show: !tutorial && ['prepped', 'tended', 'gasSwaps', 'bought'].some(has),
+    prepped: Math.round(pick(bookSrcs, ['prepped'], 0)),
+    tended: Math.round(pick(bookSrcs, ['tended'], 0)),
+    gasSwaps: Math.round(pick(bookSrcs, ['gasSwaps'], 0)),
+    bought: Math.round(pick(bookSrcs, ['bought'], 0)),
+  };
   const next = kind === 'tutorial' ? (MAX_LEVEL >= 1 ? 1 : null) : kind === 'cleared' && lvl.id < MAX_LEVEL ? lvl.id + 1 : null;
 
   return {
@@ -209,10 +269,14 @@ export function resultViewModel(result, level, pace, opts = {}) {
         ? 'Too many customers walked away. Open the shutters and try again.'
         : `${lvl.name} cleared with ${stars} ${stars === 1 ? 'star' : 'stars'}`,
     money,
+    profit,
+    cost,
+    books,
+    ops: opsStats,
     thresholds,
     hasBar,
-    bar: { max: barMax, fill: clamp(money / barMax, 0, 1), marks: thresholds.map((t, i) => ({ star: i + 1, value: t, at: clamp(t / barMax, 0, 1), reached: money >= t })) },
-    nextStar: nextIdx >= 0 ? { star: nextIdx + 1, target: thresholds[nextIdx], need: thresholds[nextIdx] - money } : null,
+    bar: { max: barMax, fill: clamp(profit / barMax, 0, 1), marks: thresholds.map((t, i) => ({ star: i + 1, value: t, at: clamp(t / barMax, 0, 1), reached: profit >= t })) },
+    nextStar: nextIdx >= 0 ? { star: nextIdx + 1, target: thresholds[nextIdx], need: thresholds[nextIdx] - profit } : null,
     stats,
     coop,
     rows,
@@ -249,6 +313,32 @@ const stationLabel = (id, prevIds) => {
   return { id, name: sameBefore ? `Second ${kind.name.toLowerCase()}` : kind.name, te: kind.te };
 };
 
+const MECH = {
+  stock: { title: 'Stock and prep', text: 'Batter, chutney and sambar run out. Make more at the prep counter behind you (P) before the shelf is empty.' },
+  heat: { title: 'Pan care', text: 'Pans go cold and gunky. Wipe the tawa, skim the kadai and top up the steamer (T), or dosas stick and tear.' },
+  gas: { title: 'LPG cylinder', text: `The gas runs down while you cook. Swap the cylinder before it is empty (₹${GAS.swapCost}, burners off for ${GAS.swapTicks}s).` },
+  market: { title: 'Market runner', text: 'Short of something? Buy it from the market: instant, but 40% dearer than making it.' },
+  requests: { title: 'Special requests', text: 'Parcels, extra chutney or sambar, less or more spice: a happy customer tips more.' },
+  regulars: { title: 'Regulars', text: 'Regular customers come back. Serve them well and they tip more every visit.' },
+  big: { title: 'Office parcel orders', text: 'Now and then an office orders a big batch of parcels: a long deadline and a big tip.' },
+  rain: { title: 'Rain', text: 'Fewer people, but chai, bajji and vada sell.' },
+  cricket: { title: 'Cricket night', text: 'Students and autowalas arrive in bursts.' },
+  power: { title: 'Power cut', text: 'No steamer and no grinder for a while. The gas burners carry on.' },
+  festival: { title: 'Festival rush', text: 'A bigger crowd and bigger tips.' },
+  inspector: { title: 'Food-safety inspector', text: 'The GHMC inspector comes round: clear burnt dishes and wipe the tawas, or pay a fine and lose a heart.' },
+  delivery: { title: 'Delivery boy', text: 'The tiffin delivery boy wants five parcels in a hurry, for a tip.' },
+};
+const hasFeature = (ops, id) => (id === 'stock' ? ops.stock > 0 : id === 'heat' ? !!ops.heat : id === 'gas' ? ops.gas > 0 : id === 'market' ? !!ops.market : id === 'requests' ? !!ops.requests : id === 'regulars' ? ops.regulars > 0 : id === 'big' ? !!ops.big : (ops.events || []).includes(id));
+const MECH_ORDER = ['stock', 'heat', 'gas', 'market', 'requests', 'regulars', 'big', 'rain', 'cricket', 'power', 'festival', 'inspector', 'delivery'];
+
+/** The mechanics a shift introduces for the first time (not seen in any earlier level): [{ id, title, text }]. */
+export function mechanicsIntroduced(n) {
+  const id = levelDef(n).id;
+  if (id < 1) return [];
+  const here = opsOf(id);
+  return MECH_ORDER.filter((m) => hasFeature(here, m) && !Array.from({ length: id - 1 }, (_, i) => opsOf(i + 1)).some((o) => hasFeature(o, m))).map((m) => ({ id: m, ...MECH[m] }));
+}
+
 export function briefingModel(level, pace) {
   const l = levelDef(level);
   const prev = l.id > 0 ? LEVELS[l.id - 1] : null;
@@ -277,6 +367,8 @@ export function briefingModel(level, pace) {
     newDishes: menu.filter((m) => m.isNew).length,
     newStations: stations.filter((s) => s.isNew).length,
     tip: tipOfLevel(l.id),
+    mechanics: mechanicsIntroduced(l.id), // first met today
+    features: levelFeatures(l.id), // everything to expect today
   };
 }
 

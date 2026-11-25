@@ -1,7 +1,7 @@
 // The two-second card before a shift: a painted menu board with the day's dishes (NEW ones stickered), the hours on a sky chip,
 // and one tip from Chotu. Calls onGo after `ms` (or when "Go" is pressed).
 import { useEffect, useRef } from 'react';
-import { DishGlyph, SkyGlyph } from './art.jsx';
+import { DishGlyph, FeatureGlyph, SkyGlyph } from './art.jsx';
 import { useMotionReduced } from './hooks.js';
 import { briefingModel } from './menuModels.js';
 import './menus.css';
@@ -11,7 +11,8 @@ export default function LevelBriefing({ level, pace = 'normal', onGo, ms: msProp
   const vm = briefingModel(level, pace);
   // The countdown bar is hidden under reduced motion, so a card that vanishes on a timer would give no warning: wait for "Open the stall".
   const reduced = useMotionReduced();
-  const ms = reduced ? 0 : msProp;
+  // a shift that teaches something new waits for "Open the stall": two seconds is not enough to read it
+  const ms = reduced || vm.mechanics.length > 0 ? 0 : msProp;
   const go = useRef(onGo);
   go.current = onGo;
   useEffect(() => {
@@ -54,6 +55,31 @@ export default function LevelBriefing({ level, pace = 'normal', onGo, ms: msProp
           )}
         </section>
 
+        {vm.mechanics.length > 0 && (
+          <section className="tc-menu-newmech" aria-label="New at the stall today">
+            <h3 className="tc-menu-menuboard__h">New today <small>{vm.mechanics.length} to learn</small></h3>
+            <ul className="tc-menu-newmech__list">
+              {vm.mechanics.map((m) => (
+                <li key={m.id}>
+                  <FeatureGlyph id={m.id} size={18} />
+                  <span><b>{m.title}</b> {m.text}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+        {vm.features.length > 0 && (
+          <p className="tc-menu-today" aria-label="What to expect today">
+            <span className="tc-menu-today__h">Expect</span>
+            {vm.features.filter((f) => f.kind !== 'feature').map((f) => (
+              <span key={f.id} className={`tc-menu-feat is-${f.kind}`}>
+                <FeatureGlyph id={f.icon} size={13} />
+                {f.label}
+                {f.te ? <span lang="te" className="tc-menu-feat__te">{f.te}</span> : null}
+              </span>
+            ))}
+          </p>
+        )}
         <p className="tc-menu-tip"><b>Chotu's tip</b> {vm.tip}</p>
         <button type="button" className="tc-menu-btn tc-menu-btn--steel tc-menu-btn--primary" data-autofocus autoFocus onClick={() => onGo?.()}>
           Open the stall

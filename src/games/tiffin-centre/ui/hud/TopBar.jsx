@@ -3,7 +3,7 @@ import { LEVELS, LIVES } from '@shared/tiffin-centre/catalog.js';
 import { formatINR } from '@shared/format.js';
 import HudIcon from './HudIcon.jsx';
 import { useCountUp } from './hooks.js';
-import { daypartView, formatClock, formatLeft, heartsLabel, hourFromState, shiftFrac, starBar, starTargets } from './hudLogic.js';
+import { booksView, daypartView, formatClock, formatLeft, heartsLabel, hourFromState, shiftFrac, starBar, starTargets } from './hudLogic.js';
 
 export function Hearts({ lives, lostN = 0, lostIdx = -1, reduced }) {
   const n = Math.max(0, Math.min(LIVES, Math.round(Number(lives) || 0)));
@@ -22,16 +22,17 @@ export function Hearts({ lives, lostN = 0, lostIdx = -1, reduced }) {
   );
 }
 
-export function StarBar({ money, targets }) {
-  const bar = starBar(money, targets);
+/** The star bar: stars are PROFIT (cash minus costs), so `profit` is what is compared with the targets. */
+export function StarBar({ profit, targets }) {
+  const bar = starBar(profit, targets);
   if (!bar) return null;
   return (
-    <div className="tc-hud-stars" role="progressbar" aria-label={`Takings toward ${bar.targets[2]} rupees`} aria-valuemin={0} aria-valuemax={bar.targets[2]} aria-valuenow={Math.min(money, bar.targets[2])} aria-valuetext={`${bar.earned} of 3 stars`}>
+    <div className="tc-hud-stars" role="progressbar" aria-label={`Profit toward ${bar.targets[2]} rupees`} aria-valuemin={0} aria-valuemax={bar.targets[2]} aria-valuenow={Math.max(0, Math.min(profit, bar.targets[2]))} aria-valuetext={`${bar.earned} of 3 stars`}>
       <span className="tc-hud-stars-fill" style={{ width: `${bar.fill * 100}%` }} />
       {bar.ticks.map((t, i) => (
         <span key={i} className={`tc-hud-star-tick${i < bar.earned ? ' is-got' : ''}`} style={{ left: `${t * 100}%` }}>
           <HudIcon name="star" size={14} />
-          <span className="tc-hud-sr">{`${i + 1} star at ${bar.targets[i]} rupees`}</span>
+          <span className="tc-hud-sr">{`${i + 1} star at ${bar.targets[i]} rupees profit`}</span>
         </span>
       ))}
     </div>
@@ -45,6 +46,7 @@ export default function TopBar({ state, reduced, pops = [], lostN = 0, lostIdx =
   const part = daypartView(hour);
   const money = useCountUp(state.money || 0, reduced);
   const targets = starTargets(state);
+  const books = booksView(state);
   const total = Math.max(1, state.shiftTicks || 1);
   const lead = reduced ? shiftFrac(state, 0) : shiftFrac(state, 1);
   const tutorial = !!state.cfg?.tutorial;
@@ -88,7 +90,19 @@ export default function TopBar({ state, reduced, pops = [], lostN = 0, lostIdx =
             <span key={p.id} className="tc-hud-pop" aria-hidden="true">{`+${formatINR(p.amount)}`}</span>
           ))}
         </div>
-        <StarBar money={state.money || 0} targets={targets} />
+        {books.show && (
+          <div className="tc-hud-books" role="group" aria-label={`Cost ${formatINR(books.cost)}, profit ${formatINR(books.profit)}`}>
+            <span className="tc-hud-book is-cost">
+              <small>Cost</small>
+              <b>{formatINR(books.cost)}</b>
+            </span>
+            <span className={`tc-hud-book is-profit${books.profit < 0 ? ' is-neg' : ''}`}>
+              <small>Profit</small>
+              <b>{formatINR(books.profit)}</b>
+            </span>
+          </div>
+        )}
+        <StarBar profit={books.profit} targets={targets} />
       </div>
 
       <div className="tc-hud-vitals">

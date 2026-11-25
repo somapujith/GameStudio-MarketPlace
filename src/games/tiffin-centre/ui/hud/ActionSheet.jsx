@@ -6,14 +6,19 @@ import { formatINR } from '@shared/format.js';
 import DishIcon from './DishIcon.jsx';
 import HudIcon from './HudIcon.jsx';
 import RecipeCard from './RecipeCard.jsx';
-import { dishForKey, placeName, stationDishes } from './hudLogic.js';
+import TendButton from './TendButton.jsx';
+import { cookReason, dishForKey, placeName, stationDishes } from './hudLogic.js';
+import { tendView } from './opsLogic.js';
 
-export default function ActionSheet({ sheet, state, avail, onPick, onClose }) {
+// `onTend(view)` (optional) puts a Tend button under the list for a pan or steamer; a dish the shelf or the burner cannot make says why on its row
+// (the engine's own words: "Out of dosa batter", "No gas: change the cylinder") and a tap on it shows that reason instead of cooking.
+export default function ActionSheet({ sheet, state, avail, onPick, onClose, onTend }) {
   const ref = useRef(null);
   const rows = stationDishes(state, sheet.station);
   const onPickRef = useRef(onPick);
   onPickRef.current = onPick;
   const stats = new Map((avail || []).map((a) => [a.dish, a]));
+  const tend = tendView(state, sheet.station);
   const [peek, setPeek] = useState(null);
   const peekRef = useRef(null);
   peekRef.current = peek;
@@ -80,15 +85,17 @@ export default function ActionSheet({ sheet, state, avail, onPick, onClose }) {
         <ul className="tc-hud-sheet-list">
           {rows.map((r) => {
             const a = stats.get(r.id);
+            const why = cookReason(state, sheet.station, r.id);
             return (
               <li key={r.id} className="tc-hud-sheet-item">
-                <button type="button" className="tc-hud-sheet-row" data-dish={r.id} aria-keyshortcuts={String(r.key)} onClick={() => onPick(r.id)}>
+                <button type="button" className="tc-hud-sheet-row" data-dish={r.id} data-blocked={why ? '1' : undefined} aria-disabled={why ? 'true' : undefined} aria-keyshortcuts={String(r.key)} onClick={() => onPick(r.id)}>
                   <span className="tc-hud-keycap" aria-hidden="true">{r.key}</span>
                   <DishIcon dish={r.id} size={44} />
                   <span className="tc-hud-sheet-name">
                     <b className="tc-hud-en">{r.name}</b>
                     <span className="tc-hud-te">{r.te}</span>
                     <span className="tc-hud-sheet-counts">{a ? `${a.ready} ready · ${a.cooking} cooking · ${a.demand} wanted` : ''}</span>
+                    {why && <span className="tc-hud-sheet-why">{why}</span>}
                   </span>
                   <span className="tc-hud-sheet-meta">
                     <span className="tc-hud-tag">{formatINR(r.price)}</span>
@@ -110,6 +117,12 @@ export default function ActionSheet({ sheet, state, avail, onPick, onClose }) {
             );
           })}
         </ul>
+        {tend && onTend && (
+          <footer className="tc-hud-sheet-foot">
+            <TendButton view={tend} onTend={onTend} variant="sheet" />
+            <span className="tc-hud-sheet-footnote">{tend.pulse ? 'This pan needs tending before the next dish.' : 'Keep the pan clean and at the right heat.'}</span>
+          </footer>
+        )}
       </div>
     </div>
   );

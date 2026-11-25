@@ -15,7 +15,8 @@ function chitLabel(t) {
   const needs = t.chips.filter((c) => !c.served).map((c) => c.name);
   const done = t.chips.length - needs.length;
   const what = needs.length ? `needs ${needs.join(' and ')}` : 'all served';
-  return `Token ${t.token}, ${t.name}, ${t.kindLabel}, ${STATE_WORD[t.st] || t.st}, ${what}${done ? `, ${done} of ${t.chips.length} served` : ''}`;
+  const extra = (t.badges || []).map((b) => b.title).join('. ');
+  return `Token ${t.token}, ${t.name}, ${t.kindLabel}, ${STATE_WORD[t.st] || t.st}, ${what}${done ? `, ${done} of ${t.chips.length} served` : ''}${extra ? `. ${extra}` : ''}`;
 }
 
 function Chit({ t, spotOn, walkOn, collectSpot, collectWalk, onTap, onLook, register }) {
@@ -24,12 +25,13 @@ function Chit({ t, spotOn, walkOn, collectSpot, collectWalk, onTap, onLook, regi
       ref={(el) => register(t.id, el)}
       className={`tc-hud-chit${spotOn ? ' is-spot' : ''}${walkOn ? ' is-walking' : ''}`}
       data-st={t.st}
+      data-big={t.badges?.some((b) => b.id === 'big' || b.id === 'delivery') ? '1' : undefined}
       data-tone={t.st === 'paying' ? 'ok' : t.st === 'eating' ? 'eat' : 'ok'}
       data-ticket={t.id}
       style={{ '--tilt': `${((t.id * 37) % 5) - 2}deg` }}
     >
       <span className="tc-hud-clip" aria-hidden="true" />
-      <button type="button" className="tc-hud-chit-main" onClick={() => onTap(t.id)} aria-label={chitLabel(t)} data-spot={`ticket:${t.id}`}>
+      <button type="button" className="tc-hud-chit-main" data-badges={t.badges?.length ? '1' : undefined} onClick={() => onTap(t.id)} aria-label={chitLabel(t)} data-spot={`ticket:${t.id}`}>
         <span className="tc-hud-token" aria-hidden="true">
           <i className="tc-hud-token-hole" />
           <small>TOKEN</small>
@@ -43,14 +45,37 @@ function Chit({ t, spotOn, walkOn, collectSpot, collectWalk, onTap, onLook, regi
           <b>{t.name}</b>
           <small>{t.st === 'eating' ? 'Eating...' : t.st === 'paying' ? 'Pay now!' : t.kindLabel}</small>
         </span>
+        {t.badges?.length > 0 && (
+          <span className="tc-hud-badges" aria-hidden="true">
+            {t.badges.map((b) => (
+              <span key={b.id} className={`tc-hud-badge is-${b.id} is-${b.tone}`} title={b.title}>
+                <HudIcon name={b.icon} size={13} />
+                <span>{b.label}</span>
+                {b.pips !== undefined && (
+                  <span className="tc-hud-pips">
+                    {[0, 1, 2].map((n) => (
+                      <HudIcon key={n} name="star" size={9} className={n < b.pips ? 'is-on' : 'is-off'} />
+                    ))}
+                  </span>
+                )}
+                {Number.isFinite(b.secs) && <b className="tc-hud-badge-secs">{`${b.secs}s`}</b>}
+              </span>
+            ))}
+          </span>
+        )}
         <span className="tc-hud-dishes">
           {t.chips.map((c, i) => (
-            <span key={i} className={`tc-hud-dishchip${c.served ? ' is-served' : ''}${c.inHand && !c.served ? ' is-inhand' : ''}`}>
+            <span key={i} className={`tc-hud-dishchip${c.served ? ' is-served' : ''}${c.inHand && !c.served ? ' is-inhand' : ''}${c.broken ? ' is-broken' : ''}`}>
               <DishIcon dish={c.dish} size={28} />
               <span className="tc-hud-dishname">
                 <span className="tc-hud-en">{c.name}</span>
                 <span className="tc-hud-te">{c.te}</span>
               </span>
+              {c.broken && (
+                <span className="tc-hud-half" title="Broken dish: half price">
+                  {'½'}
+                </span>
+              )}
               {c.served && (
                 <span className="tc-hud-tick" aria-hidden="true">
                   <HudIcon name="check" size={12} />

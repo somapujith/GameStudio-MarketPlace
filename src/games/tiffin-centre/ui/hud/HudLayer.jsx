@@ -1,32 +1,39 @@
 // The in-game overlay controller. Takes the session snapshot (from useSession, see Hud.jsx) and wires:
 //   taps on the 3D scene (scene.pick) / DOM controls / keys  ->  decideAction  ->  the tutorial gate  ->  the action runner (walk, then work)
+//   the operations layer (stock bars, prep sheet, Tend buttons and T, gas Swap, sold-out board, events banner) rides on the same path:
+//   prep / collectPrep / tend / swapGas walk first (the prep counter is behind the cook: the head turns round to it); board / buy act at once
 //   drags on the 3D scene / look keys -> scene.lookBy (first-person head turn, with inertia); off-screen targets -> scene.lookAt
 //   session events -> toasts, +rupee pops, heart cracks, emotes, aria-live announcements; tutorial spotlight -> scene highlight + pulses
 //   customer speech (dialogue director) -> speech bubbles over heads, the subtitle strip, the voice and the moving mouth
 // Split from Hud.jsx so it renders (and is tested) without the session hook.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatINR } from '@shared/format.js';
-import { LAYOUT } from '@shared/tiffin-centre/catalog.js';
+import { LAYOUT, PREP_STATION } from '@shared/tiffin-centre/catalog.js';
 import { useReducedMotion } from '@/components/shell/hooks.js';
 import ActionSheet from './ActionSheet.jsx';
 import Availability from './Availability.jsx';
+import BoardSheet from './BoardSheet.jsx';
 import CoopBar from './CoopBar.jsx';
 import EdgeIndicators from './EdgeIndicators.jsx';
 import HandsTray from './HandsTray.jsx';
 import HudIcon from './HudIcon.jsx';
 import OrderRail from './OrderRail.jsx';
+import PrepSheet from './PrepSheet.jsx';
 import { HelpCard, QuickBar } from './QuickBar.jsx';
+import StallStatus from './StallStatus.jsx';
 import StationsDock from './StationsDock.jsx';
 import { GlossLive, SubtitleStrip } from './Subtitles.jsx';
+import TendButton from './TendButton.jsx';
 import Toasts from './Toasts.jsx';
 import TopBar from './TopBar.jsx';
 import WorldBubbles from './WorldBubbles.jsx';
 import { HudContext, useActionRunner, useHudBus } from './hooks.js';
 import {
-  BIN_TARGET, GATE_TEXT, activeCustomers, availability, bestTarget, cookAction, customerTarget, decideAction, dishInfo, effectiveHand, eventNotice, gateDecision,
-  isActionAllowed, nearestTarget, patienceWarnings, pendingTarget, placeName, playerChanges, runOutAlerts, slotTarget, spotKeys, targetKey,
+  BIN_TARGET, GATE_TEXT, activeCustomers, availability, bestTarget, cookAction, cookReason, customerTarget, decideAction, dishInfo, effectiveHand, eventNotice, gateDecision,
+  isActionAllowed, nearestTarget, patienceWarnings, pendingTarget, placeName, playerChanges, runOutAlerts, slotTarget, spotKeys, stationTarget, targetKey,
   teammates, urgentPaying,
 } from './hudLogic.js';
+import { boardMap, dishShort, gasView, opsOn, prepView, tendHotkeyTarget, tendView } from './opsLogic.js';
 import { LOOK, createGesture, isTurned, lookKeyIntent, stepInertia } from './look.js';
 import { pickBubbles, pickSubtitle } from './dialogue.js';
 import { createProjector } from './projector.js';
@@ -68,6 +75,10 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
   const [sheet, setSheet] = useState(null);
   const sheetRef = useRef(null);
   sheetRef.current = sheet;
+  // the operations panels: { kind: 'prep', item? } (the back counter) | { kind: 'board' } (the sold-out board)
+  const [panel, setPanel] = useState(null);
+  const panelRef = useRef(null);
+  panelRef.current = panel;
   const [toasts, setToasts] = useState([]);
   const [liveMsgs, setLiveMsgs] = useState([]);
   const [pops, setPops] = useState([]);
@@ -86,12 +97,13 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
   const [turned, setTurned] = useState(false);
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
-  // what the tutorial step allows: the driver's `allowed` list (null = anything), else its allows(type), else everything
+  // what the tutorial step allows: the driver's allows(type) (it lets every action it does not teach through, so the operations layer is never
+  // blocked by a lesson list), else its `allowed` list (null = anything), else everything
   const allowedNow = () => {
     const t = session?.tutorial;
     if (!t) return undefined;
-    if (t.allowed !== undefined) return t.allowed;
-    return typeof t.allows === 'function' ? (a) => t.allows(a.type) : undefined;
+    if (typeof t.allows === 'function') return (a) => t.allows(a.type);
+    return t.allowed;
   };
   // the head: true while the scene holds it on a target (lookAt) so a drag has to let go first
   const pinned = useRef(false);
@@ -194,6 +206,7 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
   const perform = (d) => {
     if (!d) return;
     if (d.type === 'sheet') setSheet({ station: d.station, slot: d.slot });
+    else if (d.type === 'prepsheet') openPrep();
     else if (d.type === 'dispatch') actions.request(d.action);
     else if (d.type === 'hint') push({ text: d.text, tone: 'warn', icon: 'alarm' });
   };
@@ -215,19 +228,144 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
   const onSlot = (station, slot) => onTarget(slotTarget(station, slot));
   const pickSheetDish = (dish) => {
     const s = sheetRef.current;
-    setSheet(null);
     if (!s) return;
     if (!isActionAllowed(allowedNow(), { type: 'cook' })) {
+      setSheet(null);
       notYet();
       return;
     }
+    // the engine would refuse it: say why in its own words (and, when the shelf is short, go to the back counter for it)
+    const why = cookReason(live.state, s.station, dish);
+    if (why) {
+      push({ text: why, tone: 'warn', icon: 'alarm' });
+      const short = dishShort(live.state, dish);
+      if (short) {
+        setSheet(null);
+        openPrep(short.item);
+      }
+      return;
+    }
+    setSheet(null);
     actions.request(cookAction(s.station, s.slot, dish));
   };
+
+  // ---- the operations layer: prep counter, tending, gas, the board, the market ------------------------------------------------------
+  const notify = (text) => push({ text, tone: 'warn', icon: 'alarm' });
+  /** Send an action that has nowhere to walk to (board, buy): gated by the tutorial, refusals toast the engine's words. */
+  const sendNow = (action) => {
+    if (!isActionAllowed(allowedNow(), action)) {
+      notYet();
+      return false;
+    }
+    const ok = session?.dispatch ? session.dispatch(action) !== false : false;
+    if (!ok) push({ text: session?.lastError || 'Cannot do that', tone: 'bad', icon: 'alarm' });
+    return ok;
+  };
+  /** Turn the head round to the prep counter (it is behind the cook) and keep it there while the sheet is open. */
+  const lookToPrep = () => {
+    stopInertia();
+    autoLook.current.on = false;
+    clearTimeout(autoLook.current.timer);
+    pinned.current = true;
+    sceneRef.current?.lookAt?.(stationTarget(PREP_STATION));
+  };
+  const openPrep = (item = null) => {
+    const st = live.state;
+    if (!st || live.status !== 'playing' || !opsOn(st)) return;
+    if (!isActionAllowed(allowedNow(), { type: 'prep' })) {
+      notYet();
+      return;
+    }
+    setSheet(null);
+    setPanel({ kind: 'prep', item });
+    if (actions.runner.at() !== PREP_STATION && canMove()) actions.walkTo(PREP_STATION);
+    lookToPrep();
+  };
+  const openBoard = () => {
+    if (!live.state || live.status !== 'playing' || live.state.cfg?.tutorial) return;
+    setSheet(null);
+    setPanel({ kind: 'board' });
+  };
+  const closePanel = () => {
+    const was = panelRef.current;
+    setPanel(null);
+    if (was?.kind === 'prep') releasePin();
+  };
+  const doPrep = (item) => {
+    const v = prepView(live.state);
+    const it = v?.items.find((x) => x.item === item);
+    if (!v || !it) return;
+    if (it.block?.hard) {
+      notify(it.block.reason);
+      return;
+    }
+    if (!isActionAllowed(allowedNow(), { type: 'prep' })) {
+      notYet();
+      return;
+    }
+    actions.request({ type: 'prep', station: PREP_STATION, slot: v.free, item });
+  };
+  const doCollect = (slot) => {
+    if (!isActionAllowed(allowedNow(), { type: 'collectPrep' })) {
+      notYet();
+      return;
+    }
+    actions.request({ type: 'collectPrep', station: PREP_STATION, slot });
+  };
+  const doBuy = (item, n) => sendNow({ type: 'buy', item, n });
+  const doBoard = (dish, on) => sendNow({ type: 'board', dish, on });
+  const doTend = (view) => {
+    if (!view) return;
+    if (!view.canTend) {
+      push({ text: `${placeName(view.id, live.state)}: already clean`, tone: 'info', icon: 'check' });
+      return;
+    }
+    if (!isActionAllowed(allowedNow(), { type: 'tend' })) {
+      notYet();
+      return;
+    }
+    actions.request({ type: 'tend', station: view.id });
+  };
+  const doSwap = () => {
+    const g = gasView(live.state);
+    if (!g) return;
+    if (g.reason) {
+      notify(g.reason);
+      return;
+    }
+    if (!isActionAllowed(allowedNow(), { type: 'swapGas' })) {
+      notYet();
+      return;
+    }
+    actions.request({ type: 'swapGas' });
+  };
+  const renderTend = (st) => {
+    const v = tendView(state, st.id);
+    return v ? <TendButton view={v} onTend={doTend} spotOn={spot.has(`tend:${st.id}`)} walkOn={walking.has(`tend:${st.id}`)} /> : null;
+  };
+  const prep = useMemo(() => prepView(state), [state]);
+  const board = useMemo(() => boardMap(state), [state]);
+  // while the prep sheet is open the scene lets go of the head after a few seconds: hold it on the back counter
+  const prepOpen = panel?.kind === 'prep';
+  useEffect(() => {
+    if (!prepOpen) return undefined;
+    const t = setInterval(() => {
+      if (pinned.current) sceneRef.current?.lookAt?.(stationTarget(PREP_STATION));
+    }, 2500);
+    return () => clearInterval(t);
+  }, [prepOpen]);
   const avail = useMemo(() => availability(state, meId), [state, meId]);
   const onChip = (dish) => {
     if (live.status !== 'playing') return;
     const best = bestTarget(live.state, dish);
     const name = dishInfo(dish).name;
+    const short = dishShort(live.state, dish);
+    if (short && best?.mode !== 'take') {
+      // nothing ready and the shelf cannot make it: the answer is at the back counter
+      push({ text: `${name}: out of ${short.name.toLowerCase()}`, tone: 'warn', icon: 'basket' });
+      openPrep(short.item);
+      return;
+    }
     if (!best) {
       push({ text: `${name}: no free slot`, tone: 'warn', icon: 'alarm' });
       return;
@@ -336,7 +474,7 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
     sceneRef.current?.lookAt?.(customerTarget(id));
   };
   const keyRef = useRef(null);
-  keyRef.current = { actions, onTarget, push, session, canMove, manualLook };
+  keyRef.current = { actions, onTarget, push, session, canMove, manualLook, openPrep, openBoard, doTend };
 
   // ---- keyboard: A/D or arrows walk, Space/E acts, Z/X (or Shift+arrows) look, V recentres, C collects, ? help, Esc closes / pauses ----
   useEffect(() => {
@@ -345,8 +483,8 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
       const tg = e.target;
       const tag = tg?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tg?.isContentEditable) return;
-      if (sheetRef.current) return; // the sheet owns its keys while open
-      const { actions: A, onTarget: go, push: say, session: S, canMove: mayMove, manualLook: lookTo } = keyRef.current;
+      if (sheetRef.current || panelRef.current) return; // a sheet owns its keys while open
+      const { actions: A, onTarget: go, push: say, session: S, canMove: mayMove, manualLook: lookTo, openPrep: openThePrep, openBoard: openTheBoard, doTend: tendIt } = keyRef.current;
       const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
       if (k === 'Escape') {
         if (helpRef.current) {
@@ -386,6 +524,29 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
         const t = nearestTarget(live.state, A.runner.x());
         if (t) go(t);
         else say({ text: 'Nothing here: walk to a station or a customer', tone: 'warn', icon: 'alarm' });
+        return;
+      }
+      if (k === 't') {
+        // T tends the pan nearest to the cook (the one that needs it when several are near): wipe the tawa, skim the kadai, top up the steamer
+        const id = tendHotkeyTarget(live.state, A.runner.x());
+        if (id) {
+          e.preventDefault();
+          tendIt(tendView(live.state, id));
+        }
+        return;
+      }
+      if (k === 'p') {
+        if (opsOn(live.state)) {
+          e.preventDefault();
+          openThePrep();
+        }
+        return;
+      }
+      if (k === 'b') {
+        if (opsOn(live.state)) {
+          e.preventDefault();
+          openTheBoard();
+        }
         return;
       }
       if (k === 'c') {
@@ -510,6 +671,8 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
       al.timer = setTimeout(() => {
         if (al.on) {
           al.on = false;
+          // the open prep sheet keeps the head on the back counter until it is closed
+          if (panelRef.current?.kind === 'prep') return;
           pinned.current = false;
           sceneRef.current?.lookAt?.(null);
         }
@@ -647,7 +810,9 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
             onEmote={(e) => session?.dispatch?.({ type: 'emote', e })}
           />
         )}
-        <Availability rows={avail} onChip={onChip} />
+        <Availability rows={avail} onChip={onChip} board={board} onBoard={doBoard}>
+          <StallStatus state={state} onStock={openPrep} onSwap={doSwap} onBoard={openBoard} />
+        </Availability>
         <SubtitleStrip entry={subEntry} subs={prefs.subs} token={subEntry?.u.customer} />
         <OrderRail state={state} hands={hands} spot={spot} walking={walking} onTarget={onTarget} onLook={lookAtCustomer} />
         <div className="tc-hud-bottom">
@@ -681,12 +846,17 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
               hl.current.focus = t;
               applyHighlight();
             }}
+            renderExtra={renderTend}
+            prep={prep}
+            onPrep={({ slot, ready }) => (ready ? doCollect(slot) : openPrep())}
           />
         </div>
         <Toasts toasts={toasts} live={liveMsgs} />
         <GlossLive items={dlg.gloss} />
         {helpOpen && <HelpCard touch={touch} onClose={() => setHelpOpen(false)} />}
-        {sheet && <ActionSheet sheet={sheet} state={state} avail={avail} onPick={pickSheetDish} onClose={() => setSheet(null)} />}
+        {sheet && <ActionSheet sheet={sheet} state={state} avail={avail} onPick={pickSheetDish} onClose={() => setSheet(null)} onTend={doTend} />}
+        {panel?.kind === 'prep' && <PrepSheet state={state} selected={panel.item} onClose={closePanel} onPrep={doPrep} onCollect={doCollect} onBuy={doBuy} onNotify={notify} />}
+        {panel?.kind === 'board' && <BoardSheet state={state} onClose={closePanel} onToggle={doBoard} />}
       </div>
     </HudContext.Provider>
   );
