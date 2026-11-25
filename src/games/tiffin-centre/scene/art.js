@@ -1,524 +1,378 @@
-// Canvas painters for the street stall shell: steel, cement, tarred road, corrugated tin, tarpaulin, the flex banner, the menu
-// board, a hazy Charminar skyline, shop facades, posters, the rupee note and soft sprites. Pure drawing + a tracker: nothing here
-// holds global state, so a scene can dispose everything it painted.
-import { canvasTexture, speckle, mulberry, FONT_UI, FONT_TE } from './textures.js';
-import { DISHES } from '../../../../shared/tiffin-centre/catalog.js';
-
-const rgba = (r, g, b, a = 1) => `rgba(${r | 0},${g | 0},${b | 0},${a})`;
+// Surface painters for the stall and the street. Two families:
+//  * PBR bundles baked from per-pixel recipes (brushed steel, peeling paint, rusty tin, worn concrete, asphalt, plaster, brick, bamboo, tarpaulin):
+//    albedo + normal + ORM, sized by the quality tier (`setQuality`); mapped in METRES by the geometry (see kit.js), never with texture.repeat;
+//  * canvas painters for signs, banners, the menu board, posters, shop facades and small sprites (art-signs.js).
+// Pure drawing + a tracker: nothing here holds global state, so a scene can dispose everything it painted.
+import { canvasTexture, bakePBR, fbmField, worleyField, mulberry, clamp01, mix, sstep } from './textures.js';
+import { makeSigns } from './art-signs.js';
 
 export function makeArt(tr) {
   const T = (tex) => tr.track(tex);
-
-  const steel = () =>
-    T(canvasTexture(256, 256, (g, w, h) => {
-      const r = mulberry(11);
-      g.fillStyle = '#b9c2c8';
-      g.fillRect(0, 0, w, h);
-      for (let i = 0; i < 260; i++) {
-        const y = r() * h;
-        g.fillStyle = rgba(255, 255, 255, 0.05 + r() * 0.1);
-        g.fillRect(0, y, w, 1 + r() * 1.5);
-        g.fillStyle = rgba(60, 70, 80, 0.04 + r() * 0.07);
-        g.fillRect(0, r() * h, w, 1);
-      }
-      g.strokeStyle = 'rgba(70,80,90,0.55)';
-      g.lineWidth = 2;
-      g.strokeRect(1, 1, w - 2, h - 2);
-      g.fillStyle = 'rgba(70,80,90,0.6)';
-      for (const [x, y] of [[8, 8], [w - 8, 8], [8, h - 8], [w - 8, h - 8]]) {
-        g.beginPath();
-        g.arc(x, y, 2.5, 0, 7);
-        g.fill();
-      }
-    }, { repeat: [2, 1] }));
-
-  /** Worn cement of the stall floor, oily patches and chalk-white mop streaks. */
-  const cement = () =>
-    T(canvasTexture(256, 256, (g, w, h) => {
-      const r = mulberry(21);
-      g.fillStyle = '#9a948a';
-      g.fillRect(0, 0, w, h);
-      speckle(g, w, h, 2200, (q) => rgba(70 + q() * 90, 66 + q() * 86, 60 + q() * 80, 0.12 + q() * 0.25), [1, 3], r);
-      for (let i = 0; i < 6; i++) {
-        const cx = r() * w;
-        const cy = r() * h;
-        const gr = g.createRadialGradient(cx, cy, 2, cx, cy, 30 + r() * 40);
-        gr.addColorStop(0, 'rgba(30,22,16,0.28)');
-        gr.addColorStop(1, 'rgba(30,22,16,0)');
-        g.fillStyle = gr;
-        g.fillRect(0, 0, w, h);
-      }
-      g.strokeStyle = 'rgba(50,46,42,0.5)';
-      g.lineWidth = 2;
-      g.strokeRect(0, 0, w, h);
-      g.beginPath();
-      g.moveTo(0, h / 2);
-      g.lineTo(w, h / 2);
-      g.stroke();
-    }, { repeat: [5, 2] }));
-
-  /** Footpath: chipped slabs with a yellow-grey paver pattern. */
-  const footpath = () =>
-    T(canvasTexture(256, 256, (g, w, h) => {
-      const r = mulberry(31);
-      g.fillStyle = '#b8a995';
-      g.fillRect(0, 0, w, h);
-      for (let y = 0; y < 4; y++) {
-        for (let x = 0; x < 4; x++) {
-          const v = 150 + r() * 40;
-          g.fillStyle = rgba(v + 20, v + 6, v - 20, 0.5);
-          g.fillRect(x * 64 + 2, y * 64 + 2, 60, 60);
-        }
-      }
-      speckle(g, w, h, 1400, (q) => rgba(90 + q() * 60, 80 + q() * 50, 66 + q() * 40, 0.15 + q() * 0.2), [1, 3], r);
-      g.strokeStyle = 'rgba(60,52,44,0.6)';
-      g.lineWidth = 2;
-      for (let i = 0; i <= 4; i++) {
-        g.beginPath(); g.moveTo(i * 64, 0); g.lineTo(i * 64, h); g.stroke();
-        g.beginPath(); g.moveTo(0, i * 64); g.lineTo(w, i * 64); g.stroke();
-      }
-    }, { repeat: [7, 1] }));
-
-  /** Tarred road: dark asphalt, aggregate, a faded kerb-side paint line. v along z. */
-  const road = () =>
-    T(canvasTexture(256, 256, (g, w, h) => {
-      const r = mulberry(41);
-      g.fillStyle = '#2f2d33';
-      g.fillRect(0, 0, w, h);
-      speckle(g, w, h, 2600, (q) => rgba(70 + q() * 70, 68 + q() * 66, 72 + q() * 64, 0.1 + q() * 0.25), [1, 2.5], r);
-      for (let i = 0; i < 14; i++) {
-        g.strokeStyle = rgba(18, 18, 22, 0.35);
-        g.lineWidth = 1 + r() * 2;
-        g.beginPath();
-        let x = r() * w;
-        let y = r() * h;
-        g.moveTo(x, y);
-        for (let k = 0; k < 5; k++) { x += (r() - 0.5) * 50; y += (r() - 0.5) * 50; g.lineTo(x, y); }
-        g.stroke();
-      }
-      g.fillStyle = 'rgba(235,225,190,0.55)';
-      for (let i = 0; i < 4; i++) g.fillRect(i * 64 + 8, h / 2 - 3, 44, 6);
-    }, { repeat: [6, 3] }));
-
-  const tin = () =>
-    T(canvasTexture(256, 256, (g, w, h) => {
-      const r = mulberry(51);
-      for (let x = 0; x < w; x += 16) {
-        const gr = g.createLinearGradient(x, 0, x + 16, 0);
-        gr.addColorStop(0, '#6d7a82');
-        gr.addColorStop(0.35, '#b5c1c6');
-        gr.addColorStop(0.7, '#8a979e');
-        gr.addColorStop(1, '#5a666d');
-        g.fillStyle = gr;
-        g.fillRect(x, 0, 16, h);
-      }
-      speckle(g, w, h, 420, (q) => rgba(150 + q() * 40, 70 + q() * 30, 34, 0.12 + q() * 0.3), [2, 9], r);
-      for (let i = 0; i < 7; i++) {
-        g.fillStyle = 'rgba(60,40,30,0.25)';
-        g.fillRect(r() * w, 0, 1 + r() * 2, h);
-      }
-    }, { repeat: [3, 1] }));
-
-  /** Tarpaulin (blue with a white pinstripe and creases): the stall's back screen. */
-  const tarp = () =>
-    T(canvasTexture(256, 256, (g, w, h) => {
-      const r = mulberry(61);
-      g.fillStyle = '#1f5fa8';
-      g.fillRect(0, 0, w, h);
-      for (let i = 0; i < w; i += 18) {
-        g.fillStyle = i % 36 === 0 ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.1)';
-        g.fillRect(i, 0, 9, h);
-      }
-      for (let i = 0; i < 12; i++) {
-        g.strokeStyle = rgba(255, 255, 255, 0.12);
-        g.lineWidth = 2;
-        g.beginPath();
-        g.moveTo(r() * w, 0);
-        g.lineTo(r() * w, h);
-        g.stroke();
-      }
-      speckle(g, w, h, 300, 'rgba(0,0,0,0.12)', [1, 3], r);
-    }, { repeat: [4, 1] }));
-
-  const wood = (base = '#8a5a34') =>
-    T(canvasTexture(256, 256, (g, w, h) => {
-      const r = mulberry(71);
-      g.fillStyle = base;
-      g.fillRect(0, 0, w, h);
-      for (let i = 0; i < 6; i++) {
-        g.fillStyle = rgba(40, 20, 8, 0.28);
-        g.fillRect(0, i * 43, w, 2);
-      }
-      for (let i = 0; i < 160; i++) {
-        g.strokeStyle = rgba(50, 26, 10, 0.1 + r() * 0.16);
-        g.lineWidth = 1;
-        const y = r() * h;
-        g.beginPath();
-        g.moveTo(0, y);
-        g.bezierCurveTo(w * 0.3, y + r() * 5, w * 0.7, y - r() * 5, w, y + r() * 3);
-        g.stroke();
-      }
-    }, { repeat: [2, 1] }));
-
-  /** The flex banner: red print, cream lettering, yellow border, grommets. Redrawn when fonts arrive. */
-  const banner = () =>
-    T(canvasTexture(1024, 224, (g, w, h) => {
-      const gr = g.createLinearGradient(0, 0, 0, h);
-      gr.addColorStop(0, '#e23a22');
-      gr.addColorStop(1, '#b9211a');
-      g.fillStyle = gr;
-      g.fillRect(0, 0, w, h);
-      g.fillStyle = '#ffc83d';
-      g.fillRect(0, 0, w, 12);
-      g.fillRect(0, h - 12, w, 12);
-      g.fillStyle = '#fff4dc';
-      for (let x = 24; x < w; x += 48) {
-        g.beginPath(); g.arc(x, 6, 3, 0, 7); g.arc(x, h - 6, 3, 0, 7); g.fill();
-      }
-      g.textAlign = 'center';
-      g.textBaseline = 'alphabetic';
-      g.lineJoin = 'round';
-      g.font = `900 108px ${FONT_UI}`;
-      g.lineWidth = 12;
-      g.strokeStyle = '#5a0f0a';
-      g.strokeText('TIFFIN CENTRE', w / 2, 124);
-      g.fillStyle = '#fff4dc';
-      g.fillText('TIFFIN CENTRE', w / 2, 124);
-      g.font = `700 62px ${FONT_TE}`;
-      g.lineWidth = 8;
-      g.strokeStyle = '#5a0f0a';
-      g.strokeText('టిఫిన్ సెంటర్', w / 2, 196);
-      g.fillStyle = '#ffd34d';
-      g.fillText('టిఫిన్ సెంటర్', w / 2, 196);
-      g.font = `700 22px ${FONT_UI}`;
-      g.fillStyle = '#fff4dc';
-      g.textAlign = 'left';
-      g.fillText('IDLY  DOSA  POORI  VADA', 34, 44);
-      g.textAlign = 'right';
-      g.fillText('IRANI CHAI  BAJJI', w - 34, 44);
-      g.fillStyle = '#fff4dc';
-      g.beginPath();
-      for (const [x, y] of [[14, 22], [w - 14, 22], [14, h - 22], [w - 14, h - 22]]) { g.moveTo(x + 5, y); g.arc(x, y, 5, 0, 7); }
-      g.fill();
-    }, { anisotropy: 8 }));
-
-  /**
-   * The hand-painted menu board with prices for the level's menu. `set(menuIds)` repaints it; fonts are retried by the caller.
-   * Chalk-white names on dark green board, prices in yellow rupees.
-   */
-  const menuBoard = () => {
-    let items = [];
-    const tex = T(canvasTexture(512, 400, (g, w, h) => {
-      g.fillStyle = '#17352b';
-      g.fillRect(0, 0, w, h);
-      speckle(g, w, h, 700, 'rgba(255,255,255,0.05)', [1, 3], mulberry(5));
-      g.strokeStyle = '#8a5a34';
-      g.lineWidth = 16;
-      g.strokeRect(8, 8, w - 16, h - 16);
-      g.textAlign = 'center';
-      g.fillStyle = '#ffd34d';
-      g.font = `800 38px ${FONT_UI}`;
-      g.fillText('MENU  ·  మెనూ', w / 2, 58);
-      g.strokeStyle = 'rgba(255,255,255,0.55)';
-      g.lineWidth = 2;
-      g.beginPath();
-      g.moveTo(40, 72);
-      g.lineTo(w - 40, 72);
-      g.stroke();
-      const list = items.length ? items : ['dosa', 'masala_dosa', 'idly', 'irani_chai'];
-      const two = list.length > 6;
-      const rows = two ? Math.ceil(list.length / 2) : list.length;
-      const rowH = Math.min(46, (h - 120) / rows);
-      list.forEach((id, i) => {
-        const d = DISHES[id];
-        if (!d) return;
-        const col = two ? i % 2 : 0;
-        const row = two ? Math.floor(i / 2) : i;
-        const x0 = two ? 28 + col * 240 : 40;
-        const x1 = two ? x0 + 214 : w - 40;
-        const y = 112 + row * rowH;
-        g.textAlign = 'left';
-        g.fillStyle = '#fff4dc';
-        g.font = `700 ${two ? 19 : 25}px ${FONT_UI}`;
-        g.fillText(d.name.replace(/ \(.*\)/, ''), x0, y);
-        g.textAlign = 'right';
-        g.fillStyle = '#ffd34d';
-        g.fillText(`₹${d.price}`, x1, y);
-        g.strokeStyle = 'rgba(255,255,255,0.18)';
-        g.setLineDash([3, 5]);
-        g.beginPath();
-        g.moveTo(x0, y + 8);
-        g.lineTo(x1, y + 8);
-        g.stroke();
-        g.setLineDash([]);
-      });
-    }, { anisotropy: 8 }));
-    return {
-      tex,
-      set(ids) {
-        const next = (ids || []).join(',');
-        if (next === items.join(',')) return;
-        items = ids || [];
-        tex.userData.redraw();
-      },
-    };
+  const cfg = { size: 512, normals: true };
+  const trackAll = (b) => {
+    T(b.map);
+    if (b.normalMap) T(b.normalMap);
+    if (b.ormMap) T(b.ormMap);
+    return b;
+  };
+  /** Bake a bundle. `big` surfaces take the tier size, small ones half of it. */
+  const bake = (size, shade, o = {}) => {
+    const n = Math.max(64, Math.min(cfg.size, size));
+    return trackAll(bakePBR(n, n, shade, { normals: cfg.normals, strength: o.strength ?? 3, ormSize: n > 256 ? n / 2 : null }));
+  };
+  const cache = new Map();
+  const once = (key, make) => {
+    if (!cache.has(key)) cache.set(key, make());
+    return cache.get(key);
   };
 
-  /**
-   * Hazy skyline silhouette for the flex hoarding above the stall roof (1024 x 372 = 11.6 x 4.2 m, 88 px/m): alpha ~0.5 = far blocks,
-   * 1 = the Charminar peeking over the roof; lit windows are painted with a bright red channel. Wall y = 1.2 .. 5.4.
-   */
-  const skyline = () =>
-    T(canvasTexture(1024, 372, (g, w, h) => {
-      const r = mulberry(81);
-      const farGround = h - (3.0 - 1.2) * 88; // far blocks stand on wall height 3.0
-      g.fillStyle = 'rgba(0,0,0,0.5)';
-      let x = 0;
-      while (x < w) {
-        const bw = 36 + r() * 60;
-        const bh = 22 + r() * 80;
-        g.fillRect(x, farGround - bh, bw, bh + 200);
-        if (r() < 0.4) { g.beginPath(); g.arc(x + bw / 2, farGround - bh, bw * 0.33, Math.PI, 0); g.fill(); }
-        if (r() < 0.18) g.fillRect(x + bw / 2 - 2, farGround - bh - 26, 4, 26);
-        x += bw + r() * 10;
-      }
-      g.fillStyle = 'rgba(255,200,90,0.9)';
-      for (let i = 0; i < 70; i++) g.fillRect(r() * w, farGround - 6 - r() * 90, 3, 4);
-      // Charminar: base at wall height 2.3, 3 m tall, centred 1.2 m right of the middle
-      g.save();
-      g.translate((1.2 + 5.8) * 88, h - (2.3 - 1.2) * 88);
-      g.scale(0.6, 0.6);
-      g.fillStyle = 'rgba(0,0,0,1)';
-      g.fillRect(-125, -190, 250, 190); // the arched base
-      g.fillRect(-100, -235, 200, 45); // the gallery
-      for (const sgn of [-1, 1]) {
-        const mx = sgn * 112;
-        g.fillRect(mx - 15, -395, 30, 215); // minaret shaft
-        g.fillRect(mx - 20, -330, 40, 9);
-        g.fillRect(mx - 20, -280, 40, 9);
-        g.beginPath(); g.ellipse(mx, -398, 17, 22, 0, 0, Math.PI * 2); g.fill(); // bulb dome
-        g.fillRect(mx - 2.5, -440, 5, 22);
-        g.beginPath(); g.arc(mx, -442, 4, 0, 7); g.fill();
-        const ix = sgn * 52;
-        g.fillRect(ix - 11, -345, 22, 120);
-        g.beginPath(); g.ellipse(ix, -348, 13, 17, 0, 0, Math.PI * 2); g.fill();
-      }
-      for (let kk = -4; kk <= 4; kk++) { g.beginPath(); g.arc(kk * 22, -237, 10, Math.PI, 0); g.fill(); }
-      g.fillRect(-100, -241, 200, 6);
-      g.globalCompositeOperation = 'destination-out';
-      g.fillStyle = 'rgba(0,0,0,0.85)';
-      const arch = (ax, aw, ah) => {
-        g.beginPath();
-        g.moveTo(ax - aw / 2, 0);
-        g.lineTo(ax - aw / 2, -ah + aw / 2);
-        g.arc(ax, -ah + aw / 2, aw / 2, Math.PI, 0);
-        g.lineTo(ax + aw / 2, 0);
-        g.fill();
-      };
-      arch(0, 74, 140);
-      arch(-92, 40, 100);
-      arch(92, 40, 100);
-      for (let kk = -2; kk <= 2; kk++) g.fillRect(kk * 34 - 6, -225, 12, 24);
-      g.restore();
-      g.globalCompositeOperation = 'source-over';
-    }, { mip: false }));
+  /** Brushed stainless sheet with water rings, tea stains, scratches and a few dents. One tile = 1 m. */
+  const steel = () => once('steel', () => {
+    const n = Math.min(cfg.size, 512);
+    const streak = fbmField(n, n, { cx: 3, cy: n / 2, oct: 3, gain: 0.55, seed: 11 });
+    const mott = fbmField(n, n, { cx: 4, cy: 4, oct: 4, seed: 12 });
+    const scr = fbmField(n, n, { cx: 2, cy: n / 3, oct: 1, seed: 13 });
+    const scr2 = fbmField(n, n, { cx: 3, cy: n / 5, oct: 1, seed: 17 });
+    const wor = worleyField(n, n, { cells: 3, seed: 14 });
+    return bake(n, (i, x, y, u, v, p) => {
+      const st = streak[i];
+      const m = mott[i];
+      let g = 0.6 + (st - 0.5) * 0.1 + (m - 0.5) * 0.12;
+      let rough = 0.3 + (st - 0.5) * 0.22 + (m - 0.5) * 0.18;
+      let h = (st - 0.5) * 0.12;
+      const sc = Math.max(sstep(0.84, 0.95, scr[i]), sstep(0.86, 0.96, scr2[i]) * 0.7);
+      g += sc * 0.14;
+      rough -= sc * 0.1;
+      h -= sc * 0.5;
+      const d = wor.d1[i];
+      const id = wor.id[i];
+      const ring = id > 0.45 ? Math.exp(-(((d - (0.2 + id * 0.12)) / 0.018) ** 2)) : 0;
+      const stain = id > 0.65 ? sstep(0.34, 0.1, d) : 0;
+      const dent = id > 0.8 ? sstep(0.22, 0.0, d) : 0;
+      h -= dent * 2.2;
+      g = g * (1 - ring * 0.18 - stain * 0.22);
+      rough += ring * 0.35 + stain * 0.3;
+      // tile seam: a welded joint every metre
+      const seam = Math.max(sstep(0.012, 0.0, u), sstep(0.012, 0.0, v));
+      h -= seam * 1.5;
+      g *= 1 - seam * 0.3;
+      p.r = g * (0.97 + stain * 0.18);
+      p.g = g * (0.99 + stain * 0.04);
+      p.b = g * (1.03 - stain * 0.2);
+      p.rough = rough;
+      p.metal = 1 - stain * 0.35;
+      p.h = h;
+    }, { strength: 2.2 });
+  });
 
-  /** Shop facade: concrete with a roll-down kirana shutter, signboard and hanging snack packets. */
-  const kirana = () =>
-    T(canvasTexture(512, 512, (g, w, h) => {
-      const r = mulberry(91);
-      g.fillStyle = '#c9b48f';
-      g.fillRect(0, 0, w, h);
-      speckle(g, w, h, 900, (q) => rgba(120 + q() * 60, 100 + q() * 50, 70 + q() * 40, 0.12 + q() * 0.2), [1, 4], r);
-      // upper floor windows with grills
-      for (let i = 0; i < 3; i++) {
-        const x = 40 + i * 160;
-        g.fillStyle = '#2b2a2e';
-        g.fillRect(x, 40, 100, 130);
-        g.strokeStyle = '#6a3a22';
-        g.lineWidth = 4;
-        for (let k = 1; k < 5; k++) { g.beginPath(); g.moveTo(x + k * 20, 40); g.lineTo(x + k * 20, 170); g.stroke(); }
-        g.fillStyle = 'rgba(255,205,120,0.0)';
-        g.fillRect(x, 40, 100, 130);
-      }
-      // signboard
-      g.fillStyle = '#2255a0';
-      g.fillRect(20, 200, 472, 70);
-      g.fillStyle = '#fff4dc';
-      g.textAlign = 'center';
-      g.font = `800 46px ${FONT_UI}`;
-      g.fillText('SRI LAXMI KIRANA', w / 2, 250);
-      // shutter
-      g.fillStyle = '#7d8a90';
-      g.fillRect(30, 280, 452, 232);
-      for (let y = 284; y < 512; y += 9) {
-        g.fillStyle = 'rgba(255,255,255,0.18)';
-        g.fillRect(30, y, 452, 3);
-        g.fillStyle = 'rgba(0,0,0,0.22)';
-        g.fillRect(30, y + 4, 452, 3);
-      }
-      g.fillStyle = '#c7312b';
-      g.fillRect(190, 360, 130, 52);
-      g.fillStyle = '#fff4dc';
-      g.font = `800 28px ${FONT_UI}`;
-      g.fillText('PARLE-G', 255, 396);
-      g.fillStyle = 'rgba(0,0,0,0.3)';
-      g.fillRect(30, 280, 452, 8);
-    }, { anisotropy: 8 }));
+  /** Painted plank panel (teal enamel paint peeling to bare wood, grime and hand smudges). 1 m tile, 6 planks. */
+  const paintedWood = (paint = [0.07, 0.42, 0.4]) => once(`pw${paint.join(',')}`, () => {
+    const n = Math.min(cfg.size, 512);
+    const grain = fbmField(n, n, { cx: 20, cy: 2, oct: 4, gain: 0.55, seed: 21 });
+    const peel = fbmField(n, n, { cx: 5, cy: 5, oct: 5, seed: 22 });
+    const dirt = fbmField(n, n, { cx: 3, cy: 6, oct: 4, seed: 23 });
+    const fine = fbmField(n, n, { cx: 64, cy: 64, oct: 2, seed: 24 });
+    return bake(n, (i, x, y, u, v, p) => {
+      const pu = (u * 6) % 1;
+      const pid = Math.floor(u * 6);
+      const groove = sstep(0.045, 0.0, Math.min(pu, 1 - pu));
+      const wood = 0.8 + (grain[i] - 0.5) * 0.5;
+      const edgeWear = sstep(0.2, 0.0, Math.min(pu, 1 - pu));
+      const pv = peel[i] + edgeWear * 0.22 + (1 - v) * 0.08 + (pid % 3) * 0.02;
+      const paintMask = sstep(0.54, 0.6, 1 - pv + 0.04);
+      let r = paint[0] * (0.9 + fine[i] * 0.2);
+      let g = paint[1] * (0.9 + fine[i] * 0.2);
+      let b = paint[2] * (0.9 + fine[i] * 0.2);
+      const wr = 0.42 * wood;
+      const wg = 0.27 * wood;
+      const wb = 0.15 * wood;
+      r = mix(wr, r, paintMask);
+      g = mix(wg, g, paintMask);
+      b = mix(wb, b, paintMask);
+      const grime = clamp01((1 - v) * 0.55 + dirt[i] * 0.45 - 0.28);
+      r *= 1 - grime * 0.7;
+      g *= 1 - grime * 0.7;
+      b *= 1 - grime * 0.7;
+      const gv = 1 - groove * 0.8;
+      p.r = r * gv;
+      p.g = g * gv;
+      p.b = b * gv;
+      p.rough = mix(0.88, 0.5, paintMask) + grime * 0.2;
+      p.metal = 0;
+      p.h = paintMask * 0.5 + (grain[i] - 0.5) * 0.2 - groove * 1.2 + fine[i] * 0.05;
+      p.ao = 1 - groove * 0.6;
+    }, { strength: 2.4 });
+  });
 
-  /** A plain side-street block with windows, an AC unit and drying clothes. */
-  const block = (seed = 1, tint = '#c4a287') =>
-    T(canvasTexture(512, 512, (g, w, h) => {
-      const r = mulberry(100 + seed);
-      g.fillStyle = tint;
-      g.fillRect(0, 0, w, h);
-      speckle(g, w, h, 1100, (q) => rgba(90 + q() * 70, 80 + q() * 60, 60 + q() * 50, 0.1 + q() * 0.2), [1, 5], r);
-      for (let y = 0; y < 3; y++) {
-        for (let x = 0; x < 4; x++) {
-          const wx = 28 + x * 120;
-          const wy = 30 + y * 150;
-          g.fillStyle = '#2a2530';
-          g.fillRect(wx, wy, 70, 100);
-          g.strokeStyle = r() < 0.5 ? '#2f7a6a' : '#7a3a2a';
-          g.lineWidth = 6;
-          g.strokeRect(wx, wy, 70, 100);
-          if (r() < 0.4) { g.fillStyle = '#d8d8d8'; g.fillRect(wx + 10, wy + 112, 50, 24); }
-          if (r() < 0.25) {
-            g.strokeStyle = '#444'; g.lineWidth = 2;
-            g.beginPath(); g.moveTo(wx - 14, wy + 120); g.lineTo(wx + 84, wy + 120); g.stroke();
-            for (let k = 0; k < 4; k++) { g.fillStyle = ['#e33', '#fc3', '#3a8', '#fff'][k]; g.fillRect(wx - 6 + k * 22, wy + 120, 14, 26); }
-          }
-        }
-      }
-    }, { anisotropy: 4 }));
+  /** Bare weathered timber (shelf boards, thela frame). */
+  const timber = () => once('timber', () => {
+    const n = Math.min(cfg.size, 256);
+    const grain = fbmField(n, n, { cx: 24, cy: 2, oct: 4, gain: 0.55, seed: 31 });
+    const dirt = fbmField(n, n, { cx: 4, cy: 4, oct: 3, seed: 32 });
+    return bake(n, (i, x, y, u, v, p) => {
+      const w = 0.75 + (grain[i] - 0.5) * 0.7;
+      const d = 1 - clamp01(dirt[i] * 0.6 - 0.1);
+      p.r = 0.4 * w * d;
+      p.g = 0.26 * w * d;
+      p.b = 0.15 * w * d;
+      p.rough = 0.8 + grain[i] * 0.15;
+      p.h = (grain[i] - 0.5) * 0.6;
+    }, { strength: 2 });
+  });
 
-  /** Window light mask for night (white where windows glow). Same layout seed as `block`. */
-  const blockLights = (seed = 1) =>
-    T(canvasTexture(256, 256, (g, w, h) => {
-      const r = mulberry(300 + seed);
-      g.fillStyle = '#000';
-      g.fillRect(0, 0, w, h);
-      for (let y = 0; y < 3; y++) {
-        for (let x = 0; x < 4; x++) {
-          if (r() < 0.55) { g.fillStyle = r() < 0.5 ? '#ffd27a' : '#ffe9b8'; g.fillRect(14 + x * 60, 15 + y * 75, 35, 50); }
-        }
-      }
-    }, { srgb: true }));
+  /** Galvanised corrugated sheet gone to rust: spangle, rust blooms, vertical drip streaks, bird mess. 1 m tile (the corrugation itself is geometry). */
+  const tin = () => once('tin', () => {
+    const n = Math.min(cfg.size, 512);
+    const sp = worleyField(n, n, { cells: 24, seed: 41 });
+    const rust = fbmField(n, n, { cx: 4, cy: 4, oct: 5, gain: 0.55, seed: 42 });
+    const rust2 = fbmField(n, n, { cx: 9, cy: 9, oct: 3, seed: 46 });
+    const drip = fbmField(n, n, { cx: 40, cy: 2, oct: 3, gain: 0.5, seed: 43 });
+    const pit = fbmField(n, n, { cx: 64, cy: 64, oct: 2, seed: 44 });
+    return bake(n, (i, x, y, u, v, p) => {
+      const base = 0.6 + (sp.id[i] - 0.5) * 0.1;
+      const rr = clamp01((rust[i] - 0.5) * 3.4 + (rust2[i] - 0.5) * 1.2 + 0.1 + (1 - v) * 0.15);
+      const streak = sstep(0.55, 0.85, drip[i]) * (0.4 + 0.6 * (1 - v));
+      let r = base * 0.96;
+      let g = base;
+      let b = base * 1.02;
+      // rust: orange-brown, darker where deep
+      const deep = sstep(0.55, 1.0, rr);
+      r = mix(r, 0.46 - deep * 0.18, rr * 0.9);
+      g = mix(g, 0.22 - deep * 0.1, rr * 0.9);
+      b = mix(b, 0.1 - deep * 0.04, rr * 0.9);
+      r *= 1 - streak * 0.3;
+      g *= 1 - streak * 0.3;
+      b *= 1 - streak * 0.28;
+      const dropping = pit[i] > 0.86 && sp.id[i] > 0.7 ? 0.5 : 0;
+      r += dropping * 0.4;
+      g += dropping * 0.4;
+      b += dropping * 0.38;
+      p.r = r;
+      p.g = g;
+      p.b = b;
+      p.rough = mix(0.42, 0.88, rr) + streak * 0.1;
+      p.metal = mix(0.92, 0.12, clamp01(rr * 1.2));
+      p.h = rr * (pit[i] - 0.5) * 0.9 + (sp.id[i] - 0.5) * 0.1;
+    }, { strength: 1.6 });
+  });
 
-  /** A film / ad poster. */
-  const poster = (seed = 1) =>
-    T(canvasTexture(256, 384, (g, w, h) => {
-      const r = mulberry(400 + seed);
-      const hues = [[220, 40, 40], [30, 130, 200], [250, 190, 30], [40, 150, 90], [150, 50, 160]];
-      const [cr, cg, cb] = hues[seed % hues.length];
-      const gr = g.createLinearGradient(0, 0, 0, h);
-      gr.addColorStop(0, rgba(cr, cg, cb));
-      gr.addColorStop(1, rgba(cr * 0.4, cg * 0.4, cb * 0.4));
-      g.fillStyle = gr;
-      g.fillRect(0, 0, w, h);
-      g.fillStyle = 'rgba(255,240,200,0.92)';
-      g.beginPath(); g.arc(w * (0.3 + r() * 0.4), h * 0.34, 54, 0, 7); g.fill();
-      g.fillStyle = 'rgba(20,10,10,0.75)';
-      g.fillRect(w * 0.3, h * 0.38, w * 0.4, h * 0.34);
-      g.fillStyle = '#fff4dc';
-      g.textAlign = 'center';
-      g.font = `900 46px ${FONT_UI}`;
-      g.fillText(['MASS', 'BIRYANI', 'SALE', 'CHAI', 'RAJA'][seed % 5], w / 2, h * 0.86);
-      g.font = `700 22px ${FONT_UI}`;
-      g.fillText('NOW SHOWING', w / 2, h * 0.94);
-    }, { anisotropy: 4 }));
+  /** Worn concrete floor: aggregate, hairline cracks, oil and tea stains, mop streaks, polished centre line. 2 m tile. */
+  const concrete = () => once('concrete', () => {
+    const n = Math.min(cfg.size, 512);
+    const agg = fbmField(n, n, { cx: 128, cy: 128, oct: 2, gain: 0.55, seed: 51 });
+    const mott = fbmField(n, n, { cx: 4, cy: 4, oct: 5, seed: 52 });
+    const stain = fbmField(n, n, { cx: 3, cy: 3, oct: 4, seed: 53 });
+    const mop = fbmField(n, n, { cx: 3, cy: 40, oct: 3, seed: 54 });
+    const crk = worleyField(n, n, { cells: 10, seed: 55 });
+    const crkMask = fbmField(n, n, { cx: 4, cy: 4, oct: 3, seed: 56 });
+    return bake(n, (i, x, y, u, v, p) => {
+      const a = agg[i];
+      let c = 0.47 + (mott[i] - 0.5) * 0.14 + (a - 0.5) * 0.06;
+      const edge = crk.d2[i] - crk.d1[i];
+      const crack = sstep(0.03, 0.0, edge) * sstep(0.55, 0.68, crkMask[i]);
+      const oil = sstep(0.62, 0.75, stain[i]);
+      const mopStreak = sstep(0.55, 0.8, mop[i]) * 0.5;
+      c *= 1 - crack * 0.45 - oil * 0.36;
+      c += mopStreak * 0.06;
+      const sp = a > 0.8 ? 0.04 : 0;
+      p.r = (c + sp) * 1.0;
+      p.g = (c + sp) * 0.97;
+      p.b = (c + sp) * 0.92;
+      p.rough = 0.92 - oil * 0.38 - mopStreak * 0.12 + (a - 0.5) * 0.1;
+      p.h = (a - 0.5) * 0.7 - crack * 2.2 + (mott[i] - 0.5) * 0.3;
+      p.ao = 1 - crack * 0.4;
+    }, { strength: 2.4 });
+  });
 
-  const noteTex = () =>
-    T(canvasTexture(256, 128, (g, w, h) => {
-      g.fillStyle = '#d6efd0';
-      g.fillRect(0, 0, w, h);
-      g.fillStyle = '#7fbf86';
-      g.fillRect(8, 8, w - 16, h - 16);
-      g.fillStyle = '#e9f7e2';
-      g.fillRect(14, 14, w - 28, h - 28);
-      g.fillStyle = '#2f7a46';
-      g.textAlign = 'center';
-      g.textBaseline = 'middle';
-      g.font = `900 78px ${FONT_UI}`;
-      g.fillText('₹', w / 2, h / 2 + 4);
-      g.beginPath(); g.arc(34, h / 2, 14, 0, 7); g.arc(w - 34, h / 2, 14, 0, 7); g.fill();
-    }));
+  /** Footpath: 2 x 2 concrete slabs, dirt in the joints, chipped edges, damp green at the foot of the slab. 1.2 m tile. */
+  const paving = () => once('paving', () => {
+    const n = Math.min(cfg.size, 256);
+    const agg = fbmField(n, n, { cx: 48, cy: 48, oct: 3, gain: 0.6, seed: 61 });
+    const mott = fbmField(n, n, { cx: 4, cy: 4, oct: 5, seed: 62 });
+    const chip = fbmField(n, n, { cx: 16, cy: 16, oct: 3, seed: 63 });
+    const damp = fbmField(n, n, { cx: 6, cy: 6, oct: 4, seed: 64 });
+    return bake(n, (i, x, y, u, v, p) => {
+      const su = (u * 2) % 1;
+      const sv = (v * 2) % 1;
+      const sid = Math.floor(u * 2) + Math.floor(v * 2) * 2;
+      const dEdge = Math.min(su, 1 - su, sv, 1 - sv);
+      const joint = sstep(0.028 + chip[i] * 0.02, 0.006, dEdge);
+      let c = 0.52 + (sid * 0.037 % 0.1) - 0.04 + (mott[i] - 0.5) * 0.14 + (agg[i] - 0.5) * 0.1;
+      const dp = sstep(0.55, 0.78, damp[i]) * (1 - sstep(0.0, 0.3, dEdge) * 0.4);
+      c *= 1 - dp * 0.25;
+      let r = c * 1.0;
+      let g = c * 0.96;
+      let b = c * 0.88;
+      g += dp * 0.03;
+      r = mix(r, 0.2, joint * 0.85);
+      g = mix(g, 0.17, joint * 0.85);
+      b = mix(b, 0.12, joint * 0.85);
+      p.r = r;
+      p.g = g;
+      p.b = b;
+      p.rough = 0.9 - dp * 0.2 + joint * 0.08;
+      p.h = (agg[i] - 0.5) * 0.5 - joint * 2.0 + (chip[i] - 0.5) * 0.15 * sstep(0.1, 0.0, dEdge);
+      p.ao = 1 - joint * 0.5;
+    }, { strength: 2.4 });
+  });
 
-  const softDot = () =>
-    T(canvasTexture(64, 64, (g, w, h) => {
-      const gr = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
-      gr.addColorStop(0, 'rgba(255,255,255,1)');
-      gr.addColorStop(0.35, 'rgba(255,255,255,0.45)');
-      gr.addColorStop(1, 'rgba(255,255,255,0)');
-      g.fillStyle = gr;
-      g.fillRect(0, 0, w, h);
-    }, { mip: false }));
+  /** Tarred road: black bitumen, pale aggregate, hairline cracks, patched repairs. 3 m tile. */
+  const asphalt = () => once('asphalt', () => {
+    const n = Math.min(cfg.size, 256);
+    const agg = fbmField(n, n, { cx: 96, cy: 96, oct: 2, gain: 0.6, seed: 71 });
+    const mott = fbmField(n, n, { cx: 4, cy: 4, oct: 5, seed: 72 });
+    const crk = worleyField(n, n, { cells: 5, seed: 73 });
+    const crkMask = fbmField(n, n, { cx: 3, cy: 3, oct: 2, seed: 74 });
+    return bake(n, (i, x, y, u, v, p) => {
+      const a = agg[i];
+      let c = 0.16 + (mott[i] - 0.5) * 0.07;
+      const grit = a > 0.66 ? (a - 0.66) * 0.9 : 0;
+      c += grit * 0.6;
+      const crack = sstep(0.035, 0.0, crk.d2[i] - crk.d1[i]) * sstep(0.5, 0.62, crkMask[i]);
+      c *= 1 - crack * 0.6;
+      p.r = c * 1.0;
+      p.g = c * 0.99;
+      p.b = c * 1.02;
+      p.rough = 0.84 - (mott[i] - 0.5) * 0.25 - (grit > 0 ? 0 : 0.05);
+      p.h = (a - 0.5) * 0.9 - crack * 2.4;
+    }, { strength: 2.0 });
+  });
 
-  const ring = () =>
-    T(canvasTexture(128, 128, (g, w, h) => {
-      g.strokeStyle = 'rgba(255,255,255,0.95)';
-      g.lineWidth = 9;
-      g.shadowColor = 'rgba(255,255,255,0.9)';
-      g.shadowBlur = 10;
-      g.beginPath();
-      g.arc(w / 2, h / 2, w / 2 - 14, 0, Math.PI * 2);
-      g.stroke();
-    }, { mip: false }));
+  /** Weathered plaster, near white: tint it with the material colour. Rain streaks, damp at the foot, peeling patches. 3 m tile. */
+  const plaster = () => once('plaster', () => {
+    const n = Math.min(cfg.size, 256);
+    const stu = fbmField(n, n, { cx: 48, cy: 48, oct: 3, gain: 0.55, seed: 81 });
+    const mott = fbmField(n, n, { cx: 4, cy: 4, oct: 5, seed: 82 });
+    const rain = fbmField(n, n, { cx: 36, cy: 3, oct: 3, gain: 0.5, seed: 83 });
+    const peel = fbmField(n, n, { cx: 5, cy: 5, oct: 4, seed: 84 });
+    return bake(n, (i, x, y, u, v, p) => {
+      let c = 0.9 + (mott[i] - 0.5) * 0.14 + (stu[i] - 0.5) * 0.08;
+      const streak = sstep(0.55, 0.85, rain[i]) * (0.35 + 0.65 * v);
+      const damp = sstep(0.38, 0.0, v) * (0.5 + 0.5 * mott[i]);
+      const pl = sstep(0.62, 0.7, peel[i]);
+      c *= 1 - streak * 0.22 - damp * 0.3;
+      const under = 0.74;
+      c = mix(c, under, pl * 0.8);
+      p.r = c * (1 - damp * 0.05);
+      p.g = c * (1 - damp * 0.02 + 0.0);
+      p.b = c * (1 - damp * 0.12 - streak * 0.04);
+      p.rough = 0.92 - pl * 0.1;
+      p.h = (stu[i] - 0.5) * 0.9 - pl * 0.8;
+    }, { strength: 2.4 });
+  });
 
-  /** Reflective puddle: dark mirror with soft warm streaks (the lamps) and a rim. */
-  const puddle = () =>
-    T(canvasTexture(128, 64, (g, w, h) => {
-      g.clearRect(0, 0, w, h);
-      const gr = g.createRadialGradient(w / 2, h / 2, 2, w / 2, h / 2, w / 2);
-      gr.addColorStop(0, 'rgba(255,255,255,0.9)');
-      gr.addColorStop(0.75, 'rgba(255,255,255,0.7)');
-      gr.addColorStop(1, 'rgba(255,255,255,0)');
-      g.fillStyle = gr;
-      g.save();
-      g.scale(1, h / w);
-      g.beginPath();
-      g.arc(w / 2, w / 2, w / 2, 0, 7);
-      g.restore();
-      g.fill();
-      g.globalCompositeOperation = 'source-atop';
-      for (const [x, c] of [[0.3, 'rgba(255,190,90,0.9)'], [0.55, 'rgba(255,240,200,0.8)'], [0.78, 'rgba(255,150,80,0.8)']]) {
-        const lg = g.createLinearGradient(w * x, 0, w * x, h);
-        lg.addColorStop(0, 'rgba(255,255,255,0)');
-        lg.addColorStop(0.5, c);
-        lg.addColorStop(1, 'rgba(255,255,255,0)');
-        g.fillStyle = lg;
-        g.fillRect(w * x - 4, 0, 8, h);
-      }
-    }));
+  /** Red brick in running bond with sooty tops. 0.69 x 0.33 m tile (3 bricks x 4 courses); square texture, so the geometry maps u = x / 0.69, v = y / 0.69. */
+  const brick = () => once('brick', () => {
+    const n = Math.min(cfg.size, 256);
+    const mott = fbmField(n, n, { cx: 6, cy: 6, oct: 4, seed: 91 });
+    const fine = fbmField(n, n, { cx: 48, cy: 48, oct: 2, seed: 92 });
+    const id = worleyField(n, n, { cells: 6, seed: 93 });
+    return bake(n, (i, x, y, u, v, p) => {
+      const rows = 8; // 8 courses per 0.69 m
+      const row = Math.floor(v * rows);
+      const fv = (v * rows) % 1;
+      const off = (row % 2) * 0.5;
+      const fu = (u * 3 + off) % 1;
+      const mortar = Math.max(sstep(0.1, 0.02, fv), sstep(0.04, 0.0, fu), sstep(0.96, 1.0, fu)) > 0.5 ? 1 : 0;
+      const bid = (Math.floor(u * 3 + off) * 7 + row * 13) % 11 / 11;
+      let r = 0.46 + bid * 0.12 + (mott[i] - 0.5) * 0.16;
+      let g = 0.18 + bid * 0.05 + (mott[i] - 0.5) * 0.07;
+      let b = 0.11 + bid * 0.03;
+      const soot = sstep(0.4, 1.0, v) * 0.5 * mott[i];
+      r *= 1 - soot * 0.7;
+      g *= 1 - soot * 0.5;
+      b *= 1 - soot * 0.4;
+      r = mix(r, 0.6, mortar * 0.85);
+      g = mix(g, 0.56, mortar * 0.85);
+      b = mix(b, 0.5, mortar * 0.85);
+      p.r = r + (fine[i] - 0.5) * 0.04;
+      p.g = g;
+      p.b = b;
+      p.rough = 0.93;
+      p.h = (fine[i] - 0.5) * 0.8 - mortar * 1.6 + id.id[i] * 0.1;
+    }, { strength: 2.6 });
+  });
 
-  const blob = () =>
-    T(canvasTexture(64, 64, (g, w, h) => {
-      const gr = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
-      gr.addColorStop(0, 'rgba(0,0,0,0.55)');
-      gr.addColorStop(0.6, 'rgba(0,0,0,0.25)');
-      gr.addColorStop(1, 'rgba(0,0,0,0)');
-      g.fillStyle = gr;
-      g.fillRect(0, 0, w, h);
-    }, { mip: false }));
+  /** Bamboo culm: yellow-green, nodes every 0.3 m, fibres. u around, v along (the texture covers 0.9 m of pole: three nodes). */
+  const bamboo = () => once('bamboo', () => {
+    const n = Math.min(cfg.size, 256);
+    const fib = fbmField(n, n, { cx: 24, cy: 2, oct: 3, gain: 0.55, seed: 101 });
+    const mott = fbmField(n, n, { cx: 3, cy: 6, oct: 4, seed: 102 });
+    return bake(n, (i, x, y, u, v, p) => {
+      const nv = (v * 3) % 1;
+      const node = Math.exp(-(((nv - 0.5) / 0.03) ** 2));
+      const gv = 0.5 + (fib[i] - 0.5) * 0.3 + (mott[i] - 0.5) * 0.3;
+      let r = mix(0.44, 0.66, gv);
+      let g = mix(0.4, 0.56, gv);
+      let b = mix(0.12, 0.26, gv);
+      r *= 1 - node * 0.45;
+      g *= 1 - node * 0.45;
+      b *= 1 - node * 0.45;
+      p.r = r;
+      p.g = g;
+      p.b = b;
+      p.rough = 0.5 + node * 0.3 + (fib[i] - 0.5) * 0.2;
+      p.h = node * 1.0 + (fib[i] - 0.5) * 0.3;
+    }, { strength: 1.6 });
+  });
 
-  /** Floating text labels (+₹NN, emotes). */
-  const label = (text, color = '#ffd34d', size = 64) =>
-    canvasTexture(256, 96, (g, w, h) => {
-      g.textAlign = 'center';
-      g.textBaseline = 'middle';
-      let px = size;
-      g.font = `900 ${px}px ${FONT_UI}`;
-      while (px > 18 && g.measureText(text).width > w - 36) {
-        px -= 4;
-        g.font = `900 ${px}px ${FONT_UI}`;
-      }
-      g.lineJoin = 'round';
-      g.lineWidth = 14;
-      g.strokeStyle = 'rgba(30,14,6,0.9)';
-      g.strokeText(text, w / 2, h / 2 + 2);
-      g.fillStyle = color;
-      g.fillText(text, w / 2, h / 2 + 2);
-    }, { mip: false });
+  /** HDPE tarpaulin: woven rib texture, creases, sun-faded blue with a pale stripe. 0.5 m tile. */
+  const tarp = (base = [0.1, 0.3, 0.64]) => once(`tarp${base.join(',')}`, () => {
+    const n = Math.min(cfg.size, 256);
+    const crease = fbmField(n, n, { cx: 3, cy: 3, oct: 5, seed: 111 });
+    const dirt = fbmField(n, n, { cx: 4, cy: 4, oct: 4, seed: 112 });
+    return bake(n, (i, x, y, u, v, p) => {
+      const weave = (Math.sin(u * Math.PI * 2 * 32) * Math.sin(v * Math.PI * 2 * 32) + 1) * 0.5;
+      const rib = Math.sin(u * Math.PI * 2 * 4) * 0.5 + 0.5;
+      const cr = Math.abs(crease[i] - 0.5) * 2;
+      const fade = clamp01(dirt[i] * 0.8 - 0.1);
+      const stripe = sstep(0.42, 0.5, (u * 4) % 1) * sstep(0.58, 0.5, (u * 4) % 1) * 0.15;
+      p.r = mix(base[0], 0.55, fade * 0.3 + stripe) * (0.92 + weave * 0.1) * (1 - sstep(0.1, 0.0, cr) * 0.15);
+      p.g = mix(base[1], 0.55, fade * 0.3 + stripe) * (0.92 + weave * 0.1) * (1 - sstep(0.1, 0.0, cr) * 0.15);
+      p.b = mix(base[2], 0.55, fade * 0.25 + stripe) * (0.92 + weave * 0.1) * (1 - sstep(0.1, 0.0, cr) * 0.15);
+      p.rough = 0.55 + fade * 0.3;
+      p.h = weave * 0.5 + rib * 0.15 + (crease[i] - 0.5) * 1.2;
+    }, { strength: 1.8 });
+  });
 
-  return { steel, cement, footpath, road, tin, tarp, wood, banner, menuBoard, skyline, kirana, block, blockLights, poster, noteTex, softDot, ring, puddle, blob, label };
+  /** Plain woven cloth normal (towels, gunny, awning fabric): tint with the material colour. 0.3 m tile. */
+  const cloth = () => once('cloth', () => {
+    const n = Math.min(cfg.size, 128);
+    const fib = fbmField(n, n, { cx: 24, cy: 24, oct: 2, seed: 121 });
+    return bake(n, (i, x, y, u, v, p) => {
+      const w = (Math.sin(u * Math.PI * 2 * 16) * Math.sin(v * Math.PI * 2 * 16) + 1) * 0.5;
+      const c = 0.85 + (fib[i] - 0.5) * 0.2 - w * 0.1;
+      p.r = p.g = p.b = c;
+      p.rough = 0.95;
+      p.h = w + (fib[i] - 0.5) * 0.4;
+    }, { strength: 1.4 });
+  });
+
+  /** Rubber / old plastic: speckled grey, for hoses, tyres, crates. */
+  const grunge = () => once('grunge', () => {
+    const n = Math.min(cfg.size, 128);
+    const m = fbmField(n, n, { cx: 4, cy: 4, oct: 5, seed: 131 });
+    const f = fbmField(n, n, { cx: 40, cy: 40, oct: 2, seed: 132 });
+    return bake(n, (i, x, y, u, v, p) => {
+      const c = 0.8 + (m[i] - 0.5) * 0.4 + (f[i] - 0.5) * 0.16;
+      p.r = p.g = p.b = c;
+      p.rough = 0.7 + m[i] * 0.25;
+      p.h = (f[i] - 0.5) * 0.6;
+    }, { strength: 1.2 });
+  });
+
+  const rest = makeSigns(T, { canvasTexture, mulberry });
+
+  return {
+    steel, paintedWood, timber, tin, concrete, paving, asphalt, plaster, brick, bamboo, tarp, cloth, grunge,
+    ...rest,
+    /** Called by the stall with the tier: texture size and whether normal maps are baked. Existing bundles keep their size. */
+    setQuality(q) {
+      cfg.size = Math.max(128, Math.min(512, q.texSize || 512));
+      cfg.normals = q.normalMaps !== false;
+    },
+    redrawAll() {
+      rest.redrawText?.();
+    },
+  };
 }
