@@ -74,6 +74,10 @@ function siteUrlPlugin() {
 const TIFFIN_CHUNKS = [
   // React core first, so the shared runtime is not folded into a Tiffin-only chunk (that made every page preload the Tiffin audio chunk)
   { name: 'vendor-react', test: /[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/, priority: 60 },
+  // the hub's own sound libraries are used by the whole app: keep them out of the Tiffin audio chunk
+  { name: 'hub-sound', test: /[\\/]src[\\/]lib[\\/](soundscape[\\/]|sfx\.js|haptics\.js|storage\.js)/, priority: 55 },
+  // the game card (manifest) needs the small catalogue on every page: keep it out of the heavy chunks
+  { name: 'tiffin-catalog', test: /[\\/]shared[\\/]tiffin-centre[\\/]catalog\.js/, priority: 56 },
   { name: 'tiffin-three', test: /[\\/]node_modules[\\/]three[\\/]/, priority: 50 },
   { name: 'tiffin-audio', test: /[\\/]src[\\/]games[\\/]tiffin-centre[\\/]audio[\\/]/, priority: 40 },
   { name: 'tiffin-dialogue', test: /[\\/]shared[\\/]tiffin-centre[\\/]dialogue[\\/]/, priority: 40 },
