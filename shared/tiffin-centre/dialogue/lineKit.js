@@ -42,7 +42,53 @@ export const MIN_PER_SIT = {
   night: 6,
   'combo-praise': 6,
   apology: 6,
+  // ---- the operations layer (docs/TIFFIN_CENTRE_PLAN.md section 3b): weather, events, requests, regulars, complaints ----
+  'rain-start': 8, // people duck in out of the rain for chai and bajji
+  'rain-ongoing': 8,
+  'rain-end': 4,
+  'power-cut': 8, // lights out, 'current poyindi', phone torches (said when the cut starts and now and then while it lasts)
+  'power-back': 4,
+  'cricket-night': 10, // India match chatter, groups, cheering
+  'festival-greeting': 8, // Sankranti, Ugadi, Dasara, Eid, Diwali and plain 'happy festival', nobody excluded
+  'inspector-arrival': 6, // whispers: the GHMC food-safety people have come
+  'inspector-pass': 4,
+  'inspector-fail': 4,
+  'sold-out-polite': 14, // told 'ayipoyindi' / 'khatam ho gaya': tags swap (takes another dish), leave (goes home politely), drop (skips that dish)
+  'stock-out-apology': 4, // the stall ran out of something: customers console the cook
+  'delivery-boy-hurry': 8, // the tiffin delivery boy: parcels, 'order late ayithe rating pothundi'
+  'parcel-request': 8,
+  'extra-request-chutney': 8,
+  'extra-request-sambar': 8,
+  'spice-request-less': 8,
+  'spice-request-more': 8,
+  'regular-named': 10, // a regular recognised by the cook; tags low (loyalty 0-1) and high (loyalty 2+)
+  'regular-loyal': 6, // a loyal regular tips and blesses on the way out
+  'big-office-order': 8, // a huge parcel order, the boss is waiting
+  'broken-dish-complaint': 8, // torn or stuck dosa, half price
+  'sour-batter-complaint': 6, // 'dosa pulla ga undi'
+  'gas-out-chatter': 6, // waiting while the cylinder is swapped
+  'thanks-fast-service': 4,
 };
+
+/** Tags a situation uses (a tag narrows the pool, the director chooses it): 'late' on serve-complain, and these. */
+export const SIT_TAGS = {
+  'serve-complain': ['late'],
+  'sold-out-polite': ['swap', 'leave', 'drop'],
+  'regular-named': ['low', 'high'],
+};
+/** Minimum lines of each tag, in each language. */
+export const MIN_PER_TAG = {
+  'sold-out-polite': { swap: 5, leave: 4, drop: 3 },
+  'regular-named': { low: 4, high: 4 },
+};
+/** Situations whose lines may use {dish}: the director has a dish to name there. ({dish2}: order-multi and sold-out-polite 'swap'.) */
+export const NO_DISH_SITS = [
+  'angry-leave', 'unpaid-leave', 'pay-hurry', 'pay-change-keep', 'pay-haggle', 'apology', 'turned-away', 'combo-praise', 'morning', 'noon', 'evening', 'night', 'festival', 'greet',
+  'rain-start', 'rain-ongoing', 'rain-end', 'power-cut', 'power-back', 'cricket-night', 'festival-greeting', 'inspector-arrival', 'inspector-pass', 'inspector-fail',
+  'stock-out-apology', 'extra-request-chutney', 'extra-request-sambar', 'regular-loyal', 'gas-out-chatter',
+];
+/** Situations where {n} is filled: the count of dishes ordered (order), the bill (pay-ready), the parcels of the order (big-office-order, delivery-boy-hurry). */
+export const N_SITS = ['order', 'pay-ready', 'big-office-order', 'delivery-boy-hurry'];
 
 export const SITUATIONS = Object.keys(MIN_PER_SIT);
 

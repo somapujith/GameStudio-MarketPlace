@@ -428,6 +428,261 @@ const D = {
     ['sheepish', 'भूल गया था भैया, अभी देता हूँ', 'Bhool gaya tha bhaiya, abhi deta hoon', 'I forgot, brother, giving it right now.'],
     ['sheepish', 'देर हो गई ना, माफ़ कर दो', 'Der ho gayi na, maaf kar do', 'I made you wait, please forgive me.'],
   ],
+  // ---- the operations layer: weather, events, requests, regulars, complaints (docs/TIFFIN_CENTRE_PLAN.md section 3b) ----
+
+  'rain-start': [
+    ['surprised', 'अरे बारिश आ गई! भैया, ज़रा अंदर आने दो', 'Arre baarish aa gayi! Bhaiya, zara andar aane do', 'Oh, the rain has come! Brother, let me come in for a bit.'],
+    ['happy', 'बारिश हो रही है भैया, एक गरम चाय दे दो', 'Baarish ho rahi hai bhaiya, ek garam chai de do', 'It is raining, brother, give me a hot chai.'],
+    ['laughing', 'पूरा भीग गया यार! यहाँ खड़ा हो जाऊँ?', 'Poora bheeg gaya yaar! Yahaan khada ho jaaun?', 'I am completely soaked, man! May I stand here?'],
+    ['happy', 'बारिश और गरम मिर्ची बज्जी... क्या बात है!', 'Baarish aur garam mirchi bajji... kya baat hai!', 'Rain and hot mirchi bajji... what a combination!'],
+    ['sad', 'छाता भूल गया, यहीं रुक जाता हूँ भैया', 'Chhaata bhool gaya, yahin ruk jaata hoon bhaiya', 'I forgot my umbrella, I will wait right here, brother.'],
+    ['surprised', 'अचानक मूसलाधार बारिश! भैया, सब भीग रहे हैं!', 'Achaanak moosaladhaar baarish! Bhaiya, sab bheeg rahe hain!', 'A sudden downpour! Brother, everyone is getting wet!'],
+    ['happy', 'इस बारिश में चाय न पिएँ तो कब पिएँगे', 'Is baarish mein chai na piyen toh kab piyenge', 'If not in this rain, when will we drink chai?'],
+    ['neutral', 'सड़क पर पानी भर गया, थोड़ी देर यहीं रुकता हूँ', 'Sadak par paani bhar gaya, thodi der yahin rukta hoon', 'The road is flooded, I will stay here a while.'],
+  ],
+
+  'rain-ongoing': [
+    ['bored', 'बारिश अभी भी नहीं रुक रही भैया', 'Baarish abhi bhi nahin ruk rahi bhaiya', 'The rain still is not stopping, brother.'],
+    ['laughing', 'हैदराबाद की बारिश है, सड़कें तालाब बन गईं', 'Hyderabad ki baarish hai, sadken taalaab ban gayin', 'It is Hyderabad rain: the roads have turned into ponds.'],
+    ['happy', 'एक और चाय दो भैया, बारिश रुकने तक यहीं हूँ', 'Ek aur chai do bhaiya, baarish rukne tak yahin hoon', 'One more chai, brother, I am here until the rain stops.'],
+    ['bored', 'ट्रैफ़िक जाम हो गया, यहीं बैठ जाता हूँ', 'Traffic jaam ho gaya, yahin baith jaata hoon', 'Traffic is jammed, I will just sit here.'],
+    ['happy', 'बारिश में पकौड़ी, ना, बज्जी खाने का मज़ा ही अलग है', 'Baarish mein pakodi, na, bajji khaane ka maza hi alag hai', 'Eating pakodi, no, bajji in the rain is a joy of its own.'],
+    ['surprised', 'अभी बिजली कड़की! डर गया मैं', 'Abhi bijli kadki! Dar gaya main', 'Lightning just struck! I got scared.'],
+    ['neutral', 'इस बारिश में सारे काम रुक गए हैं', 'Is baarish mein saare kaam ruk gaye hain', 'All work has stopped in this rain.'],
+    ['sad', 'घर कैसे जाऊँगा इस बारिश में?', 'Ghar kaise jaaunga is baarish mein?', 'How will I get home in this rain?'],
+  ],
+
+  'rain-end': [
+    ['happy', 'बारिश रुक गई! अब निकलता हूँ भैया', 'Baarish ruk gayi! Ab nikalta hoon bhaiya', 'The rain has stopped! I will head off now, brother.'],
+    ['happy', 'धूप निकल आई, मौसम कितना ठंडा हो गया', 'Dhoop nikal aayi, mausam kitna thanda ho gaya', 'The sun is out, the weather has turned so cool.'],
+    ['laughing', 'बारिश थम गई, अब सड़क का तालाब पार करना है!', 'Baarish tham gayi, ab sadak ka taalaab paar karna hai!', 'The rain has eased, now to cross the pond on the road!'],
+    ['neutral', 'चलो बारिश रुकी, मिट्टी की ख़ुशबू कितनी अच्छी है', 'Chalo baarish ruki, mitti ki khushboo kitni achchhi hai', 'Good, the rain has stopped, the smell of wet earth is lovely.'],
+  ],
+
+  'power-cut': [
+    ['surprised', 'अरे, बिजली चली गई!', 'Arre, bijli chali gayi!', 'Oh no, the power has gone!'],
+    ['neutral', 'फ़ोन की टॉर्च जलाओ, सब अंधेरा हो गया', 'Phone ki torch jalaao, sab andhera ho gaya', 'Switch on your phone torch, everything is dark.'],
+    ['laughing', 'हैदराबाद में बिजली जाना कोई नई बात है भैया?', 'Hyderabad mein bijli jaana koi nayi baat hai bhaiya?', 'Is a power cut anything new in Hyderabad, brother?'],
+    ['bored', 'पता नहीं कब आएगी ये बिजली', 'Pata nahin kab aayegi ye bijli', 'Who knows when this power will come back.'],
+    ['neutral', 'कोई बात नहीं भैया, गैस पर बनाते रहो, मैं टॉर्च पकड़ता हूँ', 'Koi baat nahin bhaiya, gas par banaate raho, main torch pakadta hoon', 'No problem, brother, keep cooking on the gas, I will hold the torch.'],
+    ['sheepish', 'अंधेरे में पैसे कैसे दूँगा भैया?', 'Andhere mein paise kaise doonga bhaiya?', 'How will I pay in the dark, brother?'],
+    ['surprised', 'पंखा रुक गया, अब उमस हो रही है', 'Pankha ruk gaya, ab umas ho rahi hai', 'The fan has stopped, it is getting muggy.'],
+    ['happy', 'मोमबत्ती जलाओ, टिफ़िन सेंटर में कैंडल लाइट डिनर!', 'Mombatti jalaao, tiffin centre mein candle light dinner!', 'Light a candle: candle light dinner at the tiffin centre!'],
+  ],
+
+  'power-back': [
+    ['happy', 'चलो, बिजली आ गई!', 'Chalo, bijli aa gayi!', 'Good, the power is back!'],
+    ['laughing', 'अब चेहरे दिख रहे हैं, लाइट आ गई!', 'Ab chehre dikh rahe hain, light aa gayi!', 'Now I can see faces, the light is back!'],
+    ['neutral', 'पंखा चल पड़ा, चलो अच्छा हुआ', 'Pankha chal pada, chalo achchha hua', 'The fan is running again, good.'],
+    ['happy', 'बिजली आ गई, अब ज़रा स्पीड बढ़ाओ भैया', 'Bijli aa gayi, ab zara speed badhaao bhaiya', 'The power is back, now speed up a little, brother.'],
+  ],
+
+  'cricket-night': [
+    ['happy', 'आज इंडिया का मैच है भैया, पूरी भीड़ होगी', 'Aaj India ka match hai bhaiya, poori bheed hogi', 'There is an India match today, brother, it will be packed.'],
+    ['delighted', 'छक्का! देखा भैया, स्टेडियम के बाहर गई!', 'Chhakka! Dekha bhaiya, stadium ke baahar gayi!', 'A six! Did you see that, brother, it went out of the stadium!'],
+    ['impatient', 'जल्दी दो भैया, आख़िरी ओवर छूट जाएगा', 'Jaldi do bhaiya, aakhiri over chhoot jaayega', 'Quickly, brother, I will miss the last over.'],
+    ['neutral', 'मैच देखते हुए नाश्ता करने का मज़ा ही और है', 'Match dekhte hue naashta karne ka maza hi aur hai', 'Eating a snack while watching the match is a joy of its own.'],
+    ['happy', 'इंडिया ही जीतेगी भैया, तुम देख लेना', 'India hi jeetegi bhaiya, tum dekh lena', 'India will win, brother, you will see.'],
+    ['sad', 'विकेट गिर गया यार! अब क्या होगा', 'Wicket gir gaya yaar! Ab kya hoga', 'A wicket has fallen, man! What will happen now?'],
+    ['laughing', 'पूरी गैंग आई है, सबके लिए डोसे लगाओ!', 'Poori gang aayi hai, sabke liye dose lagaao!', 'The whole gang is here, make dosas for everyone!', ['student']],
+    ['delighted', 'आज एसआरएच खेल रही है भैया, जीतना ही होगा!', 'Aaj SRH khel rahi hai bhaiya, jeetna hi hoga!', 'SRH is playing today, brother, they simply have to win!'],
+    ['laughing', 'एक बॉल पर दस लोग चिल्ला रहे हैं, क्या शोर है!', 'Ek ball par das log chilla rahe hain, kya shor hai!', 'Ten people shouting over one ball, what a racket!'],
+    ['happy', 'जीत गए तो आज सबकी चाय मेरी तरफ़ से!', 'Jeet gaye toh aaj sabki chai meri taraf se!', 'If we win, everyone gets chai from me today!'],
+  ],
+
+  'festival-greeting': [
+    ['delighted', 'सबको त्योहार की हार्दिक शुभकामनाएँ!', 'Sabko tyohaar ki haardik shubhkaamnayein!', 'Heartfelt festival wishes to everyone!'],
+    ['happy', 'संक्रांति की शुभकामनाएँ भैया, चलो पतंग उड़ाएँ!', 'Sankraanti ki shubhkaamnayein bhaiya, chalo patang udaayen!', 'Happy Sankranti, brother, let us fly kites!'],
+    ['happy', 'उगादी मुबारक! पच्चड़ी खाई क्या?', 'Ugaadi mubaarak! Pachchadi khaayi kya?', 'Happy Ugadi! Have you had the pachadi?'],
+    ['happy', 'दशहरा मुबारक दीदी, सबका भला हो', 'Dashahra mubaarak didi, sabka bhala ho', 'Happy Dussehra, didi, may it be well for everyone.'],
+    ['delighted', 'ईद मुबारक भैया! सब मिलकर ख़ुशियाँ मनाएँ', 'Eid mubaarak bhaiya! Sab milkar khushiyaan manaayen', 'Eid Mubarak, brother! Let us all celebrate together.'],
+    ['happy', 'दीवाली की शुभकामनाएँ! ये मिठाई लीजिए', 'Deewali ki shubhkaamnayein! Ye mithaai leejiye', 'Happy Diwali! Please have this sweet.'],
+    ['neutral', 'त्योहार का दिन है, घर जाने से पहले एक नाश्ता', 'Tyohaar ka din hai, ghar jaane se pehle ek naashta', 'It is a festival day, one snack before heading home.'],
+    ['happy', 'कोई भी त्योहार हो, सब मिलकर मनाएँगे भैया!', 'Koi bhi tyohaar ho, sab milkar manaayenge bhaiya!', 'Whatever the festival, we will celebrate together, brother!'],
+  ],
+
+  'inspector-arrival': [
+    ['surprised', 'भैया, जीएचएमसी वाले आ गए हैं, संभल के!', 'Bhaiya, GHMC waale aa gaye hain, sambhal ke!', 'Brother, the GHMC people have come, be careful!'],
+    ['neutral', 'लगता है इंस्पेक्टर आया है, कड़छी साफ़ कर लो भैया', 'Lagta hai inspector aaya hai, karchhi saaf kar lo bhaiya', 'It looks like an inspector has come, wipe the ladle, brother.'],
+    ['surprised', 'उधर देखो, फ़ूड इंस्पेक्टर आ रहे हैं', 'Udhar dekho, food inspector aa rahe hain', 'Look over there, the food inspectors are coming.'],
+    ['sheepish', 'भैया, तवा साफ़ है ना? चेकिंग आई है', 'Bhaiya, tawa saaf hai na? Checking aayi hai', 'Brother, is the tawa clean? A check has come.'],
+    ['neutral', 'धीरे बोल रहा हूँ, जीएचएमसी की चेकिंग है', 'Dheere bol raha hoon, GHMC ki checking hai', 'I am speaking softly, there is a GHMC check.'],
+    ['surprised', 'सब सफ़ाई क्यों कर रहे हैं? अच्छा, इंस्पेक्टर आया है क्या?', 'Sab safaai kyon kar rahe hain? Achchha, inspector aaya hai kya?', 'Why is everyone cleaning up? Oh, has the inspector come?'],
+  ],
+
+  'inspector-pass': [
+    ['delighted', 'शाबाश भैया! इंस्पेक्टर ने भी तारीफ़ की', 'Shaabaash bhaiya! Inspector ne bhi taareef ki', 'Well done, brother! Even the inspector praised you.'],
+    ['happy', 'वाह! तुम्हारे यहाँ सफ़ाई हमेशा ऐसी ही रहती है', 'Waah! Tumhaare yahaan safaai hamesha aisi hi rehti hai', 'Wow! Cleanliness at your place is always like this.'],
+    ['laughing', 'चेकिंग पास! अब हमें एक और डोसा दो', 'Checking paas! Ab hamein ek aur dosa do', 'Check passed! Now give us one more dosa.'],
+    ['delighted', 'इसीलिए यहीं आता हूँ, हमेशा साफ़ रहता है', 'Isiliye yahin aata hoon, hamesha saaf rehta hai', 'That is why I come only here, it is always clean.'],
+  ],
+
+  'inspector-fail': [
+    ['sad', 'अरे, जुर्माना लगा दिया? बेचारे भैया', 'Arre, jurmaana laga diya? Bechaare bhaiya', 'Oh, they fined you? Poor brother.'],
+    ['neutral', 'कोई बात नहीं भैया, कल से और साफ़ रखना', 'Koi baat nahin bhaiya, kal se aur saaf rakhna', 'No problem, brother, keep it cleaner from tomorrow.'],
+    ['sad', 'तवा पोंछ लिया होता तो अच्छा होता भैया', 'Tawa ponchh liya hota toh achchha hota bhaiya', 'It would have been good if the tawa had been wiped, brother.'],
+    ['sheepish', 'इतनी भीड़ में कोई भी भूल जाए', 'Itni bheed mein koi bhi bhool jaaye', 'In this much rush anyone could forget.'],
+  ],
+
+  'sold-out-polite': [
+    ['sad', '{dish} ख़त्म हो गया? ठीक है, {dish2} दे दो', '{dish} khatm ho gaya? Theek hai, {dish2} de do', '{dish} is finished? Okay, give me {dish2}.', 'swap'],
+    ['neutral', 'अरे, {dish} नहीं है! तो फिर {dish2} दो भैया', 'Arre, {dish} nahin hai! Toh phir {dish2} do bhaiya', 'Oh, no {dish}! Then {dish2}, brother.', 'swap'],
+    ['sheepish', '{dish} के लिए ही आया था... कोई बात नहीं, {dish2} चलेगा', '{dish} ke liye hi aaya tha... koi baat nahin, {dish2} chalega', 'I came just for {dish}... never mind, {dish2} will do.', 'swap'],
+    ['happy', '{dish} नहीं है तो {dish2} गरम-गरम दे दो', '{dish} nahin hai toh {dish2} garam-garam de do', 'If there is no {dish}, give me hot {dish2}.', 'swap'],
+    ['surprised', 'इतनी जल्दी {dish} ख़त्म? चलो, {dish2} ले लेता हूँ', 'Itni jaldi {dish} khatm? Chalo, {dish2} le leta hoon', '{dish} gone already? Okay, I will take {dish2}.', 'swap'],
+    ['laughing', 'मेरा {dish} कोई खा गया! फिर {dish2} ही दो', 'Mera {dish} koi kha gaya! Phir {dish2} hi do', 'Someone ate my {dish}! Fine, give me {dish2} then.', 'swap'],
+    ['sad', '{dish} नहीं है? ठीक है भैया, कल आता हूँ', '{dish} nahin hai? Theek hai bhaiya, kal aata hoon', 'No {dish}? Okay brother, I will come tomorrow.', 'leave'],
+    ['sad', 'अरे, ख़त्म हो गया? कोई बात नहीं, फिर आऊँगा', 'Arre, khatm ho gaya? Koi baat nahin, phir aaunga', 'Oh, it is finished? Never mind, I will come again.', 'leave'],
+    ['sheepish', 'देर से आया, मेरी ग़लती। चलता हूँ भैया', 'Der se aaya, meri galti. Chalta hoon bhaiya', 'I came late, my fault. I am off, brother.', 'leave'],
+    ['neutral', '{dish} नहीं है तो कहीं और देख लेता हूँ', '{dish} nahin hai toh kahin aur dekh leta hoon', 'No {dish}, then I will look somewhere else.', 'leave'],
+    ['happy', 'कोई बात नहीं दीदी, कल जल्दी आऊँगा', 'Koi baat nahin didi, kal jaldi aaunga', 'No problem, didi, I will come early tomorrow.', 'leave'],
+    ['neutral', '{dish} नहीं है? ठीक है, वो रहने दो', '{dish} nahin hai? Theek hai, wo rehne do', 'No {dish}? Fine, leave that one.', 'drop'],
+    ['sad', 'अरे {dish} ख़त्म हो गया, जो है वही दे दो', 'Arre {dish} khatm ho gaya, jo hai wahi de do', 'Oh, {dish} is finished? Just give what you have.', 'drop'],
+    ['sheepish', '{dish} के बिना भी चलेगा, बाक़ी दे दो', '{dish} ke bina bhi chalega, baaqi de do', 'It is fine without {dish}, give me the rest.', 'drop'],
+  ],
+
+  'stock-out-apology': [
+    ['sheepish', 'कोई बात नहीं भैया, आज भीड़ बहुत है', 'Koi baat nahin bhaiya, aaj bheed bahut hai', 'No problem, brother, it is very crowded today.'],
+    ['neutral', 'सामान ख़त्म हो गया? जल्दी नहीं है, करते रहो', 'Saamaan khatm ho gaya? Jaldi nahin hai, karte raho', 'Ran out of stock? No hurry, carry on.'],
+    ['happy', 'टेंशन मत लो भैया, हम थोड़ा रुक जाएँगे', 'Tension mat lo bhaiya, hum thoda ruk jaayenge', 'Do not take tension, brother, we will wait a little.'],
+    ['neutral', 'कुछ और हो तो देखो भैया, चलेगा', 'Kuchh aur ho toh dekho bhaiya, chalega', 'See if you have something else, brother, that will do.'],
+  ],
+
+  'delivery-boy-hurry': [
+    ['impatient', 'भैया, {n} पार्सल जल्दी तैयार करो, ऑर्डर लेट हुआ तो रेटिंग गिर जाएगी!', 'Bhaiya, {n} parcel jaldi taiyaar karo, order late hua toh rating gir jaayegi!', 'Brother, get {n} parcels ready fast, if the order is late my rating drops!'],
+    ['impatient', 'एक मिनट भी नहीं है भैया, कस्टमर इंतज़ार कर रहा है', 'Ek minute bhi nahin hai bhaiya, customer intezaar kar raha hai', 'Not even a minute to spare, brother, the customer is waiting.'],
+    ['sheepish', 'रेटिंग गिरी तो इंसेंटिव कट जाएगा भैया, जल्दी', 'Rating giri toh incentive kat jaayega bhaiya, jaldi', 'If my rating drops the incentive gets cut, brother, quick.'],
+    ['impatient', 'पहले {dish} का पार्सल दो, बाक़ी बाद में', 'Pehle {dish} ka parcel do, baaqi baad mein', 'Give the {dish} parcel first, the rest later.'],
+    ['neutral', 'बाइक सड़क पर खड़ी कर दी, पुलिस आ जाएगी भैया', 'Bike sadak par khadi kar di, police aa jaayegi bhaiya', 'I left my bike on the road, the police will come, brother.'],
+    ['impatient', 'फ़ोन पर फ़ोन आ रहा है, कहाँ हो करके', 'Phone par phone aa raha hai, kahaan ho karke', 'Call after call is coming asking where I am.'],
+    ['angry', 'और देर हुई तो ऑर्डर कैंसिल हो जाएगा भैया!', 'Aur der hui toh order cancel ho jaayega bhaiya!', 'If it gets any later the order will be cancelled, brother!'],
+    ['sheepish', 'प्लीज़ भैया, आज की आख़िरी डिलीवरी है, जल्दी', 'Please bhaiya, aaj ki aakhiri delivery hai, jaldi', 'Please brother, it is the last delivery today, quickly.'],
+  ],
+
+  'parcel-request': [
+    ['neutral', '{dish} पार्सल कर दो भैया', '{dish} parcel kar do bhaiya', 'Pack the {dish} as a parcel, brother.'],
+    ['neutral', 'यहाँ नहीं खाऊँगा, बाँध दो दीदी', 'Yahaan nahin khaaunga, baandh do didi', 'I will not eat here, pack it up, didi.'],
+    ['impatient', 'पार्सल दे दो, बस का टाइम हो गया', 'Parcel de do, bus ka time ho gaya', 'Give me a parcel, it is bus time.'],
+    ['happy', 'घर ले जाऊँगा, पार्सल बना दो भैया', 'Ghar le jaaunga, parcel bana do bhaiya', 'I will take it home, make it a parcel, brother.'],
+    ['neutral', 'चटनी सांभर अलग थैली में डालना, पार्सल है', 'Chutney sambhar alag thaili mein daalna, parcel hai', 'Put the chutney and sambar in a separate bag, it is a parcel.'],
+    ['neutral', 'ऑफ़िस के लिए पार्सल है, कसके बाँधना भैया', 'Office ke liye parcel hai, kasake baandhna bhaiya', 'A parcel for the office, pack it tight, brother.', ['office', 'techie']],
+    ['happy', 'बच्चों को घर पर खिलाऊँगा, पार्सल दे दो', 'Bachchon ko ghar par khilaaunga, parcel de do', 'I will feed the kids at home, give me a parcel.', ['family']],
+    ['sheepish', 'लीक न हो, चटनी बहती है भैया, ध्यान से बाँधना', 'Leak na ho, chutney behti hai bhaiya, dhyaan se baandhna', 'No leaks, the chutney runs, brother, pack it carefully.'],
+  ],
+
+  'extra-request-chutney': [
+    ['neutral', 'भैया, चटनी ज़रा ज़्यादा देना', 'Bhaiya, chutney zara zyaada dena', 'Brother, give a bit more chutney.'],
+    ['happy', 'नारियल की चटनी थोड़ी और दो, बहुत बढ़िया है', 'Nariyal ki chutney thodi aur do, bahut badhiya hai', 'A little more coconut chutney please, it is very good.'],
+    ['sheepish', 'चटनी के बिना डोसा कैसे खाएँ, एक कड़छी और डालो', 'Chutney ke bina dosa kaise khaayen, ek karchhi aur daalo', 'How do you eat dosa without chutney, put one more ladle.'],
+    ['happy', 'एक्स्ट्रा चटनी दो भैया, चार रुपए ज़्यादा दे दूँगा', 'Extra chutney do bhaiya, chaar rupaye zyaada de doonga', 'Give extra chutney, brother, I will pay four rupees more.'],
+    ['neutral', 'कटोरी भर के चटनी डाल दो भैया', 'Katori bhar ke chutney daal do bhaiya', 'Fill the bowl with chutney, brother.'],
+    ['delighted', 'तुम्हारी चटनी के लिए ही आता हूँ, थोड़ी और दो', 'Tumhaari chutney ke liye hi aata hoon, thodi aur do', 'I come just for your chutney, give a little more.'],
+    ['neutral', 'मूँगफली की चटनी भी ज़रा साइड में डाल दो', 'Moongfali ki chutney bhi zara side mein daal do', 'Put a little peanut chutney on the side too.'],
+    ['laughing', 'चटनी में कंजूसी मत करो भैया!', 'Chutney mein kanjoosi mat karo bhaiya!', 'Do not be stingy with the chutney, brother!'],
+  ],
+
+  'extra-request-sambar': [
+    ['neutral', 'भैया, सांभर थोड़ा और डालोगे?', 'Bhaiya, sambhar thoda aur daaloge?', 'Brother, will you add a little more sambar?'],
+    ['happy', 'गरम सांभर की एक कड़छी और डालो भैया', 'Garam sambhar ki ek karchhi aur daalo bhaiya', 'One more ladle of hot sambar, brother.'],
+    ['neutral', 'इडली सांभर में डूबी होनी चाहिए, और डालो', 'Idli sambhar mein doobi honi chahiye, aur daalo', 'Idli should be drowned in sambar, pour more.'],
+    ['happy', 'एक्स्ट्रा सांभर दो, चार रुपए ज़्यादा लगें तो लगें', 'Extra sambhar do, chaar rupaye zyaada lagen toh lagen', 'Give extra sambar, if it costs four rupees more then so be it.'],
+    ['delighted', 'सांभर की ख़ुशबू कमाल है, थोड़ा और प्लीज़', 'Sambhar ki khushboo kamaal hai, thoda aur please', 'The sambar smells fantastic, a little more please.'],
+    ['neutral', 'सांभर अलग कप में दे दो, पी लूँगा', 'Sambhar alag cup mein de do, pee loonga', 'Give the sambar in a separate cup, I will drink it.'],
+    ['sheepish', 'भैया, वड़े के लिए सांभर कम पड़ गया, थोड़ा और', 'Bhaiya, vade ke liye sambhar kam pad gaya, thoda aur', 'Brother, the sambar fell short for the vada, a bit more.'],
+    ['laughing', 'तुम्हारे सांभर की तो लत लग गई है भैया', 'Tumhaare sambhar ki toh lat lag gayi hai bhaiya', 'I am hooked on your sambar, brother.'],
+  ],
+
+  'spice-request-less': [
+    ['neutral', 'भैया, मिर्च कम डालना, मुझे सूट नहीं करता', 'Bhaiya, mirch kam daalna, mujhe suit nahin karta', 'Brother, go easy on the chilli, it does not suit me.'],
+    ['sheepish', 'बच्चों को तीखा नहीं चलता, कम मिर्च डालो दीदी', 'Bachchon ko teekha nahin chalta, kam mirch daalo didi', 'The kids cannot take spice, use less chilli, didi.', ['family']],
+    ['neutral', '{dish} में मिर्च कम रखना भैया', '{dish} mein mirch kam rakhna bhaiya', 'Keep the chilli low in the {dish}, brother.'],
+    ['sad', 'पेट ठीक नहीं है, बिना मिर्च के दे दो', 'Pet theek nahin hai, bina mirch ke de do', 'My stomach is upset, give it without chilli.'],
+    ['laughing', 'मुझे तीखे से डर लगता है, बस थोड़ा सा डालो', 'Mujhe teekhe se dar lagta hai, bas thoda sa daalo', 'I am scared of spice, put just a little.'],
+    ['neutral', 'हरी मिर्च कम डालना, सुबह से एसिडिटी है', 'Hari mirch kam daalna, subah se acidity hai', 'Less green chilli please, I have had acidity since morning.'],
+    ['happy', 'मीडियम तीखा बस, हैदराबादी वाला नहीं चाहिए', 'Medium teekha bas, Hyderabadi waala nahin chaahiye', 'Medium spice only, not the Hyderabadi kind.'],
+    ['sheepish', 'तीखा कम होना चाहिए भैया, प्लीज़', 'Teekha kam hona chaahiye bhaiya, please', 'It should be less spicy, brother, please.'],
+  ],
+
+  'spice-request-more': [
+    ['happy', 'मिर्च ज़्यादा डालो भैया, चटपटा होना चाहिए', 'Mirch zyaada daalo bhaiya, chatpata hona chaahiye', 'More chilli, brother, it should be tangy and hot.'],
+    ['delighted', 'असली हैदराबादी तीखा चाहिए, डरो मत भैया', 'Asli Hyderabadi teekha chaahiye, daro mat bhaiya', 'I want proper Hyderabadi heat, do not be afraid, brother.'],
+    ['neutral', '{dish} पर मिर्च पाउडर और छिड़कना', '{dish} par mirch powder aur chhidakna', 'Sprinkle more chilli powder on the {dish}.'],
+    ['happy', 'तीखा न हो तो खाने का मज़ा ही नहीं दीदी', 'Teekha na ho toh khaane ka maza hi nahin didi', 'Without spice there is no joy in eating, didi.'],
+    ['laughing', 'आँखों में पानी आना चाहिए, इतनी मिर्च डालो!', 'Aankhon mein paani aana chaahiye, itni mirch daalo!', 'My eyes should water, put in that much chilli!'],
+    ['neutral', 'दो हरी मिर्च ज़्यादा डाल देना', 'Do hari mirch zyaada daal dena', 'Put in two extra green chillies.'],
+    ['happy', 'गन पाउडर ज़्यादा डालना भैया', 'Gun powder zyaada daalna bhaiya', 'Add more gunpowder, brother.'],
+    ['happy', 'कितना भी तीखा हो चलेगा, मैं झेल लूँगा', 'Kitna bhi teekha ho chalega, main jhel loonga', 'No matter how hot, I can take it.'],
+  ],
+
+  'regular-named': [
+    ['happy', 'भैया, पहचाना? कल भी आया था', 'Bhaiya, pehchaana? Kal bhi aaya tha', 'Brother, do you recognise me? I came yesterday too.', 'low'],
+    ['happy', 'भैया, वही पुराना वाला!', 'Bhaiya, wahi purana waala!', 'Brother, the same old one!', 'low'],
+    ['happy', 'हमेशा की तरह {dish}, याद है ना भैया?', 'Hamesha ki tarah {dish}, yaad hai na bhaiya?', 'The usual {dish}, you remember, brother?', 'low'],
+    ['happy', 'भैया, फिर आ गया, तुम्हारे नाश्ते का स्वाद भूलता ही नहीं', 'Bhaiya, phir aa gaya, tumhaare naashte ka swaad bhoolta hi nahin', 'Brother, I am back, I cannot forget the taste of your breakfast.', 'low'],
+    ['laughing', 'आजकल रोज़ यहीं आ रहा हूँ, ध्यान दिया?', 'Aajkal roz yahin aa raha hoon, dhyaan diya?', 'These days I come here every day, have you noticed?', 'low'],
+    ['delighted', 'भैया, अपनी वही जगह, वही {dish}!', 'Bhaiya, apni wahi jagah, wahi {dish}!', 'Brother, our usual spot, our usual {dish}!', 'high'],
+    ['happy', 'दस साल से यहीं खा रहा हूँ भैया, कहीं और जमता ही नहीं', 'Das saal se yahin kha raha hoon bhaiya, kahin aur jamta hi nahin', 'I have eaten only here for ten years, brother, nowhere else suits me.', 'high'],
+    ['laughing', 'तुम पूछो उससे पहले बता दूँ भैया, एक {dish}!', 'Tum poochho usse pehle bata doon bhaiya, ek {dish}!', 'Before you even ask, brother: one {dish}!', 'high'],
+    ['delighted', 'पूरे शहर में तुम जैसा नाश्ता कोई नहीं बनाता भैया', 'Poore shehar mein tum jaisa naashta koi nahin banaata bhaiya', 'Nobody in the whole city makes breakfast like you, brother.', 'high'],
+    ['happy', 'यहाँ आते ही घर जैसा लगता है भैया', 'Yahaan aate hi ghar jaisa lagta hai bhaiya', 'The moment I get here it feels like home, brother.', 'high'],
+  ],
+
+  'regular-loyal': [
+    ['delighted', 'ये लो भैया, छुट्टे रख लो। तुम्हारे हाथों को सलाम', 'Ye lo bhaiya, chhutte rakh lo. Tumhaare haathon ko salaam', 'Here, brother, keep the change. Hats off to your hands.'],
+    ['happy', 'जीते रहो भैया, भगवान तुम्हें ख़ुश रखे', 'Jeete raho bhaiya, bhagwaan tumhein khush rakhe', 'Live long, brother, may God keep you happy.'],
+    ['happy', 'तुम्हारा धंधा ख़ूब चले भैया, ये तुम्हारे लिए', 'Tumhaara dhandha khoob chale bhaiya, ye tumhaare liye', 'May your business flourish, brother, this is for you.'],
+    ['delighted', 'रोज़ ऐसा ही स्वाद रहे भैया, ये टिप है!', 'Roz aisa hi swaad rahe bhaiya, ye tip hai!', 'May it taste like this every day, brother, this is a tip!'],
+    ['happy', 'तुम्हारे बच्चे ख़ुश रहें, ये पैसे रख लो', 'Tumhaare bachche khush rahen, ye paise rakh lo', 'May your children be happy, keep this money.'],
+    ['paying', 'छुट्टे नहीं चाहिए भैया, ये तुम्हारी मेहनत का है', 'Chhutte nahin chaahiye bhaiya, ye tumhaari mehnat ka hai', 'No change needed, brother, this is for your hard work.'],
+  ],
+
+  'big-office-order': [
+    ['impatient', 'भैया, ऑफ़िस के लिए {n} पार्सल चाहिए, बॉस इंतज़ार कर रहे हैं', 'Bhaiya, office ke liye {n} parcel chaahiye, boss intezaar kar rahe hain', 'Brother, I need {n} parcels for the office, the boss is waiting.'],
+    ['neutral', 'बड़ा ऑर्डर है भैया, {n} पार्सल, गिनकर बाँधना', 'Bada order hai bhaiya, {n} parcel, ginkar baandhna', 'A big order, brother, {n} parcels, count and pack them.'],
+    ['sheepish', 'मीटिंग के लिए नाश्ता ले जाना है, बड़ा ऑर्डर, सॉरी भैया', 'Meeting ke liye naashta le jaana hai, bada order, sorry bhaiya', 'I have to take breakfast to a meeting, a big order, sorry brother.'],
+    ['impatient', 'पूरी टीम भूखी है, {n} पार्सल जल्दी चाहिए', 'Poori team bhookhi hai, {n} parcel jaldi chaahiye', 'The whole team is hungry, I need {n} parcels quickly.'],
+    ['neutral', 'बड़ा ऑर्डर है, थोड़ा टाइम लगेगा, मुझे पता है', 'Bada order hai, thoda time lagega, mujhe pata hai', 'It is a big order, I know it will take a little time.'],
+    ['happy', 'हमारे बॉस को तुम्हारे डोसे बहुत पसंद हैं, इसलिए बड़ा ऑर्डर', 'Hamaare boss ko tumhaare dose bahut pasand hain, isliye bada order', 'My boss loves your dosas, that is why the big order.'],
+    ['impatient', 'सब एक साथ बाँधना, कैरी बैग में डाल देना', 'Sab ek saath baandhna, carry bag mein daal dena', 'Pack everything together, put it in a carry bag.'],
+    ['neutral', '{dish} ज़्यादा, बाक़ी थोड़े-थोड़े, ऑफ़िस का ऑर्डर है', '{dish} zyaada, baaqi thode-thode, office ka order hai', 'More {dish}, a little of the others, an office order.'],
+  ],
+
+  'broken-dish-complaint': [
+    ['sad', 'अरे, डोसा फट गया भैया!', 'Arre, dosa phat gaya bhaiya!', 'Oh no, the dosa has torn, brother!'],
+    ['neutral', 'तवे पर चिपक गया ना, आधे दाम में चलेगा', 'Tawe par chipak gaya na, aadhe daam mein chalega', 'It stuck to the tawa, half the price will do.'],
+    ['sad', '{dish} टुकड़े-टुकड़े होकर आया भैया', '{dish} tukde-tukde hokar aaya bhaiya', 'The {dish} came in pieces, brother.'],
+    ['neutral', 'चलेगा, खा लूँगा, पर पैसे आधे ही दूँगा', 'Chalega, kha loonga, par paise aadhe hi doonga', 'It will do, I will eat it, but I will pay only half.'],
+    ['sheepish', 'शायद तवा ठीक से साफ़ नहीं था भैया, चिपक गया', 'Shaayad tawa theek se saaf nahin tha bhaiya, chipak gaya', 'Maybe the tawa was not wiped properly, brother, it stuck.'],
+    ['laughing', 'ये डोसा है या सूखा उपमा भैया?', 'Ye dosa hai ya sookha upma bhaiya?', 'Is this a dosa or a dry upma, brother?'],
+    ['sad', 'मेरा {dish} ऐसे क्यों टूट गया भैया', 'Mera {dish} aise kyon toot gaya bhaiya', 'Why did my {dish} break like this, brother?'],
+    ['neutral', 'ठीक है, स्वाद तो वही है, पर दाम कम करो', 'Theek hai, swaad toh wahi hai, par daam kam karo', 'Fine, the taste is the same, but lower the price.'],
+  ],
+
+  'sour-batter-complaint': [
+    ['sad', 'डोसा खट्टा है भैया', 'Dosa khatta hai bhaiya', 'The dosa is sour, brother.'],
+    ['neutral', 'लगता है बैटर ज़्यादा खमीर हो गया है भैया', 'Lagta hai batter zyaada khameer ho gaya hai bhaiya', 'It seems the batter has over-fermented, brother.'],
+    ['sad', '{dish} में खटास की गंध आ रही है', '{dish} mein khataas ki gandh aa rahi hai', 'There is a sour smell in this {dish}.'],
+    ['sheepish', 'भैया, ये पुराना बैटर है क्या? खट्टा लग रहा है', 'Bhaiya, ye purana batter hai kya? Khatta lag raha hai', 'Brother, is this old batter? It tastes sour.'],
+    ['neutral', 'ये नाश्ता नरम नहीं है, बहुत खट्टा हो गया', 'Ye naashta naram nahin hai, bahut khatta ho gaya', 'This is not soft, it has gone too sour.'],
+    ['sad', 'ताज़ा बैटर से बनाओ भैया, ये ठीक नहीं है', 'Taaza batter se banao bhaiya, ye theek nahin hai', 'Make it with fresh batter, brother, this is not right.'],
+  ],
+
+  'gas-out-chatter': [
+    ['neutral', 'गैस ख़त्म हो गई? सिलेंडर बदलने तक रुकता हूँ', 'Gas khatm ho gayi? Cylinder badalne tak rukta hoon', 'Out of gas? I will wait till the cylinder is changed.'],
+    ['bored', 'सिलेंडर बदलने में कितना टाइम लगेगा भैया?', 'Cylinder badalne mein kitna time lagega bhaiya?', 'How long will changing the cylinder take, brother?'],
+    ['laughing', 'घर में भी गैस ऐसे ही ख़त्म होती है, मुझे पता है', 'Ghar mein bhi gas aise hi khatm hoti hai, mujhe pata hai', 'Gas runs out like this at home too, I know the feeling.'],
+    ['neutral', 'कोई बात नहीं भैया, तब तक फ़ोन देख लेता हूँ', 'Koi baat nahin bhaiya, tab tak phone dekh leta hoon', 'No problem, brother, I will check my phone till then.'],
+    ['surprised', 'ये क्या, आग बुझ गई!', 'Ye kya, aag bujh gayi!', 'What is this, the flame has gone out!'],
+    ['neutral', 'सिलेंडर आया क्या भैया? और कितनी देर?', 'Cylinder aaya kya bhaiya? Aur kitni der?', 'Has the cylinder come, brother? How much longer?'],
+  ],
+
+  'thanks-fast-service': [
+    ['delighted', 'वाह भैया, इतनी जल्दी! शुक्रिया!', 'Waah bhaiya, itni jaldi! Shukriya!', 'Wow brother, so fast! Thank you!'],
+    ['happy', 'तुम तो सुपर फ़ास्ट हो भैया, ऐसे ही रहना', 'Tum toh super fast ho bhaiya, aise hi rehna', 'You are super fast, brother, stay like this.'],
+    ['happy', 'टाइम पर दे दिया, ऑफ़िस में लेट नहीं होऊँगा, थैंक्स!', 'Time par de diya, office mein late nahin hoonga, thanks!', 'You gave it on time, I will not be late for office, thanks!'],
+    ['delighted', 'पलक झपकते ही आ गया भैया, शाबाश!', 'Palak jhapakte hi aa gaya bhaiya, shaabaash!', 'It came in the blink of an eye, brother, well done!'],
+  ],
+
 };
 
 export const LINES_HI = buildLines('hi', D);

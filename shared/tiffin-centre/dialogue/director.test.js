@@ -568,3 +568,632 @@ describe('replay through the real engine', () => {
     expect(linesFor('te', 'nothing')).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------------------------------------------------
+// the operations layer (docs/TIFFIN_CENTRE_PLAN.md section 3b): events, requests, regulars, complaints
+
+const OPS_SITS = [
+  'rain-start', 'rain-ongoing', 'rain-end', 'power-cut', 'power-back', 'cricket-night', 'festival-greeting', 'inspector-arrival', 'inspector-pass', 'inspector-fail',
+  'sold-out-polite', 'stock-out-apology', 'delivery-boy-hurry', 'parcel-request', 'extra-request-chutney', 'extra-request-sambar', 'spice-request-less',
+  'spice-request-more', 'regular-named', 'regular-loyal', 'big-office-order', 'broken-dish-complaint', 'sour-batter-complaint', 'gas-out-chatter', 'thanks-fast-service',
+];
+
+/** A calm stall: `n` customers who have ordered and are waiting (patience never runs out). */
+function calm(n = 3, o = {}) {
+  return Array.from({ length: n }, (_, i) => customer({ id: i + 1, kind: ['office', 'student', 'family', 'autowala', 'uncle'][i % 5], arrivedAt: 0, patience: 1e6, patienceMax: 1e6, ...o }));
+}
+/** Run the director over an unchanging stall up to tick `ticks`; `at` maps a tick to the events of that tick; `st(t)` adds state fields (events, gas ...). */
+function run(d, cs, ticks, at = {}, st = () => ({}), from = 1) {
+  const out = [];
+  if (from === 1) d.update(mkState(0, cs, st(0)), cs.map((c) => arrive(c.id)));
+  for (let t = from; t <= ticks; t++) out.push(...d.update(mkState(t, cs, st(t)), at[t] || []));
+  return out;
+}
+const sitsOf = (list) => list.map((u) => u.sit);
+const only = (list, sit) => list.filter((u) => u.sit === sit);
+const warm = (d, cs, ticks = 14) => run(d, cs, ticks); // orders and greetings out of the way
+
+describe('operations: rain, power, cricket, festival', () => {
+  it('rain: a couple of people say ayyo varsham when it starts, chat while it lasts (7+ ticks apart), and sigh when it ends', () => {
+    for (let s = 1; s <= 5; s++) {
+      const d = createDialogueDirector({ lang: 'te', seed: `rain${s}` });
+      const cs = calm(4);
+      warm(d, cs);
+      const rain = (t) => (t >= 15 && t < 60 ? { events: [{ id: 'rain', until: 60 }] } : {});
+      const out = run(d, cs, 70, { 15: [{ type: 'event-start', id: 'rain', until: 60 }], 60: [{ type: 'event-end', id: 'rain' }] }, rain, 15);
+      const start = only(out, 'rain-start');
+      expect(start.length, `seed ${s}`).toBeGreaterThanOrEqual(1);
+      expect(start.length).toBeLessThanOrEqual(2);
+      for (const u of start) expect(u.at).toBeLessThanOrEqual(25);
+      const ongoing = only(out, 'rain-ongoing');
+      expect(ongoing.length, `seed ${s}`).toBeGreaterThanOrEqual(2);
+      for (let i = 1; i < ongoing.length; i++) expect(ongoing[i].at - ongoing[i - 1].at, 'rain-ongoing cooldown').toBeGreaterThanOrEqual(7);
+      for (const u of ongoing) { expect(u.at).toBeGreaterThanOrEqual(15); expect(u.at).toBeLessThan(62); }
+      expect(only(out, 'rain-end').length, `seed ${s}`).toBe(1);
+      expect(only(out, 'rain-end')[0].at).toBeGreaterThanOrEqual(60);
+      // no rain talk when it does not rain
+      expect(only(run(createDialogueDirector({ lang: 'te', seed: `rain${s}` }), calm(4), 50), 'rain-ongoing').length).toBe(0);
+      checkRules(out, `rain ${s}`);
+    }
+  });
+
+  it('power cut: two lines when the lights go, some while it lasts (9+ ticks apart), a cheer when the power is back', () => {
+    for (let s = 1; s <= 5; s++) {
+      const d = createDialogueDirector({ lang: 'auto', seed: `pw${s}` });
+      const cs = calm(4);
+      warm(d, cs);
+      const pw = (t) => (t >= 15 && t < 55 ? { events: [{ id: 'power', until: 55 }] } : {});
+      const out = run(d, cs, 66, { 15: [{ type: 'event-start', id: 'power', until: 55 }], 55: [{ type: 'event-end', id: 'power' }] }, pw, 15);
+      const cut = only(out, 'power-cut');
+      expect(cut.length, `seed ${s}`).toBeGreaterThanOrEqual(2);
+      const ambientOnly = cut.filter((u) => u.at > 26);
+      for (let i = 1; i < ambientOnly.length; i++) expect(ambientOnly[i].at - ambientOnly[i - 1].at).toBeGreaterThanOrEqual(9);
+      expect(only(out, 'power-back').length, `seed ${s}`).toBeGreaterThanOrEqual(1);
+      for (const u of only(out, 'power-back')) expect(u.at).toBeGreaterThanOrEqual(55);
+      checkRules(out, `power ${s}`);
+    }
+  });
+
+  it('cricket and festival nights get their own talk (cooldowns 6 and 8 ticks), only while the event runs', () => {
+    for (const [id, sit, cd] of [['cricket', 'cricket-night', 6], ['festival', 'festival-greeting', 8]]) {
+      const d = createDialogueDirector({ lang: 'hi', seed: `ev-${id}` });
+      const cs = calm(5);
+      warm(d, cs);
+      const on = (t) => (t >= 15 && t < 70 ? { events: [{ id, until: 70 }] } : {});
+      const out = run(d, cs, 90, { 15: [{ type: 'event-start', id, until: 70 }] }, on, 15);
+      const list = only(out, sit);
+      expect(list.length, id).toBeGreaterThanOrEqual(4);
+      for (const u of list) { expect(u.at).toBeGreaterThanOrEqual(15); expect(u.at).toBeLessThanOrEqual(76); }
+      const ambient = list.filter((u) => u.at > 30);
+      for (let i = 1; i < ambient.length; i++) expect(ambient[i].at - ambient[i - 1].at, `${id} cooldown`).toBeGreaterThanOrEqual(cd);
+      checkRules(out, id);
+    }
+  });
+
+  it('customers who arrive in the rain, a cricket night, a festival or a power cut greet in its words some of the time', () => {
+    for (const [id, sit] of [['rain', 'rain-ongoing'], ['cricket', 'cricket-night'], ['festival', 'festival-greeting'], ['power', 'power-cut']]) {
+      let hits = 0;
+      for (let i = 1; i <= 60; i++) {
+        const d = createDialogueDirector({ lang: 'te', seed: `arr-${id}` });
+        const c = customer({ id: i, arrivedAt: 20 });
+        const out = d.update(mkState(20, [c], { events: [{ id, until: 90 }] }), [arrive(i)]);
+        if (out.some((u) => u.sit === sit)) hits += 1;
+      }
+      expect(hits, id).toBeGreaterThan(5);
+      expect(hits, id).toBeLessThan(40);
+    }
+  });
+
+  it('nothing from the events layer is said in the training shift', () => {
+    const d = createDialogueDirector({ lang: 'te', seed: 'tut-ops' });
+    const cs = calm(3);
+    const tut = () => ({ cfg: { tutorial: true, noPatience: true, hour: [7, 8] }, events: [{ id: 'rain', until: 99 }], gas: { u: 0, sw: 0 } });
+    const out = run(d, cs, 40, { 5: [{ type: 'event-start', id: 'rain', until: 99 }, { type: 'gas-out' }, { type: 'stock-out', item: 'sambar' }] }, tut);
+    expect(out.filter((u) => ['rain-start', 'rain-ongoing', 'gas-out-chatter', 'stock-out-apology'].includes(u.sit)).length).toBe(0);
+  });
+
+  it('with nobody at the stall the line is owed for a few ticks and said by the first customer who is free; later it is dropped', () => {
+    const d = createDialogueDirector({ lang: 'te', seed: 'owed' });
+    expect(d.update(mkState(5, []), [{ type: 'event-start', id: 'rain', until: 50 }])).toEqual([]);
+    const c = customer({ id: 1, arrivedAt: 6 });
+    const out = [];
+    out.push(...d.update(mkState(6, [c]), [arrive(1)]));
+    for (let t = 7; t <= 16; t++) out.push(...d.update(mkState(t, [{ ...c, patience: 30 }]), []));
+    expect(sitsOf(out)).toContain('rain-start');
+    const late = createDialogueDirector({ lang: 'te', seed: 'owed' });
+    late.update(mkState(5, []), [{ type: 'event-start', id: 'rain', until: 50 }]);
+    const c2 = customer({ id: 1, arrivedAt: 40 });
+    const out2 = [...late.update(mkState(40, [c2]), [arrive(1)]), ...[41, 42, 43, 44, 45, 46].flatMap((t) => late.update(mkState(t, [c2]), []))];
+    expect(sitsOf(out2)).not.toContain('rain-start');
+  });
+});
+
+describe('operations: the inspector', () => {
+  it('whispers about GHMC when the notice comes, then reacts to the verdict (pass / fail)', () => {
+    for (const pass of [true, false]) {
+      const sit = pass ? 'inspector-pass' : 'inspector-fail';
+      for (let s = 1; s <= 4; s++) {
+        const d = createDialogueDirector({ lang: 'te', seed: `insp${s}${pass}` });
+        const cs = calm(4);
+        warm(d, cs);
+        const on = (t) => (t >= 15 && t < 29 ? { events: [{ id: 'inspector', until: 29 }] } : {});
+        const out = run(d, cs, 45, {
+          15: [{ type: 'event-start', id: 'inspector', until: 29 }],
+          29: [pass ? { type: 'inspector', pass: true, bonus: 90, fine: 0, why: [] } : { type: 'inspector', pass: false, bonus: 0, fine: 68, why: ['untended'] }, { type: 'event-end', id: 'inspector' }],
+        }, on, 15);
+        const arrival = only(out, 'inspector-arrival');
+        expect(arrival.length, `seed ${s}`).toBeGreaterThanOrEqual(2);
+        expect(arrival.length).toBeLessThanOrEqual(3);
+        for (const u of arrival) { expect(u.at).toBeGreaterThanOrEqual(15); expect(u.at).toBeLessThan(29); }
+        const verdict = only(out, sit);
+        expect(verdict.length, `${sit} seed ${s}`).toBeGreaterThanOrEqual(1);
+        expect(verdict.length).toBeLessThanOrEqual(2);
+        for (const u of verdict) expect(u.at).toBeGreaterThanOrEqual(29);
+        expect(only(out, pass ? 'inspector-fail' : 'inspector-pass').length).toBe(0);
+        checkRules(out, `inspector ${s}`);
+      }
+    }
+  });
+});
+
+describe('operations: sold out, stock out, gas', () => {
+  it('a dish swapped at the door: the customer names what is gone and what they take instead, in their language', () => {
+    for (let id = 1; id <= 40; id++) {
+      const d = createDialogueDirector({ lang: 'auto', seed: 'sold' });
+      const c = customer({ id, arrivedAt: 0, order: ['dosa'] });
+      const out = [...d.update(mkState(0, [c]), [arrive(id), { type: 'sold-out', customer: id, dish: 'idly', swap: 'dosa', left: false }])];
+      for (let t = 1; t <= 12; t++) out.push(...d.update(mkState(t, [c]), []));
+      const u = only(out, 'sold-out-polite')[0];
+      expect(u, `customer ${id}`).toBeTruthy();
+      expect(LINE_BY_ID[u.lineId].tag).toBe('swap');
+      expect(u.lang).toBe(d.languageOf(id));
+      expect(u.text).toContain(dishName(u.lang, 'idly').text);
+      expect(u.text).toContain(dishName(u.lang, 'dosa').text);
+      // the order is spoken first (it already names the new dish), then the "it is finished" line
+      const order = out.find((x) => x.sit === 'order');
+      expect(order.at).toBeLessThanOrEqual(u.at);
+    }
+  });
+
+  it('a dropped dish and a polite leave use their own pools; a customer who never got a seat still speaks', () => {
+    const d = createDialogueDirector({ lang: 'dk', seed: 'sold2' });
+    const c = customer({ id: 1, arrivedAt: 0, order: ['dosa'] });
+    const first = d.update(mkState(0, [c]), [arrive(1), { type: 'sold-out', customer: 1, dish: 'vada', swap: null, left: false }]);
+    const rest = Array.from({ length: 12 }, (_, i) => d.update(mkState(i + 1, [c]), [])).flat();
+    const drop = [...first, ...rest].find((u) => u.sit === 'sold-out-polite');
+    expect(drop).toBeTruthy();
+    expect(LINE_BY_ID[drop.lineId].tag).toBe('drop');
+
+    const d2 = createDialogueDirector({ lang: 'dk', seed: 'sold3' });
+    const gone = customer({ id: 2, st: 'left', outcome: 'soldout', leftAt: 20 });
+    const leave = d2.update(mkState(20, [gone]), [{ type: 'sold-out', customer: 2, dish: 'dosa', swap: null, left: true }]);
+    expect(leave.length).toBe(1);
+    expect(leave[0].sit).toBe('sold-out-polite');
+    expect(leave[0].final).toBe(true);
+    expect(LINE_BY_ID[leave[0].lineId].tag).toBe('leave');
+
+    const d3 = createDialogueDirector({ lang: 'te', seed: 'sold4' });
+    const ghost = d3.update(mkState(21, []), [{ type: 'sold-out', customer: 55, dish: 'idly', swap: null, left: true }]);
+    expect(ghost.length).toBe(1);
+    expect(ghost[0].customer).toBe(55);
+    expect(ghost[0].lang).toBe('te');
+    expect(ghost[0].text).toMatch(/[ఀ-౿]/);
+  });
+
+  it('stock-out: one customer consoles the cook, and not again for 20 ticks', () => {
+    const d = createDialogueDirector({ lang: 'hi', seed: 'stock' });
+    const cs = calm(4);
+    warm(d, cs);
+    const out = run(d, cs, 60, { 15: [{ type: 'stock-out', item: 'sambar' }], 20: [{ type: 'stock-out', item: 'batter_dosa' }], 40: [{ type: 'stock-out', item: 'oil' }] }, () => ({}), 15);
+    const list = only(out, 'stock-out-apology');
+    expect(list.length).toBe(2);
+    expect(list[0].at).toBeGreaterThanOrEqual(15);
+    expect(list[1].at).toBeGreaterThanOrEqual(40);
+    expect(list[1].at - list[0].at).toBeGreaterThanOrEqual(20);
+  });
+
+  it('gas-out: talk when the cylinder dies and while it is being changed (8+ ticks apart), then silence', () => {
+    for (let s = 1; s <= 4; s++) {
+      const d = createDialogueDirector({ lang: 'dk', seed: `gas${s}` });
+      const cs = calm(4);
+      warm(d, cs);
+      const gas = (t) => ({ gas: t >= 15 && t < 55 ? { u: 0, sw: t >= 45 ? 6 : 0 } : { u: 600, sw: 0 } });
+      const out = run(d, cs, 80, { 15: [{ type: 'gas-out' }], 45: [{ type: 'gas-swap', phase: 'start', ticks: 6, cost: 90, by: 'p1' }] }, gas, 15);
+      const list = only(out, 'gas-out-chatter');
+      expect(list.length, `seed ${s}`).toBeGreaterThanOrEqual(2);
+      const ambient = list.filter((u) => u.at > 28 && u.at < 45);
+      for (let i = 1; i < ambient.length; i++) expect(ambient[i].at - ambient[i - 1].at).toBeGreaterThanOrEqual(8);
+      for (const u of list) expect(u.at).toBeLessThan(68);
+      checkRules(out, `gas ${s}`);
+    }
+  });
+});
+
+describe('operations: what a customer asks for', () => {
+  const said = (cust, lang = 'te', seed = 'req') => {
+    const d = createDialogueDirector({ lang, seed });
+    const out = [...d.update(mkState(0, [cust]), [arrive(cust.id)])];
+    for (let t = 1; t <= 24; t++) out.push(...d.update(mkState(t, [cust]), []));
+    return out;
+  };
+  const patient = { patience: 1e6, patienceMax: 1e6 };
+
+  it('parcel, extra chutney or sambar and spice are asked for right after the order, in that order', () => {
+    const c = customer({ id: 1, arrivedAt: 0, parcel: true, extra: 'chutney', spice: 'more', ...patient });
+    for (const lang of ['te', 'hi', 'dk']) {
+      const out = said(c, lang);
+      const sits = sitsOf(out);
+      const order = sits.indexOf('order');
+      expect(order, lang).toBeGreaterThanOrEqual(0);
+      expect(sits.slice(order + 1, order + 4), lang).toEqual(['parcel-request', 'extra-request-chutney', 'spice-request-more']);
+      checkRules(out, `req ${lang}`);
+    }
+    expect(sitsOf(said(customer({ id: 2, arrivedAt: 0, extra: 'sambar', ...patient })))).toContain('extra-request-sambar');
+    expect(sitsOf(said(customer({ id: 3, arrivedAt: 0, extra: 'coconut_chutney', ...patient })))).toContain('extra-request-chutney');
+    expect(sitsOf(said(customer({ id: 4, arrivedAt: 0, spice: 'less', ...patient })))).toContain('spice-request-less');
+    expect(sitsOf(said(customer({ id: 5, arrivedAt: 0, ...patient }))).some((s) => /request/.test(s))).toBe(false);
+  });
+
+  it('the parcel-order event of the engine does not make a customer ask twice', () => {
+    const c = customer({ id: 1, arrivedAt: 0, parcel: true, ...patient });
+    const d = createDialogueDirector({ lang: 'hi', seed: 'twice' });
+    const out = [...d.update(mkState(0, [c]), [arrive(1), { type: 'parcel-order', customer: 1, n: 1 }])];
+    for (let t = 1; t <= 24; t++) out.push(...d.update(mkState(t, [c]), t === 3 ? [{ type: 'parcel-order', customer: 1, n: 1 }] : []));
+    expect(only(out, 'parcel-request').length).toBe(1);
+  });
+
+  it('an office parcel order opens with the big order line (with the number of parcels) before the customer orders', () => {
+    const order = ['idly', 'dosa', 'dosa', 'vada', 'idly', 'poori'];
+    for (const lang of ['te', 'hi', 'dk']) {
+      const c = customer({ id: 1, arrivedAt: 0, big: true, parcel: true, kind: 'office', order, ...patient });
+      const sits = sitsOf(said(c, lang, `big${lang}`));
+      expect(sits[0], lang).toBe('big-office-order');
+      expect(sits.indexOf('order-multi'), lang).toBeGreaterThan(0);
+      expect(sits.includes('parcel-request'), 'a big order does not ask for a plain parcel as well').toBe(false);
+    }
+    let withN = 0;
+    for (let i = 1; i <= 50; i++) {
+      const c = customer({ id: i, arrivedAt: 0, big: true, parcel: true, kind: 'office', order });
+      const d = createDialogueDirector({ lang: 'hi', seed: 'bign' });
+      const u = d.update(mkState(0, [c]), [arrive(i)])[0];
+      if (LINE_BY_ID[u.lineId].n) { withN += 1; expect(u.text).toContain('6'); }
+    }
+    expect(withN).toBeGreaterThan(3);
+  });
+
+  it('the delivery boy is Hindi or Dakhni (Telugu rarely) and hurries in his own words as his patience drains', () => {
+    const langs = { te: 0, hi: 0, dk: 0 };
+    for (let id = 1; id <= 200; id++) {
+      const d = createDialogueDirector({ lang: 'auto', seed: 'dlv' });
+      d.update(mkState(0, [customer({ id, name: 'Delivery boy', kind: 'autowala', delivery: true, parcel: true, arrivedAt: 0 })]), [arrive(id)]);
+      langs[d.languageOf(id)] += 1;
+    }
+    expect(langs.te).toBeLessThan(40);
+    expect(langs.hi + langs.dk).toBeGreaterThan(160);
+    expect(langs.hi).toBeGreaterThan(50);
+    expect(langs.dk).toBeGreaterThan(50);
+    const d = createDialogueDirector({ lang: 'hi', seed: 'dlv2' });
+    const base = customer({ id: 1, name: 'Delivery boy', kind: 'autowala', delivery: true, parcel: true, order: ['idly', 'dosa', 'vada', 'poori', 'osmania'], arrivedAt: 0, patienceMax: 48 });
+    const out = [...d.update(mkState(0, [{ ...base, patience: 48 }]), [arrive(1), { type: 'parcel-order', customer: 1, n: 5, delivery: true }])];
+    for (let t = 1; t <= 44; t++) out.push(...d.update(mkState(t, [{ ...base, patience: 48 - t }]), []));
+    expect(only(out, 'delivery-boy-hurry').length).toBeGreaterThanOrEqual(3);
+    expect(out[0].sit).toBe('delivery-boy-hurry');
+    expect(sitsOf(out)).not.toContain('waiting-hurry');
+    expect(sitsOf(out)).not.toContain('waiting-polite');
+    expect(sitsOf(out)).toContain('waiting-angry');
+    checkRules(out, 'delivery');
+  });
+});
+
+describe('operations: regulars', () => {
+  const visit = (d, id, rid, loyal, t0, kind = 'uncle') => {
+    const c = customer({ id, name: 'Murthy garu', kind, regular: true, rid, loyal, arrivedAt: t0, order: ['dosa'], patience: 1e6, patienceMax: 1e6 });
+    const out = [...d.update(mkState(t0, [c], { regs: [[loyal, 0]] }), [arrive(id)])];
+    for (let t = t0 + 1; t <= t0 + 12; t++) out.push(...d.update(mkState(t, [c], { regs: [[loyal, 0]] }), []));
+    return out;
+  };
+
+  it('a regular speaks the same language on every visit (by rid), however the customer ids change', () => {
+    let differs = 0;
+    for (let s = 1; s <= 30; s++) {
+      const d = createDialogueDirector({ lang: 'auto', seed: `reg${s}` });
+      visit(d, 10, 1, 0, 0);
+      visit(d, 25, 1, 1, 50);
+      visit(d, 40, 1, 2, 100);
+      const l = d.languageOf(10);
+      expect(d.languageOf(25), `seed ${s}`).toBe(l);
+      expect(d.languageOf(40), `seed ${s}`).toBe(l);
+      visit(d, 11, 2, 0, 5);
+      if (d.languageOf(11) !== l) differs += 1;
+    }
+    expect(differs).toBeGreaterThan(5); // different regulars are different people
+  });
+
+  it('a regular is greeted by name (the low or the high loyalty pool) and never repeats a line across visits', () => {
+    for (const lang of ['te', 'hi', 'dk']) {
+      const d = createDialogueDirector({ lang, seed: 'regvisits' });
+      const all = [];
+      let named = 0;
+      for (let v = 0; v < 6; v++) {
+        const loyal = v < 2 ? 0 : 3;
+        const out = visit(d, 100 + v, 0, loyal, v * 40);
+        const g = out.find((u) => u.sit === 'regular-named');
+        if (g) {
+          named += 1;
+          expect(LINE_BY_ID[g.lineId].tag, `${lang} visit ${v}`).toBe(loyal >= 2 ? 'high' : 'low');
+        }
+        all.push(...out);
+      }
+      expect(named, lang).toBeGreaterThanOrEqual(4);
+      const ids = all.map((u) => u.lineId);
+      expect(new Set(ids).size, `${lang} repeated a line across visits`).toBe(ids.length);
+    }
+  });
+
+  it('a loyal regular who tipped leaves a tip-and-blessing line; a new face does not', () => {
+    let loyalSaid = 0;
+    let newSaid = 0;
+    for (let i = 1; i <= 50; i++) {
+      const mk = (loyal) => customer({ id: i, kind: 'office', regular: true, rid: 0, loyal, st: 'paying', payLeft: 9, total: 60, tip: 8, got: ['dosa'], qs: ['good'], arrivedAt: 0 });
+      const dd = createDialogueDirector({ lang: 'te', seed: 'loy' });
+      dd.update(mkState(5, [{ ...mk(3), st: 'eating' }]), []);
+      for (const u of dd.update(mkState(6, [{ ...mk(3), st: 'left', outcome: 'paid', leftAt: 6 }]), [{ type: 'collect', customer: i, amount: 60, tip: 8, by: 'p1', combo: 1 }])) {
+        if (u.sit === 'regular-loyal') { loyalSaid += 1; expect(u.final).toBe(true); }
+      }
+      const d2 = createDialogueDirector({ lang: 'te', seed: 'loy' });
+      d2.update(mkState(5, [{ ...mk(0), st: 'eating' }]), []);
+      for (const u of d2.update(mkState(6, [{ ...mk(0), st: 'left', outcome: 'paid', leftAt: 6 }]), [{ type: 'collect', customer: i, amount: 60, tip: 8, by: 'p1', combo: 1 }])) {
+        if (u.sit === 'regular-loyal') newSaid += 1;
+      }
+    }
+    expect(loyalSaid).toBeGreaterThan(15);
+    expect(newSaid).toBe(0);
+  });
+
+  it('where the game has real regulars, strangers do not pretend to be regulars', () => {
+    let pseudo = 0;
+    let pseudoNoRegs = 0;
+    for (let i = 1; i <= 120; i++) {
+      const c = customer({ id: i, arrivedAt: 0 });
+      const withRegs = createDialogueDirector({ lang: 'te', seed: 'pseudo' });
+      for (const u of withRegs.update(mkState(0, [c], { regs: [[0, 10]] }), [arrive(i)])) if (u.sit === 'regular-greet') pseudo += 1;
+      const without = createDialogueDirector({ lang: 'te', seed: 'pseudo' });
+      for (const u of without.update(mkState(0, [c]), [arrive(i)])) if (u.sit === 'regular-greet') pseudoNoRegs += 1;
+    }
+    expect(pseudo).toBe(0);
+    expect(pseudoNoRegs).toBeGreaterThan(0);
+  });
+});
+
+describe('operations: complaints and thanks when serving', () => {
+  const serveRun = (seed, qs, { patience = 28, e = {}, state = {}, id = 1 } = {}) => {
+    const d = createDialogueDirector({ lang: 'te', seed });
+    const before = customer({ id, patience });
+    d.update(mkState(10, [before], state), []);
+    const after = customer({ id, patience: Math.min(30, patience + 8), got: ['dosa'], qs: [qs], st: 'eating', eatLeft: 4 });
+    return d.update(mkState(11, [after], state), [{ type: 'serve', customer: id, dish: 'dosa', by: 'p1', ...e }, { type: 'eating', customer: id }]);
+  };
+
+  it('a torn dish (q: broken) is complained about, in the line pool for torn and stuck dosas', () => {
+    let n = 0;
+    for (let id = 1; id <= 60; id++) {
+      const out = serveRun('brk', 'broken', { e: { q: 'broken' }, id });
+      const u = out.find((x) => x.sit.startsWith('serve') || x.sit.endsWith('complaint') || x.sit.startsWith('thanks'));
+      if (u.sit === 'broken-dish-complaint') n += 1;
+      expect(u.sit === 'broken-dish-complaint' || u.sit === 'serve-thanks' || u.sit === 'serve-praise', `${u.sit}`).toBe(true);
+    }
+    expect(n).toBeGreaterThan(45); // about 90%
+  });
+
+  it('sour batter on the shelf (state.fresh below 30) draws the sour complaint; fresh batter does not', () => {
+    let sour = 0;
+    let fresh = 0;
+    for (let id = 1; id <= 60; id++) {
+      if (serveRun('sour', 'ok', { state: { fresh: { batter_dosa: 22 } }, id }).some((u) => u.sit === 'sour-batter-complaint')) sour += 1;
+      if (serveRun('sour', 'ok', { state: { fresh: { batter_dosa: 80 } }, id }).some((u) => u.sit === 'sour-batter-complaint')) fresh += 1;
+    }
+    expect(sour).toBeGreaterThan(30);
+    expect(fresh).toBe(0);
+    // sour batter of another dish: no complaint about this one
+    for (let id = 1; id <= 40; id++) expect(serveRun('sour2', 'ok', { state: { fresh: { batter_idly: 5 } }, id }).some((u) => u.sit === 'sour-batter-complaint')).toBe(false);
+  });
+
+  it('a very quick serve is sometimes thanked for its speed (never a mediocre dish or a slow one), at most once per 10 ticks', () => {
+    let thanks = 0;
+    for (let id = 1; id <= 80; id++) if (serveRun('fast', 'good', { patience: 30, id }).some((u) => u.sit === 'thanks-fast-service')) thanks += 1;
+    expect(thanks).toBeGreaterThan(5);
+    expect(thanks).toBeLessThan(40);
+    for (let id = 1; id <= 60; id++) {
+      expect(serveRun('fast', 'ok', { patience: 30, id }).some((u) => u.sit === 'thanks-fast-service')).toBe(false);
+      expect(serveRun('fast', 'good', { patience: 6, id }).some((u) => u.sit === 'thanks-fast-service')).toBe(false);
+    }
+    const d = createDialogueDirector({ lang: 'hi', seed: 'cd' });
+    const cs = [1, 2, 3, 4, 5, 6, 7, 8].map((id) => customer({ id, patience: 30, arrivedAt: 0 }));
+    d.update(mkState(10, cs), []);
+    const out = [];
+    for (let t = 11; t < 19; t++) {
+      const c = cs[t - 11];
+      out.push(...d.update(mkState(t, [{ ...c, got: ['dosa'], qs: ['good'], st: 'eating', eatLeft: 4 }]), [{ type: 'serve', customer: c.id, dish: 'dosa', by: 'p1' }]));
+    }
+    const fast = out.filter((u) => u.sit === 'thanks-fast-service');
+    for (let i = 1; i < fast.length; i++) expect(fast[i].at - fast[i - 1].at).toBeGreaterThanOrEqual(10);
+  });
+
+  it('serve complaints keep working: ok dishes still draw the old complaints', () => {
+    let quality = 0;
+    for (let id = 1; id <= 60; id++) if (serveRun('old', 'ok', { id }).some((u) => u.sit === 'serve-complain')) quality += 1;
+    expect(quality).toBeGreaterThan(25);
+  });
+});
+
+describe('operations: determinism, rate limits, robustness', () => {
+  it('the same events give the same speech; another seed gives different speech', () => {
+    const go = (seed) => {
+      const d = createDialogueDirector({ lang: 'auto', seed });
+      const cs = calm(5);
+      warm(d, cs);
+      const on = (t) => (t >= 15 && t < 60 ? { events: [{ id: 'rain', until: 60 }, { id: 'cricket', until: 60 }] } : {});
+      return run(d, cs, 70, { 15: [{ type: 'event-start', id: 'rain', until: 60 }, { type: 'event-start', id: 'cricket', until: 60 }, { type: 'stock-out', item: 'sambar' }] }, on, 15);
+    };
+    expect(JSON.stringify(go('x1'))).toBe(JSON.stringify(go('x1')));
+    expect(JSON.stringify(go('x1'))).not.toBe(JSON.stringify(go('x2')));
+  });
+
+  it('a pile of events at once never breaks the rules: gaps, two on screen, no repeats, filled templates', () => {
+    const d = createDialogueDirector({ lang: 'mixed', seed: 'pile' });
+    const cs = calm(5);
+    warm(d, cs);
+    const on = () => ({ events: [{ id: 'rain', until: 99 }, { id: 'power', until: 99 }, { id: 'cricket', until: 99 }, { id: 'festival', until: 99 }], gas: { u: 0, sw: 0 } });
+    const burst = [
+      { type: 'event-start', id: 'rain', until: 99 }, { type: 'event-start', id: 'power', until: 99 }, { type: 'event-start', id: 'cricket', until: 99 },
+      { type: 'event-start', id: 'festival', until: 99 }, { type: 'event-start', id: 'inspector', until: 29 }, { type: 'gas-out' }, { type: 'stock-out', item: 'oil' },
+      { type: 'inspector', pass: false }, { type: 'event-end', id: 'power' }, { type: 'event-end', id: 'rain' },
+    ];
+    const out = run(d, cs, 120, { 15: burst }, on, 15);
+    expect(out.length).toBeGreaterThan(10);
+    checkRules(out, 'pile');
+  });
+
+  it('odd events never throw', () => {
+    const d = createDialogueDirector({ lang: 'auto', seed: 'odd' });
+    const junk = [
+      { type: 'event-start' }, { type: 'event-start', id: 5 }, { type: 'event-end', id: null }, { type: 'inspector' }, { type: 'sold-out' }, { type: 'sold-out', customer: 'x', dish: 4 },
+      { type: 'sold-out', customer: 1, dish: 'dosa', swap: 'dosa', left: false }, { type: 'sold-out', customer: 1, dish: 'nothing', swap: 'idly' }, { type: 'stock-out' }, { type: 'gas-swap' },
+      { type: 'parcel-order' }, { type: 'parcel-order', customer: 999 }, { type: 'extra', customer: 'z' },
+    ];
+    const cs = calm(2, { extra: 7, spice: {}, big: 'yes', delivery: 0, regular: 'maybe', rid: 'a', loyal: 'x', parcel: [] });
+    for (let t = 0; t < 6; t++) expect(Array.isArray(d.update(mkState(t, cs, { events: [null, 3, { id: 'rain' }], gas: 'no', fresh: [] }), junk))).toBe(true);
+    expect(Array.isArray(d.update(mkState(7, cs, { events: 'rain', regs: 5, gas: { u: 'x', sw: NaN }, fresh: { batter_dosa: 'x' } }), junk))).toBe(true);
+  });
+});
+
+describe('replay of the operations layer through the real engine', () => {
+  /** Like `replay`, but also remembers what each customer was (kind, rid, delivery ...), and can make the cook sloppy (tawa never wiped: torn dosas). */
+  function replay2({ level, seed, every = 2, players = 1, lang = 'auto', sloppy = false }) {
+    const ps = Array.from({ length: players }, (_, i) => ({ id: `p${i + 1}`, name: `P${i + 1}` }));
+    let s = createGame({ players: ps, settings: { level, pace: 'normal' }, seed });
+    const d = createDialogueDirector({ lang, seed });
+    const spoken = [];
+    const who = new Map();
+    const feed = (state, events) => {
+      for (const c of state.customers) if (!who.has(c.id)) who.set(c.id, { kind: c.kind, rid: c.rid, regular: c.regular, delivery: c.delivery, big: c.big, parcel: c.parcel, extra: c.extra, spice: c.spice });
+      for (const u of d.update(state, events)) spoken.push(u);
+      return state;
+    };
+    let guard = 0;
+    while (!isOver(s) && guard++ < 4000) {
+      if (s.tick % every === 0) {
+        for (const p of ps) {
+          const a = chooseAutoAction(s, p.id);
+          if (!a || (sloppy && a.type === 'tend')) continue;
+          const r = applyAction(s, a);
+          if (r.error) continue;
+          s = r.state;
+          if (sloppy && a.type === 'cook' && s.stations[a.station].kind === 'tawa') s = { ...s, stations: { ...s.stations, [a.station]: { ...s.stations[a.station], gunk: 75, heat: 52 } } };
+          feed(s, r.events);
+        }
+      }
+      const r = applyAction(s, { type: 'tick' });
+      s = feed(r.state, r.events);
+    }
+    return { spoken, who, state: s, director: d };
+  }
+
+  const bySeeds = (level, n, extra = {}, prefix = 'rt') => Array.from({ length: n }, (_, i) => replay2({ level, seed: `${prefix}${level}-${i + 1}`, ...extra }));
+  const fired = (runs) => {
+    const c = {};
+    for (const r of runs) for (const u of r.spoken) c[u.sit] = (c[u.sit] || 0) + 1;
+    return c;
+  };
+
+  const L3 = bySeeds(3, 6);
+  const L6 = bySeeds(6, 6, { players: 2 });
+  const L12 = [...bySeeds(12, 5, { every: 1 }), ...bySeeds(12, 3, { every: 1, players: 2 })];
+  const SLOPPY = [...bySeeds(6, 4, { sloppy: true }, 'bk'), ...bySeeds(3, 4, { sloppy: true }, 'bk')];
+
+  it('level 3 (rain, requests, stock): rain talk, parcels, extras, spice and thanks all happen in a bot game', () => {
+    const c = fired(L3);
+    for (const s of ['rain-start', 'rain-ongoing', 'rain-end', 'parcel-request', 'extra-request-sambar', 'extra-request-chutney', 'spice-request-less', 'spice-request-more', 'thanks-fast-service']) {
+      expect(c[s] || 0, `level 3 never said ${s}`).toBeGreaterThan(0);
+    }
+  });
+
+  it('level 6 (inspector, regulars, office parcels, gas, sold-out): they all get voiced', () => {
+    const c = fired(L6);
+    for (const s of ['inspector-arrival', 'inspector-pass', 'regular-named', 'regular-loyal', 'big-office-order', 'sold-out-polite', 'stock-out-apology', 'gas-out-chatter', 'parcel-request', 'sour-batter-complaint']) {
+      expect(c[s] || 0, `level 6 never said ${s}`).toBeGreaterThan(0);
+    }
+  });
+
+  it('level 12 (every event): cricket, festival, power, the delivery boy and the rest are voiced', () => {
+    const c = fired(L12);
+    for (const s of ['rain-start', 'power-cut', 'power-back', 'cricket-night', 'festival-greeting', 'inspector-arrival', 'inspector-pass', 'delivery-boy-hurry', 'big-office-order', 'regular-named', 'sold-out-polite']) {
+      expect(c[s] || 0, `level 12 never said ${s}`).toBeGreaterThan(0);
+    }
+  });
+
+  it('a sloppy cook (the tawa never wiped) draws torn-dish complaints and a failed inspection is reacted to', () => {
+    const c = fired(SLOPPY);
+    expect(c['broken-dish-complaint'] || 0).toBeGreaterThan(0);
+    expect(c['inspector-fail'] || 0).toBeGreaterThan(0);
+  });
+
+  it('every operations situation is spoken somewhere across the replays (nothing is dead)', () => {
+    const c = fired([...L3, ...L6, ...L12, ...SLOPPY]);
+    for (const s of OPS_SITS) expect(c[s] || 0, `${s} never fired`).toBeGreaterThan(0);
+  });
+
+  it('all the rules hold in every operations replay (gaps, two at once, no repeats, filled templates)', () => {
+    for (const [i, r] of [...L3, ...L6, ...L12, ...SLOPPY].entries()) checkRules(r.spoken, `ops replay ${i}`);
+  });
+
+  it('ambient talk is rate limited in real games (no flooding, cooldowns between lines)', () => {
+    const cd = { 'rain-ongoing': 7, 'cricket-night': 6, 'festival-greeting': 8, 'gas-out-chatter': 8, 'stock-out-apology': 20, 'thanks-fast-service': 10 };
+    for (const r of [...L3, ...L6, ...L12]) {
+      for (const [sit, gap] of Object.entries(cd)) {
+        const list = r.spoken.filter((u) => u.sit === sit);
+        if (sit === 'stock-out-apology' || sit === 'thanks-fast-service') for (let i = 1; i < list.length; i++) expect(list[i].at - list[i - 1].at, sit).toBeGreaterThanOrEqual(gap);
+        expect(list.length, `${sit} floods`).toBeLessThanOrEqual(Math.ceil(r.state.tick / gap) + 3);
+      }
+    }
+  });
+
+  it('regulars keep their language in a real game, and the delivery boy speaks Hindi or Dakhni', () => {
+    let checkedReg = 0;
+    let delivery = 0;
+    let deliveryTe = 0;
+    for (const r of [...L6, ...L12]) {
+      const langOfRid = new Map();
+      for (const u of r.spoken) {
+        const w = r.who.get(u.customer);
+        if (!w) continue;
+        if (w.regular && w.rid !== undefined) {
+          if (langOfRid.has(w.rid)) { expect(u.lang, `regular ${w.rid} changed language`).toBe(langOfRid.get(w.rid)); checkedReg += 1; } else langOfRid.set(w.rid, u.lang);
+        }
+        if (w.delivery) { delivery += 1; if (u.lang === 'te') deliveryTe += 1; }
+      }
+    }
+    expect(checkedReg).toBeGreaterThan(5);
+    expect(delivery).toBeGreaterThan(3);
+    expect(deliveryTe).toBeLessThanOrEqual(Math.ceil(delivery / 3));
+  });
+
+  it('request lines come from customers who really have that request', () => {
+    const need = {
+      'parcel-request': (w) => w.parcel, 'extra-request-chutney': (w) => /chutney/.test(w.extra || ''), 'extra-request-sambar': (w) => /sambar/.test(w.extra || ''),
+      'spice-request-less': (w) => w.spice === 'less', 'spice-request-more': (w) => w.spice === 'more', 'big-office-order': (w) => w.big, 'delivery-boy-hurry': (w) => w.delivery,
+      'regular-named': (w) => w.regular,
+    };
+    let checked = 0;
+    for (const r of [...L3, ...L6, ...L12]) {
+      for (const u of r.spoken) {
+        if (!need[u.sit]) continue;
+        const w = r.who.get(u.customer);
+        expect(w, `${u.sit} by unknown customer ${u.customer}`).toBeTruthy();
+        expect(need[u.sit](w), `${u.sit} by a customer without it`).toBeTruthy();
+        checked += 1;
+      }
+    }
+    expect(checked).toBeGreaterThan(80);
+  });
+
+  it('the operations speech is deterministic in a real game', () => {
+    const a = replay2({ level: 12, seed: 'det-ops', every: 1 });
+    const b = replay2({ level: 12, seed: 'det-ops', every: 1 });
+    expect(JSON.stringify(b.spoken)).toBe(JSON.stringify(a.spoken));
+    expect(a.spoken.length).toBeGreaterThan(40);
+  });
+
+  it('fixed languages are respected by the new situations too', () => {
+    for (const lang of ['te', 'hi', 'dk']) {
+      const r = replay2({ level: 6, seed: `fixops-${lang}`, every: 1, lang });
+      expect(new Set(r.spoken.map((u) => u.lang))).toEqual(new Set([lang]));
+      expect(r.spoken.some((u) => OPS_SITS.includes(u.sit))).toBe(true);
+    }
+  });
+
+  it('the training shift (level 0) has no operations talk at all', () => {
+    const r = replay2({ level: 0, seed: 'tut', every: 2 });
+    expect(r.spoken.filter((u) => OPS_SITS.includes(u.sit)).length).toBe(0);
+  });
+});

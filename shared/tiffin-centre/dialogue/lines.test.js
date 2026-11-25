@@ -1,13 +1,14 @@
 // Tiffin Centre dialogue: content checks on every line (shape, script, counts, safety) and on the dish names.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { CUSTOMER_KINDS, DISH_IDS, DISHES } from '../catalog.js';
 import { LINES_TE } from './lines.te.js';
 import { LINES_HI } from './lines.hi.js';
 import { LINES_DK } from './lines.dk.js';
 import { DISH_NAMES, dishName } from './dishNames.js';
-import { ALLOWED_PLACEHOLDERS, LANGS, MIN_PER_SIT, MOODS, PLACEHOLDER_RE, SITUATIONS } from './lineKit.js';
+import { ALLOWED_PLACEHOLDERS, LANGS, MIN_PER_SIT, MIN_PER_TAG, MOODS, N_SITS, NO_DISH_SITS, PLACEHOLDER_RE, SIT_TAGS, SITUATIONS } from './lineKit.js';
 import { UI_EN } from './lines.en.js';
 import { ALL_LINES, LINE_BY_ID } from './index.js';
+vi.setConfig({ testTimeout: 60000 }); // thousands of per-line expectations
 
 const FILES = { te: LINES_TE, hi: LINES_HI, dk: LINES_DK };
 const TELUGU = /[ఀ-౿]/;
@@ -32,9 +33,9 @@ const BANNED_NATIVE = [
 ];
 
 describe('dialogue lines: shape', () => {
-  it('has the three voices and plenty of lines (700+ in total)', () => {
-    expect(ALL_LINES.length).toBeGreaterThanOrEqual(700);
-    for (const lang of LANGS) expect(FILES[lang].length).toBeGreaterThanOrEqual(300);
+  it('has the three voices and plenty of lines (1400+ in total, 450+ per voice)', () => {
+    expect(ALL_LINES.length).toBeGreaterThanOrEqual(1400);
+    for (const lang of LANGS) expect(FILES[lang].length).toBeGreaterThanOrEqual(450);
     expect(Object.keys(LINE_BY_ID).length).toBe(ALL_LINES.length);
   });
 
@@ -58,9 +59,11 @@ describe('dialogue lines: shape', () => {
         for (const k of l.kinds) expect(KIND_IDS, at).toContain(k);
       }
       if (l.tag !== undefined) {
-        expect(l.sit, at).toBe('serve-complain');
-        expect(['late'], at).toContain(l.tag);
+        expect(Object.keys(SIT_TAGS), at).toContain(l.sit);
+        expect(SIT_TAGS[l.sit], at).toContain(l.tag);
       }
+      // a tagged pool has a tag on every line (sold-out-polite, regular-named): the director picks the pool by tag
+      if (l.sit === 'sold-out-polite' || l.sit === 'regular-named') expect(l.tag, at).toBeTruthy();
     }
   });
 
@@ -144,13 +147,30 @@ describe('dialogue lines: placeholders', () => {
     }
   });
 
-  it('{n} is only used where the director supplies a number (order and pay situations)', () => {
-    const ok = new Set(['order', 'pay-ready']);
+  it('{n} is only used where the director supplies a number (order, pay, office parcels, the delivery boy)', () => {
+    const ok = new Set(N_SITS);
     for (const l of ALL_LINES) if (l.n) expect(ok.has(l.sit), `${l.id} uses {n} in ${l.sit}`).toBe(true);
+    for (const lang of LANGS) {
+      expect(FILES[lang].some((l) => l.n && l.sit === 'big-office-order'), `${lang} big-office-order {n}`).toBe(true);
+      expect(FILES[lang].some((l) => l.n && l.sit === 'delivery-boy-hurry'), `${lang} delivery-boy-hurry {n}`).toBe(true);
+    }
+  });
+
+  it('{dish2} is only used where the director supplies a second dish (order-multi, sold-out swaps)', () => {
+    for (const l of ALL_LINES) {
+      if (!l.dish2) continue;
+      expect(['order-multi', 'sold-out-polite'], l.id).toContain(l.sit);
+      if (l.sit === 'sold-out-polite') expect(l.tag, l.id).toBe('swap');
+    }
+    for (const lang of LANGS) {
+      const swaps = FILES[lang].filter((l) => l.sit === 'sold-out-polite' && l.tag === 'swap');
+      expect(swaps.length, lang).toBeGreaterThanOrEqual(5);
+      expect(swaps.every((l) => l.dish && l.dish2), lang).toBe(true);
+    }
   });
 
   it('placeholders are used in the situations that have a dish (not in leave/pay-hurry lines, which have no dish context)', () => {
-    const noDish = new Set(['angry-leave', 'unpaid-leave', 'pay-hurry', 'pay-change-keep', 'pay-haggle', 'apology', 'turned-away', 'combo-praise', 'morning', 'noon', 'evening', 'night', 'festival', 'greet']);
+    const noDish = new Set(NO_DISH_SITS);
     for (const l of ALL_LINES) if (l.dish || l.dish2) expect(noDish.has(l.sit), `${l.id} (${l.sit}) has a dish placeholder with no dish to fill it`).toBe(false);
   });
 });
@@ -162,6 +182,30 @@ describe('dialogue lines: coverage', () => {
         const n = FILES[lang].filter((l) => l.sit === sit).length;
         expect(n, `${lang} ${sit}`).toBeGreaterThanOrEqual(MIN_PER_SIT[sit]);
       }
+    }
+  });
+
+  it('tagged pools have the minimum lines of every tag, in every language', () => {
+    for (const lang of LANGS) {
+      for (const [sit, tags] of Object.entries(MIN_PER_TAG)) {
+        for (const [tag, min] of Object.entries(tags)) {
+          const n = FILES[lang].filter((l) => l.sit === sit && l.tag === tag).length;
+          expect(n, `${lang} ${sit}/${tag}`).toBeGreaterThanOrEqual(min);
+        }
+      }
+    }
+  });
+
+  it('every operations situation named in the brief exists with its minimum count', () => {
+    const brief = {
+      'rain-start': 8, 'rain-ongoing': 8, 'rain-end': 4, 'power-cut': 8, 'power-back': 4, 'cricket-night': 10, 'festival-greeting': 8, 'inspector-arrival': 6,
+      'inspector-pass': 4, 'inspector-fail': 4, 'sold-out-polite': 14, 'stock-out-apology': 4, 'delivery-boy-hurry': 8, 'parcel-request': 8,
+      'extra-request-chutney': 8, 'extra-request-sambar': 8, 'spice-request-less': 8, 'spice-request-more': 8, 'regular-named': 10, 'regular-loyal': 6,
+      'big-office-order': 8, 'broken-dish-complaint': 8, 'sour-batter-complaint': 6, 'gas-out-chatter': 6, 'thanks-fast-service': 4,
+    };
+    for (const [sit, min] of Object.entries(brief)) {
+      expect(MIN_PER_SIT[sit], sit).toBeGreaterThanOrEqual(min);
+      for (const lang of LANGS) expect(FILES[lang].filter((l) => l.sit === sit).length, `${lang} ${sit}`).toBeGreaterThanOrEqual(min);
     }
   });
 
@@ -182,7 +226,10 @@ describe('dialogue lines: coverage', () => {
 
   it('the kind-specific situations are kept for the right people', () => {
     const owner = { 'kid-demand': ['family'], 'phone-call': ['office', 'techie'], 'student-broke': ['student'], 'autowala-chat': ['autowala'], 'elder-blessing': ['uncle'] };
+    // operations lines: only these may be kind-limited, and only to the kinds that would really say them
+    const ownerOps = { 'cricket-night': ['student', 'autowala'], 'parcel-request': ['office', 'techie', 'family'], 'spice-request-less': ['family'] };
     for (const l of ALL_LINES) {
+      if (l.kinds && ownerOps[l.sit]) for (const k of l.kinds) expect(ownerOps[l.sit], l.id).toContain(k);
       if (owner[l.sit]) expect(l.kinds, l.id).toBeTruthy();
       if (owner[l.sit] && l.kinds) for (const k of l.kinds) expect(owner[l.sit], l.id).toContain(k);
     }
@@ -214,15 +261,88 @@ describe('dialogue lines: coverage', () => {
   });
 });
 
+describe('dialogue lines: script correctness of the operations lines', () => {
+  const ALL_SITS = Object.keys(MIN_PER_SIT);
+  const OPS = ALL_SITS.slice(ALL_SITS.indexOf('rain-start'));
+  const strip = (t) => t.replace(PLACEHOLDER_RE, '');
+
+  it('there are 25 operations situations', () => {
+    expect(OPS.length).toBe(25);
+  });
+
+  it('native script holds no Latin letters (the Roman spelling lives in `rom`), in any line of any voice', () => {
+    for (const l of ALL_LINES) expect(strip(l.text), `${l.id} ${l.text}`).not.toMatch(/[A-Za-z]/);
+  });
+
+  it('Telugu lines use only Telugu letters, digits and punctuation; Hindi and Dakhni only Devanagari ones', () => {
+    const okTe = /^[\u0C00-\u0C7F\s\d.,!?'\-:;()]+$/u;
+    const okDe = /^[\u0900-\u097F\s\d.,!?'\-:;()]+$/u;
+    for (const l of ALL_LINES) {
+      if (!OPS.includes(l.sit)) continue;
+      expect(strip(l.text), `${l.id} ${l.text}`).toMatch(l.lang === 'te' ? okTe : okDe);
+    }
+  });
+
+  it('punctuation is tidy: no tripled marks, no space before ! ? or a comma, at most two questions', () => {
+    for (const l of ALL_LINES) {
+      if (!OPS.includes(l.sit)) continue;
+      for (const f of ['text', 'rom', 'en']) {
+        expect(l[f], `${l.id} ${f}`).not.toMatch(/([!?,])\1\1|\.{4,}/);
+        expect(l[f], `${l.id} ${f}`).not.toMatch(/\s[!?,]/);
+        expect((l[f].match(/\?/g) || []).length, `${l.id} ${f}`).toBeLessThanOrEqual(2);
+      }
+    }
+  });
+
+  it('Roman spelling mirrors the sentence: the same number of ! and ? as the native text', () => {
+    const cnt = (s, ch) => s.split(ch).length - 1;
+    for (const l of ALL_LINES) {
+      if (!OPS.includes(l.sit)) continue;
+      expect(cnt(l.rom, '!'), `${l.id} !`).toBe(cnt(l.text, '!'));
+      expect(cnt(l.rom, '?'), `${l.id} ?`).toBe(cnt(l.text, '?'));
+    }
+  });
+
+  it('the voices sound like themselves: Telugu says ayyo varsham / current poyindi, Hindi bijli chali gayi, Dakhni miyan / nai / idhrich', () => {
+    const rom = (lang) => FILES[lang].filter((l) => OPS.includes(l.sit)).map((l) => ` ${l.rom.toLowerCase()} `).join('|');
+    const te = rom('te');
+    for (const w of ['ayyo varsham', 'current poyindi', 'ghmc waallu', 'order late ayithe rating pothundi', 'parcel kattandi', 'dosa pullagaa undi', 'eeroju kooda same', 'ayipoyindaa']) expect(te, `te ${w}`).toContain(w);
+    const hi = rom('hi');
+    for (const w of ['bijli chali gayi', 'bhaiya, wahi purana', 'khatm ho gaya', 'ghmc waale', 'dosa khatta hai', 'parcel kar do']) expect(hi, `hi ${w}`).toContain(w);
+    const dk = rom('dk');
+    for (const w of ['miyan', ' nai ', 'idhrich', 'mereku', 'kaiku', 'woich', 'current gaya', 'khatam hogaya', 'ghmc waale', 'ke waaste']) expect(dk, `dk ${w}`).toContain(w);
+  });
+
+  it('Dakhni operations lines are not copies of the Hindi ones (different words, not only a different label)', () => {
+    const hi = new Set(LINES_HI.map((l) => l.rom));
+    for (const l of LINES_DK) if (OPS.includes(l.sit)) expect(hi.has(l.rom), `${l.id} copies Hindi`).toBe(false);
+  });
+
+  it('festival greetings name several festivals and several are plainly generic (nobody is excluded)', () => {
+    const named = /sankraanti|ugaadi|eid|diwali|deepaavali|deewali|dasara|dashahra/i;
+    for (const lang of LANGS) {
+      const rows = FILES[lang].filter((l) => l.sit === 'festival-greeting');
+      for (const w of ['sankraanti', 'ugaadi', 'eid', 'diwali|deepaavali|deewali', 'dasara|dashahra']) expect(rows.some((l) => new RegExp(w, 'i').test(l.rom)), `${lang} ${w}`).toBe(true);
+      expect(rows.filter((l) => !named.test(l.rom)).length, `${lang} generic`).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('inspector lines whisper about GHMC in every voice', () => {
+    for (const lang of LANGS) expect(FILES[lang].filter((l) => l.sit === 'inspector-arrival' && /GHMC/.test(l.rom)).length, lang).toBeGreaterThanOrEqual(2);
+  });
+});
+
 describe('dialogue lines: respectful (cheeky and impatient is fine, abusive is not)', () => {
   const words = (s) => s.toLowerCase().split(/[^a-z]+/).filter(Boolean);
 
   it('no profanity, slurs, or religious, caste or regional insults, in Roman or native script', () => {
+    const hits = [];
     for (const l of ALL_LINES) {
       const w = new Set([...words(l.rom), ...words(l.en)]);
-      for (const bad of BANNED_ROM) expect(w.has(bad), `${l.id} contains "${bad}"`).toBe(false);
-      for (const bad of BANNED_NATIVE) expect(l.text.includes(bad), `${l.id} contains "${bad}"`).toBe(false);
+      for (const bad of BANNED_ROM) if (w.has(bad)) hits.push(`${l.id} contains "${bad}"`);
+      for (const bad of BANNED_NATIVE) if (l.text.includes(bad)) hits.push(`${l.id} contains "${bad}"`);
     }
+    expect(hits).toEqual([]);
   });
 
   it('nobody is told to shut up or called a name', () => {

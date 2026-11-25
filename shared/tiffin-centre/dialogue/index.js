@@ -1,10 +1,12 @@
 // Tiffin Centre dialogue: the public face. The HUD, the scene (speech bubbles, mouths) and the settings screen import from here.
 //   createDialogueDirector({ lang, seed, subtitles }).update(state, events) -> Utterance[]
 //   formatSubtitle(utterance, 'native' | 'roman' | 'english' | 'both'), fillTemplate(line, { dish, dish2, n })
+//   the director also voices the operations layer (rain, power cuts, cricket nights, festivals, the inspector, sold-out dishes, parcels,
+//   extra chutney / sambar, spice requests, regulars, the delivery boy, complaints): see director.js
 // Pure, deterministic, no network, no clock, no Math.random.
 export { createDialogueDirector, formatSubtitle, fillTemplate, ttlFor, linesFor, MIN_GAP, MAX_ACTIVE, LANG_MODES, SUBTITLE_MODES } from './director.js';
 export { DISH_NAMES, dishName } from './dishNames.js';
-export { LANGS, MOODS, SITUATIONS, MIN_PER_SIT, ALLOWED_PLACEHOLDERS } from './lineKit.js';
+export { LANGS, MOODS, SITUATIONS, MIN_PER_SIT, MIN_PER_TAG, SIT_TAGS, NO_DISH_SITS, N_SITS, ALLOWED_PLACEHOLDERS } from './lineKit.js';
 export { UI_EN } from './lines.en.js';
 export { LINES_TE } from './lines.te.js';
 export { LINES_HI } from './lines.hi.js';

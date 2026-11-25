@@ -428,6 +428,261 @@ const D = {
     ['sheepish', 'మర్చిపోయా అన్నా, ఇప్పుడే ఇస్తున్నా', 'Marchipoyaa anna, ippude istunnaa', 'I forgot, anna, giving it right now.'],
     ['sheepish', 'ఆలస్యం చేశా కదా, క్షమించండి', 'Aalasyam chesaa kadaa, kshaminchandi', 'I made you wait, please forgive me.'],
   ],
+  // ---- the operations layer: weather, events, requests, regulars, complaints (docs/TIFFIN_CENTRE_PLAN.md section 3b) ----
+
+  'rain-start': [
+    ['surprised', 'అయ్యో వర్షం! అన్నా, కొంచెం లోపలికి రానివ్వు', 'Ayyo varsham! Anna, konchem lopaliki raanivvu', 'Oh, rain! Anna, let me come in for a bit.'],
+    ['happy', 'వానొచ్చింది అన్నా! వేడి వేడి చాయ్ ఒకటి ఇవ్వు', 'Vaanochchindi anna! Vedi vedi chai okati ivvu', 'The rain is here, anna! Give me a piping hot chai.'],
+    ['laughing', 'తడిసిపోయా అన్నా! ఇక్కడ నిలబడొచ్చా?', 'Tadisipoyaa anna! Ikkada nilabadochchaa?', 'I am soaked, anna! May I stand here?'],
+    ['happy', 'వర్షం, వేడి మిర్చి బజ్జీ... స్వర్గమే!', 'Varsham, vedi mirchi bajji... swargame!', 'Rain and hot mirchi bajji... pure heaven!'],
+    ['sad', 'గొడుగు మర్చిపోయా, ఇక్కడే ఆగుతా అన్నా', 'Godugu marchipoyaa, ikkade aagutaa anna', 'I forgot my umbrella, I will wait here, anna.'],
+    ['surprised', 'ఒక్కసారిగా కుండపోత! అన్నా, అందరం తడుస్తున్నాం!', 'Okkasaarigaa kundapota! Anna, andaram tadustunnaam!', 'A sudden downpour! Anna, we are all getting wet!'],
+    ['happy', 'ఈ వానలో చాయ్ తాగకపోతే ఎట్లా అన్నా', 'Ee vaanalo chai taagakapote etlaa anna', 'How can one skip chai in this rain, anna?'],
+    ['neutral', 'రోడ్డంతా నీళ్ళే, కాసేపు ఇక్కడ తలదాచుకుంటా', 'Roddantaa neelle, kaasepu ikkada taladaachukuntaa', 'The road is all water, I will take shelter here a while.'],
+  ],
+
+  'rain-ongoing': [
+    ['bored', 'ఇంకా వాన తగ్గట్లేదు అన్నా', 'Inkaa vaana taggatledu anna', 'The rain is not letting up, anna.'],
+    ['laughing', 'హైదరాబాద్ వాన అంటే ఇంతే, రోడ్లన్నీ చెరువులే', 'Hyderabad vaana ante inthe, rodlanni cheruvule', 'That is Hyderabad rain for you: every road becomes a pond.'],
+    ['happy', 'ఇంకో చాయ్ ఇవ్వు అన్నా, వాన ఆగేదాకా ఇక్కడే', 'Inko chai ivvu anna, vaana aagedaakaa ikkade', 'One more chai, anna, I am here until the rain stops.'],
+    ['bored', 'ట్రాఫిక్ జామ్ అయిపోయింది, ఇక్కడే కూర్చుంటా', 'Traffic jam ayipoyindi, ikkade koorchuntaa', 'Traffic is jammed, I will just sit here.'],
+    ['happy', 'వానలో బజ్జీ తింటే ఆ మజానే వేరు', 'Vaanalo bajji tinte aa majaane veru', 'Eating bajji in the rain, that joy is something else.'],
+    ['surprised', 'ఇప్పుడే పిడుగు పడింది! భయమేసింది', 'Ippude pidugu padindi! Bhayamesindi', 'Thunder just struck! That scared me.'],
+    ['neutral', 'ఈ వానకి పనులన్నీ ఆగిపోయాయి', 'Ee vaanaki panulanni aagipoyaayi', 'All work has stopped because of this rain.'],
+    ['sad', 'ఇంటికి ఎట్లా వెళ్ళాలి ఈ వానలో?', 'Intiki etlaa vellaali ee vaanalo?', 'How do I get home in this rain?'],
+  ],
+
+  'rain-end': [
+    ['happy', 'వాన ఆగింది! ఇంక వెళ్ళొస్తా అన్నా', 'Vaana aagindi! Inka vellostaa anna', 'The rain has stopped! I will head off, anna.'],
+    ['happy', 'ఎండ వచ్చింది, ఇప్పుడు చల్లగా ఉంది', 'Enda vachchindi, ippudu challagaa undi', 'The sun is out, it feels cool now.'],
+    ['laughing', 'వాన తగ్గింది, ఇంక రోడ్డు మీద చెరువు ఈదాలి!', 'Vaana taggindi, inka roddu meeda cheruvu eedaali!', 'The rain has eased, now to swim across the pond on the road!'],
+    ['neutral', 'అమ్మయ్య, వర్షం ఆగింది, మట్టి వాసన బాగుంది', 'Ammayya, varsham aagindi, matti vaasana baagundi', 'Phew, the rain has stopped, the smell of wet earth is lovely.'],
+  ],
+
+  'power-cut': [
+    ['surprised', 'అయ్యో, కరెంట్ పోయింది!', 'Ayyo, current poyindi!', 'Oh no, the power is gone!'],
+    ['neutral', 'ఫోన్ టార్చ్ వేయండి, అంతా చీకటి', 'Phone torch veyandi, antaa cheekati', 'Switch on your phone torch, it is all dark.'],
+    ['laughing', 'హైదరాబాద్ లో కరెంట్ కట్ కొత్తా అన్నా?', 'Hyderabad lo current cut kotthaa anna?', 'Is a power cut anything new in Hyderabad, anna?'],
+    ['bored', 'ఎప్పుడు వస్తుందో ఈ కరెంట్, ఎవరికి తెలుసు', 'Eppudu vastundo ee current, evariki telusu', 'Who knows when this power will come back.'],
+    ['neutral', 'పర్వాలేదు అన్నా, గ్యాస్ మీద వండేయ్, నేను టార్చ్ పడతా', 'Parvaaledu anna, gas meeda vandeyi, nenu torch padataa', 'No problem, anna, keep cooking on the gas, I will hold the torch.'],
+    ['sheepish', 'చీకట్లో డబ్బులు ఎట్లా ఇవ్వాలి అన్నా?', 'Cheekatlo dabbulu etlaa ivvaali anna?', 'How do I pay in the dark, anna?'],
+    ['surprised', 'ఫ్యాన్ ఆగిపోయింది, ఇప్పుడు ఉక్కగా ఉంది', 'Fan aagipoyindi, ippudu ukkagaa undi', 'The fan has stopped, it is stuffy now.'],
+    ['happy', 'కొవ్వొత్తి వెలిగించండి, టిఫిన్ సెంటర్ లో కాండిల్ లైట్ డిన్నర్!', 'Kovvotti veliginchandi, tiffin centre lo candle light dinner!', 'Light a candle: candle light dinner at the tiffin centre!'],
+  ],
+
+  'power-back': [
+    ['happy', 'అమ్మయ్య, కరెంట్ వచ్చింది!', 'Ammayya, current vachchindi!', 'Phew, the power is back!'],
+    ['laughing', 'ఇప్పుడు ముఖాలు కనిపిస్తున్నాయి, లైట్ వచ్చింది!', 'Ippudu mukhaalu kanipistunnaayi, light vachchindi!', 'Now I can see faces, the light is back!'],
+    ['neutral', 'ఫ్యాన్ తిరుగుతోంది, హమ్మయ్య', 'Fan tirugutondi, hammayya', 'The fan is turning again, thank goodness.'],
+    ['happy', 'కరెంట్ వచ్చేసింది, ఇంక స్పీడ్ గా కానివ్వు అన్నా', 'Current vachchesindi, inka speedgaa kaanivvu anna', 'The power is back, now speed it up, anna.'],
+  ],
+
+  'cricket-night': [
+    ['happy', 'ఈరోజు ఇండియా మ్యాచ్ ఉంది అన్నా, ఫుల్ రద్దీ ఉంటుంది', 'Eeroju India match undi anna, full raddi untundi', 'There is an India match today, anna, it will be packed.'],
+    ['delighted', 'సిక్సర్! చూశావా అన్నా, స్టేడియం దాటింది!', 'Sixer! Choosaavaa anna, stadium daatindi!', 'A six! Did you see that, anna, it cleared the stadium!'],
+    ['impatient', 'త్వరగా ఇవ్వు అన్నా, లాస్ట్ ఓవర్ మిస్ అయిపోతా', 'Tvaragaa ivvu anna, last over miss ayipotaa', 'Quickly, anna, I will miss the last over.'],
+    ['neutral', 'మ్యాచ్ చూస్తూ టిఫిన్ తింటే వచ్చే మజా వేరు', 'Match choostoo tiffin tinte vachche majaa veru', 'Eating tiffin while watching the match is a joy of its own.'],
+    ['happy', 'ఇండియా గెలుస్తుంది అన్నా, నువ్వు చూడు', 'India gelustundi anna, nuvvu choodu', 'India will win, anna, you watch.'],
+    ['sad', 'వికెట్ పడింది రా! ఇప్పుడు ఏం చేస్తారో', 'Wicket padindi raa! Ippudu em chestaaro', 'A wicket has fallen! What will they do now?'],
+    ['laughing', 'మా గ్యాంగ్ అంతా వచ్చాం, అందరికీ దోశలు రెడీ చేయి!', 'Maa gang antaa vachchaam, andariki dosalu ready cheyi!', 'The whole gang is here, get dosas ready for everyone!', ['student']],
+    ['delighted', 'ఈరోజు ఎస్ఆర్హెచ్ ఆడుతోంది, గెలవాల్సిందే అన్నా!', 'Eeroju SRH aadutondi, gelavaalsinde anna!', 'SRH is playing today, they simply have to win, anna!'],
+    ['laughing', 'ఒక్క బాల్ కి పది మంది అరుస్తున్నారు, ఆ గోల!', 'Okka ball ki padi mandi arustunnaaru, aa gola!', 'Ten people shouting over one ball, what a racket!'],
+    ['happy', 'గెలిస్తే ఈరోజు అందరికీ చాయ్ నా తరపున!', 'Geliste eeroju andariki chai naa tarapuna!', 'If we win, everyone gets chai from me today!'],
+  ],
+
+  'festival-greeting': [
+    ['delighted', 'అందరికీ పండుగ శుభాకాంక్షలు!', 'Andariki panduga shubhaakaankshalu!', 'Festival greetings to everyone!'],
+    ['happy', 'సంక్రాంతి శుభాకాంక్షలు అన్నా, గాలిపటాలు ఎగరేద్దాం!', 'Sankraanti shubhaakaankshalu anna, gaalipatalu egareddaam!', 'Happy Sankranti, anna, let us fly kites!'],
+    ['happy', 'ఉగాది శుభాకాంక్షలు! పచ్చడి తిన్నారా?', 'Ugaadi shubhaakaankshalu! Pachchadi tinnaaraa?', 'Happy Ugadi! Have you had the pachadi?'],
+    ['happy', 'దసరా శుభాకాంక్షలు అక్కా, అందరికీ మంచి జరగాలి', 'Dasara shubhaakaankshalu akka, andariki manchi jaragaali', 'Happy Dasara, akka, may good come to everyone.'],
+    ['delighted', 'ఈద్ ముబారక్ అన్నా! అందరం కలిసి సంతోషంగా ఉందాం', 'Eid mubaarak anna! Andaram kalisi santoshamgaa undaam', 'Eid Mubarak, anna! Let us all be happy together.'],
+    ['happy', 'దీపావళి శుభాకాంక్షలు! ఈ స్వీట్ తీసుకోండి', 'Deepaavali shubhaakaankshalu! Ee sweet teesukondi', 'Happy Diwali! Please take this sweet.'],
+    ['neutral', 'పండుగ రోజు కదా, ఇంటికి వెళ్ళే ముందు ఒక టిఫిన్', 'Panduga roju kadaa, intiki velle mundu oka tiffin', 'It is a festival day, one tiffin before heading home.'],
+    ['happy', 'ఏ పండుగైనా అందరం కలిసి చేసుకుందాం అన్నా!', 'E pandugainaa andaram kalisi chesukundaam anna!', 'Whatever the festival, let us celebrate together, anna!'],
+  ],
+
+  'inspector-arrival': [
+    ['surprised', 'అన్నా, జీహెచ్ఎంసీ వాళ్ళు వచ్చారు, జాగ్రత్త!', 'Anna, GHMC waallu vachchaaru, jaagrattha!', 'Anna, the GHMC people have come, be careful!'],
+    ['neutral', 'ఎవరో ఇన్స్పెక్టర్ వచ్చినట్టున్నారు, గరిటె తుడుచుకో అన్నా', 'Evaro inspector vachchinattunnaaru, garite tuduchuko anna', 'Looks like an inspector has come, wipe the ladle, anna.'],
+    ['surprised', 'అటు చూడు, ఫుడ్ ఇన్స్పెక్టర్లు వస్తున్నారు', 'Atu choodu, food inspectorlu vastunnaaru', 'Look over there, the food inspectors are coming.'],
+    ['sheepish', 'అన్నా, పెనం శుభ్రంగా ఉందా? చెకింగ్ వచ్చింది', 'Anna, penam shubhrangaa undaa? Checking vachchindi', 'Anna, is the tawa clean? A check has arrived.'],
+    ['neutral', 'మెల్లగా చెప్తున్నా, జీహెచ్ఎంసీ చెకింగ్ ఉంది', 'Mellagaa cheptunnaa, GHMC checking undi', 'I am saying it softly, there is a GHMC check.'],
+    ['surprised', 'ఏంటి అందరూ సర్దుతున్నారు? ఓహో, ఇన్స్పెక్టర్ వచ్చారా?', 'Enti andaroo sardutunnaaru? Oho, inspector vachchaaraa?', 'Why is everyone tidying up? Oh, has the inspector come?'],
+  ],
+
+  'inspector-pass': [
+    ['delighted', 'శభాష్ అన్నా! ఇన్స్పెక్టర్ కూడా మెచ్చుకున్నాడు', 'Shabaash anna! Inspector kooda mechchukunnaadu', 'Well done, anna! Even the inspector appreciated it.'],
+    ['happy', 'సూపర్! మీ దగ్గర శుభ్రత ఎప్పుడూ ఇంతే', 'Super! Mee daggara shubhratha eppudoo inthe', 'Super! Cleanliness at your place is always like this.'],
+    ['laughing', 'చెకింగ్ పాస్! ఇప్పుడు మాకు ఇంకో దోశ ఇవ్వు', 'Checking pass! Ippudu maaku inko dosa ivvu', 'Check passed! Now give us one more dosa.'],
+    ['delighted', 'అందుకే ఇక్కడికే వస్తా, ఎప్పుడూ శుభ్రంగా ఉంటుంది', 'Anduke ikkadike vastaa, eppudoo shubhrangaa untundi', 'That is why I come only here, it is always clean.'],
+  ],
+
+  'inspector-fail': [
+    ['sad', 'అయ్యో, ఫైన్ వేశారా? పాపం అన్నా', 'Ayyo, fine veshaaraa? Paapam anna', 'Oh, did they fine you? Poor anna.'],
+    ['neutral', 'పర్వాలేదు అన్నా, రేపటి నుంచి ఇంకా శుభ్రంగా ఉంచు', 'Parvaaledu anna, repati nunchi inkaa shubhrangaa unchu', 'It is okay, anna, keep it cleaner from tomorrow.'],
+    ['sad', 'పెనం తుడిచి ఉంటే బాగుండేది అన్నా', 'Penam tudichi unte baagundedi anna', 'It would have been good if the tawa had been wiped, anna.'],
+    ['sheepish', 'ఇంత పనిలో ఎవరైనా మర్చిపోతారులే', 'Inta panilo evarainaa marchipotaarule', 'In all this work anyone would forget.'],
+  ],
+
+  'sold-out-polite': [
+    ['sad', '{dish} అయిపోయిందా? సరే, {dish2} ఇవ్వండి', '{dish} ayipoyindaa? Sare, {dish2} ivvandi', '{dish} is finished? Okay, give me {dish2}.', 'swap'],
+    ['neutral', 'అయ్యో, {dish} లేదా! అయితే {dish2} పెట్టు అన్నా', 'Ayyo, {dish} ledhaa! Ayithe {dish2} pettu anna', 'Oh, no {dish}! Then put {dish2}, anna.', 'swap'],
+    ['sheepish', '{dish} కోసమే వచ్చా... పర్వాలేదు, {dish2} చాలు', '{dish} kosame vachchaa... parvaaledu, {dish2} chaalu', 'I came just for {dish}... never mind, {dish2} will do.', 'swap'],
+    ['happy', '{dish} లేకపోతే {dish2} వేడిగా ఇవ్వు', '{dish} lekapote {dish2} vedigaa ivvu', 'If there is no {dish}, give me hot {dish2}.', 'swap'],
+    ['surprised', 'అప్పుడే {dish} అయిపోయిందా? ఓకే, {dish2} తీసుకుంటా', 'Appude {dish} ayipoyindaa? Okay, {dish2} teesukuntaa', '{dish} gone already? Okay, I will take {dish2}.', 'swap'],
+    ['laughing', 'నా {dish} ఎవరో తినేశారు! సరే, {dish2} ఇవ్వు మరి', 'Naa {dish} evaro tinesaaru! Sare, {dish2} ivvu mari', 'Someone ate my {dish}! Fine, give me {dish2} then.', 'swap'],
+    ['sad', '{dish} లేదా? సరే అన్నా, రేపు వస్తా', '{dish} ledhaa? Sare anna, repu vastaa', 'No {dish}? Okay anna, I will come tomorrow.', 'leave'],
+    ['sad', 'అయ్యో, అయిపోయిందా? పర్వాలేదు, మళ్ళీ వస్తా', 'Ayyo, ayipoyindaa? Parvaaledu, malli vastaa', 'Oh, it is finished? Never mind, I will come again.', 'leave'],
+    ['sheepish', 'ఆలస్యంగా వచ్చా, నా తప్పే. వెళ్తున్నా అన్నా', 'Aalasyamgaa vachchaa, naa tappe. Veltunnaa anna', 'I came late, my fault. I am off, anna.', 'leave'],
+    ['neutral', '{dish} లేకపోతే ఎట్లా, ఇంకో చోట చూసుకుంటా', '{dish} lekapote etlaa, inko chota choosukuntaa', 'No {dish}, then I will look somewhere else.', 'leave'],
+    ['happy', 'ఏం పర్వాలేదు అక్కా, రేపు ముందే వస్తా', 'Em parvaaledu akka, repu munde vastaa', 'No problem, akka, I will come early tomorrow.', 'leave'],
+    ['neutral', '{dish} లేదా? సరే, అది వద్దులే', '{dish} ledhaa? Sare, adi vaddule', 'No {dish}? Fine, forget that one.', 'drop'],
+    ['sad', 'అయ్యో {dish} అయిపోయిందా, ఉన్నదే ఇవ్వండి', 'Ayyo {dish} ayipoyindaa, unnade ivvandi', 'Oh, {dish} is finished? Just give what you have.', 'drop'],
+    ['sheepish', '{dish} లేకపోయినా పర్వాలేదు, మిగతాది చాలు', '{dish} lekapoyinaa parvaaledu, migataadi chaalu', 'It is fine without {dish}, the rest will do.', 'drop'],
+  ],
+
+  'stock-out-apology': [
+    ['sheepish', 'పర్వాలేదు అన్నా, ఈరోజు రద్దీ ఎక్కువే కదా', 'Parvaaledu anna, eeroju raddi ekkuve kadaa', 'It is okay, anna, it is a heavy rush today.'],
+    ['neutral', 'సరుకు అయిపోయిందా? తొందర లేదు, కానివ్వు', 'Saruku ayipoyindaa? Tondara ledu, kaanivvu', 'Run out of stock? No hurry, carry on.'],
+    ['happy', 'టెన్షన్ వద్దు అన్నా, మేము కొంచెం ఆగుతాం', 'Tension vaddu anna, memu konchem aagutaam', 'No tension, anna, we will wait a little.'],
+    ['neutral', 'ఇంకోటి ఏదైనా ఉంటే చూడు అన్నా, పర్వాలేదు', 'Inkoti edainaa unte choodu anna, parvaaledu', 'See if you have something else, anna, it is fine.'],
+  ],
+
+  'delivery-boy-hurry': [
+    ['impatient', 'అన్నా, {n} పార్సెల్స్ రెడీ చేయి, ఆర్డర్ లేట్ అయితే రేటింగ్ పోతుంది!', 'Anna, {n} parcels ready cheyi, order late ayithe rating pothundi!', 'Anna, get {n} parcels ready, if the order is late my rating drops!'],
+    ['impatient', 'ఒక్క నిమిషం కూడా లేదు అన్నా, కస్టమర్ ఎదురు చూస్తున్నాడు', 'Okka nimisham kooda ledu anna, customer eduru choostunnaadu', 'Not even a minute to spare, anna, the customer is waiting.'],
+    ['sheepish', 'రేటింగ్ తగ్గితే ఇన్సెంటివ్ పోతుంది అన్నా, త్వరగా', 'Rating taggite incentive pothundi anna, tvaragaa', 'If my rating drops the incentive goes, anna, quickly.'],
+    ['impatient', '{dish} పార్సెల్ ముందు ఇవ్వు, మిగతావి తరువాత', '{dish} parcel mundu ivvu, migataavi taruvaata', 'Give the {dish} parcel first, the rest later.'],
+    ['neutral', 'బైక్ రోడ్డు మీద పెట్టేశా, పోలీసులు వస్తారు అన్నా', 'Bike roddu meeda pettesaa, poleesulu vastaaru anna', 'I left my bike on the road, the police will come, anna.'],
+    ['impatient', 'ఫోన్ మీద ఫోన్ వస్తోంది, ఎక్కడున్నావ్ అని', 'Phone meeda phone vastondi, ekkadunnaav ani', 'Call after call is coming asking where I am.'],
+    ['angry', 'ఇంకా ఆలస్యమైతే ఆర్డర్ క్యాన్సిల్ అయిపోతుంది అన్నా!', 'Inkaa aalasyamaite order cancel ayipotundi anna!', 'If it gets any later the order will be cancelled, anna!'],
+    ['sheepish', 'ప్లీజ్ అన్నా, ఈరోజు ఇదే లాస్ట్ డెలివరీ, త్వరగా', 'Please anna, eeroju ide last delivery, tvaragaa', 'Please anna, this is the last delivery today, quickly.'],
+  ],
+
+  'parcel-request': [
+    ['neutral', '{dish} పార్సెల్ కట్టండి అన్నా', '{dish} parcel kattandi anna', 'Please pack the {dish} as a parcel, anna.'],
+    ['neutral', 'ఇక్కడ తినను, కట్టి ఇవ్వు అక్కా', 'Ikkada tinanu, katti ivvu akka', 'I will not eat here, pack it up, akka.'],
+    ['impatient', 'పార్సెల్ ఇవ్వండి, బస్సు వచ్చే టైం అయింది', 'Parcel ivvandi, bassu vachche time ayindi', 'Parcel please, it is almost bus time.'],
+    ['happy', 'ఇంటికి తీసుకెళ్తా, పార్సెల్ చేయి అన్నా', 'Intiki teesukeltaa, parcel cheyi anna', 'I will take it home, make it a parcel, anna.'],
+    ['neutral', 'చట్నీ సాంబార్ వేరే కవర్ లో పెట్టండి, పార్సెల్', 'Chutney sambar vere cover lo pettandi, parcel', 'Put the chutney and sambar in a separate cover, parcel.'],
+    ['neutral', 'ఆఫీసుకి పార్సెల్, గట్టిగా కట్టు అన్నా', 'Officeki parcel, gattigaa kattu anna', 'A parcel for the office, pack it firmly, anna.', ['office', 'techie']],
+    ['happy', 'పిల్లలకి ఇంట్లో తినిపిస్తా, పార్సెల్ ఇవ్వు', 'Pillalaki intlo tinipistaa, parcel ivvu', 'I will feed the kids at home, give me a parcel.', ['family']],
+    ['sheepish', 'లీక్ అవ్వకుండా కట్టండి అన్నా, చట్నీ కారుతుంది', 'Leak avvakundaa kattandi anna, chutney kaarutundi', 'Pack it so it does not leak, anna, the chutney spills.'],
+  ],
+
+  'extra-request-chutney': [
+    ['neutral', 'అన్నా, చట్నీ కొంచెం ఎక్కువ వేయి', 'Anna, chutney konchem ekkuva veyi', 'Anna, put a bit more chutney.'],
+    ['happy', 'కొబ్బరి చట్నీ ఇంకొంచెం వేయండి, సూపర్ ఉంది', 'Kobbari chutney inkonchem veyandi, super undi', 'A little more coconut chutney please, it is super.'],
+    ['sheepish', 'చట్నీ లేకుండా దోశ ఎట్లా తినాలి, ఇంకో గరిటె వేయి', 'Chutney lekundaa dosa etlaa tinaali, inko garite veyi', 'How do you eat dosa without chutney, put one more ladle.'],
+    ['happy', 'ఎక్స్ట్రా చట్నీ ఇవ్వు అన్నా, నాలుగు రూపాయలు ఎక్కువే ఇస్తా', 'Extra chutney ivvu anna, naalugu roopaayalu ekkuve istaa', 'Give extra chutney, anna, I will pay four rupees more.'],
+    ['neutral', 'గిన్నె నిండా చట్నీ పోయి అన్నా', 'Ginne nindaa chutney poyi anna', 'Fill the bowl with chutney, anna.'],
+    ['delighted', 'నీ చట్నీ కోసమే వస్తా అన్నా, ఇంకొంచెం ఇవ్వు', 'Nee chutney kosame vastaa anna, inkonchem ivvu', 'I come just for your chutney, anna, give a little more.'],
+    ['neutral', 'పల్లీ చట్నీ కూడా కొంచెం పక్కన వేయండి', 'Palli chutney kooda konchem pakkana veyandi', 'Put a little peanut chutney on the side too.'],
+    ['laughing', 'చట్నీ వేయడంలో పిసినారితనం వద్దు అన్నా!', 'Chutney veyadamlo pisinaarithanam vaddu anna!', 'Do not be stingy with the chutney, anna!'],
+  ],
+
+  'extra-request-sambar': [
+    ['neutral', 'అన్నా, సాంబార్ ఇంకొంచెం పోస్తావా?', 'Anna, sambar inkonchem postaavaa?', 'Anna, will you pour a little more sambar?'],
+    ['happy', 'వేడి సాంబార్ ఇంకో గరిటె పోయి అన్నా', 'Vedi sambar inko garite poyi anna', 'Pour one more ladle of hot sambar, anna.'],
+    ['neutral', 'ఇడ్లీ సాంబార్ లో మునిగి ఉండాలి, ఇంకా పోయి', 'Idly sambar lo munigi undaali, inkaa poyi', 'Idly should be swimming in sambar, pour more.'],
+    ['happy', 'ఎక్స్ట్రా సాంబార్ ఇవ్వు, నాలుగు రూపాయలు ఎక్కువే ఇస్తా', 'Extra sambar ivvu, naalugu roopaayalu ekkuve istaa', 'Give extra sambar, I will pay four rupees more.'],
+    ['delighted', 'సాంబార్ వాసన అదిరిపోతోంది, ఇంకొంచెం ప్లీజ్', 'Sambar vaasana adiripotondi, inkonchem please', 'The sambar smells amazing, a little more please.'],
+    ['neutral', 'సాంబార్ వేరే కప్పులో ఇవ్వండి, తాగుతా', 'Sambar vere kappulo ivvandi, taagutaa', 'Give the sambar in a separate cup, I will drink it.'],
+    ['sheepish', 'అన్నా, వడకి సాంబార్ సరిపోలేదు, ఇంకొంచెం', 'Anna, vadaki sambar saripoledu, inkonchem', 'Anna, the sambar was not enough for the vada, a bit more.'],
+    ['laughing', 'నీ సాంబార్ కి నేను అలవాటు పడిపోయా అన్నా', 'Nee sambar ki nenu alavaatu padipoyaa anna', 'I am hooked on your sambar, anna.'],
+  ],
+
+  'spice-request-less': [
+    ['neutral', 'కారం తక్కువ వేయండి అన్నా, నాకు పడదు', 'Kaaram takkuva veyandi anna, naaku padadu', 'Go easy on the spice, anna, it does not suit me.'],
+    ['sheepish', 'పిల్లలకి కారం పడదు, తక్కువ వేయి అక్కా', 'Pillalaki kaaram padadu, takkuva veyi akka', 'The kids cannot take spice, put less, akka.', ['family']],
+    ['neutral', '{dish} లో కారం తగ్గించు అన్నా', '{dish} lo kaaram taggimchu anna', 'Reduce the spice in the {dish}, anna.'],
+    ['sad', 'కడుపు సరిగా లేదు, కారం లేకుండా ఇవ్వు', 'Kadupu sarigaa ledu, kaaram lekundaa ivvu', 'My stomach is upset, give it without spice.'],
+    ['laughing', 'నాకు కారం అంటే భయం, కొంచెమే వేయండి', 'Naaku kaaram ante bhayam, konchame veyandi', 'I am scared of spice, put just a little.'],
+    ['neutral', 'పచ్చి మిర్చి తక్కువ వేయి, ఉదయం నుంచి కడుపు మంట', 'Pachchi mirchi takkuva veyi, udayam nunchi kadupu manta', 'Less green chilli please, I have had acidity since morning.'],
+    ['happy', 'మీడియం కారం చాలు అన్నా, హైదరాబాద్ కారం వద్దు', 'Medium kaaram chaalu anna, Hyderabad kaaram vaddu', 'Medium spice is enough, anna, no Hyderabad-level spice.'],
+    ['sheepish', 'కారం తక్కువగా ఉండాలి అన్నా, ప్లీజ్', 'Kaaram takkuvagaa undaali anna, please', 'It must be less spicy, anna, please.'],
+  ],
+
+  'spice-request-more': [
+    ['happy', 'కారం ఎక్కువ వేయి అన్నా, ఘాటుగా ఉండాలి', 'Kaaram ekkuva veyi anna, ghaatugaa undaali', 'More spice, anna, it must be fiery.'],
+    ['delighted', 'హైదరాబాదీ కారం కావాలి, భయపడకు అన్నా', 'Hyderabaadi kaaram kaavaali, bhayapadaku anna', 'I want proper Hyderabadi spice, do not be afraid, anna.'],
+    ['neutral', '{dish} మీద కారం పొడి ఇంకొంచెం చల్లు', '{dish} meeda kaaram podi inkonchem challu', 'Sprinkle a little more chilli powder on the {dish}.'],
+    ['happy', 'కారం లేకపోతే తిన్నట్టే ఉండదు అక్కా', 'Kaaram lekapote tinnatte undadu akka', 'Without spice it does not even feel like eating, akka.'],
+    ['laughing', 'కళ్ళలో నీళ్ళు రావాలి, అంత కారం వేయి!', 'Kallalo neellu raavaali, anta kaaram veyi!', 'My eyes should water, put that much spice!'],
+    ['neutral', 'పచ్చి మిర్చి రెండు ఎక్కువ వేయండి', 'Pachchi mirchi rendu ekkuva veyandi', 'Put two extra green chillies.'],
+    ['happy', 'గన్ పౌడర్ ఎక్కువ చల్లు అన్నా', 'Gun powder ekkuva challu anna', 'Sprinkle more gunpowder, anna.'],
+    ['happy', 'ఎంత కారమైనా పర్వాలేదు, నేను తట్టుకుంటా', 'Enta kaaramainaa parvaaledu, nenu tattukuntaa', 'No matter how hot, I can take it.'],
+  ],
+
+  'regular-named': [
+    ['happy', 'అన్నా, గుర్తుపట్టావా? నిన్న కూడా వచ్చా', 'Anna, gurtupattaavaa? Ninna kooda vachchaa', 'Anna, do you recognise me? I came yesterday as well.', 'low'],
+    ['happy', 'ఈరోజు కూడా సేమ్ ఆ అన్నా? నాకు అదే!', 'Eeroju kooda same aa anna? Naaku ade!', 'Same as usual today too, anna? I will have that!', 'low'],
+    ['happy', 'ఎప్పటిలాగే {dish}, గుర్తుందా అన్నా?', 'Eppatilaage {dish}, gurtundaa anna?', 'The usual {dish}, do you remember, anna?', 'low'],
+    ['happy', 'అన్నా, మళ్ళీ వచ్చేశా, నీ టిఫిన్ రుచి మర్చిపోలేను', 'Anna, malli vachchesaa, nee tiffin ruchi marchipolenu', 'Anna, I am back, I cannot forget the taste of your tiffin.', 'low'],
+    ['laughing', 'ఈ మధ్య రోజూ ఇక్కడికే వస్తున్నా, గమనించావా?', 'Ee madhya rojoo ikkadike vastunnaa, gamaninchaavaa?', 'These days I come only here, have you noticed?', 'low'],
+    ['delighted', 'అన్నా, మన ఎప్పటి చోటు, మన ఎప్పటి {dish}!', 'Anna, mana eppati chotu, mana eppati {dish}!', 'Anna, our usual spot, our usual {dish}!', 'high'],
+    ['happy', 'పదేళ్ళ నుంచి ఇక్కడే తింటున్నా అన్నా, ఇంకెక్కడా రుచించదు', 'Padella nunchi ikkade tintunnaa anna, inkekkadaa ruchinchadu', 'I have eaten only here for ten years, anna, nowhere else tastes right.', 'high'],
+    ['laughing', 'నువ్వు అడగకముందే చెప్తా అన్నా, {dish} ఒకటి!', 'Nuvvu adagakamunde cheptaa anna, {dish} okati!', 'Before you even ask, anna: one {dish}!', 'high'],
+    ['delighted', 'ఈ ఊళ్ళో నీ అంత గొప్ప టిఫిన్ ఎవరూ చేయరు అన్నా', 'Ee oollo nee anta goppa tiffin evaroo cheyaru anna', 'Nobody in this city makes tiffin as good as yours, anna.', 'high'],
+    ['happy', 'ఇక్కడికి రాగానే ఇంటికి వచ్చినట్టే ఉంటుంది అన్నా', 'Ikkadiki raagaane intiki vachchinatte untundi anna', 'The moment I reach here it feels like coming home, anna.', 'high'],
+  ],
+
+  'regular-loyal': [
+    ['delighted', 'ఇదిగో అన్నా, చిల్లర ఉంచుకో. నీ చేతికి దండం', 'Idigo anna, chillara unchuko. Nee cheti ki dandam', 'Here, anna, keep the change. My respects to your hands.'],
+    ['happy', 'చల్లగా ఉండు అన్నా, దేవుడు నిన్ను చల్లగా చూడాలి', 'Challagaa undu anna, devudu ninnu challagaa choodaali', 'Stay well, anna, may God look after you.'],
+    ['happy', 'నీ వ్యాపారం బాగా సాగాలి అన్నా, ఇది నీకే', 'Nee vyaapaaram baagaa saagaali anna, idi neeke', 'May your business thrive, anna, this is for you.'],
+    ['delighted', 'రోజూ ఇంతే రుచిగా ఉండాలి అన్నా, ఇది టిప్!', 'Rojoo inthe ruchigaa undaali anna, idi tip!', 'May it stay this tasty every day, anna, this is a tip!'],
+    ['happy', 'నీ పిల్లలు బాగుండాలి, ఈ డబ్బులు ఉంచు', 'Nee pillalu baagundaali, ee dabbulu unchu', 'May your children be well, keep this money.'],
+    ['paying', 'చిల్లర వద్దు అన్నా, ఇది నీ కష్టానికి', 'Chillara vaddu anna, idi nee kashtaniki', 'No change please, anna, this is for your hard work.'],
+  ],
+
+  'big-office-order': [
+    ['impatient', 'అన్నా, ఆఫీస్ కి {n} పార్సెల్స్ కావాలి, బాస్ ఎదురు చూస్తున్నారు', 'Anna, office ki {n} parcels kaavaali, boss eduru choostunnaaru', 'Anna, I need {n} parcels for the office, the boss is waiting.'],
+    ['neutral', 'పెద్ద ఆర్డర్ ఉంది అన్నా, {n} పార్సెల్స్, లెక్క చూసి కట్టు', 'Pedda order undi anna, {n} parcels, lekka choosi kattu', 'A big order, anna, {n} parcels, count and pack them.'],
+    ['sheepish', 'మీటింగ్ కి టిఫిన్ తీసుకెళ్ళాలి, పెద్ద ఆర్డర్, సారీ అన్నా', 'Meeting ki tiffin teesukellaali, pedda order, sorry anna', 'I have to take tiffin to a meeting, a big order, sorry anna.'],
+    ['impatient', 'టీమ్ అంతా ఆకలితో ఉన్నారు, {n} పార్సెల్స్ త్వరగా', 'Team antaa aakalito unnaaru, {n} parcels tvaragaa', 'The whole team is hungry, {n} parcels quickly.'],
+    ['neutral', 'పెద్ద ఆర్డర్ కదా, కొంచెం టైం పడుతుందని తెలుసు', 'Pedda order kadaa, konchem time padutundani telusu', 'It is a big order, I know it will take a little time.'],
+    ['happy', 'మా బాస్ కి మీ దోశలంటే ఇష్టం, అందుకే పెద్ద ఆర్డర్', 'Maa boss ki mee dosalante ishtam, anduke pedda order', 'My boss loves your dosas, that is why the big order.'],
+    ['impatient', 'అన్నీ ఒకేసారి కట్టండి, క్యారీ బ్యాగ్ లో వేయండి', 'Annee okesaari kattandi, carry bag lo veyandi', 'Pack everything together, put it in a carry bag.'],
+    ['neutral', '{dish} ఎక్కువ, మిగతావి కొంచెం కొంచెం, ఆఫీస్ ఆర్డర్', '{dish} ekkuva, migataavi konchem konchem, office order', 'More {dish}, a little of the others, an office order.'],
+  ],
+
+  'broken-dish-complaint': [
+    ['sad', 'అయ్యో, దోశ చిరిగిపోయింది అన్నా!', 'Ayyo, dosa chirigipoyindi anna!', 'Oh no, the dosa has torn, anna!'],
+    ['neutral', 'పెనానికి అంటుకుంది కదా, సగం రేటు చాలు అన్నా', 'Penaaniki antukundi kadaa, sagam retu chaalu anna', 'It stuck to the tawa, half the price will do, anna.'],
+    ['sad', '{dish} ముక్కలు ముక్కలుగా వచ్చింది అన్నా', '{dish} mukkalu mukkalugaa vachchindi anna', 'The {dish} came in pieces, anna.'],
+    ['neutral', 'పర్వాలేదు తింటా, కానీ సగం డబ్బులే ఇస్తా', 'Parvaaledu tintaa, kaani sagam dabbule istaa', 'It is okay, I will eat it, but I will pay only half.'],
+    ['sheepish', 'పెనం సరిగా తుడవలేదేమో అన్నా, అంటుకుపోయింది', 'Penam sarigaa tudavaledemo anna, antukupoyindi', 'Maybe the tawa was not wiped properly, anna, it stuck.'],
+    ['laughing', 'ఇది దోశా లేక పొడి ఉప్మానా అన్నా?', 'Idi dosaa leka podi upmaanaa anna?', 'Is this a dosa or a crumbly upma, anna?'],
+    ['sad', 'నా {dish} ఇలా చిరిగిపోయింది ఏంటి అన్నా', 'Naa {dish} ilaa chirigipoyindi enti anna', 'Why has my {dish} torn like this, anna?'],
+    ['neutral', 'సరే, రుచి ఒకటే కదా, కానీ రేటు తగ్గించు', 'Sare, ruchi okate kadaa, kaani retu taggimchu', 'Fine, the taste is the same, but lower the price.'],
+  ],
+
+  'sour-batter-complaint': [
+    ['sad', 'దోశ పుల్లగా ఉంది అన్నా', 'Dosa pullagaa undi anna', 'The dosa tastes sour, anna.'],
+    ['neutral', 'పిండి పులిసిపోయినట్టుంది అన్నా', 'Pindi pulisipoyinattundi anna', 'The batter seems to have over-fermented, anna.'],
+    ['sad', '{dish} లో ఏదో పులుపు వాసన వస్తోంది', '{dish} lo edo pulupu vaasana vastondi', 'There is a sour smell in this {dish}.'],
+    ['sheepish', 'అన్నా, ఈ పిండి పాతదా? పుల్లగా ఉంది', 'Anna, ee pindi paatadaa? Pullagaa undi', 'Anna, is this old batter? It is sour.'],
+    ['neutral', 'ఈ టిఫిన్ మెత్తగా లేదు, పులుపు ఎక్కువైంది', 'Ee tiffin mettagaa ledu, pulupu ekkuvaindi', 'This tiffin is not soft, it has turned too sour.'],
+    ['sad', 'కొత్త పిండితో వేయి అన్నా, ఇది బాగాలేదు', 'Kotta pinditho veyi anna, idi baagaaledu', 'Make it with fresh batter, anna, this is not good.'],
+  ],
+
+  'gas-out-chatter': [
+    ['neutral', 'గ్యాస్ అయిపోయిందా? సిలిండర్ మార్చేదాకా ఆగుతా', 'Gas ayipoyindaa? Cylinder maarchedaakaa aagutaa', 'Out of gas? I will wait until the cylinder is changed.'],
+    ['bored', 'సిలిండర్ మార్చడానికి ఎంత టైం పడుతుంది అన్నా?', 'Cylinder maarchadaniki enta time padutundi anna?', 'How long will it take to change the cylinder, anna?'],
+    ['laughing', 'ఇంట్లో కూడా గ్యాస్ ఇలాగే అయిపోతుంది, నాకు తెలుసు', 'Intlo kooda gas ilaage ayipotundi, naaku telusu', 'It runs out like this at home too, I know the feeling.'],
+    ['neutral', 'పర్వాలేదు అన్నా, ఈలోగా ఫోన్ చూసుకుంటా', 'Parvaaledu anna, eelogaa phone choosukuntaa', 'No problem, anna, I will check my phone meanwhile.'],
+    ['surprised', 'ఇదేంటి, మంట ఆరిపోయింది!', 'Identi, manta aaripoyindi!', 'What is this, the flame has gone out!'],
+    ['neutral', 'సిలిండర్ తెచ్చారా అన్నా? ఇంకా ఎంత సేపు?', 'Cylinder techchaaraa anna? Inkaa enta sepu?', 'Did they bring the cylinder, anna? How much longer?'],
+  ],
+
+  'thanks-fast-service': [
+    ['delighted', 'వావ్ అన్నా, ఇంత త్వరగా! థాంక్యూ!', 'Wow anna, inta tvaragaa! Thank you!', 'Wow anna, so fast! Thank you!'],
+    ['happy', 'నువ్వు సూపర్ ఫాస్ట్ అన్నా, ఇలాగే ఉండు', 'Nuvvu super fast anna, ilaage undu', 'You are super fast, anna, stay like this.'],
+    ['happy', 'టైం కి ఇచ్చావ్, ఆఫీసుకి లేట్ అవ్వను, థాంక్స్!', 'Time ki ichchaav, officeki late avvanu, thanks!', 'You gave it on time, I will not be late for office, thanks!'],
+    ['delighted', 'చూస్తుండగానే వచ్చేసింది అన్నా, శభాష్!', 'Choostundagaane vachchesindi anna, shabaash!', 'It came in the blink of an eye, anna, well done!'],
+  ],
+
 };
 
 export const LINES_TE = buildLines('te', D);

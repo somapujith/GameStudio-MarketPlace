@@ -429,6 +429,261 @@ const D = {
     ['sheepish', 'भूल गया था मियाँ, अभी देता हूँ', 'Bhool gaya tha miyan, abhi deta hoon', 'I forgot, miyan, giving it right now.'],
     ['sheepish', 'देर होगई ना, माफ़ कर दे', 'Der hogayi na, maaf kar de', 'I made you wait, please forgive me.'],
   ],
+  // ---- the operations layer: weather, events, requests, regulars, complaints (docs/TIFFIN_CENTRE_PLAN.md section 3b) ----
+
+  'rain-start': [
+    ['surprised', 'अरे बारिश आगई मियाँ! ज़रा अंदर आने दे', 'Arre baarish aagayi miyan! Zara andar aane de', 'Oh, the rain has come, miyan! Let me come in for a bit.'],
+    ['happy', 'बारिश होरी मियाँ, गरम चाय एक दे ना', 'Baarish hori miyan, garam chai ek de na', 'It is raining, miyan, give me one hot chai.'],
+    ['laughing', 'पूरा भीग गया यार! इदर खड़ा हो जाऊँ क्या?', 'Poora bheeg gaya yaar! Idhar khada ho jaaun kya?', 'I am completely soaked, man! May I stand here?'],
+    ['happy', 'बारिश और गरम मिरची बज्जी... क्या बात मियाँ!', 'Baarish aur garam mirchi bajji... kya baat miyan!', 'Rain and hot mirchi bajji... what a combination, miyan!'],
+    ['sad', 'छाता भूल गया मियाँ, इदरीच रुक जाता', 'Chhaata bhool gaya miyan, idhrich ruk jaata', 'I forgot my umbrella, miyan, I will wait right here.'],
+    ['surprised', 'अचानक धड़ाधड़ बारिश! मियाँ, सब भीग रै!', 'Achaanak dhadaadhad baarish! Miyan, sab bheeg rai!', 'Sudden heavy rain! Miyan, everyone is getting soaked!'],
+    ['happy', 'इस बारिश में चाय नईं पिये तो कब पिये मियाँ', 'Is baarish mein chai nai piye toh kab piye miyan', 'If not in this rain, when will we drink chai, miyan?'],
+    ['neutral', 'रोड पे पानी भर गया, ज़रा देर इदरीच बैठता', 'Road pe paani bhar gaya, zara der idhrich baithta', 'The road is flooded, I will sit right here a while.'],
+  ],
+
+  'rain-ongoing': [
+    ['bored', 'बारिश अभी भी नईं रुक री मियाँ', 'Baarish abhi bhi nai ruk ri miyan', 'The rain is still not stopping, miyan.'],
+    ['laughing', 'अपने शहर की बारिश है, रोड सब तालाब बन गए', 'Apne shehar ki baarish hai, road sab taalaab ban gaye', 'It is our city rain: all the roads have turned into ponds.'],
+    ['happy', 'एक और चाय दे मियाँ, बारिश रुकने तक इदरीच हूँ', 'Ek aur chai de miyan, baarish rukne tak idhrich hoon', 'One more chai, miyan, I am right here until the rain stops.'],
+    ['bored', 'ट्रैफ़िक जाम होगया, इदरीच बैठ जाता हूँ', 'Traffic jaam hogaya, idhrich baith jaata hoon', 'Traffic is jammed, I will just sit right here.'],
+    ['happy', 'बारिश में बज्जी खाने का मज़ा ही कुछ और', 'Baarish mein bajji khaane ka maza hi kuchh aur', 'Eating bajji in the rain is a joy of its own.'],
+    ['surprised', 'अभी बिजली कड़की रे! मैं तो डर गया', 'Abhi bijli kadki re! Main toh dar gaya', 'Lightning just struck! I got scared.'],
+    ['neutral', 'इस बारिश में सब काम रुक गए मियाँ', 'Is baarish mein sab kaam ruk gaye miyan', 'All work has stopped in this rain, miyan.'],
+    ['sad', 'इस बारिश में घर कैसे जाने का?', 'Is baarish mein ghar kaise jaane ka?', 'How am I supposed to get home in this rain?'],
+  ],
+
+  'rain-end': [
+    ['happy', 'बारिश रुक गई! अब निकलता हूँ मियाँ', 'Baarish ruk gayi! Ab nikalta hoon miyan', 'The rain has stopped! I will head off now, miyan.'],
+    ['happy', 'धूप निकल आई, मौसम झकास ठंडा होगया', 'Dhoop nikal aayi, mausam jhakaas thanda hogaya', 'The sun is out, the weather has turned beautifully cool.'],
+    ['laughing', 'बारिश थम गई, अब रोड का तालाब पार करने का!', 'Baarish tham gayi, ab road ka taalaab paar karne ka!', 'The rain has eased, now to cross the pond on the road!'],
+    ['neutral', 'चलो बारिश रुकी, मिट्टी की ख़ुशबू क्या बात है', 'Chalo baarish ruki, mitti ki khushboo kya baat hai', 'Good, the rain has stopped, that smell of wet earth is something.'],
+  ],
+
+  'power-cut': [
+    ['surprised', 'अरे, करंट गया मियाँ!', 'Arre, current gaya miyan!', 'Oh no, the power is gone, miyan!'],
+    ['neutral', 'फ़ोन की टॉर्च लगाओ रे, सब अँधेरा होगया', 'Phone ki torch lagao re, sab andhera hogaya', 'Switch on your phone torches, everything is dark.'],
+    ['laughing', 'हैदराबाद में करंट जाना कोई नई बात है क्या?', 'Hyderabad mein current jaana koi nayi baat hai kya?', 'Is a power cut anything new in Hyderabad?'],
+    ['bored', 'पता नईं कब आएगा ये करंट', 'Pata nai kab aayega ye current', 'Who knows when this power will come back.'],
+    ['neutral', 'कोई बात नईं मियाँ, गैस पे बनाते रे, मैं टॉर्च पकड़ता', 'Koi baat nai miyan, gas pe banaate re, main torch pakadta', 'No problem, miyan, keep cooking on the gas, I will hold the torch.'],
+    ['sheepish', 'अँधेरे में पैसे कैसे देने का मियाँ?', 'Andhere mein paise kaise dene ka miyan?', 'How am I supposed to pay in the dark, miyan?'],
+    ['surprised', 'पंखा रुक गया, अब उमस होरी', 'Pankha ruk gaya, ab umas hori', 'The fan has stopped, it is getting muggy now.'],
+    ['happy', 'मोमबत्ती जला दे, टिफ़िन सेंटर में कैंडल लाइट डिनर!', 'Mombatti jala de, tiffin centre mein candle light dinner!', 'Light a candle: candle light dinner at the tiffin centre!'],
+  ],
+
+  'power-back': [
+    ['happy', 'चलो, करंट आगया!', 'Chalo, current aagaya!', 'Good, the power is back!'],
+    ['laughing', 'अब चेहरे दिख रै, लाइट आगई!', 'Ab chehre dikh rai, light aagayi!', 'Now I can see faces, the light is back!'],
+    ['neutral', 'पंखा चल पड़ा, चलो अच्छा हुआ मियाँ', 'Pankha chal pada, chalo achchha hua miyan', 'The fan is running again, good, miyan.'],
+    ['happy', 'करंट आगया, अब ज़रा स्पीड बढ़ा मियाँ', 'Current aagaya, ab zara speed badha miyan', 'The power is back, now speed up a little, miyan.'],
+  ],
+
+  'cricket-night': [
+    ['happy', 'आज इंडिया का मैच है मियाँ, पूरी भीड़ आएगी', 'Aaj India ka match hai miyan, poori bheed aayegi', 'There is an India match today, miyan, the place will be packed.'],
+    ['delighted', 'छक्का! देखा मियाँ, स्टेडियम के बाहर गई!', 'Chhakka! Dekha miyan, stadium ke baahar gayi!', 'A six! Did you see that, miyan, it went out of the stadium!'],
+    ['impatient', 'जल्दी दे मियाँ, आख़िरी ओवर निकल जाएगा', 'Jaldi de miyan, aakhiri over nikal jaayega', 'Be quick, miyan, the last over will slip by.'],
+    ['neutral', 'मैच देखते नाश्ता करने का मज़ा ही अलग', 'Match dekhte naashta karne ka maza hi alag', 'Having breakfast while watching the match is a joy of its own.'],
+    ['happy', 'इंडिया ही जीतेगी मियाँ, तू देख लेना', 'India hi jeetegi miyan, tu dekh lena', 'India will win, miyan, you will see.'],
+    ['sad', 'विकेट गिरा यार! अब क्या होने वाला', 'Wicket gira yaar! Ab kya hone waala', 'A wicket has fallen, man! What is going to happen now?'],
+    ['laughing', 'पूरी गैंग आई मियाँ, सबके वास्ते दोसे लगा!', 'Poori gang aayi miyan, sabke waaste dose laga!', 'The whole gang has come, miyan, make dosas for everyone!', ['student']],
+    ['delighted', 'आज एसआरएच खेल रा, जीतना ही पड़ेगा मियाँ!', 'Aaj SRH khel ra, jeetna hi padega miyan!', 'SRH is playing today, they just have to win, miyan!'],
+    ['laughing', 'एक बॉल पे दस लोग चिल्ला रै, क्या शोर!', 'Ek ball pe das log chilla rai, kya shor!', 'Ten people shouting over one ball, what a racket!'],
+    ['happy', 'जीत गए तो आज सबकी चाय मेरे तरफ़ से!', 'Jeet gaye toh aaj sabki chai mere taraf se!', 'If we win, everyone gets chai from me today!'],
+  ],
+
+  'festival-greeting': [
+    ['delighted', 'सबको त्योहार की बोहोत बोहोत मुबारकबाद!', 'Sabko tyohaar ki bohot bohot mubaarakbaad!', 'Many, many festival greetings to everyone!'],
+    ['happy', 'संक्रांति मुबारक मियाँ, चल पतंग उड़ाएँ!', 'Sankraanti mubaarak miyan, chal patang udaayen!', 'Happy Sankranti, miyan, come let us fly kites!'],
+    ['happy', 'उगादी मुबारक! पच्चड़ी खाया क्या?', 'Ugaadi mubaarak! Pachchadi khaaya kya?', 'Happy Ugadi! Have you had the pachadi?'],
+    ['happy', 'दशहरा मुबारक आपा, सबका भला हो', 'Dashahra mubaarak aapa, sabka bhala ho', 'Happy Dussehra, aapa, may it be well for everyone.'],
+    ['delighted', 'ईद मुबारक मियाँ! सब मिलके ख़ुशी मनाएँ', 'Eid mubaarak miyan! Sab milke khushi manaayen', 'Eid Mubarak, miyan! Let us all celebrate together.'],
+    ['happy', 'दीवाली मुबारक! ये मिठाई ले ना', 'Deewali mubaarak! Ye mithaai le na', 'Happy Diwali! Take this sweet.'],
+    ['neutral', 'त्योहार का दिन है मियाँ, घर जाने से पैले एक नाश्ता', 'Tyohaar ka din hai miyan, ghar jaane se pehle ek naashta', 'It is a festival day, one snack before heading home.'],
+    ['happy', 'कोई भी त्योहार हो, सब साथ मिलके मनाने का मियाँ!', 'Koi bhi tyohaar ho, sab saath milke manaane ka miyan!', 'Whatever the festival, we all celebrate together, miyan!'],
+  ],
+
+  'inspector-arrival': [
+    ['surprised', 'मियाँ, जीएचएमसी वाले आगए, संभलके!', 'Miyan, GHMC waale aagaye, sambhalke!', 'Miyan, the GHMC people have come, be careful!'],
+    ['neutral', 'लगता इंस्पेक्टर आया, कड़छी साफ़ कर ले मियाँ', 'Lagta inspector aaya, karchhi saaf kar le miyan', 'Looks like an inspector has come, wipe the ladle, miyan.'],
+    ['surprised', 'उदर देख, फ़ूड वाले इंस्पेक्टर आरे', 'Udhar dekh, food waale inspector aare', 'Look over there, the food inspectors are coming.'],
+    ['sheepish', 'मियाँ, तवा साफ़ है ना? चेकिंग आई', 'Miyan, tawa saaf hai na? Checking aayi', 'Miyan, is the tawa clean? A check has come.'],
+    ['neutral', 'धीरे बोल रा हूँ, जीएचएमसी की चेकिंग है', 'Dheere bol ra hoon, GHMC ki checking hai', 'I am speaking softly, there is a GHMC check.'],
+    ['surprised', 'सब सफ़ाई काइकू कर रै? अच्छा, इंस्पेक्टर आया क्या?', 'Sab safaai kaiku kar rai? Achchha, inspector aaya kya?', 'Why is everyone cleaning up? Oh, has the inspector come?'],
+  ],
+
+  'inspector-pass': [
+    ['delighted', 'शाबाश मियाँ! इंस्पेक्टर ने भी तारीफ़ की', 'Shaabaash miyan! Inspector ne bhi taareef ki', 'Well done, miyan! Even the inspector praised you.'],
+    ['happy', 'वाह! तेरे इदर सफ़ाई हमेशा ऐसीच रैती', 'Waah! Tere idhar safaai hamesha aisich raiti', 'Wow! The cleanliness at your place is always like this.'],
+    ['laughing', 'चेकिंग पास! अब हमको एक दोसा और दे', 'Checking paas! Ab hamko ek dosa aur de', 'Check passed! Now give us one more dosa.'],
+    ['delighted', 'इसीवास्ते इदरीच आता, हमेशा साफ़ रैता', 'Isiwaaste idhrich aata, hamesha saaf raita', 'That is why I come only here, it is always clean.'],
+  ],
+
+  'inspector-fail': [
+    ['sad', 'अरे, जुर्माना लगा दिया क्या? बेचारा मियाँ', 'Arre, jurmaana laga diya kya? Bechaara miyan', 'Oh, did they fine you? Poor miyan.'],
+    ['neutral', 'कोई बात नईं मियाँ, कल से और साफ़ रखना', 'Koi baat nai miyan, kal se aur saaf rakhna', 'No problem, miyan, keep it cleaner from tomorrow.'],
+    ['sad', 'तवा पोंछ लेता तो अच्छा होता मियाँ', 'Tawa ponchh leta toh achchha hota miyan', 'It would have been good if you had wiped the tawa, miyan.'],
+    ['sheepish', 'इत्ती भीड़ में कोई भी भूल जाए', 'Itti bheed mein koi bhi bhool jaaye', 'In this much rush anyone could forget.'],
+  ],
+
+  'sold-out-polite': [
+    ['sad', '{dish} ख़तम होगया? ठीक है, {dish2} दे दे', '{dish} khatam hogaya? Theek hai, {dish2} de de', '{dish} is finished? Okay, give me {dish2}.', 'swap'],
+    ['neutral', 'अरे, {dish} नईं है! तो फिर {dish2} दे मियाँ', 'Arre, {dish} nai hai! Toh phir {dish2} de miyan', 'Oh, no {dish}! Then {dish2}, miyan.', 'swap'],
+    ['sheepish', '{dish} के वास्तेईच आया था... कोई बात नईं, {dish2} चलेगा', '{dish} ke waasteich aaya tha... koi baat nai, {dish2} chalega', 'I came just for {dish}... never mind, {dish2} will do.', 'swap'],
+    ['happy', '{dish} नईं तो {dish2} गरम-गरम दे दे', '{dish} nai toh {dish2} garam-garam de de', 'If there is no {dish}, give me hot {dish2}.', 'swap'],
+    ['surprised', 'इत्ती जल्दी {dish} ख़तम? चलो, {dish2} ले लेता', 'Itti jaldi {dish} khatam? Chalo, {dish2} le leta', '{dish} gone already? Okay, I will take {dish2}.', 'swap'],
+    ['laughing', 'मेरा {dish} कोई खा गया! फिर {dish2} दे दे', 'Mera {dish} koi kha gaya! Phir {dish2} de de', 'Someone ate my {dish}! Fine, give me {dish2} then.', 'swap'],
+    ['sad', '{dish} नईं है? ठीक है मियाँ, कल आता', '{dish} nai hai? Theek hai miyan, kal aata', 'No {dish}? Okay miyan, I will come tomorrow.', 'leave'],
+    ['sad', 'अरे, ख़तम होगया? कोई बात नईं, फिर आऊँगा', 'Arre, khatam hogaya? Koi baat nai, phir aaunga', 'Oh, it is finished? Never mind, I will come again.', 'leave'],
+    ['sheepish', 'देर से आया, मेरी ग़लती। चलता मियाँ', 'Der se aaya, meri galti. Chalta miyan', 'I came late, my fault. I am off, miyan.', 'leave'],
+    ['neutral', '{dish} नईं तो किदर और देख लेता', '{dish} nai toh kidhar aur dekh leta', 'No {dish}, then I will look somewhere else.', 'leave'],
+    ['happy', 'कोई बात नईं आपा, कल जल्दी आऊँगा', 'Koi baat nai aapa, kal jaldi aaunga', 'No problem, aapa, I will come early tomorrow.', 'leave'],
+    ['neutral', '{dish} नईं है? ठीक है, वो रहने दे', '{dish} nai hai? Theek hai, wo rehne de', 'No {dish}? Fine, leave that one.', 'drop'],
+    ['sad', 'अरे {dish} ख़तम होगया, जो है वोईच दे दे', 'Arre {dish} khatam hogaya, jo hai woich de de', 'Oh, {dish} is finished? Just give what you have.', 'drop'],
+    ['sheepish', '{dish} बिना भी चलेगा, बाक़ी दे दे', '{dish} bina bhi chalega, baaqi de de', 'It is fine without {dish}, give me the rest.', 'drop'],
+  ],
+
+  'stock-out-apology': [
+    ['sheepish', 'कोई बात नईं मियाँ, आज भीड़ बोहोत है', 'Koi baat nai miyan, aaj bheed bohot hai', 'No problem, miyan, it is very crowded today.'],
+    ['neutral', 'सामान ख़तम होगया क्या? जल्दी नईं, करते रे', 'Saamaan khatam hogaya kya? Jaldi nai, karte re', 'Ran out of stock? No hurry, carry on.'],
+    ['happy', 'टेंशन नईं लेने का मियाँ, हम थोड़ा रुकते', 'Tension nai lene ka miyan, hum thoda rukte', 'No need to take tension, miyan, we will wait a little.'],
+    ['neutral', 'कुछ और हो तो देख मियाँ, चलता', 'Kuchh aur ho toh dekh miyan, chalta', 'See if you have something else, miyan, that will do.'],
+  ],
+
+  'delivery-boy-hurry': [
+    ['impatient', 'मियाँ, {n} पार्सल जल्दी कर, ऑर्डर लेट हुआ तो रेटिंग गिर जाती!', 'Miyan, {n} parcel jaldi kar, order late hua toh rating gir jaati!', 'Miyan, get {n} parcels ready fast, if the order is late my rating drops!'],
+    ['impatient', 'एक मिनट भी नईं है मियाँ, कस्टमर रस्ता देख रा', 'Ek minute bhi nai hai miyan, customer rasta dekh ra', 'Not even a minute to spare, miyan, the customer is waiting.'],
+    ['sheepish', 'रेटिंग गिरी तो इंसेंटिव कट जाता मियाँ, जल्दी कर', 'Rating giri toh incentive kat jaata miyan, jaldi kar', 'If my rating drops the incentive gets cut, miyan, be quick.'],
+    ['impatient', 'पैले {dish} का पार्सल दे, बाक़ी बाद में', 'Pehle {dish} ka parcel de, baaqi baad mein', 'Give the {dish} parcel first, the rest later.'],
+    ['neutral', 'बाइक रोड पे छोड़ आया मियाँ, पुलिस आजाएगी', 'Bike road pe chhod aaya miyan, police aajaayegi', 'I left my bike on the road, miyan, the police will come.'],
+    ['impatient', 'फ़ोन पे फ़ोन आरा, किदर है करके', 'Phone pe phone aara, kidhar hai karke', 'Call after call is coming asking where I am.'],
+    ['angry', 'और देर हुआ तो ऑर्डर कैंसिल होजाता मियाँ!', 'Aur der hua toh order cancel hojaata miyan!', 'If it gets any later the order gets cancelled, miyan!'],
+    ['sheepish', 'प्लीज़ मियाँ, आज का आख़िरी डिलीवरी है, जल्दी', 'Please miyan, aaj ka aakhiri delivery hai, jaldi', 'Please miyan, it is today\'s last delivery, quickly.'],
+  ],
+
+  'parcel-request': [
+    ['neutral', '{dish} पार्सल कर दे मियाँ', '{dish} parcel kar de miyan', 'Pack the {dish} as a parcel, miyan.'],
+    ['neutral', 'इदर नईं खाता, बाँध दे आपा', 'Idhar nai khaata, baandh de aapa', 'I do not eat here, pack it up, aapa.'],
+    ['impatient', 'पार्सल दे दे, बस का टाइम होगया', 'Parcel de de, bus ka time hogaya', 'Give me a parcel, it is bus time.'],
+    ['happy', 'घर ले जाने का, पार्सल बना दे मियाँ', 'Ghar le jaane ka, parcel bana de miyan', 'I am taking it home, make it a parcel, miyan.'],
+    ['neutral', 'चटनी सांभर अलग थैली में डालने का, पार्सल है', 'Chutney sambhar alag thaili mein daalne ka, parcel hai', 'Put the chutney and sambar in a separate bag, it is a parcel.'],
+    ['neutral', 'ऑफ़िस के वास्ते पार्सल, कसके बाँधना मियाँ', 'Office ke waaste parcel, kasake baandhna miyan', 'A parcel for the office, pack it tight, miyan.', ['office', 'techie']],
+    ['happy', 'बच्चों को घर पे खिलाने का, पार्सल दे दे', 'Bachchon ko ghar pe khilaane ka, parcel de de', 'I will feed the kids at home, give me a parcel.', ['family']],
+    ['sheepish', 'लीक नईं होने का, चटनी बहती मियाँ, ध्यान से बाँध', 'Leak nai hone ka, chutney behti miyan, dhyaan se baandh', 'No leaks, the chutney runs, miyan, pack it carefully.'],
+  ],
+
+  'extra-request-chutney': [
+    ['neutral', 'मियाँ, चटनी ज़रा ज़्यादा देने का', 'Miyan, chutney zara zyaada dene ka', 'Miyan, give a bit more chutney.'],
+    ['happy', 'नारियल की चटनी थोड़ी और दे, ज़बरदस्त है', 'Nariyal ki chutney thodi aur de, zabardast hai', 'A little more coconut chutney, it is terrific.'],
+    ['sheepish', 'चटनी बिना दोसा कैसे खाने का, एक कड़छी और', 'Chutney bina dosa kaise khaane ka, ek karchhi aur', 'How do you eat dosa without chutney, one more ladle.'],
+    ['happy', 'एक्स्ट्रा चटनी दे मियाँ, चार रुपे ज़्यादा ले ले', 'Extra chutney de miyan, chaar rupe zyaada le le', 'Give extra chutney, miyan, take four rupees more.'],
+    ['neutral', 'कटोरी भर के चटनी डाल दे मियाँ', 'Katori bhar ke chutney daal de miyan', 'Fill the bowl with chutney, miyan.'],
+    ['delighted', 'तेरी चटनी के वास्ते तो आता हूँ, थोड़ी और दे', 'Teri chutney ke waaste toh aata hoon, thodi aur de', 'I come just for your chutney, give a little more.'],
+    ['neutral', 'मूँगफली की चटनी भी साइड में डाल दे', 'Moongfali ki chutney bhi side mein daal de', 'Put some peanut chutney on the side too.'],
+    ['laughing', 'चटनी में कंजूसी नईं करने का मियाँ!', 'Chutney mein kanjoosi nai karne ka miyan!', 'No being stingy with the chutney, miyan!'],
+  ],
+
+  'extra-request-sambar': [
+    ['neutral', 'मियाँ, सांभर थोड़ा और डालेगा क्या?', 'Miyan, sambhar thoda aur daalega kya?', 'Miyan, will you add a little more sambar?'],
+    ['happy', 'गरम सांभर की एक कड़छी और डाल दे', 'Garam sambhar ki ek karchhi aur daal de', 'One more ladle of hot sambar.'],
+    ['neutral', 'इडली सांभर में डूबी होनी, और डाल', 'Idli sambhar mein doobi honi, aur daal', 'Idli should be drowned in sambar, pour more.'],
+    ['happy', 'एक्स्ट्रा सांभर दे, चार रुपे ज़्यादा लगे तो लगे', 'Extra sambhar de, chaar rupe zyaada lage toh lage', 'Give extra sambar, if it costs four rupees more so be it.'],
+    ['delighted', 'सांभर की ख़ुशबू झकास है, थोड़ा और प्लीज़', 'Sambhar ki khushboo jhakaas hai, thoda aur please', 'The sambar smells grand, a little more please.'],
+    ['neutral', 'सांभर अलग कप में दे, पी लेता', 'Sambhar alag cup mein de, pee leta', 'Give the sambar in a separate cup, I will drink it.'],
+    ['sheepish', 'मियाँ, वड़े के वास्ते सांभर कम पड़ गया', 'Miyan, vade ke waaste sambhar kam pad gaya', 'Miyan, the sambar fell short for the vada.'],
+    ['laughing', 'तेरे सांभर की तो आदत लग गई मियाँ', 'Tere sambhar ki toh aadat lag gayi miyan', 'I have got used to your sambar, miyan.'],
+  ],
+
+  'spice-request-less': [
+    ['neutral', 'मियाँ, मिरची कम डालने का, मेरेकू सूट नईं होता', 'Miyan, mirchi kam daalne ka, mereku suit nai hota', 'Miyan, go easy on the chilli, it does not suit me.'],
+    ['sheepish', 'बच्चों को तीखा नईं चलता, कम मिरची डाल आपा', 'Bachchon ko teekha nai chalta, kam mirchi daal aapa', 'The kids cannot take spice, use less chilli, aapa.', ['family']],
+    ['neutral', '{dish} में मिरची कम रखने का मियाँ', '{dish} mein mirchi kam rakhne ka miyan', 'Keep the chilli low in the {dish}, miyan.'],
+    ['sad', 'पेट ठीक नईं, बिना मिरची के दे दे', 'Pet theek nai, bina mirchi ke de de', 'My stomach is upset, give it without chilli.'],
+    ['laughing', 'मेरेकू तीखे से डर लगता, बस थोड़ा डाल', 'Mereku teekhe se dar lagta, bas thoda daal', 'I am scared of spice, just put a little.'],
+    ['neutral', 'हरी मिरची कम डालने का, सुबू से जलन होरी', 'Hari mirchi kam daalne ka, subu se jalan hori', 'Less green chilli, I have had acidity since morning.'],
+    ['happy', 'मीडियम तीखा बस, पूरा हैदराबादी नईं चाहिये', 'Medium teekha bas, poora Hyderabadi nai chaahiye', 'Medium spice only, not the full Hyderabadi.'],
+    ['sheepish', 'तीखा कम होना मियाँ, प्लीज़', 'Teekha kam hona miyan, please', 'It should be less spicy, miyan, please.'],
+  ],
+
+  'spice-request-more': [
+    ['happy', 'मिरची ज़्यादा डाल मियाँ, तीखा झकास होना', 'Mirchi zyaada daal miyan, teekha jhakaas hona', 'Put in more chilli, miyan, it should be properly fiery.'],
+    ['delighted', 'असली हैदराबादी तीखा चाहिये, डरने का नईं मियाँ', 'Asli Hyderabadi teekha chaahiye, darne ka nai miyan', 'I want proper Hyderabadi heat, no need to be scared, miyan.'],
+    ['neutral', '{dish} पे मिरची पाउडर और छिड़क दे', '{dish} pe mirchi powder aur chhidak de', 'Sprinkle more chilli powder on the {dish}.'],
+    ['happy', 'तीखा नईं तो खाने का मज़ाईच नईं आपा', 'Teekha nai toh khaane ka mazaich nai aapa', 'Without spice there is no joy in eating, aapa.'],
+    ['laughing', 'आँखों में पानी आने का, इत्ती मिरची डाल!', 'Aankhon mein paani aane ka, itti mirchi daal!', 'My eyes should water, put in that much chilli!'],
+    ['neutral', 'दो हरी मिरची ज़्यादा डाल दे', 'Do hari mirchi zyaada daal de', 'Put in two extra green chillies.'],
+    ['happy', 'गन पाउडर ज़्यादा डालने का मियाँ', 'Gun powder zyaada daalne ka miyan', 'Add more gunpowder, miyan.'],
+    ['happy', 'कित्ता भी तीखा हो चलता, मैं झेल लेता', 'Kitta bhi teekha ho chalta, main jhel leta', 'However hot it is, I can take it.'],
+  ],
+
+  'regular-named': [
+    ['happy', 'मियाँ, पैचाना? कल भी आया था', 'Miyan, pehchaana? Kal bhi aaya tha', 'Miyan, do you recognise me? I came yesterday too.', 'low'],
+    ['happy', 'मियाँ, अपना वोईच पुराना!', 'Miyan, apna woich purana!', 'Miyan, my same old one!', 'low'],
+    ['happy', 'हमेशा जैसा {dish}, याद है ना मियाँ?', 'Hamesha jaisa {dish}, yaad hai na miyan?', 'The usual {dish}, you remember, miyan?', 'low'],
+    ['happy', 'मियाँ, फिर आगया, तेरे नाश्ते का स्वाद भूलता ही नईं', 'Miyan, phir aagaya, tere naashte ka swaad bhoolta hi nai', 'Miyan, I am back, I cannot forget the taste of your breakfast.', 'low'],
+    ['laughing', 'आजकल रोज़ इदरीच आरा, ध्यान दिया क्या?', 'Aajkal roz idhrich aara, dhyaan diya kya?', 'These days I come right here every day, have you noticed?', 'low'],
+    ['delighted', 'मियाँ, अपनी वोईच जगह, वोईच {dish}!', 'Miyan, apni woich jagah, woich {dish}!', 'Miyan, our same spot, our same {dish}!', 'high'],
+    ['happy', 'दस साल से इदरीच खा रा मियाँ, किदर और जमता ही नईं', 'Das saal se idhrich kha ra miyan, kidhar aur jamta hi nai', 'I have been eating right here for ten years, miyan, nowhere else suits me.', 'high'],
+    ['laughing', 'तू पूछे उससे पैले बता देता, एक {dish}!', 'Tu poochhe usse pehle bata deta, ek {dish}!', 'Before you even ask, I will tell you: one {dish}!', 'high'],
+    ['delighted', 'पूरे शहर में तेरे जैसा नाश्ता कोई नईं बनाता मियाँ', 'Poore shehar mein tere jaisa naashta koi nai banaata miyan', 'Nobody in the whole city makes breakfast like you, miyan.', 'high'],
+    ['happy', 'इदर आते ही घर जैसा लगता मियाँ', 'Idhar aate hi ghar jaisa lagta miyan', 'The moment I get here it feels like home, miyan.', 'high'],
+  ],
+
+  'regular-loyal': [
+    ['delighted', 'ये ले मियाँ, छुट्टे रख ले। तेरे हाथों को सलाम', 'Ye le miyan, chhutte rakh le. Tere haathon ko salaam', 'Here, miyan, keep the change. Hats off to your hands.'],
+    ['happy', 'जीता रे मियाँ, ऊपरवाला तेरे को ख़ुश रखे', 'Jeeta re miyan, upar waala tere ko khush rakhe', 'Live long, miyan, may the One above keep you happy.'],
+    ['happy', 'तेरा धंधा ख़ूब चले मियाँ, ये तेरे वास्ते', 'Tera dhandha khoob chale miyan, ye tere waaste', 'May your business flourish, miyan, this is for you.'],
+    ['delighted', 'रोज़ ऐसाच स्वाद रेना मियाँ, ये टिप है!', 'Roz aisaich swaad rena miyan, ye tip hai!', 'May it taste just like this every day, miyan, this is a tip!'],
+    ['happy', 'तेरे बच्चे ख़ुश रेवें, ये पैसे रख ले', 'Tere bachche khush reven, ye paise rakh le', 'May your children be happy, keep this money.'],
+    ['paying', 'छुट्टे नईं चाहिये मियाँ, ये तेरी मेहनत के', 'Chhutte nai chaahiye miyan, ye teri mehnat ke', 'No change needed, miyan, this is for your hard work.'],
+  ],
+
+  'big-office-order': [
+    ['impatient', 'मियाँ, ऑफ़िस के वास्ते {n} पार्सल चाहिये, बॉस रस्ता देख रै', 'Miyan, office ke waaste {n} parcel chaahiye, boss rasta dekh rai', 'Miyan, I need {n} parcels for the office, the boss is waiting.'],
+    ['neutral', 'बड़ा ऑर्डर है मियाँ, {n} पार्सल, गिनके बाँध', 'Bada order hai miyan, {n} parcel, ginke baandh', 'A big order, miyan, {n} parcels, count and pack them.'],
+    ['sheepish', 'मीटिंग के वास्ते नाश्ता ले जाने का, बड़ा ऑर्डर, सॉरी मियाँ', 'Meeting ke waaste naashta le jaane ka, bada order, sorry miyan', 'I have to take breakfast to a meeting, a big order, sorry miyan.'],
+    ['impatient', 'पूरी टीम भूकी है, {n} पार्सल जल्दी चाहिये', 'Poori team bhooki hai, {n} parcel jaldi chaahiye', 'The whole team is hungry, I need {n} parcels quickly.'],
+    ['neutral', 'बड़ा ऑर्डर है, ज़रा टाइम लगेगा, मेरेकू मालूम', 'Bada order hai, zara time lagega, mereku maaloom', 'It is a big order, I know it will take a little time.'],
+    ['happy', 'हमारे बॉस को तेरे दोसे बोहोत पसंद, इसीलिए बड़ा ऑर्डर', 'Hamaare boss ko tere dose bohot pasand, isiliye bada order', 'My boss loves your dosas, that is why the big order.'],
+    ['impatient', 'सब एक साथ बाँधने का, कैरी बैग में डाल देना', 'Sab ek saath baandhne ka, carry bag mein daal dena', 'Pack everything together, put it in a carry bag.'],
+    ['neutral', '{dish} ज़्यादा, बाक़ी थोड़े-थोड़े, ऑफ़िस का ऑर्डर', '{dish} zyaada, baaqi thode-thode, office ka order', 'More {dish}, a little of the others, an office order.'],
+  ],
+
+  'broken-dish-complaint': [
+    ['sad', 'अरे, दोसा फट गया मियाँ!', 'Arre, dosa phat gaya miyan!', 'Oh no, the dosa has torn, miyan!'],
+    ['neutral', 'तवे पे चिपक गया ना, आधे दाम में चलेगा', 'Tawe pe chipak gaya na, aadhe daam mein chalega', 'It stuck to the tawa, half the price will do.'],
+    ['sad', '{dish} टुकड़े-टुकड़े होके आया मियाँ', '{dish} tukde-tukde hoke aaya miyan', 'The {dish} came in pieces, miyan.'],
+    ['neutral', 'चलता, खा लेता, पर पैसे आधेईच दूँगा', 'Chalta, kha leta, par paise aadheich doonga', 'It will do, I will eat it, but I will pay only half.'],
+    ['sheepish', 'शायद तवा ठीक से साफ़ नईं था मियाँ, चिपक गया', 'Shaayad tawa theek se saaf nai tha miyan, chipak gaya', 'Maybe the tawa was not wiped properly, miyan, it stuck.'],
+    ['laughing', 'ये दोसा है या सूखा उपमा मियाँ?', 'Ye dosa hai ya sookha upma miyan?', 'Is this a dosa or a dry upma, miyan?'],
+    ['sad', 'मेरा {dish} ऐसा क्यूँ टूट गया मियाँ', 'Mera {dish} aisa kyun toot gaya miyan', 'Why did my {dish} break like this, miyan?'],
+    ['neutral', 'ठीक है, स्वाद तो वोईच है, पर दाम कम कर', 'Theek hai, swaad toh woich hai, par daam kam kar', 'Fine, the taste is the same, but lower the price.'],
+  ],
+
+  'sour-batter-complaint': [
+    ['sad', 'दोसा खट्टा है मियाँ', 'Dosa khatta hai miyan', 'The dosa is sour, miyan.'],
+    ['neutral', 'लगता बैटर ज़्यादा खमीर होगया मियाँ', 'Lagta batter zyaada khameer hogaya miyan', 'It seems the batter has over-fermented, miyan.'],
+    ['sad', '{dish} में खट्टी बास आरी', '{dish} mein khatti baas aari', 'There is a sour smell in this {dish}.'],
+    ['sheepish', 'मियाँ, ये पुराना बैटर है क्या? खट्टा लग रा', 'Miyan, ye purana batter hai kya? Khatta lag ra', 'Miyan, is this old batter? It tastes sour.'],
+    ['neutral', 'ये नाश्ता नरम नईं, बोहोत खट्टा होगया', 'Ye naashta naram nai, bohot khatta hogaya', 'This is not soft, it has gone too sour.'],
+    ['sad', 'ताज़ा बैटर से बना मियाँ, ये ठीक नईं', 'Taaza batter se bana miyan, ye theek nai', 'Make it with fresh batter, miyan, this is not right.'],
+  ],
+
+  'gas-out-chatter': [
+    ['neutral', 'गैस ख़तम होगई? सिलेंडर बदलने तक रुकता', 'Gas khatam hogayi? Cylinder badalne tak rukta', 'Out of gas? I will wait till the cylinder is changed.'],
+    ['bored', 'सिलेंडर बदलने में कित्ता टाइम लगेगा मियाँ?', 'Cylinder badalne mein kitta time lagega miyan?', 'How long will changing the cylinder take, miyan?'],
+    ['laughing', 'घर में भी गैस ऐसेईच ख़तम होती, मेरेकू मालूम', 'Ghar mein bhi gas aiseich khatam hoti, mereku maaloom', 'Gas runs out like this at home too, I know the feeling.'],
+    ['neutral', 'कोई बात नईं मियाँ, तब तक फ़ोन देख लेता', 'Koi baat nai miyan, tab tak phone dekh leta', 'No problem, miyan, I will check my phone till then.'],
+    ['surprised', 'अरे, चूल्हा बुझ गया क्या!', 'Arre, choolha bujh gaya kya!', 'Oh, has the stove gone out!'],
+    ['neutral', 'सिलेंडर आया क्या मियाँ? और कित्ती देर?', 'Cylinder aaya kya miyan? Aur kitti der?', 'Has the cylinder come, miyan? How much longer?'],
+  ],
+
+  'thanks-fast-service': [
+    ['delighted', 'वाह मियाँ, इत्ता जल्दी! शुक्रिया!', 'Waah miyan, itta jaldi! Shukriya!', 'Wow miyan, so fast! Thank you!'],
+    ['happy', 'तू तो सुपर फ़ास्ट है मियाँ, ऐसाच रेना', 'Tu toh super fast hai miyan, aisaich rena', 'You are super fast, miyan, stay like this.'],
+    ['happy', 'टाइम पे दे दिया, ऑफ़िस में लेट नईं होता, थैंक्स!', 'Time pe de diya, office mein late nai hota, thanks!', 'You gave it on time, I will not be late for office, thanks!'],
+    ['delighted', 'पलक झपकते आगया मियाँ, शाबाश!', 'Palak jhapakte aagaya miyan, shaabaash!', 'It came in the blink of an eye, miyan, well done!'],
+  ],
+
 };
 
 export const LINES_DK = buildLines('dk', D);
