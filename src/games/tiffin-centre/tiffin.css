@@ -51,6 +51,18 @@
 }
 .tc-leave:hover { background: rgba(224, 57, 43, 0.85); }
 .tc-leave:focus-visible { outline: 3px solid var(--tc-turmeric, #ffc83d); outline-offset: 2px; }
+/* Phone portrait: the bottom-left corner is the first dock slot, so the button takes the free pause slot at the top right instead (a room has no pause). */
+@media (max-width: 600px) and (orientation: portrait) {
+  .tc-leave {
+    left: auto;
+    bottom: auto;
+    right: max(5px, env(safe-area-inset-right));
+    top: max(6px, env(safe-area-inset-top));
+    min-width: 46px;
+    padding: 0 8px;
+    font-size: 12px;
+  }
+}
 
 /* Loading: the progress bar under the status card (TiffinGameImpl LoadBar). */
 .tc-load {

@@ -2,12 +2,15 @@
 // session) implementing the interface of docs/TIFFIN_CENTRE_PLAN.md section 4 and wires the 3D scene, the audio, the HUD and the
 // menus around it. It never reads game rules itself; everything comes from `session`.
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import '@fontsource-variable/bricolage-grotesque';
 import '@fontsource-variable/noto-sans-telugu';
 import { createTiffinSceneAsync } from './scene/index.js';
 import { Hud } from './ui/hud/index.js';
 import { CoachMark, PauseMenu, QuitConfirm, Results, StatusScreen } from './ui/menus/index.js';
-import { useSession } from './session/index.js';
+import { paths } from '@/platform/paths.js';
+import { GAME_ID } from '@shared/tiffin-centre/catalog.js';
+import { clearSavedShift, useSession } from './session/index.js';
 import './tiffin.css';
 
 async function loadFonts() {
@@ -52,6 +55,43 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
   const [muted, setMuted] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [progress, setProgress] = useState({ p: 0, label: 'Lighting the stove...' });
+  const navigate = useNavigate();
+  const online = mode === 'online';
+
+  // The shift clock of a LOCAL session is held until the stall is on screen, and again whenever the 3D view is missing: a local
+  // session starts ticking the moment it is created, so a slow first load (chunks, fonts, shaders, first frame) or a device without
+  // WebGL would otherwise burn patience and hearts behind the loading / error screen. Held = paused by us, without the Chai break card.
+  const held = useRef(false);
+  const [gated, setGated] = useState(false);
+  const hold = useCallback(() => {
+    if (online || held.current) return;
+    if (session.status === 'playing' && session.pause?.()) {
+      held.current = true;
+      setGated(true);
+    }
+  }, [session, online]);
+  useEffect(() => {
+    hold();
+  }, [hold]);
+  useEffect(() => {
+    if (gl) hold(); // WebGL missing, or the context was lost mid-shift
+  }, [gl, hold]);
+  useEffect(() => {
+    if (!gated || !scene || gl) return undefined;
+    let r2 = 0;
+    const r1 = requestAnimationFrame(() => {
+      r2 = requestAnimationFrame(() => {
+        // two frames are on screen: let the shift begin (or go on)
+        held.current = false;
+        setGated(false);
+        session.resume?.();
+      });
+    });
+    return () => {
+      cancelAnimationFrame(r1);
+      cancelAnimationFrame(r2);
+    };
+  }, [gated, scene, gl, session]);
 
   // The scene + audio live exactly as long as the session. Every session notification feeds both.
   useEffect(() => {
@@ -175,8 +215,7 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
 
   const shiftOver = status === 'done' || status === 'closed';
   const showResults = shiftOver || tutorialFinished;
-  const paused = status === 'paused' && !tutorialFinished;
-  const online = mode === 'online';
+  const paused = status === 'paused' && !tutorialFinished && !gated;
 
   let blocker = null;
   if (gl === 'webgl') blocker = 'webgl';
@@ -260,6 +299,12 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
           onRetry={blocker === 'disconnected' ? session.retry : blocker === 'loading' ? undefined : () => window.location.reload()}
           onExit={() => {
             session.quit?.();
+            if (blocker === 'webgl') {
+              // nothing to resume: this shift was never on screen
+              if (!online) clearSavedShift();
+              navigate(paths.game(GAME_ID));
+              return;
+            }
             onExit?.();
           }}
         />
