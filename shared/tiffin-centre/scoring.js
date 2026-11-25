@@ -14,6 +14,21 @@ export function qualityOf(age, dishId) {
   return 'ok';
 }
 
+/**
+ * Quality after the flaws of the pan: a dish that stuck or came from sour batter is at best 'ok'; a torn one is 'broken' (half price).
+ * `fl` is the slot's flaw bit mask (1 stuck, 2 torn, 4 sour batter); a burnt dish stays burnt.
+ */
+export function flawedQuality(q, fl) {
+  if (!fl || q === 'burnt') return q;
+  if (fl & 2) return 'broken';
+  return q === 'perfect' || q === 'good' ? 'ok' : q;
+}
+
+export const BROKEN_SHARE = 0.5; // a broken dish is paid at this share of its price
+
+/** What a customer pays for a dish of quality `q`. */
+export const priceOf = (dishId, q) => (DISHES[dishId] ? (q === 'broken' ? Math.floor(DISHES[dishId].price * BROKEN_SHARE) : DISHES[dishId].price) : 0);
+
 export const billOf = (dishes) => dishes.reduce((n, d) => n + (DISHES[d] ? DISHES[d].price : 0), 0);
 
 /** tip = round(total * kindTip * (0.04 + 0.12 * patienceFrac) + 5% of every perfect dish's price). */
@@ -29,20 +44,20 @@ export const comboBonus = (total, combo) => Math.round(total * Math.min(COMBO_MA
 
 const lvl = (n) => LEVELS[Math.max(0, Math.min(MAX_LEVEL, Math.trunc(Number(n)) || 0))];
 
-/** Money needed for 1 / 2 / 3 stars at this level, pace and team size. */
+/** PROFIT (money in hand minus what the stall spent) needed for 1 / 2 / 3 stars at this level, pace and team size. */
 export function starTargets(level, pace, players) {
   const k = (PACE[pace] || PACE.normal).stars * coopScale(players);
   return lvl(level).stars.map((n) => Math.round(n * k));
 }
 
-/** 0..3. Level 0 (the tutorial) has targets of 0: always 3. */
-export function starsFor(level, pace, players, money) {
-  return starTargets(level, pace, players).reduce((n, t) => n + (money >= t ? 1 : 0), 0);
+/** 0..3 from PROFIT (cash in hand - costs). Level 0 (the tutorial) has targets of 0: always 3. */
+export function starsFor(level, pace, players, profit) {
+  return starTargets(level, pace, players).reduce((n, t) => n + (profit >= t ? 1 : 0), 0);
 }
 
 /**
  * Standings of a team: everyone shares the rank (1 when the shift earned at least one star, the team size otherwise);
- * rows are ordered by money collected, ties by seat order.
+ * rows are ordered by money collected, ties by seat order. (Stars come from the team's PROFIT; a player's score is still what they collected.)
  */
 export function standingsOf(players, order, stars) {
   const rank = stars >= 1 ? 1 : Math.max(1, order.length);
@@ -53,6 +68,9 @@ export function standingsOf(players, order, stars) {
       id: p.id,
       rank,
       score: p.earned,
-      stats: { served: p.served, collected: p.collected, earned: p.earned, tips: p.tips },
+      stats: {
+        served: p.served, collected: p.collected, earned: p.earned, tips: p.tips,
+        prepped: p.ops ? p.ops[0] : 0, tended: p.ops ? p.ops[1] : 0, gasSwaps: p.ops ? p.ops[2] : 0, bought: p.ops ? p.ops[3] : 0,
+      },
     }));
 }

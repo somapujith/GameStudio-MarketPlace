@@ -236,3 +236,82 @@ the game page shows a primary **Play tutorial** link (`paths.solo(id)`) instead 
 | GLUE (Wave 2, lead) | `src/games/tiffin-centre/{TiffinGame,TiffinSolo,OnlineGame}.jsx`, `tiffin.css` | wires session + scene + hud + audio + menus; loaders in the manifest point here |
 
 Shared-file edits that a WP needs but does not own: put the exact request in the final report instead of editing.
+
+## 3b. Operations layer: what a real Hyderabad tiffin centre looks after besides cooking
+
+Added on top of section 3, additively and deterministically (same seed + same actions = same game, JSON state, no Date / Math.random). **Level 0 (the tutorial) has none of it**:
+unlimited stock, no cylinder, no heat, no events, no requests, no prep counter, and every new action is refused there ("Not available in the training shift"). Every existing export,
+event and action keeps its shape; every new field is an addition. Files: `catalog.js` (data: `INGREDIENTS`, `GAS`, `HEAT`, `FERMENT`, `REQUEST`, `EVENTS`, `CROWD_CURVE`,
+`KIND_BY_DAYPART`, `DISH_BY_DAYPART`, `LEVEL_OPS`, dish `uses`), `ops.js` (stock, prep, gas, heat, board), `events.js` (the six events), `economy.js` (the books),
+`schedule.js` (the daypart curve, requests, regulars), `scoring.js` (flawed quality, stars from profit), `bot.js`.
+
+### Ingredients and stock
+- `INGREDIENTS` (15): `batter_dosa batter_idly batter_pesarattu potato_masala coconut_chutney sambar podi_ghee poori_dough vada_batter besan_batter mirchi tea_decoction_milk
+  coffee_decoction biscuits oil`, each `{ id, name, te, cost (Rs per portion), ferments?, prep: { ticks, yield, needs: null|'power'|'gas', how } }`. Every dish has
+  `uses: { item: portions }` (quarter portions; e.g. masala dosa: batter_dosa 1, potato_masala 1, coconut_chutney 0.5, sambar 0.5, oil 0.25). Food cost is 25-40% of a dish's price.
+- `state.stock { item: portions }` (only the items the level's menu uses; `{}` at level 0), `state.fresh { item: 0..100 }` (batter only), `state.pre` (rupees of the shelf that is
+  already paid for). The opening stock is `openingStock(level, menu, ops, players, pace)`: expected demand x `LEVEL_OPS[n].stock` cover (1.7 at level 1, 0.7 at the festival), 6..32
+  portions of each item; a bigger team gets more. The shelf holds `STOCK_CAP` = 48 portions of one item.
+- `cook` is refused with `Out of dosa batter` / `Out of coconut chutney` / ... when an ingredient is short, `No gas: change the cylinder`, `The cylinder is being changed`,
+  `Power cut: the steamer is off`, `The steamer is dry: top up the water`. A successful cook uses its portions at once.
+- Batter ferments: -1 freshness every 3 (morning) / 2 (noon) / 3 (evening) / 4 (night) ticks; below 30 it is sour (`ready` carries `flaw: 'sour'`, the dish comes out `ok` at best);
+  at 0 the shelf spoils (`stock-spoiled`) and is thrown away. A new batch is mixed in as a weighted average (freshness of the shelf rises towards 100).
+- Customers are never promised what the stall cannot make: on arrival each wanted dish that is off the board, or that the stock (minus what waiting customers are already owed) cannot
+  cover, is swapped for another dish (same station kind first) or dropped; with nothing left they leave politely. `sold-out` event, no life lost, no combo lost, no seat used.
+
+### Prep: the back counter
+Station kind `prep` (`STATION_KINDS.prep`, 2 job slots), station `prep1` (`STATIONS.prep1`, x 0.65, z +1.4: behind the cook; `LAYOUT.prep`), present in `cfg.stations` on levels 1-12.
+`slotInfo(s,'prep1',i)` -> `{ st:'empty'|'cooking'|'ready', item, progress, ... }` (`dish` is `null`/absent: `take` / `cook` do not apply there).
+- `prep { station:'prep1', slot, item }`: pays `yield x cost` up front (it counts as cost), takes `prep.ticks` ticks (batter 12, chutney 6, sambar 10, dough 6, masala 8 ...), then the job
+  sits `ready` (visible). Refused: busy slot, unknown item or item the level does not use, shelf full. Jobs that `need` power (grinder: batters) pause during a power cut; jobs that need gas
+  (pots: masala, sambar, chai and coffee decoction) pause while the cylinder is empty or being changed.
+- `collectPrep { station:'prep1', slot }` moves the portions to the shelf (`prep-collect`). Co-op payoff: one partner preps while the others cook.
+- `buy { item, n }` (levels with `cfg.market`, n = 1..10): instant, 40% dearer than making it (`MARKET_MARKUP`), `buy` event.
+
+### LPG gas (levels 3+, `cfg.gas`, `state.gas = { u, sw }`)
+`u` units 0..1000, drains `GAS.drain` (2) per tick for every station with a dish cooking and every gas prep job running. `gas-low` once at 20%; at 0 `gas-out`: every burner goes cold
+(slots stop where they are, ready dishes do not burn, cooking is refused). `swapGas {}` (walk to the stand target `'gas'`): refused above 70% (`The cylinder is still heavy`); takes 6 ticks with
+the burners off (`gas-swap {phase:'start'}` ... `gas-swap {phase:'done'}`), costs Rs 90. Level 0-2 have none; `move {to:'gas'}` is legal only where there is a cylinder.
+
+### Heat, seasoning, tending (levels 2+, `cfg.heat`)
+tawa and kadai: `heat` 0..100 (ideal 52, band 30..72), `gunk` 0..100, `tendAt`; steamer: `water`, `gunk`, `tendAt`. Every pour chills the pan (tawa -4, kadai -5) and adds gunk; a pan that is
+cooking recovers 1 per tick, an idle pan creeps hotter. Below 30 cooking runs at half speed; above 72 ready food burns 1.5x as fast; `heat-warning {station, band}`. A dish's flaw is decided
+when it comes off: gunk >= 40 or a cold pan -> `stuck` (quality `ok`), gunk >= 70 -> `torn` (quality `broken`: a broken dish pays HALF its price and earns no perfect tip). The steamer: water -1
+per tick while cooking; below 30 half speed and sticks; at 0 no steam. `tend { station }` (wipe the tawa, skim the kadai, top up the steamer) resets heat/water to ideal, clears the gunk, sets
+`tendAt`; refused when `need < 0.15` ("Already clean"). `tendInfo(state, id)` -> `{ kind:'heat'|'water', need 0..1, value, band:'cold'|'ideal'|'hot'|'dry', stuck, torn, tendAt, sinceTend, canTend }`.
+
+### Demand realism (schedule.js)
+Arrival crowd follows `CROWD_CURVE` by clock hour (morning bell around 8-9, lunch lull, 5-7 pm snack peak, night wave), softened by `CROWD_SPREAD` and normalised so a level's mean gap is still
+`level.gap`. Customer kind weights (`KIND_BY_DAYPART`: office-goers 7-10, students after 4, families and autowalas at night) and dish popularity (`DISH_BY_DAYPART`: idly/dosa/poori in the morning,
+bajji/bonda/chai/vada in the evening, dosas at night) follow the daypart, the weather and events; a seeded "Sunday" (`cfg.weekend`, 1 seed in 5) brings families. Levels 2+ add special requests on
+the schedule entry and the customer: `parcel: true` (takeaway: Rs 5 packing per dish, patience x0.8, packs for `EAT_TICKS + 2` ticks instead of eating; `eating` carries `parcel: true`),
+`extra: 'coconut_chutney'|'sambar'` (0.5 portion of stock, +Rs 4 tip, `extra` event when given), `spice: 'less'|'more'` (small tip when served well). Levels 4+ have 2-3 REGULARS (`regular: true`,
+`rid`, `loyal`; `state.regs = [[loyalty, nextVisit], ...]`): they return every ~40-65 ticks, tip x(1 + 0.3 x (loyalty + 1)) when served well, loyalty resets on a bad visit. Levels 6+ get an
+OFFICE PARCEL ORDER now and then (`big: true`, 4-6 dishes for one cook up to 6-8 for a team, patience x2.6, +Rs 60 tip, `parcel-order` event).
+
+### Events (events.js; `cfg.events` lists those that WILL happen, none in levels 1-2)
+The plan of a shift is a pure function of (level, seed): `eventPlan({ ids, seed, shiftTicks })` -> `[{ id, at, until }]` (not stored). `state.events = [{ id, until }]` are the running ones;
+`event-start { id, until }` / `event-end { id }`; `eventsNow(state)` adds names. `rain` (crowd x0.6; chai, coffee, bajji, bonda, vada more likely), `cricket` (clustered arrivals, students and autowalas
+more likely), `power` (steamer + grinder + lights down: steamer cooking pauses and is refused, batter prep pauses; gas burners carry on), `festival` (crowd x1.5, tips x1.3), `inspector` (14 ticks
+of notice, then the check: no burnt dish lying on a station and every dosa tawa tended within 30 ticks (or clean) -> `inspector { pass:true, bonus }` Rs 60 + 5 x level into tips; else a fine of
+Rs 50 + 3 x level (`fines`, part of cost) and a lost heart), `delivery` (the tiffin delivery boy: 5 parcels, patience 48, +Rs 50 tip, `parcel-order { delivery: true }`; waits for a free spot).
+
+### Economy (economy.js) and stars
+`revenue` (bills collected) + `tips` = `money` (cash in hand, as before). `cost` = ingredients (prepaid stock is charged when it is prepared or bought, opening stock when it is cooked), gas
+cylinders and fines; `waste` (a subset of cost) = burnt and discarded dishes and spoiled batter; `profit = money - cost`. At the end of the shift half the value of paid-for stock still on the
+shelf comes back (`carry`). **Stars and the co-op rank use PROFIT**: `LEVELS[n].stars` are profit targets (x PACE.stars x coopScale(players)). `result(state)` adds `revenue tips cost waste
+fines carry profit served lost unpaid bestCombo` and `stats` / `team` (the same plus `prepped tended gasSwaps bought`); each standing's `stats` adds `prepped tended gasSwaps bought`.
+
+### Actions added (all carry `playerId`; none are server-only)
+`prep {station:'prep1', slot:0|1, item}`, `collectPrep {station:'prep1', slot:0|1}`, `tend {station}`, `swapGas {}`, `board {dish, on:boolean}`, `buy {item, n:1..10}`. `move {to:'prep1'|'gas'}`
+are new legal targets (`validTarget(to, stations, spots, gas)`, `standX('gas')`, `workTarget` for the new actions).
+
+### Events added (existing events are unchanged; `ready`, `serve`, `eating`, `heat-warning` carry an extra field only when it applies)
+`stock-low {item,n}` `stock-out {item}` `stock-spoiled {item,n}` `batter-sour {item}` `prep-start {station,slot,item,n,ticks,by}` `prep-done {station,slot,item,n}` `prep-collect {station,slot,item,n,by}`
+`buy {item,n,cost,by}` `tend {station,kind:'wipe'|'skim'|'water',by}` `heat-warning {station,band:'cold'|'hot'|'dry'}` `gas-low {units}` `gas-out {}` `gas-swap {phase:'start',ticks,cost,by}`
+`gas-swap {phase:'done',units}` `board {dish,on,by}` `sold-out {customer,dish,swap:dishId|null,left:boolean}` `extra {customer,item}` `parcel-order {customer,n,big?|delivery?}` `event-start {id,until}`
+`event-end {id}` `inspector {pass,bonus,fine,why:['burnt'|'untended']}`; `ready {..., flaw?:'stuck'|'torn'|'sour'}`, `take {..., q:'broken'}`, `serve {..., q:'broken'?}`, `eating {customer, parcel?}`.
+
+### Read-only helpers (exported from index.js)
+`stockInfo(state)`, `gasInfo(state)`, `tendInfo(state, stationId)`, `needs(state)` (what the stall needs doing, most urgent first), `eventsNow(state)`, `eventPlan`, `openingStock`, `levelItems`,
+`levelOps(level)`, `dishCost`, `foodCostFrac`, `profitOf`; `slotInfo` adds `item` / `flaw`, `customerInfo` adds `parcel extra spice regular loyal big delivery blocked`.

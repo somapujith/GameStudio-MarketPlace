@@ -2,8 +2,8 @@
 // the 3D scene (avatar walking), the HUD (walk, then do the work) and the tests.
 //
 // Everybody in the kitchen works on ONE line behind the counter (z = LAYOUT.cookZ), so a walk is a 1-D trip along x.
-// A player's `at` is: null (standing where they spawned) | a station id | `spot:N` (behind the counter, facing customer
-// spot N, to serve and collect) | 'bin'.
+// A player's `at` is: null (standing where they spawned) | a station id (incl. the back counter 'prep1') | `spot:N` (behind the counter,
+// facing customer spot N, to serve and collect) | 'bin' | 'gas' (the LPG cylinder stand, on levels that have one).
 import { LAYOUT, STATIONS } from './catalog.js';
 
 export const WALK_SPEED = 5.5; // metres per second along the line
@@ -13,11 +13,12 @@ export const HOME_X = 0; // where a player with at === null stands
 
 const SPOT = /^spot:(\d)$/;
 
-/** Is `to` a legal `move` target for these stations / spots? */
-export function validTarget(to, stations = Object.keys(STATIONS), spots = LAYOUT.spots) {
+/** Is `to` a legal `move` target for these stations / spots? ('gas' is legal unless the level says `gas = false`.) */
+export function validTarget(to, stations = Object.keys(STATIONS), spots = LAYOUT.spots, gas = true) {
   if (to === null) return true;
   if (typeof to !== 'string') return false;
   if (to === 'bin') return true;
+  if (to === 'gas') return !!gas;
   if (Object.hasOwn(STATIONS, to)) return stations.includes(to);
   const m = SPOT.exec(to);
   return !!m && Number(m[1]) < spots;
@@ -27,6 +28,7 @@ export function validTarget(to, stations = Object.keys(STATIONS), spots = LAYOUT
 export function standX(at) {
   if (at === null || at === undefined) return HOME_X;
   if (at === 'bin') return LAYOUT.bin.x - 0.6;
+  if (at === 'gas') return LAYOUT.gas.x + 0.4;
   if (typeof at === 'string' && Object.hasOwn(STATIONS, at)) return STATIONS[at].x;
   const m = typeof at === 'string' ? SPOT.exec(at) : null;
   return m ? LAYOUT.spotX(Number(m[1])) : HOME_X;
@@ -49,7 +51,12 @@ export function workTarget(action, state) {
   switch (action.type) {
     case 'cook':
     case 'take':
+    case 'prep':
+    case 'collectPrep':
+    case 'tend':
       return typeof action.station === 'string' ? action.station : null;
+    case 'swapGas':
+      return 'gas';
     case 'serve':
     case 'collect': {
       const c = state?.customers?.find((x) => x.id === action.customer);

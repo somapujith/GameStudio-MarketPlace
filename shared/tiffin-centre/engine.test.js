@@ -37,14 +37,16 @@ describe('createGame', () => {
     expect(JSON.parse(JSON.stringify(s))).toEqual(s);
     expect(s).toMatchObject({ v: 1, status: 'playing', level: 1, pace: 'normal', tick: 0, shiftTicks: 150, lives: LIVES, money: 0, combo: 0 });
     expect(s.order).toEqual(['a', 'b']);
-    expect(Object.keys(s.stations)).toEqual(['tawa1', 'chai1']);
+    expect(Object.keys(s.stations)).toEqual(['tawa1', 'chai1', 'prep1']); // the back counter comes with the stock
     expect(s.stations.tawa1.slots).toHaveLength(3);
     expect(s.stations.chai1.slots).toHaveLength(2);
     expect(s.players.a).toMatchObject({ at: null, hands: [], served: 0, collected: 0, earned: 0, tips: 0 });
-    expect(s.cfg).toMatchObject({ tutorial: false, spots: 3, stations: ['tawa1', 'chai1'], hour: [6, 9] });
+    expect(s.cfg).toMatchObject({ tutorial: false, spots: 3, stations: ['tawa1', 'chai1', 'prep1'], hour: [6, 9], stock: true, gas: false, heat: false, market: false, events: [] });
+    expect(s).toMatchObject({ revenue: 0, cost: 0, waste: 0, profit: 0, bestCombo: 0, off: [], events: [], gas: null });
+    expect(Object.keys(s.stock).length).toBeGreaterThan(4);
     expect(s.schedule[0].at).toBe(2);
     expect(s.nextArrival).toBe(2);
-    expect(JSON.stringify(s).length).toBeLessThan(3000);
+    expect(JSON.stringify(s).length).toBeLessThan(3200);
   });
 
   it('falls back on bad settings and ignores bad players', () => {
@@ -545,6 +547,9 @@ describe('determinism and size', () => {
       let s = createGame({ players: PL, settings: { level: 4 }, seed });
       for (let i = 0; i < 60; i++) {
         if (i % 7 === 0) s = applyAction(s, { type: 'cook', playerId: 'a', station: 'tawa1', slot: i % 3, dish: 'dosa' }).state;
+        if (i === 20) s = applyAction(s, { type: 'prep', playerId: 'b', station: 'prep1', slot: 0, item: 'oil' }).state;
+        if (i === 30) s = applyAction(s, { type: 'tend', playerId: 'a', station: 'tawa1' }).state;
+        if (s.status !== 'playing') break; // nobody serves: the stall may close
         s = ap(s, { type: 'tick' }).state;
       }
       return s;
@@ -561,7 +566,7 @@ describe('determinism and size', () => {
       s = applyAction(s, { type: 'tick' }).state;
       max = Math.max(max, JSON.stringify(s).length);
     }
-    expect(max).toBeLessThan(5000); // the worst case: 4 players, 6 customers, 5 stations, nobody playing
+    expect(max).toBeLessThan(6000); // the worst case: 4 players, 6 customers, 5 stations + the back counter with all its stock, nobody playing
     expect(DISHES.dosa.cook).toBe(5);
   });
 });

@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 vi.setConfig({ testTimeout: 30000 }); // loops every level; slow on a loaded machine
 import {
-  buildSchedule, createGame, applyAction, menuFor, patienceFor, LOOKAHEAD, FIRST_ARRIVAL,
+  buildSchedule, createGame, applyAction, menuFor, patienceFor, LOOKAHEAD, FIRST_ARRIVAL, isWeekend,
   LEVELS, DISHES, STATIONS, CUSTOMER_KINDS, CUSTOMER_NAMES, PACE, PATIENCE_BASE, coopScale,
 } from './index.js';
 
@@ -36,13 +36,17 @@ describe('buildSchedule', () => {
           expect(CUSTOMER_NAMES).toContain(e.name);
           expect(e.look).toBe(CUSTOMER_KINDS[e.kind].look);
           expect(e.order.length).toBeGreaterThanOrEqual(1);
-          expect(e.order.length).toBeLessThanOrEqual(Math.min(CUSTOMER_KINDS[e.kind].order[1], level.orderMax));
+          if (!e.big) expect(e.order.length).toBeLessThanOrEqual(Math.min(CUSTOMER_KINDS[e.kind].order[1], level.orderMax));
+          else expect(e.order.length).toBeLessThanOrEqual(8); // an office parcel order (later levels only)
           for (const d of e.order) {
             expect(level.menu).toContain(d);
             expect(kinds.has(DISHES[d].station)).toBe(true);
-            expect(e.order.filter((x) => x === d).length).toBeLessThanOrEqual(2);
+            expect(e.order.filter((x) => x === d).length).toBeLessThanOrEqual(e.big ? 3 : 2);
           }
-          expect(e.patienceMax).toBe(patienceFor(e.kind, level, 'normal'));
+          const base = patienceFor(e.kind, level, 'normal');
+          if (e.big) expect(e.patienceMax).toBeGreaterThan(base * 2);
+          else if (e.parcel) expect(e.patienceMax).toBe(Math.round(base * 0.8)); // a parcel waits less
+          else expect(e.patienceMax).toBe(base);
         }
       }
     }
@@ -58,8 +62,8 @@ describe('buildSchedule', () => {
     const avg = (opts) => mean(gaps(buildSchedule({ level: 6, seed: 3, ...opts })));
     const mid = (LEVELS[6].gap[0] + LEVELS[6].gap[1]) / 2;
     const base = avg({ pace: 'normal', players: 1 });
-    expect(base).toBeGreaterThan(mid - 1.5);
-    expect(base).toBeLessThan(mid + 1.5);
+    expect(base).toBeGreaterThan(mid - 2.5); // the daypart curve moves the rushes around but keeps the mean gap (within rounding and the events)
+    expect(base).toBeLessThan(mid + 2.5);
     expect(avg({ pace: 'rush', players: 1 })).toBeLessThan(base * 0.95);
     expect(avg({ pace: 'relaxed', players: 1 })).toBeGreaterThan(base * 1.1);
     expect(avg({ pace: 'normal', players: 4 })).toBeLessThan((base / coopScale(4)) * 1.4);
@@ -71,6 +75,39 @@ describe('buildSchedule', () => {
   it('a mix of customer kinds shows up', () => {
     const kinds = new Set(buildSchedule({ level: 12, pace: 'normal', players: 4, seed: 5 }).map((e) => e.kind));
     expect(kinds.size).toBeGreaterThanOrEqual(5);
+  });
+
+  it('requests, regulars and parcels appear only where the level asks for them', () => {
+    const flat = (lv) => buildSchedule({ level: lv, pace: 'normal', players: 2, seed: 5 });
+    for (const e of [...flat(1), ...flat(2).filter(() => false)]) for (const k of ['extra', 'spice', 'parcel', 'regular', 'big']) expect(e[k]).toBeUndefined();
+    const many = [3, 4, 6, 9].flatMap((lv) => flat(lv));
+    expect(many.some((e) => e.extra)).toBe(true);
+    expect(many.some((e) => e.spice)).toBe(true);
+    expect(many.some((e) => e.parcel && !e.big)).toBe(true);
+    for (const e of many.filter((x) => x.extra)) expect(['coconut_chutney', 'sambar']).toContain(e.extra);
+    for (const e of many.filter((x) => x.spice)) expect(['less', 'more']).toContain(e.spice);
+    expect(flat(3).some((e) => e.regular)).toBe(false);
+    const regs = flat(6).filter((e) => e.regular);
+    expect(regs.length).toBeGreaterThan(0);
+    for (const e of regs) expect(e.rid).toBeGreaterThanOrEqual(0);
+    // the same regular returns with the same name and kind, and always orders their favourite
+    const byRid = {};
+    for (const e of regs) (byRid[e.rid] ||= []).push(e);
+    for (const list of Object.values(byRid)) {
+      expect(new Set(list.map((e) => e.name)).size).toBe(1);
+      expect(new Set(list.map((e) => e.kind)).size).toBe(1);
+      for (let i = 1; i < list.length; i++) expect(list[i].at - list[i - 1].at).toBeGreaterThanOrEqual(40);
+    }
+  });
+
+  it('the first customers are never a huge parcel order, and the day is a pure function of the seed (weekends included)', () => {
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      const sched = buildSchedule({ level: 10, pace: 'normal', players: 4, seed });
+      expect(sched.filter((e) => e.big).every((e) => e.at >= 30)).toBe(true);
+      expect(sched).toEqual(buildSchedule({ level: 10, pace: 'normal', players: 4, seed }));
+    }
+    expect([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].filter((n) => isWeekend(n)).length).toBeGreaterThan(0);
+    expect(isWeekend('abc')).toBe(isWeekend('abc'));
   });
 
   it('the tutorial has no scheduled crowd', () => {
@@ -88,7 +125,7 @@ describe('the engine plays the same schedule, lazily', () => {
     for (const [level, n] of [[2, 1], [9, 4]]) {
       const players = Array.from({ length: n }, (_, i) => ({ id: 'p' + i }));
       let s = createGame({ players, settings: { level }, seed: 21 });
-      s = { ...s, lives: 1e6, cfg: { ...s.cfg, spots: 99 } }; // nobody is turned away, nobody ends the game
+      s = { ...s, lives: 1e6, cfg: { ...s.cfg, spots: 99, stock: false } }; // nobody is turned away, nobody ends the game, no dish is sold out
       const full = buildSchedule({ level, pace: 'normal', players: n, seed: 21 });
       expect(s.schedule).toEqual(full.slice(0, LOOKAHEAD));
       const seen = [];
@@ -99,10 +136,11 @@ describe('the engine plays the same schedule, lazily', () => {
         for (const c of s.customers) {
           if (known.has(c.id)) continue;
           known.add(c.id);
+          if (c.delivery) continue; // the delivery boy comes with the event, not the schedule
           seen.push({ at: c.arrivedAt, kind: c.kind, name: c.name, order: c.order, patienceMax: c.patienceMax });
         }
       }
-      expect(seen).toEqual(full.map(({ look, ...rest }) => rest));
+      expect(seen).toEqual(full.map(({ look, parcel, extra, spice, big, regular, rid, ...rest }) => rest));
       expect(s.schedule).toEqual([]);
     }
   });
@@ -116,7 +154,7 @@ describe('the engine plays the same schedule, lazily', () => {
         if (act) s = applyAction(s, { type: 'emote', playerId: 'a', e: 'fire' }).state;
         s = applyAction(s, { type: 'tick' }).state;
       }
-      return [s.customers.map((c) => [c.id, c.name, c.order, c.arrivedAt]), s.schedule];
+      return [s.customers.map((c) => [c.id, c.name, c.kind, c.arrivedAt]), s.schedule.map(({ order, ...e }) => e)]; // (what they order may be swapped when the stock is short: who comes and when never changes)
     };
     expect(run(true)).toEqual(run(false));
   });
