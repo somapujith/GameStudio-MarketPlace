@@ -43,7 +43,7 @@ vi.mock('./roomsdb.js', async (importOriginal) => {
   };
 });
 
-const { GameRoom, TURN_MS } = await import('./GameRoom.js');
+const { GameRoom, TURN_MS, RESTORE_SEQ_MARGIN } = await import('./GameRoom.js');
 const { GAME_ADAPTERS } = await import('./games/index.js');
 const { persistMatch } = await import('./match.js');
 
@@ -116,6 +116,10 @@ const counterRace = {
   redact: (state, viewerId) => ({ ...state, players: state.players.map((p) => (p.id === viewerId ? p : { ...p, secret: null })) }),
 };
 
+// The same game as a "real-time" adapter: it opts in to coalesced storage writes (persistEveryMs) and nothing else differs.
+const PERSIST_MS = 5000;
+const counterRaceRealtime = { ...counterRace, id: 'counter-race-rt', persistEveryMs: () => PERSIST_MS };
+
 // ---- fakes (same shape as room.test.js) -------------------------------------------------------------
 
 class FakeSocket {
@@ -165,10 +169,18 @@ function makeCtx() {
     alarmAt: null,
     store,
     sockets,
+    puts: 0, // storage writes of the 'room' record and alarm sets, counted for the write-traffic tests
+    alarmSets: 0,
     storage: {
       get: async (k) => (store.has(k) ? structuredClone(store.get(k)) : undefined),
-      put: async (k, v) => void store.set(k, structuredClone(v)),
-      setAlarm: async (t) => void (ctx.alarmAt = t),
+      put: async (k, v) => {
+        ctx.puts += 1;
+        store.set(k, structuredClone(v));
+      },
+      setAlarm: async (t) => {
+        ctx.alarmSets += 1;
+        ctx.alarmAt = t;
+      },
       deleteAlarm: async () => void (ctx.alarmAt = null),
       deleteAll: async () => store.clear(),
     },
@@ -238,6 +250,7 @@ class Harness {
 
 beforeEach(() => {
   GAME_ADAPTERS['counter-race'] = counterRace;
+  GAME_ADAPTERS['counter-race-rt'] = counterRaceRealtime;
   vi.stubGlobal('WebSocketPair', class {
     constructor() {
       this[0] = new FakeSocket();
@@ -257,6 +270,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete GAME_ADAPTERS['counter-race'];
+  delete GAME_ADAPTERS['counter-race-rt'];
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -680,3 +694,139 @@ describe('rooms stored by the previous version keep working', () => {
     expect((await h.info()).gameId).toBe('retired-game');
   });
 });
+
+// ---- storage traffic: write coalescing (adapter.persistEveryMs), alarm de-duplication, restart recovery -------------------------------
+
+/** Two players at a race of the given game, started. The counters are read from `h.ctx` (puts / alarmSets). */
+async function startedRace(gameId, target = 10) {
+  const h = new Harness();
+  expect((await h.init({ gameId, settings: { target } })).status).toBe(201);
+  h.host = await h.connect(user(1));
+  h.guest = await h.connect(user(2));
+  await h.say(h.host, { t: 'start' });
+  expect(h.r.status).toBe('playing');
+  return h;
+}
+const mover = (h) => (h.r.state.players[h.r.state.turn].id === U(1) ? h.host : h.guest);
+const step = (h) => h.say(mover(h), { t: 'action', action: { type: 'STEP' } });
+
+describe('storage traffic', () => {
+  it('an adapter without persistEveryMs writes exactly as before: one put per applied action, game over and persist included', async () => {
+    const h = await started({ target: 4 });
+    const log = [h.ctx.puts];
+    for (let i = 0; i < 6 && h.r.status === 'playing'; i += 1) {
+      await step(h);
+      log.push(h.ctx.puts);
+    }
+    for (let i = 0; i < 2; i += 1) {
+      await h.tick();
+      log.push(h.ctx.puts);
+    }
+    // measured on the code before this change (the same scenario): lobby + start = 4, then one put per action, then the persist write
+    expect(log).toEqual([4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    expect(h.r.status).toBe('finished');
+    expect(h.r.persisted).toBe(true);
+    expect(h.room.unsaved).toBe(false); // the hook-less path never defers anything
+    // setAlarm: 13 calls before the change (one per save + the duplicate at the end of every tick), now only when the time changes
+    expect(h.ctx.alarmSets).toBe(6); // measured with the same scenario
+  });
+
+  it('setAlarm is skipped when the alarm time is unchanged, and set again once the alarm has fired', async () => {
+    const h = await startedRace('counter-race', 10);
+    await step(h);
+    const sets = h.ctx.alarmSets;
+    const at = h.ctx.alarmAt;
+    await h.room.scheduleAlarm();
+    await h.room.scheduleAlarm();
+    expect(h.ctx.alarmSets).toBe(sets); // same time: nothing to set
+    expect(h.ctx.alarmAt).toBe(at);
+    await h.room.alarm(); // the alarm fired (early, in a test): it is spent, so the next schedule must set it again
+    expect(h.ctx.alarmSets).toBeGreaterThan(sets);
+  });
+
+  it('coalesces a running game: at most one write per interval, flushed by the alarm or the next step, never lost on a structural change', async () => {
+    const h = await startedRace('counter-race-rt', 10);
+    const t0 = Date.now();
+    const base = h.ctx.puts;
+    for (let i = 0; i < 6; i += 1) await step(h); // six actions inside one second
+    expect(h.ctx.puts).toBe(base); // the start write is the last one: all six are held back
+    expect(h.room.unsaved).toBe(true);
+    expect(h.r.seq).toBe(7); // memory is authoritative
+    expect(h.ctx.store.get('room').seq).toBe(1); // storage is behind
+    // the alarm after the interval flushes what is pending
+    vi.setSystemTime(t0 + PERSIST_MS);
+    await h.room.alarm();
+    expect(h.ctx.puts).toBe(base + 1);
+    expect(h.ctx.store.get('room').seq).toBe(7);
+    expect(h.room.unsaved).toBe(false);
+    // a step after the next interval writes; the following ones inside it do not
+    vi.setSystemTime(t0 + 2 * PERSIST_MS);
+    await step(h);
+    expect(h.ctx.puts).toBe(base + 2);
+    await step(h);
+    await step(h);
+    expect(h.ctx.puts).toBe(base + 2);
+    // a structural change (a player leaves) writes at once and carries the pending steps with it
+    await h.say(h.guest, { t: 'leave' });
+    expect(h.ctx.puts).toBe(base + 3);
+    expect(h.ctx.store.get('room').seq).toBe(h.r.seq);
+    expect(h.room.unsaved).toBe(false);
+  });
+
+  it('game over is written at once even inside the interval', async () => {
+    const h = await startedRace('counter-race-rt', 3); // first to 3 steps: 5 moves
+    const base = h.ctx.puts;
+    for (let i = 0; i < 4; i += 1) await step(h);
+    expect(h.ctx.puts).toBe(base); // four steps held back
+    await step(h); // the winning step
+    expect(h.r.status).toBe('finished');
+    expect(h.ctx.puts).toBe(base + 1);
+    expect(h.ctx.store.get('room').status).toBe('finished');
+    expect(h.ctx.store.get('room').state.phase).toBe('over');
+    expect(h.room.unsaved).toBe(false);
+  });
+
+  it('a restart in the middle of a coalesced match: the stale record comes back with a safely higher seq and clients accept the next state', async () => {
+    const h = await startedRace('counter-race-rt', 10);
+    const t0 = Date.now();
+    for (let i = 0; i < 3; i += 1) await step(h);
+    vi.setSystemTime(t0 + PERSIST_MS);
+    await step(h); // written: seq 5
+    await step(h); // pending: seq 6, only in memory
+    await step(h); // pending: seq 7
+    const seenByClient = h.host.last('state').seq;
+    expect(seenByClient).toBe(7);
+    expect(h.ctx.store.get('room').seq).toBe(5);
+    // the Durable Object is evicted / restarted: the memory is gone, the sockets and storage stay (hibernation)
+    const h2 = new Harness({}, h.ctx);
+    await h2.loaded();
+    expect(h2.r.seq).toBe(5 + RESTORE_SEQ_MARGIN); // past anything a client can have seen
+    expect(h2.r.seq).toBeGreaterThan(seenByClient);
+    expect(h2.ctx.store.get('room').seq).toBe(h2.r.seq); // written at once: a second restart cannot go back
+    expect(h2.r.status).toBe('playing');
+    expect(h2.r.state.moves).toBe(4); // up to one interval of play is replayed
+    expect(h2.room.alarmAt).toBeNull(); // nothing is known about the alarm: the next schedule sets it
+    // the next action's state message is newer than anything the client saw
+    const who = h2.r.state.players[h2.r.state.turn].id;
+    await h2.say(who === U(1) ? h.host : h.guest, { t: 'action', action: { type: 'STEP' } });
+    expect(h.host.last('state').seq).toBe(5 + RESTORE_SEQ_MARGIN + 1);
+    expect(h.host.last('state').seq).toBeGreaterThan(seenByClient);
+    expect(h2.ctx.alarmAt).not.toBeNull();
+    // a second restart: never below the first one
+    const h3 = new Harness({}, h.ctx);
+    await h3.loaded();
+    expect(h3.r.seq).toBeGreaterThanOrEqual(5 + RESTORE_SEQ_MARGIN);
+  });
+
+  it('a restart of a hook-less game changes nothing: the seq stays and no extra write is made', async () => {
+    const h = await started({ target: 5 });
+    await step(h);
+    const puts = h.ctx.puts;
+    const seq = h.r.seq;
+    const h2 = new Harness({}, h.ctx);
+    await h2.loaded();
+    expect(h2.r.seq).toBe(seq);
+    expect(h.ctx.puts).toBe(puts);
+  });
+});
+

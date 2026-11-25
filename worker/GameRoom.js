@@ -59,6 +59,10 @@ const MAX_MESSAGE_CHARS = 4096;
 const MAX_SOCKETS_PER_USER = 3;
 const PERSIST_BACKOFF_MS = [2_000, 10_000, 30_000, 120_000, 600_000];
 const PERSIST_MAX_ATTEMPTS = 8;
+// Adapters with the optional `persistEveryMs(state)` hook (real-time games) coalesce their per-step storage writes; after a restart the
+// restored record may be older than what clients already saw, so `seq` jumps forward by this much (clients drop states whose seq is not
+// higher than the last one they saw). A 5 s window holds at most ~4 seats x 8 actions/s (the message rate limit) + ticks = ~170 seqs.
+export const RESTORE_SEQ_MARGIN = 1000;
 const HUB_RETRY_MS = 20_000; // a UserHub that was offline for a room-status update is asked again after this
 const COSMETICS_REFRESH_MS = 30_000; // a member's equipped cosmetics are re-read at most this often
 
@@ -106,6 +110,9 @@ export class GameRoom extends DurableObject {
     this.rate = new Map(); // userId -> { start, count }
     this.autoFailures = new Map(); // playerId -> consecutive failed auto moves
     this.lastActivitySaved = 0;
+    this.alarmAt = null; // the alarm time last set by scheduleAlarm (memory only): an unchanged time is not set again
+    this.savedAt = 0; // when the room record was last written
+    this.unsaved = false; // a coalesced step (adapter.persistEveryMs) changed the room since savedAt
     this.listingChain = Promise.resolve(); // listing writes run strictly in order
     this.listedSig = null; // signature of the last row written to `rooms`
     this.listedAt = 0;
@@ -132,6 +139,7 @@ export class GameRoom extends DurableObject {
     ctx.blockConcurrencyWhile(async () => {
       this.room = (await ctx.storage.get('room')) || null;
       this.bindAdapter();
+      await this.recoverCoalesced();
     });
   }
 
@@ -156,10 +164,61 @@ export class GameRoom extends DurableObject {
 
   async save() {
     if (this.room) {
+      this.savedAt = Date.now();
+      this.unsaved = false;
       await this.ctx.storage.put('room', this.room);
       this.syncListing();
       this.syncHubStatus();
     }
+  }
+
+  /** The adapter's optional `persistEveryMs(state)` as a positive number of ms, else 0 (= write on every step, as before). */
+  persistInterval() {
+    const a = this.adapter;
+    const r = this.room;
+    if (!a || !r || typeof a.persistEveryMs !== 'function') return 0;
+    try {
+      const ms = Number(a.persistEveryMs(r.state));
+      return Number.isFinite(ms) && ms > 0 ? ms : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Persist the result of one game step (an applied action or timer). Without the adapter hook `persistEveryMs` this is exactly
+   * `save()`. With it, a running game's record is written at most once per interval; the step is remembered (`unsaved`) and flushed by
+   * the next step or alarm once the interval has elapsed. A finished game is always written at once (status is no longer 'playing').
+   * Everything structural (start, join, leave, settings, game over) calls save() directly and so flushes any pending step too.
+   */
+  async saveStep() {
+    const r = this.room;
+    const every = r && r.status === 'playing' ? this.persistInterval() : 0;
+    if (every && Date.now() - this.savedAt < every) {
+      this.unsaved = true;
+      return;
+    }
+    await this.save();
+  }
+
+  /** Alarm side of saveStep(): write a pending coalesced step once its interval has elapsed (or the game is no longer running). */
+  async flushPending(now) {
+    if (!this.unsaved || !this.room) return;
+    const every = this.room.status === 'playing' ? this.persistInterval() : 0;
+    if (!every || now - this.savedAt >= every) await this.save();
+  }
+
+  /**
+   * After a restart, a coalesced game may be restored from a record up to one interval older than the state the clients last saw. Their
+   * `seq` guard would drop every state whose seq is not higher, so a stale seq looks frozen: jump forward past anything that was sent and
+   * write that at once (a second restart before the next write must not go back). The game's own timers recover by themselves: an overdue
+   * deadline fires on the first alarm and the next one counts from that moment (some seconds of play may be replayed).
+   */
+  async recoverCoalesced() {
+    const r = this.room;
+    if (!r || r.status !== 'playing' || !this.persistInterval()) return;
+    r.seq = (Number(r.seq) || 0) + RESTORE_SEQ_MARGIN;
+    await this.save();
   }
 
   /**
@@ -995,7 +1054,7 @@ export class GameRoom extends DurableObject {
           this.send(ws, this.stateMessage(this.viewOf(action.playerId), [], clock));
         }
       }
-      await this.save();
+      await this.saveStep();
       await this.scheduleAlarm();
       return res;
     }
@@ -1012,7 +1071,7 @@ export class GameRoom extends DurableObject {
       r.persistAt = Date.now();
       this.broadcastRoom();
     }
-    await this.save();
+    await this.saveStep();
     await this.scheduleAlarm();
     return res;
   }
@@ -1205,18 +1264,23 @@ export class GameRoom extends DurableObject {
       if (r.visibility === 'public' && hasDb(this.env)) times.push(this.listedAt + LISTING_HEARTBEAT_MS);
     }
     const when = Math.max(Math.min(...times), now + 5);
+    if (this.alarmAt === when) return; // that very alarm is already set
     await this.ctx.storage.setAlarm(when);
+    this.alarmAt = when;
   }
 
   async alarm() {
+    this.alarmAt = null; // the alarm that woke us is spent: the next scheduleAlarm must set one
     try {
       await this.tick();
     } catch (err) {
       // Never let an unexpected error spin the alarm retry loop: log and try again shortly.
       console.error('alarm failed:', err && err.message);
       try {
-        await this.ctx.storage.setAlarm(Date.now() + 5000);
+        this.alarmAt = Date.now() + 5000;
+        await this.ctx.storage.setAlarm(this.alarmAt);
       } catch {
+        this.alarmAt = null;
         /* ignore */
       }
     }
@@ -1240,6 +1304,7 @@ export class GameRoom extends DurableObject {
       this.dropListing(r.code);
       this.syncHubStatus(true);
       await this.ctx.storage.deleteAlarm();
+      this.alarmAt = null;
       await this.ctx.storage.deleteAll();
       this.room = null;
       this.adapter = null;
@@ -1308,6 +1373,7 @@ export class GameRoom extends DurableObject {
     }
 
     if (dirty) await this.save();
+    else await this.flushPending(now);
     if (this.room) await this.broadcastPresenceIfChanged();
     await this.scheduleAlarm();
   }

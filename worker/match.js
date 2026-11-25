@@ -6,6 +6,7 @@ import { ratingDeltas } from './rating.js';
 import { coinMultiplierAt } from './events.js';
 import { loadMetrics, evaluateAchievements } from './achievements.js';
 import { rewardReferral } from './referrals.js';
+import { istDay } from './xp.js';
 
 const INT_MAX = 2147483647;
 
@@ -35,8 +36,10 @@ export function buildMatchRecord(room, adapter) {
 
   const users = res.standings
     .map((row) => {
-      const won = res.winnerId === row.id;
-      const { xp, coins } = matchRewards({ won, rank: row.rank, playerCount: n });
+      // `stats.idle` (opt-in, a game sets it on a seat that did nothing): no win, no XP, no coins, no rating change (see persistMatch).
+      const idle = row.stats?.idle === true;
+      const won = res.winnerId === row.id && !idle;
+      const { xp, coins } = idle ? { xp: 0, coins: 0 } : matchRewards({ won, rank: row.rank, playerCount: n });
       const score = Math.min(Math.max(Math.round(row.score), 0), INT_MAX);
       const rent = Math.round(row.stats?.rentEarned || 0);
       return {
@@ -82,8 +85,10 @@ export function buildMatchRecord(room, adapter) {
     players,
     users,
     // every seat, for the rating maths (each player is rated against the average of the others)
-    seats: res.standings.map((row) => ({ id: row.id, rank: row.rank })),
+    seats: res.standings.map((row) => (row.stats?.idle === true ? { id: row.id, rank: row.rank, idle: true } : { id: row.id, rank: row.rank })),
     facts,
+    // Opt-in per account and IST day limit of rewarded matches of this game (adapter.dailyRewardedMatches); absent for other games.
+    ...(Number.isInteger(adapter.dailyRewardedMatches) && adapter.dailyRewardedMatches > 0 ? { dailyRewardedMatches: adapter.dailyRewardedMatches } : {}),
   };
 }
 
@@ -158,6 +163,28 @@ async function loadRatings(env, rec) {
   }
 }
 
+/**
+ * Players who already got rewards for `rec.dailyRewardedMatches` matches of this game today (IST day, the day the daily reward uses).
+ * Counts this game's other recorded matches that ended since the start of the day (this match id excluded, so a replay is stable).
+ * Best effort like the ratings: if the lookup fails nobody is capped (never blocks the match record).
+ */
+async function usersOverDailyCap(env, rec) {
+  const ids = rec.users.filter((u) => u.xp > 0 || u.coins > 0).map((u) => u.user_id);
+  if (!ids.length) return new Set();
+  try {
+    const rows = await query(
+      env,
+      `SELECT mp.user_id, count(*)::int AS n FROM match_players mp JOIN matches m ON m.id = mp.match_id
+        WHERE m.game_id = $1::text AND m.ended_at >= $2::timestamptz AND m.id <> $3::uuid AND mp.user_id = ANY($4::uuid[])
+        GROUP BY mp.user_id`,
+      [rec.gameId, `${istDay(Date.parse(rec.endedAt))}T00:00:00+05:30`, rec.id, ids],
+    );
+    return new Set(rows.filter((r) => Number(r.n) >= rec.dailyRewardedMatches).map((r) => r.user_id));
+  } catch {
+    return new Set();
+  }
+}
+
 /** Match coins with the event multiplier applied (`Math.round(coins * m)`); XP is never boosted. */
 export const boostedCoins = (coins, multiplier) => Math.round(coins * (multiplier > 1 ? multiplier : 1));
 
@@ -170,7 +197,14 @@ export const boostedCoins = (coins, multiplier) => Math.round(coins * (multiplie
 export async function persistMatch(env, rec, { defer } = {}) {
   const [ratings, coinMultiplier] = await Promise.all([loadRatings(env, rec), coinMultiplierAt(env, rec.endedAt)]);
   const deltas = ratingDeltas(rec.seats.map((s) => ({ ...s, rating: ratings[s.id] })));
-  const users = rec.users.map((u) => ({ ...u, coins: boostedCoins(u.coins, coinMultiplier), delta: deltas[u.user_id] || 0 }));
+  for (const s of rec.seats) if (s.idle) deltas[s.id] = 0; // an idle seat's rating does not move
+  const capped = rec.dailyRewardedMatches ? await usersOverDailyCap(env, rec) : new Set();
+  const users = rec.users.map((u) => ({
+    ...u,
+    xp: capped.has(u.user_id) ? 0 : u.xp,
+    coins: capped.has(u.user_id) ? 0 : boostedCoins(u.coins, coinMultiplier),
+    delta: deltas[u.user_id] || 0,
+  }));
   const rows = await query(env, PERSIST_SQL, [
     rec.id,
     rec.roomCode,

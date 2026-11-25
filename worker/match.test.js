@@ -171,3 +171,116 @@ describe('persistMatch', () => {
     await expect(persistMatch({}, buildMatchRecord(finishedTycoonRoom(), tycoon))).rejects.toThrow('neon down');
   });
 });
+
+// ---- opt-in reward rules: `stats.idle` (a seat that earned nothing) and `adapter.dailyRewardedMatches` ------------------------------
+
+describe('idle seats (standings[i].stats.idle === true, opt-in for any game)', () => {
+  const room = { code: 'TIFF22', matchId: '22222222-2222-4222-8222-222222222222', startedAt: Date.parse('2026-11-25T10:00:00Z'), endedAt: Date.parse('2026-11-25T10:09:00Z'), state: {}, players: [{ id: U1, name: 'A' }, { id: U2, name: 'B' }] };
+  const coop = (idleIds, extra = {}) => ({
+    id: 'tiffin-centre',
+    ...extra,
+    result: () => ({
+      winnerId: U1,
+      reason: 'cleared',
+      rounds: 100,
+      standings: [
+        { id: U1, rank: 1, score: 900, stats: idleIds.includes(U1) ? { idle: true } : { served: 4 } },
+        { id: U2, rank: 1, score: 0, stats: idleIds.includes(U2) ? { idle: true } : { served: 1 } },
+      ],
+    }),
+  });
+
+  it('pays an idle seat nothing: no XP, no coins, no win, and the seat is flagged for the rating step; a working seat is paid as usual', () => {
+    const rec = buildMatchRecord(room, coop([U2]));
+    const a = rec.users.find((u) => u.user_id === U1);
+    const b = rec.users.find((u) => u.user_id === U2);
+    expect(a).toMatchObject({ xp: 100, coins: 200, won: 1 }); // two shared rank-1 seats: 30 + 10 + 60 win / 40 + 20 + 140 win
+    expect(b).toMatchObject({ xp: 0, coins: 0, won: 0 });
+    expect(rec.seats).toEqual([{ id: U1, rank: 1 }, { id: U2, rank: 1, idle: true }]);
+    expect(rec.winnerId).toBe(U1); // the match row still names the top earner
+  });
+
+  it('an idle top earner gets no win bonus, an all-idle table pays nobody, and nobody idle pays everybody', () => {
+    const top = buildMatchRecord(room, coop([U1]));
+    expect(top.users.find((u) => u.user_id === U1)).toMatchObject({ xp: 0, coins: 0, won: 0 });
+    expect(top.users.find((u) => u.user_id === U2)).toMatchObject({ xp: 40, coins: 60, won: 0 });
+    const all = buildMatchRecord(room, coop([U1, U2]));
+    expect(all.users.map((u) => [u.xp, u.coins])).toEqual([[0, 0], [0, 0]]);
+    const none = buildMatchRecord(room, coop([]));
+    expect(none.users.map((u) => [u.xp, u.coins])).toEqual([[100, 200], [40, 60]]);
+  });
+
+  it('other games are unchanged: no idle flag means the old record, key for key (no `idle`, no `dailyRewardedMatches`)', () => {
+    const plain = { id: 'counter-race', result: () => ({ winnerId: U1, reason: 'target', rounds: 3, standings: [{ id: U1, rank: 1, score: 5 }, { id: U2, rank: 2, score: 2 }] }) };
+    const rec = buildMatchRecord(room, plain);
+    expect(rec.seats).toEqual([{ id: U1, rank: 1 }, { id: U2, rank: 2 }]);
+    expect(Object.keys(rec)).not.toContain('dailyRewardedMatches');
+    expect(rec.users.map((u) => [u.xp, u.coins])).toEqual([[100, 200], [30, 40]]);
+    const t = buildMatchRecord(finishedTycoonRoom(), tycoon);
+    expect(t.seats.every((s) => Object.keys(s).sort().join() === 'id,rank')).toBe(true);
+    expect(Object.keys(t)).not.toContain('dailyRewardedMatches');
+    expect(t.users.every((u) => u.xp >= 30)).toBe(true);
+  });
+
+  it('persistMatch: an idle seat gets rating delta 0 while the others are rated as before', async () => {
+    queryMock.mockReset();
+    queryMock.mockImplementation(async (env, text) => (/FROM user_game_stats WHERE/.test(text) ? [] : [{ inserted: 1, users: [] }]));
+    const rec = buildMatchRecord(room, {
+      id: 'tiffin-centre',
+      result: () => ({ winnerId: U1, reason: 'cleared', rounds: 10, standings: [{ id: U1, rank: 1, score: 5, stats: { served: 1 } }, { id: U2, rank: 2, score: 0, stats: { idle: true } }] }),
+    });
+    await persistMatch({}, rec);
+    const write = queryMock.mock.calls.find((c) => c[1] === PERSIST_SQL);
+    const users = JSON.parse(write[2][11]);
+    expect(users.find((u) => u.user_id === U1).delta).toBeGreaterThan(0);
+    expect(users.find((u) => u.user_id === U2)).toMatchObject({ delta: 0, xp: 0, coins: 0 });
+  });
+});
+
+describe('per-account daily limit of rewarded matches (adapter.dailyRewardedMatches)', () => {
+  const room = { code: 'TIFF22', matchId: '33333333-3333-4333-8333-333333333333', startedAt: Date.parse('2026-11-25T10:00:00Z'), endedAt: Date.parse('2026-11-25T10:09:00Z'), state: {}, players: [{ id: U1, name: 'A' }, { id: U2, name: 'B' }] };
+  const game = {
+    id: 'tiffin-centre',
+    dailyRewardedMatches: 3,
+    result: () => ({ winnerId: U1, reason: 'cleared', rounds: 10, standings: [{ id: U1, rank: 1, score: 5, stats: { served: 1 } }, { id: U2, rank: 1, score: 5, stats: { served: 1 } }] }),
+  };
+
+  beforeEach(() => queryMock.mockReset());
+
+  it('carries the limit in the record only for games that opt in', () => {
+    expect(buildMatchRecord(room, game).dailyRewardedMatches).toBe(3);
+    expect(Object.keys(buildMatchRecord(room, { ...game, dailyRewardedMatches: undefined }))).not.toContain('dailyRewardedMatches');
+  });
+
+  it('a player who already has the limit of matches today since the IST day start gets 0 XP and 0 coins; the other is paid; the stats still count', async () => {
+    queryMock.mockImplementation(async (env, text, params) => {
+      if (/FROM match_players mp JOIN matches m/.test(text)) {
+        expect(params[0]).toBe('tiffin-centre');
+        expect(params[1]).toBe('2026-11-25T00:00:00+05:30'); // the match ended 15:39 IST on the 25th
+        expect(params[2]).toBe(room.matchId);
+        return [{ user_id: U1, n: 3 }, { user_id: U2, n: 2 }];
+      }
+      if (/FROM user_game_stats WHERE/.test(text)) return [];
+      return [{ inserted: 1, users: [] }];
+    });
+    await persistMatch({}, buildMatchRecord(room, game));
+    const write = queryMock.mock.calls.find((c) => c[1] === PERSIST_SQL);
+    const users = JSON.parse(write[2][11]);
+    expect(users.find((u) => u.user_id === U1)).toMatchObject({ xp: 0, coins: 0, won: 1 });
+    expect(users.find((u) => u.user_id === U2).xp).toBeGreaterThan(0);
+    expect(users.find((u) => u.user_id === U2).coins).toBeGreaterThan(0);
+  });
+
+  it('a failed lookup caps nobody, and a game without the limit never runs the lookup', async () => {
+    queryMock.mockImplementation(async (env, text) => {
+      if (/FROM match_players mp JOIN matches m/.test(text)) throw new Error('boom');
+      if (/FROM user_game_stats WHERE/.test(text)) return [];
+      return [{ inserted: 1, users: [] }];
+    });
+    await persistMatch({}, buildMatchRecord(room, game));
+    expect(JSON.parse(queryMock.mock.calls.find((c) => c[1] === PERSIST_SQL)[2][11]).every((u) => u.xp > 0)).toBe(true);
+    queryMock.mockClear();
+    await persistMatch({}, buildMatchRecord(room, { ...game, dailyRewardedMatches: undefined }));
+    expect(queryMock.mock.calls.some((c) => /match_players mp JOIN/.test(c[1]))).toBe(false);
+  });
+});

@@ -985,6 +985,85 @@ describe('result()', () => {
   });
 });
 
+describe('result(): the idle guard (stats.idle) and what match.js pays for it', () => {
+  /** The shift played to the end by the bot for the seats in `acting` only; everybody else stands by. */
+  function playSome(acting, nPlayers = 3, seed = 11, settings = { level: 1, pace: 'relaxed' }) {
+    let s = tiffin.createGame({ players: players(nPlayers), settings, seed });
+    let guard = 0;
+    while (!tiffin.isOver(s) && guard++ < 5000) {
+      for (const id of acting) {
+        for (let k = 0; k < 4; k++) {
+          const a = engine.chooseAutoAction(s, id);
+          if (!a) break;
+          const r = tiffin.applyAction(s, { ...a, playerId: id });
+          if (r.error) break;
+          s = r.state;
+        }
+      }
+      s = tiffin.applyAction(s, { type: 'tick' }).state;
+    }
+    return s;
+  }
+  const record = (s) =>
+    buildMatchRecord({ matchId: '11111111-1111-4111-8111-111111111111', code: 'TIFF22', startedAt: 1000, endedAt: 2000, state: s, meta: {}, players: s.order.map((id) => ({ id, name: id })) }, tiffin);
+
+  it('a table where nobody does anything: every seat is idle and nothing is paid', () => {
+    const s = playSome([]);
+    const res = tiffin.result(s);
+    expect(res.reason).toBe('closed');
+    expect(res.standings.every((r) => r.stats.idle === true)).toBe(true);
+    const rec = record(s);
+    expect(rec.users.map((u) => [u.xp, u.coins, u.won])).toEqual([[0, 0, 0], [0, 0, 0], [0, 0, 0]]);
+    expect(rec.seats.every((x) => x.idle === true)).toBe(true);
+  });
+
+  it('a team with paid customers is paid normally, a seat that only stood by is idle, a seat that did one real action is not', () => {
+    const s = playSome(['p1']); // p1 runs the stall alone; p2 and p3 never act
+    const eng = engine.result(s);
+    expect(eng.team.paid).toBeGreaterThan(0);
+    const res = tiffin.result(s);
+    const row = (id) => res.standings.find((r) => r.id === id);
+    expect(row('p1').stats.idle).toBeUndefined();
+    expect(row('p2').stats.idle).toBe(true);
+    expect(row('p3').stats.idle).toBe(true);
+    const rec = record(s);
+    const user = (id) => rec.users.find((u) => u.user_id === id);
+    expect(user('p1').xp).toBeGreaterThanOrEqual(30);
+    expect(user('p1').coins).toBeGreaterThanOrEqual(40);
+    expect(user('p2')).toMatchObject({ xp: 0, coins: 0, won: 0 });
+    expect(user('p3')).toMatchObject({ xp: 0, coins: 0, won: 0 });
+    expect(rec.seats.filter((x) => x.idle).map((x) => x.id).sort()).toEqual(['p2', 'p3']);
+    // the winner stays the top earner (never changed by the guard)
+    expect(rec.winnerId).toBe(res.winnerId);
+    // everyone acting: a seat is idle exactly when it did none of the counted work (a seat that only cooks and moves counts as idle)
+    const all = playSome(['p1', 'p2', 'p3']);
+    for (const r of tiffin.result(all).standings) {
+      const work = ['served', 'collected', 'prepped', 'tended', 'gasSwaps', 'bought'].reduce((n, k) => n + r.stats[k], 0);
+      expect(r.stats.idle === true).toBe(work === 0);
+    }
+  });
+
+  it('the work that counts is served + collected + prepped + tended + gasSwaps + bought; moving and cooking alone is not work', () => {
+    let s = fresh({ level: 1 }, 2, 3);
+    s = { ...s, status: 'done', stars: 1, paid: 5, money: 100, players: { ...s.players, p1: { ...s.players.p1, earned: 100, collected: 1 }, p2: { ...s.players.p2, ops: [0, 0, 0, 1] } } };
+    const rows = tiffin.result(s).standings;
+    expect(rows.find((r) => r.id === 'p1').stats.idle).toBeUndefined(); // collected 1
+    expect(rows.find((r) => r.id === 'p2').stats.idle).toBeUndefined(); // bought 1
+    s = { ...s, players: { ...s.players, p2: { ...s.players.p2, ops: [0, 0, 0, 0] } } };
+    expect(tiffin.result(s).standings.find((r) => r.id === 'p2').stats.idle).toBe(true);
+    // a team whose customers never paid: everybody is idle however busy they were
+    s = { ...s, paid: 0 };
+    expect(tiffin.result(s).standings.every((r) => r.stats.idle === true)).toBe(true);
+  });
+
+  it('opts in to coalesced storage writes and to the daily limit of rewarded matches', () => {
+    expect(tiffin.persistEveryMs()).toBe(5000);
+    expect(tiffin.persistEveryMs(fresh())).toBe(5000);
+    expect(tiffin.dailyRewardedMatches).toBeGreaterThan(0);
+    expect(buildMatchRecord({ matchId: 'x', code: 'C', startedAt: 1, endedAt: 2, state: playSome(['p1', 'p2']), meta: {}, players: [{ id: 'p1', name: 'a' }, { id: 'p2', name: 'b' }] }, tiffin).dailyRewardedMatches).toBe(tiffin.dailyRewardedMatches);
+  });
+});
+
 // ------------------------------------------------------------------------------------------------------------------ canHost
 
 describe('canHost', () => {

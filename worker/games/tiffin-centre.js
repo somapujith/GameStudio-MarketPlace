@@ -8,6 +8,13 @@ import { query } from '../db.js';
 
 export const ID = GAME_ID;
 export const NOOP_ERROR = 'Already there.';
+/** A running stall's room record is written to storage at most this often (GameRoom `persistEveryMs`); see worker/games/index.js. */
+export const PERSIST_EVERY_MS = 5000;
+/**
+ * Co-op rewards are paid for at most this many Tiffin Centre matches per account per IST day (worker/match.js `dailyRewardedMatches`);
+ * further matches are still recorded (stats, rating) but pay 0 XP and 0 coins.
+ */
+export const DAILY_REWARDED_MATCHES = 12;
 export const CAN_HOST_ERROR = 'Finish the Tiffin Centre tutorial first to open a table.';
 
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
@@ -130,6 +137,16 @@ const adapter = {
   /** No intro animation: the first tick is due TICK_MS after the game starts. */
   startAnimMs: 0,
 
+  /**
+   * A real-time room changes on every tick and every action; persisting the whole record each time would burn the Durable Object
+   * storage row quota (rows written). The room keeps the authoritative state in memory and writes it at most once per this interval
+   * while the shift runs (always at once on start / game over / join / leave / settings). A restart loses at most this much play.
+   */
+  persistEveryMs: () => PERSIST_EVERY_MS,
+
+  /** Rewards are capped per account per IST day (match.js): an opt-in number of rewarded matches. */
+  dailyRewardedMatches: DAILY_REWARDED_MATCHES,
+
   validateSettings,
 
   /** A host's patch over the current settings: only the two known keys can change. */
@@ -197,7 +214,9 @@ const adapter = {
    * top earner on success, null on failure; `score` = the money that player collected. Stars and rank come from the team's PROFIT
    * (the engine decides). `stats` per player = served / collected / earned / tips / prepped / tended / gasSwaps / bought (their own
    * work) plus the team's books (revenue cost waste fines profit lost unpaid bestCombo, the same on every row). The books also sit
-   * once at the top level, with `team` (small flat integers only). `rounds` = ticks played.
+   * once at the top level, with `team` (small flat integers only). `rounds` = ticks played. `stats.idle` = true on a seat that did no
+   * work (served + collected + prepped + tended + gasSwaps + bought = 0) and on every seat when no customer paid: match.js pays those
+   * seats nothing.
    */
   result(state) {
     const res = engine.result(state);
@@ -215,6 +234,7 @@ const adapter = {
       bestCombo: num(res.bestCombo),
     };
     const t = res.team && typeof res.team === 'object' ? res.team : {};
+    const paidCustomers = num(t.paid);
     const team = { ...books, prepped: num(t.prepped), tended: num(t.tended), gasSwaps: num(t.gasSwaps), bought: num(t.bought) };
     const teamBooks = { revenue: books.revenue, cost: books.cost, waste: books.waste, fines: books.fines, profit: books.profit, lost: books.lost, unpaid: books.unpaid, bestCombo: books.bestCombo };
     return {
@@ -226,12 +246,14 @@ const adapter = {
       level: res.level,
       ...books,
       team,
-      standings: res.standings.map((row) => ({
-        id: row.id,
-        rank: row.rank,
-        score: Math.max(0, Math.round(row.score) || 0),
-        stats: { ...teamBooks, ...row.stats, finished: true }, // a player's own served / tips / prepped ... win over the team's
-      })),
+      standings: res.standings.map((row) => {
+        const stats = { ...teamBooks, ...row.stats, finished: true }; // a player's own served / tips / prepped ... win over the team's
+        // Idle guard (match.js pays nothing to `stats.idle`): a seat that did no work at all, and EVERY seat of a stall that never
+        // got a customer to pay, earned nothing from this shift (an untouched table cannot be farmed for XP and coins).
+        const work = ['served', 'collected', 'prepped', 'tended', 'gasSwaps', 'bought'].reduce((n, k) => n + num(row.stats && row.stats[k]), 0);
+        if (work === 0 || paidCustomers === 0) stats.idle = true;
+        return { id: row.id, rank: row.rank, score: Math.max(0, Math.round(row.score) || 0), stats };
+      }),
     };
   },
 

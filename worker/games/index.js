@@ -47,6 +47,20 @@
 //                                           `user` is the signed-in users row, `env` the Worker env (so it may query the database).
 //                                           Tiffin Centre requires the finished tutorial (user_game_stats.extra ->> 'tutorial').
 //
+//              persistEveryMs(state)        for real-time games that change the room record on every tick / action: a positive
+//                                           number of ms = GameRoom writes the record to storage at most once per that interval while
+//                                           the game is running (the in-memory room stays authoritative; start, game over and every
+//                                           lobby / join / leave / settings change still write at once, and the next step or alarm
+//                                           flushes a pending one). After a restart `seq` is bumped by RESTORE_SEQ_MARGIN so clients
+//                                           accept the restored state, and up to one interval of play may be replayed. Absent (or
+//                                           returning a non-positive number) = write on every step, as Nawabi Raj does.
+//              dailyRewardedMatches         positive integer: at most this many matches of this game per account and IST day pay XP and
+//                                           coins (match.js; later ones are still recorded and rated). Absent = no limit.
+//
+//   `result().standings[i].stats.idle === true` (opt-in, any game) marks a seat that earned nothing from the match: match.js pays it
+//   0 XP, 0 coins, no win and no rating change. Tiffin Centre sets it on seats that did no work and on every seat of a stall that
+//   served no paying customer.
+//
 //   `result().legacy` is only for Nawabi Raj: when present, the old users.games / wins /
 //   best_worth / rent_earned columns and the matches goal / max_rounds / dice_mode columns are
 //   kept up to date for the previous version of the app.

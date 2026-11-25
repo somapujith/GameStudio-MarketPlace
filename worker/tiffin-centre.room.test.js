@@ -29,7 +29,8 @@ vi.mock('./match.js', async (importOriginal) => {
   };
 });
 
-const { GameRoom } = await import('./GameRoom.js');
+const { GameRoom, RESTORE_SEQ_MARGIN } = await import('./GameRoom.js');
+const { GAME_ADAPTERS } = await import('./games/index.js');
 const { persistMatch } = await import('./match.js');
 const engine = await import('../shared/tiffin-centre/index.js');
 const { createRoomSessionCore } = await import('../src/games/tiffin-centre/session/roomCore.js');
@@ -1154,6 +1155,180 @@ describe('the client room session core against the real room messages', () => {
     expect(A.session.status).toBe('closed');
     expect(A.session.result).toMatchObject({ reason: 'closed', winnerId: null, stars: 0 });
     expect(A.session.dispatch({ type: 'move', to: 'tawa1' })).toBe(false);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------------------------ storage traffic
+
+describe('storage writes of a running stall (adapter.persistEveryMs)', () => {
+  const adapter = GAME_ADAPTERS['tiffin-centre'];
+  const hook = adapter.persistEveryMs;
+
+  /** 4 cooks, up to 3 actions per second each, 60 game seconds: the writes the room makes with and without the coalescing hook. */
+  async function runMinute(withHook) {
+    if (!withHook) delete adapter.persistEveryMs;
+    try {
+      const h = await table({ level: 3, n: 4 });
+      const puts0 = h.ctx.puts;
+      const alarms0 = h.ctx.alarmSets;
+      let applied = 0;
+      let ticks = 0;
+      let maxStale = 0;
+      while (h.r.status === 'playing' && ticks < 60) {
+        const base = Date.now();
+        for (let k = 0; k < 3; k += 1) {
+          for (let i = 0; i < h.seats.length; i += 1) {
+            vi.setSystemTime(base + 40 + k * 280 + i * 60); // 12 attempts inside the second, all before the tick is due
+            const seen = h.seats[i].ws.last('state').state;
+            const action = engine.chooseAutoAction(seen, h.seats[i].id);
+            if (!action) continue;
+            const seq = h.r.seq;
+            await h.say(h.seats[i].ws, { t: 'action', action });
+            if (h.r.seq > seq) applied += 1;
+          }
+        }
+        await h.tick();
+        ticks += 1;
+        maxStale = Math.max(maxStale, Date.now() - h.room.savedAt);
+        for (const s of h.seats) s.ws.sent.length = 0;
+      }
+      return { h, ticks, applied, puts: h.ctx.puts - puts0, alarmSets: h.ctx.alarmSets - alarms0, maxStale };
+    } finally {
+      adapter.persistEveryMs = hook;
+    }
+  }
+
+  it('60 ticks with 4 cooks acting 3 times a second: at most a fifth of the writes of the old behaviour, and the record is never older than the interval', async () => {
+    const before = await runMinute(false);
+    const after = await runMinute(true);
+    expect(before.ticks).toBe(60);
+    expect(after.ticks).toBe(60);
+    expect(before.applied).toBeGreaterThan(30);
+    // without the hook every applied action and every tick is one put (the old behaviour)
+    expect(before.puts).toBeGreaterThanOrEqual(before.ticks + before.applied - 1);
+    expect(after.puts).toBeLessThanOrEqual(before.puts / 5);
+    expect(after.puts).toBeLessThanOrEqual(Math.ceil((60 * TICK_MS) / 5000) + 2);
+    expect(after.maxStale).toBeLessThanOrEqual(5000 + TICK_MS); // the stored record lags by at most one interval (+ the tick that notices)
+    expect(after.alarmSets).toBeLessThanOrEqual(after.ticks + 2); // one setAlarm per tick, none for the actions in between
+    const perHour = (r) => Math.round((r.puts / r.ticks) * 3600);
+    stats.writes = {
+      players: 4,
+      actionsAppliedPerSecond: +(before.applied / before.ticks).toFixed(2),
+      putsPerRoomHourBefore: perHour(before),
+      putsPerRoomHourAfter: perHour(after),
+      // the alarm de-duplication applies to both runs; the old count is derived: 2 per tick (the action path and the end of the tick) + 1 per action
+      alarmSetsPerRoomHourBefore: Math.round(((2 * before.ticks + before.applied) / before.ticks) * 3600),
+      alarmSetsPerRoomHourAfter: Math.round((after.alarmSets / after.ticks) * 3600),
+    };
+  }, 120_000);
+
+  it('always writes at once on start, on a leave and when the shift is over, and the room record then matches memory', async () => {
+    const h = new Harness();
+    expect((await h.init({ gameId: 'tiffin-centre', settings: { level: 1, pace: 'normal' } })).status).toBe(201);
+    h.seats = [];
+    for (let i = 1; i <= 3; i += 1) {
+      const ws = await h.connect(user(i));
+      h.seats.push({ id: U(i), ws, name: `Cook ${i}` });
+      await h.say(ws, { t: 'ready', ready: true });
+    }
+    await h.say(h.seats[0].ws, { t: 'start' });
+    expect(h.ctx.store.get('room').status).toBe('playing'); // start: written
+    expect(h.ctx.store.get('room').seq).toBe(1);
+    for (let i = 0; i < 3; i += 1) await playSecond(h, h.seats);
+    expect(h.ctx.store.get('room').seq).toBeLessThan(h.r.seq); // the steps since the start are only in memory
+    const puts = h.ctx.puts;
+    await h.say(h.seats[2].ws, { t: 'leave' }); // leave: written at once, with everything pending
+    expect(h.ctx.puts).toBe(puts + 1);
+    expect(h.ctx.store.get('room').seq).toBe(h.r.seq);
+    expect(h.ctx.store.get('room').players.find((p) => p.id === U(3)).left).toBe(true);
+    const live = h.seats.slice(0, 2);
+    let guard = 0;
+    while (h.r.status === 'playing' && guard++ < 600) await playSecond(h, live);
+    expect(h.r.status).toBe('finished');
+    const stored = h.ctx.store.get('room');
+    expect(stored.status).toBe('finished'); // game over: written at once
+    expect(stored.seq).toBe(h.r.seq);
+    expect(stored.state.status).toBe(h.r.state.status);
+    expect(h.r.persisted).toBe(true);
+    expect(persisted).toHaveLength(1);
+    expect(h.room.unsaved).toBe(false);
+  });
+
+  it('a restart in the middle of the shift (the record is up to 5 s old): the clients accept what the restored room sends and the shift still finishes', async () => {
+    const h = await table({ level: 1, n: 2 });
+    const A = new Client(h, h.seats[0]);
+    const B = new Client(h, h.seats[1]);
+    for (let i = 0; i < 12; i += 1) await playSecond(h, h.seats);
+    expect(h.r.status).toBe('playing');
+    const seqBefore = h.r.seq;
+    const tickBefore = h.r.state.tick;
+    const storedSeq = h.ctx.store.get('room').seq;
+    expect(storedSeq).toBeLessThan(seqBefore); // there really is something to lose
+    expect(A.session.state.tick).toBe(tickBefore);
+    // evict: a new GameRoom over the same storage (sockets survive, like a hibernated object)
+    h.room = new GameRoom(h.ctx, {});
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(h.r.seq).toBe(storedSeq + RESTORE_SEQ_MARGIN);
+    expect(h.r.seq).toBeGreaterThan(seqBefore);
+    expect(h.r.state.tick).toBeLessThanOrEqual(tickBefore);
+    expect(tickBefore - h.r.state.tick).toBeLessThanOrEqual(6); // at most the interval's ticks are replayed
+    expect(h.ctx.store.get('room').seq).toBe(h.r.seq);
+    // the very next alarm (the stored one survived the restart) ticks the restored room and BOTH screens take that state
+    expect(h.ctx.alarmAt).not.toBeNull();
+    await h.tick();
+    for (const c of [A, B]) {
+      expect(c.session.state.tick).toBe(h.r.state.tick);
+      expect(json(c.session.state)).toBe(json(h.r.state));
+    }
+    expect(h.seats[0].ws.last('state').seq).toBeGreaterThan(seqBefore);
+    // an action from a client that saw the old seqs goes through and is echoed
+    const seq = h.r.seq;
+    const act = engine.chooseAutoAction(A.session.state, h.seats[0].id);
+    if (act) {
+      await h.say(h.seats[0].ws, { t: 'action', action: act });
+      expect(h.r.seq).toBeGreaterThan(seq);
+      expect(json(A.session.state)).toBe(json(h.r.state));
+    }
+    // and the shift plays on to its end with one match record
+    let guard = 0;
+    while (h.r.status === 'playing' && guard++ < 600) await playSecond(h, h.seats);
+    expect(h.r.status).toBe('finished');
+    expect(['done', 'closed']).toContain(A.session.status);
+    expect(persisted).toHaveLength(1);
+    expect(h.ctx.store.get('room').status).toBe('finished');
+  });
+});
+
+// ------------------------------------------------------------------------------------------------------------------ idle guard (end to end)
+
+describe('an idle table pays nothing, a working one is paid', () => {
+  it('both seats stand by until the stall closes: one match record, every seat flagged idle, 0 XP and 0 coins', async () => {
+    const h = await table({ level: 1, n: 2 });
+    let guard = 0;
+    while (h.r.status === 'playing' && guard++ < 400) await playSecond(h, h.seats, { bot: false });
+    expect(h.r.status).toBe('finished');
+    for (let i = 0; i < 5 && !h.r.persisted; i += 1) await h.tick();
+    expect(persisted).toHaveLength(1);
+    const rec = persisted[0];
+    expect(rec.users.map((u) => [u.xp, u.coins, u.won])).toEqual([[0, 0, 0], [0, 0, 0]]);
+    expect(rec.seats.every((s) => s.idle === true)).toBe(true);
+  });
+
+  it('one seat runs the stall alone: that seat is paid, the seat that stood by is not', async () => {
+    const h = await table({ level: 1, n: 2 });
+    let guard = 0;
+    while (h.r.status === 'playing' && guard++ < 600) await playSecond(h, [h.seats[0]]);
+    expect(h.r.status).toBe('finished');
+    for (let i = 0; i < 5 && !h.r.persisted; i += 1) await h.tick();
+    const rec = persisted[0];
+    const worker = rec.users.find((u) => u.user_id === U(1));
+    const idler = rec.users.find((u) => u.user_id === U(2));
+    expect(engine.result(h.r.state).team.paid).toBeGreaterThan(0);
+    expect(worker.xp).toBeGreaterThanOrEqual(30);
+    expect(worker.coins).toBeGreaterThanOrEqual(40);
+    expect(idler).toMatchObject({ xp: 0, coins: 0, won: 0 });
+    expect(rec.seats.find((s) => s.id === U(2)).idle).toBe(true);
+    expect(rec.seats.find((s) => s.id === U(1)).idle).toBeUndefined();
   });
 });
 
