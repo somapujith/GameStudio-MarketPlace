@@ -3,6 +3,7 @@
 // `opts.pan` places a sound in the stall (-0.7 left .. 0.7 right). Every sound is short (the fanfare is the longest, ~2.5 s).
 
 import { fanfarePlan, semisToHz } from './score.js';
+import { OPS_RECIPES } from './opsRecipes.js';
 
 const hz = (base, semis = 0) => base * 2 ** (semis / 12);
 
@@ -246,6 +247,9 @@ export const RECIPES = {
   closed(s, t) {
     playPlan(s, t, fanfarePlan({ win: false }));
   },
+
+  // the operations layer: weather, power, gas, prep, tending, stock, street events (opsRecipes.js)
+  ...OPS_RECIPES,
 };
 
 function playPlan(s, t, plan) {

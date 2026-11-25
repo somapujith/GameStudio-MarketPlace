@@ -16,6 +16,8 @@ export const HAPTIC_PATTERNS = Object.freeze({
   lifeLost: [95, 50, 55],
   payWarning: [14, 70, 14, 70, 14], // a pulse: the money is about to leave
   shiftEnd: [30, 50, 30, 50, 110],
+  gasOut: [90, 40, 110], // heavy: the burners went cold
+  inspector: [35, 60, 35], // double: the inspector's verdict
 });
 
 /** Events about YOU or about the whole stall. Other players' collects and the like do not buzz your pocket. */
@@ -39,12 +41,16 @@ export function hapticFor(ev, { meId = null } = {}) {
       return HAPTIC_PATTERNS.payWarning;
     case 'shift-end':
       return HAPTIC_PATTERNS.shiftEnd;
+    case 'gas-out':
+      return HAPTIC_PATTERNS.gasOut;
+    case 'inspector':
+      return HAPTIC_PATTERNS.inspector;
     default:
       return null;
   }
 }
 
-const WEIGHT = { lifeLost: 3, shiftEnd: 3, burnt: 2, angry: 2, unpaid: 2 };
+const WEIGHT = { lifeLost: 3, shiftEnd: 3, gasOut: 2, inspector: 2, burnt: 2, angry: 2, unpaid: 2 };
 
 export function createTiffinHaptics({ buzz = hubBuzz, meId = null, now = () => Date.now(), minGapMs = 90 } = {}) {
   let me = meId;

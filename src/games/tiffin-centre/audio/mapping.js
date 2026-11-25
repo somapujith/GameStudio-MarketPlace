@@ -6,6 +6,7 @@
 
 import { DISHES, STATIONS, LAYOUT } from '@shared/tiffin-centre/catalog.js';
 import { standX, walkSeconds } from '@shared/tiffin-centre/movement.js';
+import { prepKindOf } from './opsMix.js';
 
 /** Higher = more important: wins a voice when the cap is reached, and is never dropped for a lower one. */
 export const PRIORITY = {
@@ -30,6 +31,33 @@ export const PRIORITY = {
   eat: 1,
   turnaway: 1,
   steps: 1,
+  // operations layer (plan section 3b)
+  flameOut: 8,
+  powerCut: 7,
+  whistle: 7,
+  inspectorFail: 7,
+  powerRestore: 6,
+  inspectorPass: 6,
+  gasClank: 5,
+  flameRelight: 5,
+  prepDone: 5,
+  heatHot: 5,
+  heatCold: 5,
+  heatDry: 5,
+  stockOut: 5,
+  thunder: 4,
+  festivalStart: 4,
+  bikeHorn: 4,
+  gasHiss: 4,
+  stockLow: 4,
+  stockSpoiled: 4,
+  buy: 4,
+  prepStart: 3,
+  prepCollect: 3,
+  tend: 3,
+  extra: 2,
+  chalk: 2,
+  parcel: 2,
 };
 
 /** Minimum gap (ms) between two starts of the same sound, so four players' events cannot machine-gun one sample. */
@@ -55,6 +83,32 @@ export const COOLDOWN_MS = {
   fanfare: 2000,
   closed: 2000,
   steps: 220, // per walker (the limiter key), see soundsForMove
+  thunder: 3000,
+  powerCut: 2000,
+  powerRestore: 2000,
+  festivalStart: 4000,
+  whistle: 3000,
+  inspectorPass: 1500,
+  inspectorFail: 1500,
+  bikeHorn: 2500,
+  gasHiss: 4000,
+  flameOut: 2000,
+  gasClank: 800,
+  flameRelight: 800,
+  prepStart: 250, // per station + slot (the limiter key)
+  prepDone: 300,
+  prepCollect: 200,
+  extra: 200,
+  tend: 250, // per station
+  heatHot: 1500,
+  heatCold: 1500,
+  heatDry: 1500,
+  stockLow: 600,
+  stockOut: 900,
+  stockSpoiled: 700,
+  chalk: 150,
+  buy: 150,
+  parcel: 250,
 };
 
 export const SOUND_NAMES = Object.freeze(Object.keys(PRIORITY));
@@ -151,7 +205,7 @@ export function soundsForEvent(ev, ctx = {}) {
     case 'customer-turned-away':
       return [mk('turnaway', { pan: panOfCustomer(ev, state) })];
     case 'eating':
-      return [mk('eat', { pan: panOfCustomer(ev, state) })];
+      return [ev.parcel ? mk('parcel', { pan: panOfCustomer(ev, state) }) : mk('eat', { pan: panOfCustomer(ev, state) })]; // a takeaway is packed, not eaten
     case 'pay-ready':
       return [mk('payReady', { pan: panOfCustomer(ev, state) })];
     case 'pay-warning':
@@ -177,7 +231,77 @@ export function soundsForEvent(ev, ctx = {}) {
       return win ? [mk('fanfare', { stars: clamp(Math.trunc(Number(ev.stars) || 0), 1, 3) })] : [mk('closed')];
     }
     default:
-      return []; // tick, tutorial-spawn, unknown future events
+      return opsSounds(ev, { mine, g, state }); // the operations layer; [] for tick, tutorial-spawn and unknown future events
+  }
+}
+
+const TEND_KIND = { tawa: 'wipe', kadai: 'skim', steamer: 'water' };
+const keyed = (item, key) => ({ ...item, key });
+
+/** The operations layer's events (plan section 3b) -> sounds. Every field is optional: a half-formed event still makes its sound or none. */
+function opsSounds(ev, { g }) {
+  switch (ev.type) {
+    case 'event-start':
+      switch (ev.id) {
+        case 'rain':
+          return [mk('thunder')];
+        case 'power':
+          return [mk('powerCut')];
+        case 'festival':
+          return [mk('festivalStart')];
+        case 'inspector':
+          return [mk('whistle')];
+        case 'delivery':
+          return [mk('bikeHorn')];
+        default:
+          return []; // cricket: the TV murmur layer starts from the state
+      }
+    case 'event-end':
+      return ev.id === 'power' ? [mk('powerRestore')] : []; // the other events' layers fade out by themselves
+    case 'inspector':
+      return [mk(ev.pass ? 'inspectorPass' : 'inspectorFail')];
+    case 'gas-low':
+      return [mk('gasHiss')];
+    case 'gas-out':
+      return [mk('flameOut')];
+    case 'gas-swap':
+      if (ev.phase === 'start') return [mk('gasClank', { phase: 'start' })];
+      if (ev.phase === 'done') return [mk('gasClank', { phase: 'done' }), mk('flameRelight', { delay: 0.5 })];
+      return [];
+    case 'prep-start':
+      return [keyed(mk('prepStart', { kind: prepKindOf(ev.item), pan: panOfStation(ev) }, g), `prepStart:${ev.station}:${ev.slot}`)];
+    case 'prep-done':
+      return [keyed(mk('prepDone', { kind: prepKindOf(ev.item), pan: panOfStation(ev) }), `prepDone:${ev.station}:${ev.slot}`)];
+    case 'prep-collect':
+      return [mk('prepCollect', { pan: panOfStation(ev) }, g)];
+    case 'tend': {
+      const kind = ev.kind === 'wipe' || ev.kind === 'skim' || ev.kind === 'water' ? ev.kind : TEND_KIND[stationKind(ev)] || 'wipe';
+      return [keyed(mk('tend', { kind, pan: panOfStation(ev) }, g), `tend:${ev.station}`)];
+    }
+    case 'heat-warning': {
+      const name = { hot: 'heatHot', cold: 'heatCold', dry: 'heatDry' }[ev.band];
+      return name ? [keyed(mk(name, { pan: panOfStation(ev) }), `${name}:${ev.station}`)] : [];
+    }
+    case 'stock-low':
+      return [keyed(mk('stockLow'), `stockLow:${ev.item}`)];
+    case 'stock-out':
+      return [keyed(mk('stockOut'), `stockOut:${ev.item}`)];
+    case 'stock-spoiled':
+      return [mk('stockSpoiled')];
+    case 'batter-sour':
+      return [mk('stockSpoiled', { sour: true }, 0.8)];
+    case 'sold-out':
+      return [mk('chalk', { on: true })];
+    case 'board':
+      return [mk('chalk', { on: ev.on !== false }, g)];
+    case 'buy':
+      return [mk('buy', {}, g)];
+    case 'parcel-order':
+      return [mk('parcel', { foil: !!(ev.big || ev.delivery) })];
+    case 'extra':
+      return [mk('extra')];
+    default:
+      return [];
   }
 }
 

@@ -27,7 +27,7 @@ const TABLA_V = 0.05; // the tabla loop's loudest stroke: very quiet on purpose
 const MIN_ONESHOT_GAP_MS = 900; // two ambience one-shots never start closer than this (keeps the node count and CPU low)
 const FADE_TAU = 1.2; // seconds: how fast layer gains follow the hour (a crossfade)
 
-function buildLayer(c, dest, spec) {
+export function buildLayer(c, dest, spec) {
   const nodes = [];
   const sources = [];
   const out = c.createGain(); // the layer's level
