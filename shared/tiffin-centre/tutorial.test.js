@@ -8,7 +8,7 @@ import { applyAction, createGame, isOver } from './index.js';
 import { tutorialBotAction } from './tutorial.bot.js';
 import {
   LOOK_TURN_RAD, TUTORIAL_ACTIONS, TUTORIAL_CHAPTERS, TUTORIAL_NOT_YET, TUTORIAL_RECIPE_DISHES, TUTORIAL_SETTINGS, TUTORIAL_STEPS,
-  TUTORIAL_STEP_IDS, TUTORIAL_PREP_RECIPES, createTutorialDriver, spawnAction, trainAction,
+  TUTORIAL_STEP_IDS, TUTORIAL_PREP_RECIPES, TUTORIAL_RESCUE_NOTE, createTutorialDriver, spawnAction, trainAction,
 } from './tutorial.js';
 
 const ME = 'me';
@@ -337,8 +337,9 @@ describe('the driver through the real engine', () => {
       const step = sim.driver.step;
       if (idleOk.has(step.id) && !checked.has(step.id)) {
         checked.add(step.id);
-        const first = step.hint[0];
-        const last = step.hint[step.hint.length - 1];
+        const plain = step.hint.filter((h) => !h.when); // (a hint with a condition only shows in its own situation)
+        const first = plain[0];
+        const last = plain[plain.length - 1];
         let waited = 0;
         while (!sim.driver.hint && waited < 100 && sim.driver.step.id === step.id) {
           sim.tick();
@@ -880,7 +881,7 @@ describe('the operations chapters teach every mechanic through the real engine',
   it('every operations step names what is allowed, and only the lesson\'s own operations action', () => {
     const at = (id) => TUTORIAL_STEPS.find((s) => s.id === id);
     expect(at('stock-turn').allow).toEqual(['move']);
-    expect(at('stock-batter').allow).toEqual(['move', 'prep']);
+    expect(at('stock-batter').allow).toEqual(['move', 'prep', 'collectPrep']); // a finished junk job in the way can be cleared
     expect(at('stock-grind').allow).toEqual(['move', 'collectPrep']);
     expect(at('stock-out-cook').allow).toContain('cook');
     expect(at('stock-out-cook').allow).not.toContain('prep');
@@ -888,7 +889,7 @@ describe('the operations chapters teach every mechanic through the real engine',
     expect(at('gas-swap').allow).toContain('swapGas');
     expect(at('gas-cook').allow).not.toContain('swapGas');
     expect(at('board-off').allow).toEqual(['move', 'board']);
-    expect(at('power-cut').allow).toEqual(['move', 'prep']);
+    expect(at('power-cut').allow).toEqual(['move', 'prep', 'collectPrep']);
     expect(at('inspect-drill').allow).toEqual(['move', 'take', 'tend', 'discard']);
     for (const op of ['prep', 'collectPrep', 'tend', 'swapGas', 'board']) {
       expect(TUTORIAL_ACTIONS).toContain(op);
@@ -1014,5 +1015,303 @@ describe('prep recipes and the per-dish ingredient list', () => {
     expect([0.25, 0.5, 1, 1.25, 2].map(portionLabel)).toEqual(['1/4', '1/2', '1', '1 1/4', '2']);
     expect(ingredientsOf('masala_dosa').find((u) => u.item === 'potato_masala').label).toBe('1');
     expect(ingredientsOf('dosa').find((u) => u.item === 'oil').label).toBe('1/4');
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// soft-locks: whatever the player does (or the stall does behind the lesson's back), the tutorial can always be finished
+
+const finished = (sim) => sim.driver.done && sim.driver.finished && sim.completed === 1 && !isOver(sim.state);
+const stepOf = (id) => TUTORIAL_STEPS.find((s) => s.id === id);
+/** The rest of the lesson, played by the competent scripted player, with room for a retry or two. */
+const finishLesson = (sim, ticks = 2300) => play(sim, { maxTicks: sim.state.tick + ticks });
+const copyState = (s) => JSON.parse(JSON.stringify(s));
+
+/** Seeded PRNG (mulberry32). */
+function rng32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * A player who makes mistakes between the lesson's own actions: wastes dishes (cooks things nobody ordered), serves the wrong customer, collects
+ * from nobody, discards, takes whatever is ready, starts extra jobs at the back counter (extra batter), changes the cylinder early, marks a
+ * wrong dish sold out, tends a clean pan, wanders off, and now and then stops for a while (so patience and pay windows run out when they are live).
+ * `respect`: only what the HUD would let through in this step (driver.allows). `budget`: how many mistakes in all. Use as `extra` of play().
+ */
+function chaos(rand, { rate = 0.2, idleRate = 0.012, respect = true, budget = Infinity, noBoard = false } = {}) {
+  let idle = 0;
+  let used = 0;
+  const pick = (list) => list[Math.floor(rand() * list.length)];
+  return (state, driver) => {
+    if (used >= budget) return undefined;
+    if (idle > 0) { idle -= 1; return null; }
+    if (rand() < idleRate) { idle = 4 + Math.floor(rand() * 60); return null; }
+    if (rand() >= rate) return undefined;
+    const stations = state.cfg.stations.filter((id) => state.stations[id].kind !== 'prep');
+    const sid = pick(stations);
+    const st = state.stations[sid];
+    const alive = state.customers.filter((c) => c.st !== 'left');
+    const mistakes = {
+      cook: () => ({ type: 'cook', station: sid, slot: Math.floor(rand() * st.slots.length), dish: pick(DISH_IDS.filter((d) => DISHES[d].station === st.kind)) }),
+      discard: () => ({ type: 'discard', hand: Math.floor(rand() * 2) }),
+      serve: () => (alive.length ? { type: 'serve', customer: pick(alive).id, hand: Math.floor(rand() * 2) } : null),
+      take: () => ({ type: 'take', station: sid, slot: Math.floor(rand() * st.slots.length) }),
+      prep: () => (state.stations.prep1 ? { type: 'prep', station: 'prep1', slot: Math.floor(rand() * 2), item: pick(Object.keys(state.stock)) } : null),
+      collectPrep: () => (state.stations.prep1 ? { type: 'collectPrep', station: 'prep1', slot: Math.floor(rand() * 2) } : null),
+      swapGas: () => ({ type: 'swapGas' }),
+      board: () => (state.cfg.stock && !noBoard ? { type: 'board', dish: pick(state.cfg.menu), on: rand() < 0.3 } : null),
+      tend: () => ({ type: 'tend', station: pick(stations) }),
+      collect: () => (alive.length ? { type: 'collect', customer: pick(alive).id } : null),
+      move: () => ({ type: 'move', to: pick([...state.cfg.stations, 'bin', ...(state.cfg.gas ? ['gas'] : [])]) }),
+    };
+    const a = mistakes[pick(Object.keys(mistakes))]();
+    if (!a || (respect && !driver.allows(a.type))) return undefined;
+    used += 1;
+    return a;
+  };
+}
+
+/** Every mistake the HUD lets through in the step the sim stands on, one after the other, with time between them for the dishes to get ready. */
+function worstMistake(sim) {
+  const JUNK = { tawa: 'pesarattu', steamer: 'idly', kadai: 'mirchi_bajji', chai: 'osmania' };
+  const attempt = (a) => { if (sim.driver.allows(a.type)) sim.act(a); };
+  for (let round = 0; round < 2; round++) {
+    const s = sim.state;
+    for (const sid of s.cfg.stations) {
+      const st = s.stations[sid];
+      st.slots.forEach((_, slot) => {
+        if (st.kind === 'prep') attempt({ type: 'prep', station: sid, slot, item: round ? 'mirchi' : 'biscuits' });
+        else attempt({ type: 'cook', station: sid, slot, dish: JUNK[st.kind] });
+      });
+    }
+    attempt({ type: 'swapGas' });
+    for (const d of s.cfg.menu) attempt({ type: 'board', dish: d, on: false });
+    for (const c of sim.state.customers) { attempt({ type: 'serve', customer: c.id, hand: 0 }); attempt({ type: 'collect', customer: c.id }); }
+    for (let i = 0; i < 9; i++) sim.tick();
+    for (const sid of s.cfg.stations) {
+      if (s.stations[sid].kind === 'prep') continue;
+      s.stations[sid].slots.forEach((_, slot) => attempt({ type: 'take', station: sid, slot })); // the junk ends up in both hands
+    }
+    for (const sid of s.cfg.stations) if (s.stations[sid].kind !== 'prep') attempt({ type: 'tend', station: sid });
+  }
+}
+
+describe('soft-locks: the lesson can always be finished', () => {
+  it('cook2, carry and serve2 share one recovery, and a token served, paid and gone no longer blocks cook2 (finding H4)', () => {
+    expect(typeof stepOf('cook2').recover).toBe('function');
+    expect(stepOf('cook2').recover).toBe(stepOf('carry').recover);
+    expect(stepOf('serve2').recover).toBe(stepOf('carry').recover);
+    // the exact trace: serve the dosa, collect that token at once, then lose the idly held for the other: only C is left, and cook2 has to let go of B
+    const sim = playTo(makeSim(23), 'serve2', 400);
+    expect(sim.driver.step.id).toBe('serve2');
+    const me = () => sim.state.players[ME];
+    const dosa = sim.state.customers.find((c) => c.name === 'Padma' && c.order[0] === 'dosa');
+    if (dosa.st === 'waiting') sim.act({ type: 'serve', customer: dosa.id, hand: me().hands.findIndex((h) => h.dish === 'dosa') });
+    for (let i = 0; i < 12 && sim.state.customers.some((c) => c.id === dosa.id && c.st !== 'left'); i++) {
+      if (sim.state.customers.find((c) => c.id === dosa.id).st === 'paying') sim.act({ type: 'collect', customer: dosa.id });
+      else sim.tick();
+    }
+    for (let i = 0; i < 5; i++) sim.tick(); // the paid customer leaves the state
+    expect(sim.state.customers.some((c) => c.id === dosa.id)).toBe(false);
+    sim.act({ type: 'discard', hand: me().hands.findIndex((h) => h.dish === 'idly') });
+    expect(['cook2', 'carry']).toContain(sim.driver.step.id);
+    finishLesson(sim);
+    expect(finished(sim)).toBe(true);
+  });
+
+  it('a customer who is gone for good at ANY step (walked out, pruned unseen) is seated again and the lesson goes on', () => {
+    const bad = [];
+    for (const id of TUTORIAL_STEP_IDS) {
+      const sim = playTo(makeSim(5), id, 1500);
+      if (sim.driver.step.id !== id) continue; // (the demo-dish steps only exist while their dish does)
+      const s = copyState(sim.state);
+      s.customers = [];
+      sim.state = s;
+      sim.pump();
+      finishLesson(sim);
+      if (!finished(sim)) bad.push(id + '@' + sim.driver.step.id);
+    }
+    expect(bad).toEqual([]);
+  }, 120000);
+
+  it("a stall changed behind the lesson's back (stock, gas and steamer water gone, dishes lost or burnt, hands jammed, prep counter jammed, board off) never blocks it", () => {
+    const tampers = {
+      starve: (s) => {
+        if (s.cfg.stock) for (const k of Object.keys(s.stock)) s.stock[k] = 0;
+        if (s.cfg.gas && s.gas) { s.gas.u = 0; s.gas.sw = 0; }
+        if (s.cfg.heat) for (const st of Object.values(s.stations)) if (st.kind === 'steamer') st.water = 0;
+      },
+      wipeDishes: (s) => {
+        for (const st of Object.values(s.stations)) if (st.kind !== 'prep') for (const sl of st.slots) Object.assign(sl, { st: 'empty', dish: null, t0: 0, readyAt: 0, burnAt: 0, by: null });
+        for (const p of Object.values(s.players)) p.hands = [];
+      },
+      jamHands: (s) => { for (const p of Object.values(s.players)) p.hands = [{ dish: 'osmania', q: 'ok' }, { dish: 'vada', q: 'ok' }]; },
+      jamPrep: (s) => {
+        if (s.stations.prep1) s.stations.prep1.slots.forEach((sl, i) => Object.assign(sl, { st: 'ready', item: i ? 'mirchi' : 'biscuits', t0: 0, readyAt: 0, by: ME }));
+      },
+      everything: (s) => {
+        for (const st of Object.values(s.stations)) if (st.kind !== 'prep') for (const sl of st.slots) { sl.st = 'burnt'; sl.dish = sl.dish || 'vada'; }
+        if (s.cfg.stock) { for (const k of Object.keys(s.stock)) s.stock[k] = 47; s.off = s.cfg.menu.slice(); }
+        for (const p of Object.values(s.players)) p.hands = [{ dish: 'osmania', q: 'ok' }, { dish: 'vada', q: 'ok' }];
+      },
+    };
+    const bad = [];
+    for (const [name, tamper] of Object.entries(tampers)) {
+      for (const id of TUTORIAL_STEP_IDS) {
+        const sim = playTo(makeSim(5), id, 1500);
+        if (sim.driver.step.id !== id) continue;
+        const s = copyState(sim.state);
+        tamper(s);
+        sim.state = s;
+        sim.pump();
+        finishLesson(sim);
+        if (!finished(sim)) bad.push(name + ':' + id + '@' + sim.driver.step.id);
+      }
+    }
+    expect(bad).toEqual([]);
+  }, 240000);
+
+  it('chaos: 40 seeds of a player who keeps making mistakes still finish the whole tutorial, once, in good time', () => {
+    const slow = [];
+    let worst = 0;
+    for (let seed = 1; seed <= 40; seed++) {
+      const sim = makeSim(seed);
+      play(sim, { maxTicks: 3300, extra: chaos(rng32(seed * 7919), { rate: 0.2 }) });
+      if (!finished(sim)) slow.push(seed + '@' + sim.driver.step.id);
+      expect(sim.completed, 'seed ' + seed).toBe(1);
+      worst = Math.max(worst, sim.state.tick);
+    }
+    expect(slow).toEqual([]);
+    expect(worst).toBeLessThan(2400); // a bot that never reads; the shift lasts 3600
+  });
+
+  it('chaos, harder: a mistake every few ticks, and mistakes the HUD would have refused (a HUD that forgot) still cannot stop it', () => {
+    const slow = [];
+    for (let seed = 101; seed <= 130; seed++) {
+      const sim = makeSim(seed);
+      play(sim, { maxTicks: 3300, extra: chaos(rng32(seed * 104729), { rate: 0.35, respect: seed % 2 === 0, noBoard: seed % 2 === 1, budget: seed % 2 === 1 ? 80 : Infinity }) });
+      if (!finished(sim)) slow.push(seed + '@' + sim.driver.step.id);
+    }
+    expect(slow).toEqual([]);
+  });
+
+  it('stuck detector: at every step a player who does nothing is never moved on (even pressing Got it), still has the hints, and can finish after a long wait', () => {
+    let tested = 0;
+    for (const id of TUTORIAL_STEP_IDS) {
+      const sim = playTo(makeSim(5), id, 1500);
+      if (sim.driver.step.id !== id) continue;
+      tested += 1;
+      const at = sim.driver.index;
+      const visits = sim.driver.visits[id];
+      const step = stepOf(id);
+      for (let i = 0; i < 200; i++) {
+        sim.tick();
+        if (!step.ack) sim.driver.ack(); // (a Got it press that nothing waits for does nothing)
+      }
+      if (id !== 'outro') { // the outro IS the end
+        expect(sim.driver.index, 'idle at ' + id).toBeLessThanOrEqual(at); // (it may fall back: a dish that burnt is cooked again)
+        expect(sim.driver.done, 'idle at ' + id).toBe(false);
+        if (sim.driver.index === at && sim.driver.visits[id] === visits) expect(sim.driver.hint, 'idle at ' + id).toBeTruthy();
+      }
+      for (let i = 0; i < 200; i++) sim.tick(); // 400 ticks in all: the batter sours and is thrown away, the pans cool, the shelf empties
+      finishLesson(sim);
+      expect(finished(sim), 'after a long wait at ' + id + ' it stands on ' + sim.driver.step.id).toBe(true);
+    }
+    expect(tested).toBeGreaterThan(115);
+  }, 120000);
+
+  it('stuck detector: at every step the worst plausible mistake (junk everywhere, hands full of it, board off, jobs started, cylinder changed) can still be finished', () => {
+    const bad = [];
+    for (const id of TUTORIAL_STEP_IDS) {
+      const sim = playTo(makeSim(5), id, 1500);
+      if (sim.driver.step.id !== id) continue;
+      worstMistake(sim);
+      finishLesson(sim);
+      if (!finished(sim)) bad.push(id + '@' + sim.driver.step.id);
+    }
+    expect(bad).toEqual([]);
+  }, 120000);
+});
+
+describe('soft-locks: what the player is told', () => {
+  it('names the way out when the hands are full of dishes nobody ordered (and points at the bin), in a take step and a carry step', () => {
+    for (const id of ['dosa-take', 'carry', 'stock-out-serve']) {
+      const sim = playTo(makeSim(5), id, 900);
+      expect(sim.driver.step.id).toBe(id);
+      const s = copyState(sim.state);
+      s.players[ME].hands = [{ dish: 'osmania', q: 'ok' }, { dish: 'vada', q: 'ok' }];
+      sim.state = s;
+      sim.pump();
+      for (let i = 0; i < 9; i++) sim.tick();
+      if (sim.driver.step.id !== id) continue; // (a dish that burnt in the meantime sends the lesson back, which is fine too)
+      expect(sim.driver.hint, id).toMatch(/one nobody ordered/);
+      expect(sim.driver.hintFor('touch'), id).toMatch(/Tap the bin/);
+      expect(sim.driver.spotlight, id).toMatchObject({ kind: 'bin', look: true });
+    }
+  });
+
+  it('names the way out when every spot of the station is busy and when both back-counter job slots are', () => {
+    const sim = playTo(makeSim(5), 'dosa-cook', 900);
+    const s = copyState(sim.state);
+    s.stations.tawa1.slots.forEach((sl) => Object.assign(sl, { st: 'burnt', dish: 'vada', t0: 0, readyAt: 0, burnAt: 0 }));
+    sim.state = s;
+    sim.pump();
+    for (let i = 0; i < 9; i++) sim.tick();
+    expect(sim.driver.step.id).toBe('dosa-cook');
+    expect(sim.driver.hint).toMatch(/Every spot on the Dosa tawa is busy/);
+    expect(sim.driver.spotlight).toMatchObject({ kind: 'slot', id: 'tawa1', slot: 0 });
+    const prep = playTo(makeSim(5), 'stock-batter', 900);
+    const p = copyState(prep.state);
+    p.stations.prep1.slots.forEach((sl, i) => Object.assign(sl, { st: 'cooking', item: i ? 'mirchi' : 'biscuits', t0: p.tick, readyAt: p.tick + 40, by: ME }));
+    prep.state = p;
+    prep.pump();
+    for (let i = 0; i < 9; i++) prep.tick();
+    expect(prep.driver.hint).toMatch(/job slots at the back counter are busy/);
+    expect(prep.driver.allows('collectPrep')).toBe(true); // a finished junk job can be cleared
+  });
+
+  it('puts the stall back when it ran dry, tells the player so, and the dish can then be cooked', () => {
+    const sim = playTo(makeSim(5), 'heat-cook', 1500);
+    const s = copyState(sim.state);
+    s.stock.batter_dosa = 0;
+    sim.state = s;
+    sim.pump();
+    expect(sim.state.stock.batter_dosa).toBeGreaterThanOrEqual(1);
+    expect(sim.driver.notice).toBe(TUTORIAL_RESCUE_NOTE);
+    expect(sim.log.some((l) => l.includes('"tutorial-flags"') && l.includes('batter_dosa'))).toBe(true);
+    const cook = tutorialBotAction(sim.state, sim.driver, ME);
+    expect(cook).toMatchObject({ type: 'cook', dish: 'dosa' });
+    expect(sim.act(cook).error).toBeUndefined();
+  });
+
+  it('keeps the sold-out board honest: a dish marked off by mistake is put back, even when everything is off at the moment the customer looks', () => {
+    const sim = playTo(makeSim(5), 'board-off', 1500);
+    expect(sim.act({ type: 'board', dish: 'idly', on: false }).error).toBeUndefined();
+    expect(sim.state.off).not.toContain('idly'); // put back at once
+    const s = copyState(sim.state);
+    s.off = s.cfg.menu.filter((d) => d !== 'dosa');
+    sim.state = s;
+    sim.act({ type: 'board', dish: 'dosa', on: false });
+    finishLesson(sim);
+    expect(finished(sim)).toBe(true);
+    expect(sim.state.off).toEqual([]);
+  });
+
+  it('matches a customer to the spawn it came from (by name and order), so two tokens never swap their tags', () => {
+    const sim = playTo(makeSim(5), 'orders', 900);
+    sim.pump();
+    const b = sim.state.customers.find((x) => x.name === 'Padma' && x.order[0] === 'dosa');
+    const c = sim.state.customers.find((x) => x.name === 'Venkat uncle');
+    expect(c.order).toEqual(['idly']);
+    expect(sim.driver.step.id).toBe('orders');
+    expect(sim.driver.text).toContain('Token #' + b.id + ' wants a Plain Dosa');
+    expect(sim.driver.text).toContain('Token #' + c.id + ' wants an Idly');
   });
 });

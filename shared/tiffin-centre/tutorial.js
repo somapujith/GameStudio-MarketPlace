@@ -45,7 +45,14 @@
 //   when(state, ctx) -> false skips the step; done(state, events, ctx) -> boolean
 //   failed(state, ctx) -> { to, attempt? } | null   a recoverable failure: go back to step `to` (and count an attempt)
 //   recover(state, ctx) -> stepId | null            the situation became unwinnable: go back to that step
-import { CUSTOMER_KINDS, DISHES, GAS, INGREDIENTS, PACE, PATIENCE_BASE, PREP_STATION, REQUEST, STATIONS, STATION_KINDS, levelDef } from './catalog.js';
+//   needsTags: ['R', ...]   the customer tags this step's own onEnter seats: when one of them is gone without having paid (walked out,
+//          sold out, pruned unseen) the step is entered again, which seats whoever is missing (frozen clocks, same lesson)
+//   rescue(state, ctx) -> action[] | null   the stall itself became unwinnable (the cylinder ran dry, the shelf emptied, the steamer boiled
+//          dry, the board was flipped ...) without anything to go back to: Chotu re-stages it with `tutorial-flags` actions. Asked at most every
+//          RESCUE_EVERY ticks while the step is not done, and only ever answers with actions when the lesson cannot go on as it is.
+//   hint entries may carry a `when(state, ctx)` (the 4th item of the compact form): the entry only shows while it is true, and then beats the
+//          plain timed entries (it names the situation the player is actually in: hands jammed, a station full, the prep counter busy ...)
+import { CUSTOMER_KINDS, DISHES, GAS, INGREDIENTS, PACE, PATIENCE_BASE, PREP_STATION, REQUEST, STATIONS, STATION_KINDS, STOCK_CAP, levelDef } from './catalog.js';
 import { PREP_RECIPES, RECIPES, ingredientsOf } from './recipes.js';
 
 export const TUTORIAL_LEVEL = 0;
@@ -57,6 +64,8 @@ export const TUTORIAL_NOT_YET = 'Chotu says: not yet!'; // the toast for a refus
 /** The actions `allow` gates. The first six are the cooking basics; the rest belong to the operations chapters (a step that does not list them refuses them). */
 export const TUTORIAL_ACTIONS = Object.freeze(['move', 'cook', 'take', 'serve', 'collect', 'discard', 'prep', 'collectPrep', 'tend', 'swapGas', 'board']);
 const SPAWN_RETRY = 3; // ticks before a spawn that did not produce a customer is sent again
+const RESCUE_EVERY = 4; // ticks between two rescues of the same stall (a rescue that did not help is not spammed)
+export const TUTORIAL_RESCUE_NOTE = 'Chotu topped up the stall so the lesson can carry on.';
 
 // ---------------------------------------------------------------------------------------------------------------------
 // chapters: the progress meter groups the steps (driver.chapters / driver.chapter)
@@ -98,6 +107,16 @@ const heldCount = (me, dish) => (me ? me.hands.filter((h) => h.dish === dish).le
 const cookingCount = (state, dish) => allSlots(state).filter((s) => s.dish === dish && SLOT_BUSY.has(s.st)).length;
 const readySlot = (state, dish) => allSlots(state).find((s) => s.dish === dish && s.st === 'ready') || null;
 const slotOfDish = (state, dish) => allSlots(state).find((s) => s.dish === dish && s.st !== 'empty') || null;
+/** Is every spot of station `sid` taken (cooking, ready or smoking)? Then nothing can be started there. */
+const stationFull = (state, sid) => !!state.stations[sid] && state.stations[sid].slots.every((sl) => sl.st !== 'empty');
+/** When station `sid` is full: the spot to clear first (a smoking one needs no free hand), else a ready one; null when it has room or only cooks. */
+function clearSpot(state, sid) {
+  if (!stationFull(state, sid)) return null;
+  const slots = state.stations[sid].slots;
+  let i = slots.findIndex((sl) => sl.st === 'burnt');
+  if (i < 0) i = slots.findIndex((sl) => sl.st === 'ready');
+  return i < 0 ? null : { kind: 'slot', id: sid, slot: i, look: true };
+}
 /** Is `dish` held, cooking or ready somewhere (so it is on its way to a customer)? */
 const haveDish = (state, me, dish) => heldCount(me, dish) + cookingCount(state, dish) > 0;
 const needsOf = (c) => {
@@ -160,7 +179,7 @@ const A_COLLECT = Object.freeze(['move', 'collect']);
 const A_CARRY = Object.freeze(['move', 'take', 'serve', 'discard']);
 const A_ORDERS = Object.freeze(['move', 'serve', 'collect', 'discard']);
 const A_PLAY = Object.freeze(['move', 'cook', 'take', 'serve', 'collect', 'discard']); // free play at the stations (no operations jobs)
-const A_PREP = Object.freeze(['move', 'prep']);
+const A_PREP = Object.freeze(['move', 'prep', 'collectPrep']); // `collectPrep` clears a finished job that is in the way (only two job slots)
 const A_PICKUP = Object.freeze(['move', 'collectPrep']);
 const A_TEND = Object.freeze(['move', 'tend']);
 const A_BOARD = Object.freeze(['move', 'board']);
@@ -195,8 +214,8 @@ function S(def) {
     ...def,
     text: kb,
     textTouch: touch === undefined ? kb : touch,
-    hint: hints.map(([after, k]) => ({ after, text: k })),
-    hintTouch: hints.map(([after, k, t]) => ({ after, text: t === undefined ? k : t })),
+    hint: hints.map(([after, k, , when]) => (when ? { after, text: k, when } : { after, text: k })),
+    hintTouch: hints.map(([after, k, t, when]) => (when ? { after, text: t === undefined ? k : t, when } : { after, text: t === undefined ? k : t })),
     controls: CONTROLS[def.controls || (def.ack ? 'ack' : 'none')],
     speaker: TUTORIAL_HOST,
   };
@@ -207,12 +226,35 @@ const sp = (kind, id, slot) => (slot === undefined ? { kind, id, look: true } : 
 const custSp = (c) => (c ? sp('customer', c.id) : null);
 const ACK_HINT = [14, 'Click "Got it" when you are ready.', 'Tap "Got it" when you are ready.'];
 const clearHands = (ctx) => (ctx.me ? ctx.me.hands.map((_, i) => ({ type: 'discard', hand: ctx.me.hands.length - 1 - i })) : []);
-/** The customer `tag` waits for a dish that is no longer held or cooking: the lesson goes back to `to`. */
-const lostDish = (tag, dish, to) => (s, ctx) => {
+/**
+ * The customer `tag` waits for a dish that is no longer held or cooking (or walked out without it): the lesson goes back to `to`, and to
+ * `card` (the step that seats the customer, default `to`) when the customer is gone for good.
+ */
+const lostDish = (tag, dish, to, card = to) => (s, ctx) => {
   const c = ctx.cust(tag);
-  if (!live(c) || c.st !== 'waiting' || c.got.includes(dish)) return null;
+  if (!live(c)) {
+    const o = ctx.outcome(tag);
+    return o && o !== 'paid' ? card : null;
+  }
+  if (c.st !== 'waiting' || c.got.includes(dish)) return null;
   return haveDish(s, ctx.me, dish) ? null : to;
 };
+/** Has customer `tag` been served `dish` (or is already past waiting; a customer served, paid and pruned is remembered by the driver)? */
+const servedTag = (ctx, tag, dish) => {
+  const c = ctx.cust(tag);
+  return c ? c.got.includes(dish) || c.st !== 'waiting' : ctx.outcome(tag) === 'paid';
+};
+/** Hands full of dishes nobody waiting wants: nothing can be picked up until some are thrown in the bin. */
+const junkHands = (s, ctx) => !!ctx.me && ctx.me.hands.length >= 2
+  && ctx.me.hands.some((h) => !s.customers.some((c) => c.st === 'waiting' && needsOf(c).includes(h.dish)));
+const BIN_SPOT = Object.freeze({ kind: 'bin', look: true });
+const BIN_HINT = 'Your hands are full, and a dish you hold is one nobody ordered. Throw it away: go to the bin at the right end of the counter and press Space.';
+const BIN_HINT_TOUCH = 'Your hands are full, and a dish you hold is one nobody ordered. Tap the bin at the right end of the counter to throw it away.';
+/** Hands full of dishes and not one of them is wanted by anybody waiting (so there is nothing to serve either). */
+const allJunkHands = (s, ctx) => !!ctx.me && ctx.me.hands.length >= 2
+  && ctx.me.hands.every((h) => !s.customers.some((c) => c.st === 'waiting' && needsOf(c).includes(h.dish)));
+/** The gated "your hands are jammed" hint entry (kb and touch text differ, so it is two entries in the compact hint form). */
+const BIN_HINT_ENTRY = [8, BIN_HINT, BIN_HINT_TOUCH, junkHands];
 
 // ---------------------------------------------------------------------------------------------------------------------
 // one dish, one mini-lesson: recipe card -> cook -> take -> serve (the customer pays by Chotu's hand; collecting has its own lesson)
@@ -244,10 +286,13 @@ function dishLesson(dish, { tag = dish, prefix = dish, spawn = true, intro = '',
       ? `Serve ${tokenOf(c)}: tap their chit or the customer, and the ${d.name} goes across the counter.`
       : `Serve ${tokenOf(c)}: face them with A / D and press Space. The ${d.name} goes across the counter.`;
   };
-  const stationOrSlot = (s) => {
+  const stationOrSlot = (s, ctx) => {
+    if (junkHands(s, ctx)) return BIN_SPOT;
     const r = slotOfDish(s, dish);
     return r && r.st !== 'burnt' ? sp('slot', r.station, r.slot) : sp('station', sid);
   };
+  const cardId = id('card');
+  const full = (s) => stationFull(s, sid);
   return {
     card: S({
       id: id('card'), say: `Recipe dekho anna: ${d.name}!`, te: `${introTe}${d.te} తయారీ చూడండి`,
@@ -274,11 +319,13 @@ function dishLesson(dish, { tag = dish, prefix = dish, spawn = true, intro = '',
       ],
       controls: 'cook',
       allow: A_COOK,
-      spotlight: () => sp('station', sid),
+      spotlight: (s) => clearSpot(s, sid) || sp('station', sid),
       done: (s, e, ctx) => haveDish(s, ctx.me, dish) || (!!ctx.cust(tag) && ctx.cust(tag).got.includes(dish)),
+      recover: lostDish(tag, dish, cookId, cardId), // the customer is gone: seat them again at the card
       hint: [
         [10, `Walk to the glowing ${label} (A / D), press Space, then pick ${d.name}.`, `Tap the glowing ${label}, then pick ${d.name} from the menu.`],
         [30, `Pick an empty spot on the ${label}, then choose ${d.name}.`],
+        [8, `Every spot on the ${label} is busy. Pick up the ready dishes, or clear the smoking ones, to make room.`, undefined, full],
       ],
     }),
     take: S({
@@ -288,10 +335,11 @@ function dishLesson(dish, { tag = dish, prefix = dish, spawn = true, intro = '',
       allow: A_TAKE,
       spotlight: stationOrSlot,
       done: (s, e, ctx) => heldCount(ctx.me, dish) > 0 || (!!ctx.cust(tag) && ctx.cust(tag).got.includes(dish)),
-      recover: lostDish(tag, dish, cookId),
+      recover: lostDish(tag, dish, cookId, cardId),
       hint: [
         [6, 'Press Space at the glowing dish to pick it up.', 'Tap the glowing dish to pick it up.'],
         [20, 'If a dish burns, clear the smoking spot and cook a fresh one.'],
+        BIN_HINT_ENTRY,
       ],
     }),
     serve: S({
@@ -300,8 +348,8 @@ function dishLesson(dish, { tag = dish, prefix = dish, spawn = true, intro = '',
       controls: 'serve',
       allow: A_SERVE,
       spotlight: (s, ctx) => custSp(ctx.cust(tag)),
-      done: (s, e, ctx) => !!ctx.cust(tag) && (ctx.cust(tag).got.includes(dish) || ctx.cust(tag).st !== 'waiting'),
-      recover: lostDish(tag, dish, cookId),
+      done: (s, e, ctx) => servedTag(ctx, tag, dish),
+      recover: lostDish(tag, dish, cookId, cardId),
       hint: [[8, 'Face the glowing customer with A / D and press Space.', 'Tap the glowing customer. Your dish goes to them.']],
     }),
   };
@@ -370,6 +418,7 @@ const TOKEN_STEPS = [
     spotlight: (s, ctx) => custSp(ctx.cust('A')),
     onEnter: (s, ctx) => (live(ctx.cust('A')) ? [] : [spawnAction({ kind: 'student', name: 'Kiran', order: ['dosa'], tag: 'A' })]),
     ack: true,
+    needsTags: ['A'],
     done: (s, e, ctx) => !!ctx.cust('A') && (ctx.acked || ctx.visits > 1),
     hint: [[10, 'Look at the customer across the counter, read the chit, then click "Got it".', 'Look at the customer across the counter, read the chit, then tap "Got it".']],
   }),
@@ -386,7 +435,7 @@ const TOKEN_STEPS = [
 
 // The tawa: walk, the dosa recipe (the first customer), the burn demo, then the four variants
 const DOSA = dishLesson('dosa', {
-  tag: 'A', prefix: 'dosa', spawn: false, intro: 'The TAWA is your dosa pan. ', introTe: 'పెనం: ', cookSay: 'Chalo, dosa daalo tawa pe!',
+  tag: 'A', prefix: 'dosa', intro: 'The TAWA is your dosa pan. ', introTe: 'పెనం: ', cookSay: 'Chalo, dosa daalo tawa pe!',
 });
 
 const TAWA_STEPS = [
@@ -426,7 +475,7 @@ const TAWA_STEPS = [
       return { actions: [{ type: 'cook', station: 'tawa1', slot, dish: 'masala_dosa' }], set: { demo: { station: 'tawa1', slot } } };
     },
     done: (s, e, ctx) => !!readySlot(s, 'dosa') || heldCount(ctx.me, 'dosa') > 0 || (!!ctx.cust('A') && ctx.cust('A').got.includes('dosa')),
-    recover: lostDish('A', 'dosa', 'dosa-cook'),
+    recover: lostDish('A', 'dosa', 'dosa-cook', 'dosa-card'),
     hint: [[12, 'Just wait: the dosa needs a few seconds. Watch its bar.']],
   }),
   DOSA.take,
@@ -472,7 +521,9 @@ const CHAI_STEPS = ['irani_chai', 'filter_coffee', 'osmania'].flatMap((d) => les
 // Serve and collect: two tokens, two hands, the right dish to the right token, the money
 const needCovered = (s, ctx, tag) => {
   const c = ctx.cust(tag);
-  return !!c && (c.st !== 'waiting' || needsOf(c).every((d) => haveDish(s, ctx.me, d)));
+  // a token that is already past waiting needs nothing more (and one served, paid and gone is remembered by its outcome)
+  if (!c) return !!ctx.outcome(tag);
+  return c.st !== 'waiting' || needsOf(c).every((d) => haveDish(s, ctx.me, d));
 };
 // a customer of the pair is past waiting (served, paid or gone): pruned customers are remembered by their outcome
 const pairPast = (ctx, tag) => {
@@ -512,6 +563,7 @@ const SERVE_STEPS = [
       return acts;
     },
     ack: true,
+    needsTags: ['B', 'C'],
     done: (s, e, ctx) => !!ctx.cust('B') && !!ctx.cust('C') && ctx.acked,
     hint: [ACK_HINT],
   }),
@@ -526,12 +578,16 @@ const SERVE_STEPS = [
     allow: A_COOK,
     spotlight: (s, ctx) => {
       const need = ['B', 'C'].map((t) => ctx.cust(t)).filter(Boolean).flatMap((c) => needsOf(c)).find((d) => !haveDish(s, ctx.me, d));
-      return need ? sp('station', KIND_STATION[DISHES[need].station]) : null;
+      if (!need) return null;
+      const sid = KIND_STATION[DISHES[need].station];
+      return clearSpot(s, sid) || sp('station', sid);
     },
     done: (s, e, ctx) => needCovered(s, ctx, 'B') && needCovered(s, ctx, 'C'),
+    recover: pairLost, // a token that walked out (or a pair spawned short) goes back to `orders`, which seats whoever is missing
     hint: [
       [12, 'Start a Plain Dosa on the tawa and an Idly in the steamer.', 'Tap the tawa for the dosa and the steamer for the idly.'],
       [34, 'You need both a dosa and an idly cooking. One more to start?'],
+      [8, 'The station you need is full. Pick up the ready dishes, or clear the smoking ones, to make room.', undefined, (s, ctx) => needStationFull(s, ctx, ['B', 'C'])],
     ],
   }),
   S({
@@ -544,6 +600,7 @@ const SERVE_STEPS = [
     controls: 'take',
     allow: A_CARRY,
     spotlight: (s, ctx) => {
+      if (junkHands(s, ctx)) return BIN_SPOT;
       const r = ['dosa', 'idly'].map((d) => readySlot(s, d)).find((x) => x && heldCount(ctx.me, x.dish) === 0);
       return r ? sp('slot', r.station, r.slot) : { kind: 'hands' };
     },
@@ -552,6 +609,7 @@ const SERVE_STEPS = [
     hint: [
       [14, 'Press Space at each ready dish to pick it up.', 'Tap each ready dish to pick it up.'],
       [40, 'Hands full? One dish in each hand: dosa and idly.'],
+      BIN_HINT_ENTRY,
     ],
   }),
   S({
@@ -654,12 +712,94 @@ const coverSpot = (tags) => (state, ctx) => {
 };
 /** A held or ready dish for one of `tags` to carry over: the ready slot first, else the customer who can be served. */
 const serveSpot = (tags) => (state, ctx) => {
+  if (allJunkHands(state, ctx)) return BIN_SPOT;
   const c = tags.map((t) => ctx.cust(t)).find((x) => live(x) && x.st === 'waiting' && needsOf(x).some((d) => heldCount(ctx.me, d) > 0));
   if (c) return custSp(c);
   const r = allSlots(state).find((x) => x.st === 'ready' && x.dish);
   return r ? sp('slot', r.station, r.slot) : { kind: 'hands' };
 };
 const spawnTags = (ctx, list) => list.filter((r) => !live(ctx.cust(r.tag))).map((r) => spawnAction(r));
+/** Is the station the first uncovered dish of `tags` needs full (nothing can be started there until a spot is cleared)? */
+function needStationFull(state, ctx, tags) {
+  const d = firstUncovered(state, ctx, tags);
+  return !!d && stationFull(state, KIND_STATION[DISHES[d].station]);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// rescues: the stall ran out of something the lesson needs, because of the player's own extra actions (junk dishes eat stock and gas, an extra
+// idly batch boils the steamer dry) or just because time passed (batter sours and is thrown away). Chotu re-stages it, once, with the very
+// same `tutorial-flags` stage the lesson used to set it up; a power cut or a busy spot clear by themselves and are never "rescued".
+
+const gasDead = (s) => !!s.cfg.gas && !!s.gas && s.gas.u <= 0 && s.gas.sw === 0;
+const steamerDry = (s) => {
+  const st = s.stations[KIND_STATION.steamer];
+  return !!s.cfg.heat && !!st && typeof st.water === 'number' && st.water <= 0;
+};
+const shortItems = (s, dish) => (s.cfg.stock ? Object.entries(DISHES[dish].uses).filter(([item, q]) => !(s.stock[item] >= q)).map(([item]) => item) : []);
+
+/** The stage that lets every dish of `dishes` be cooked again (`skip`: ingredients a lesson keeps short on purpose), or null when nothing blocks them. */
+function refillFor(s, dishes, skip = [], gasTo = 800) {
+  const stock = {};
+  const fresh = {};
+  let gas = false;
+  let water = false;
+  for (const d of dishes) {
+    if (!DISHES[d]) continue;
+    if (gasDead(s)) gas = true;
+    if (DISHES[d].station === 'steamer' && steamerDry(s)) water = true;
+    for (const item of shortItems(s, d)) {
+      if (skip.includes(item)) continue;
+      stock[item] = 10;
+      if (INGREDIENTS[item].ferments) fresh[item] = 100;
+    }
+  }
+  const stage = {};
+  if (Object.keys(stock).length) {
+    stage.stock = stock;
+    if (Object.keys(fresh).length) stage.fresh = fresh;
+  }
+  if (gas) stage.gas = gasTo;
+  if (water) stage.pans = { steamer: { water: 100, gunk: 0 } };
+  return Object.keys(stage).length ? [trainAction({ stage })] : null;
+}
+/** Rescue for a step whose customers `tags` still wait for dishes: whatever blocks the first dish nothing covers is topped up. */
+const keepCookable = (tags, skip = [], gasTo = 800) => (s, ctx) => {
+  const d = firstUncovered(s, ctx, tags);
+  return d ? refillFor(s, [d], skip, gasTo) : null;
+};
+/** Rescue for a step that makes `items` at the back counter: a shelf so full that the job would be refused ("The shelf is full") goes back to a low one. */
+const keepRoomFor = (items) => (s) => {
+  const stock = {};
+  for (const item of items) {
+    if (prepJobs(s, item).length || !(item in s.stock)) continue;
+    if (s.stock[item] + INGREDIENTS[item].prep.yield > STOCK_CAP) stock[item] = 2;
+  }
+  return Object.keys(stock).length ? [trainAction({ stage: { stock } })] : null;
+};
+/** Every dish back on the board (a wrong dish marked sold out must not leave a customer with nothing to order). */
+const boardRestore = (s, except = []) => (s.off || []).filter((d) => !except.includes(d)).map((dish) => ({ type: 'board', dish, on: true }));
+/** Is `tag` a customer who was seated and is gone without having paid (walked out, sold out, pruned unseen)? */
+const tagLost = (ctx, tag) => {
+  const o = ctx.outcome(tag);
+  return !!o && o !== 'paid';
+};
+/** Steps that teach (or let the player fix) the burners and the steamer themselves: Chotu does not lend a hand there. */
+const NO_STALL_RESCUE = new Set(['gas-intro', 'gas-low', 'gas-swap', 'gas-wait', 'heat-others', 'inspect-drill', 'rush', 'outro']);
+/**
+ * Every step, whatever it teaches: a dish that is cooking on a burner with no gas (or in a steamer with no water) never gets ready, and the player
+ * may not be allowed to fix it in this step: the cylinder / the water is put back (the dish simply carries on).
+ */
+function stallRescue(s, step) {
+  if (NO_STALL_RESCUE.has(step.id) || !s.cfg.stations) return null;
+  const cooking = (kind) => s.cfg.stations.some((sid) => s.stations[sid].kind !== 'prep' && (!kind || s.stations[sid].kind === kind) && s.stations[sid].slots.some((sl) => sl.st === 'cooking'));
+  const stage = {};
+  if (gasDead(s) && cooking()) stage.gas = 800;
+  if (steamerDry(s) && cooking('steamer')) stage.pans = { steamer: { water: 100, gunk: 0 } };
+  return Object.keys(stage).length ? [trainAction({ stage })] : null;
+}
+const prepJam = (s) => prepSlots(s).length > 0 && prepSlots(s).every((j) => j.st !== 'empty');
+const TAWA_FULL_HINT = [8, 'Every spot on the tawa is busy. Pick up the ready dishes, or clear the smoking ones, to make room.', undefined, (s) => stationFull(s, KIND_STATION.tawa)];
+const PREP_JAM_HINT = [8, 'Both job slots at the back counter are busy. Collect a finished job (or wait for it) to free a slot.', undefined, prepJam];
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Chapter: Stock and the prep counter
@@ -707,9 +847,11 @@ const STOCK_STEPS = [
     allow: A_PREP,
     spotlight: prepSp,
     done: (s) => prepJobs(s, 'batter_dosa').length > 0,
+    rescue: keepRoomFor(['batter_dosa']),
     hint: [
       [10, 'Press Space at the glowing back counter, then choose Dosa batter.', 'Tap the glowing back counter, then choose Dosa batter.'],
       [30, 'Pick an empty job slot on the back counter and choose Dosa batter.'],
+      PREP_JAM_HINT,
     ],
   }),
   S({
@@ -743,9 +885,11 @@ const STOCK_STEPS = [
     allow: A_PREP,
     spotlight: prepSp,
     done: (s) => SIDE_ITEMS.every((i) => prepJobs(s, i).length > 0),
+    rescue: keepRoomFor(SIDE_ITEMS),
     hint: [
       [10, 'Start Sambar, then Coconut chutney: two jobs at once.', 'Tap the back counter and start Sambar, then Coconut chutney.'],
       [30, 'Each job needs its own empty slot on the back counter.'],
+      PREP_JAM_HINT,
     ],
   }),
   S({
@@ -779,6 +923,7 @@ const STOCK_STEPS = [
       ...(live(ctx.cust('S')) ? [] : [spawnAction({ kind: 'office', name: 'Padma', order: OUT_ORDER, tag: 'S' })]),
     ],
     ack: true,
+    needsTags: ['S'],
     hint: [ACK_HINT],
     done: (s, e, ctx) => !!ctx.cust('S') && ctx.acked,
   }),
@@ -791,9 +936,15 @@ const STOCK_STEPS = [
     te: 'మొదటి దోశ వేయండి: ఇదే చివరి పిండి.',
     controls: 'cook',
     allow: A_COOK,
-    spotlight: () => stationSp('dosa'),
+    spotlight: (s) => clearSpot(s, KIND_STATION.tawa) || stationSp('dosa'),
     done: (s) => stockN(s, 'batter_dosa') < 1,
-    hint: [[10, 'Walk to the glowing tawa, press Space and choose Plain Dosa.', 'Tap the glowing tawa and choose Plain Dosa.']],
+    // the batter is short on purpose; anything else the dosa needs (chutney, sambar, oil, gas) is topped up if junk dishes used it
+    rescue: keepCookable(['S'], ['batter_dosa']),
+    // a customer who is gone (or a dosa lost) is dealt with by the next step's recover: batter used up -> this step is done
+    hint: [
+      [10, 'Walk to the glowing tawa, press Space and choose Plain Dosa.', 'Tap the glowing tawa and choose Plain Dosa.'],
+      [8, 'Every spot on the tawa is busy. Pick up the ready dishes, or clear the smoking ones, to make room.', undefined, (s) => stationFull(s, KIND_STATION.tawa)],
+    ],
   }),
   S({
     id: 'stock-out-serve', say: 'Ek dosa tayyar hai, pehle usko do!',
@@ -805,9 +956,10 @@ const STOCK_STEPS = [
     done: (s, e, ctx) => !!ctx.cust('S') && ctx.cust('S').got.length > 0,
     recover: (s, ctx) => {
       const c = ctx.cust('S');
+      if (tagLost(ctx, 'S')) return 'stock-out-order'; // seated again there, with the one last portion of batter
       return live(c) && c.st === 'waiting' && c.got.length === 0 && !haveDish(s, ctx.me, 'dosa') ? 'stock-out-order' : null;
     },
-    hint: [[10, 'Press Space at the glowing dosa, then at the customer.', 'Tap the glowing dosa, then the customer.']],
+    hint: [[10, 'Press Space at the glowing dosa, then at the customer.', 'Tap the glowing dosa, then the customer.'], BIN_HINT_ENTRY],
   }),
   S({
     id: 'stock-out-refused', say: 'Dusra dosa? Batter nahi hai, machine mana karegi!',
@@ -838,7 +990,8 @@ const STOCK_STEPS = [
     allow: A_PREP,
     spotlight: prepSp,
     done: (s) => prepJobs(s, 'batter_dosa').length > 0 || stockN(s, 'batter_dosa') >= 1,
-    hint: [[10, 'Press Space at the glowing back counter and choose Dosa batter.', 'Tap the glowing back counter and choose Dosa batter.']],
+    rescue: keepRoomFor(['batter_dosa']),
+    hint: [[10, 'Press Space at the glowing back counter and choose Dosa batter.', 'Tap the glowing back counter and choose Dosa batter.'], PREP_JAM_HINT],
   }),
   S({
     id: 'stock-out-collect', say: 'Batter ready hote hi utha lo!',
@@ -852,6 +1005,8 @@ const STOCK_STEPS = [
     allow: A_PICKUP,
     spotlight: prepSp,
     done: (s) => prepJobs(s, 'batter_dosa').length === 0 && stockN(s, 'batter_dosa') >= 1,
+    // the batch is neither under way nor on the shelf (it was thrown away behind the lesson's back): the shelf gets it back
+    rescue: (s) => (prepJobs(s, 'batter_dosa').length === 0 && stockN(s, 'batter_dosa') < 1 ? [train({ stage: { stock: { batter_dosa: 10 }, fresh: { batter_dosa: 100 } } })] : null),
     hint: [[14, 'Press Space at the back counter when the batter is ready.', 'Tap the back counter when the batter is ready.']],
   }),
   S({
@@ -870,9 +1025,16 @@ const STOCK_STEPS = [
     done: (s, e, ctx) => pairPast(ctx, 'S'),
     recover: (s, ctx) => {
       const c = ctx.cust('S');
+      if (tagLost(ctx, 'S')) return 'stock-out-order';
       return live(c) && c.st === 'waiting' && c.got.length === 1 && !haveDish(s, ctx.me, 'dosa') && stockN(s, 'batter_dosa') < 1 ? 'stock-out-prep' : null;
     },
-    hint: [[12, 'Cook a Plain Dosa, pick it up, serve it.', 'Tap the tawa, then the dish, then the customer.']],
+    // the batter is made now; whatever else the second dosa needs is topped up if junk dishes used it
+    rescue: keepCookable(['S']),
+    hint: [
+      [12, 'Cook a Plain Dosa, pick it up, serve it.', 'Tap the tawa, then the dish, then the customer.'],
+      BIN_HINT_ENTRY,
+      [8, 'Every spot on the tawa is busy. Pick up the ready dishes, or clear the smoking ones, to make room.', undefined, (s) => stationFull(s, KIND_STATION.tawa)],
+    ],
   }),
 ];
 
@@ -902,6 +1064,7 @@ const HEAT_STEPS = [
       ...spawnTags(ctx, [{ tag: 'H1', kind: 'student', name: 'Kiran', order: ['dosa'] }]),
     ],
     ack: true,
+    needsTags: ['H1'],
     hint: [ACK_HINT],
     done: (s, e, ctx) => !!ctx.cust('H1') && ctx.acked,
   }),
@@ -914,9 +1077,14 @@ const HEAT_STEPS = [
     te: 'ఈ మురికి పెనంపై దోశ వేయండి.',
     controls: 'cook',
     allow: A_COOK,
-    spotlight: () => stationSp('dosa'),
+    spotlight: (s) => clearSpot(s, KIND_STATION.tawa) || stationSp('dosa'),
     done: (s, e, ctx) => haveDish(s, ctx.me, 'dosa') || (!!ctx.cust('H1') && ctx.cust('H1').got.length > 0),
-    hint: [[10, 'Walk to the glowing tawa, press Space and choose Plain Dosa.', 'Tap the glowing tawa and choose Plain Dosa.']],
+    recover: lostDish('H1', 'dosa', 'heat-cook', 'heat-intro'),
+    rescue: keepCookable(['H1']),
+    hint: [
+      [10, 'Walk to the glowing tawa, press Space and choose Plain Dosa.', 'Tap the glowing tawa and choose Plain Dosa.'],
+      TAWA_FULL_HINT,
+    ],
   }),
   S({
     id: 'heat-take', say: 'Dekho, dosa phat gaya na!',
@@ -935,8 +1103,8 @@ const HEAT_STEPS = [
       return r && r.st !== 'burnt' ? sp('slot', r.station, r.slot) : stationSp('dosa');
     },
     done: (s, e, ctx) => heldCount(ctx.me, 'dosa') > 0 || (!!ctx.cust('H1') && ctx.cust('H1').got.length > 0),
-    recover: lostDish('H1', 'dosa', 'heat-cook'),
-    hint: [[8, 'Press Space at the dosa when it is ready.', 'Tap the dosa when it is ready.']],
+    recover: lostDish('H1', 'dosa', 'heat-cook', 'heat-intro'),
+    hint: [[8, 'Press Space at the dosa when it is ready.', 'Tap the dosa when it is ready.'], BIN_HINT_ENTRY],
   }),
   S({
     id: 'heat-serve', say: 'Phate hue dosa ka aadha paisa milega!',
@@ -951,7 +1119,7 @@ const HEAT_STEPS = [
     allow: A_SERVE,
     spotlight: (s, ctx) => custSp(ctx.cust('H1')),
     done: (s, e, ctx) => pairPast(ctx, 'H1'),
-    recover: lostDish('H1', 'dosa', 'heat-cook'),
+    recover: lostDish('H1', 'dosa', 'heat-cook', 'heat-intro'),
     hint: [[8, 'Face the glowing customer with A / D and press Space.', 'Tap the glowing customer.']],
   }),
   S({
@@ -993,8 +1161,10 @@ const HEAT_STEPS = [
     allow: A_COOK,
     spotlight: () => stationSp('dosa'),
     onEnter: (s, ctx) => spawnTags(ctx, [{ tag: 'H2', kind: 'uncle', name: 'Srinivas garu', order: ['dosa'] }]),
+    needsTags: ['H2'],
     done: (s, e, ctx) => haveDish(s, ctx.me, 'dosa') || (!!ctx.cust('H2') && ctx.cust('H2').got.length > 0),
-    hint: [[10, 'Walk to the tawa, press Space and choose Plain Dosa.', 'Tap the tawa and choose Plain Dosa.']],
+    rescue: keepCookable(['H2']),
+    hint: [[10, 'Walk to the tawa, press Space and choose Plain Dosa.', 'Tap the tawa and choose Plain Dosa.'], TAWA_FULL_HINT],
   }),
   S({
     id: 'heat-serve2', say: 'Poora paisa aur tip, dekha anna!',
@@ -1005,7 +1175,7 @@ const HEAT_STEPS = [
     spotlight: serveSpot(['H2']),
     done: (s, e, ctx) => pairPast(ctx, 'H2'),
     recover: lostDish('H2', 'dosa', 'heat-cook2'),
-    hint: [[10, 'Press Space at the glowing dosa, then at the customer.', 'Tap the glowing dosa, then the customer.']],
+    hint: [[10, 'Press Space at the glowing dosa, then at the customer.', 'Tap the glowing dosa, then the customer.'], BIN_HINT_ENTRY],
   }),
   infoStep(
     'heat-rules', 'Tawa ke teen niyam: garam, saaf, samay pe!',
@@ -1042,8 +1212,11 @@ const GAS_STEPS = [
     allow: A_COOK,
     spotlight: () => stationSp('dosa'),
     onEnter: (s, ctx) => [train({ stage: { gas: 206 } }), ...spawnTags(ctx, [{ tag: 'G1', kind: 'office', name: 'Imran bhai', order: ['dosa'] }])],
+    needsTags: ['G1'],
     done: (s, e, ctx) => haveDish(s, ctx.me, 'dosa') || (!!ctx.cust('G1') && ctx.cust('G1').got.length > 0),
-    hint: [[10, 'Walk to the tawa, press Space and choose Plain Dosa.', 'Tap the glowing tawa and choose Plain Dosa.']],
+    // junk dishes drain the nearly empty cylinder to nothing before the lesson dosa is on: back to the nearly empty cylinder the lesson is about
+    rescue: keepCookable(['G1'], [], 206),
+    hint: [[10, 'Walk to the tawa, press Space and choose Plain Dosa.', 'Tap the glowing tawa and choose Plain Dosa.'], TAWA_FULL_HINT],
   }),
   S({
     id: 'gas-low', say: 'Dekho, lal batti jal gayi: gas kam hai!',
@@ -1053,6 +1226,8 @@ const GAS_STEPS = [
     spotlight: gasSp,
     done: (s) => !!s.gas && s.gas.u <= GAS.cap * GAS.lowFrac,
     recover: lostDish('G1', 'dosa', 'gas-cook'),
+    // a cylinder that is already full (changed early) goes back to nearly empty: the warning is the lesson
+    rescue: (s) => (s.gas && s.gas.sw === 0 && s.gas.u > GAS.cap * 0.4 ? [train({ stage: { gas: Math.round(GAS.cap * GAS.lowFrac) - 10 } })] : null),
     hint: [[8, 'Wait a few seconds for the red low-gas warning. The dosa is cooking, so the burner drinks gas.']],
   }),
   S({
@@ -1076,6 +1251,8 @@ const GAS_STEPS = [
     allow: ['move', 'take'],
     done: (s) => !!s.gas && s.gas.sw === 0 && s.gas.u >= GAS.cap,
     recover: lostDish('G1', 'dosa', 'gas-cook'),
+    // no swap under way and the cylinder still not full (it was emptied again behind the lesson's back): the new cylinder goes in
+    rescue: (s) => (s.gas && s.gas.sw === 0 && s.gas.u < GAS.cap ? [train({ stage: { gas: GAS.cap } })] : null),
     hint: [[10, 'Wait a few seconds: the burners come back on their own.']],
   }),
   S({
@@ -1113,8 +1290,10 @@ const BOARD_STEPS = [
     te: 'అయిపోయినది బోర్డులో సోల్డ్ అవుట్ అని రాయండి.',
     controls: 'board',
     spotlight: boardSp,
-    onEnter: (s, ctx) => [...clearOnce(ctx), restock(), ...spawnTags(ctx, [{ tag: 'B1', kind: 'student', name: 'Swathi', order: ['dosa'] }])],
+    // (a second visit starts the whole lesson again: every dish back on the board, the shelf full, Swathi seated if she walked out)
+    onEnter: (s, ctx) => [...clearOnce(ctx), ...boardRestore(s), restock(), ...spawnTags(ctx, [{ tag: 'B1', kind: 'student', name: 'Swathi', order: ['dosa'] }])],
     ack: true,
+    needsTags: ['B1'],
     hint: [ACK_HINT],
     done: (s, e, ctx) => !!ctx.cust('B1') && ctx.acked,
   }),
@@ -1129,6 +1308,12 @@ const BOARD_STEPS = [
     allow: A_BOARD,
     spotlight: boardSp,
     done: (s) => (s.off || []).includes('dosa'),
+    recover: (s, ctx) => (tagLost(ctx, 'B1') ? 'board-intro' : null), // she left politely (nothing she could order): seat her again, board restored
+    // only Plain Dosa is the lesson: any other dish marked off by mistake goes back on before the waiting customers look at the board
+    rescue: (s) => {
+      const acts = boardRestore(s, ['dosa']);
+      return acts.length ? acts : null;
+    },
     hint: [[8, 'Press Space at the glowing board and switch Plain Dosa off.', 'Tap the glowing board and switch Plain Dosa off.']],
   }),
   S({
@@ -1136,8 +1321,11 @@ const BOARD_STEPS = [
     text: (s, ctx) => `${ctx.cust('B1') ? `${ctx.cust('B1').name} was waiting for a Plain Dosa. Seeing the board, they changed their order to ${dishList(ctx.cust('B1'))}.` : 'The waiting customer changed their order.'} A NEW customer, ${ctx.cust('B2') ? ctx.cust('B2').name : 'Gopal garu'}, walked up wanting a Plain Dosa too: the board stopped them, and they picked ${dishList(ctx.cust('B2'))}. Nobody storms off angry and nobody costs you a heart. If nothing else were available they would just go home politely.`,
     te: 'బోర్డు చూసి కస్టమర్లు ఆర్డర్ మార్చుకున్నారు.',
     spotlight: (s, ctx) => custSp(ctx.cust('B1')),
-    onEnter: (s, ctx) => spawnTags(ctx, [{ tag: 'B2', kind: 'uncle', name: 'Gopal garu', order: ['dosa'], fit: true }]),
+    // (anything else marked off by mistake goes back on first: a customer who finds NOTHING to order leaves, and Gopal would never be seated)
+    onEnter: (s, ctx) => [...boardRestore(s, ['dosa']), ...spawnTags(ctx, [{ tag: 'B2', kind: 'uncle', name: 'Gopal garu', order: ['dosa'], fit: true }])],
     ack: true,
+    needsTags: ['B2'],
+    recover: (s, ctx) => (tagLost(ctx, 'B1') ? 'board-intro' : null),
     hint: [ACK_HINT],
     done: (s, e, ctx) => !!ctx.cust('B1') && !!ctx.cust('B2') && ctx.acked,
   }),
@@ -1147,11 +1335,17 @@ const BOARD_STEPS = [
     te: 'కొత్త ఆర్డర్లు వండండి.',
     controls: 'cook',
     allow: A_COOK,
-    spotlight: coverSpot(BOARD_TAGS),
+    spotlight: (s, ctx) => {
+      const d = firstUncovered(s, ctx, BOARD_TAGS);
+      return (d && clearSpot(s, KIND_STATION[DISHES[d].station])) || coverSpot(BOARD_TAGS)(s, ctx);
+    },
     done: (s, e, ctx) => allCovered(s, ctx, BOARD_TAGS),
+    recover: (s, ctx) => (BOARD_TAGS.some((t) => tagLost(ctx, t)) ? 'board-intro' : null),
+    rescue: keepCookable(BOARD_TAGS),
     hint: [
       [12, 'Walk to the glowing station, press Space and choose the dish on the chit.', 'Tap the glowing station and choose the dish on the chit.'],
       [34, 'Both customers need a dish cooking or in your hands.'],
+      [8, 'The station you need is full. Pick up the ready dishes, or clear the smoking ones, to make room.', undefined, (s, ctx) => needStationFull(s, ctx, BOARD_TAGS)],
     ],
   }),
   S({
@@ -1165,8 +1359,11 @@ const BOARD_STEPS = [
     allow: A_CARRY,
     spotlight: serveSpot(BOARD_TAGS),
     done: (s, e, ctx) => allPast(ctx, BOARD_TAGS),
-    recover: (s, ctx) => (BOARD_TAGS.every((t) => ctx.cust(t) || ctx.outcome(t)) && firstUncovered(s, ctx, BOARD_TAGS) ? 'board-cook' : null),
-    hint: [[12, 'Press Space at each ready dish, then at its customer.', 'Tap each ready dish, then its customer.']],
+    recover: (s, ctx) => {
+      if (BOARD_TAGS.some((t) => tagLost(ctx, t))) return 'board-intro';
+      return BOARD_TAGS.every((t) => ctx.cust(t) || ctx.outcome(t)) && firstUncovered(s, ctx, BOARD_TAGS) ? 'board-cook' : null;
+    },
+    hint: [[12, 'Press Space at each ready dish, then at its customer.', 'Tap each ready dish, then its customer.'], BIN_HINT_ENTRY],
   }),
   S({
     id: 'board-on', say: 'Batter aa gaya, wapas board pe daalo!',
@@ -1179,6 +1376,11 @@ const BOARD_STEPS = [
     allow: A_BOARD,
     spotlight: boardSp,
     done: (s) => !(s.off || []).includes('dosa'),
+    // the lesson is Plain Dosa only: anything else marked off is put back so it cannot hide a dish from the later customers
+    rescue: (s) => {
+      const acts = boardRestore(s, ['dosa']);
+      return acts.length ? acts : null;
+    },
     hint: [[8, 'Press Space at the glowing board and switch Plain Dosa on.', 'Tap the glowing board and switch Plain Dosa on.']],
   }),
 ];
@@ -1187,62 +1389,63 @@ const BOARD_STEPS = [
 // Chapter: Special orders (free play at the stations: the lesson is the order, not the walk)
 
 const playStep = (def) => S({ allow: A_PLAY, controls: 'play', ...def });
-const ORDER_HINT = [[16, 'Cook what the chit asks for, carry it, serve it.', 'Tap the stations, the dishes and the customer.']];
+/** The hints of a free-play order step: the plain one, then the situations that need a different word (hands jammed, a station full). */
+const orderHints = (tags) => [
+  [16, 'Cook what the chit asks for, carry it, serve it.', 'Tap the stations, the dishes and the customer.'],
+  BIN_HINT_ENTRY,
+  [8, 'The station you need is full. Pick up the ready dishes, or clear the smoking ones, to make room.', undefined, (s, ctx) => needStationFull(s, ctx, tags)],
+];
+/** Free-play order steps: the order's customers are seated by the step itself (and again if one walks out), and the stall is kept cookable for them. */
+const orderStep = (tags, def) => playStep({ needsTags: tags, rescue: keepCookable(tags), hint: orderHints(tags), ...def });
 
 const SPECIAL_STEPS = [
-  playStep({
+  orderStep(['P'], {
     id: 'parcel', say: 'Parcel order hai: pack karke do, jaldi!',
     text: (s, ctx) => `PARCEL: ${ctx.cust('P') ? ctx.cust('P').name : 'Imran bhai'} wants it takeaway, packed. A parcel costs Rs ${REQUEST.parcelFee} extra per dish for the packing, the customer is in a hurry (patience ${Math.round((1 - REQUEST.parcelPatience) * 100)}% shorter), and instead of eating at the counter they wait while it is packed. Cook and serve the whole order.`,
     te: 'పార్సెల్: ప్యాకింగ్ ఖర్చు ఎక్కువ, తొందర ఎక్కువ.',
     spotlight: (s, ctx) => (allPast(ctx, ['P']) ? null : serveSpot(['P'])(s, ctx)),
     onEnter: (s, ctx) => [...clearOnce(ctx), restock(), ...spawnTags(ctx, [{ tag: 'P', kind: 'office', name: 'Imran bhai', order: ['masala_dosa', 'irani_chai'], parcel: true }])],
     done: (s, e, ctx) => pairPast(ctx, 'P'),
-    hint: ORDER_HINT,
   }),
-  playStep({
+  orderStep(['X'], {
     id: 'extra', say: 'Thoda extra chutney, bhaiya!',
     text: (s, ctx) => `EXTRA and SPICE: ${ctx.cust('X') ? ctx.cust('X').name : 'Gopal garu'} asks for extra coconut chutney and wants it spicier. The extra comes out of your chutney stock (half a portion), and when the dish is served well he tips ${rs(REQUEST.extraTip)} more. A spice request is a small bonus tip when you serve it fresh. Look for the little tags on the chit.`,
     te: 'ఎక్స్‌ట్రా చట్నీ, కారం ఎక్కువ: చిన్న టిప్.',
     spotlight: (s, ctx) => (allPast(ctx, ['X']) ? null : serveSpot(['X'])(s, ctx)),
     onEnter: (s, ctx) => spawnTags(ctx, [{ tag: 'X', kind: 'uncle', name: 'Gopal garu', order: ['dosa'], extra: 'coconut_chutney', spice: 'more' }]),
     done: (s, e, ctx) => pairPast(ctx, 'X'),
-    hint: ORDER_HINT,
   }),
-  playStep({
+  orderStep(['R'], {
     id: 'regular', say: 'Pehchaano, ye apna regular customer hai!',
     text: (s, ctx) => `A REGULAR: ${ctx.cust('R') ? ctx.cust('R').name : 'Raju'} comes every day. Regulars remember how you treated them: serve them well and they come back LOYAL, and a loyal regular tips more each visit. Serve them badly and the loyalty is gone. Look for the star on the chit. This is the first visit.`,
     te: 'రెగ్యులర్ కస్టమర్: బాగా చూసుకుంటే రోజూ వస్తారు, ఎక్కువ టిప్.',
     spotlight: (s, ctx) => (allPast(ctx, ['R']) ? null : serveSpot(['R'])(s, ctx)),
     onEnter: (s, ctx) => spawnTags(ctx, [{ tag: 'R', kind: 'autowala', name: 'Raju', order: ['vada'], regular: true, loyal: 0 }]),
     done: (s, e, ctx) => ctx.outcome('R') === 'paid',
-    hint: ORDER_HINT,
   }),
-  playStep({
+  orderStep(['R2'], {
     id: 'regular-back', say: 'Raju wapas aaya, ab loyal hai!',
     text: (s) => `Raju is BACK, and now he is a loyal regular (loyalty ${s.regs && s.regs[0] ? s.regs[0][0] : 1}). His tip is multiplied: every loyalty level adds 30% to what he tips when you serve him well and quickly. Keep him happy visit after visit.`,
     te: 'రాజు మళ్లీ వచ్చాడు: ఇప్పుడు లాయల్, టిప్ ఎక్కువ.',
     spotlight: (s, ctx) => (allPast(ctx, ['R2']) ? null : serveSpot(['R2'])(s, ctx)),
     onEnter: (s, ctx) => spawnTags(ctx, [{ tag: 'R2', kind: 'autowala', name: 'Raju', order: ['vada'], regular: true }]),
     done: (s, e, ctx) => ctx.outcome('R2') === 'paid',
-    hint: ORDER_HINT,
   }),
-  playStep({
+  orderStep(['Q'], {
     id: 'big', say: 'Office ka bada parcel, chaar dish ek saath!',
     text: (s, ctx) => `The BIG OFFICE PARCEL: ${ctx.cust('Q') ? ctx.cust('Q').name : 'Ravi anna'} is ordering for the whole office. Real ones are 4 to 10 dishes, and this one is 4. The customer is patient (about ${REQUEST.big.patience} times as long) and pays a bonus tip of ${rs(REQUEST.big.bonus)} when it is done. You only have two hands, so plan the trips and start the slow dishes first.`,
     te: 'ఆఫీస్ పెద్ద పార్సెల్: ఓపిక ఎక్కువ, బోనస్ టిప్.',
     spotlight: (s, ctx) => (allPast(ctx, ['Q']) ? null : serveSpot(['Q'])(s, ctx)),
     onEnter: (s, ctx) => spawnTags(ctx, [{ tag: 'Q', kind: 'office', name: 'Ravi anna', order: ['dosa', 'dosa', 'idly', 'irani_chai'], big: true }]),
     done: (s, e, ctx) => pairPast(ctx, 'Q'),
-    hint: ORDER_HINT,
   }),
-  playStep({
+  orderStep(['D'], {
     id: 'delivery', say: 'Delivery boy aaya, paanch parcel jaldi!',
     text: (s, ctx) => `The TIFFIN DELIVERY BOY: he wants ${REQUEST.delivery.dishes} parcels at once for his customers, he is in a big hurry (in a real shift his patience is ${REQUEST.delivery.patience} seconds), and he tips ${rs(REQUEST.delivery.bonus)} extra if you are in time. Cook the dishes of different stations side by side, and carry two at a time.`,
     te: 'డెలివరీ బాయ్: ఐదు పార్సెల్స్, తొందర, బోనస్.',
     spotlight: (s, ctx) => (allPast(ctx, ['D']) ? null : serveSpot(['D'])(s, ctx)),
     onEnter: (s, ctx) => spawnTags(ctx, [{ tag: 'D', kind: 'autowala', name: 'Delivery boy', order: ['idly', 'osmania', 'irani_chai', 'vada', 'dosa'], delivery: true }]),
     done: (s, e, ctx) => pairPast(ctx, 'D'),
-    hint: ORDER_HINT,
   }),
 ];
 
@@ -1253,7 +1456,7 @@ const DRILL_DEMO = 'masala_dosa';
 const drillFuse = (ctx) => Math.min(60, 20 + 10 * (ctx.attempts.inspect || 0)); // each failed drill gets a longer warning
 
 const WEATHER_STEPS = [
-  playStep({
+  orderStep(['W1'], {
     id: 'rain', say: 'Baarish aa gayi, chai bajji ka mausam!',
     text: (s, ctx) => `RAIN! The sky just opened over the street. Fewer people walk by (about 60% of the usual crowd) but those who stop want chai, coffee, bajji, bonda and vada, hot. ${ctx.cust('W1') ? ctx.cust('W1').name : 'Naseer miyan'} wants an Irani chai and a mirchi bajji. In the real shifts the weather changes what the crowd orders: read it and cook ahead.`,
     te: 'వర్షం: జనం తగ్గుతారు, కానీ చాయ్, బజ్జీ ఎక్కువ.',
@@ -1265,7 +1468,6 @@ const WEATHER_STEPS = [
       ...spawnTags(ctx, [{ tag: 'W1', kind: 'student', name: 'Naseer miyan', order: ['irani_chai', 'mirchi_bajji'] }]),
     ],
     done: (s, e, ctx) => pairPast(ctx, 'W1'),
-    hint: ORDER_HINT,
   }),
   infoStep(
     'power-card', 'Current gayi toh chakki aur steamer band!',
@@ -1287,11 +1489,15 @@ const WEATHER_STEPS = [
       train({ stage: { event: { id: 'power', ticks: 18 } } }),
       ...spawnTags(ctx, [{ tag: 'W2', kind: 'office', name: 'Ravi anna', order: ['masala_dosa', 'idly'] }]),
     ],
+    needsTags: ['W2'],
     done: (s) => prepJobs(s, 'batter_dosa').length > 0,
-    hint: [[10, 'Press Space at the back counter and choose Dosa batter.', 'Tap the back counter and choose Dosa batter.']],
+    rescue: keepRoomFor(['batter_dosa']),
+    hint: [[10, 'Press Space at the back counter and choose Dosa batter.', 'Tap the back counter and choose Dosa batter.'], PREP_JAM_HINT],
   }),
-  playStep({
-    id: 'power-serve', say: 'Jo chal raha hai woh karo: tawa chalu hai!',
+  orderStep(['W2'], {
+    id: 'power-serve',
+    needsTags: undefined, // Ravi is seated by the power-cut step, so a customer who walked out sends the lesson back there
+    recover: (s, ctx) => (tagLost(ctx, 'W2') ? 'power-cut' : null), say: 'Jo chal raha hai woh karo: tawa chalu hai!',
     text: both((touch) => (s, ctx) => {
       const down = (s.events || []).some((e) => e.id === 'power');
       return down
@@ -1302,7 +1508,6 @@ const WEATHER_STEPS = [
     allow: A_PLAY.concat(['collectPrep']),
     spotlight: (s, ctx) => (allPast(ctx, ['W2']) ? null : coverSpot(['W2'])(s, ctx)),
     done: (s, e, ctx) => pairPast(ctx, 'W2'),
-    hint: ORDER_HINT,
   }),
   S({
     id: 'power-batter', say: 'Batter ab bana, utha lo!',
@@ -1334,6 +1539,7 @@ const WEATHER_STEPS = [
     controls: 'tend',
     allow: ['move', 'take', 'tend', 'discard'],
     spotlight: (s) => {
+      for (const x of allSlots(s)) if (x.st === 'burnt') return sp('slot', x.station, x.slot); // the inspector minds ANY smoking dish
       for (const x of allSlots(s)) if (x.dish === DRILL_DEMO && x.st !== 'empty') return sp('slot', x.station, x.slot);
       return !tended(s, 'tawa1') || (s.stations.tawa1 && s.tick - tendAtOf(s, 'tawa1') > 25) ? stationSp('dosa') : null;
     },
@@ -1352,6 +1558,7 @@ const WEATHER_STEPS = [
     hint: [
       [8, 'Wipe the tawa (press Space at it) and bin or clear the dish on the counter.', 'Wipe the tawa (tap it) and bin or clear the dish on the counter.'],
       [20, 'Pick up the ready dish and throw it in the bin, then tend the tawa before the inspector checks.'],
+      BIN_HINT_ENTRY,
     ],
   }),
   S({
@@ -1410,7 +1617,16 @@ const PROFIT_STEPS = [
     hint: [
       [8, 'Pick up the biscuits, then press Space at the bin.', 'Tap the biscuits, then tap the bin.'],
       [24, 'Take the biscuit dish and discard it into the bin.'],
+      BIN_HINT_ENTRY,
     ],
+    // nothing left to throw away (the biscuit plate could not be put on, or was lost): Chotu puts a fresh one on the chai counter
+    rescue: (s, ctx) => {
+      if (ctx.me.hands.length || (s.waste || 0) > (ctx.kv.waste0 || 0) || allSlots(s).some((x) => x.dish && x.st !== 'empty')) return null;
+      const station = s.stations.chai1;
+      const slot = station ? station.slots.findIndex((sl) => sl.st === 'empty') : -1;
+      if (slot < 0) return null;
+      return [...(refillFor(s, [PROFIT_DEMO]) || []), { type: 'cook', station: 'chai1', slot, dish: PROFIT_DEMO }];
+    },
   }),
   S({
     id: 'profit-profit', say: 'Asli kamaai: profit! Sitare profit se milte hain.',
@@ -1467,6 +1683,9 @@ const RUSH_STEPS = [
     hint: [
       [20, 'Cook what the order chits ask for. Out of batter? Make more at the back counter. Dirty tawa? Wipe it. Then serve each token and collect the money.'],
       [60, 'Press Space at a station to cook, at ready dishes to pick up, at a customer to serve or collect.', 'Tap a station to cook, ready dishes to pick up, a customer to serve or collect.'],
+      BIN_HINT_ENTRY,
+      [8, 'The burners are cold: no gas. Walk to the cylinder stand at the left end of the counter and change the cylinder.', 'The burners are cold: no gas. Tap the cylinder stand at the left end of the counter and change the cylinder.', (s) => gasDead(s)],
+      [8, 'The idly steamer is dry. Wipe it (top up its water) before cooking an idly.', 'The idly steamer is dry. Tap it to top up its water before cooking an idly.', (s, ctx) => steamerDry(s) && !!firstUncovered(s, ctx, RUSH_ORDERS.map((r) => r.tag))],
     ],
   }),
   S({
@@ -1553,6 +1772,7 @@ export function createTutorialDriver({ steps = TUTORIAL_STEPS } = {}) {
     tags: {}, // 'A' -> customer id
     pending: [], // [{ tag, action }] spawns whose customer has not appeared yet, in order
     spawnTick: 0,
+    rescueAt: -Infinity, // the tick of the last rescue
     outcomes: {}, // customer id -> 'paid' | 'angry' | 'unpaid'
     auto: new Set(), // customers Chotu already collected from
     demo: null,
@@ -1574,13 +1794,22 @@ export function createTutorialDriver({ steps = TUTORIAL_STEPS } = {}) {
     return state.order && state.order.length ? state.players[state.order[0]] : null;
   };
 
+  /** Which pending spawn a new customer came from: the same name and order (a sold-out swap may change the order), else the oldest. */
+  function pendingFor(c) {
+    const same = (p) => p.action.customer.name === c.name;
+    const i = mem.pending.findIndex((p) => same(p) && p.action.customer.order.join() === c.order.join());
+    if (i >= 0) return i;
+    const j = mem.pending.findIndex(same);
+    return j >= 0 ? j : 0;
+  }
+
   function observe(state, events) {
     mem.lastState = state;
     mem.lastTick = state.tick;
     for (const c of state.customers) {
       if (!mem.seen.has(c.id)) {
         mem.seen.add(c.id);
-        if (mem.pending.length) mem.tags[mem.pending.shift().tag] = c.id;
+        if (mem.pending.length) mem.tags[mem.pending.splice(pendingFor(c), 1)[0].tag] = c.id;
       }
       if (c.outcome && !mem.outcomes[c.id]) mem.outcomes[c.id] = c.outcome;
     }
@@ -1619,7 +1848,7 @@ export function createTutorialDriver({ steps = TUTORIAL_STEPS } = {}) {
         const id = mem.tags[tag];
         if (id == null) return null;
         const c = byId(id);
-        return mem.outcomes[id] || (c && c.outcome) || null;
+        return mem.outcomes[id] || (c && c.outcome) || (c ? null : 'gone');
       },
     };
   }
@@ -1696,7 +1925,14 @@ export function createTutorialDriver({ steps = TUTORIAL_STEPS } = {}) {
     if (!list || !list.length || !mem.lastState || mem.completed) return null;
     const t = mem.lastState.tick - mem.enterTick;
     let h = null;
-    for (const x of list) if (t >= x.after) h = x.text;
+    for (const x of list) if (!x.when && t >= x.after) h = x.text;
+    // an entry with a condition that holds right now is the more useful word, whatever the timer says
+    let ctx = null;
+    for (const x of list) {
+      if (!x.when || t < x.after) continue;
+      ctx = ctx || makeCtx(mem.lastState);
+      if (x.when(mem.lastState, ctx)) h = x.text;
+    }
     return h;
   };
   const controlsOf = (pointer) => {
@@ -1829,7 +2065,27 @@ export function createTutorialDriver({ steps = TUTORIAL_STEPS } = {}) {
           continue;
         }
 
-        if (!step.done(state, events, ctx)) break;
+        // a customer this step seated is gone without having paid: enter the step again (it seats whoever is missing, clocks still frozen)
+        if (step.needsTags && step.needsTags.some((tag) => { const o = ctx.outcome(tag); return !!o && o !== 'paid'; })) {
+          mem.notice = 'That one is gone. Let us make it again!';
+          const acts = enter(mem.index, state, opts.meId);
+          out.actions.push(...acts);
+          if (acts.length) break;
+          continue;
+        }
+
+        if (!step.done(state, events, ctx)) {
+          // the stall ran out of something the lesson needs: Chotu re-stages it (never more often than every RESCUE_EVERY ticks)
+          if (state.tick - mem.rescueAt >= RESCUE_EVERY) {
+            const acts = (step.rescue && step.rescue(state, ctx)) || stallRescue(state, step);
+            if (acts && acts.length) {
+              mem.rescueAt = state.tick;
+              mem.notice = step.rescueNote || TUTORIAL_RESCUE_NOTE;
+              out.actions.push(...acts);
+            }
+          }
+          break;
+        }
         mem.notice = null;
         if (mem.index >= steps.length - 1) {
           mem.finished = true;

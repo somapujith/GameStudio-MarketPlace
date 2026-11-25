@@ -17,10 +17,14 @@ function basicAction(state, me) {
 }
 const prepSlots = (s) => (s.stations.prep1 ? s.stations.prep1.slots : []);
 const hasJob = (s, item) => prepSlots(s).some((j) => j.st !== 'empty' && j.item === item);
-const startPrep = (s, item) => {
+const SIDES = ['sambar', 'coconut_chutney'];
+/** Start the job (once); with both job slots taken, clear a finished job that is NOT one of `keep` (a person frees a slot before asking for another job). */
+const startPrep = (s, item, keep = [item]) => {
   if (hasJob(s, item)) return null;
   const slot = prepSlots(s).findIndex((j) => j.st === 'empty');
-  return slot >= 0 ? { type: 'prep', station: 'prep1', slot, item } : null;
+  if (slot >= 0) return { type: 'prep', station: 'prep1', slot, item };
+  const junk = prepSlots(s).findIndex((j) => j.st === 'ready' && !keep.includes(j.item));
+  return junk >= 0 ? { type: 'collectPrep', station: 'prep1', slot: junk } : null;
 };
 const collectReady = (s) => {
   const slot = prepSlots(s).findIndex((j) => j.st === 'ready');
@@ -38,10 +42,21 @@ const heldDish = (s, me, dish) => s.players[me].hands.findIndex((h) => h.dish ==
 /** Take a ready or burnt demo dish, or bin the one in hand. */
 const clearDemo = (s, me, dish) => {
   const r = slotsOf(s, dish).find((x) => x.st === 'ready' || x.st === 'burnt');
+  if (r && r.st === 'burnt') return { type: 'take', station: r.sid, slot: r.slot }; // a smoking spot needs no free hand
   if (r && s.players[me].hands.length < 2) return { type: 'take', station: r.sid, slot: r.slot };
+  if (r) return { type: 'discard', hand: 0 }; // both hands hold something else: make room (a person bins what is in the way)
   const h = heldDish(s, me, dish);
   return h >= 0 ? { type: 'discard', hand: h } : null;
 };
+/** A take that clears a smoking spot anywhere on the counter, or null. */
+function anyBurnt(s) {
+  for (const sid of s.cfg.stations) {
+    if (s.stations[sid].kind === 'prep') continue;
+    const slot = s.stations[sid].slots.findIndex((sl) => sl.st === 'burnt');
+    if (slot >= 0) return { type: 'take', station: sid, slot };
+  }
+  return null;
+}
 const stockN = (s, item) => (s.stock && typeof s.stock[item] === 'number' ? s.stock[item] : 0);
 
 /** undefined = no script for this step (the generic bot plays it), null = wait, or an action. */
@@ -51,12 +66,12 @@ function lessonAction(s, step, me) {
     case 'stock-turn': return { type: 'move', to: 'prep1' };
     case 'stock-batter': case 'stock-out-prep': return startPrep(s, 'batter_dosa');
     case 'stock-grind': case 'stock-sides-collect': case 'stock-out-collect': case 'power-batter': return collectReady(s);
-    case 'stock-sides': return startPrep(s, 'sambar') || startPrep(s, 'coconut_chutney');
+    case 'stock-sides': return startPrep(s, 'sambar', SIDES) || startPrep(s, 'coconut_chutney', SIDES);
     case 'stock-out-cook': {
       // exactly one dosa: the batter is for one
-      if (slotsOf(s, 'dosa').length || heldDish(s, me, 'dosa') >= 0 || stockN(s, 'batter_dosa') < 1) return null;
+      if (slotsOf(s, 'dosa').some((x) => x.st !== 'burnt') || heldDish(s, me, 'dosa') >= 0 || stockN(s, 'batter_dosa') < 1) return null;
       const slot = s.stations.tawa1.slots.findIndex((sl) => sl.st === 'empty');
-      return slot >= 0 ? { type: 'cook', station: 'tawa1', slot, dish: 'dosa' } : null;
+      return slot >= 0 ? { type: 'cook', station: 'tawa1', slot, dish: 'dosa' } : anyBurnt(s); // no room: clear a smoking spot first
     }
     case 'stock-out-serve': {
       const c = s.customers.find((x) => x.st === 'waiting');
@@ -73,6 +88,8 @@ function lessonAction(s, step, me) {
     case 'board-on': return { type: 'board', dish: 'dosa', on: true };
     case 'power-cut': return startPrep(s, 'batter_dosa');
     case 'inspect-drill': {
+      const burnt = anyBurnt(s); // the inspector minds ANY smoking dish, not only the drill's own
+      if (burnt) return burnt;
       const t = s.stations.tawa1;
       if (s.tick - t.tendAt > 20) return { type: 'tend', station: 'tawa1' };
       return clearDemo(s, me, 'masala_dosa');
@@ -84,10 +101,32 @@ function lessonAction(s, step, me) {
   }
 }
 
+/**
+ * The greedy bot's first wish is often to serve, or throw away a dish nobody wants. In a step that refuses that (a cooking step), a person simply
+ * carries on with what the step allows: this asks the bot again as if the hands were empty, and only takes a cook / tend / prep / board answer
+ * (or the clearing of a smoking spot, which needs no free hand).
+ */
+function carryOn(state, playerId) {
+  const me = state.players[playerId];
+  const handsFree = { ...state, players: { ...state.players, [playerId]: { ...me, hands: [] } } };
+  const a = basicAction(handsFree, playerId);
+  if (!a) return null;
+  if (['cook', 'tend', 'prep', 'collectPrep', 'swapGas', 'board'].includes(a.type)) return a;
+  const sl = a.type === 'take' && state.stations[a.station] ? state.stations[a.station].slots[a.slot] : null;
+  return sl && sl.st === 'burnt' ? a : null;
+}
+
 /** The action (without `playerId`) the scripted player sends now, or null to wait. Add `playerId` before `applyAction`. */
 export function tutorialBotAction(state, driver, playerId = 'me') {
   if (!state || !driver || !state.players || !state.players[playerId] || state.status !== 'playing') return null;
+  // both hands hold dishes nobody waits for: a person bins them first (the step's bin hint says so)
+  if (typeof driver.allows === 'function' && driver.allows('discard')) {
+    const me = state.players[playerId];
+    const wanted = (h) => state.customers.some((c) => c.st === 'waiting' && c.order.includes(h.dish) && !c.got.includes(h.dish));
+    if (me.hands.length >= 2 && !me.hands.some(wanted) && driver.step.id !== 'profit-bin' && driver.step.id !== 'inspect-drill') return { type: 'discard', hand: 0 };
+  }
   let a = lessonAction(state, driver.step.id, playerId);
   if (a === undefined) a = basicAction(state, playerId);
+  if (a && typeof driver.allows === 'function' && !driver.allows(a.type)) a = carryOn(state, playerId);
   return a || null;
 }
