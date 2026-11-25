@@ -11,7 +11,7 @@ export default {
   name: 'Tiffin Centre',
   tagline: 'Cook a Hyderabad street stall in first person',
   description:
-    '"Anna, one masala dosa! Chai ready, miyan?" See the stall through your own eyes: you are the cook behind the counter of a roadside tiffin centre on a Hyderabad footpath, a tarpaulin roof overhead, a flex banner above and a queue of hungry regulars across the counter. Walk along the counter and work at the tawa, steamer, kadai and chai counter with your own hands: spread the batter, flip the dosas, lift the idlies and pour the irani chai, then serve it hot before the customer loses patience. Take each dish the moment it is ready or it burns, and above all, collect the money before they walk off: a customer who leaves unpaid costs the stall a heart.\n\nThey have real faces and real voices: Telugu, Hindi and Hyderabadi lines, spoken or subtitled, from the hurried office-goer to the uncle in his topi. Learn the ropes on your own in the training morning, then open a table for up to four friends and run one stall together: one on the tawa, one on the chai, one at the counter taking the notes. Twelve shifts follow the day from a sunrise rush to a lamp-lit festival night, with autos honking past, the Charminar in the haze and the light changing over the stall.',
+    '"Anna, one masala dosa! Chai ready, miyan?" See the stall through your own eyes: you are the cook behind the counter of a roadside tiffin centre on a Hyderabad footpath, a tarpaulin roof overhead, a flex banner above and a queue of hungry regulars across the counter. Walk along the counter and work at the tawa, steamer, kadai and chai counter with your own hands: spread the batter, flip the dosas, lift the idlies and pour the irani chai, then serve it hot before the customer loses patience. Take each dish the moment it is ready or it burns, and above all, collect the money before they walk off: a customer who leaves unpaid costs the stall a heart.\n\nEvery customer has an expressive face and a voice of their own: Telugu, Hindi and Hyderabadi lines, subtitled and, where your device has a voice for the language, spoken, from the hurried office-goer to the uncle in his topi. Learn the ropes on your own in the training morning, then open a table for up to four friends and run one stall together: one on the tawa, one on the chai, one at the counter taking the notes. Twelve shifts follow the day from a sunrise rush to a lamp-lit festival night, with autos honking past, the Charminar in the haze and the light changing over the stall.',
   category: 'social',
   status: 'live',
   solo: true,
@@ -25,7 +25,7 @@ export default {
     soloGame: () => import('./TiffinSolo.jsx'),
     onlineGame: () => import('./OnlineGame.jsx'),
   },
-  features: ['See the stall through your own eyes (first person)', 'Co-op for 2 to 4 friends', 'Real faces, real Telugu, Hindi and Hyderabadi voices', 'Real-time cooking', 'Collect the money before they walk off', 'Twelve shifts, sunrise to night', 'Learn in a solo tutorial'],
+  features: ['See the stall through your own eyes (first person)', 'Co-op for 2 to 4 friends', 'Expressive faces and Telugu, Hindi and Hyderabadi street talk', 'Real-time cooking', 'Collect the money before they walk off', 'Twelve shifts, sunrise to night', 'Learn in a solo tutorial'],
   createHint: 'Pick a level and a pace. Share the code and open the stall when your friends are in.',
   publisher: 'Jalebi Games',
   version: '1.0',
@@ -34,7 +34,7 @@ export default {
   tags: ['First person', 'Co-op', 'Real time', 'Cooking', 'Hyderabad', '3D', 'Tiffin', 'Dosa', 'Street food'],
   highlights: [
     { icon: 'compass', title: 'Through your own eyes', text: 'Stand behind the counter in first person: your own hands spread the batter, lift the lid and pour the chai while the street goes by.' },
-    { icon: 'user', title: 'Real faces, real voices', text: 'Every customer has a face and a mood, and speaks in Telugu, Hindi or Hyderabadi, with subtitles and optional speech.' },
+    { icon: 'user', title: 'Faces and street talk', text: 'Every customer has a face and a mood, and speaks in Telugu, Hindi or Hyderabadi, with subtitles and optional speech.' },
     { icon: 'users', title: 'Run the stall together', text: 'Two to four friends in one private room, sharing the tawa, the steamer, the kadai and the chai counter on one footpath stall.' },
     { icon: 'clock', title: 'Real-time rush', text: 'Orders pile up, patience drains and dosas burn. Every second of the shift counts.' },
     { icon: 'rupee', title: 'Collect before they go', text: 'A customer who is not paid in time walks off without paying and costs the team a heart.' },
@@ -55,16 +55,16 @@ export default {
   settings: SETTINGS_SCHEMA,
   lobbySettings: LOBBY_SETTINGS,
   summarize: settingsSummary,
-  // Per-player stats (written from the room's result): games = shifts played, wins = shifts cleared with at least one
-  // star, bestScore = the most money one player collected in a single shift.
+  // Per-player stats (written from the room's result): games = shifts played, wins = cleared shifts (at least one star) where
+  // this player was the top earner, bestScore = the most money one player collected in a single shift.
   stats: [
     { key: 'games', label: 'Shifts' },
-    { key: 'wins', label: 'Shifts cleared' },
+    { key: 'wins', label: 'Shifts won' },
     { key: 'bestScore', label: 'Best shift', format: 'inr' },
   ],
   badges: [
     { id: 'first-shift', label: 'First Shift', desc: 'Finish your first shift at the Tiffin Centre', stat: 'games', target: 1, icon: 'rookie' },
     { id: 'regular-cook', label: 'Regular Cook', desc: 'Finish 10 shifts', stat: 'games', target: 10, icon: 'regular' },
-    { id: 'stall-master', label: 'Stall Master', desc: 'Clear 5 shifts with your friends', stat: 'wins', target: 5, icon: 'ten-wins' },
+    { id: 'stall-master', label: 'Stall Master', desc: 'Be the top earner of 5 cleared shifts with your friends', stat: 'wins', target: 5, icon: 'ten-wins' },
   ],
 };

@@ -72,6 +72,8 @@ function siteUrlPlugin() {
  * else in the app is touched (rolldown's advancedChunks; `test` matches the module path).
  */
 const TIFFIN_CHUNKS = [
+  // React core first, so the shared runtime is not folded into a Tiffin-only chunk (that made every page preload the Tiffin audio chunk)
+  { name: 'vendor-react', test: /[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/, priority: 60 },
   { name: 'tiffin-three', test: /[\\/]node_modules[\\/]three[\\/]/, priority: 50 },
   { name: 'tiffin-audio', test: /[\\/]src[\\/]games[\\/]tiffin-centre[\\/]audio[\\/]/, priority: 40 },
   { name: 'tiffin-dialogue', test: /[\\/]shared[\\/]tiffin-centre[\\/]dialogue[\\/]/, priority: 40 },

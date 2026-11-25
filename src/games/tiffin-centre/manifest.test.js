@@ -52,7 +52,7 @@ describe('tiffin-centre manifest', () => {
   it('stats and badges read the per-game stats the client sees', () => {
     expect(manifest.stats).toEqual([
       { key: 'games', label: 'Shifts' },
-      { key: 'wins', label: 'Shifts cleared' },
+      { key: 'wins', label: 'Shifts won' },
       { key: 'bestScore', label: 'Best shift', format: 'inr' },
     ]);
     for (const b of manifest.badges) {
