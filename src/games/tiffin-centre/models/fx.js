@@ -1,5 +1,7 @@
 // Small allocation-free animated effects shared by stations, customers and street props.
-import { Mesh } from 'three';
+// `Puffs` is the original cheap sphere-puff emitter (customers and street props still use it); the station models use the soft
+// shader particles of shaders/steam.js instead. `ReadyRing` is the faint "take me" halo under a finished dish.
+import { AdditiveBlending, DoubleSide, Mesh, MeshBasicMaterial } from 'three';
 import { unit } from './util.js';
 
 export class Puffs {
@@ -32,3 +34,29 @@ export class Puffs {
     }
   }
 }
+
+/** A soft additive ring lying on a surface; pulses while `on`. Owns its material (dispose() frees it). */
+export class ReadyRing {
+  constructor(parent, x, y, z, r = 0.15, color = '#ffe27a') {
+    this.mat = new MeshBasicMaterial({ color, transparent: true, opacity: 0, depthWrite: false, toneMapped: false, side: DoubleSide, blending: AdditiveBlending });
+    this.mesh = new Mesh(unit.ring(r, r + 0.012, 28), this.mat);
+    this.mesh.position.set(x, y, z);
+    this.mesh.visible = false;
+    parent.add(this.mesh);
+  }
+  update(t, on) {
+    this.mesh.visible = on;
+    if (on) this.mat.opacity = 0.12 + 0.1 * Math.sin(t * 5);
+  }
+  dispose() {
+    this.mat.dispose();
+    this.mesh.removeFromParent();
+  }
+}
+
+export const easeOut = (t) => 1 - (1 - t) * (1 - t);
+export const easeInOut = (t) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
+export const smooth = (a, b, v) => {
+  const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
