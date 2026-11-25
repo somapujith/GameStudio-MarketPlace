@@ -24,12 +24,17 @@ export function freeBounds(root, w, h) {
   if (top) out.top = Math.max(out.top, top.bottom);
   const board = rect('.tc-hud-board'); // phone portrait: the chalk board is a full-width band under the banner
   if (board && board.width >= w * 0.6) out.top = Math.max(out.top, board.bottom);
+  const coop = rect('.tc-hud-coop'); // online, phone portrait: the team bar is a full-width band under the banner
+  if (coop && coop.width >= w * 0.6) out.top = Math.max(out.top, coop.bottom);
   const bottom = rect('.tc-hud-bottom');
   if (bottom) out.bottom = Math.min(out.bottom, bottom.top);
   if (board && board.width < w * 0.6 && board.left > w * 0.5) out.right = Math.min(out.right, board.left); // wide / landscape: the chalk board is a column on the right
   const rail = rect('.tc-hud-railbox'); // a bottom strip of chits (phones) takes room; a side rail takes a column
   if (rail && rail.width >= w * 0.6) out.bottom = Math.min(out.bottom, rail.top);
   else if (rail && rail.left < w * 0.5) out.left = Math.max(out.left, rail.right);
+  // the subtitle bar (an empty one is display: none, so it measures zero and is skipped) sits at the foot of the scene: bubbles stay above it
+  const subs = rect('.tc-hud-subs');
+  if (subs && subs.top > out.top) out.bottom = Math.min(out.bottom, subs.top);
   if (out.bottom - out.top < CHIP_H * 2) {
     out.top = 0;
     out.bottom = h;

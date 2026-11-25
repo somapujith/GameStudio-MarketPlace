@@ -702,7 +702,8 @@
   .tc-menu-panel { padding: 14px 16px 12px; }
   .tc-menu-stack { gap: 8px; margin-top: 10px; }
 }
-@media (max-height: 480px) and (min-width: 700px) {
+/* B2 (QA B): also on a desktop-sized window (<= 900 px tall): the galla and the chit sit side by side, so PROFIT, Wasted and Fines are on the first screen and the sticky buttons cover nothing that matters */
+@media (max-height: 480px) and (min-width: 700px), (min-width: 900px) and (max-height: 900px) {
   .tc-menu-results__scroll { display: grid; grid-template-columns: 1fr 1fr; align-content: start; justify-items: stretch; max-width: 1100px; margin: 0 auto; column-gap: 20px; }
   .tc-menu-results__scroll > * { max-width: none; }
   .tc-menu-results__head { grid-column: 1 / -1; }
@@ -791,3 +792,23 @@ html[data-motion='reduced'] .tc-menu-brief__timer { display: none; }
 /* status tiles: a real line icon, not a text squiggle (StatusScreen) */
 .tc-menu-status .ho-status__icon { width: 72px; height: 72px; }
 .tc-menu-status__glyph { display: block; width: 44px; height: 44px; }
+
+/* ---- B4 (QA C): the no-WebGL / error status card never outgrows a short screen: it scrolls inside its own box, and the icon, padding and text shrink --- */
+.tc-menu-status { grid-template-rows: minmax(0, 1fr); }
+.tc-menu-status__card { max-height: 100%; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+@media (max-height: 460px) {
+  .tc-menu-status { padding-top: max(6px, env(safe-area-inset-top, 0px)); padding-bottom: max(6px, env(safe-area-inset-bottom, 0px)); }
+  .tc-menu-status .ho-status { padding: 12px 18px; gap: 6px; }
+  .tc-menu-status .ho-status__icon { width: 44px; height: 44px; box-shadow: none; }
+  .tc-menu-status__glyph { width: 28px; height: 28px; }
+  .tc-menu-status .ho-status__title { font-size: 1.15rem; }
+  .tc-menu-status .ho-status__body { max-width: none; font-size: 0.9rem; line-height: 1.35; }
+  .tc-menu-status .ho-status__actions { margin-top: 4px; gap: 8px; }
+}
+
+/* ---- B5 (QA C): the Graphics setting (pause menu and home screen) ---- */
+.tc-menu-gfx { display: grid; gap: 6px; justify-items: start; width: 100%; }
+.tc-menu-set__small { margin: 0; font-size: 13px; font-weight: 700; line-height: 1.3; color: var(--m-dim, #d9c9a8); }
+.tc-menu-gfx__now { color: var(--m-cream); }
+.tc-menu-gfx__apply { font-weight: 800; color: var(--m-turmeric, #ffc83d); }
+.tc-menu-home__settings { padding: 8px 14px 10px; border-radius: 6px; border: 2px dashed rgba(255, 244, 220, 0.3); background: rgba(20, 12, 6, 0.72); }

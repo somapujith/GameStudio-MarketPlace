@@ -13,7 +13,9 @@ import { subtitleLines, moodTone } from './dialogue.js';
 import { useFrame } from './hooks.js';
 import { activeCustomers, customerTarget, needsOf, tokenOf } from './hudLogic.js';
 
-export default function WorldBubbles({ scene, state, onTarget, projector, getCookX, spotXOf, speech = [], bubbleIds = null, subs = 'both', rootRef = null }) {
+// `subId` is the id of the utterance the subtitle bar is showing right now: its world bubble is not drawn (the same line twice, one of them
+// half behind a panel, was noise). The order bubble under it stays.
+export default function WorldBubbles({ scene, state, onTarget, projector, getCookX, spotXOf, speech = [], bubbleIds = null, subs = 'both', rootRef = null, subId = null }) {
   const els = useRef(new Map());
   const bounds = useRef({ top: 0, bottom: 0, left: 0, right: 0, at: -1e9 });
   const register = (id, el) => {
@@ -32,12 +34,15 @@ export default function WorldBubbles({ scene, state, onTarget, projector, getCoo
     for (const [id, rec] of els.current) {
       const hit = map.get(id);
       const ok = !!hit && hit.on;
-      if (remeasure || !rec.w) {
+      // a speech bubble appearing or going makes the anchor taller: measure again then (a stale height let the bubble slide behind the top bar)
+      const sayNow = rec.el.dataset.say || '0';
+      if (remeasure || !rec.w || rec.say !== sayNow) {
         rec.w = rec.el.offsetWidth || 0;
         rec.h = rec.el.offsetHeight || 0;
+        rec.say = sayNow;
       }
       const at = ok ? clampBubble(hit.p, { w: rec.w, h: rec.h }, b) : null;
-      const key = at ? `${Math.round(at.x)},${Math.round(at.y)},${b.left},${b.right},${b.top},${b.bottom}` : 'off';
+      const key = at ? `${Math.round(at.x)},${Math.round(at.y)},${rec.w},${rec.h},${b.left},${b.right},${b.top},${b.bottom}` : 'off';
       if (key === rec.last) continue;
       rec.last = key;
       if (!at) {
@@ -49,14 +54,14 @@ export default function WorldBubbles({ scene, state, onTarget, projector, getCoo
     }
   });
   const list = activeCustomers(state).filter((c) => c.st === 'waiting' || c.st === 'paying');
-  const say = new Map(speech.filter((s) => !bubbleIds || bubbleIds.has(s.u.id)).map((s) => [s.u.customer, s]));
+  const say = new Map(speech.filter((s) => (!bubbleIds || bubbleIds.has(s.u.id)) && (subId === null || s.u.id !== subId)).map((s) => [s.u.customer, s]));
   return (
     <div className="tc-hud-bubbles" aria-hidden="true">
       {list.map((c) => {
         const needs = needsOf(c).slice(0, 3);
         const s = say.get(c.id);
         return (
-          <div key={c.id} ref={(el) => register(c.id, el)} className="tc-hud-anchor" data-hidden="1">
+          <div key={c.id} ref={(el) => register(c.id, el)} className="tc-hud-anchor" data-hidden="1" data-say={s ? '1' : '0'}>
             {s && (
               <div className="tc-hud-say" data-tone={moodTone(s.u.mood)} data-leaving={s.leaving ? '1' : '0'} lang={s.u.lang === 'dk' ? 'hi' : s.u.lang}>
                 {subtitleLines(s.u, subs).map((l) => (

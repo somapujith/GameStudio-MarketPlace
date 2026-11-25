@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { KEY_HELP } from '../hud/look.js';
 import { LANG_OPTIONS, SUB_OPTIONS, usePrefs, voiceNotice } from '../hud/prefs.js';
 import { useDialog } from './hooks.js';
+import GraphicsSetting from './GraphicsSetting.jsx';
 import Segmented from './Segmented.jsx';
 import './menus.css';
 
@@ -37,9 +38,10 @@ export function leaveCopy(mode) {
 /**
  * Solo pause: "Chai break". Props: { open, onResume, onRestart, onQuit, muted, onMute(next: boolean), audio? }.
  * `mode` ('practice' | 'tutorial' | 'online') only words the Leave confirm. Restart asks once more before it throws the shift away; Leave saves it. `audio` (optional) lets the voices switch say when a language has no
- * voice on this device (audio.isSpeechAvailable(lang) / audio.speech.isAvailable(lang)).
+ * voice on this device (audio.isSpeechAvailable(lang) / audio.speech.isAvailable(lang)). The Graphics section picks the quality tier (saved on this device, applied the next time the stall opens);
+ * `tierInfo` (optional: scene.getTierInfo() or a function returning it) lets it say which tier is running now.
  */
-export default function PauseMenu({ open = false, onResume, onRestart, onQuit, muted = false, onMute, audio = null, mode = 'practice' }) {
+export default function PauseMenu({ open = false, onResume, onRestart, onQuit, muted = false, onMute, audio = null, mode = 'practice', tierInfo = null }) {
   const root = useRef(null);
   const [ask, setAsk] = useState(null); // null | 'restart' | 'quit'
   const [prefs, setPrefs] = usePrefs();
@@ -89,6 +91,10 @@ export default function PauseMenu({ open = false, onResume, onRestart, onQuit, m
                 </button>
                 {note && <p className="tc-menu-set__note" role="note">{note}</p>}
               </div>
+            </details>
+            <details className="tc-menu-set" data-set="graphics">
+              <summary>Graphics</summary>
+              <div className="tc-menu-set__body"><GraphicsSetting tierInfo={tierInfo} idPrefix="tc-pause-gfx" /></div>
             </details>
             <details className="tc-menu-set">
               <summary>Controls</summary>

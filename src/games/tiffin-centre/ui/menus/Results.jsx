@@ -46,16 +46,17 @@ function Books({ vm }) {
   ];
   return (
     <dl className="tc-menu-books" aria-label="The books">
+      {/* PROFIT first: it is what the stars are, so it must be on the first screen even when the panel scrolls */}
+      <div className={`tc-menu-books__row is-profit${b.profit < 0 ? ' is-neg' : ''}`}>
+        <dt>Profit</dt>
+        <dd>{rupees(b.profit)}</dd>
+      </div>
       {items.map(([label, v, tone]) => (
         <div key={label} className={`tc-menu-books__row${tone ? ` is-${tone}` : ''}${tone === 'bad' && v > 0 ? ' is-hot' : ''}`}>
           <dt>{label}</dt>
           <dd>{rupees(v)}</dd>
         </div>
       ))}
-      <div className={`tc-menu-books__row is-profit${b.profit < 0 ? ' is-neg' : ''}`}>
-        <dt>Profit</dt>
-        <dd>{rupees(b.profit)}</dd>
-      </div>
     </dl>
   );
 }

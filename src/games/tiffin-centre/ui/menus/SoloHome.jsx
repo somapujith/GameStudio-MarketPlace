@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { PACE_OPTIONS, levelMapModel, paceOf, resumeViewModel, totalStars, unlockedLevelOf } from './menuModels.js';
 import { ChotuAvatar, DishGlyph, FeatureGlyph, Padlock, SkyGlyph, StallHeroArt, StarRow } from './art.jsx';
 import { radioKeys } from './hooks.js';
+import GraphicsSetting from './GraphicsSetting.jsx';
 import { paths } from '@/platform/paths.js';
 import { GAME_ID } from '@shared/tiffin-centre/catalog.js';
 import './menus.css';
@@ -115,7 +116,7 @@ export function ResumeCard({ saved, now, onResume, onDiscard }) {
  *          saved?: describeSavedShift(snapshot) | null, onResume(), onDiscard(), now? }
  * A saved shift puts the Resume card first (and takes the keyboard focus from the buttons below it).
  */
-export default function SoloHome({ progress = null, tutorialDone = false, unlockedLevel, onStartTutorial, onStartLevel, onInvite, onBack, defaultPace = 'normal', saved = null, onResume, onDiscard, now }) {
+export default function SoloHome({ progress = null, tutorialDone = false, unlockedLevel, onStartTutorial, onStartLevel, onInvite, onBack, defaultPace = 'normal', saved = null, onResume, onDiscard, now, tierInfo = null }) {
   const [pace, setPace] = useState(paceOf(defaultPace));
   const [peek, setPeek] = useState(false);
   const open = Number.isFinite(Number(unlockedLevel)) && unlockedLevel !== undefined ? Number(unlockedLevel) : unlockedLevelOf(progress);
@@ -215,6 +216,11 @@ export default function SoloHome({ progress = null, tutorialDone = false, unlock
               </div>
             )}
           </section>
+
+          <details className="tc-menu-set tc-menu-home__settings" data-set="graphics">
+            <summary>Settings: Graphics</summary>
+            <div className="tc-menu-set__body"><GraphicsSetting tierInfo={tierInfo} idPrefix="tc-home-gfx" /></div>
+          </details>
         </div>
       </div>
     </main>

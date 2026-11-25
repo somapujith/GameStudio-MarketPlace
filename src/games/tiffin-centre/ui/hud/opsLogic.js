@@ -82,7 +82,9 @@ export function stockRows(state) {
       tone,
       frac: clamp(num(it.n) / STOCK_BAR_FULL, 0, 1),
       text: fmtPortions(it.n),
-      band: freshBand(it.fresh),
+      // an ingredient that has run out has nothing left to be fresh or sour: no "92% fresh" next to "Out"
+      fresh: it.out ? null : it.fresh,
+      band: it.out ? null : freshBand(it.fresh),
     };
   });
 }

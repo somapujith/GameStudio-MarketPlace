@@ -50,7 +50,8 @@ describe('the HUD on a shift with the operations layer', () => {
     expect(html).toContain('వర్షం'); // rain, in Telugu
     expect(html).toContain('Inspector in 9s');
     expect(html).toMatch(/data-tone="out"[^>]*data-group="batter"/);
-    expect(html).toMatch(/Dosa batter 0, \d+ percent fresh, out/);
+    expect(html).toMatch(/Dosa batter 0, out/); // an ingredient at zero has no freshness to report (QA B3)
+    expect(html).not.toMatch(/Dosa batter 0, \d+ percent fresh/);
     expect(html).toContain('Idly batter 14, 22 percent fresh, sour');
     expect(html).toContain('Sour!');
     for (const g of ['chutney', 'sambar', 'masala', 'oil', 'drinks']) expect(html).toContain(`data-group="${g}"`);

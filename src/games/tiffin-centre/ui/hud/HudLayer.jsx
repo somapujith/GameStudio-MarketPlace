@@ -804,6 +804,7 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
           bubbleIds={bubbleIds}
           subs={prefs.subs}
           rootRef={rootRef}
+          subId={subEntry?.u?.id ?? null}
         />
         <EdgeIndicators scene={scene} state={state} projector={projector} rootRef={rootRef} getCookX={() => actions.runner.x()} spotXOf={spotXOf} onLook={lookAtCustomer} reduced={reduced} />
         <TopBar

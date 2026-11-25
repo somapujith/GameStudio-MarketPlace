@@ -818,3 +818,132 @@
 @media (max-width: 899px) and (min-height: 521px), (max-width: 599px) {
   .tc-hud-sheetwrap, .tc-hud-sheetwrap.is-prep { padding-bottom: calc(var(--tc-coach-bottom-on, 0) * var(--tc-hud-bottom, 0px) + var(--tc-coach-bottom-h, 0px)); }
 }
+
+/* =====================================================================================================================================
+   B3 (docs/TIFFIN_CENTRE_PROOF_C.md): PHONE PORTRAIT COMPACT. At 390 x 844 the stacked bands used to cover 67-91% of the height and an order chit
+   grew to ~330 px of blank paper. The stall must be SEEN, so on a phone held upright (width <= 520 px, portrait) the HUD is a set of slim bands:
+     top bar          one 50 px block: [clock + shift bar | hearts] over [takings + profit + star bar], buttons beside it (44 px each)
+     availability     ONE 52 px row: the Stall button (the status strip unfolds from it, as a popover, over the scene) + dish icons with ready counts
+     order chits      ONE horizontal strip above the dock, scrollable, each chit ~62 px (token, coin ring, dish icons, look button, Collect)
+     bottom           hands + quick buttons on one 44 px row, the dock one row of 44 px slots (scrolls sideways)
+   The caps below (--tcp-*) are real max-heights, so the centre keeps >= 50% of the height with any number of orders (see hud.portrait.test.js).
+   Every control stays a 44 px target; reduced motion still switches all animation off (rules above).
+   ===================================================================================================================================== */
+@media (max-width: 899px) and (min-height: 521px), (max-width: 599px) {
+  .tc-hud-rail { align-items: flex-start; } /* chits keep their own height: a short chit is no longer stretched to the tallest one's */
+}
+@media (max-width: 520px) and (orientation: portrait) {
+  .tc-hud {
+    --tcp-gap: 6px; --tcp-top: 52px; --tcp-board: 56px; --tcp-rail: 84px; --tcp-hands: 44px; --tcp-dock: 84px;
+    gap: var(--tcp-gap); padding-top: max(6px, env(safe-area-inset-top)); padding-bottom: max(6px, env(safe-area-inset-bottom));
+  }
+
+  /* ---- top bar: one block, two thin lines, the buttons beside it ---- */
+  .tc-hud-top { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: 'banner vitals btns' 'tin tin btns'; gap: 4px 5px; align-items: center; max-height: var(--tcp-top); }
+  .tc-hud-banner { grid-template-columns: auto minmax(30px, 1fr); grid-template-areas: 'clock bar'; gap: 0 8px; padding: 2px 10px; outline: 0; }
+  .tc-hud-grommet, .tc-hud-shift, .tc-hud-daypart { display: none; }
+  .tc-hud-clock { font-size: 14px; gap: 3px; }
+  .tc-hud-clock svg { width: 16px; height: 16px; }
+  .tc-hud-shiftbar { height: 12px; }
+  .tc-hud-tin { display: flex; align-items: center; gap: 8px; padding: 2px 8px 2px 6px; }
+  .tc-hud-money { flex: none; gap: 4px; font-size: 16px; }
+  .tc-hud-rupee { width: 18px; height: 18px; }
+  .tc-hud-rupee svg { width: 13px; height: 13px; }
+  .tc-hud-books { flex: none; flex-wrap: nowrap; gap: 0; font-size: 10px; white-space: nowrap; }
+  .tc-hud-book.is-cost { display: none; }
+  .tc-hud-book b { font-size: 11px; }
+  .tc-hud-stars { flex: 1 1 40px; min-width: 40px; height: 8px; }
+  .tc-hud-star-tick { top: -5px; }
+  .tc-hud-star-tick svg { width: 12px; height: 12px; }
+  .tc-hud-vitals { padding-top: 0; gap: 4px; }
+  .tc-hud-hearts { padding: 2px 4px; }
+  .tc-hud-heart svg { width: 13px; height: 13px; }
+  .tc-hud-combo { padding: 1px 6px; font-size: 12px; transform: none; }
+  .tc-hud-combo svg { width: 13px; height: 13px; }
+  .tc-hud-btns { align-self: start; gap: 4px; }
+
+  /* ---- availability: one row, the status behind the Stall button ---- */
+  .tc-hud-board { flex-direction: row; align-items: stretch; gap: 4px; max-height: var(--tcp-board); }
+  .tc-hud-board { z-index: 3; }
+  .tc-hud-status { display: flex; flex: none; }
+  .tc-hud-status-toggle { position: relative; display: flex; align-items: center; justify-content: center; gap: 5px; flex: 1 1 auto; min-width: 76px; min-height: 44px; padding: 3px 8px; border: 0; border-radius: 6px; font-size: 12px; font-weight: 900; color: var(--h-char); background: var(--h-plate); box-shadow: 0 3px 0 #556168, inset 0 1px 0 rgba(255, 255, 255, 0.8); pointer-events: auto; }
+  .tc-hud-status-toggle[aria-expanded='true'] { box-shadow: 0 3px 0 #556168, 0 0 0 3px var(--h-saffron); }
+  .tc-hud-status-toggle[data-alert='2'] { box-shadow: 0 3px 0 #556168, 0 0 0 3px #f0a71a; }
+  .tc-hud-status-toggle[data-alert='1'] { box-shadow: 0 3px 0 #556168, 0 0 0 3px var(--h-chilli); animation: tc-hud-alarm 0.9s ease-in-out infinite; }
+  .tc-hud-status-toggle-n { min-width: 20px; padding: 0 5px; border-radius: 10px; font-size: 12px; line-height: 20px; text-align: center; color: #fff; background: var(--h-chilli); }
+  .tc-hud-status-toggle[data-alert='2'] .tc-hud-status-toggle-n { background: #b8770a; }
+  .tc-hud-status[data-open='0'] .tc-hud-status-body { display: none; }
+  .tc-hud-status-body { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 4; display: grid; gap: 4px; max-height: 42vh; overflow-y: auto; scrollbar-width: none; pointer-events: auto; }
+  .tc-hud-status-body::-webkit-scrollbar { display: none; }
+  .tc-hud-stock { flex-wrap: wrap; overflow: visible; }
+  .tc-hud-stock-li { flex: 1 1 calc(33% - 5px); min-width: 70px; }
+  .tc-hud-stock-li.is-gas { flex-basis: 100%; }
+  .tc-hud-stockbar, .tc-hud-gas { width: 100%; }
+  .tc-hud-gas-meter { flex: 1 1 auto; }
+  .tc-hud-chips { flex: 1 1 0; min-width: 0; gap: 4px; padding: 2px 3px; border-width: 2px; align-items: stretch; }
+  .tc-hud-chipli { min-width: 0; }
+  .tc-hud-chip { min-width: 54px; min-height: 44px; height: 100%; padding: 2px 6px; gap: 0 4px; grid-template-areas: 'ico ready'; }
+  .tc-hud-chip .tc-hud-dish { width: 26px; height: 26px; }
+  .tc-hud-ready b { font-size: 20px; }
+  .tc-hud-ready small, .tc-hud-chip-meta, .tc-hud-chip-name, .tc-hud-chipli > .tc-hud-chip-board { display: none; } /* counts only: the full line is on each chip's aria-label */
+  .tc-hud-chip[data-short] { border-color: #ff6a5a; border-style: solid; }
+
+  /* ---- order chits: one scrollable strip of compact chits ---- */
+  .tc-hud-railbox { padding-top: 7px; max-height: var(--tcp-rail); }
+  .tc-hud-railwire { top: 1px; height: 4px; }
+  .tc-hud-rail { gap: 10px; padding: 6px 4px 7px; align-items: flex-start; overflow-y: hidden; overscroll-behavior-x: contain; }
+  .tc-hud-rail-empty { padding: 4px 10px; font-size: 12px; }
+  .tc-hud-chit { width: auto; display: flex; align-items: center; gap: 4px; padding: 10px 2px 5px 6px; }
+  .tc-hud-chit-main, .tc-hud-chit-main[data-badges='1'] { width: auto; display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 0; }
+  .tc-hud-token { min-width: 44px; padding: 2px 6px 1px 15px; }
+  .tc-hud-token small { font-size: 7px; }
+  .tc-hud-token b { font-size: 20px; }
+  .tc-hud-token-hole { left: 4px; width: 7px; height: 7px; margin-top: -3.5px; }
+  .tc-hud-coin { flex: none; width: 36px; height: 36px; }
+  .tc-hud-coin::before { inset: 5px; }
+  .tc-hud-coin-num { font-size: 12px; }
+  .tc-hud-who, .tc-hud-badges, .tc-hud-dishname, .tc-hud-chit[data-st='paying'] .tc-hud-dishes { display: none; }
+  .tc-hud-dishes { flex-wrap: nowrap; gap: 3px; padding: 0; margin: 0; }
+  .tc-hud-dishchip { padding: 1px 2px; }
+  .tc-hud-dishchip .tc-hud-dish { width: 28px; height: 28px; }
+  .tc-hud-dishchip.is-served { opacity: 0.6; }
+  .tc-hud-dishchip .tc-hud-tick { position: absolute; right: -3px; bottom: -3px; width: 14px; height: 14px; margin: 0; }
+  .tc-hud-chit-look { position: relative; top: auto; right: auto; flex: none; margin-left: -2px; }
+  .tc-hud-collect { width: auto; min-height: 44px; margin-top: 0; flex: none; grid-template-columns: 28px auto auto; gap: 5px; padding: 2px 8px; }
+  .tc-hud-note { width: 28px; height: 28px; }
+  .tc-hud-note::before { inset: 4px; }
+  .tc-hud-note::after { font-size: 12px; }
+  .tc-hud-collect-txt small { display: none; }
+  .tc-hud-collect-txt b { font-size: 17px; }
+  .tc-hud-collect-secs { font-size: 11px; }
+
+  /* ---- bottom: hands as a slim row, the dock one row of 44 px slots ---- */
+  .tc-hud-bottom { gap: 4px; }
+  .tc-hud-utility { gap: 4px; max-height: var(--tcp-hands); }
+  .tc-hud-hand { padding: 2px 4px; }
+  .tc-hud-hand .tc-hud-dish { width: 30px; height: 30px; }
+  .tc-hud-dock { padding: 4px 6px 6px; gap: 6px; max-height: var(--tcp-dock); outline-offset: -3px; }
+  .tc-hud-station { padding: 2px 4px 4px; gap: 2px; }
+  .tc-hud-station-name { padding: 0 5px; font-size: 10px; line-height: 13px; }
+  .tc-hud-station-name .tc-hud-te { display: none; }
+  .tc-hud-slots { gap: 4px; }
+  .tc-hud-slot { width: 44px; height: 44px; }
+  .tc-hud-dock[data-dense='1'] .tc-hud-tend-txt small { display: none; }
+}
+/* small phones (360 x 640 and the like): tighter gaps buy back the last few percent */
+@media (max-width: 520px) and (orientation: portrait) and (max-height: 700px) {
+  .tc-hud { --tcp-gap: 3px; }
+  .tc-hud-railbox { padding-top: 5px; }
+}
+
+/* =====================================================================================================================================
+   B1 (QA B): on a wide screen the status block (events + LPG + up to 11 stock tiles) is capped to 62% of the board column and
+   SCROLLS (thin visible scrollbar: it used to be hidden, so the Board tile looked cut in half); the dish list below it takes what is left and
+   scrolls too, so nothing is covered by a fixed offset however many event chips are up.
+   ===================================================================================================================================== */
+@media (min-width: 900px) and (min-height: 521px) {
+  .tc-hud-status { max-height: 62%; scrollbar-width: thin; scrollbar-color: #b78f55 rgba(0, 0, 0, 0.25); overscroll-behavior: contain; padding-right: 2px; }
+  .tc-hud-status::-webkit-scrollbar { display: block; width: 6px; }
+  .tc-hud-status::-webkit-scrollbar-thumb { border-radius: 3px; background: #b78f55; }
+  .tc-hud-chips { min-height: 56px; }
+}
