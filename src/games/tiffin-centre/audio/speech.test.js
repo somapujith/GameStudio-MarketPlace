@@ -6,6 +6,9 @@ import {
   setVoicesEnabled,
   subscribeVoices,
   VOICES_KEY,
+  SYNTH_KEY,
+  getSynthEnabled,
+  setSynthEnabled,
   MAX_QUEUE,
   KEEPALIVE_MS,
   START_WATCHDOG_MS,
@@ -125,6 +128,8 @@ function make(extra = {}) {
     isActivated: () => true,
     android: false,
     enabled: true,
+    synthEnabled: true, // the browser's robotic voices are an opt-in: these tests are about that path
+    recorded: false,
     onStart: (e) => calls.starts.push(e),
     onEnd: (e) => calls.ends.push(e),
     onDrop: (e) => calls.drops.push(e),
@@ -153,9 +158,19 @@ describe('Voices setting (jalebi.tiffin.voices.v1)', () => {
     const m = new Map();
     return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, v), m };
   };
-  it('uses the documented key and is OFF by default', () => {
+  it('uses the documented key and is ON by default (recorded voices); an explicit off is kept', () => {
     expect(VOICES_KEY).toBe('jalebi.tiffin.voices.v1');
-    expect(getVoicesEnabled(store())).toBe(false);
+    expect(getVoicesEnabled(store())).toBe(true);
+    const st = store();
+    st.setItem(VOICES_KEY, '0');
+    expect(getVoicesEnabled(st)).toBe(false);
+  });
+  it('migrates: the "1" the old version stored stays on, garbage means the default', () => {
+    const st = store();
+    st.setItem(VOICES_KEY, '1');
+    expect(getVoicesEnabled(st)).toBe(true);
+    st.setItem(VOICES_KEY, 'banana');
+    expect(getVoicesEnabled(st)).toBe(true);
   });
   it('persists on and off', () => {
     const st = store();
@@ -174,14 +189,16 @@ describe('Voices setting (jalebi.tiffin.voices.v1)', () => {
         throw new Error('quota');
       },
     };
-    expect(getVoicesEnabled(bad)).toBe(false);
-    setVoicesEnabled(true, bad);
     expect(getVoicesEnabled(bad)).toBe(true);
-    expect(getVoicesEnabled(null)).toBe(true); // memory wins
+    setVoicesEnabled(false, bad);
+    expect(getVoicesEnabled(bad)).toBe(false);
+    expect(getVoicesEnabled(null)).toBe(false); // memory wins
   });
   it('a speech object starts from the stored value and follows setVoicesEnabled by itself', () => {
     const st = store();
-    const sp = createTiffinSpeech({ synth, SpeechUtterance: FakeUtterance, getSettings: () => hub, now: () => clock.t, timers, doc: null, isActivated: () => true, storage: st });
+    st.setItem(VOICES_KEY, '0');
+    st.setItem(SYNTH_KEY, '1');
+    const sp = createTiffinSpeech({ synth, SpeechUtterance: FakeUtterance, recorded: false, getSettings: () => hub, now: () => clock.t, timers, doc: null, isActivated: () => true, storage: st });
     expect(sp.isEnabled()).toBe(false);
     expect(sp.speak(line(1))).toBe(false);
     setVoicesEnabled(true, st);
@@ -198,6 +215,50 @@ describe('Voices setting (jalebi.tiffin.voices.v1)', () => {
     off();
     setVoicesEnabled(false, st);
     expect(cb).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Synthetic voices setting (jalebi.tiffin.voices.synth.v1)', () => {
+  const store = () => {
+    const m = new Map();
+    return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, v), m };
+  };
+  it('is a separate key and OFF by default', () => {
+    expect(SYNTH_KEY).toBe('jalebi.tiffin.voices.synth.v1');
+    expect(getSynthEnabled(store())).toBe(false);
+  });
+  it('persists, is independent of the Voices switch, and never throws', () => {
+    const st = store();
+    setSynthEnabled(true, st);
+    expect(st.m.get(SYNTH_KEY)).toBe('1');
+    expect(getSynthEnabled(st)).toBe(true);
+    expect(getVoicesEnabled(st)).toBe(true);
+    setSynthEnabled(false, st);
+    expect(getSynthEnabled(st)).toBe(false);
+    const bad = { getItem: () => { throw new Error('x'); }, setItem: () => { throw new Error('y'); } };
+    expect(getSynthEnabled(bad)).toBe(false);
+    setSynthEnabled(true, bad);
+    expect(getSynthEnabled(bad)).toBe(true);
+    expect(getSynthEnabled(null)).toBe(true);
+  });
+  it('a speech object starts from the stored value (no synthetic speech by default) and follows the switch', () => {
+    const st = store();
+    const sp = createTiffinSpeech({ synth, SpeechUtterance: FakeUtterance, recorded: false, getSettings: () => hub, now: () => clock.t, timers, doc: null, isActivated: () => true, storage: st });
+    expect(sp.isSynthEnabled()).toBe(false);
+    expect(sp.speak(line(1))).toBe(false);
+    expect(sp.isAvailable('te')).toBe(false); // a system voice exists but the robotic voices are off
+    setSynthEnabled(true, st);
+    expect(sp.isSynthEnabled()).toBe(true);
+    expect(sp.isAvailable('te')).toBe(true);
+    expect(sp.speak(line(1))).toBe(true);
+    setSynthEnabled(false, st);
+    expect(sp.isSpeaking()).toBe(false); // switching it off cuts the line in the air
+    sp.dispose();
+  });
+  it('needs the Voices switch too', () => {
+    const sp = make({ enabled: false });
+    expect(sp.isSynthEnabled()).toBe(true);
+    expect(sp.speak(line(1))).toBe(false);
   });
 });
 
@@ -670,7 +731,7 @@ describe('createTiffinAudio speech pass-throughs', () => {
       now: () => clock.t,
       timers,
       doc: null,
-      speech: { synth, SpeechUtterance: FakeUtterance, now: () => clock.t, timers, doc: null, isActivated: () => true, android: false, enabled: true, ...extra },
+      speech: { synth, SpeechUtterance: FakeUtterance, now: () => clock.t, timers, doc: null, isActivated: () => true, android: false, enabled: true, synthEnabled: true, recorded: false, ...extra },
     });
   }
   it('speak() and setSpeechEnabled() reach the speech object; unlock() primes it', () => {

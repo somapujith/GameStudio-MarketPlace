@@ -17,8 +17,10 @@
 // fake one. Hub settings (sound on/off, volume, effects volume; haptics and reduced motion inside the hub's `buzz`) come from
 // `settings` = { load(), subscribe(cb) } (default: src/lib/storage.js), or a plain object, or a function returning the object.
 //
-// Graph:  voices -> sfxBus --+
+// Graph:  recorded customer voices (HTMLAudio clips) -> voiceBus --------------------------------------------------+
+//         voices -> sfxBus --+
 //         ambience, ops loops, crowd murmur (via crowdBus: the inspector's hush) -> ambBus-+-> group (effects fader) -> master (volume, mute) -> compressor -> soft clip -> destination
+//         (the recorded voices join at the master: the hub volume and mute apply, the effects fader does not)
 
 import { loadSettings, subscribeSettings } from '../../../lib/storage.js';
 import { createSynth } from '@/lib/soundscape/synth.js';
@@ -33,7 +35,18 @@ import { createCrowd } from './crowd.js';
 import { createOpsAudio } from './opsAudio.js';
 import { adjustAmbience } from './opsMix.js';
 
-export { createTiffinSpeech, getVoicesEnabled, setVoicesEnabled, subscribeVoices, VOICES_KEY } from './speech.js';
+export {
+  createTiffinSpeech,
+  getVoicesEnabled,
+  setVoicesEnabled,
+  subscribeVoices,
+  VOICES_KEY,
+  getSynthEnabled,
+  setSynthEnabled,
+  subscribeSynth,
+  SYNTH_KEY,
+} from './speech.js';
+export { createRecordedVoices, isMeteredConnection } from './recorded.js';
 export { crowdHandle, createCrowd } from './crowd.js';
 export { soundsForEvent, soundsForMove, createVoiceLimiter } from './mapping.js';
 export { layerLevels, daypartWeights } from './mix.js';
@@ -142,6 +155,7 @@ export function createTiffinAudio({
     const group = ctx.createGain();
     const master = ctx.createGain();
     const crowdBus = ctx.createGain(); // the murmur's own fader: the inspector's hush dips it
+    const voiceBus = ctx.createGain(); // recorded customer lines (recorded.js): into the master, so the limiter catches them too
     const comp = ctx.createDynamicsCompressor();
     const shaper = ctx.createWaveShaper();
     ambBus.gain.value = AMBIENCE_BUS;
@@ -164,7 +178,8 @@ export function createTiffinAudio({
     comp.connect(shaper);
     shaper.connect(ctx.destination);
     crowdBus.connect(ambBus);
-    nodes = { sfxBus, ambBus, crowdBus, group, master, comp, shaper };
+    voiceBus.connect(master);
+    nodes = { sfxBus, ambBus, crowdBus, voiceBus, group, master, comp, shaper };
     ambience = createAmbience({ ctx, dest: ambBus, now, timers, rng });
     if (crowdEnabled) crowd = createCrowd({ ctx, dest: crowdBus, vocalDest: sfxBus, now, timers, rng });
     ops = createOpsAudio({ ctx, dest: ambBus, now, timers, rng });
@@ -173,7 +188,14 @@ export function createTiffinAudio({
   function getSpeech() {
     if (!speech) {
       const ready = speechOptions && typeof speechOptions.speak === 'function';
-      speech = ready ? speechOptions : createTiffinSpeech({ getSettings: settings, ...speechOptions });
+      if (ready) speech = speechOptions;
+      else {
+        const ro = speechOptions && speechOptions.recorded;
+        // the recorded player plays through this graph (master gain + limiter, panned) once the context exists
+        const recorded =
+          ro === false ? false : ro && typeof ro.play === 'function' ? ro : { getContext: () => ctx, getDest: () => nodes?.voiceBus || null, ...(ro && typeof ro === 'object' ? ro : {}) };
+        speech = createTiffinSpeech({ getSettings: settings, ...speechOptions, recorded });
+      }
       speech.setVolume?.(localVolume);
     }
     return speech;
@@ -296,7 +318,8 @@ export function createTiffinAudio({
         ops?.start();
       }
       if (pendingState) ops?.setState(pendingState); // a resume: the rain / the grinder that are already going
-      getSpeech().unlock?.(); // iOS only speaks after a gesture: this is one
+      getSpeech().unlock?.(); // iOS only speaks / plays <audio> after a gesture: this is one
+      if (wantAmbience) warmVoices();
       return true;
     },
     isUnlocked: () => unlocked,
@@ -375,6 +398,7 @@ export function createTiffinAudio({
     startAmbience() {
       wantAmbience = true;
       if (unlocked && ambience && !disposed) {
+        warmVoices(); // the start of a shift: the greeting / waiting clips are fetched before the first customers speak
         applyAmbience();
         ambience.start();
         crowd?.start();
@@ -401,10 +425,18 @@ export function createTiffinAudio({
         return false;
       }
     },
-    /** The 'Voices' switch of this session (persist it with setVoicesEnabled; the speech object also follows that by itself). */
+    /** The 'Voices' switch of this session (recorded voices; persist it with setVoicesEnabled, the speech object also follows that by itself). */
     setSpeechEnabled(b) {
       getSpeech().setEnabled(!!b);
     },
+    /** The 'Synthetic voices' switch (the browser's robotic speech for lines without a recording; default off, persist it with setSynthEnabled). */
+    setSynthEnabled(b) {
+      getSpeech().setSynthEnabled?.(!!b);
+    },
+    /** Fetches a few recorded clips ahead (the language's greetings and waiting lines; every language when `lang` is omitted). Never on a metered link. */
+    warmVoices,
+    /** { played, synth, missing, errors, dropped, recorded: {...} }: how lines were voiced so far (debugging). */
+    getVoiceStats: () => getSpeech().getVoiceStats?.() ?? { played: 0, synth: 0, missing: 0, errors: 0, dropped: 0 },
     cancelSpeech: (customerId) => speech?.cancel(customerId),
     setSpeechPaused: (b) => getSpeech().setPaused?.(!!b),
     isSpeechAvailable: (lang) => getSpeech().isAvailable(lang),
@@ -433,6 +465,18 @@ export function createTiffinAudio({
       nodes = null;
     },
   };
+
+  let warmedOnce = false;
+  /** See api.warmVoices. Resolves with the number of clips fetched; never rejects. */
+  function warmVoices(lang, ids) {
+    if (disposed || (!lang && warmedOnce)) return Promise.resolve(0);
+    if (!lang) warmedOnce = true;
+    try {
+      return Promise.resolve(getSpeech().warm?.(lang, ids) ?? 0).catch(() => 0);
+    } catch {
+      return Promise.resolve(0);
+    }
+  }
 
   /** The crowd murmur goes quiet for `seconds` (the inspector is looking) and comes back by itself. */
   function hushCrowd(seconds) {

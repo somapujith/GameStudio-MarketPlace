@@ -1,15 +1,22 @@
-// Tiffin Centre speech: customers SAY their lines with the browser's own Web Speech API (speechSynthesis). No network, no keys,
-// nothing external is loaded: it uses the voices the device already has. Where a language has no voice, speak() returns false and the
-// UI simply keeps showing the subtitle.
+// Tiffin Centre speech: customers SAY their lines. Order of preference for one line:
+//   1. a RECORDED clip (recorded.js: public/audio/tiffin-voices, ElevenLabs v3) when the line has one and the 'Voices' switch is on;
+//   2. the browser's own Web Speech API (speechSynthesis, robotic, the voices the device already has) when the SEPARATE
+//      'Synthetic voices' switch is on and the device has a voice for the language;
+//   3. nothing: speak() returns false and the UI keeps showing the subtitle.
 //
-//   const speech = createTiffinSpeech({ synth?, SpeechUtterance?, getSettings?, onStart?, onEnd?, onDrop?, now?, timers?, doc? });
-//   speech.speak({ id, text, lang: 'te'|'hi'|'dk', mood, ttlMs, customer }) -> boolean   queued or started (false: show the subtitle only)
+//   const speech = createTiffinSpeech({ synth?, SpeechUtterance?, recorded?, getSettings?, onStart?, onEnd?, onDrop?, now?, timers?, doc? });
+//   speech.speak({ id, lineId?, text, lang: 'te'|'hi'|'dk', mood, ttlMs, customer }) -> boolean   queued or started (false: show the subtitle only)
+//     (the recording is found by `lineId`, else `id`)
 //   speech.cancel(customerId?)   one customer's lines (or everyone's when omitted); the line in the air is cut
-//   speech.setEnabled(b)         the session switch (starts from the persisted 'Voices' setting)
+//   speech.setEnabled(b)         the session switch of the Voices setting (recorded voices; synthetic voices need it too)
+//   speech.setSynthEnabled(b)    the session switch of the Synthetic voices setting (starts from its persisted value, default off)
 //   speech.setVolume(0..1)       on top of the hub's volume
 //   speech.setPaused(b)          the game pauses: everything is cut and nothing starts until resumed
-//   speech.isAvailable(lang)     is there a voice for this language on this device (after `voiceschanged`)
-//   speech.unlock()              call from a user gesture (iOS refuses to speak before one)
+//   speech.isAvailable(lang)     true: the language has recordings, or synthetic voices are on and the device has a voice;
+//                                false: neither; null: the recordings are still being looked for
+//   speech.warm(lang?, ids?)     preload a few recorded clips (greetings, waiting) on an unmetered connection
+//   speech.getVoiceStats()       { played, synth, missing, errors, ... } for debugging
+//   speech.unlock()              call from a user gesture (iOS refuses to speak or play before one)
 //   speech.dispose()
 //
 // onStart({ id, customer, lang, mood, text, estMs, intensity }) / onEnd({ ..., cancelled }) let the scene move the mouth.
@@ -20,12 +27,16 @@
 // rest, oldest first) is dropped on overflow; a line older than its ttlMs is dropped instead of spoken late; a customer's newer line
 // replaces their still-waiting older one; at most MAX_SPEAKERS different customers are in the pipeline (speaking + waiting).
 //
-// 'Voices' persisted switch: localStorage `jalebi.tiffin.voices.v1`, OFF until the player enables it (getVoicesEnabled/setVoicesEnabled).
+// Persisted switches (localStorage):
+//   `jalebi.tiffin.voices.v1`        'Voices' (recorded voices): ON unless the player turned it off ('1' stored by the old version stays on)
+//   `jalebi.tiffin.voices.synth.v1`  'Synthetic voices' (the browser's robotic speech): OFF until the player turns it on
 
 import { loadSettings, subscribeSettings } from '../../../lib/storage.js';
 import { chooseVoice, speechParams, moodPriority, estimateMs, normalizeLang, clamp01 } from './speechVoices.js';
+import { createRecordedVoices } from './recorded.js';
 
 export const VOICES_KEY = 'jalebi.tiffin.voices.v1';
+export const SYNTH_KEY = 'jalebi.tiffin.voices.synth.v1';
 export const MAX_SPEAKERS = 2;
 export const MAX_QUEUE = 3;
 export const DEFAULT_TTL_MS = 6000;
@@ -33,10 +44,10 @@ export const KEEPALIVE_MS = 4000; // Chrome silently stops a long utterance afte
 export const START_WATCHDOG_MS = 4000; // no `start` event by then (iOS before a gesture, a swallowed speak()): give the line up
 export const VOICE_WAIT_MS = 2000; // how long an empty voice list is believed to be "still loading" (Chrome fills it asynchronously)
 
-// ------------------------------------------------------------------------------------------------ the persisted Voices switch
+// ------------------------------------------------------------------------------------------------ the persisted switches
 
 const mem = new Map(); // values that could not be written to localStorage win over stale persisted data
-const voiceSubs = new Set();
+const subs = { [VOICES_KEY]: new Set(), [SYNTH_KEY]: new Set() };
 
 function defaultStorage() {
   try {
@@ -46,31 +57,31 @@ function defaultStorage() {
   }
 }
 
-/** Is the Voices switch on? Default OFF (the player enables it in the pause menu). Never throws. */
-export function getVoicesEnabled(storage = defaultStorage()) {
+function readSwitch(key, fallback, storage) {
   let raw = null;
-  if (mem.has(VOICES_KEY)) raw = mem.get(VOICES_KEY);
+  if (mem.has(key)) raw = mem.get(key);
   else {
     try {
-      raw = storage ? storage.getItem(VOICES_KEY) : null;
+      raw = storage ? storage.getItem(key) : null;
     } catch {
       raw = null;
     }
   }
-  return raw === '1' || raw === 'true';
+  if (raw === '1' || raw === 'true') return true;
+  if (raw === '0' || raw === 'false') return false;
+  return fallback; // never set (or garbage): the default
 }
 
-/** Persists the Voices switch and tells the live speech objects (they follow it by themselves). */
-export function setVoicesEnabled(b, storage = defaultStorage()) {
+function writeSwitch(key, b, storage) {
   const value = b ? '1' : '0';
   try {
     if (!storage) throw new Error('no storage');
-    storage.setItem(VOICES_KEY, value);
-    mem.delete(VOICES_KEY);
+    storage.setItem(key, value);
+    mem.delete(key);
   } catch {
-    mem.set(VOICES_KEY, value);
+    mem.set(key, value);
   }
-  voiceSubs.forEach((cb) => {
+  subs[key].forEach((cb) => {
     try {
       cb(!!b);
     } catch {
@@ -80,9 +91,36 @@ export function setVoicesEnabled(b, storage = defaultStorage()) {
   return !!b;
 }
 
+/**
+ * Is the Voices switch (recorded voices) on? Default ON: only an explicit off ('0') turns it off; the '1' the old version stored stays on.
+ * Never throws.
+ */
+export function getVoicesEnabled(storage = defaultStorage()) {
+  return readSwitch(VOICES_KEY, true, storage);
+}
+
+/** Persists the Voices switch and tells the live speech objects (they follow it by themselves). */
+export function setVoicesEnabled(b, storage = defaultStorage()) {
+  return writeSwitch(VOICES_KEY, b, storage);
+}
+
 export function subscribeVoices(cb) {
-  voiceSubs.add(cb);
-  return () => voiceSubs.delete(cb);
+  subs[VOICES_KEY].add(cb);
+  return () => subs[VOICES_KEY].delete(cb);
+}
+
+/** Is the Synthetic voices switch (the browser's robotic speech, used only for lines without a recording) on? Default OFF. */
+export function getSynthEnabled(storage = defaultStorage()) {
+  return readSwitch(SYNTH_KEY, false, storage);
+}
+
+export function setSynthEnabled(b, storage = defaultStorage()) {
+  return writeSwitch(SYNTH_KEY, b, storage);
+}
+
+export function subscribeSynth(cb) {
+  subs[SYNTH_KEY].add(cb);
+  return () => subs[SYNTH_KEY].delete(cb);
 }
 
 /** Test helper: forget the in-memory fallback. */
@@ -140,6 +178,7 @@ export function createTiffinSpeech(opts = {}) {
   const supported = !!synth && typeof synth.speak === 'function' && typeof SpeechUtterance === 'function';
 
   let enabled = opts.enabled ?? getVoicesEnabled(storage);
+  let synthEnabled = opts.synthEnabled ?? getSynthEnabled(storage); // the browser's robotic voices: a separate opt-in
   let localVolume = 1;
   let paused = false;
   let hidden = false;
@@ -170,7 +209,34 @@ export function createTiffinSpeech(opts = {}) {
     const h = hubSettings();
     return h.sfx ? h.volume * h.voiceVolume * localVolume : 0;
   };
-  const mayPlay = () => supported && !disposed && enabled && !paused && !hidden && masterVolume() > 0.001;
+  const baseOk = () => !disposed && enabled && !paused && !hidden && masterVolume() > 0.001;
+  const mayPlay = () => supported && synthEnabled && baseOk(); // the SYNTHETIC path
+  const stats = { synth: 0, missing: 0 };
+
+  // ---- recorded voices (recorded.js). `opts.recorded`: a ready object, false (none), or options for createRecordedVoices; by default
+  // a player is built when the browser has <audio>.
+  const recordedOpts = opts.recorded && typeof opts.recorded === 'object' && typeof opts.recorded.play !== 'function' ? opts.recorded : {};
+  let recorded = null;
+  if (opts.recorded && typeof opts.recorded.play === 'function') recorded = opts.recorded;
+  else if (opts.recorded !== false && (opts.recorded || typeof Audio === 'function')) {
+    recorded = createRecordedVoices({
+      getSettings: () => hub.load(),
+      now,
+      timers,
+      enabled,
+      onStart: (e) => callbackSafe(onStart, e),
+      onEnd: (e) => callbackSafe(onEnd, e),
+      onDrop: (e) => callbackSafe(onDrop, e),
+      ...recordedOpts,
+    });
+  }
+  function callbackSafe(fn, e) {
+    try {
+      fn?.(e);
+    } catch {
+      /* callbacks must not break playback */
+    }
+  }
 
   // ---- voices
   function refreshVoices() {
@@ -364,9 +430,35 @@ export function createTiffinSpeech(opts = {}) {
     if (!u || typeof u.text !== 'string') return false;
     const text = u.text.trim();
     const lang = normalizeLang(u.lang);
-    if (!text || !lang || !mayPlay()) return false;
-    if (!gestured && !isActivated()) return false; // iOS (and Chrome) refuse to speak before the first tap
-    if (!voicesPending() && !voiceFor(lang)) return false;
+    if (!text || !lang) return false;
+    // 1. a recording of this very line
+    if (recorded && !disposed && enabled) {
+      const lineId = typeof u.lineId === 'string' ? u.lineId : u.id;
+      if (recorded.has(lineId, lang)) {
+        const at = now();
+        const onFail = () => {
+          // accepted but never heard (a failed download, iOS refusing): the synthetic voice, if it is on and the line is still fresh
+          const ttl = Number.isFinite(u.ttlMs) && u.ttlMs > 0 ? u.ttlMs : DEFAULT_TTL_MS;
+          if (!disposed && now() - at <= ttl) speakSynth(u, text, lang);
+        };
+        if (baseOk() && recorded.play(u, { onFail })) return true;
+      } else {
+        const p = recorded.ensure(lang); // the first line of a language may find no manifest yet: the next ones will
+        if (p && typeof p.catch === 'function') p.catch(() => {});
+      }
+    }
+    return speakSynth(u, text, lang);
+  }
+
+  /** 2. the browser's synthetic voice when it is switched on and the device has one; 3. nothing (false: the subtitle stays on its own). */
+  function speakSynth(u, text, lang) {
+    const unavailable = () => {
+      stats.missing++;
+      return false;
+    };
+    if (!mayPlay()) return unavailable();
+    if (!gestured && !isActivated()) return unavailable(); // iOS (and Chrome) refuse to speak before the first tap
+    if (!voicesPending() && !voiceFor(lang)) return unavailable();
     // `customer` is an id or { id, kind }; a line without one is anonymous (it still gets a stable voice from its own id)
     const who = u.customer ?? null;
     const customer = who !== null && typeof who === 'object' ? who.id ?? null : who === '' ? null : who;
@@ -416,11 +508,12 @@ export function createTiffinSpeech(opts = {}) {
       drop(weakest, 'overflow');
     }
     queue.push(item);
+    stats.synth++;
     pump();
     return true;
   }
 
-  function cancel(customerId) {
+  function cancelSynth(customerId) {
     if (customerId === undefined || customerId === null) {
       const waiting = queue;
       queue = [];
@@ -440,6 +533,17 @@ export function createTiffinSpeech(opts = {}) {
     }
   }
 
+  /** Everything: the synthetic line and the recorded clips (one customer's, or all when no id is given). */
+  function cancel(customerId) {
+    cancelSynth(customerId);
+    recorded?.cancel(customerId);
+  }
+
+  /** The recordings pause with the game / a hidden tab and carry on after; the synthetic voice cannot, so it is cut. */
+  function syncRecordedPause() {
+    recorded?.setPaused(paused || hidden);
+  }
+
   /** A silent utterance: on iOS the first speak() must happen inside a user gesture, after that any speak() works. */
   function prime() {
     if (!supported || disposed || current || synth.speaking) return true;
@@ -456,17 +560,29 @@ export function createTiffinSpeech(opts = {}) {
   function setEnabled(b) {
     const was = enabled;
     enabled = !!b;
+    recorded?.setEnabled(enabled);
     if (!enabled) cancel();
     else {
-      if (!was) prime(); // switched on from a menu tap: this is the gesture iOS wants
+      if (!was && synthEnabled) prime(); // switched on from a menu tap: this is the gesture iOS wants
+      pump();
+    }
+  }
+
+  function setSynthEnabled(b) {
+    const was = synthEnabled;
+    synthEnabled = !!b;
+    if (!synthEnabled) cancelSynth();
+    else {
+      if (!was && enabled) prime(); // the menu tap that switched it on
       pump();
     }
   }
 
   function applyHidden(h) {
     hidden = h;
-    if (h) cancel();
-    else pump();
+    if (h) cancelSynth();
+    syncRecordedPause();
+    if (!h) pump();
   }
 
   if (doc && typeof doc.addEventListener === 'function') {
@@ -476,10 +592,13 @@ export function createTiffinSpeech(opts = {}) {
     hidden = doc.visibilityState === 'hidden';
   }
   unsubs.push(subscribeVoices((b) => setEnabled(b)));
+  unsubs.push(subscribeSynth((b) => setSynthEnabled(b)));
   try {
     unsubs.push(
       hub.subscribe(() => {
-        if (!disposed && masterVolume() <= 0.001) cancel(); // the hub's sound got switched off or turned to zero mid-line
+        if (disposed) return;
+        if (masterVolume() <= 0.001) cancel(); // the hub's sound got switched off or turned to zero mid-line
+        else recorded?.updateVolume(); // a fader moved: the clips in the air follow it
       }),
     );
   } catch {
@@ -491,32 +610,58 @@ export function createTiffinSpeech(opts = {}) {
     cancel,
     setEnabled,
     isEnabled: () => enabled,
+    setSynthEnabled,
+    isSynthEnabled: () => synthEnabled,
     setVolume(v) {
       localVolume = clamp01(v);
+      recorded?.setVolume(localVolume);
       if (localVolume <= 0.001) cancel();
     },
     setPaused(b) {
       paused = !!b;
-      if (paused) cancel();
-      else pump();
+      if (paused) cancelSynth();
+      syncRecordedPause();
+      if (!paused) pump();
     },
+    /**
+     * Will a customer speaking `lang` be heard: true when the language has recordings, or the synthetic voices are on and the device has a
+     * voice; false when neither; null while the recordings are still being looked for (do not show a "no voice" notice yet).
+     */
     isAvailable(lang) {
-      return supported && !!voiceFor(lang);
+      const synthOk = supported && synthEnabled && !!voiceFor(lang);
+      if (synthOk) return true;
+      if (!recorded || !normalizeLang(lang)) return false;
+      const a = recorded.availability(lang);
+      if (a === null && enabled) {
+        const p = recorded.ensure(lang); // not looked for yet: start now, the answer is there next time
+        if (p && typeof p.catch === 'function') p.catch(() => {});
+      }
+      return a;
     },
+    /** Preloads a few recorded clips (the greetings and waiting lines of the language, or of every language) on an unmetered connection. */
+    warm: (lang, ids) => (recorded && enabled ? recorded.warm(lang, ids) : Promise.resolve(0)),
+    /** { played, synth, missing, errors, dropped, ... } since the speech object was made (for debugging). */
+    getVoiceStats() {
+      const r = recorded ? recorded.stats() : {};
+      return { played: r.played || 0, synth: stats.synth, missing: stats.missing, errors: r.errors || 0, dropped: r.dropped || 0, recorded: r };
+    },
+    recorded: () => recorded,
     /** The installed voice a language would use (for a settings screen), or null. */
     voiceFor: (lang) => (supported ? voiceFor(lang) : null),
     /** From a user gesture: lets iOS speak afterwards (a silent utterance, only while Voices is on) and lifts the gesture check. */
     unlock() {
       gestured = true;
-      if (!supported || disposed) return false;
-      return enabled ? prime() : true;
+      const rec = recorded && !disposed ? recorded.unlock() : false;
+      if (!supported || disposed) return rec;
+      return enabled && synthEnabled ? prime() || rec : true;
     },
-    isSpeaking: () => !!current,
+    isSpeaking: () => !!current || !!recorded?.isPlaying?.(),
     stats: () => ({ speaking: current ? current.id : null, queued: queue.map((q) => q.id), voices: voices.length }),
     dispose() {
       if (disposed) return;
       cancel();
       disposed = true;
+      recorded?.dispose?.();
       waitTimer = clearTimer(waitTimer, 'clearTimeout');
       unsubs.splice(0).forEach((f) => {
         try {
