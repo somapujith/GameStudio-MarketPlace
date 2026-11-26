@@ -124,6 +124,9 @@ describe('orientation.css', () => {
     expect(css).toContain(":root[data-motion='reduced']");
     expect(css).toMatch(/prefers-reduced-motion: reduce\)\s*\{[\s\S]*animation:\s*none/);
   });
+  it('stands every CSS animation behind the screen still (hidden HUD glows would tick the main thread)', () => {
+    expect(css).toMatch(/\.og-game\[data-og='paused'\] \*,[\s\S]*?animation-play-state:\s*paused\s*!important/);
+  });
   it('has 44px+ targets and lets a tiny window scroll to them', () => {
     expect(css).toMatch(/\.og-btn\s*\{[^}]*min-height:\s*(4[4-9]|[5-9]\d)px/);
     expect(css).toMatch(/\.og-gate\s*\{[^}]*overflow-y:\s*auto/);

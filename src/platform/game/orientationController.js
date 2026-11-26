@@ -5,7 +5,9 @@
 //   - orientationchange and resize both fire, in either order, and iOS can hand out the OLD innerWidth / innerHeight in the first one:
 //     every event re-reads; the trailing re-read (SETTLE_MS) and a late one (LATE_MS) correct a stale first answer.
 //   - un-gating (the player turned the phone) is applied AT ONCE, so the game resumes the moment the viewport is landscape;
-//     gating is applied after SETTLE_MS, so a transient reading in the middle of a resize can never flash the gate.
+//     gating waits for the next animation frame (the same frame as the resize event, so the screen is up before ResizeObserver callbacks
+//     and the paint: the player never sees the game stretched to the new shape) and, without requestAnimationFrame, for SETTLE_MS.
+//     Events of one rotation land in one frame and are read once, so a half-updated reading cannot flash the gate.
 //   - the virtual keyboard: tracked with the visual viewport and focus (see orientationPolicy.detectKeyboard), never mistaken for a rotation.
 import { isCoarsePointer } from '@/lib/mobile.js';
 import { deviceIsPortrait, detectKeyboard, isEditableElement, normalizePolicy, resolvePortrait, shouldGate } from './orientationPolicy.js';
@@ -24,6 +26,7 @@ export function createOrientationController({ win = typeof window !== 'undefined
   let attached = null; // () => void
   let settleTimer = null;
   let lateTimer = null;
+  let frame = 0;
 
   const read = () => {
     if (!win) return NONE;
@@ -59,10 +62,21 @@ export function createOrientationController({ win = typeof window !== 'undefined
     if (defer && next.gated && !snap.gated) return;
     apply(next);
   };
+  const cancelFrame = () => {
+    if (frame && win && win.cancelAnimationFrame) win.cancelAnimationFrame(frame);
+    frame = 0;
+  };
   const schedule = () => {
     refresh(true);
     clearTimeout(settleTimer);
     clearTimeout(lateTimer);
+    cancelFrame();
+    if (win && typeof win.requestAnimationFrame === 'function') {
+      frame = win.requestAnimationFrame(() => {
+        frame = 0;
+        refresh(false);
+      });
+    }
     settleTimer = setTimeout(() => refresh(false), SETTLE_MS);
     lateTimer = setTimeout(() => refresh(false), LATE_MS);
   };
@@ -104,6 +118,7 @@ export function createOrientationController({ win = typeof window !== 'undefined
       clearTimeout(settleTimer);
       clearTimeout(lateTimer);
       settleTimer = lateTimer = null;
+      cancelFrame();
     };
   };
 

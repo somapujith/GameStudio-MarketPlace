@@ -79,10 +79,11 @@ export function TurnScreen({ policy = 'landscape', gameName, theme, backTo = '/'
 
 /**
  * Props: `policy` ('landscape' | 'portrait' | 'any'), `game` (the manifest: its name and theme dress the screen), `backTo` (the game page
- * link), `win` (tests: a stub window instead of `window`), `children` (the game screen).
+ * link), `freezeFrames` (false: do not freeze the page's animation-frame loops while it is up), `win` (tests: a stub window instead of `window`),
+ * `children` (the game screen).
  */
-export default function OrientationGate({ policy = 'landscape', game, backTo = '/', win, children }) {
-  const o = useOrientationPolicy(policy, win !== undefined ? { win } : undefined);
+export default function OrientationGate({ policy = 'landscape', game, backTo = '/', win, freezeFrames, children }) {
+  const o = useOrientationPolicy(policy, { ...(win !== undefined ? { win } : null), freezeFrames });
   const value = useMemo(() => ({ paused: o.paused, gated: o.gated, policy: o.policy }), [o.paused, o.gated, o.policy]);
   return (
     <OrientationContext.Provider value={value}>

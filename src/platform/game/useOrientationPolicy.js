@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { lockGestures } from '@/lib/mobile.js';
 import { createOrientationController } from './orientationController.js';
-import { frameFreezer } from './orientationFreeze.js';
+import { frameFreezer, freezeDelayMs } from './orientationFreeze.js';
 import { createLandscapeLock } from './orientationLock.js';
 import { normalizePolicy } from './orientationPolicy.js';
 
@@ -59,18 +59,26 @@ export function useOrientationPolicy(policy = 'landscape', opts = {}) {
     return lockGestures(win.document.documentElement);
   }, [active, wantGestures, win]);
 
-  // Once the game has been on screen, every animation-frame loop of the page stops while the gate is up (a game stops its own loop with
-  // useGamePaused(); this catches the rest: minimaps, polls, count-ups). Not before the first landscape moment: a game opened upright keeps
-  // LOADING behind the screen (its start-up yields through requestAnimationFrame), so it is ready when the player has turned the phone.
+  // While the gate is up, every animation-frame loop of the page stops (a game stops its own loop with useGamePaused(); this catches the
+  // rest: minimaps, polls, count-ups). At once when the game has been on screen; after FREEZE_GRACE_MS when it was opened upright, because a
+  // game opened upright keeps LOADING behind the screen (its start-up yields through requestAnimationFrame) and should be ready when the phone is turned.
   const seenLive = useRef(false);
   useEffect(() => {
     if (!snap.gated) seenLive.current = true;
   }, [snap.gated]);
   useEffect(() => {
-    if (!snap.gated || !wantFreeze || !seenLive.current || !win) return undefined;
-    const freezer = frameFreezer(win);
-    freezer.freeze();
-    return () => freezer.thaw(); // landscape again (or the screen is leaving): the queued frames run on the next real frame
+    if (!snap.gated || !wantFreeze || !win) return undefined;
+    let freezer = null;
+    const engage = () => {
+      freezer = frameFreezer(win);
+      freezer.freeze();
+    };
+    const delay = freezeDelayMs(seenLive.current);
+    const timer = delay ? setTimeout(engage, delay) : (engage(), 0);
+    return () => {
+      clearTimeout(timer);
+      if (freezer) freezer.thaw(); // landscape again (or the screen is leaving): the queued frames run on the next real frame
+    };
   }, [snap.gated, wantFreeze, win]);
 
   return useMemo(

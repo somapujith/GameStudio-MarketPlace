@@ -13,6 +13,12 @@
 .og-game[data-og='paused'] {
   visibility: hidden;
 }
+/* and every CSS animation in it stands still (a hidden HUD's glow and pulse loops would otherwise keep the main thread ticking behind the screen) */
+.og-game[data-og='paused'] *,
+.og-game[data-og='paused'] *::before,
+.og-game[data-og='paused'] *::after {
+  animation-play-state: paused !important;
+}
 
 .og-gate {
   position: fixed;

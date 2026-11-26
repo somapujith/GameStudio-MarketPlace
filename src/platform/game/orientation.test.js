@@ -3,7 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEVICES, fakeWindow } from './orientation.fakes.js';
 import { createOrientationController, LATE_MS, SETTLE_MS } from './orientationController.js';
-import { frameFreezer } from './orientationFreeze.js';
+import { FREEZE_GRACE_MS, frameFreezer, freezeDelayMs } from './orientationFreeze.js';
 import { canLockOrientation, canPlayLandscape, createLandscapeLock } from './orientationLock.js';
 import {
   deviceIsPortrait,
@@ -206,6 +206,67 @@ describe('createOrientationController: the rotation races', () => {
     expect(ctl.getSnapshot().gated).toBe(false);
     vi.advanceTimersByTime(2);
     expect(ctl.getSnapshot().gated).toBe(true);
+  });
+
+  describe('with requestAnimationFrame (a browser): gating lands in the frame of the resize event, before the paint', () => {
+    const withFrames = (name) => {
+      const frames = [];
+      const win = fakeWindow({ ...DEVICES[name] });
+      win.requestAnimationFrame = (cb) => frames.push(cb);
+      win.cancelAnimationFrame = (i) => {
+        frames[i - 1] = null;
+      };
+      return { win, frames, ctl: createOrientationController({ win, policy: 'landscape' }), run: () => frames.splice(0).forEach((cb) => cb && cb(16)) };
+    };
+
+    it('turning it upright gates on the next frame, not 40 ms later', () => {
+      const { win, ctl, run } = withFrames('iPhone 14 landscape');
+      ctl.subscribe(() => {});
+      win.set({ w: 390, h: 844, device: 'portrait-primary' });
+      win.fire('win', 'resize');
+      expect(ctl.getSnapshot().gated).toBe(false); // not inside the event itself: one frame of grace
+      run(); // the frame: before ResizeObserver callbacks and before the paint
+      expect(ctl.getSnapshot().gated).toBe(true);
+      vi.advanceTimersByTime(0); // no timer was needed
+    });
+
+    it('the events of one rotation (orientationchange then resize) are read once, in that frame', () => {
+      const { win, ctl, run } = withFrames('iPhone 14 landscape');
+      const fn = vi.fn();
+      ctl.subscribe(fn);
+      win.fire('win', 'orientationchange'); // stale sizes
+      win.set({ w: 390, h: 844, device: 'portrait-primary' });
+      win.fire('win', 'resize');
+      run();
+      expect(ctl.getSnapshot().gated).toBe(true);
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it('a reading that corrects itself before the frame never gates', () => {
+      const { win, ctl, run } = withFrames('iPhone 14 landscape');
+      const fn = vi.fn();
+      ctl.subscribe(fn);
+      win.set({ w: 390, h: 844 });
+      win.fire('win', 'resize');
+      win.set({ w: 844, h: 390 });
+      win.fire('win', 'resize');
+      run();
+      vi.advanceTimersByTime(LATE_MS + 50);
+      expect(ctl.getSnapshot().gated).toBe(false);
+      expect(fn).not.toHaveBeenCalled();
+    });
+
+    it('turning it sideways still resumes inside the event, and the last unsubscribe cancels a waiting frame', () => {
+      const { win, ctl, frames } = withFrames('iPhone 14 portrait');
+      const off = ctl.subscribe(() => {});
+      win.set({ w: 844, h: 390, device: 'landscape-primary' });
+      win.fire('win', 'resize');
+      expect(ctl.getSnapshot().gated).toBe(false);
+      expect(frames.filter(Boolean).length).toBe(1);
+      off();
+      expect(frames.filter(Boolean).length).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+    });
   });
 
   it('a transient portrait-looking reading that corrects itself inside the debounce never gates', () => {
@@ -536,6 +597,13 @@ describe('frameFreezer: every animation-frame loop of the page stops while the g
     none.thaw();
     expect(none.frozen).toBe(false);
     expect(frameFreezer(null).queued).toBe(0);
+  });
+
+  it('a game that was on screen is frozen at once; one opened upright keeps loading for a grace period first', () => {
+    expect(freezeDelayMs(true)).toBe(0);
+    expect(freezeDelayMs(false)).toBe(FREEZE_GRACE_MS);
+    expect(FREEZE_GRACE_MS).toBeGreaterThanOrEqual(4000); // a game's start-up target is 6 s
+    expect(FREEZE_GRACE_MS).toBeLessThanOrEqual(10000); // but a phone resting on the screen must not burn for long
   });
 
   it('after the thaw a plain request goes straight to the browser again', () => {

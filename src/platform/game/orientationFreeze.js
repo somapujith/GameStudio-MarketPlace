@@ -13,6 +13,10 @@
 // queued when they ask again. Nothing happens on a desktop: the patch is only installed by the first freeze, and desktop is never gated.
 const KEY = '__jalebiFrameFreezer';
 
+/** A game opened upright keeps loading behind the screen; its loops are only frozen after this long (a game that was already on screen: at once). */
+export const FREEZE_GRACE_MS = 6000;
+export const freezeDelayMs = (seenLive) => (seenLive ? 0 : FREEZE_GRACE_MS);
+
 const NOOP = Object.freeze({ freeze() {}, thaw() {}, get frozen() { return false; }, get queued() { return 0; } });
 
 export function frameFreezer(win = typeof window !== 'undefined' ? window : null) {
