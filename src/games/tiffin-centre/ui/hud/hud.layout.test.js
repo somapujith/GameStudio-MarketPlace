@@ -118,6 +118,16 @@ describe('cheap over a live WebGL canvas', () => {
   it('every menu keyframe is transform / opacity too', () => {
     expect(keyframes(menus).filter((k) => k.props.some((p) => !OK.has(p)))).toEqual([]);
   });
+  it('keeps :has() to four local selectors (an ancestor watching a subtree the frame bus rewrites every frame re-styles the HUD on each mutation)', () => {
+    const uses = [...hud.matchAll(/[^\s{},]*:has\([^)]*\)\)?/g)].map((m) => m[0]);
+    expect(uses.sort()).toEqual([
+      '.tc-hud-chip-meta:not(:has(>*))'.replace('>*', '> *'),
+      '.tc-hud-railbox:has(.tc-hud-rail-empty)',
+      '.tc:has(.tc-hud--has-leave)',
+      'div:has(> dt:empty)', // the help card's rows, static
+    ].sort());
+    expect(hud).not.toMatch(/\.tc-hud:has\(/);
+  });
   it('the shift bar has no endless width transition (a 1 s step of a 160 px bar is one pixel)', () => {
     expect(rule(hud, '.tc-hud-shiftbar-fill')).not.toMatch(/transition/);
   });

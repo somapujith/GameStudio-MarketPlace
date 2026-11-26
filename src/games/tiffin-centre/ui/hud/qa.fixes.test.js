@@ -107,6 +107,18 @@ describe('H6: bubbles stay clear of the HUD panels', () => {
     const root = { getBoundingClientRect: () => rect(0, 0, 1280, 800), querySelector: (sel) => (parts[sel] ? { getBoundingClientRect: () => parts[sel] } : null) };
     expect(freeBounds(root, 1280, 800)).toEqual({ top: 70, bottom: 720, left: 300, right: 1000 });
   });
+  it('keeps bubbles and arrows below the tutorial coach bar when it hangs at the top (it is a sibling layer of the HUD), and ignores one in the lower half', () => {
+    const rect = (left, top, right, bottom) => ({ left, top, right, bottom, width: right - left, height: bottom - top });
+    const parts = { '.tc-hud-top': rect(0, 0, 1280, 70), '.tc-hud-bottom': rect(0, 720, 1280, 800) };
+    const withCoach = (coachRect) => ({
+      getBoundingClientRect: () => rect(0, 0, 1280, 800),
+      querySelector: (sel) => (parts[sel] ? { getBoundingClientRect: () => parts[sel] } : null),
+      parentElement: { querySelector: (sel) => (sel === '.tc-menu-coachbar' && coachRect ? { getBoundingClientRect: () => coachRect } : null) },
+    });
+    expect(freeBounds(withCoach(rect(300, 80, 900, 140)), 1280, 800).top).toBe(144); // under the bar, with a 4 px margin
+    expect(freeBounds(withCoach(rect(300, 600, 900, 660)), 1280, 800).top).toBe(70); // a bar in the lower half (a narrow window) does not move the top
+    expect(freeBounds(withCoach(null), 1280, 800).top).toBe(70);
+  });
 });
 
 describe('H7: the Board chip', () => {

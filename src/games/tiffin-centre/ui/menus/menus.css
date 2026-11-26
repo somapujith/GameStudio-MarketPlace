@@ -873,3 +873,11 @@ html[data-motion='reduced'] .tc-menu-brief__timer { display: none; }
   .tc-menu-banner__en { font-size: clamp(22px, 6vh, 30px); }
   .tc-menu-banner__te { font-size: 16px; }
 }
+@media (max-height: 480px) {
+  /* results on a short screen: a smaller banner and shutter, so the galla starts on the first screen */
+  .tc-menu-banner--result { padding: 6px 28px 8px; }
+  .tc-menu-banner--result .tc-menu-banner__en { font-size: clamp(24px, 8vh, 34px); }
+  .tc-menu-results__head { gap: 2px; }
+  .tc-menu-shutter { width: min(120px, 40%); margin-bottom: 0; }
+  .tc-menu-chalk { padding: 3px 14px; }
+}
