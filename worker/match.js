@@ -38,7 +38,8 @@ export function buildMatchRecord(room, adapter) {
     .map((row) => {
       // `stats.idle` (opt-in, a game sets it on a seat that did nothing): no win, no XP, no coins, no rating change (see persistMatch).
       const idle = row.stats?.idle === true;
-      const won = res.winnerId === row.id && !idle;
+      // a game may name several winners (`res.winners`, e.g. a co-op team that cleared its shift); `winnerId` alone is the single-winner case
+      const won = (res.winnerId === row.id || (Array.isArray(res.winners) && res.winners.includes(row.id))) && !idle;
       const { xp, coins } = idle ? { xp: 0, coins: 0 } : matchRewards({ won, rank: row.rank, playerCount: n });
       const score = Math.min(Math.max(Math.round(row.score), 0), INT_MAX);
       const rent = Math.round(row.stats?.rentEarned || 0);

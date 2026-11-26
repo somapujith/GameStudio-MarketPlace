@@ -15,7 +15,7 @@ import {
   ARRIVAL_RETRY, REQUEST, STATIONS, STATION_KINDS, TICK_MS, daypartOf, levelDef, levelOps,
 } from './catalog.js';
 import { seedToUint32 } from '../rng.js';
-import { billOf, comboBonus, flawedQuality, priceOf, qualityOf, standingsOf, starsFor, tipFor } from './scoring.js';
+import { billOf, comboBonus, flawedQuality, priceOf, qualityOf, standingsOf, starsFor, tipFor, winnersOf } from './scoring.js';
 import { fillSchedule, isWeekend, menuFor, patienceFor, seedRegulars } from './schedule.js';
 import { validTarget } from './movement.js';
 import { carryOver, earn, profitOf, summary } from './economy.js';
@@ -183,8 +183,9 @@ export function result(s) {
     const p = s.players[id];
     if (p.ops) { team.prepped += p.ops[0]; team.tended += p.ops[1]; team.gasSwaps += p.ops[2]; team.bought += p.ops[3]; }
   }
+  const winners = s.cfg.tutorial ? (standings.length ? [standings[0].id] : []) : winnersOf(standings, stars, s.paid);
   return {
-    winnerId: stars >= 1 && standings.length ? standings[0].id : null, reason, standings, stars, money: s.money, level: s.level,
+    winnerId: stars >= 1 && standings.length ? standings[0].id : null, winners, reason, standings, stars, money: s.money, level: s.level,
     ...sum, served: s.served, lost: s.lost, unpaid: s.unpaid, bestCombo: s.bestCombo, combo: s.bestCombo, stats: team, team,
   };
 }
@@ -451,6 +452,8 @@ const H = {
     if (p.hands.length >= HANDS_MAX) return 'Your hands are full';
     const q = flawedQuality(qualityOf(s.tick - sl.readyAt, sl.dish), sl.fl);
     const dish = sl.dish;
+    const cook = sl.by && hasOwn(s.players, sl.by) ? s.players[sl.by] : null;
+    if (cook) cook.cooked = (cook.cooked || 0) + 1; // the dish reached a pair of hands: the cook did real work (a burnt one never counts)
     p.hands.push({ dish, q });
     clearSlot(sl);
     ev.push({ type: 'take', station: station.id, slot: a.slot, dish, q, by: p.id });

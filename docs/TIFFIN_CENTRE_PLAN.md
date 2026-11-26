@@ -105,7 +105,11 @@ the line. The head can also be turned freely (drag on empty space, or Q/E and ar
   PACE.stars * coopScale` for i = 0,1,2 gives 1-3 stars; 0 stars = failed. Level 0 always completes when the script ends.
 - **Hour:** `hourOf(state) = lerp(level.hour[0], level.hour[1], tick / shiftTicks)`; light and the clock follow it.
 - **Co-op win credit:** `result()`: everyone on the team gets rank 1 when stars >= 1 (rank = player count when 0 stars); `winnerId` = top earner (most
-  collected money) on success, `null` on failure; `score` of each player = money they collected.
+  collected money) on success, `null` on failure (the headline and the match row's `winner_id`); `score` of each player = money they collected.
+  **`winners` = EVERY seat that did real work on a cleared shift** (`scoring.js` `winnersOf`): `workOf(stats) = served + collected + cooked + prepped + tended +
+  gasSwaps + bought > 0` and at least one customer paid. `match.js` credits each of them with the win (+60 XP, +140 coins, `wins + 1`), so a cook who never collected a rupee
+  or a prep hand wins with the team; a seat that stood by wins nothing and is paid nothing (`stats.idle`). `cooked` counts a dish when it reaches somebody's hands (`take`
+  credits the player who started it, `slot.by`); a burnt dish, or one cleared off the counter, never counts, so cooking food nobody takes is not a way to be paid.
 
 ### Engine API (`shared/tiffin-centre/index.js` re-exports all; pure JS, JSON-serialisable state, no Date/Math.random)
 

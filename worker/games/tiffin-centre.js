@@ -2,6 +2,7 @@
 // The rules live in shared/tiffin-centre (pure engine); this file is the only place the Worker learns them. The game has no turns:
 // the room server ticks the stall once per TICK_MS through `deadlines`, and every player acts at any time.
 import * as engine from '../../shared/tiffin-centre/index.js';
+import { workOf } from '../../shared/tiffin-centre/scoring.js';
 import { GAME_ID, TICK_MS, SETTINGS_SPEC, DEFAULT_SETTINGS, PACE, STATIONS, DISHES, INGREDIENTS, levelDef } from '../../shared/tiffin-centre/catalog.js';
 import { validTarget } from '../../shared/tiffin-centre/movement.js';
 import { query } from '../db.js';
@@ -211,12 +212,14 @@ const adapter = {
 
   /**
    * Co-op result: the whole team shares rank 1 when the shift earned at least a star (rank = team size otherwise); `winnerId` is the
-   * top earner on success, null on failure; `score` = the money that player collected. Stars and rank come from the team's PROFIT
-   * (the engine decides). `stats` per player = served / collected / earned / tips / prepped / tended / gasSwaps / bought (their own
-   * work) plus the team's books (revenue cost waste fines profit lost unpaid bestCombo, the same on every row). The books also sit
-   * once at the top level, with `team` (small flat integers only). `rounds` = ticks played. `stats.idle` = true on a seat that did no
-   * work (served + collected + prepped + tended + gasSwaps + bought = 0) and on every seat when no customer paid: match.js pays those
-   * seats nothing.
+   * top earner on success, null on failure (the headline, and the match row's winner_id); `winners` lists EVERY seat that did real work
+   * on a cleared shift (scoring.js `winnersOf`; match.js credits each one with the win, so a cook or a prep hand who never collected a
+   * rupee is a winner too); `score` = the money that player collected. Stars and rank come from the team's PROFIT (the engine decides).
+   * `stats` per player = served / collected / cooked / earned / tips / prepped / tended / gasSwaps / bought (their own work) plus the team's
+   * books (revenue cost waste fines profit lost unpaid bestCombo, the same on every row). The books also sit once at the top level, with
+   * `team` (small flat integers only). `rounds` = ticks played. `stats.idle` = true on a seat that did no work (scoring.js `workOf`:
+   * served + collected + cooked + prepped + tended + gasSwaps + bought = 0; `cooked` counts dishes that reached a pair of hands) and on every
+   * seat when no customer paid: match.js pays those seats nothing.
    */
   result(state) {
     const res = engine.result(state);
@@ -237,8 +240,20 @@ const adapter = {
     const paidCustomers = num(t.paid);
     const team = { ...books, prepped: num(t.prepped), tended: num(t.tended), gasSwaps: num(t.gasSwaps), bought: num(t.bought) };
     const teamBooks = { revenue: books.revenue, cost: books.cost, waste: books.waste, fines: books.fines, profit: books.profit, lost: books.lost, unpaid: books.unpaid, bestCombo: books.bestCombo };
+    const idle = new Set();
+    const standings = res.standings.map((row) => {
+      const stats = { ...teamBooks, ...row.stats, finished: true }; // a player's own served / tips / prepped ... win over the team's
+      // Idle guard (match.js pays nothing to `stats.idle`): a seat that did no work at all, and EVERY seat of a stall that never
+      // got a customer to pay, earned nothing from this shift (an untouched table cannot be farmed for XP and coins).
+      if (workOf(row.stats) === 0 || paidCustomers === 0) {
+        stats.idle = true;
+        idle.add(row.id);
+      }
+      return { id: row.id, rank: row.rank, score: Math.max(0, Math.round(row.score) || 0), stats };
+    });
     return {
       winnerId: res.winnerId ?? null,
+      winners: (Array.isArray(res.winners) ? res.winners : []).filter((id) => !idle.has(id)),
       reason: res.reason,
       rounds: Number.isFinite(state.tick) ? state.tick : 0,
       stars: res.stars,
@@ -246,14 +261,7 @@ const adapter = {
       level: res.level,
       ...books,
       team,
-      standings: res.standings.map((row) => {
-        const stats = { ...teamBooks, ...row.stats, finished: true }; // a player's own served / tips / prepped ... win over the team's
-        // Idle guard (match.js pays nothing to `stats.idle`): a seat that did no work at all, and EVERY seat of a stall that never
-        // got a customer to pay, earned nothing from this shift (an untouched table cannot be farmed for XP and coins).
-        const work = ['served', 'collected', 'prepped', 'tended', 'gasSwaps', 'bought'].reduce((n, k) => n + num(row.stats && row.stats[k]), 0);
-        if (work === 0 || paidCustomers === 0) stats.idle = true;
-        return { id: row.id, rank: row.rank, score: Math.max(0, Math.round(row.score) || 0), stats };
-      }),
+      standings,
     };
   },
 
