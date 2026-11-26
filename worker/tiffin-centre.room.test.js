@@ -516,6 +516,135 @@ describe('what a client may NOT send', () => {
   });
 });
 
+describe('the server never trusts the client: size, order, replay, identity, phase', () => {
+  /** Play both seats with the bot until pred(state) holds (or give up). */
+  async function until(h, pred, { seats = h.seats, max = 80 } = {}) {
+    for (let i = 0; i < max && !pred(h.r.state); i += 1) await playSecond(h, seats);
+    expect(pred(h.r.state), 'the situation came up').toBe(true);
+  }
+  const paying = (s) => s.customers.find((c) => c.st === 'paying');
+
+  it('oversized, binary, non-JSON and non-object messages are answered and change nothing', async () => {
+    const h = await table({ level: 1, n: 2 });
+    const [a] = h.seats;
+    const seq = h.r.seq;
+    const big = JSON.stringify({ t: 'action', action: { type: 'cook', station: 'tawa1', slot: 0, dish: 'dosa', pad: 'x'.repeat(5000) } });
+    await h.room.webSocketMessage(a.ws, big);
+    expect(a.ws.last('error').message).toBe('Message too large.');
+    await h.room.webSocketMessage(a.ws, new ArrayBuffer(8));
+    expect(a.ws.last('error').message).toBe('Only text messages are supported.');
+    for (const junk of ['{', 'null', '[]', '"action"', '42', '{"t":5}', '{"action":{"type":"tick"}}']) {
+      await h.room.webSocketMessage(a.ws, junk);
+      expect(a.ws.last('error').message, junk).toBe('Invalid message.');
+    }
+    // a deeply nested action that fits in the size limit is an invalid action, not a crash
+    let deep = { type: 'move', to: 'tawa1' };
+    for (let i = 0; i < 80; i += 1) deep = { type: 'move', to: deep };
+    await h.say(a.ws, { t: 'action', action: deep });
+    expect(a.ws.last('error').message).toBe('Invalid action.');
+    expect(h.r.seq).toBe(seq);
+  });
+
+  it('a replayed message is harmless: the same collect or cook sent again is refused by the engine and credits nothing twice', async () => {
+    const h = await table({ level: 1, n: 2 });
+    const [a] = h.seats;
+    await until(h, (s) => !!paying(s));
+    const c = paying(h.r.state);
+    const collect = { t: 'action', action: { type: 'collect', customer: c.id } };
+    await h.say(a.ws, collect);
+    const before = [h.r.state.money, h.r.state.paid, h.r.state.combo];
+    expect(before[0]).toBeGreaterThan(0);
+    const seq = h.r.seq;
+    for (let i = 0; i < 5; i += 1) {
+      await h.say(a.ws, collect);
+      expect(a.ws.last('error').message).toBe('They are not paying right now');
+    }
+    expect([h.r.state.money, h.r.state.paid, h.r.state.combo, h.r.seq]).toEqual([...before, seq]);
+    // cook into the same free slot twice: the second is refused, one lot of ingredients only
+    const slot = h.r.state.stations.tawa1.slots.findIndex((sl) => sl.st === 'empty');
+    expect(slot).toBeGreaterThanOrEqual(0);
+    const cook = { t: 'action', action: { type: 'cook', station: 'tawa1', slot, dish: 'dosa' } };
+    await h.say(a.ws, cook);
+    const stock = JSON.stringify(h.r.state.stock);
+    for (let i = 0; i < 3; i += 1) {
+      await h.say(a.ws, cook);
+      expect(a.ws.last('error').message).toBe('That spot is busy');
+    }
+    expect(JSON.stringify(h.r.state.stock)).toBe(stock);
+  });
+
+  it('out of order is refused with the engine reason and nothing moves: serve with empty hands, take before ready, collect before they pay, cook what the level lacks', async () => {
+    const h = await table({ level: 1, n: 2 });
+    const [a, b] = h.seats;
+    for (let i = 0; i < 3; i += 1) await playSecond(h, []); // the first customer walks up at tick 2
+    expect(h.r.state.customers.length).toBeGreaterThan(0);
+    const cust = h.r.state.customers[0];
+    const seq = h.r.seq;
+    const refused = async (ws, action, text) => {
+      await h.say(ws, { t: 'action', action });
+      expect(ws.last('error').message, JSON.stringify(action)).toBe(text);
+    };
+    await refused(a.ws, { type: 'serve', customer: cust.id, hand: 0 }, 'Nothing in that hand');
+    await refused(a.ws, { type: 'collect', customer: cust.id }, 'They are not paying right now');
+    await refused(a.ws, { type: 'take', station: 'tawa1', slot: 0 }, 'Nothing there');
+    await refused(a.ws, { type: 'discard', hand: 0 }, 'Nothing in that hand');
+    await refused(b.ws, { type: 'serve', customer: 9999, hand: 0 }, 'That customer is not waiting for food');
+    await refused(b.ws, { type: 'cook', station: 'steamer1', slot: 0, dish: 'idly' }, 'No such station'); // level 1 has no steamer
+    await refused(b.ws, { type: 'cook', station: 'tawa1', slot: 0, dish: 'idly' }, 'Not on the menu today');
+    await refused(b.ws, { type: 'cook', station: 'chai1', slot: 0, dish: 'dosa' }, 'This station cannot cook that');
+    expect(h.r.seq).toBe(seq);
+    // cooking a dish and then taking it too early
+    await h.say(a.ws, { t: 'action', action: { type: 'cook', station: 'tawa1', slot: 0, dish: 'dosa' } });
+    await refused(a.ws, { type: 'take', station: 'tawa1', slot: 0 }, 'Not ready yet');
+  });
+
+  it('identity: playerId, name and avatar inside an action are ignored; a seat that left rejoins only through a new connection', async () => {
+    const h = await table({ level: 1, n: 2 });
+    const [a, b] = h.seats;
+    await h.say(b.ws, { t: 'action', action: { type: 'move', to: 'tawa1', playerId: a.id, name: 'Admin', avatar: 99, by: a.id } });
+    expect(h.r.state.players[b.id].at).toBe('tawa1');
+    expect(h.r.state.players[a.id].at).toBe(null);
+    expect(h.r.state.players[b.id].name).toBe('Cook 2');
+    // B leaves on purpose: the room closes the socket and the seat is marked gone
+    await h.say(b.ws, { t: 'leave' });
+    expect(b.ws.readyState).toBe(3);
+    expect(h.r.state.players[b.id].left).toBe(true);
+    // ... and is theirs again through a new connection: the first action clears the mark
+    const back = await h.connect(user(2));
+    await h.say(back, { t: 'action', action: { type: 'move', to: 'chai1' } });
+    expect(h.r.state.players[b.id].at).toBe('chai1');
+    expect(h.r.state.players[b.id].left).toBeUndefined();
+  });
+
+  it('phases: nothing is accepted in the lobby or after the shift, and settings or start from a non-host are refused', async () => {
+    const h = new Harness();
+    expect((await h.init({ gameId: 'tiffin-centre', settings: { level: 1, pace: 'normal' } })).status).toBe(201);
+    const a = await h.connect(user(1));
+    const b = await h.connect(user(2));
+    await h.say(b, { t: 'action', action: { type: 'move', to: 'tawa1' } });
+    expect(b.last('error').message).toBe('No game is in progress.');
+    await h.say(b, { t: 'start' });
+    expect(b.last('error').message).toBe('Only the host can start the game.');
+    await h.say(b, { t: 'settings', settings: { level: 12 } });
+    expect(b.last('error').message).toBe('Only the host can change settings.');
+    await h.say(a, { t: 'settings', settings: { level: 99 } });
+    expect(a.last('error').message).toMatch(/Level must be/);
+    await h.say(a, { t: 'settings', settings: { level: 3, pace: 'rush', extra: 'x' } });
+    expect(h.r.settings).toEqual({ level: 3, pace: 'rush' });
+    await h.say(a, { t: 'start' });
+    expect(h.r.status).toBe('playing');
+    // locked once started
+    await h.say(a, { t: 'settings', settings: { level: 1 } });
+    expect(a.last('error').message).toBe('Settings are locked once the game starts.');
+    await h.say(a, { t: 'start' });
+    expect(a.last('error').message).toBe('The game has already started.');
+    // a finished shift takes no more actions
+    h.r.status = 'finished';
+    await h.say(a, { t: 'action', action: { type: 'move', to: 'tawa1' } });
+    expect(a.last('error').message).toBe('No game is in progress.');
+  });
+});
+
 // ------------------------------------------------------------------------------------------------------------------ connection loss
 
 describe('reconnect and absence', () => {
