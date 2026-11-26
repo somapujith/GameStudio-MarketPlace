@@ -210,3 +210,23 @@
   .aw .aw-fare-chips:has(+ .aw-fare) { display: none; }
   .aw .aw-fare-chip { padding: 1px 8px; font-size: 11px; }
 }
+
+/* touch screens: the 1 / 2 / 3 answers are real buttons, big enough for a thumb, with air between them */
+@media (pointer: coarse) {
+  .aw .aw-fare-opts { gap: 8px; }
+  .aw .aw-fare-opt { min-height: 56px; }
+  .aw .aw-fare-key { width: 32px; height: 32px; }
+  .aw .aw-fare-lbl b { font-size: 15px; }
+  .aw .aw-fare-lbl i { font-size: 13px; }
+  .aw .aw-fare-note { font-size: 13px; }
+}
+@media (pointer: coarse) and (max-height: 520px) {
+  .aw .aw-fare-opts { gap: 8px; }
+  .aw .aw-fare-opt { min-height: 56px; padding: 6px 8px; gap: 8px; }
+  .aw .aw-fare-lbl b { font-size: 14px; }
+}
+@media (pointer: coarse) and (max-width: 700px) and (min-height: 521px) {
+  .aw .aw-fare-opt { min-height: 64px; }
+  .aw .aw-fare-opts { gap: 8px; }
+  .aw .aw-fare-lbl b { font-size: 14px; }
+}

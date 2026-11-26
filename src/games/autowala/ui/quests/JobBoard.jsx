@@ -6,6 +6,9 @@ import { focusFirst, useMenuInput } from '../menus/useMenuInput.js';
 import { groupIndian } from '../hud/hudLogic.js';
 import { DIFF_LABEL, DIFF_TE, KIND_LABEL, blockedReason, limitText, pickSelected } from './questUi.js';
 import { fmtClock } from '../../gameplay/quest-math.js';
+import { useMenuLayout } from '../menus/menuLayout.js';
+import { CloseGlyph } from '../menus/glyphs.jsx';
+import '../menus/sheet.css';
 
 function Pips({ n }) {
   return (
@@ -48,9 +51,24 @@ function Card({ o, selected, onSelect, onTake }) {
   );
 }
 
+/** ACCEPT + CLOSE. Rendered twice: inside the detail pane (desktop, landscape phones) and as the sticky bar (portrait phones); CSS shows one. */
+function Actions({ className, blocked, take, close }) {
+  return (
+    <div className={className}>
+      <button type="button" data-nav className="aw-quest-btn is-primary" disabled={!!blocked} aria-disabled={!!blocked} onClick={take}>
+        {blocked ? blocked.toUpperCase() : 'ACCEPT JOB'} {!blocked && <span className="aw-te">తీసుకో</span>}
+      </button>
+      <button type="button" data-nav className="aw-quest-btn" onClick={close}>
+        CLOSE <span className="aw-te">మూసివేయి</span>
+      </button>
+    </div>
+  );
+}
+
 export default function JobBoard({ game, snap }) {
   const q = snap.quest;
   const root = useRef(null);
+  const layout = useMenuLayout();
   const [sel, setSel] = useState(null);
   const offers = q.offers || [];
   const offer = pickSelected(offers, sel);
@@ -65,10 +83,13 @@ export default function JobBoard({ game, snap }) {
     if (offer && !blocked) quests?.accept(offer.id);
   };
   return (
-    <div className="aw-menu aw-quest-menu" ref={root} role="dialog" aria-modal="true" aria-label="Job board">
+    <div className="aw-menu aw-quest-menu" ref={root} data-layout={layout} role="dialog" aria-modal="true" aria-label="Job board">
       <div className="aw-quest-sheet">
         <header className="aw-quest-sheet__head">
-          <div>
+          <button type="button" className="aw-sheet-x" onClick={close} aria-label="Close the job board">
+            <CloseGlyph />
+          </button>
+          <div className="aw-quest-sheet__title">
             <small>MAMA&apos;S GARAGE</small>
             <h2>
               JOB BOARD <span className="aw-te">పని బోర్డు</span>
@@ -130,17 +151,11 @@ export default function JobBoard({ game, snap }) {
                   ))}
                 </ol>
               )}
-              <div className="aw-quest-actions">
-                <button type="button" data-nav className="aw-quest-btn is-primary" disabled={!!blocked} aria-disabled={!!blocked} onClick={take}>
-                  {blocked ? blocked.toUpperCase() : 'ACCEPT JOB'} {!blocked && <span className="aw-te">తీసుకో</span>}
-                </button>
-                <button type="button" data-nav className="aw-quest-btn" onClick={close}>
-                  CLOSE <span className="aw-te">మూసివేయి</span>
-                </button>
-              </div>
+              <Actions className="aw-quest-actions" blocked={blocked} take={take} close={close} />
             </section>
           )}
         </div>
+        {offer && <Actions className="aw-quest-actions aw-quest-actions--bar aw-sheet-bar" blocked={blocked} take={take} close={close} />}
         <p className="aw-quest-footnote">
           <kbd className="aw-key">Enter</kbd> take the job &nbsp; <kbd className="aw-key">Esc</kbd> close
         </p>

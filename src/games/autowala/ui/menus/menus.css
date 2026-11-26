@@ -821,6 +821,14 @@
   text-align: right;
 }
 
+/* the touch screen's controls page leads with one plain sentence */
+.aw-controls-lead {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--aw-text);
+}
+
 /* quiet credit line (start screen footer, pause > audio) */
 .aw-credit {
   margin: 6px 0 0;

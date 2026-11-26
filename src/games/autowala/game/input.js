@@ -12,7 +12,9 @@ export function createInput(target = window) {
   const down = new Set();
   const tapped = new Set();
   const touch = { left: false, right: false, up: false, down: false, handbrake: false, boost: false };
-  let stick = 0; // -1..1 analogue steering from a touch slider or a gamepad
+  let stick = 0; // -1..1 analogue steering from a touch wheel / tilt / arrows (setStick) or a gamepad
+  let touchGas = 0; // 0..1 analogue pedals from the touch controls (setPedals)
+  let touchBrake = 0;
   let padSteer = 0;
   let padGas = 0;
   let padBrake = 0;
@@ -32,12 +34,13 @@ export function createInput(target = window) {
     if (!names) return;
     for (const n of names) down.delete(n);
   };
-  const onBlur = () => { down.clear(); };
+  const onBlur = () => { down.clear(); releaseTouch(); };
   target.addEventListener('keydown', onDown);
   target.addEventListener('keyup', onUp);
   window.addEventListener('blur', onBlur);
 
-  const held = (n) => down.has(n) || touch[n] === true;
+  // `held('up')` / `held('down')` also report the analogue touch pedals (the engine sound reads held('up'))
+  const held = (n) => down.has(n) || touch[n] === true || (n === 'up' && touchGas > 0.02) || (n === 'down' && touchBrake > 0.02);
 
   function pollPad() {
     const pads = typeof navigator.getGamepads === 'function' ? navigator.getGamepads() : [];
@@ -61,8 +64,8 @@ export function createInput(target = window) {
     let steer = (held('right') ? 1 : 0) - (held('left') ? 1 : 0);
     if (stick) steer = stick;
     if (padSteer) steer = padSteer;
-    const throttle = Math.max(held('up') ? 1 : 0, padGas);
-    const brake = Math.max(held('down') ? 1 : 0, padBrake);
+    const throttle = Math.max(down.has('up') || touch.up ? 1 : 0, padGas, touchGas);
+    const brake = Math.max(down.has('down') || touch.down ? 1 : 0, padBrake, touchBrake);
     return {
       steer, throttle, brake,
       handbrake: held('handbrake') || down.has('pad:handbrake'),
@@ -86,11 +89,23 @@ export function createInput(target = window) {
     touch[name] = !!on;
   };
   const setStick = (v) => { stick = v; };
+  /** Analogue gas and brake from the touch pedals, each 0..1 (the brake is "brake while moving, reverse at a standstill", see sim/vehicle.js). */
+  const setPedals = (gas, brake) => {
+    touchGas = Math.max(0, Math.min(1, Number(gas) || 0));
+    touchBrake = Math.max(0, Math.min(1, Number(brake) || 0));
+  };
+  /** Let go of every touch-driven input at once (steering, pedals, held buttons). Never leaves a stuck throttle. */
+  function releaseTouch() {
+    for (const k of Object.keys(touch)) touch[k] = false;
+    stick = 0;
+    touchGas = 0;
+    touchBrake = 0;
+  }
 
   const dispose = () => {
     target.removeEventListener('keydown', onDown);
     target.removeEventListener('keyup', onUp);
     window.removeEventListener('blur', onBlur);
   };
-  return { drive, pressed, clearTaps, setTouch, setStick, held, dispose };
+  return { drive, pressed, clearTaps, setTouch, setStick, setPedals, releaseTouch, held, dispose };
 }

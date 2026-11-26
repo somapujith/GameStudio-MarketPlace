@@ -28,8 +28,11 @@ export function normalizeToast(p) {
   };
 }
 
-/** Add a toast at time `now` (ms). Returns a new list, oldest first; at most MAX_TOASTS stay visible (the oldest leave early). */
-export function pushToast(list, payload, now, id) {
+/**
+ * Add a toast at time `now` (ms). Returns a new list, oldest first; at most `max` (default MAX_TOASTS) stay visible: the oldest leave early.
+ * The phone HUD passes 3 (1 on a short portrait phone), see layoutLogic.toastCap.
+ */
+export function pushToast(list, payload, now, id, max = MAX_TOASTS) {
   const t = normalizeToast(payload);
   if (!t) return list;
   const out = list.map((x) => ({ ...x }));
@@ -42,7 +45,8 @@ export function pushToast(list, payload, now, id) {
   }
   out.push({ id, ...t, count: 1, born: now, until: now + t.ms, leaving: false });
   const live = out.filter((x) => !x.leaving);
-  for (let i = 0; i < live.length - MAX_TOASTS; i++) {
+  const cap = Math.max(1, Math.round(Number(max)) || MAX_TOASTS);
+  for (let i = 0; i < live.length - cap; i++) {
     live[i].leaving = true;
     live[i].until = Math.min(live[i].until, now);
   }

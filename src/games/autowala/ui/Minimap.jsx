@@ -8,6 +8,7 @@ import { getCityMap } from './minimap/cityMap.js';
 import { drawMap, readLive, newLive } from './minimap/draw.js';
 import { makeView, newView, zoomForSpeed, formatDistance, formatEta, TURN_GLYPH } from './minimap/mapMath.js';
 import BigMap from './minimap/BigMap.jsx';
+import { ExpandIcon } from './hud/icons.jsx';
 import './minimap.css';
 
 const KIND_LABEL = { pickup: 'PICK-UP', dropoff: 'DROP-OFF', debug: 'TARGET' };
@@ -180,6 +181,7 @@ export default function Minimap({ game, snap }) {
             onClick={toggle}
           />
           <span className="aw-mm-key" aria-hidden="true">M</span>
+          <span className="aw-mm-expand" aria-hidden="true"><ExpandIcon size={14} /></span>
         </div>
         <div className="aw-mm-pill" ref={pillRef} hidden aria-hidden="true">
           <span className="aw-mm-pill-kind" ref={kindRef} />

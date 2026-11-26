@@ -174,14 +174,20 @@ function Legend({ title, rows }) {
   );
 }
 
-export function ControlsPanel() {
+export function ControlsPanel({ touch = false }) {
   return (
-    <div className="aw-panel aw-panel--controls">
+    <div className={`aw-panel aw-panel--controls${touch ? ' is-touch' : ''}`}>
       <h2>CONTROLS <span className="aw-te">నియంత్రణలు</span></h2>
+      {touch && (
+        <p className="aw-controls-lead">
+          Wheel on the left, pedals on the right. The small buttons around them do the rest.
+        </p>
+      )}
       <div className="aw-legends">
+        {touch && <Legend title="TOUCH" rows={TOUCH} />}
         <Legend title="KEYBOARD" rows={KEYBOARD} />
         <Legend title="GAMEPAD" rows={GAMEPAD} />
-        <Legend title="TOUCH" rows={TOUCH} />
+        {!touch && <Legend title="TOUCH" rows={TOUCH} />}
       </div>
     </div>
   );

@@ -251,3 +251,62 @@
   .aw .aw-bigmap { animation: none; }
   .aw .aw-mm { transition: none; }
 }
+
+/* ---- phones and tablets (Hud.jsx writes data-aw-compact / data-aw-layout on the .aw root; hud/phone.css has the tokens) ---------------
+   A BIG disc (tap it for the full-screen map): landscape = under the top strip on the left, portrait = standing on the wheel area.
+   The route pill and the street name sit under it, left-aligned so they never run off the screen edge. */
+.aw[data-aw-compact='1'] .aw-mm {
+  --aw-mm-size: var(--hud-mm);
+  left: var(--hud-x-l);
+  align-items: flex-start;
+}
+.aw[data-aw-layout$='-land'] .aw-mm {
+  top: var(--hud-lane-top);
+  bottom: auto;
+  left: var(--hud-gap-l); /* in the gap between the wheel area and the pedal area, never over the controls */
+}
+.aw[data-aw-layout$='-port'] .aw-mm {
+  top: auto;
+  bottom: calc(var(--hud-ctl-h) + var(--hud-sa-b) + 10px);
+}
+.aw[data-aw-compact='1'] .aw-mm-pill {
+  align-self: flex-start;
+  max-width: calc(100vw - var(--hud-x-l) - var(--hud-x-r) - var(--hud-sp) - 22px);
+  padding: 4px 11px;
+  font-size: 13px;
+  overflow: hidden;
+}
+.aw[data-aw-layout$='-land'] .aw-mm-pill { max-width: calc(var(--aw-mm-size) + 90px); }
+.aw[data-aw-compact='1'] .aw-mm-pill-kind { display: none; }
+.aw[data-aw-compact='1'] .aw-mm-street {
+  align-self: flex-start;
+  max-width: calc(var(--aw-mm-size) + 60px);
+  font-size: 12px;
+}
+.aw[data-aw-compact='1'] .aw-mm-key { display: none; }
+.aw[data-aw-compact='1'] .aw-mm-expand {
+  position: absolute;
+  right: 9%;
+  bottom: 9%;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(18, 8, 36, 0.85);
+  border: 1px solid var(--aw-line);
+  color: var(--aw-text);
+  pointer-events: none;
+}
+.aw .aw-mm-expand { display: none; }
+.aw[data-aw-compact='1'] .aw-mm-expand { display: grid; }
+/* the full-screen map on a phone: big targets, nothing under the notch */
+.aw[data-aw-compact='1'] .aw-bigmap-title b { font-size: 20px; }
+.aw[data-aw-compact='1'] .aw-bigmap-title span { font-size: 12px; }
+.aw[data-aw-compact='1'] .aw-bigmap-tools { right: calc(14px + env(safe-area-inset-right, 0px)); }
+.aw[data-aw-compact='1'] .aw-bigmap-tools button { width: 48px; height: 48px; }
+.aw[data-aw-compact='1'] .aw-bigmap-legend { font-size: 13px; padding: 8px 14px; }
+/* a narrow portrait phone: the title drops under the tool buttons instead of running under them */
+@media (max-width: 480px) {
+  .aw[data-aw-compact='1'] .aw-bigmap-title { top: calc(70px + env(safe-area-inset-top, 0px)); }
+}

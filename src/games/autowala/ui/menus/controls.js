@@ -25,13 +25,20 @@ export const GAMEPAD = [
   { keys: ['Start'], what: 'Pause' },
 ];
 export const TOUCH = [
-  { keys: ['Slider'], what: 'Steer (left thumb)' },
-  { keys: ['Pedals'], what: 'Gas and brake (right thumb)' },
+  { keys: ['Wheel'], what: 'Steer: drag the wheel on the left' },
+  { keys: ['Pedals'], what: 'Gas and brake on the right' },
   { keys: ['Horn'], what: 'Honk' },
   { keys: ['Drift'], what: 'Handbrake' },
   { keys: ['Boost'], what: 'Boost' },
-  { keys: ['E'], what: 'Interact' },
+  { keys: ['E'], what: 'Interact: pick up, drop off, talk' },
   { keys: ['Cam'], what: 'Change camera' },
+  { keys: ['Map'], what: 'City map (tap the little map)' },
+];
+/** The three lines the start screen shows on a touch screen. */
+export const START_TOUCH = [
+  { who: 'Wheel on the left', what: 'steer' },
+  { who: 'Pedals on the right', what: 'gas and brake' },
+  { who: 'Buttons', what: 'horn, drift, boost, interact' },
 ];
 /** The few lines the start screen shows (the full list is in the pause menu). */
 export const START_KEYS = [

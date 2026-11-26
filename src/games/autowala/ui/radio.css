@@ -116,3 +116,18 @@
     max-width: calc(100vw - 150px);
   }
 }
+
+/* ---- inside the phone HUD's More sheet (hud/Compact.jsx): no floating position, big targets ---------------------------------------- */
+.aw .aw-radio.aw-radio--inline {
+  position: static;
+  z-index: auto;
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  box-shadow: none;
+}
+.aw .aw-radio--inline button { width: 48px; height: 48px; }
+.aw .aw-radio--inline .aw-radio-step { width: 44px; height: 44px; }
+.aw .aw-radio--inline .aw-radio-name { font-size: 15px; }
+.aw .aw-radio--inline .aw-radio-track { font-size: 13px; }
+.aw .aw-radio--inline .aw-radio-te { display: inline; font-size: 13px; }

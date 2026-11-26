@@ -6,6 +6,8 @@ import { groupIndian } from '../hud/hudLogic.js';
 import { runStatsFrom, summaryDistance, summaryTime } from './sitting.js';
 import { focusFirst, useMenuInput } from './useMenuInput.js';
 import { MIN_SECONDS } from '../../gameplay/runApi.js';
+import { useMenuLayout } from './menuLayout.js';
+import './sheet.css';
 
 function Tile({ label, te, value, accent }) {
   return (
@@ -69,6 +71,7 @@ function SaveBox({ phase, result, onRetry, onSignIn }) {
 
 export default function SummaryScreen({ game, sitting, runs, onKeepDriving, onHub, onSignIn }) {
   const root = useRef(null);
+  const layout = useMenuLayout();
   const [stats] = useState(() => sitting.stats()); // frozen: the numbers at the moment you clocked out
   const [phase, setPhase] = useState('saving');
   const [result, setResult] = useState(null);
@@ -101,14 +104,17 @@ export default function SummaryScreen({ game, sitting, runs, onKeepDriving, onHu
 
   const rating = stats.rating || stats.lifetimeRating;
   return (
-    <div className="aw-menu aw-sum" ref={root} role="dialog" aria-modal="true" aria-label="Shift summary">
+    <div className="aw-menu aw-sum" ref={root} data-layout={layout} role="dialog" aria-modal="true" aria-label="Shift summary">
       <div className="aw-sum__bg" />
       <div className="aw-sum__card">
-        <p className="aw-start__eyebrow">CLOCKED OUT</p>
-        <h1 className="aw-title aw-title--sm">
-          <span className="aw-title__en">SHIFT OVER</span>
-          <span className="aw-title__te aw-te">షిఫ్ట్ ముగిసింది</span>
-        </h1>
+        <div className="aw-sum__head">
+          <p className="aw-start__eyebrow">CLOCKED OUT</p>
+          <h1 className="aw-title aw-title--sm">
+            <span className="aw-title__en">SHIFT OVER</span>
+            <span className="aw-title__te aw-te">షిఫ్ట్ ముగిసింది</span>
+          </h1>
+        </div>
+        <div className="aw-sum__main">
         <div className="aw-stats aw-stats--sum">
           <Tile accent label="Earned" te="సంపాదన" value={`Rs ${groupIndian(stats.earned)}`} />
           <Tile label="Fares" te="రైడ్లు" value={stats.fares} />
@@ -134,7 +140,8 @@ export default function SummaryScreen({ game, sitting, runs, onKeepDriving, onHu
           <Tile label="Time" te="సమయం" value={summaryTime(stats.seconds)} />
         </div>
         <SaveBox phase={phase} result={result} onRetry={save} onSignIn={onSignIn} />
-        <div className="aw-sum__acts">
+        </div>
+        <div className="aw-sum__acts aw-sheet-bar">
           <button type="button" data-nav data-autofocus className="aw-btn is-primary" onClick={onKeepDriving}>
             KEEP DRIVING
           </button>

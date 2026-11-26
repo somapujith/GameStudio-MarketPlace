@@ -1,149 +1,240 @@
-// OWNER: HUD agent. On-screen controls for phones and tablets. Props: { game }.
-// Shown on coarse-pointer devices, or as soon as the player touches the screen; hidden while a menu is open.
-//   LEFT: a steering slider (game.input.setStick -1..1), above the minimap in portrait, beside it in landscape.
-//   RIGHT: gas and brake pedals (setTouch 'up' / 'down'), and a block of buttons: horn, drift (handbrake), boost, interact (E), camera.
-// Everything is pointer events with capture, so several fingers work at once; touch-action is none, so nothing scrolls or zooms.
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { BoltIcon, CameraIcon, DriftIcon, HandIcon, HornIcon } from './hud/icons.jsx';
-import { rawPosition, stickValue } from './hud/touchMath.js';
+// OWNER: touch-controls agent. The on-screen driving controls for phones and tablets. Props: { game }.
+//   WHEEL (thumb side, default left): a steering wheel the thumb turns by dragging around its centre; springs back on release.
+//        Modes: Wheel | Tilt (the phone is the wheel) | Arrows. PEDALS (other side): a big analogue GAS and a smaller BRAKE / REVERSE.
+//   ACTIONS in an arc by the pedals: boost, handbrake/drift, interact (E), horn, camera; a "..." tray holds map, radio, phone, quests, pause
+//        and the settings gear. Settings (steering, hand, size, opacity, auto-throttle, vibration) live in localStorage `jalebi.autowala.touch.v1`.
+// Every control owns ONE pointer (setPointerCapture), so wheel + gas + a button all work at once; everything is released on pointercancel,
+// blur, the page being hidden, a menu opening and unmount. The occupied space is published on the `.aw` root as CSS variables:
+//   --aw-ctl-left-w, --aw-ctl-right-w, --aw-ctl-h (px, 0 when hidden)   and   data-ctl="land" | "port" (absent when hidden).
+// Files: ui/touch/* (pure logic + parts), ui/touch.css. The game side is two hooks in game/input.js: setStick (analogue steer) and
+// setPedals (analogue gas / brake).
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { buzz } from '@/lib/haptics.js';
+import { enterFullscreen, exitFullscreen, fullscreenSupported, isFullscreen, keepAwake, lockGestures, lockOrientation, useTouchDevice, useViewport } from '@/lib/mobile.js';
 import { useTouchMode } from './hud/touchMode.js';
 import { useGameMenu } from './hud/useGameMenu.js';
-import './hud/touch.css';
+import { ArrowPad, Wheel } from './touch/Wheel.jsx';
+import { Pedal } from './touch/Pedals.jsx';
+import { MainActions, MinorActions } from './touch/Actions.jsx';
+import SettingsSheet from './touch/SettingsSheet.jsx';
+import RotateHint from './touch/RotateHint.jsx';
+import { computeLayout, regionsFromRects, sideFor } from './touch/layout.js';
+import { createTouchBus } from './touch/touchBus.js';
+import { DEFAULTS, forcedByUrl, loadTouchSettings, saveTouchSettings } from './touch/touchSettings.js';
+import { useTilt } from './touch/useTilt.js';
+import './touch.css';
 
-const HELD = ['up', 'down', 'left', 'right', 'handbrake', 'boost'];
-const prevent = (e) => e.preventDefault();
-const buzz = (ms = 8) => {
+const HINT_KEY = 'jalebi.autowala.touch.rotate-hint';
+const readHint = () => {
   try {
-    navigator.vibrate?.(ms);
+    return sessionStorage.getItem(HINT_KEY) === '1';
   } catch {
-    /* not supported */
+    return false;
   }
 };
 
-function releaseAll(game) {
-  const inp = game?.input;
-  if (!inp) return;
-  inp.setStick(0);
-  for (const n of HELD) inp.setTouch(n, false);
-}
-
-// game/input.js treats horn / interact / talk / pause / quests as one-shot taps; 'camera' may not be one yet. Probe once: if
-// setTouch('camera') queues a tap, use it; otherwise press the C key for the player (the game reads it with input.pressed).
-const probed = new WeakMap();
-function tapCamera(game) {
-  const inp = game.input;
-  if (!probed.has(inp)) {
-    inp.setTouch('camera', true);
-    const oneShot = inp.pressed('camera');
-    inp.setTouch('camera', false);
-    probed.set(inp, oneShot);
-  }
-  if (probed.get(inp)) inp.setTouch('camera', true);
-  else for (const type of ['keydown', 'keyup']) window.dispatchEvent(new KeyboardEvent(type, { key: 'c' }));
-}
-
-/** A button that is "down" while a finger is on it (gas, brake, handbrake, boost). */
-function HoldBtn({ game, action, label, className = '', children }) {
-  const [on, setOn] = useState(false);
-  const down = (e) => {
-    e.preventDefault();
-    e.currentTarget.setPointerCapture?.(e.pointerId);
-    game.input.setTouch(action, true);
-    setOn(true);
-    buzz(6);
-  };
-  const up = () => {
-    game.input.setTouch(action, false);
-    setOn(false);
-  };
-  useEffect(() => () => game.input.setTouch(action, false), [game, action]);
-  return (
-    <button type="button" className={`aw-tc-btn ${className} ${on ? 'is-on' : ''}`} aria-label={label} onPointerDown={down} onPointerUp={up} onPointerCancel={up} onLostPointerCapture={up} onContextMenu={prevent}>
-      {children}
-    </button>
-  );
-}
-
-/** A button that fires once per touch (horn, interact, camera). */
-function TapBtn({ game, label, className = '', onTap, children }) {
-  const [on, setOn] = useState(false);
-  const down = (e) => {
-    e.preventDefault();
-    setOn(true);
-    onTap(game);
-    buzz(10);
-  };
-  return (
-    <button type="button" className={`aw-tc-btn ${className} ${on ? 'is-on' : ''}`} aria-label={label} onPointerDown={down} onPointerUp={() => setOn(false)} onPointerCancel={() => setOn(false)} onPointerLeave={() => setOn(false)} onContextMenu={prevent}>
-      {children}
-    </button>
-  );
-}
-
-function SteerSlider({ game }) {
-  const track = useRef(null);
-  const knob = useRef(null);
-  const [active, setActive] = useState(false);
-  const place = (x) => {
-    const rect = track.current.getBoundingClientRect();
-    game.input.setStick(stickValue(x, rect));
-    const half = rect.width / 2 - 28; // knob radius
-    if (knob.current) knob.current.style.transform = `translateX(${(rawPosition(x, rect) * half).toFixed(1)}px)`;
-  };
-  const down = (e) => {
-    e.preventDefault();
-    e.currentTarget.setPointerCapture?.(e.pointerId);
-    setActive(true);
-    place(e.clientX);
-  };
-  const move = (e) => {
-    if (active) place(e.clientX);
-  };
-  const up = () => {
-    setActive(false);
-    game.input.setStick(0);
-    if (knob.current) knob.current.style.transform = 'translateX(0px)';
-  };
-  useEffect(() => () => game.input.setStick(0), [game]);
-  return (
-    <div className={`aw-tc-steer ${active ? 'is-on' : ''}`} ref={track} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onLostPointerCapture={up} onContextMenu={prevent} role="slider" aria-label="Steering" aria-valuemin={-1} aria-valuemax={1} aria-valuenow={0}>
-      <span className="aw-tc-steer__l" aria-hidden="true">&lsaquo;</span>
-      <span className="aw-tc-steer__tick" aria-hidden="true" />
-      <span className="aw-tc-steer__r" aria-hidden="true">&rsaquo;</span>
-      <div className="aw-tc-steer__knob" ref={knob} aria-hidden="true" />
-    </div>
-  );
-}
-
 export default function TouchControls({ game }) {
-  const touch = useTouchMode();
+  const touchDevice = useTouchDevice();
+  const touchMode = useTouchMode();
   const menu = useGameMenu(game);
-  const show = !!game && touch && !menu;
-  const hornTap = useCallback((g) => g.input.setTouch('horn', true), []);
-  const interactTap = useCallback((g) => g.input.setTouch('interact', true), []);
+  const vp = useViewport();
+  const [settings, setSettings] = useState(loadTouchSettings);
+  const [sheet, setSheet] = useState(false);
+  const [hintGone, setHintGone] = useState(readHint);
+  const [full, setFull] = useState(() => isFullscreen());
+  const layer = useRef(null);
+  const wheelRef = useRef(null);
 
-  // a menu opening (or leaving the page) while a finger is down must not leave a pedal stuck
+  const forced = settings.force || forcedByUrl();
+  const shown = !!game && !menu && (touchDevice || touchMode || forced);
+  const live = shown && !sheet; // the sheet covers the controls: nothing may stay pressed under it
+
+  const bus = useMemo(() => (game?.input ? createTouchBus(game.input) : null), [game]);
+  const hapticsOn = useRef(true);
+  hapticsOn.current = settings.haptics;
+  const fx = useCallback((kind) => {
+    if (hapticsOn.current) buzz(kind);
+  }, []);
+  const getSpeed = useCallback(() => game?.ctx?.v?.kmh || 0, [game]);
+  const getFwd = useCallback(() => game?.ctx?.v?.fwd || 0, [game]);
+
+  const update = useCallback((patch) => {
+    setSettings((s) => saveTouchSettings({ ...s, ...patch }));
+  }, []);
+  const reset = useCallback(() => setSettings(saveTouchSettings({ ...DEFAULTS, force: false })), []);
+
+  // ---- tilt -------------------------------------------------------------------------------------------------------------------------
+  const tilt = useTilt({
+    enabled: shown && settings.steering === 'tilt', // keeps listening under the settings sheet so Calibrate works there
+    settings,
+    bus: bus || NOOP_BUS,
+    wheelRef,
+    onCalibrated: (n) => update({ tiltNeutral: n }),
+  });
+  const tiltLive = settings.steering === 'tilt' && tilt.status === 'live';
+  const mode = settings.steering === 'arrows' ? 'arrows' : 'wheel';
+
+  // ---- release everything whenever the controls stop being usable ---------------------------------------------------------------------
   useEffect(() => {
-    if (!show) releaseAll(game);
-    return () => releaseAll(game);
-  }, [show, game]);
+    if (!bus) return undefined;
+    bus.setActive(live);
+    return undefined;
+  }, [bus, live]);
+  useEffect(() => {
+    if (bus) bus.setAuto(settings.autoThrottle);
+  }, [bus, settings.autoThrottle]);
+  useEffect(() => {
+    if (!bus) return undefined;
+    const drop = () => bus.releaseAll();
+    const onHide = () => document.visibilityState === 'hidden' && bus.releaseAll();
+    window.addEventListener('blur', drop);
+    window.addEventListener('pagehide', drop);
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      window.removeEventListener('blur', drop);
+      window.removeEventListener('pagehide', drop);
+      document.removeEventListener('visibilitychange', onHide);
+      bus.setActive(false); // unmount: no stuck throttle, steering or boost
+    };
+  }, [bus]);
 
-  if (!show) return null;
+  const layout = useMemo(() => computeLayout({ w: vp.w || 844, h: vp.h || 390 }, { size: settings.size }), [vp.w, vp.h, settings.size]);
+  // an orientation / size change re-flows the controls under the fingers: let go of everything
+  useEffect(() => {
+    if (bus) bus.releaseAll();
+  }, [bus, layout.mode, settings.hand, settings.steering, settings.size]);
+
+  // ---- the game surface: no pinch zoom, no long-press menu, no pull-to-refresh; keep the screen on ----------------------------------
+  useEffect(() => {
+    if (!shown || !layer.current) return undefined;
+    const root = layer.current.closest('.aw') || layer.current.parentElement;
+    const unlock = lockGestures(root);
+    let release = null;
+    let dead = false;
+    keepAwake().then((r) => {
+      if (dead) r();
+      else release = r;
+    });
+    return () => {
+      dead = true;
+      unlock();
+      if (release) release();
+    };
+  }, [shown]);
+
+  useEffect(() => {
+    const on = () => setFull(isFullscreen());
+    document.addEventListener('fullscreenchange', on);
+    document.addEventListener('webkitfullscreenchange', on);
+    return () => {
+      document.removeEventListener('fullscreenchange', on);
+      document.removeEventListener('webkitfullscreenchange', on);
+    };
+  }, []);
+
+  // ---- publish the occupied regions for the HUD --------------------------------------------------------------------------------------
+  useLayoutEffect(() => {
+    const root = layer.current ? layer.current.closest('.aw') : null;
+    if (!root) return undefined;
+    const set = (l, r, h, m) => {
+      root.style.setProperty('--aw-ctl-left-w', `${l}px`);
+      root.style.setProperty('--aw-ctl-right-w', `${r}px`);
+      root.style.setProperty('--aw-ctl-h', `${h}px`);
+      if (m) root.setAttribute('data-ctl', m);
+      else root.removeAttribute('data-ctl');
+    };
+    if (!shown) {
+      set(0, 0, 0, null);
+      return undefined;
+    }
+    const rb = root.getBoundingClientRect();
+    const items = [...layer.current.querySelectorAll('[data-ctl-zone]')].map((el) => {
+      const r = el.getBoundingClientRect();
+      return { zone: el.getAttribute('data-ctl-zone'), rect: { left: r.left - rb.left, right: r.right - rb.left, top: r.top - rb.top, bottom: r.bottom - rb.top, width: r.width } };
+    });
+    const reg = regionsFromRects(items, rb.width, rb.height, settings.hand);
+    set(reg.left, reg.right, reg.h, layout.mode);
+    return undefined;
+  });
+  useEffect(() => {
+    // leaving the page: give the space back
+    const root = layer.current ? layer.current.closest('.aw') : null;
+    return () => {
+      if (!root) return;
+      root.style.setProperty('--aw-ctl-left-w', '0px');
+      root.style.setProperty('--aw-ctl-right-w', '0px');
+      root.style.setProperty('--aw-ctl-h', '0px');
+      root.removeAttribute('data-ctl');
+    };
+  }, [shown]);
+
+  const toggleFullscreen = useCallback(async () => {
+    if (isFullscreen()) {
+      await exitFullscreen();
+    } else {
+      const ok = await enterFullscreen(document.documentElement);
+      if (ok) lockOrientation('landscape');
+    }
+    setFull(isFullscreen());
+  }, []);
+  const dismissHint = useCallback(() => {
+    setHintGone(true);
+    try {
+      sessionStorage.setItem(HINT_KEY, '1');
+    } catch {
+      /* private mode */
+    }
+  }, []);
+
+  if (!shown || !bus) return null;
+  const wheelSide = sideFor(settings.hand, 'wheel');
+  const pedalSide = sideFor(settings.hand, 'pedal');
+  const showHint = vp.portrait && vp.phone && !hintGone;
+  const canFull = fullscreenSupported();
+
   return (
-    <div className="aw-tc" onContextMenu={prevent}>
-      <SteerSlider game={game} />
-      <div className="aw-tc-acts">
-        <span className="aw-tc-gap" />
-        <TapBtn game={game} label="Change camera" onTap={tapCamera} className="is-small"><CameraIcon size={22} /><small>CAM</small></TapBtn>
-        <TapBtn game={game} label="Horn" onTap={hornTap} className="is-small"><HornIcon size={22} /><small>HORN</small></TapBtn>
-        <HoldBtn game={game} action="handbrake" label="Handbrake and drift" className="is-small"><DriftIcon size={22} /><small>DRIFT</small></HoldBtn>
-        <HoldBtn game={game} action="boost" label="Boost" className="is-small is-boost"><BoltIcon size={22} /><small>BOOST</small></HoldBtn>
-        <TapBtn game={game} label="Interact" onTap={interactTap} className="is-use"><HandIcon size={24} /><small>E</small></TapBtn>
+    <div className={`aw-ct is-${layout.mode} hand-${settings.hand} size-${settings.size}`} onContextMenu={(e) => e.preventDefault()}>
+      <div className="aw-ct-layer" ref={layer} style={{ '--ct-op': settings.opacity, '--ct-btn': `${layout.btn}px` }}>
+        {mode === 'arrows' ? (
+          <ArrowPad bus={bus} layout={layout} side={wheelSide} fx={fx} />
+        ) : (
+          <Wheel bus={bus} layout={layout} side={wheelSide} fx={fx} getSpeed={getSpeed} interactive={!tiltLive} handleRef={wheelRef}>
+            {settings.steering === 'tilt' && (tilt.status === 'needs-permission' || tilt.status === 'live') && (
+              <button
+                type="button"
+                className="aw-ct-calib"
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  if (tilt.status === 'live') {
+                    tilt.calibrate();
+                    fx('select');
+                  } else tilt.request();
+                }}
+              >
+                {tilt.status === 'live' ? 'Calibrate' : 'Enable tilt'}
+              </button>
+            )}
+          </Wheel>
+        )}
+        <Pedal kind="brake" box={layout.brake} side={pedalSide} bus={bus} fx={fx} getFwd={getFwd} />
+        <Pedal kind="gas" box={layout.gas} side={pedalSide} bus={bus} fx={fx} getFwd={getFwd} />
+        <MainActions layout={layout} side={pedalSide} wheelSide={wheelSide} bus={bus} fx={fx} />
+        <MinorActions layout={layout} bus={bus} fx={fx} wheelSide={wheelSide} pedalSide={pedalSide} onSettings={() => setSheet(true)} />
       </div>
-      <div className="aw-tc-pedals">
-        <HoldBtn game={game} action="down" label="Brake and reverse" className="is-brake"><span>BRAKE</span></HoldBtn>
-        <HoldBtn game={game} action="up" label="Gas" className="is-gas"><span>GAS</span></HoldBtn>
-      </div>
+      {showHint && <RotateHint bottom={layout.h + 10} fullscreenSupported={canFull} onFullscreen={toggleFullscreen} onDismiss={dismissHint} />}
+      {sheet && (
+        <SettingsSheet
+          settings={settings}
+          onChange={update}
+          onReset={reset}
+          onClose={() => setSheet(false)}
+          tilt={tilt}
+          fullscreen={{ supported: canFull, active: full, toggle: toggleFullscreen }}
+        />
+      )}
     </div>
   );
 }
+
+// useTilt needs a bus object even before the game exists (hooks cannot be conditional)
+const NOOP_BUS = { setSteer() {}, setGas() {}, setBrake() {}, hold() {}, tap() {}, releaseAll() {}, setActive() {}, setAuto() {} };

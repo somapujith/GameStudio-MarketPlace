@@ -1,8 +1,10 @@
 // The start screen: neon title, tagline, a big START SHIFT button, a compact controls legend, quality and sound. The world runs
 // behind it (the auto is held by ctx.openMenu('start')).
 import { useEffect, useRef, useState } from 'react';
-import { START_KEYS } from './controls.js';
+import { START_KEYS, START_TOUCH } from './controls.js';
 import { focusFirst, useMenuInput } from './useMenuInput.js';
+import { useMenuLayout } from './menuLayout.js';
+import './sheet.css';
 import { QUALITIES, qualityLabel } from './menuNav.js';
 import { readSettings, saveSettings } from './settings.js';
 import { formatRupees } from '../hud/hudLogic.js';
@@ -12,6 +14,7 @@ import { VolumeIcon } from '../hud/icons.jsx';
 export default function StartScreen({ game, snap, onStart, onHub }) {
   const root = useRef(null);
   const touch = useTouchMode();
+  const layout = useMenuLayout();
   const [, bump] = useState(0);
   const st = readSettings(game);
   useMenuInput(root, { active: true, onStart });
@@ -22,9 +25,10 @@ export default function StartScreen({ game, snap, onStart, onHub }) {
   const needsReload = st.quality !== null && st.quality !== snap.quality;
 
   return (
-    <div className="aw-menu aw-start" ref={root} role="dialog" aria-modal="true" aria-label="Autowala">
+    <div className="aw-menu aw-start" ref={root} data-layout={layout} role="dialog" aria-modal="true" aria-label="Autowala">
       <div className="aw-start__bg" />
       <div className="aw-start__card">
+        <div className="aw-start__hero">
         <p className="aw-start__eyebrow">JALEBI GAMES PRESENTS</p>
         <h1 className="aw-title">
           <span className="aw-title__en">AUTOWALA</span>
@@ -37,15 +41,17 @@ export default function StartScreen({ game, snap, onStart, onHub }) {
           <small className="aw-te">షిఫ్ట్ మొదలు</small>
         </button>
         <p className="aw-start__hint">{touch ? 'Tap to start' : 'Press Enter or Space'}</p>
+        </div>
 
+        <div className="aw-start__side">
         <div className="aw-start__cols">
           <section className="aw-start__box" aria-label="Controls">
             <h2>CONTROLS</h2>
             {touch ? (
               <ul className="aw-keys">
-                <li><b>Left thumb</b><em>steer</em></li>
-                <li><b>Right pedals</b><em>gas and brake</em></li>
-                <li><b>Buttons</b><em>horn, drift, boost, interact</em></li>
+                {START_TOUCH.map((r) => (
+                  <li key={r.who}><b>{r.who}</b><em>{r.what}</em></li>
+                ))}
               </ul>
             ) : (
               <ul className="aw-keys">
@@ -116,6 +122,7 @@ export default function StartScreen({ game, snap, onStart, onHub }) {
             Back to hub
           </button>
         </footer>
+        </div>
       </div>
     </div>
   );

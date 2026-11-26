@@ -5,10 +5,14 @@ import { focusFirst, useMenuInput } from '../menus/useMenuInput.js';
 import { groupIndian } from '../hud/hudLogic.js';
 import { fmtClock } from '../../gameplay/quest-math.js';
 import { clockTone, limitText, pct, rankProgress } from './questUi.js';
+import { useMenuLayout } from '../menus/menuLayout.js';
+import { CloseGlyph } from '../menus/glyphs.jsx';
+import '../menus/sheet.css';
 
 export default function LogPanel({ game, snap }) {
   const q = snap.quest;
   const root = useRef(null);
+  const layout = useMenuLayout();
   const close = () => game.ctx.closeMenu();
   useMenuInput(root, { active: true, onBack: close, onResume: close });
   useEffect(() => {
@@ -28,10 +32,13 @@ export default function LogPanel({ game, snap }) {
   const tone = a ? clockTone(a.timeLeft, a.timeTotal) : 'calm';
   const prog = rankProgress(q.rank, q.rep);
   return (
-    <div className="aw-menu aw-quest-menu" ref={root} role="dialog" aria-modal="true" aria-label="Quest log">
+    <div className="aw-menu aw-quest-menu" ref={root} data-layout={layout} role="dialog" aria-modal="true" aria-label="Quest log">
       <div className="aw-quest-sheet">
         <header className="aw-quest-sheet__head">
-          <div>
+          <button type="button" className="aw-sheet-x" onClick={close} aria-label="Close the quest log">
+            <CloseGlyph />
+          </button>
+          <div className="aw-quest-sheet__title">
             <small>JOBS</small>
             <h2>
               QUEST LOG <span className="aw-te">క్వెస్ట్ లాగ్</span>
@@ -132,10 +139,15 @@ export default function LogPanel({ game, snap }) {
             <p className="aw-quest-footnote">
               <kbd className="aw-key">Q</kbd> / <kbd className="aw-key">Esc</kbd> close
             </p>
-            <button type="button" data-nav data-autofocus className="aw-quest-btn" onClick={close}>
+            <button type="button" data-nav data-autofocus className="aw-quest-btn aw-quest-btn--inline" onClick={close}>
               CLOSE <span className="aw-te">మూసివేయి</span>
             </button>
           </section>
+        </div>
+        <div className="aw-quest-actions aw-quest-actions--bar aw-sheet-bar">
+          <button type="button" data-nav className="aw-quest-btn is-primary" onClick={close}>
+            CLOSE <span className="aw-te">మూసివేయి</span>
+          </button>
         </div>
       </div>
     </div>

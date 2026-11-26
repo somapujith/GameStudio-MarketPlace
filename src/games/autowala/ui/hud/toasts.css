@@ -180,3 +180,45 @@
   75% { opacity: 1; }
   100% { opacity: 0; }
 }
+
+/* ---- phones and tablets: up to 3 (1 on a short portrait phone) toasts, never over the road centre (hud/phone.css has the tokens) ----
+   Landscape: a column under the alert lane, against the speedometer column. Portrait: stacked under the alert lane. They fade by themselves. */
+.aw[data-aw-compact='1'] .aw-toasts {
+  z-index: 7;
+  width: auto;
+  gap: 6px;
+}
+.aw[data-aw-layout$='-land'] .aw-toasts {
+  top: var(--hud-lane-top);
+  left: auto;
+  right: var(--hud-x-r);
+  width: calc(var(--hud-ctl-r) - var(--hud-x-r) - 6px);
+  min-width: 150px;
+  align-items: flex-end;
+  gap: 4px;
+}
+.aw[data-aw-layout$='-land'] .aw-toast { padding: 2px 10px 2px 5px; line-height: 1.1; white-space: nowrap; max-width: 100%; }
+.aw[data-aw-layout$='-land'] .aw-toast__icon { min-width: 24px; height: 24px; }
+.aw[data-aw-layout$='-land'] .aw-toast__text { overflow: hidden; text-overflow: ellipsis; }
+.aw[data-aw-layout$='-port'] .aw-toasts {
+  top: var(--hud-lane2-top);
+  bottom: auto;
+  left: var(--hud-x-l);
+  right: var(--hud-x-r);
+  align-items: center;
+}
+.aw[data-aw-compact='1'] .aw-toast {
+  padding: 5px 12px 5px 8px;
+  font-size: 14px;
+  line-height: 1.15;
+  max-width: min(340px, 100%);
+}
+.aw[data-aw-compact='1'] .aw-toast:not(:last-child) { display: flex; opacity: 0.88; }
+.aw[data-aw-compact='1'] .aw-toast__count { font-size: 12px; }
+.aw[data-aw-compact='1'] .aw-bursts {
+  top: calc(var(--hud-y-t) + var(--hud-strip-h) + 2px);
+  left: calc(var(--hud-x-l) + 8px);
+  z-index: 7;
+}
+.aw[data-aw-compact='1'] .aw-burst b { font-size: 26px; }
+.aw[data-aw-compact='1'] .aw-burst small { font-size: 12px; }

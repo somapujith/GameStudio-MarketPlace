@@ -1,0 +1,887 @@
+/* Autowala menus on phones and tablets. The full-screen menus (start, pause, summary, hisaab, job board, quest log) become sheets:
+   a sticky header with a 44 px close / back button, scrolling content (momentum, no scroll chaining), a sticky action bar at the
+   bottom, safe-area insets on every edge. Desktop is untouched: everything below sits inside one of these media queries
+   (menuLayout.js has the same two queries and menuLayout.test.js keeps the strings in step):
+     PORTRAIT   (max-width: 760px) and (orientation: portrait)     one column, header on top, action bar below
+     LANDSCAPE  (max-height: 520px) and (orientation: landscape)   two columns (list left, detail right), thin header, no bar
+     COARSE     (pointer: coarse)                                  tablets and every touch screen: 44 px targets
+   Specificity note: menus.css, career.css and quests.css are written with one or two classes, so the rules here start with `.aw`
+   and name the root, which wins whatever order the style sheets load in. */
+
+.aw {
+  --aw-sl: max(12px, env(safe-area-inset-left, 0px));
+  --aw-sr: max(12px, env(safe-area-inset-right, 0px));
+  --aw-st: max(8px, env(safe-area-inset-top, 0px));
+  --aw-sb: max(8px, env(safe-area-inset-bottom, 0px));
+  --aw-sheet: rgba(14, 6, 30, 0.985);
+}
+
+/* the wrappers the sheets need for their two columns cost the desktop layout nothing */
+.aw .aw-sum__head,
+.aw .aw-sum__main,
+.aw .aw-start__hero,
+.aw .aw-start__side,
+.aw .aw-career-head,
+.aw .aw-career-head__text,
+.aw .aw-career-main,
+.aw .aw-career-rest {
+  display: contents;
+}
+.aw .aw-sheet-x,
+.aw .aw-pm__bar,
+.aw .aw-quest-menu .aw-quest-actions--bar {
+  display: none;
+}
+.aw .aw-sheet-x svg {
+  display: block;
+}
+
+/* ---- tablets and every touch screen: 44 px and a little air --------------------------------------------------------------------- */
+@media (pointer: coarse) {
+  .aw .aw-seg button,
+  .aw .aw-soundbtn,
+  .aw .aw-btn.is-ghost {
+    min-height: 44px;
+  }
+  .aw .aw-career-btn,
+  .aw .aw-quest-btn {
+    min-height: 48px;
+  }
+  .aw .aw-mrow {
+    min-height: 54px;
+  }
+  .aw .aw-quest-card {
+    min-height: 60px;
+  }
+}
+
+/* ---- both phone layouts --------------------------------------------------------------------------------------------------------- */
+@media (max-width: 760px) and (orientation: portrait), (max-height: 520px) and (orientation: landscape) {
+  .aw .aw-sheet-x {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 44px;
+    height: 44px;
+    margin: 0;
+    padding: 0;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .aw .aw-sheet-x:active {
+    background: var(--aw-pink);
+    border-color: var(--aw-pink);
+  }
+  /* the bar glued to the bottom edge of whatever scrolls above it */
+  .aw .aw-sheet-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+    margin: 12px calc(-1 * var(--aw-sr)) 0 calc(-1 * var(--aw-sl));
+    padding: 10px var(--aw-sr) var(--aw-sb) var(--aw-sl);
+    border-top: 1px solid var(--aw-line);
+    background: var(--aw-sheet);
+  }
+  .aw .aw-sheet-bar > * {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 52px;
+  }
+  .aw .aw-sheet-btn {
+    padding: 0 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--aw-text);
+    font: 800 17px var(--aw-font);
+    font-style: italic;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .aw .aw-sheet-btn.is-primary {
+    border: 0;
+    background: linear-gradient(90deg, #ff3d9a, #d6277f);
+    color: #fff;
+    box-shadow: 0 0 0 2px rgba(55, 230, 255, 0.6);
+  }
+  .aw .aw-sheet-btn:active {
+    transform: scale(0.98);
+  }
+
+  /* roots: a safe-area-aware sheet that never scrolls the world behind it */
+  .aw .aw-menu,
+  .aw .aw-career-hisaab {
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+  }
+  /* no hover-only affordance: a finger leaves :hover behind after a tap, the pressed state is :active */
+  .aw .aw-mrow:hover:not(:focus) {
+    background: rgba(18, 8, 36, 0.6);
+    box-shadow: none;
+    outline: none;
+  }
+  .aw .aw-mrow:hover:not(:focus) .aw-mrow__txt b {
+    color: inherit;
+  }
+  .aw .aw-mrow:active {
+    background: linear-gradient(90deg, #ff3d9a, #c92b86);
+  }
+  .aw .aw-stat small,
+  .aw .aw-career-stat small,
+  .aw .aw-side__cell small,
+  .aw .aw-quest-facts dt,
+  .aw .aw-quest-kind,
+  .aw .aw-start__box h2,
+  .aw .aw-credit,
+  .aw .aw-credit .aw-te {
+    font-size: 12px;
+  }
+  .aw .aw-stat em,
+  .aw .aw-hist__who em,
+  .aw .aw-hist__pay em,
+  .aw .aw-quest-donelist em,
+  .aw .aw-setnote,
+  .aw .aw-career-best,
+  .aw .aw-career-sheet h2 {
+    font-size: 13px;
+  }
+  .aw .aw-keys li,
+  .aw .aw-legend__row,
+  .aw .aw-job__nums,
+  .aw .aw-quest-steps,
+  .aw .aw-quest-donelist li,
+  .aw .aw-quest-none,
+  .aw .aw-career-notes p,
+  .aw .aw-career-ladder p,
+  .aw .aw-start__foot {
+    font-size: 14px;
+  }
+  .aw .aw-quest-footnote {
+    display: none;
+  }
+}
+
+/* ---- phone, upright ------------------------------------------------------------------------------------------------------------- */
+@media (max-width: 760px) and (orientation: portrait) {
+  /* start */
+  .aw .aw-start {
+    padding: var(--aw-st) var(--aw-sr) var(--aw-sb) var(--aw-sl);
+  }
+  .aw .aw-start__card {
+    gap: 6px;
+  }
+  .aw .aw-seg button,
+  .aw .aw-soundbtn {
+    min-height: 46px;
+    font-size: 14px;
+  }
+  .aw .aw-setrow {
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    margin-bottom: 12px;
+  }
+  .aw .aw-keys {
+    gap: 8px;
+  }
+  .aw .aw-start__cols {
+    gap: 12px;
+  }
+
+  /* pause: header, one scrolling body, the bar */
+  .aw .aw-pm {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+  }
+  .aw .aw-pm__bg {
+    background:
+      radial-gradient(ellipse at 15% 110%, rgba(255, 61, 154, 0.3), transparent 55%),
+      var(--aw-sheet);
+  }
+  .aw .aw-pm__head {
+    flex: none;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 12px;
+    margin: 0;
+    padding: var(--aw-st) var(--aw-sr) 8px var(--aw-sl);
+    border-bottom: 1px solid var(--aw-line);
+    background: var(--aw-sheet);
+  }
+  .aw .aw-pm__head h1 span {
+    font-size: 38px;
+  }
+  .aw .aw-pm__head p {
+    display: none;
+  }
+  .aw .aw-pm__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    gap: 16px;
+    padding: 12px var(--aw-sr) 16px var(--aw-sl);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+  }
+  .aw .aw-pm__list {
+    gap: 8px;
+  }
+  .aw .aw-pm .aw-mrow {
+    min-height: 56px;
+    margin: 0;
+  }
+  /* the bar already says RESUME / BACK in thumb range */
+  .aw .aw-pm .aw-mrow.is-back,
+  .aw .aw-pm .aw-mrow.is-resume {
+    display: none;
+  }
+  .aw .aw-pm__bar {
+    display: flex;
+    flex: none;
+    position: static;
+    margin: 0;
+  }
+
+  /* summary and hisaab: the card is the scroller, the actions are the bar */
+  .aw .aw-sum {
+    display: block;
+    padding: 0;
+    overflow: hidden;
+  }
+  .aw .aw-sum .aw-sum__card,
+  .aw .aw-career-hisaab .aw-career-card,
+  .aw .aw-quest-menu .aw-quest-sheet {
+    position: absolute;
+    inset: 0;
+    width: auto;
+    max-width: none;
+    margin: 0;
+    padding: 0 var(--aw-sr) 0 var(--aw-sl);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    animation: none;
+  }
+  .aw .aw-sum .aw-sum__card {
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 10px;
+    padding-top: var(--aw-st);
+  }
+  .aw .aw-sum__head {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .aw .aw-sum__main {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .aw .aw-sum .aw-stats--sum {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin: 4px 0 0;
+  }
+  .aw .aw-sum__bg {
+    background: radial-gradient(ellipse at 50% 100%, rgba(255, 200, 87, 0.18), transparent 60%), var(--aw-sheet);
+  }
+  .aw .aw-sum__acts {
+    margin-top: auto;
+  }
+  .aw .aw-btn {
+    min-height: 52px;
+    padding: 0 14px;
+    font-size: 15px;
+  }
+  .aw .aw-save {
+    font-size: 14px;
+  }
+
+  .aw .aw-career-hisaab {
+    display: block;
+    padding: 0;
+    overflow: hidden;
+  }
+  .aw .aw-career-bg {
+    background: radial-gradient(ellipse at 50% 100%, rgba(255, 200, 87, 0.16), transparent 60%), var(--aw-sheet);
+  }
+  .aw .aw-career-hisaab .aw-career-card {
+    gap: 10px;
+  }
+  .aw .aw-career-head,
+  .aw .aw-quest-sheet__head {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+  .aw .aw-career-hisaab .aw-career-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 calc(-1 * var(--aw-sr)) 0 calc(-1 * var(--aw-sl));
+    padding: var(--aw-st) var(--aw-sr) 8px var(--aw-sl);
+    border-bottom: 1px solid var(--aw-line);
+    background: var(--aw-sheet);
+  }
+  .aw .aw-career-head__text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .aw .aw-career-head::after {
+    content: '';
+    flex: none;
+    width: 44px;
+  }
+  .aw .aw-career-eyebrow {
+    font-size: 12px;
+    letter-spacing: 0.2em;
+  }
+  .aw .aw-career-hisaab .aw-career-title {
+    font-size: 32px;
+    gap: 10px;
+  }
+  .aw .aw-career-main {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .aw .aw-career-rest {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .aw .aw-career-hisaab .aw-career-grid,
+  .aw .aw-career-hisaab .aw-career-lower {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .aw .aw-career-hisaab .aw-career-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .aw .aw-career-line {
+    min-height: 32px;
+    align-items: center;
+    font-size: 15px;
+  }
+  .aw .aw-career-acts {
+    justify-content: stretch;
+    margin-top: auto;
+  }
+  .aw .aw-career-btn {
+    min-height: 52px;
+    padding: 0 12px;
+    font-size: 14px;
+    letter-spacing: 0.06em;
+  }
+  .aw .aw-career-btn.is-small {
+    min-height: 48px;
+  }
+
+  /* job board and quest log */
+  .aw .aw-quest-menu {
+    display: block;
+    padding: 0;
+    overflow: hidden;
+    background: radial-gradient(ellipse at 20% 0%, rgba(143, 107, 255, 0.28), transparent 55%), var(--aw-sheet);
+  }
+  .aw .aw-quest-menu .aw-quest-sheet__head {
+    display: flex;
+    flex-flow: row wrap;
+    align-items: center;
+    gap: 8px 12px;
+    margin: 0 calc(-1 * var(--aw-sr)) 12px calc(-1 * var(--aw-sl));
+    padding: var(--aw-st) var(--aw-sr) 10px var(--aw-sl);
+    border-bottom: 1px solid var(--aw-line);
+    background: var(--aw-sheet);
+  }
+  .aw .aw-quest-sheet__title {
+    flex: 1;
+    min-width: 0;
+  }
+  .aw .aw-quest-menu .aw-quest-sheet__head h2 {
+    font-size: 28px;
+  }
+  .aw .aw-quest-menu .aw-quest-rankchip {
+    flex: 1 0 100%;
+    display: flex;
+    flex-flow: row wrap;
+    align-items: baseline;
+    gap: 2px 10px;
+    padding: 7px 12px 8px;
+  }
+  .aw .aw-quest-menu .aw-quest-rankchip small {
+    flex: none;
+    font-size: 12px;
+  }
+  .aw .aw-quest-menu .aw-quest-rankchip b {
+    font-size: 16px;
+  }
+  .aw .aw-quest-menu .aw-quest-rankchip em {
+    font-size: 13px;
+  }
+  .aw .aw-quest-menu .aw-quest-rankchip .aw-quest-bar {
+    flex: 1 0 100%;
+  }
+  .aw .aw-quest-menu .aw-quest-list {
+    gap: 8px;
+  }
+  .aw .aw-quest-menu .aw-quest-card {
+    min-height: 64px;
+    padding: 10px 14px;
+  }
+  .aw .aw-quest-menu .aw-quest-board,
+  .aw .aw-quest-menu .aw-quest-cols {
+    gap: 14px;
+  }
+  .aw .aw-quest-menu .aw-quest-detail,
+  .aw .aw-quest-menu .aw-quest-panel {
+    padding: 12px 14px 14px;
+  }
+  .aw .aw-quest-menu .aw-quest-actions {
+    display: none;
+  }
+  .aw .aw-quest-menu .aw-quest-actions--bar {
+    display: flex;
+    margin-top: 14px;
+  }
+  .aw .aw-quest-menu .aw-quest-actions--bar .aw-quest-btn {
+    min-height: 52px;
+  }
+  .aw .aw-quest-menu .aw-quest-btn--inline {
+    display: none;
+  }
+  .aw .aw-quest-menu .aw-quest-btn {
+    min-height: 48px;
+    padding: 0 14px;
+    font-size: 14px;
+  }
+
+  /* settings sliders: a real touch track */
+  .aw .aw-mrow--slider {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  .aw .aw-slider {
+    flex: 1 1 140px;
+    width: auto;
+    height: 44px;
+  }
+  .aw .aw-slider u {
+    width: 24px;
+    height: 24px;
+    margin-left: -12px;
+  }
+  .aw .aw-side {
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .aw .aw-side__cell {
+    padding: 9px 10px 10px;
+  }
+  .aw .aw-panel {
+    max-width: none;
+    padding: 14px 14px 16px;
+  }
+  .aw .aw-legends {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+  .aw .aw-legend__row {
+    min-height: 40px;
+  }
+}
+
+/* ---- phone, sideways ------------------------------------------------------------------------------------------------------------ */
+@media (max-height: 520px) and (orientation: landscape) {
+  /* start: the title and the button on the left, controls and settings on the right */
+  .aw .aw-start {
+    place-items: center;
+    padding: var(--aw-st) var(--aw-sr) var(--aw-sb) var(--aw-sl);
+  }
+  .aw .aw-start .aw-start__card {
+    width: min(920px, 100%);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+    gap: 14px 22px;
+  }
+  .aw .aw-start__hero,
+  .aw .aw-start__side {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+  }
+  .aw .aw-start__side {
+    align-items: stretch;
+    gap: 8px;
+  }
+  .aw .aw-start .aw-start__cols {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .aw .aw-start__box {
+    padding: 8px 12px 10px;
+  }
+  .aw .aw-start__box h2 {
+    margin-bottom: 4px;
+  }
+  .aw .aw-keys {
+    gap: 4px;
+  }
+  .aw .aw-start .aw-setrow {
+    margin-bottom: 6px;
+  }
+  .aw .aw-start .aw-start__tag {
+    font-size: 14px;
+  }
+  .aw .aw-seg button,
+  .aw .aw-soundbtn {
+    min-height: 44px;
+    font-size: 14px;
+  }
+  .aw .aw-start .aw-credit {
+    margin: 0;
+  }
+  .aw .aw-start__foot {
+    margin-top: 0;
+  }
+
+  /* pause: thin header, list left, panel right, each scrolling on its own */
+  .aw .aw-pm {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+  }
+  .aw .aw-pm__bg {
+    background:
+      radial-gradient(ellipse at 15% 110%, rgba(255, 61, 154, 0.3), transparent 55%),
+      var(--aw-sheet);
+  }
+  .aw .aw-pm__head {
+    flex: none;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 12px;
+    margin: 0;
+    padding: var(--aw-st) var(--aw-sr) 6px var(--aw-sl);
+    border-bottom: 1px solid var(--aw-line);
+    background: var(--aw-sheet);
+  }
+  .aw .aw-pm__head h1 span {
+    font-size: 34px;
+  }
+  .aw .aw-pm__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    grid-template-columns: minmax(230px, 38%) minmax(0, 1fr);
+    gap: 16px;
+    align-items: stretch;
+    padding: 10px var(--aw-sr) var(--aw-sb) var(--aw-sl);
+    overflow: hidden;
+  }
+  .aw .aw-pm__list,
+  .aw .aw-pm__right {
+    min-height: 0;
+    padding-right: 4px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+  }
+  .aw .aw-pm__list {
+    gap: 8px;
+  }
+  .aw .aw-pm .aw-mrow {
+    min-height: 48px;
+    margin: 0;
+    padding: 4px 14px;
+  }
+  .aw .aw-pm .aw-mrow__txt b {
+    font-size: 18px;
+  }
+  .aw .aw-pm .aw-mrow__txt .aw-te {
+    font-size: 13px;
+  }
+  .aw .aw-pm .aw-pm__bar,
+  .aw .aw-quest-menu .aw-quest-actions--bar {
+    display: none;
+  }
+  .aw .aw-pm .aw-panel {
+    max-width: none;
+  }
+  .aw .aw-slider {
+    flex: 0 0 130px;
+    width: 130px;
+    height: 44px;
+  }
+  .aw .aw-slider u {
+    width: 24px;
+    height: 24px;
+    margin-left: -12px;
+  }
+
+  /* summary and hisaab: the title column on the left, the numbers on the right, the bar along the bottom */
+  .aw .aw-sum {
+    display: block;
+    padding: 0;
+    overflow: hidden;
+  }
+  .aw .aw-sum .aw-sum__card,
+  .aw .aw-career-hisaab .aw-career-card {
+    position: absolute;
+    inset: 0;
+    width: auto;
+    max-width: none;
+    margin: 0;
+    padding: var(--aw-st) var(--aw-sr) 0 var(--aw-sl);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    animation: none;
+  }
+  .aw .aw-sum .aw-sum__card {
+    display: grid;
+    grid-template-columns: minmax(180px, 30%) minmax(0, 1fr);
+    grid-auto-rows: min-content;
+    align-content: start;
+    align-items: start;
+    text-align: left;
+    gap: 8px 18px;
+  }
+  .aw .aw-sum__head {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .aw .aw-sum__head .aw-title {
+    align-items: flex-start;
+  }
+  .aw .aw-sum .aw-title--sm .aw-title__en {
+    font-size: 40px;
+  }
+  .aw .aw-sum .aw-title--sm .aw-title__te {
+    font-size: 22px;
+  }
+  .aw .aw-sum__main {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+  }
+  .aw .aw-sum .aw-stats--sum {
+    grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+    margin: 0;
+  }
+  .aw .aw-sum .aw-sum__acts {
+    grid-column: 1 / -1;
+  }
+  .aw .aw-sum__bg {
+    background: radial-gradient(ellipse at 50% 100%, rgba(255, 200, 87, 0.18), transparent 60%), var(--aw-sheet);
+  }
+  .aw .aw-btn {
+    min-height: 48px;
+    padding: 0 14px;
+    font-size: 15px;
+  }
+
+  .aw .aw-career-hisaab {
+    display: block;
+    padding: 0;
+    overflow: hidden;
+  }
+  .aw .aw-career-bg {
+    background: radial-gradient(ellipse at 50% 100%, rgba(255, 200, 87, 0.16), transparent 60%), var(--aw-sheet);
+  }
+  .aw .aw-career-hisaab .aw-career-card {
+    gap: 8px;
+    padding-top: 0;
+  }
+  .aw .aw-career-hisaab .aw-career-head {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 calc(-1 * var(--aw-sr)) 0 calc(-1 * var(--aw-sl));
+    padding: var(--aw-st) var(--aw-sr) 6px var(--aw-sl);
+    border-bottom: 1px solid var(--aw-line);
+    background: var(--aw-sheet);
+  }
+  .aw .aw-career-head__text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 0;
+    min-width: 0;
+  }
+  .aw .aw-career-head::after {
+    content: '';
+    flex: none;
+    width: 44px;
+  }
+  .aw .aw-career-eyebrow {
+    font-size: 12px;
+    letter-spacing: 0.2em;
+  }
+  .aw .aw-career-hisaab .aw-career-title {
+    font-size: 28px;
+  }
+  .aw .aw-career-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+    gap: 10px 14px;
+    align-items: start;
+  }
+  .aw .aw-career-hisaab .aw-career-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .aw .aw-career-rest {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+  }
+  .aw .aw-career-hisaab .aw-career-lower {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .aw .aw-career-hisaab .aw-career-stats {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .aw .aw-career-btn {
+    min-height: 48px;
+  }
+  .aw .aw-career-acts {
+    justify-content: stretch;
+  }
+  .aw .aw-sheet-bar > * {
+    min-height: 48px;
+  }
+
+  /* job board and quest log: the list on the left, the detail on the right, both scrolling by themselves */
+  .aw .aw-quest-menu {
+    display: block;
+    padding: 0;
+    overflow: hidden;
+    background: radial-gradient(ellipse at 20% 0%, rgba(143, 107, 255, 0.28), transparent 55%), var(--aw-sheet);
+  }
+  .aw .aw-quest-menu .aw-quest-sheet {
+    position: absolute;
+    inset: 0;
+    width: auto;
+    display: flex;
+    flex-direction: column;
+    padding: 0 var(--aw-sr) 0 var(--aw-sl);
+    overflow: hidden;
+  }
+  .aw .aw-quest-menu .aw-quest-sheet__head {
+    flex: none;
+    display: flex;
+    flex-flow: row nowrap;
+    align-items: center;
+    gap: 12px;
+    margin: 0 calc(-1 * var(--aw-sr)) 8px calc(-1 * var(--aw-sl));
+    padding: var(--aw-st) var(--aw-sr) 8px var(--aw-sl);
+    border-bottom: 1px solid var(--aw-line);
+    background: var(--aw-sheet);
+  }
+  .aw .aw-quest-sheet__title {
+    flex: 1;
+    min-width: 0;
+  }
+  .aw .aw-quest-menu .aw-quest-sheet__head h2 {
+    font-size: 26px;
+  }
+  .aw .aw-quest-menu .aw-quest-rankchip {
+    flex: none;
+    display: flex;
+    flex-flow: row wrap;
+    align-items: baseline;
+    gap: 0 10px;
+    max-width: 46%;
+    padding: 4px 12px 5px;
+  }
+  .aw .aw-quest-menu .aw-quest-rankchip small {
+    flex: 1 0 100%;
+    font-size: 12px;
+  }
+  .aw .aw-quest-menu .aw-quest-rankchip b {
+    font-size: 15px;
+  }
+  .aw .aw-quest-menu .aw-quest-rankchip em {
+    font-size: 13px;
+  }
+  .aw .aw-quest-menu .aw-quest-board,
+  .aw .aw-quest-menu .aw-quest-cols {
+    flex: 1 1 auto;
+    min-height: 0;
+    align-items: stretch;
+    gap: 14px;
+    padding-bottom: var(--aw-sb);
+  }
+  .aw .aw-quest-menu .aw-quest-board {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  }
+  .aw .aw-quest-menu .aw-quest-list,
+  .aw .aw-quest-menu .aw-quest-detail,
+  .aw .aw-quest-menu .aw-quest-panel {
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+  }
+  .aw .aw-quest-menu .aw-quest-list {
+    gap: 8px;
+    padding-right: 4px;
+  }
+  .aw .aw-quest-menu .aw-quest-card {
+    min-height: 60px;
+    flex: none;
+  }
+  .aw .aw-quest-menu .aw-quest-detail,
+  .aw .aw-quest-menu .aw-quest-panel {
+    padding: 10px 14px 0;
+  }
+  .aw .aw-quest-menu .aw-quest-detail .aw-quest-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    margin: 0 -14px;
+    padding: 8px 14px 10px;
+    background: rgba(14, 6, 30, 0.97);
+  }
+  .aw .aw-quest-menu .aw-quest-btn {
+    min-height: 46px;
+    font-size: 14px;
+  }
+  .aw .aw-quest-menu .aw-quest-panel .aw-quest-btn--inline {
+    position: sticky;
+    bottom: 10px;
+  }
+  .aw .aw-quest-menu .aw-quest-panel {
+    padding-bottom: 12px;
+  }
+}

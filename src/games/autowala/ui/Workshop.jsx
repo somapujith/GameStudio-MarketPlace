@@ -9,9 +9,13 @@ import { playHorn, stopHorn } from '../audio/horns.js';
 import { useCountUp, useGamepad, useMedia } from './workshop/hooks.js';
 import { GridCell, InputRow, ItemRow, NavRow, UpgradeRow } from './workshop/Rows.jsx';
 import { BannerCard, PlateCard, StatsCard } from './workshop/Cards.jsx';
+import { LANDSCAPE_QUERY } from './menus/menuLayout.js';
+import { CloseGlyph } from './menus/glyphs.jsx';
 import './workshop.css';
 
 const COLS = 3;
+/** Where the auto sits on screen (fraction of width right, of height up): beside the desktop panel, above the phone sheet, right of the sideways phone's list. */
+const SHIFT = { desk: [0.1, 0], port: [0, 0.2], land: [0.2, 0] };
 const wrapIndex = (i, n) => (n ? ((i % n) + n) % n : 0);
 const typed = {
   'plate.text': (s) => String(s).toUpperCase().replace(/[^A-Z0-9 -]/g, '').replace(/ {2,}/g, ' ').slice(0, 10),
@@ -35,7 +39,10 @@ export default function Workshop({ game, snap }) {
   const open = snap?.menu === 'workshop' && !!ws && !!profile;
   const phase = snap?.workshopPhase || 'closed';
   const live = open && phase === 'open';
-  const narrow = useMedia('(max-width: 760px), (max-aspect-ratio: 1/1)');
+  const sideways = useMedia(LANDSCAPE_QUERY); // a phone held sideways: the list on the left, the auto on the right
+  const upright = useMedia('(max-width: 760px), (max-aspect-ratio: 1/1)'); // a phone held upright: the auto on top, the list as a sheet
+  const narrow = sideways || upright; // either way the info card goes inside the list and the key legend goes away
+  const layout = sideways ? 'land' : upright ? 'port' : 'desk';
 
   const [nav, setNav] = useState({ level: 0, cat: 0, sec: 0, row: 0 });
   const [, setRev] = useState(0);
@@ -81,8 +88,8 @@ export default function Workshop({ game, snap }) {
     if (live) ws.camera.setView(view);
   }, [live, view, ws]);
   useEffect(() => {
-    if (open) ws.camera.setShift(narrow ? 0 : 0.1, narrow ? 0.2 : 0);
-  }, [open, narrow, ws]);
+    if (open) ws.camera.setShift(...SHIFT[layout]);
+  }, [open, layout, ws]);
 
   // ---- live preview of the highlighted row (never charges)
   const curOf = (path) => getPath(data.loadout, path);
@@ -265,7 +272,8 @@ export default function Workshop({ game, snap }) {
   const hlIndex = nav[key];
   useEffect(() => {
     const el = rowRefs.current[hlIndex];
-    if (el?.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+    if (hlIndex === 0 && el?.parentElement) el.parentElement.scrollTop = 0; // the info card above the first row stays in view
+    else if (el?.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
   }, [hlIndex, nav.level, live]);
 
   // ---- dragging / pinching / wheel on the 3D view
@@ -371,7 +379,7 @@ export default function Workshop({ game, snap }) {
   }
 
   const nameOf = highlighted?.name;
-  const stateClass = `aw-ws${live ? '' : ' is-away'}${narrow ? ' is-narrow' : ''}`;
+  const stateClass = `aw-ws${live ? '' : ' is-away'}${narrow ? ' is-narrow' : ''} is-${layout}`;
 
   return (
     <div className={stateClass} data-phase={phase} onPointerDownCapture={(e) => { pointerType.current = e.pointerType; if (e.pointerType === 'touch') setLastInput('touch'); }}>
@@ -392,6 +400,7 @@ export default function Workshop({ game, snap }) {
       <aside className="aw-ws-panel" aria-label="Garage menu">
         <div className="aw-ws-head">
           {nav.level > 0 && <button type="button" className="aw-ws-back" onClick={back} aria-label="Back"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="square" /></svg></button>}
+          {nav.level === 0 && narrow && <button type="button" className="aw-ws-back aw-ws-close" onClick={() => ws.close()} aria-label="Leave the garage"><CloseGlyph /></button>}
           <div className="aw-ws-head-text">
             <h2>{title}</h2>
             <p>{crumb}{te && nav.level === 0 ? '' : ''}</p>
@@ -409,8 +418,8 @@ export default function Workshop({ game, snap }) {
             <kbd aria-hidden="true">R</kbd>
           </button>
         )}
-        {narrow && card && <div className="aw-ws-card is-inline">{card}</div>}
         <div className={`aw-ws-list${isGrid ? ' is-grid' : ''}`} role="listbox" aria-label={title}>
+          {narrow && card && <div className="aw-ws-card is-inline" role="group" aria-label="Preview">{card}</div>}
           {items.map(renderRow)}
         </div>
         <div className="aw-ws-foot">

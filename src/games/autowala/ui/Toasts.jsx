@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { BoltIcon, CheckIcon, CoinIcon, FlagIcon } from './hud/icons.jsx';
 import { expireBursts, expireToasts, nextExpiry, pushBurst, pushToast } from './hud/toastQueue.js';
+import { toastCap } from './hud/layoutLogic.js';
+import { useHudLayout } from './hud/useHudLayout.js';
 import './hud/toasts.css';
 
 const TONE_ICON = { good: CheckIcon, gold: CoinIcon, bad: BoltIcon, info: FlagIcon };
@@ -11,6 +13,9 @@ export default function Toasts({ game }) {
   const [toasts, setToasts] = useState([]);
   const [bursts, setBursts] = useState([]);
   const live = useRef({ toasts: [], bursts: [], id: 0, timer: 0 });
+  const cap = toastCap(useHudLayout()); // 4 on desktop, 3 on phones and tablets (1 on a short portrait phone)
+  const capRef = useRef(cap);
+  capRef.current = cap;
 
   useEffect(() => {
     if (!game) return undefined;
@@ -38,7 +43,7 @@ export default function Toasts({ game }) {
     };
     const off = game.on((e) => {
       const now = performance.now();
-      if (e.type === 'toast') L.toasts = pushToast(expireToasts(L.toasts, now), e, now, ++L.id);
+      if (e.type === 'toast') L.toasts = pushToast(expireToasts(L.toasts, now), e, now, ++L.id, capRef.current);
       else if (e.type === 'wallet') L.bursts = pushBurst(L.bursts, e, now, ++L.id);
       else return;
       push();

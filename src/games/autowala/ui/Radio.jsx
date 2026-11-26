@@ -1,6 +1,7 @@
 // OWNER: sound agent. The little radio widget: a round power button (also the R key), and while it plays: previous / next station,
 // the station name in English + Telugu, and the "now playing" track with a tiny equaliser. Props: { game, snap }.
 // Reads snap.radio { station, name, te, on, color, track, count }; talks to game.ctx.sound.radio (cycle/set/next/prev/toggle).
+import { useHudLayout } from './hud/useHudLayout.js';
 import './radio.css';
 
 function RadioIcon() {
@@ -20,13 +21,14 @@ const Chevron = ({ dir }) => (
   </svg>
 );
 
-export default function Radio({ game, snap }) {
+// The controls themselves. `inline` = inside the phone HUD's More sheet (no floating position); otherwise the floating desktop widget.
+export function RadioControls({ game, snap, inline = false }) {
   const api = game?.ctx?.sound?.radio;
   const r = snap?.radio;
-  if (!api || !r || snap?.menu) return null;
+  if (!api || !r) return null;
   const on = !!r.on;
   return (
-    <div className={`aw-radio${on ? ' is-on' : ''}`} style={{ '--aw-radio-c': r.color || '#ffc857' }} role="group" aria-label="Radio">
+    <div className={`aw-radio${inline ? ' aw-radio--inline' : ''}${on ? ' is-on' : ''}`} style={{ '--aw-radio-c': r.color || '#ffc857' }} role="group" aria-label="Radio">
       <button type="button" className="aw-radio-pw" onClick={() => api.toggle()} aria-pressed={on} aria-label={on ? 'Turn the radio off' : 'Turn the radio on'} title="Radio (R)">
         <RadioIcon />
         <kbd className="aw-radio-key">R</kbd>
@@ -52,4 +54,11 @@ export default function Radio({ game, snap }) {
       )}
     </div>
   );
+}
+
+// The floating widget (desktop). On phones and tablets the radio lives in the HUD's More sheet instead (see hud/Compact.jsx).
+export default function Radio({ game, snap }) {
+  const layout = useHudLayout();
+  if (layout.compact || snap?.menu) return null;
+  return <RadioControls game={game} snap={snap} />;
 }

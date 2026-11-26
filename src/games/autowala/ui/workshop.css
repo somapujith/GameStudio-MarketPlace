@@ -808,42 +808,88 @@
 .aw .aw-ws.is-away .aw-ws-top { transform: translateY(-120%); opacity: 0; }
 .aw .aw-ws.is-away .aw-ws-legend { opacity: 0; pointer-events: none; }
 
-/* ---- phones and narrow windows: the menu is a bottom sheet, the 3D view stays on top ---- */
+/* ---- phones: either orientation (is-narrow). The info card sits inside the scrolling list, the key legend is gone ---------------------- */
 .aw .aw-ws.is-narrow .aw-ws-top {
-  top: 10px;
-  left: 12px;
-  right: 12px;
   gap: 8px;
 }
 .aw .aw-ws.is-narrow .aw-ws-brand b { font-size: 16px; white-space: nowrap; }
-.aw .aw-ws.is-narrow .aw-ws-brand span { font-size: 11px; }
+.aw .aw-ws.is-narrow .aw-ws-brand span { font-size: 12px; }
 .aw .aw-ws.is-narrow .aw-ws-wallet { min-width: 0; padding: 4px 10px 5px; white-space: nowrap; }
 .aw .aw-ws.is-narrow .aw-ws-wallet b { font-size: 20px; }
-.aw .aw-ws.is-narrow .aw-ws-leave { padding: 0 10px; font-size: 11px; min-height: 44px; }
-.aw .aw-ws.is-narrow .aw-ws-panel {
+.aw .aw-ws.is-narrow .aw-ws-leave { padding: 0 12px; font-size: 12px; min-height: 44px; }
+.aw .aw-ws.is-narrow .aw-ws-head { padding: 8px 10px 8px 10px; gap: 10px; }
+.aw .aw-ws.is-narrow .aw-ws-head h2 { font-size: 21px; }
+.aw .aw-ws.is-narrow .aw-ws-head p { font-size: 13px; }
+.aw .aw-ws.is-narrow .aw-ws-head-te { display: none; }
+.aw .aw-ws.is-narrow .aw-ws-close { border-color: var(--aw-pink); background: rgba(255, 61, 154, 0.2); }
+.aw .aw-ws.is-narrow .aw-ws-list {
+  padding: 8px 10px 10px;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+.aw .aw-ws.is-narrow .aw-ws-list.is-grid { gap: 8px; }
+.aw .aw-ws.is-narrow .aw-ws-list > .aw-ws-card { grid-column: 1 / -1; }
+.aw .aw-ws.is-narrow .aw-ws-row { min-height: 54px; margin-bottom: 8px; }
+.aw .aw-ws.is-narrow .aw-ws-row.is-up { min-height: 64px; }
+.aw .aw-ws.is-narrow .aw-ws-row-hint { font-size: 12px; }
+.aw .aw-ws.is-narrow .aw-ws-tag { font-size: 14px; }
+.aw .aw-ws.is-narrow .aw-ws-play { width: 44px; height: 44px; }
+.aw .aw-ws.is-narrow .aw-ws-cell { min-height: 96px; }
+.aw .aw-ws.is-narrow .aw-ws-cell-name,
+.aw .aw-ws.is-narrow .aw-ws-cell-price { font-size: 12px; }
+.aw .aw-ws.is-narrow .aw-ws-foot { padding: 8px 10px 10px; align-items: center; background: rgba(8, 4, 18, 0.96); }
+.aw .aw-ws.is-narrow .aw-ws-detail { font-size: 14px; }
+.aw .aw-ws.is-narrow .aw-ws-buy { min-height: 56px; min-width: 128px; padding: 0 14px; font-size: 15px; letter-spacing: 0.04em; white-space: nowrap; }
+.aw .aw-ws.is-narrow .aw-ws-card.is-inline { margin: 0 0 10px; }
+.aw .aw-ws.is-narrow .aw-ws-card-body { padding: 8px 12px 10px; }
+.aw .aw-ws.is-narrow .aw-ws-card-title { display: none; }
+.aw .aw-ws.is-narrow .aw-ws-plate { height: 72px; }
+.aw .aw-ws.is-narrow .aw-ws-card-note { font-size: 14px; }
+/* the stat bars: label and number on one line, the bar under them, two bars to a row */
+.aw .aw-ws.is-narrow .aw-ws-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; }
+.aw .aw-ws.is-narrow .aw-ws-stat { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'l v' 't t'; gap: 3px 6px; font-size: 12px; }
+.aw .aw-ws.is-narrow .aw-ws-stat-label { grid-area: l; }
+.aw .aw-ws.is-narrow .aw-ws-stat-track { grid-area: t; height: 8px; }
+.aw .aw-ws.is-narrow .aw-ws-stat-val { grid-area: v; min-width: 0; }
+.aw .aw-ws.is-narrow .aw-ws-input { font-size: 20px; }
+
+/* upright phone: the auto on top, the menu a sheet that grows up to a bit over half the screen */
+.aw .aw-ws.is-port .aw-ws-top { top: max(10px, env(safe-area-inset-top, 0px)); left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); }
+.aw .aw-ws.is-port .aw-ws-panel {
   left: 0;
   right: 0;
   top: auto;
   bottom: 0;
   width: auto;
-  max-height: 62vh;
+  max-height: 58vh;
+  max-height: 58dvh;
   border-left: 0;
   border-right: 0;
   border-bottom: 0;
-  padding-bottom: env(safe-area-inset-bottom, 0);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
-.aw .aw-ws.is-narrow .aw-ws-head h2 { font-size: 21px; }
-.aw .aw-ws.is-narrow .aw-ws-head-te { display: none; }
-.aw .aw-ws.is-narrow .aw-ws-row { min-height: 54px; }
-.aw .aw-ws.is-narrow .aw-ws-foot { padding: 8px 10px 10px; }
-.aw .aw-ws.is-narrow .aw-ws-plate { height: 72px; }
-.aw .aw-ws.is-narrow .aw-ws-stats { gap: 3px; }
-.aw .aw-ws.is-narrow .aw-ws-stat { font-size: 11px; }
-.aw .aw-ws.is-narrow .aw-ws-stat-track { height: 8px; }
-.aw .aw-ws.is-narrow .aw-ws-card-title { display: none; }
-.aw .aw-ws.is-narrow .aw-ws-stat { grid-template-columns: 84px 1fr auto; }
-.aw .aw-ws.is-narrow .aw-ws-card-body { padding: 8px 10px 10px; }
-.aw .aw-ws.is-narrow.is-away .aw-ws-panel { transform: translateY(115%); }
+.aw .aw-ws.is-port.is-away .aw-ws-panel { transform: translateY(115%); }
+
+/* sideways phone: the menu is a full-height column on the left, the auto sits in the free part on the right */
+.aw .aw-ws.is-land .aw-ws-top {
+  top: max(8px, env(safe-area-inset-top, 0px));
+  left: auto;
+  right: max(10px, env(safe-area-inset-right, 0px));
+  align-items: stretch;
+}
+.aw .aw-ws.is-land .aw-ws-brand { display: none; }
+.aw .aw-ws.is-land .aw-ws-panel {
+  left: max(8px, env(safe-area-inset-left, 0px));
+  top: max(8px, env(safe-area-inset-top, 0px));
+  bottom: max(8px, env(safe-area-inset-bottom, 0px));
+  width: min(46vw, 420px);
+}
+.aw .aw-ws.is-land .aw-ws-head h2 { font-size: 20px; }
+.aw .aw-ws.is-land .aw-ws-row { min-height: 50px; margin-bottom: 6px; }
+.aw .aw-ws.is-land .aw-ws-buy { min-height: 52px; }
 
 /* short desktop windows */
 @media (max-height: 560px) and (min-width: 761px) {
@@ -860,3 +906,6 @@
   }
   .aw .aw-ws-row.is-hl { transform: none; }
 }
+
+/* phones: the thumb-sized INSTALL / APPLY button under the list does the typed-field job too, so the field gets the whole row */
+.aw .aw-ws.is-narrow .aw-ws-apply { display: none; }

@@ -5,6 +5,9 @@ import { groupIndian } from './hud/hudLogic.js';
 import { StarShape } from './hud/icons.jsx';
 import { focusFirst, useMenuInput } from './menus/useMenuInput.js';
 import { expenseRows, incomeRows, sparkBars, verdict } from './career/hisaabModel.js';
+import { CloseGlyph } from './menus/glyphs.jsx';
+import { useMenuLayout } from './menus/menuLayout.js';
+import './menus/sheet.css';
 import './career/career.css';
 
 const rs = (n) => `Rs ${groupIndian(n)}`;
@@ -29,6 +32,7 @@ function Stat({ en, te, children }) {
 
 function HisaabPanel({ game, snap }) {
   const root = useRef(null);
+  const layout = useMenuLayout();
   const h = snap.career?.hisaab;
   const career = game.ctx.career;
   const next = () => game.ctx.closeMenu();
@@ -49,15 +53,23 @@ function HisaabPanel({ game, snap }) {
   const stars = h.stars || 0;
 
   return (
-    <div className="aw-career-hisaab" ref={root} role="dialog" aria-modal="true" aria-label="End of day accounts">
+    <div className="aw-career-hisaab" ref={root} data-layout={layout} role="dialog" aria-modal="true" aria-label="End of day accounts">
       <div className="aw-career-bg" />
       <div className="aw-career-card">
-        <p className="aw-career-eyebrow">{h.reason === 'day' ? `DAY ${h.lifeDay} · THE DAY IS DONE` : 'CLOCKED OUT FOR NOW'}</p>
-        <h1 className="aw-career-title">
-          <span>HISAAB</span>
-          <span className="aw-te">హిసాబు</span>
-        </h1>
+        <div className="aw-career-head">
+          <button type="button" className="aw-sheet-x" onClick={next} aria-label={h.reason === 'day' ? 'Next day' : 'Keep driving'}>
+            <CloseGlyph />
+          </button>
+          <div className="aw-career-head__text">
+            <p className="aw-career-eyebrow">{h.reason === 'day' ? `DAY ${h.lifeDay} · THE DAY IS DONE` : 'CLOCKED OUT FOR NOW'}</p>
+            <h1 className="aw-career-title">
+              <span>HISAAB</span>
+              <span className="aw-te">హిసాబు</span>
+            </h1>
+          </div>
+        </div>
 
+        <div className="aw-career-main">
         <div className="aw-career-grid">
           <section className="aw-career-sheet" aria-label="Money in">
             <h2>Earned <span className="aw-te">సంపాదన</span></h2>
@@ -76,6 +88,7 @@ function HisaabPanel({ game, snap }) {
           </section>
         </div>
 
+        <div className="aw-career-rest">
         <div className={`aw-career-net ${net < 0 ? 'is-loss' : 'is-gain'}`}>
           <span>{net < 0 ? 'LOSS' : 'NET PROFIT'} <span className="aw-te">{net < 0 ? 'నష్టం' : 'నికర లాభం'}</span></span>
           <b>{net < 0 ? '-' : ''}{rs(Math.abs(net))}</b>
@@ -149,8 +162,10 @@ function HisaabPanel({ game, snap }) {
         {h.best && <p className="aw-career-best">Best day so far: {rs(h.best.net)} net, {h.best.rides} rides</p>}
         </div>
         </div>
+        </div>
+        </div>
 
-        <div className="aw-career-acts">
+        <div className="aw-career-acts aw-sheet-bar">
           <button type="button" data-nav data-autofocus className="aw-career-btn is-primary" onClick={next}>{h.reason === 'day' ? 'NEXT DAY' : 'KEEP DRIVING'} <span className="aw-te">{h.reason === 'day' ? 'మరుసటి రోజు' : 'నడపండి'}</span></button>
           <button type="button" data-nav className="aw-career-btn" onClick={clockOut}>CLOCK OUT &amp; SAVE SCORE</button>
         </div>

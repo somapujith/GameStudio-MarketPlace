@@ -199,3 +199,23 @@ export const ShieldIcon = (p) => (
     <path d="M12 8.5v4M12 15.3v.2" />
   </Svg>
 );
+
+// phone HUD: the More button (a 2x2 grid), the sheet's close X and the minimap's "tap to enlarge" corner mark
+export const MoreIcon = (p) => (
+  <Svg {...p} sw={2.4}>
+    <rect x="4" y="4" width="6.5" height="6.5" rx="1.6" />
+    <rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6" />
+    <rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6" />
+    <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6" />
+  </Svg>
+);
+export const CloseIcon = (p) => (
+  <Svg {...p} sw={2.6}>
+    <path d="M6 6l12 12M18 6 6 18" />
+  </Svg>
+);
+export const ExpandIcon = (p) => (
+  <Svg {...p} sw={2.6}>
+    <path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" />
+  </Svg>
+);

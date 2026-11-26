@@ -1,0 +1,260 @@
+// The phone / tablet HUD pieces (see hud/layoutLogic.js for which layouts use them): ONE compact top strip (wallet + rating, the trip,
+// the clock, a "More" button, pause) and the "More" sheet that holds every secondary panel (rating, job chip, mission, weather, road
+// rules, radio). Live road alerts (signal, camera, police, road rage, mission timer) get their own small lane.
+// Positions come from hud/phone.css; nothing here knows a pixel. Every snapshot key is optional.
+import { memo } from 'react';
+import { RadioControls } from '../Radio.jsx';
+import JobChip from './JobChip.jsx';
+import RulesStrip from './RulesStrip.jsx';
+import RageMeter from './RageMeter.jsx';
+import { CloseIcon, DuskIcon, FlagIcon, KindIcon, MoonIcon, MoreIcon, PauseIcon, PinIcon, RainIcon, StarShape, SunIcon, ClockIcon } from './icons.jsx';
+import { dayPhase, formatClock, formatCountdown, formatDistance, formatEta, groupIndian, moodColor, normalizeTrip, timerTone } from './hudLogic.js';
+import { filterRules } from './layoutLogic.js';
+import { useChangeFlash, useCountUp } from './useCountUp.js';
+
+const PHASE_ICON = { night: MoonIcon, dawn: SunIcon, day: SunIcon, dusk: DuskIcon };
+
+function WalletChip({ wallet, rating, rides, reduced }) {
+  const target = Number.isFinite(wallet) ? wallet : 0;
+  const shown = useCountUp(target, reduced);
+  const flash = useChangeFlash(target);
+  const r = Number.isFinite(rating) ? Math.max(0, Math.min(5, rating)) : 0;
+  const n = Math.max(0, Math.round(rides || 0));
+  return (
+    <div key={flash.n} className={`aw-cwallet ${flash.dir ? `is-${flash.dir}` : ''}`} aria-label={`Wallet ${groupIndian(target)} rupees`}>
+      <div className="aw-cwallet__row">
+        <span>Rs</span>
+        <b>{groupIndian(shown)}</b>
+      </div>
+      <div className="aw-cwallet__meta" title={r ? `Rating ${r.toFixed(1)} out of 5` : 'No rides rated yet'}>
+        <StarShape id="strip" size={14} fill={r > 0 ? 1 : 0} />
+        <em>{r > 0 ? r.toFixed(1) : '-'}</em>
+        <span>{n} {n === 1 ? 'ride' : 'rides'}</span>
+      </div>
+    </div>
+  );
+}
+
+function ClockChip({ hour, day, weather }) {
+  const c = formatClock(hour);
+  const phase = dayPhase(hour);
+  const Icon = PHASE_ICON[phase] || SunIcon;
+  return (
+    <div className={`aw-cclock aw-cclock--${phase}`} aria-label={`${c.label}, day ${Math.max(1, Math.floor(day || 1))}`}>
+      <Icon size={24} className="aw-cclock__icon" />
+      <div className="aw-cclock__text">
+        <span className="aw-cclock__time">
+          <b>{c.time}</b>
+          <small>{c.ampm}</small>
+        </span>
+        <span className="aw-cclock__day">Day {Math.max(1, Math.floor(day || 1))}</span>
+      </div>
+      {weather && <RainIcon size={20} className={`aw-cclock__wx is-${weather.state}`} />}
+    </div>
+  );
+}
+
+function TripChip({ t, reduced }) {
+  const fare = useCountUp(t.fare, reduced);
+  const flash = useChangeFlash(t.fare);
+  const tone = timerTone(t.timeLeft);
+  const nav = [t.distance != null ? formatDistance(t.distance) : '', t.eta != null ? formatEta(t.eta) : ''].filter(Boolean).join(' · ');
+  return (
+    <div className={`aw-ctrip ${t.arrived ? 'is-arrived' : ''}`} role="status">
+      <span className="aw-ctrip__badge" title={t.kind.label}>
+        <KindIcon kind={t.kind.key} size={22} />
+      </span>
+      <div className="aw-ctrip__main">
+        <div className="aw-ctrip__l1">
+          <b className="aw-ctrip__name">{t.name}</b>
+          {t.pax > 1 && <em className="aw-ctrip__pax">+1</em>}
+          <span key={flash.n} className={`aw-ctrip__fare ${flash.dir ? 'is-tick' : ''}`} aria-label={`Fare ${t.fare} rupees`}>
+            <small>Rs</small>
+            <b>{groupIndian(fare)}</b>
+          </span>
+        </div>
+        <div className="aw-ctrip__l2">
+          <PinIcon size={16} className="aw-ctrip__pin" />
+          <span className="aw-ctrip__dest">
+            {t.arrived ? 'Arrived at ' : 'To '}
+            <b>{t.destName}</b>
+          </span>
+          {nav && <span className="aw-ctrip__nav">{nav}</span>}
+          {t.timeLeft != null && (
+            <span className={`aw-ctrip__timer is-${tone}`}>
+              <ClockIcon size={14} />
+              <b>{formatCountdown(t.timeLeft)}</b>
+            </span>
+          )}
+        </div>
+      </div>
+      {t.mood != null && (
+        <span className="aw-ctrip__mood" title="Passenger mood" aria-hidden="true">
+          <i style={{ transform: `scaleX(${t.mood.toFixed(3)})`, background: moodColor(t.mood) }} />
+        </span>
+      )}
+    </div>
+  );
+}
+
+function FindChip({ waiting }) {
+  const n = Number.isFinite(waiting) ? Math.max(0, Math.round(waiting)) : null;
+  return (
+    <div className="aw-cfind" role="status">
+      <i className="aw-find__dot" />
+      <span>{n === 0 ? 'No one is waiting. Cruise the streets' : 'Find a customer: follow the pink markers'}</span>
+      {n > 0 && <b>{n} waiting</b>}
+    </div>
+  );
+}
+
+export const Strip = memo(function Strip({ snap, trip, route, reduced, weather, onPause, onMore, moreOpen, badge }) {
+  const t = normalizeTrip(trip, route);
+  return (
+    <header className="aw-strip" aria-label="Status">
+      <WalletChip wallet={snap.wallet} rating={snap.rating} rides={snap.rides} reduced={reduced} />
+      <div className="aw-strip__trip">{t ? <TripChip t={t} reduced={reduced} /> : <FindChip waiting={snap.waitingCount} />}</div>
+      <ClockChip hour={snap.hour} day={snap.day} weather={weather} />
+      <button
+        type="button"
+        className={`aw-more-btn${moreOpen ? ' is-open' : ''}`}
+        onClick={onMore}
+        aria-expanded={moreOpen}
+        aria-controls="aw-more-sheet"
+        aria-label={moreOpen ? 'Close more' : 'More: job, mission, weather, rules, radio'}
+      >
+        <MoreIcon size={22} />
+        <span>More</span>
+        {badge && <i className={`aw-more-btn__dot is-${badge}`} aria-hidden="true" />}
+      </button>
+      <button type="button" className="aw-pausebtn aw-pausebtn--c" onClick={onPause} aria-label="Pause" title="Pause (Esc)">
+        <PauseIcon size={22} />
+      </button>
+    </header>
+  );
+});
+
+/** The live road alerts (`rage` is the raw snap.rage; RageMeter shapes it itself): the signal / camera / police chips, the road-rage meter and the running mission's timer, in one lane. */
+export function AlertsLane({ rules, kinds, rage, mission, missionTime }) {
+  const rulesPart = filterRules(rules, kinds);
+  const showRage = kinds.includes('rage') && rage;
+  const showMission = kinds.includes('mission') && mission;
+  if (!rulesPart && !showRage && !showMission) return null;
+  return (
+    <div className="aw-alerts" aria-label="Road alerts">
+      {showRage && <RageMeter rage={rage} />}
+      {rulesPart && <RulesStrip view={rulesPart} />}
+      {showMission && (
+        <div className="aw-alert-chip aw-alert-chip--mission" role="status">
+          <FlagIcon size={16} />
+          <b>{mission}</b>
+          {missionTime && <em>{missionTime}</em>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QuestSummary({ a }) {
+  if (!a) return null;
+  const idx = Math.min(a.stepIndex || 0, Math.max(0, (a.steps?.length || 1) - 1));
+  const cur = a.steps?.[idx];
+  const reward = a.reward && Number.isFinite(a.reward.cash) ? a.reward.cash : null;
+  return (
+    <div className="aw-sheet__quest">
+      <b className="aw-sheet__quest-title">
+        {a.title} {a.te && <span className="aw-te">{a.te}</span>}
+      </b>
+      {cur?.label && (
+        <p>
+          <span className="aw-sheet__step">{idx + 1}/{a.steps.length}</span>
+          {cur.label}
+        </p>
+      )}
+      {(a.note || a.progress) && <p className={a.note ? 'is-warn' : ''}>{a.note || a.progress}</p>}
+      <div className="aw-sheet__quest-foot">
+        {a.timeLeft != null && <span className={`aw-ctrip__timer is-${timerTone(a.timeLeft)}`}><ClockIcon size={14} /><b>{formatCountdown(a.timeLeft)}</b></span>}
+        {reward != null && <span className="aw-sheet__reward">Reward <b>Rs {groupIndian(reward)}</b></span>}
+      </div>
+    </div>
+  );
+}
+
+export function MoreSheet({ open, onClose, game, snap, careerV, rulesV, weather }) {
+  const r = Number.isFinite(snap.rating) ? Math.max(0, Math.min(5, snap.rating)) : 0;
+  const rides = Math.max(0, Math.round(snap.rides || 0));
+  const quest = snap.quest?.active || null;
+  const hasRules = !!(rulesV && (rulesV.sign || rulesV.signal || rulesV.camera || rulesV.checkpoint || rulesV.wanted));
+  const hasRadio = !!(game?.ctx?.sound?.radio && snap.radio);
+  return (
+    <>
+      {open && <button type="button" className="aw-sheet-scrim" aria-label="Close more" onClick={onClose} tabIndex={-1} />}
+      <aside className="aw-sheet" id="aw-more-sheet" role="dialog" aria-label="More" hidden={!open}>
+        <header className="aw-sheet__head">
+          <b>More</b>
+          <button type="button" className="aw-sheet__close" onClick={onClose} aria-label="Close more">
+            <CloseIcon size={22} />
+          </button>
+        </header>
+        <div className="aw-sheet__grid">
+          <section className="aw-sheet__sec" data-k="rating" aria-label="Rating">
+            <h3>Rating</h3>
+            <div className="aw-sheet__rating">
+              <span className="aw-stars">
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <StarShape key={i} id={`sheet-${i}`} size={22} fill={r > 0 ? Math.max(0, Math.min(1, r - i)) : 0} />
+                ))}
+              </span>
+              <b>{r > 0 ? r.toFixed(1) : '-'}</b>
+              <span>{rides} {rides === 1 ? 'ride' : 'rides'}</span>
+            </div>
+          </section>
+          {careerV && (
+            <section className="aw-sheet__sec" data-k="job" aria-label="Your job">
+              <h3>Your job</h3>
+              <JobChip game={game} view={careerV} hidden={false} />
+            </section>
+          )}
+          {quest && (
+            <section className="aw-sheet__sec" data-k="quest" aria-label="Mission">
+              <h3>Mission</h3>
+              <QuestSummary a={quest} />
+            </section>
+          )}
+          {weather && (
+            <section className="aw-sheet__sec" data-k="weather" aria-label="Weather">
+              <h3>Weather</h3>
+              <div className={`aw-sheet__wx is-${weather.state}`}>
+                <RainIcon size={26} />
+                <b>{weather.en}</b>
+                <span className="aw-te">{weather.te}</span>
+                <span className="aw-sheet__wet" role="meter" aria-label="How wet you are" aria-valuemin={0} aria-valuemax={100} aria-valuenow={weather.wetPct}>
+                  <i style={{ transform: `scaleX(${Math.max(0.04, weather.wet).toFixed(3)})` }} />
+                </span>
+                <small>Soaked {weather.wetPct}%</small>
+              </div>
+            </section>
+          )}
+          {hasRules && (
+            <section className="aw-sheet__sec" data-k="rules" aria-label="Road rules">
+              <h3>Road rules</h3>
+              {rulesV.sign && (
+                <p className="aw-sheet__limit">
+                  Limit <b className={rulesV.sign.speeding ? 'is-over' : ''}>{rulesV.sign.limit}</b> km/h
+                  <span> {rulesV.sign.zoneEn}</span>
+                </p>
+              )}
+              <RulesStrip view={rulesV} />
+            </section>
+          )}
+          {hasRadio && (
+            <section className="aw-sheet__sec" data-k="radio" aria-label="Radio">
+              <h3>Radio</h3>
+              <RadioControls game={game} snap={snap} inline />
+            </section>
+          )}
+        </div>
+      </aside>
+    </>
+  );
+}

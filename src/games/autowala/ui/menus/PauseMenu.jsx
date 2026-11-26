@@ -7,14 +7,20 @@ import { BriefPanel, ControlsPanel, NotePanel, SideCard, StatsPanel } from './Pa
 import { OPTION_ITEMS, ROOT_ITEMS, backPath, qualityLabel } from './menuNav.js';
 import { nextQuality, readSettings, saveSettings } from './settings.js';
 import { focusFirst, useMenuInput } from './useMenuInput.js';
+import { useMenuLayout } from './menuLayout.js';
+import { BackGlyph, CloseGlyph } from './glyphs.jsx';
+import { useTouchMode } from '../hud/touchMode.js';
+import './sheet.css';
 
-const BACK = { label: 'BACK', te: 'వెనుకకు' };
+const BACK = { label: 'BACK', te: 'వెనుకకు', tone: 'back' };
 const TITLES = { '': 'PAUSE', brief: 'BRIEF', stats: 'STATS', options: 'OPTIONS', 'options/audio': 'AUDIO', 'options/display': 'DISPLAY', 'options/controls': 'CONTROLS', 'options/language': 'LANGUAGE', quit: 'QUIT' };
 
 export default function PauseMenu({ game, snap, sitting, log, onResume, onClockOut, onQuit }) {
   const root = useRef(null);
   const [path, setPath] = useState([]);
   const [, bump] = useState(0);
+  const layout = useMenuLayout();
+  const touch = useTouchMode();
   const view = path.join('/');
   const refresh = () => bump((n) => n + 1);
   const st = readSettings(game);
@@ -47,7 +53,7 @@ export default function PauseMenu({ game, snap, sitting, log, onResume, onClockO
   switch (view) {
     case '':
       rows = ROOT_ITEMS.map((it, i) => (
-        <NavRow key={it.id} index={i} label={it.label} te={it.te} autoFocus={i === 0} tone={it.id === 'quit' ? 'danger' : it.id === 'clockout' ? 'gold' : ''} onActivate={() => (act[it.id] ? act[it.id]() : go(it.id))} />
+        <NavRow key={it.id} index={i} label={it.label} te={it.te} autoFocus={i === 0} tone={it.id === 'quit' ? 'danger' : it.id === 'clockout' ? 'gold' : it.id === 'resume' ? 'resume' : ''} onActivate={() => (act[it.id] ? act[it.id]() : go(it.id))} />
       ));
       panel = (
         <NotePanel title="PAUSED" te="విరామం">
@@ -115,7 +121,7 @@ export default function PauseMenu({ game, snap, sitting, log, onResume, onClockO
     }
     case 'options/controls':
       rows = [<NavRow key="b" index={0} {...BACK} autoFocus onActivate={back} />];
-      panel = <ControlsPanel />;
+      panel = <ControlsPanel touch={touch} />;
       break;
     case 'options/language':
       rows = [
@@ -145,9 +151,12 @@ export default function PauseMenu({ game, snap, sitting, log, onResume, onClockO
   }
 
   return (
-    <div className="aw-menu aw-pm" ref={root} role="dialog" aria-modal="true" aria-label="Pause menu">
+    <div className="aw-menu aw-pm" ref={root} data-layout={layout} role="dialog" aria-modal="true" aria-label="Pause menu">
       <div className="aw-pm__bg" />
       <header className="aw-pm__head">
+        <button type="button" className="aw-sheet-x" onClick={back} aria-label={path.length ? 'Back' : 'Resume the game'}>
+          {path.length ? <BackGlyph /> : <CloseGlyph />}
+        </button>
         <h1 key={view}>
           <span>{TITLES[view] || 'PAUSE'}</span>
         </h1>
@@ -163,6 +172,11 @@ export default function PauseMenu({ game, snap, sitting, log, onResume, onClockO
           <SideCard snap={snap} />
           {panel}
         </section>
+      </div>
+      <div className="aw-pm__bar aw-sheet-bar">
+        <button type="button" className={`aw-sheet-btn${path.length ? '' : ' is-primary'}`} onClick={back}>
+          {path.length ? 'BACK' : 'RESUME'}
+        </button>
       </div>
       <footer className="aw-pm__hints" aria-hidden="true">
         <span><kbd className="aw-key">W</kbd><kbd className="aw-key">S</kbd> Move</span>
