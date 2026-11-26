@@ -18,13 +18,15 @@ import { createTracker } from './tracker.js';
 import { whenFontsReady } from './textures.js';
 import { QUALITY, QUALITY_ORDER, pickQuality } from './quality.js';
 import { describeCaps, getGfxPref, probeBrowser, resolveTier, setGfxPref } from './capabilities.js';
-import { LOAD_STEPS, applyModelTier, createBatcher, createProgramWarmer, runAsync, runSync } from './loader.js';
+import { LOAD_STEPS, applyModelTier, createBatcher, createProgramWarmer, programsStatus, runAsync, runSync, sleep } from './loader.js';
 import { DISH_IDS } from '../../../../shared/tiffin-centre/catalog.js';
 import { WebglUnavailableError } from './renderer.js';
 import { cameraProjector, pickFromProxies, pickBoxes, onScreen } from './picking.js';
 import { edgeHint } from './camera.js';
 import { hourAt, tickFrac } from './interp.js';
 import * as models from '../models/index.js';
+import { SHADOW_LAYER, createShadowProxy, disposeFlatMaterials, disposeUberMaterials } from '../models/merge.js';
+import { disposeBakedMaterials } from '../models/baked.js';
 
 export { QUALITY, QUALITY_ORDER, pickQuality } from './quality.js';
 export { getGfxPref, setGfxPref, GFX_PREFS } from './capabilities.js';
@@ -46,7 +48,9 @@ const EDGE_MARGIN = 30; // px: where the edge hint sits inside the canvas border
 /**
  * createTiffinScene(canvas, opts) builds everything in one go (tests, the screenshot tooling). createTiffinSceneAsync(canvas, opts) is the same build
  * cut into steps with a time budget per slice and opts.onProgress(p01, label): the loading screen keeps animating and input stays alive.
- * opts: { quality: 'auto' | tier (auto follows the player's Graphics setting, then the device probe), reducedMotion, onContextLost, onContextRestored, onProgress, onQuality }
+ * opts: { quality: 'auto' | tier (auto follows the player's Graphics setting, then the device probe), reducedMotion, onContextLost, onContextRestored, onProgress, onQuality,
+ *         initialState / initialTickAt / meId (the session's first state: with it the async build settles the scene BEFORE it is shown: stations and their lights,
+ *         the env map, the batched scenery, and every shader linked and ready, so the first frame never waits for a compile), size: { w, h } }
  */
 export function createTiffinScene(canvas, opts = {}) {
   return runSync(buildScene(canvas, opts, false));
@@ -55,7 +59,7 @@ export function createTiffinSceneAsync(canvas, opts = {}) {
   return runAsync(buildScene(canvas, opts, true), { onProgress: opts.onProgress, budgetMs: opts.budgetMs ?? 12, shouldAbort: opts.shouldAbort });
 }
 
-function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContextLost, onContextRestored, onQuality } = {}, isAsync = false) {
+function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContextLost, onContextRestored, onQuality, initialState = null, initialTickAt, meId = null, size: initialSize = null } = {}, isAsync = false) {
   const step = (key, p) => {
     mark(`tc:step:${key}:${p}`);
     return { label: LOAD_STEPS[key] || key, p };
@@ -77,9 +81,15 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
   const gfx = createRenderer(canvas, { quality: q0, auto, onContextLost, onContextRestored, onQuality });
   undo.push(() => gfx.dispose(), () => tr.dispose());
   const { scene, camera } = gfx;
+  // three.js reads three shader / link logs per program the first time it is drawn, and each read is a synchronous round trip to the GPU process:
+  // 372 round trips for the 124 programs of this scene, measured at 6 s of the first frame on a shared GPU (17 s of a 20 s load before the programs were
+  // cut down). Shipped shaders are fixed, so the checks are on only where a developer looks: the dev server, ?tcdebug=1 and ?tcshaders=1.
+  gfx.renderer.debug.checkShaderErrors = !!(import.meta.env?.DEV || (typeof location !== 'undefined' && /[?&]tc(debug|shaders)=1\b/.test(location.search)));
   yield step('gpu', 0.08);
   scene.add(camera); // the viewmodel (the cook's own arms) is a child of the camera, so the camera has to be in the scene
   const lightApply = createLightApplier({ scene, renderer: gfx.renderer, quality: q0 });
+  // the shadow pass also draws SHADOW_LAYER (the static casters' proxy meshes, see models/merge.js createShadowProxy); the main camera never does
+  lightApply.sun.shadow.camera.layers.enable(SHADOW_LAYER);
   gfx.onChange((q) => {
     lightApply.applyQuality(q);
     applyModelTier(q); // customers and dishes built from now on use the new tier
@@ -112,6 +122,13 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
   const sync = createSync({ scene, camera, stall, fx, art, tr, quality: cfg, reducedMotion: reduced, onShake: (a) => rig.shake(a) });
 
   const size = { w: 300, h: 150 };
+  if (initialSize && initialSize.w > 1 && initialSize.h > 1) {
+    // the canvas size is known before the build: the render targets of the post pipeline are made once, at their real size
+    size.w = Math.max(2, initialSize.w);
+    size.h = Math.max(2, initialSize.h);
+    gfx.resize(size.w, size.h);
+    rig.setAspect(size.w / size.h, size.w, size.h);
+  }
   const projector = cameraProjector(camera, () => size);
   const L = makeLighting();
   const hlView = { camera, pxPerM: (d) => projector.pxPerM(d), minDim: () => Math.min(size.w, size.h) };
@@ -190,7 +207,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     }
     if (batcher && !batcher.done && ++framesWithState > 40) {
       batcher.step(5);
-      if (batcher.done) mark('tc:batch-done');
+      if (batcher.done) finishBatch();
     } else warmShaders();
   };
   // the tab was hidden: nothing to draw, nothing to adapt to
@@ -215,6 +232,17 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
 
   // batching of the static scenery (see loader.js): after the first state has arrived, spread over frames
   let batcher = null;
+  let shadowProxy = null;
+  /** The batcher is done: the static casters hand their shadow to a few proxy meshes (one shadow draw call per side mode instead of ~140). */
+  const finishBatch = () => {
+    mark('tc:batch-done');
+    if (shadowProxy || disposed || !(gfx.cfg.shadow > 0)) return;
+    try {
+      shadowProxy = createShadowProxy([stall.root, street.root], { isStatic: (o) => batcher.statics.has(o) });
+    } catch (err) {
+      console.warn('[tiffin] shadow proxy skipped', err);
+    }
+  };
   let framesWithState = 0;
   let stateSeen = false;
   const Lp = makeLighting();
@@ -225,6 +253,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     batcher = createBatcher({
       roots: [{ name: 'stall', root: stall.root }, { name: 'street', root: street.root }],
       flatten: !!cfg.flatScenery,
+      uber: !cfg.flatScenery,
       drive(i, n) {
         lightingAt(6 + (16 * i) / n, Lp);
         tp += 0.05;
@@ -240,7 +269,11 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
       let lastKey = null;
       stall[name] = (...a) => {
         const key = JSON.stringify(a);
-        if (batcher?.done && lastKey !== null && key !== lastKey) batcher.restore();
+        if (batcher?.done && lastKey !== null && key !== lastKey) {
+          shadowProxy?.dispose(); // the originals come back and cast for themselves
+          shadowProxy = null;
+          batcher.restore();
+        }
         lastKey = key;
         return orig(...a);
       };
@@ -252,12 +285,13 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
   // so no program compiles mid-shift (it restarts after a tier change: the programs differ per tier)
   let warmer = null;
   let warmFrames = 0;
+  let settledAtLoad = false; // the scene itself was compiled behind the loading screen (settleFirstFrame): only the extras (one of each dish) are left
   const warmShaders = () => {
     if (!stateSeen || (batcher && !batcher.done) || disposed) return;
     if (!warmer) {
       if (++warmFrames < 30) return;
       warmer = createProgramWarmer({
-        renderer: gfx.renderer, scene, camera, post: !!gfx.cfg.post, hiddenLights: !!gfx.cfg.lights,
+        renderer: gfx.renderer, scene, camera, post: !!gfx.cfg.post, hiddenLights: !!gfx.cfg.lights, units: !settledAtLoad,
         extras: DISH_IDS.map((id) => () => models.buildDish(id, 'good')),
       });
     }
@@ -270,6 +304,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     warmer?.cancel();
     warmer = null;
     warmFrames = 0;
+    settledAtLoad = false; // a new tier is a new set of programs
   });
 
   const api = {
@@ -391,6 +426,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
       fontsDoc?.removeEventListener?.('loadingdone', repaint);
       if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibility, false);
       warmer?.cancel();
+      shadowProxy?.dispose();
       batcher?.dispose();
       for (const a of parked) a.dispose?.();
       sync.dispose();
@@ -401,6 +437,9 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
       stall.dispose();
       tr.dispose();
       models.disposeModelCache?.();
+      disposeUberMaterials(); // module-level caches of shared materials: nothing may outlive the scene
+      disposeFlatMaterials();
+      disposeBakedMaterials();
       lightApply.dispose();
       gfx.dispose();
     },
@@ -441,13 +480,17 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
       step(dtSec = 1 / 60) {
         last = performance.now() - dtSec * 1000;
         tick(performance.now());
-        if (batcher && !batcher.done && ++framesWithState > 40) batcher.step(1000);
+        if (batcher && !batcher.done && ++framesWithState > 40) {
+          batcher.step(1000);
+          if (batcher.done) finishBatch();
+        }
       },
       /** Runs the batcher to completion now (tests, benchmarks). */
       /** Runs the shader warm-up to completion now (tests, benchmarks): { chunks, programs, ms, variants, extras }. */
       warmNow() {
         startBatcher();
         while (batcher && !batcher.done) batcher.step(1000);
+        if (batcher?.done) finishBatch();
         warmFrames = 1e3;
         warmShaders();
         while (warmer && !warmer.done) warmer.step(1e6);
@@ -456,10 +499,55 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
       batchNow() {
         startBatcher();
         while (batcher && !batcher.done) batcher.step(1000);
+        if (batcher?.done) finishBatch();
         return batcher?.stats;
       },
     },
   };
+  /**
+   * The async build's last stage, with the session's first state in hand: put the scene in the exact condition it will be drawn in (the state's stations and
+   * their lights, the clock's light, the env map, the merged scenery), then link every shader program for THAT condition on the browser's worker threads
+   * and wait until they are all ready, then draw once behind the loading screen. three.js bakes the light count, the env map, the fog and the shadow flags
+   * into every lit shader, so a program compiled for any other condition is thrown away: before this, 439 programs were compiled in a session of which
+   * 101 were ever drawn, and the first frame blocked for 10 s on the compiles it needed.
+   */
+  function* settleFirstFrame() {
+    api.setMe(meId);
+    api.setState(initialState, initialTickAt ?? performance.now());
+    mark('tc:state-applied');
+    last = performance.now() - 16;
+    tick(performance.now(), false); // clock light, env map (PMREM), the stall's lights, the actors: everything but the draw
+    yield step('batch', 0.9);
+    // the static scenery is merged now, so the merged meshes (not the originals they replace) are what gets compiled
+    if (batcher) {
+      while (!batcher.done) {
+        batcher.step(6);
+        yield step('batch', 0.9 + 0.03 * (batcher.progress ?? 0));
+      }
+      finishBatch();
+      last = performance.now() - 16;
+      tick(performance.now(), false); // the batcher drove the light through a whole day: put the real one back
+    }
+    const w = createProgramWarmer({ renderer: gfx.renderer, scene, camera, post: !!gfx.cfg.post, hiddenLights: !!gfx.cfg.lights, extras: [] });
+    while (!w.done) {
+      w.step(5);
+      yield step('shaders', 0.93);
+    }
+    mark('tc:compile-kicked');
+    // the links run on the browser's worker threads: poll (the page keeps painting the loading screen) until every program is ready
+    const t0 = performance.now();
+    for (;;) {
+      const { ready, total } = programsStatus(gfx.renderer);
+      yield step('shaders', 0.93 + 0.06 * (total ? ready / total : 1));
+      if (ready >= total || performance.now() - t0 > 30000) break;
+      yield sleep(25);
+    }
+    mark('tc:programs-ready');
+    settledAtLoad = true;
+    gfx.render(0.016); // uploads, the shadow-pass and post programs: behind the loading screen, not in the first frame
+    mark('tc:first-render');
+  }
+
   // compile every shader the first frames will need now (stall, street, a customer, a cook, the post passes), not when the first customer walks up
   try {
     // one of every kind of customer and a cook, parked out of sight: their programs (skin, eyes, hair, cloth variants) compile now, not mid-shift
@@ -473,10 +561,15 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     }
     yield step('shaders', 0.88);
     camera.updateMatrixWorld();
-    if (isAsync && typeof gfx.renderer.compileAsync === 'function') yield gfx.renderer.compileAsync(scene, camera);
-    else gfx.renderer.compile(scene, camera);
-    for (const m of parked) m.group.visible = false;
-    gfx.render(0.016); // the post passes compile on their first run
+    if (isAsync && initialState && typeof gfx.renderer.compile === 'function') {
+      for (const m of parked) m.group.visible = false; // the warm-up compiles hidden objects too
+      yield* settleFirstFrame();
+    } else {
+      if (isAsync && typeof gfx.renderer.compileAsync === 'function') yield gfx.renderer.compileAsync(scene, camera);
+      else gfx.renderer.compile(scene, camera);
+      for (const m of parked) m.group.visible = false;
+      gfx.render(0.016); // the post passes compile on their first run
+    }
   } catch (err) {
     console.warn('[tiffin] shader pre-compile skipped', err);
   }

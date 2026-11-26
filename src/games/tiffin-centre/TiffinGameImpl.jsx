@@ -123,9 +123,16 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
       audioRef.current = audio;
       setAudio(audio);
       try {
+        const box = wrapRef.current.getBoundingClientRect();
         s = await createTiffinSceneAsync(canvasRef.current, {
           quality: 'auto',
           reducedMotion: prefersReducedMotion(),
+          // the session's first state and the real canvas size: the build settles the scene the way it will be drawn (stations, lights, env map, batched
+          // scenery, every shader linked) BEFORE it is shown, so the first frame never waits for a compile. Online tables without a state yet build the old way.
+          initialState: session.state ?? null,
+          initialTickAt: session.tickAt,
+          meId: session.meId,
+          size: box.width > 0 && box.height > 0 ? { w: box.width, h: box.height } : null,
           onContextLost: () => !dead && setGl('lost'),
           onContextRestored: () => !dead && setGl(null),
           onProgress: (p, label) => !dead && setProgress({ p, label }),
@@ -179,7 +186,13 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
       setScene(s);
       mark('tc:scene-started');
       // a console/screenshot handle: only in dev builds or with ?tcdebug=1 in the URL (a solo shift is client-side anyway, but there is no reason to hand it out)
-      if (import.meta.env?.DEV || /[?&]tcdebug=1\b/.test(window.location.search)) window.__tiffin = { session, scene: s, audio };
+      if (import.meta.env?.DEV || /[?&]tcdebug=1\b/.test(window.location.search)) {
+        window.__tiffin = { session, scene: s, audio };
+        // the engine's bot, for the soak / leak scripts (scripts/perf/tf-leak.mjs): the same chunk the session already loaded
+        import('@shared/tiffin-centre/index.js').then((m) => {
+          if (window.__tiffin?.session === session) window.__tiffin.bot = m.chooseAutoAction;
+        }).catch(() => {});
+      }
     })().catch((err) => {
       if (!dead) {
         console.error('[tiffin] start-up failed', err);

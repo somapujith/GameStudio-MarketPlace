@@ -79,6 +79,7 @@ export const LOAD_STEPS = {
   stall: 'Hanging the banner...',
   street: 'Sweeping the street...',
   people: 'Calling the regulars...',
+  batch: 'Stacking the steel...',
   shaders: 'Heating the tawa...',
   ready: 'Ready',
 };
@@ -106,18 +107,29 @@ export function applyModelTier(q) {
 /**
  * createBatcher({ roots: [{ name, root, noMergeUnder: [Object3D] }], drive(i, n), flatten }) -> { step(budgetMs) -> done, restore(), dispose(), stats }
  * `drive(i, n)` moves the scene's own animation to variation `i` of `n` (an hour of the day, a time) WITHOUT rendering; the batcher samples after each.
+ * `flatten` (lite) bakes textured materials into vertex colours; `uber` folds every untextured standard material into one shared material (see models/merge.js).
  */
-export function createBatcher({ roots, drive, flatten = false, samples = 36, perCall = 4, minGroup = 2 }) {
+export function createBatcher({ roots, drive, flatten = false, uber = false, samples = 36, perCall = 4, minGroup = 2 }) {
   let phase = 0; // 0 begin, 1 sample, 2 merge, 3 done
   let i = 0;
   let r = 0;
   let gen = null;
   const probes = [];
   const results = [];
+  const statics = new Set(); // every mesh the probe saw never move (merged or left alone) plus the merged meshes: the shadow proxy swallows these
   const stats = { before: 0, after: 0, ms: 0 };
   const api = {
     stats,
+    /** Meshes that never move (see above); complete once `done`. */
+    statics,
     get done() { return phase >= 3; },
+    /** 0..1: how far the probe and the merge have got (for the loading bar). */
+    get progress() {
+      if (phase === 0) return 0;
+      if (phase === 1) return 0.5 * (i / samples);
+      if (phase === 2) return 0.5 + 0.5 * (r / Math.max(1, probes.length));
+      return 1;
+    },
     /** Does a slice of work (at most ~budgetMs); returns true when finished. */
     step(budgetMs = 8) {
       const t0 = now();
@@ -150,12 +162,15 @@ export function createBatcher({ roots, drive, flatten = false, samples = 36, per
               phase = 3;
               break;
             }
-            gen = mergeStaticSteps(p.spec.root, { only: p.probe.finish(), flatten, minGroup, keepOriginals: true });
+            const only = p.probe.finish();
+            for (const o of only) statics.add(o);
+            gen = mergeStaticSteps(p.spec.root, { only, flatten, uber, minGroup, keepOriginals: true });
           }
           const step = gen.next();
           if (step.done) {
             const res = step.value;
             results.push(res);
+            for (const m of res.merged || []) statics.add(m);
             stats.before += res.before;
             stats.after += res.after;
             stats[probes[r].spec.name] = { before: res.before, after: res.after };
@@ -208,6 +223,39 @@ export function prefetchChunks(loaders, { saveData = false } = {}) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------
+// shader readiness
+/**
+ * Resolves when every shader program the renderer holds has finished linking (KHR_parallel_shader_compile: the browser links them on worker threads while
+ * the main thread does other work; `program.isReady()` polls the completion flag without blocking). Without the extension three.js reports every program
+ * ready at once and the compile is paid on first use, as before. Polls every `pollMs` (the page stays responsive), gives up after `timeoutMs`.
+ * onProgress(ready, total) is called on every poll. Resolves { ready, total, ms, timedOut }.
+ */
+export function waitProgramsReady(renderer, { timeoutMs = 30000, pollMs = 25, onProgress } = {}) {
+  return new Promise((resolve) => {
+    const t0 = now();
+    const check = () => {
+      const { ready, total } = programsStatus(renderer);
+      onProgress?.(ready, total);
+      const timedOut = ready < total && now() - t0 >= timeoutMs;
+      if (ready >= total || timedOut) resolve({ ready, total, ms: now() - t0, timedOut });
+      else setTimeout(check, pollMs);
+    };
+    check();
+  });
+}
+
+/** { ready, total }: how many of the renderer's shader programs have finished linking (all of them when the browser cannot tell). */
+export function programsStatus(renderer) {
+  const progs = renderer?.info?.programs || [];
+  let ready = 0;
+  for (const p of progs) if (typeof p.isReady !== 'function' || p.isReady()) ready++;
+  return { ready, total: progs.length };
+}
+
+/** A promise that resolves after `ms` (a yield that lets the browser link shaders on its worker threads and paint the loading screen). */
+export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// ---------------------------------------------------------------------------------------------------------------------------------
 // shader warm-up
 /**
  * The programs the game really draws with are not the ones the load-time `compile` sees: that runs before the first state, so the stall has fewer lights
@@ -221,10 +269,11 @@ export function prefetchChunks(loaders, { saveData = false } = {}) {
  * bound (the HDR target changes the output colour space: a different program from the canvas one). Then, when some light is hidden at the moment (the prep
  * counter's lights are on only at some levels), the same again with every light on, so the light-count variant the next level needs exists too.
  * `extras` are builders of things the game creates later (one of each dish): each is built once, parked out of sight, compiled, and left in the caches.
+ * `units: false` skips the scene itself (it was compiled before) and does only the extras.
  * All visibility changes are undone before the call returns. Without KHR_parallel_shader_compile a chunk can block for its compile time: chunks are
  * small (a top-level child, or its children when it is big) and `step` stops at its time budget.
  */
-export function createProgramWarmer({ renderer, scene, camera, post = false, extras = [], hiddenLights = true, bigChunk = 60 }) {
+export function createProgramWarmer({ renderer, scene, camera, post = false, extras = [], hiddenLights = true, bigChunk = 60, units: compileUnits = true }) {
   const stats = { chunks: 0, programs: 0, ms: 0, variants: 0, extras: 0, errors: 0 };
   let units = null;
   let phase = 0; // 0 extras, 1 current lights, 2 all lights, 3 done
@@ -347,7 +396,7 @@ export function createProgramWarmer({ renderer, scene, camera, post = false, ext
             break; // building a dish is a frame's work on its own
           } else {
             phase = 1;
-            units = planUnits();
+            units = compileUnits ? planUnits() : [];
             if (parkGroup) units.push(parkGroup);
             i = 0;
           }
