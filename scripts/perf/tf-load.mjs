@@ -8,23 +8,9 @@
 // after the first 3 s, renderer.info counters and, with --profile, a V8 CPU profile of the whole load (self time by function, inclusive time of the
 // tiffin modules). Use a build made with `vite build --minify false` for readable function names in the profile.
 import fs from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { GPU_FLAGS, SOFT_FLAGS, launch } from './cdp.mjs';
 import { withBenchLock } from './lock.mjs';
-
-const args = Object.fromEntries(
-  process.argv.slice(2).reduce((acc, a, i, all) => {
-    if (a.startsWith('--')) acc.push([a.slice(2), all[i + 1] && !all[i + 1].startsWith('--') ? all[i + 1] : true]);
-    return acc;
-  }, []),
-);
-const base = args.base || 'http://127.0.0.1:5770';
-const W = +(args.w || 1536);
-const H = +(args.h || 864);
-const DPR = +(args.dpr || 1.25);
-const SEC = +(args.seconds || 20);
-const tier = args.tier && args.tier !== true ? String(args.tier) : '';
-const label = args.label && args.label !== true ? String(args.label) : `tf-load-${tier || 'auto'}`;
-const port = +(args.port || 9810);
 
 const INIT = `(() => {
   window.__lt = [];
@@ -35,38 +21,53 @@ const INIT = `(() => {
   requestAnimationFrame(f);
 })();`;
 
-async function run() {
-  const c = await launch({ port, w: W, h: H, gl: args.soft ? SOFT_FLAGS : GPU_FLAGS });
+/**
+ * One load measurement: o = { base, port, label, tier, seconds, profile, w, h, dpr, soft, passes } -> [{ row, profile }, ...]. With passes: 2 the same browser
+ * profile loads the game twice: the 2nd start has a warm GPU shader cache (what a returning player gets), the 1st is a cold one (a first visit).
+ */
+export async function loadRun(o = {}) {
+  const base = o.base || 'http://127.0.0.1:5770';
+  const W = +(o.w || 1536);
+  const H = +(o.h || 864);
+  const DPR = +(o.dpr || 1.25);
+  const SEC = +(o.seconds || 20);
+  const tier = o.tier && o.tier !== true ? String(o.tier) : '';
+  const label = o.label && o.label !== true ? String(o.label) : `tf-load-${tier || 'auto'}`;
+  const port = +(o.port || 9810);
+  const passes = +(o.passes || 1);
+  const c = await launch({ port, w: W, h: H, gl: o.soft ? SOFT_FLAGS : GPU_FLAGS });
+  const results = [];
   try {
     await c.viewport(W, H, DPR, false);
     await c.send('Page.addScriptToEvaluateOnNewDocument', { source: INIT });
-    await c.goto(`${base}/play/tiffin-centre?tcdebug=1`);
-    await c.waitFor("[...document.querySelectorAll('button')].some((b) => /Start tutorial/.test(b.textContent))", 90000);
-    if (tier) {
-      await c.ev(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim().toLowerCase() === '${tier.toLowerCase()}')?.click(); true`);
-      await c.sleep(300);
-    }
-    await c.sleep(1500); // the home screen settles; its own idle prefetch is not part of "start"
-    if (args.profile) {
-      await c.send('Profiler.enable');
-      await c.send('Profiler.setSamplingInterval', { interval: 700 });
-      await c.send('Profiler.start');
-    }
-    const t0 = await c.ev('performance.now()');
-    await c.ev("[...document.querySelectorAll('button')].filter((b) => /Start tutorial/.test(b.textContent)).pop().click(); true");
-    const wall0 = Date.now();
-    let readyAt = null;
-    while (Date.now() - wall0 < SEC * 1000) {
-      await c.sleep(100);
-      if (readyAt === null) {
-        try {
-          if (await c.ev('!!(window.__tiffin && window.__tiffin.scene && window.__tiffin.scene.debug)')) readyAt = await c.ev('performance.now()');
-        } catch { /* busy */ }
+    for (let pass = 1; pass <= passes; pass++) {
+      await c.goto(`${base}/play/tiffin-centre?tcdebug=1`);
+      await c.waitFor("[...document.querySelectorAll('button')].some((b) => /Start tutorial/.test(b.textContent))", 90000);
+      if (tier) {
+        await c.ev(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim().toLowerCase() === '${tier.toLowerCase()}')?.click(); true`);
+        await c.sleep(300);
       }
-    }
-    let profile = null;
-    if (args.profile) profile = (await c.send('Profiler.stop')).profile;
-    const data = await c.ev(`(() => {
+      await c.sleep(1500); // the home screen settles; its own idle prefetch is not part of "start"
+      if (o.profile) {
+        await c.send('Profiler.enable');
+        await c.send('Profiler.setSamplingInterval', { interval: 700 });
+        await c.send('Profiler.start');
+      }
+      const t0 = await c.ev('performance.now()');
+      await c.ev("[...document.querySelectorAll('button')].filter((b) => /Start tutorial/.test(b.textContent)).pop().click(); true");
+      const wall0 = Date.now();
+      let readyAt = null;
+      while (Date.now() - wall0 < SEC * 1000) {
+        await c.sleep(100);
+        if (readyAt === null) {
+          try {
+            if (await c.ev('!!(window.__tiffin && window.__tiffin.scene && window.__tiffin.scene.debug)')) readyAt = await c.ev('performance.now()');
+          } catch { /* busy */ }
+        }
+      }
+      let profile = null;
+      if (o.profile) profile = (await c.send('Profiler.stop')).profile;
+      const data = await c.ev(`(() => {
       const t0 = ${t0};
       const R = window.__tiffin && window.__tiffin.scene && window.__tiffin.scene.debug && window.__tiffin.scene.debug.gfx.renderer;
       const info = R && R.info;
@@ -89,8 +90,10 @@ async function run() {
         firstRaf: firstDraw,
       };
     })()`);
-    const row = { label, viewport: `${W}x${H}@${DPR}`, tierAsked: tier || 'auto', readyMs: readyAt === null ? null : Math.round(readyAt - t0), ...data, errors: c.logs.filter((l) => !/GL Driver|GPU stall|ReadPixels|AudioContext|api\/(config|me)|Failed to load resource|Program Info Log|X4000|X3595/.test(l)).slice(0, 6) };
-    return { row, profile };
+      const row = { label: passes > 1 ? `${label}-${pass === 1 ? 'cold' : 'warm'}` : label, viewport: `${W}x${H}@${DPR}`, tierAsked: tier || 'auto', readyMs: readyAt === null ? null : Math.round(readyAt - t0), ...data, errors: c.logs.filter((l) => !/GL Driver|GPU stall|ReadPixels|AudioContext|api\/(config|me)|Failed to load resource|Program Info Log|X4000|X3595/.test(l)).slice(0, 6) };
+      results.push({ row, profile });
+    }
+    return results;
   } finally {
     c.close();
   }
@@ -127,17 +130,37 @@ function summarise(profile) {
   return { totalMs: +(total / 1000).toFixed(0), self: top(self, 30), inclusive: top(new Map([...incl].filter(([k]) => /assets\/|src\//.test(k) && !/\(anon\)/.test(k))), 60) };
 }
 
-const { row, profile } = args['no-lock'] ? await run() : await withBenchLock(run);
-const out = { ...row };
-if (profile) {
-  out.profile = summarise(profile);
-  if (args.json) fs.writeFileSync(String(args.json).replace(/\.json$/, '.cpuprofile'), JSON.stringify(profile));
+export { summarise };
+
+/** The one-screen text report of a row (+ profile summary). */
+export function report(row, prof) {
+  const { marks, longTasks, ...short } = row;
+  const lines = [JSON.stringify(short)];
+  lines.push('marks: ' + marks.filter((m) => !/^tc:step:textures/.test(m[0])).map(([n, t]) => `${n.replace(/^tc:/, '')}@${t}`).join('  '));
+  lines.push('long tasks (start,ms): ' + longTasks.map((l) => `${l[0]}+${l[1]}`).join(' '));
+  if (prof) {
+    lines.push(`CPU profile ${prof.totalMs} ms; self time:\n` + prof.self.map((x) => `  ${String(x.ms).padStart(8)} ms ${String(x.pct).padStart(5)}%  ${x.fn}`).join('\n'));
+    lines.push('inclusive (tiffin code):\n' + prof.inclusive.map((x) => `  ${String(x.ms).padStart(8)} ms ${String(x.pct).padStart(5)}%  ${x.fn}`).join('\n'));
+  }
+  return lines.join('\n');
 }
-if (args.json) fs.writeFileSync(String(args.json), JSON.stringify(out, null, 1));
-const { profile: p, ...short } = out;
-console.log(JSON.stringify(short));
-if (p) {
-  console.log(`CPU profile ${p.totalMs} ms; self time:\n` + p.self.map((x) => `  ${String(x.ms).padStart(8)} ms ${String(x.pct).padStart(5)}%  ${x.fn}`).join('\n'));
-  console.log('inclusive (tiffin code):\n' + p.inclusive.map((x) => `  ${String(x.ms).padStart(8)} ms ${String(x.pct).padStart(5)}%  ${x.fn}`).join('\n'));
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const args = Object.fromEntries(
+    process.argv.slice(2).reduce((acc, a, i, all) => {
+      if (a.startsWith('--')) acc.push([a.slice(2), all[i + 1] && !all[i + 1].startsWith('--') ? all[i + 1] : true]);
+      return acc;
+    }, []),
+  );
+  const res = args['no-lock'] ? await loadRun(args) : await withBenchLock(() => loadRun(args));
+  res.forEach(({ row, profile }, i) => {
+    const prof = profile ? summarise(profile) : null;
+    if (args.json) {
+      const f = String(args.json).replace(/\.json$/, res.length > 1 ? `-${i}.json` : '.json');
+      fs.writeFileSync(f, JSON.stringify({ ...row, profile: prof }, null, 1));
+      if (profile) fs.writeFileSync(f.replace(/\.json$/, '.cpuprofile'), JSON.stringify(profile));
+    }
+    console.log(report(row, prof));
+  });
+  process.exit(0);
 }
-process.exit(0);
