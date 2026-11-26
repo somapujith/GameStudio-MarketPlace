@@ -156,6 +156,10 @@
 .cj-detail-actions .cj-iconbtn {
   text-decoration: none;
 }
+/* the round buttons are one group: invisible to the layout on wide screens, a unit that wraps together on phones */
+.cj-detail-round {
+  display: contents;
+}
 .cj-detail-signin {
   display: inline-flex;
   align-items: center;
@@ -1029,18 +1033,30 @@
 
 /* phones: keep the pill and every round button on one line, the meta centred like the reference */
 @media (max-width: 599px) {
+  /* the pill and the round buttons share a line while they fit; when they do not (two pills such as "Create table" +
+     "Play solo / practice", or a narrow phone) the round buttons drop to a centred line of their own instead of
+     squeezing the pills until their labels overlap */
   .cj-detail-actions {
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     gap: 8px;
   }
   .cj-detail-actions .cj-btn--lg {
+    flex: 1 1 150px;
     min-width: 0;
     padding: 0 18px;
     font-size: 15px;
+    white-space: nowrap;
+  }
+  .cj-detail-round {
+    display: flex;
+    flex: none;
+    justify-content: center;
+    gap: 8px;
   }
   .cj-detail-actions .cj-iconbtn {
-    width: 42px;
-    height: 42px;
+    flex: none;
+    width: 44px;
+    height: 44px;
   }
   .cj-detail-actions .cj-iconbtn svg {
     width: 18px;
@@ -1059,8 +1075,8 @@
     font-size: 14px;
   }
   .cj-detail-actions .cj-iconbtn {
-    width: 38px;
-    height: 38px;
+    width: 44px;
+    height: 44px;
   }
 }
 

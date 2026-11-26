@@ -19,6 +19,8 @@ import '@/styles/store.css';
 // (jalebi*.css) and publisher (publisher*.css) layers are retired from the hub.
 import '@/styles/cine.css';
 import '@/styles/cine/shell.css';
+// Touch layer: 44px targets, 16px fields and 12px labels on phones and tablets (desktop mouse screens are untouched).
+import '@/styles/cine/touch.css';
 
 /**
  * Lazy page loader that tolerates default OR named exports (several pages are written by other agents;

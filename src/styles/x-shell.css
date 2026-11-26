@@ -947,6 +947,7 @@
   flex-direction: column;
   width: min(100%, 660px);
   max-height: min(72vh, 640px);
+  max-height: min(72dvh, 640px);
   overflow: hidden;
   color: var(--hub-text);
   border-radius: 24px;
@@ -1212,6 +1213,7 @@
 }
 .hub-err--route {
   min-height: 56vh;
+  min-height: 56dvh;
 }
 .hub-err--full {
   min-height: 100vh;

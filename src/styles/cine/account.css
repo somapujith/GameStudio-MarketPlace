@@ -7,7 +7,8 @@
 .cj-acc {
   position: relative;
   min-height: 100vh;
-  padding: clamp(84px, 9vw, 112px) var(--cj-gutter) 72px;
+  min-height: 100dvh;
+  padding: var(--cj-head-top) var(--cj-gutter) 72px;
   color: var(--cj-text);
   font-family: var(--cj-font);
   font-size: 14px;
@@ -798,7 +799,7 @@
 /* phones */
 @media (max-width: 640px) {
   .cj-acc {
-    padding-top: 76px;
+    padding-top: max(76px, calc(var(--cj-safe-top, 76px) + 8px));
   }
   .cj-acc-form,
   .cj-acc-welcome {

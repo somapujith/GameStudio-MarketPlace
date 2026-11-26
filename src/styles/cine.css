@@ -43,9 +43,11 @@
   /* Content column: pages keep a wide, CENTRED column. --cj-gutter is the space left of the column (and right of it), so
      everything padded by it lines up in the middle of the screen; rows still scroll out to the screen edges. */
   --cj-max: 1440px;
-  --cj-gutter: max(clamp(20px, 4.45vw, 64px), calc((100vw - var(--cj-max)) / 2));
+  --cj-gutter: max(clamp(20px, 4.45vw, 64px), calc((100vw - var(--cj-max)) / 2), calc(max(var(--safe-left, 0px), var(--safe-right, 0px)) + 16px)); /* a landscape notch never covers the column edge */
   --cj-row-gap: 12px;
   --cj-section-gap: clamp(36px, 4.4vw, 56px);
+  /* space above a page's first heading, under the floating nav band (phones add the notch inset, see the media block below) */
+  --cj-head-top: clamp(84px, 9vw, 112px);
   --cj-poster-w: clamp(118px, 10.4vw, 150px);
   /* shell offsets (cine/shell.css sets --topbar-h / --tabbar-h; see "Shell decisions" in docs/CINE_UI.md):
      the band the floating nav covers at the top, and the band the phone dock covers at the bottom */
@@ -109,7 +111,7 @@ body:has(.hub-app) {
   flex-wrap: wrap;
   gap: 8px 28px;
   margin: 0;
-  padding: clamp(84px, 9vw, 112px) var(--cj-gutter) 0;
+  padding: var(--cj-head-top) var(--cj-gutter) 0;
 }
 .cj-pagehead__title,
 .cj-pagehead__tab {

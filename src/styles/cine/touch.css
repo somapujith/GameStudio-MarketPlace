@@ -1,0 +1,114 @@
+/* ==========================================================================
+   Cine touch layer (mobile audit). Loaded after cine/shell.css; page sheets that load later with a single class lose to
+   the `:root:root` prefix used here (specificity 0,3,0+: page rules such as `.cj-shop .cj-chip` tie a plain `:root` and win by order). Everything is inside a coarse-pointer / phone-width query, so a
+   desktop window with a mouse keeps exactly the sizes the pages were designed with.
+   Rules: targets >= 44 px, text fields 16 px (iOS zooms the page into anything smaller), labels >= 12 px, no hover-only
+   controls, taps do not flash the grey highlight or wait for a double-tap.
+   ========================================================================== */
+
+@media (pointer: coarse), (max-width: 599px) {
+  /* ---------- targets: buttons, chips, tabs ---------- */
+  :root:root :is(.cj-btn--sm, .cj-chip, .cj-browse-viewbtn, .hub-btn--sm, .ho-btn--sm, .jc__btn, .lr-toggle, .cj-pro-codechip, .cj-lobby-bar__leave, .fa-btn, .hh-seg__opt, .cj-iconbtn) {
+    min-height: 44px;
+  }
+  :root:root :is(.cj-browse-viewbtn, .cj-browse-search__clear) {
+    min-width: 44px;
+  }
+  :root:root :is(.cj-pagehead__tab, .cj-section__title) {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+  /* inline text links: a 44px tall row, the text itself stays where it was */
+  :root:root :is(.cj-home-more, .cj-detail-link, .cj-shop-bal__link, .cj-acc-welcome__back, .cj-foot__links a, .cj-foot__logo, .cj-detail-signin) {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+  :root:root .cj-foot__links a {
+    padding-inline: 6px;
+  }
+  /* the "#" permalink beside a legal heading is a hover affordance: its tap area grows instead of its box */
+  :root:root .xl-anchor {
+    position: relative;
+  }
+  :root:root .xl-anchor::after {
+    content: '';
+    position: absolute;
+    inset: -12px;
+  }
+  /* the hero pause button: a 28px disc with a 44px tap area */
+  :root:root .cj-home-hero__pause {
+    position: relative;
+  }
+  :root:root .cj-home-hero__pause::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
+
+  /* ---------- fields: 16px stops iOS Safari zooming the page in on focus ---------- */
+  :root:root :is(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='hidden']), select, textarea) {
+    font-size: 16px;
+  }
+  :root:root :is(select, .cj-input, .cj-browse-search__input, .cj-nf-search__input) {
+    min-height: 44px;
+  }
+
+  /* ---------- labels: nothing under 12px ---------- */
+  :root:root :is(.cj-foot__small, .cj-poster__badge, .cj-home-table__live, .hh2-daypip__label, .cj-detail-setup__title, .cj-pro-ring__lv, .cj-pro-result, .cj-pro-badge__state, .cj-pro-badge__how, .cj-pro-bar-row, .cj-browse-cat__n, .lt-tag, .cj-shop-tab__count, .cj-shop-slot__label, .cj-shop-slot__sub, .cj-shop-slot__empty, .cj-shop-look__name, .cj-shop-rarity, .cj-shop-state, .cj-lb-card__stats, .cj-lb-you, .bd-badge) {
+    font-size: 12px;
+  }
+  :root:root .bd-badge {
+    min-width: 20px;
+    height: 20px;
+  }
+  /* keyboard hints mean nothing without a keyboard */
+  :root:root kbd {
+    display: none;
+  }
+}
+
+/* ---------- the floating nav: 44px items on touch screens ---------- */
+@media (pointer: coarse) and (max-width: 899.98px) {
+  .hub-app .cj-nav {
+    --cj-nav-item-h: 44px;
+  }
+  .cj-nav__pill {
+    height: 48px;
+  }
+  .hub-app .cj-nav .cj-coins {
+    height: var(--cj-nav-item-h);
+    padding-inline: 14px 16px;
+  }
+}
+@media (pointer: coarse) and (min-width: 900px) {
+  :root:root {
+    --cj-nav-h: 56px;
+    --cj-nav-item-h: 44px;
+    --topbar-h: 92px;
+  }
+  .cj-nav.is-condensed {
+    --cj-nav-item-h: 44px;
+  }
+  .cj-nav.is-condensed .cj-nav__pill {
+    height: 52px;
+  }
+  .hub-app .cj-nav .cj-coins {
+    height: var(--cj-nav-item-h);
+  }
+}
+
+/* ---------- taps ---------- */
+:root :is(a, button, summary, [role='button'], [role='tab'], label) {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ---------- overlays in landscape: the notch never covers a dialog ---------- */
+@media (min-width: 600px) {
+  :root:root .hh-modal.cj-ov-modal,
+  :root:root .xs-pal.cj-ov-pal {
+    padding-left: max(16px, var(--safe-left, 0px));
+    padding-right: max(16px, var(--safe-right, 0px));
+  }
+}

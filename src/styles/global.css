@@ -746,6 +746,7 @@ code {
 }
 .hh-loading--inline {
   min-height: 55vh;
+  min-height: 55dvh;
   background: none;
 }
 .hh-loading__mark {
@@ -792,6 +793,7 @@ code {
   place-items: center;
   padding: var(--space-5) var(--gutter);
   min-height: 60vh;
+  min-height: 60dvh;
 }
 .hh-error--full {
   min-height: 100vh;

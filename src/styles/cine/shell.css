@@ -74,6 +74,11 @@
   font-weight: 600;
   box-shadow: var(--cj-shadow-card);
 }
+/* parked fully above the screen until it takes focus: the safe-area inset (notch) is added to `top`, so the old
+   translateY(-200%) left a sliver of the white pill showing under the status bar on every page of a notched phone */
+.hub-app .hh-skip:not(:focus-visible) {
+  transform: translateY(calc(-100% - var(--safe-top, 0px) - 24px));
+}
 .jalebi-loader.jalebi-loader--small {
   width: 56px;
   height: 56px;
@@ -415,6 +420,14 @@
   padding: 0 16px 0 13px;
   gap: 6px;
   font-size: 14px;
+}
+
+/* phones: the logo band is topbar-h tall BELOW the notch inset, so a page's first heading clears both (without a notch
+   --cj-safe-top is 76px and the 84px floor wins: nothing moves) */
+@media (max-width: 899.98px) {
+  :root {
+    --cj-head-top: max(84px, calc(var(--cj-safe-top, 76px) + 8px));
+  }
 }
 
 /* ---------- phones (< 900 px): the logo, plus a small cluster (tour, coins, bells, Sign in) that scrolls away ---------- */

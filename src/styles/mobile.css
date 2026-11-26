@@ -87,6 +87,12 @@ svg {
 :root[data-ios][data-standalone][data-theme='light']:not([data-route='game'])::before {
   background: #0a0f1f;
 }
+/* the hub and the lobby are painted on the cine canvas (dark green in both themes), so the strip matches that, not the old
+   charcoal: no seam between the status bar and the page */
+:root[data-ios][data-standalone]:is([data-route='hub'], [data-route='lobby'])::before,
+:root[data-ios][data-standalone][data-theme='light']:is([data-route='hub'], [data-route='lobby'])::before {
+  background: var(--cj-bg, #04120b);
+}
 
 /* ---------- on-screen keyboard (see src/lib/viewport.js) ---------- */
 /* the sheet layer ends where the keyboard starts, so a sheet's field and its button stay visible */

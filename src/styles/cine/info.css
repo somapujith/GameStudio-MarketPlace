@@ -8,7 +8,8 @@
   position: relative;
   gap: 0;
   min-height: 100vh;
-  padding: clamp(84px, 9vw, 112px) var(--cj-gutter) 72px;
+  min-height: 100dvh;
+  padding: var(--cj-head-top) var(--cj-gutter) 72px;
   color: var(--cj-text);
   font-family: var(--cj-font);
   animation: none; /* a transform on this box would trap the fixed ambient field */
@@ -327,7 +328,8 @@
 #root .cj-nf.hub-page {
   position: relative;
   min-height: 100vh;
-  padding: clamp(84px, 9vw, 112px) var(--cj-gutter) 72px;
+  min-height: 100dvh;
+  padding: var(--cj-head-top) var(--cj-gutter) 72px;
   color: var(--cj-text);
   font-family: var(--cj-font);
   animation: none;

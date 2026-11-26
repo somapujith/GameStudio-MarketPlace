@@ -92,6 +92,7 @@
   left: 0;
   right: 0;
   height: min(620px, 80vh);
+  height: min(620px, 80dvh);
   pointer-events: none;
   background:
     radial-gradient(48% 60% at 16% 18%, rgba(78, 190, 92, 0.2), transparent 70%),
@@ -670,6 +671,7 @@
   flex-direction: column;
   width: min(100%, 560px);
   max-height: min(86vh, 720px);
+  max-height: min(86dvh, 720px);
   padding: 8px 20px calc(16px + env(safe-area-inset-bottom, 0px));
   border-radius: var(--cj-r-sheet) var(--cj-r-sheet) 0 0;
   background: linear-gradient(180deg, rgba(22, 34, 26, 0.96), rgba(12, 16, 14, 0.98));

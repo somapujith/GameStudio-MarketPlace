@@ -278,24 +278,27 @@ function LiveDetail({ game }) {
           <HubIcon name="play" size={20} /> Play solo / practice
         </a>
       )}
-      {!locked && (
-        <button type="button" className="cj-iconbtn" data-tour="game-join" onClick={() => setCodeOpen(true)} aria-haspopup="dialog" aria-label="Join with a code" title="Join with a code">
-          <HubIcon name="hash" size={20} />
+      {/* the round buttons travel together: on a phone they wrap to their own line as a group (cine/detail.css) */}
+      <div className="cj-detail-round">
+        {!locked && (
+          <button type="button" className="cj-iconbtn" data-tour="game-join" onClick={() => setCodeOpen(true)} aria-haspopup="dialog" aria-label="Join with a code" title="Join with a code">
+            <HubIcon name="hash" size={20} />
+          </button>
+        )}
+        {!locked && (
+          <Link to={paths.friends()} className="cj-iconbtn" aria-label="Invite friends" title="Invite friends">
+            <HubIcon name="users" size={20} />
+          </Link>
+        )}
+        <button type="button" className="cj-iconbtn" data-tour="game-share" onClick={share} aria-label={`Share ${game.name}`} title="Share">
+          <HubIcon name="share" size={20} />
         </button>
-      )}
-      {!locked && (
-        <Link to={paths.friends()} className="cj-iconbtn" aria-label="Invite friends" title="Invite friends">
-          <HubIcon name="users" size={20} />
-        </Link>
-      )}
-      <button type="button" className="cj-iconbtn" data-tour="game-share" onClick={share} aria-label={`Share ${game.name}`} title="Share">
-        <HubIcon name="share" size={20} />
-      </button>
-      {howToPlaySteps(game).length > 0 && (
-        <a href="#gd-how" className="cj-iconbtn" aria-label="Rules: how to play" title="How to play">
-          <HubIcon name="book" size={20} />
-        </a>
-      )}
+        {howToPlaySteps(game).length > 0 && (
+          <a href="#gd-how" className="cj-iconbtn" aria-label="Rules: how to play" title="How to play">
+            <HubIcon name="book" size={20} />
+          </a>
+        )}
+      </div>
     </div>
   );
   const notes = (
