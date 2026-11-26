@@ -83,8 +83,8 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
   const { scene, camera } = gfx;
   // three.js reads three shader / link logs per program the first time it is drawn, and each read is a synchronous round trip to the GPU process:
   // 372 round trips for the 124 programs of this scene, measured at 6 s of the first frame on a shared GPU (17 s of a 20 s load before the programs were
-  // cut down). Shipped shaders are fixed, so the checks are on only where a developer looks: the dev server, ?tcdebug=1 and ?tcshaders=1.
-  gfx.renderer.debug.checkShaderErrors = !!(import.meta.env?.DEV || (typeof location !== 'undefined' && /[?&]tc(debug|shaders)=1\b/.test(location.search)));
+  // cut down). Shipped shaders are fixed, so the checks are on only where a developer looks: the dev server and ?tcshaders=1.
+  gfx.renderer.debug.checkShaderErrors = !!(import.meta.env?.DEV || (typeof location !== 'undefined' && /[?&]tcshaders=1\b/.test(location.search)));
   yield step('gpu', 0.08);
   scene.add(camera); // the viewmodel (the cook's own arms) is a child of the camera, so the camera has to be in the scene
   const lightApply = createLightApplier({ scene, renderer: gfx.renderer, quality: q0 });
@@ -191,6 +191,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
       }
     }
     rig.update(dt, t);
+    sync.setSun(L.sunDir); // where a person's shadow falls (a person outside the view is hidden only when their shadow is outside it too)
     sync.update(dt, t, now, rig.lookDelta);
     fx.update(dt, (size.h * gfx.renderer.getPixelRatio()) / (2 * Math.tan((camera.fov * Math.PI) / 360)), camera.position);
     highlight.update(dt, t, sync.resolve, reduced, hlView);
@@ -442,6 +443,14 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
       disposeBakedMaterials();
       lightApply.dispose();
       gfx.dispose();
+      // hand the GPU memory back now, not whenever the canvas happens to be collected (not in dev: StrictMode re-mounts onto the very same canvas)
+      if (!import.meta.env?.DEV) {
+        try {
+          gfx.renderer.forceContextLoss?.();
+        } catch {
+          /* best effort */
+        }
+      }
     },
     getQuality: () => gfx.quality,
     /** What the device probe saw and why this tier was chosen: { tier, start, pref, auto, reasons, caps, summary, scale }. */
@@ -528,7 +537,9 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
       last = performance.now() - 16;
       tick(performance.now(), false); // the batcher drove the light through a whole day: put the real one back
     }
-    const w = createProgramWarmer({ renderer: gfx.renderer, scene, camera, post: !!gfx.cfg.post, hiddenLights: !!gfx.cfg.lights, extras: [] });
+    // whole top-level groups, not their children: every compile() call walks the whole scene to gather its lights, so ~230 small chunks cost 1.7 s of
+    // traversals for 124 programs; behind the loading screen a chunk may take as long as it likes
+    const w = createProgramWarmer({ renderer: gfx.renderer, scene, camera, post: !!gfx.cfg.post, hiddenLights: !!gfx.cfg.lights, extras: [], bigChunk: Infinity });
     while (!w.done) {
       w.step(5);
       yield step('shaders', 0.93);

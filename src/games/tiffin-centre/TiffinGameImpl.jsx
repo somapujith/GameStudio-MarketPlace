@@ -53,7 +53,8 @@ const prefersReducedMotion = () =>
 const tutorialResult = (state) => ({ reason: 'tutorial', stars: 3, money: state?.money ?? 0, level: 0, standings: [] });
 
 export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext }) {
-  const view = useSession(session);
+  // notifications only (no 10 Hz clock pulse): this component and the layers under it animate on requestAnimationFrame, not on re-renders
+  const view = useSession(session, { hz: 0 });
   const { state, status, mode, tutorial } = view;
   const result = view.result ?? null;
 

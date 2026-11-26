@@ -11,7 +11,8 @@ import { useSession } from '../../session/index.js';
 import HudLayer from './HudLayer.jsx';
 
 export default function Hud({ session, scene, audio, onMute, muted, onRunner, onLeave }) {
-  const snap = useSession(session);
+  // no clock pulses: every moving part of the HUD (rings, bars, bubbles, the walker) runs on the frame bus, so the layer renders on session notifications only
+  const snap = useSession(session, { hz: 0 });
   if (!session || !snap) return null;
   return (
     <HudLayer

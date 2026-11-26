@@ -69,9 +69,12 @@ const liveSummary = (ctxs) => {
 };
 
 async function startShift(c, level) {
-  await c.waitFor("[...document.querySelectorAll('button')].some((b) => /Start tutorial/.test(b.textContent))", 90000);
-  if (level > 0) await c.ev("document.querySelector('.tc-menu-lvl__btn').click(); true");
-  else await c.ev("[...document.querySelectorAll('button')].filter((b) => /Start tutorial/.test(b.textContent)).pop().click(); true");
+  await c.waitFor(level > 0 ? "!!document.querySelector('.tc-menu-lvl__btn')" : "[...document.querySelectorAll('button')].some((b) => /Start tutorial/.test(b.textContent))", 90000);
+  if (level > 0) {
+    await c.ev("document.querySelector('.tc-menu-lvl__btn').click(); true");
+    await c.waitFor("[...document.querySelectorAll('button')].some((b) => /Open the stall/.test(b.textContent))", 30000);
+  await c.ev("[...document.querySelectorAll('button')].find((b) => /Open the stall/.test(b.textContent)).click(); true");
+  } else await c.ev("[...document.querySelectorAll('button')].filter((b) => /Start tutorial/.test(b.textContent)).pop().click(); true");
   await c.waitFor('!!(window.__tiffin && window.__tiffin.scene && window.__tiffin.scene.debug)', 180000);
 }
 
@@ -90,8 +93,10 @@ async function run() {
   try {
     await c.viewport(1536, 864, 1.25, false);
     await c.send('Page.addScriptToEvaluateOnNewDocument', { source: INIT });
+    const level0 = +(args.level ?? (mode === 'soak' ? 1 : 0));
+    if (level0 > 0) await c.send('Page.addScriptToEvaluateOnNewDocument', { source: "try { localStorage.setItem('jalebi.tutorial.v1.tiffin-centre', '1'); } catch {}" });
     await c.goto(`${base}/play/tiffin-centre?tcdebug=1`);
-    await c.waitFor("[...document.querySelectorAll('button')].some((b) => /Start tutorial/.test(b.textContent))", 90000);
+    await c.waitFor(level0 > 0 ? "!!document.querySelector('.tc-menu-lvl__btn')" : "[...document.querySelectorAll('button')].some((b) => /Start tutorial/.test(b.textContent))", 90000);
     if (tier) {
       await c.ev(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim().toLowerCase() === '${tier.toLowerCase()}')?.click(); true`);
       await c.sleep(300);

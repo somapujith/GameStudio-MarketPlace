@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PULSE_HZ, sessionSnapshot } from './useSession.js';
+import { PULSE_HZ, pulseMs, sessionSnapshot } from './useSession.js';
 
 describe('sessionSnapshot', () => {
   it('is a safe loading snapshot without a session', () => {
@@ -23,5 +23,15 @@ describe('sessionSnapshot', () => {
 
   it('the clock pulse is ~10 Hz', () => {
     expect(PULSE_HZ).toBe(10);
+  });
+
+  it('hz <= 0 (or garbage) means no pulses at all; otherwise the interval in ms, never faster than 1 Hz steps', () => {
+    expect(pulseMs(PULSE_HZ)).toBe(100);
+    expect(pulseMs(0)).toBe(0);
+    expect(pulseMs(-5)).toBe(0);
+    expect(pulseMs(NaN)).toBe(0);
+    expect(pulseMs(undefined)).toBe(0);
+    expect(pulseMs(0.5)).toBe(1000);
+    expect(pulseMs(60)).toBe(17);
   });
 });
