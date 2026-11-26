@@ -8,7 +8,7 @@ Branch `perf/gfx-core`. New code only: `src/platform/gfx/**` (11 modules, each w
 |---|---|---|
 | `gpu.js` | renderer string + caps -> `{ class, vendor, model, tflops, tierCap, key }`; a rule table, an integrated GPU never starts on `high` | 160 (70 real strings) |
 | `tierMemory.js` | last stable tier + scale per (GPU, viewport class) in one versioned, size-bounded, fully guarded localStorage key; failed tiers remembered | 22 |
-| `calibrate.js` | ~250 ms start-up micro-benchmark (fill, draw calls, vertices, half-float post pass), cost model, `recommendTier`, `chooseInitialTier` | 78 |
+| `calibrate.js` | ~250 ms start-up micro-benchmark (fill, draw calls, vertices, half-float post pass), cost model, `recommendTier`, `chooseInitialTier` | 80 |
 | `governor.js` | ONE frame governor: scale ladder + tier, up and down, hysteresis, refresh-aware budget, draw-call guard, fps cap hints | 54 |
 | `gpuTimer.js` | `EXT_disjoint_timer_query_webgl2` wrapper (frame GPU time; tagged one-off queries for the benchmark) | 8 |
 | `loop.js` | rAF loop: fixed step, fps cap, visibility, resize debounce, `renderer.info` handling, zero-allocation stats ring | 22 |
@@ -18,7 +18,7 @@ Branch `perf/gfx-core`. New code only: `src/platform/gfx/**` (11 modules, each w
 | `adaptive.js` | gpu + memory + calibration + governor wired in one call; device hints (battery, data saver) | 14 |
 | `index.js` | barrel | (in adaptive) |
 
-452 tests, `npx vitest run src/platform/gfx` (PowerShell), ~3 s. `npx vite build` passes; the whole layer also bundles as a library (94 KB minified for ALL of it; a game imports only what it uses).
+455 tests, `npx vitest run src/platform/gfx` (PowerShell), ~3 s. `npx vite build` passes; the whole layer also bundles as a library (98 KB minified for ALL of it; a game imports only what it uses).
 
 ## Real-GPU verification
 
@@ -30,7 +30,7 @@ Throwaway harness (scratchpad, not committed) through `scripts/perf/cdp.mjs`: he
 
 | | run 1 | run 2 (same page, right after) |
 |---|---|---|
-| total / measure phase | 244 ms / 84 ms (31 frames) | 187 ms |
+| total / measure phase | 244 ms / 84 ms (31 frames); a later run 225 ms / 65 ms (28 frames) | 187 ms |
 | score (est. fps of a medium-class frame) | 105 | 111 |
 | fill / calls / triangles / post | 0.555 ns/px, 3.0 us/call, 1.35 ms/Mtri, 0.69 ns/px | 0.525, 3.5, 1.34, 0.64 |
 | recommendation | `medium` at scale 1.0 (est. 9.6 ms of 16.7), confident | same |
@@ -63,7 +63,17 @@ So it is not perfectly hitch-free, and I will not claim it is: one frame of ~28 
 
 Cost of one scale step on a 1920x1080 HalfFloat MSAA-4 target (including a clear and a 1-pixel sync readback so the work is really done), 32 steps over the ladder: **re-allocating with `setSize`: 2.2-2.6 ms per step (max 3.9-4.0); moving the viewport: 0.28-0.43 ms (p50 0.2)**, i.e. 6-8x cheaper, with no allocation and no flicker. (Tiffin's profile had `setSize` at 6 % of steady-state CPU.)
 
-@@GOV@@
+**Governor on this GPU** (`governor.js` fed by the real frame loop, `gpuTimer` supported here): a synthetic fill-bound "game" (N layers of the calibration shader drawn through a viewport sub-rect, so cost is proportional to area), N chosen by a sweep so the frame is >= 2x the budget at scale 1 (24 layers = 23.2 ms mean frame), 144 Hz panel, vsync on, budget 16.7 ms (60 fps target), then the load drops to a quarter after 9 s:
+
+![governor on the real GPU](gfx-core/governor-real-gpu.jpg)
+
+Final code (run 5): **converged in 1.65 s** (scale 1 -> 0.8), held it for 7.4 s with **zero reverted attempts**, then after the load dropped it climbed **0.8 -> 0.9 at 9.6 s and 0.9 -> 1.0 at 12.8 s**; no tier change, no oscillation. In the heavy phase the frames at 0.8 alternate between 13.9 and 20.8 ms (two or three 144 Hz refreshes, mean ~18 ms): that is inside the 1.05-1.15 dead band, so the governor does not chase the last 8 % (0.7 would sit on 13.9 ms every frame; it is the price of hysteresis).
+
+The same test on the previous code (run 4) found a real bug and is why the governor changed: it converged in 1.2 s to 0.7, then took two "confident" up-steps (area model: 14.3 ms predicted) that both failed, because on a 144 Hz panel a frame can only take whole multiples of 6.94 ms (14.3 ms of work lands on 20.8 ms); the rung froze after two failures and **when the load dropped to a quarter the scale stayed at 0.7 for 14 s**. Fixes (each with a regression test replaying that trace in the closed-loop simulator): "fits" is judged on whole refresh intervals; failed up-steps are forgiven automatically when the frame time at that rung falls below 75 % of what it was when they failed; the GPU timer reads ~20 % low against the frame, so its headroom estimate is inflated by 1.25.
+
+**Variance, honestly.** The machine is shared with the other streams' benchmarks (the bench lock only serialises benchmarks, not other GPU users), and three runs of the calibration gave score 105, 111 and 72 (fill 0.55, 0.53, 0.74 ns/px): the recommendation (`medium` at scale 1, confident) was the same every time, the numbers move 30-40 %. In run 5 the frame gaps right after the calibration finished contained one 83 ms frame (run 4: max 7.1 ms; cause not isolated: the benchmark's resource disposal, a GC or another process); the calibration's own frames were: p50 6.9 ms, p95 13.9 ms, max 27.8 ms (the first-draw stall described above).
+
+**The no-timer fallback on this GPU** (run 5, the second calibration forced to `timer: false`): the blocking-readback path measured 4.3-7.7 ms for the *smallest* slices (the readback's fixed cost), the first version divided all of it by the tiny work and answered fill 33 ns/px, "lite", `confident: false`, i.e. 60x too pessimistic, which `chooseInitialTier` limits to one tier below the class cap (here `low`). After that run the runner learned to measure the empty readback (smallest of three) and subtract it from every slice; that change is unit-tested only, **not re-measured on the real GPU**.
 
 ## What I could not do / what is not proven
 
