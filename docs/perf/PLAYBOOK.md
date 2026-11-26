@@ -15,6 +15,12 @@ Chrome on a hybrid laptop usually runs on the integrated GPU, not the RTX 3060, 
 
 Targets, on that same machine and viewport, in the game's **default** (auto) tier: **>= 60 fps average, p99 <= 25 ms, zero frames over 50 ms after the first 3 s of play, start-to-playable <= 6 s, no visible resolution loss (render scale >= 0.85 in steady state) and the picture no worse than today** (compare screenshots before and after; the games must not get uglier to get faster). Also: lower CPU use (less fan noise), lower GPU memory, and no memory growth over a 5 minute session.
 
+## Landscape first (owner requirement, 2026-11-27)
+Both games must be played **in landscape** on phones and tablets so the controls are usable: wide, short viewports are the primary design target, portrait is a "turn your device" gate on touch devices (the `landscape` stream builds the shared gate and the orientation lock in `src/platform/game/`; manifests get `orientation: 'landscape'`). UI streams therefore design **landscape first**: reference sizes 640x360, 740x360, 844x390, 915x412, 932x430, 1024x768 (tablet), then 1280x720 ... 1920x1080 desktop; thumb zones (left thumb steer / pedals or movement, right thumb actions), safe-area insets (notch), HUD that scales with viewport *height* (clamp / `--ui-scale`), nothing important under the thumbs or the notch, 44 px touch targets. Desktop windows that happen to be portrait must still work, but nothing is optimised for portrait phones any more.
+
+## Workspace
+You work in your own git worktree under `A:\Coding\Projects\GameHub-wt\<your-name>` (branch `perf/<your-name>`, already created from main, `node_modules` already junctioned). Your shell starts in the shared checkout `A:\Coding\Projects\GameHub`: **never edit or commit there**. Start every PowerShell command with `Set-Location A:\Coding\Projects\GameHub-wt\<your-name>` and use absolute paths under that folder for Read / Edit / Write.
+
 ## Measure first (the harness is in the repo)
 `scripts/perf/README.md`: `node scripts/perf/bench.mjs --game autowala|tiffin --tier ... --profile --shot x.jpg`. It uses the real GPU, a production build and takes a machine-wide lock so benchmarks never overlap. Build and serve your **own** copy:
 
@@ -53,5 +59,7 @@ tf-gpu     src/games/tiffin-centre/scene/{post,quality,renderer,lighting,light-a
 tf-cpu     src/games/tiffin-centre/scene/{index,loader,stall,street,sync,interp,rig,camera,kit,art,art-signs,events-fx,ops-view,picking,tracker,vm,street-vehicles}.js, models/** geometry (merge, LOD, instancing), session/**, TiffinGameImpl.jsx (load / loop), React render cost in ui/** (memo / selectors only)
 tf-ui      src/games/tiffin-centre/ui/**, tiffin.css, TiffinSolo.jsx, TiffinGame.jsx, OnlineGame.jsx; visual QA of the 3D picture
 tf-logic   shared/tiffin-centre/**, worker/games/tiffin-centre.js, session logic contracts, tests
+landscape  src/platform/game/** (orientation gate + lock, new files), src/pages/SoloGame.jsx and the online game page (gate wrapper only), `orientation` field in manifests, docs/perf/landscape.md
 ```
+Another session (Android / Capacitor, worktree `GameHub-android`) owns `src/lib/haptics.js`, `src/lib/mobile.js`, `push.js`, `auth.jsx`, `main.jsx`, `shell/**`, `styles/**`, `public/**`: **read** them, never edit them.
 Another stream may land a shared engine layer in `src/platform/gfx/` (GPU classification, start-up calibration, frame governor with dynamic resolution, tier memory, shader warm-up, batching helpers). If you are a GPU or CPU stream: **do not build a second copy of those**; make each tier itself cheap, and expose the knobs the governor needs (e.g. a `setScale(s)` that costs nothing, a tier table). The lead integrates the governor after the merge.
