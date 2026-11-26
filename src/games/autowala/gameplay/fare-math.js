@@ -52,6 +52,33 @@ export const crashHit = (kind, mood, strength) => clamp(mood - (KINDS[kind] || K
 export const brakeHit = (kind, mood) => clamp(mood - (KINDS[kind] || KINDS.regular).brake, 0, 1);
 /** A deceleration (m/s^2) that counts as a "hard stop" for the passenger. */
 export const HARD_BRAKE = 22;
+/** Fastest forward speed (m/s) below which a brake is not a "hard stop" (nothing to throw the passenger forward). */
+export const HARD_STOP_MIN_SPEED = 7;
+
+/** State for hardStopStep: `fwd` last frame's forward speed, `latched` while one hard stop is still going on. */
+export const newHardStop = (fwd = 0) => ({ fwd, latched: false });
+
+/**
+ * Edge-triggered hard stop. A full brake decelerates at ~30 m/s^2 for the whole stop (many frames), but the passenger is thrown
+ * forward ONCE: this returns true on the first frame of a stop, then stays quiet until the braking eases (below half the
+ * threshold), the auto is nearly stopped or it speeds up again. `st` is updated in place; call it every frame (also while a menu
+ * is open, with dt of the menu frames) so a menu that holds the auto never reads as a crash stop.
+ */
+export function hardStopStep(st, fwd, dt) {
+  const prev = st.fwd;
+  st.fwd = fwd;
+  if (!(dt > 0)) return false;
+  const decel = (prev - fwd) / dt;
+  if (st.latched) {
+    if (decel < HARD_BRAKE * 0.5 || fwd < 3) st.latched = false;
+    return false;
+  }
+  if (prev > HARD_STOP_MIN_SPEED && decel > HARD_BRAKE) {
+    st.latched = true;
+    return true;
+  }
+  return false;
+}
 
 /** What the passenger would grumble about right now (the voice agent speaks it), or null. */
 export function complaintReason(kind, s) {

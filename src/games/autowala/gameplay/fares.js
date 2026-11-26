@@ -31,7 +31,7 @@ import { randomLook } from '../sim/autoModel.js';
 import { DISTRICTS, districtAt } from '../world/layout.js';
 import { findRoute, routeLength } from '../world/routing.js';
 import { FAMOUS_SPOTS, FARE, KINDS, PLACE_KINDS, PLACE_PAIR, makeIdentity, pickKind, pickWeighted } from './fare-kinds.js';
-import { HARD_BRAKE, brakeHit, complaintReason, crashHit, estimateFare, meterNow, moodStep, patienceStep, rushTimeLimit, settleRide } from './fare-math.js';
+import { brakeHit, complaintReason, crashHit, estimateFare, hardStopStep, meterNow, moodStep, newHardStop, patienceStep, rushTimeLimit, settleRide } from './fare-math.js';
 import { nearestRoadInfo, pickDestination, pickHailSpot, pickPoiHailSpot, spotFromPlace } from './fare-spots.js';
 import { createMarkerKit } from './fare-markers.js';
 import { GROUND_Y, clearPassengers, clearSeat, createRig, createWalkers, disposeRig, poseWalk, poseWave, seatPassengers, seatRider } from './customers.js';
@@ -393,7 +393,7 @@ export function installFares(ctx) {
     boarding = null;
     if (share && riders.length) return completeShare(c);
     ride = {
-      driven: 0, waited: 0, elapsed: 0, lastDist: v.distance, prevFwd: v.fwd,
+      driven: 0, waited: 0, elapsed: 0, lastDist: v.distance, stop: newHardStop(v.fwd),
       scenic: false, scenicT: 0, complainT: 4, routeT: ROUTE.checkEvery, routeI: 0, shareOk: false, sharerId: null, shareHinted: false,
     };
     const rider = buildRider(c, 0);
@@ -546,13 +546,8 @@ export function installFares(ctx) {
       r.scenicT = 0.6;
       r.scenic = sceneryNear();
     }
-    // a hard stop from speed
-    let hardStop = false;
-    if (dt > 0) {
-      const decel = (r.prevFwd - v.fwd) / dt;
-      hardStop = r.prevFwd > 7 && decel > HARD_BRAKE;
-    }
-    r.prevFwd = v.fwd;
+    // a hard stop from speed: once per stop, not once per frame of braking
+    const hardStop = hardStopStep(r.stop, v.fwd, dt);
     const shared = riders.length > 1;
     dropQueue.length = 0;
     for (let i = 0; i < riders.length; i++) {
@@ -879,7 +874,9 @@ export function installFares(ctx) {
 
   const system = {
     update(dt) {
-      if (!ctx.state.menu) {
+      if (ctx.state.menu) {
+        if (ride) ride.stop.fwd = v.fwd; // the menu holds the auto: closing it at speed must not read as a crash stop
+      } else {
         clockT += dt;
         if (riders.length) updateRide(dt);
         updateWaiting(dt);
