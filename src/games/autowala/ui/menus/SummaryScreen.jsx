@@ -41,7 +41,7 @@ function SaveBox({ phase, result, onRetry, onSignIn }) {
           {o.level > 0 && <span className="aw-reward is-lvl">Level <b>{o.level}</b></span>}
         </div>
         <p>
-          {o.duplicate ? 'This shift was already saved. ' : ''}Best score <b>Rs {groupIndian(o.bestScore)}</b> &middot; {o.games} {o.games === 1 ? 'shift' : 'shifts'} on the leaderboard
+          {o.duplicate ? 'This shift was already saved. ' : ''}Best score <b>Rs {groupIndian(o.bestScore)}</b> &middot; {o.games} {o.games === 1 ? 'shift' : 'shifts'} saved
         </p>
       </div>
     );
@@ -62,7 +62,7 @@ function SaveBox({ phase, result, onRetry, onSignIn }) {
         {result.reason === 'signin' ? (
           <button type="button" data-nav className="aw-btn is-ghost" onClick={onSignIn}>Sign in</button>
         ) : (
-          result.reason !== 'rejected' && <button type="button" data-nav className="aw-btn is-ghost" onClick={onRetry}>Try again</button>
+          result.reason !== 'rejected' && result.reason !== 'expired' && <button type="button" data-nav className="aw-btn is-ghost" onClick={onRetry}>Try again</button>
         )}
       </div>
     </div>
