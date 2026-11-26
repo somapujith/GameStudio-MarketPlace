@@ -192,7 +192,7 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
       try {
         s.update?.(dt, ctx);
         s.errors = 0;
-        perf.sys(s.perfIndex, performance.now() - t0);
+        if (s.perfIndex !== undefined) perf.sys(s.perfIndex, performance.now() - t0); // (a system pushed to ctx.systems directly has no slot)
       } catch (err) {
         // log it, keep every other system running, and switch this one off after a few failures in a row
         s.errors = (s.errors || 0) + 1;
