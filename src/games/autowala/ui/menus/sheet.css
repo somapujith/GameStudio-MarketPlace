@@ -395,7 +395,7 @@
   }
 
   /* job board and quest log */
-  .aw .aw-quest-menu {
+  .aw .aw-menu.aw-quest-menu {
     display: block;
     padding: 0;
     overflow: hidden;
@@ -751,9 +751,44 @@
   .aw .aw-sum .aw-stats--sum {
     grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
     margin: 0;
+    gap: 6px;
+  }
+  .aw .aw-sum .aw-stat {
+    gap: 2px;
+    padding: 6px 10px 7px;
+  }
+  .aw .aw-sum .aw-stat b {
+    font-size: 20px;
+  }
+  /* the title and the save result stack in the left column, the numbers fill the right one: the result is never below the fold */
+  .aw .aw-sum .aw-sum__head {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .aw .aw-sum .aw-sum__main {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+  .aw .aw-sum .aw-save {
+    grid-column: 1;
+    grid-row: 2;
+    align-self: start;
+    min-height: 0;
+    padding: 8px 10px;
+    gap: 6px;
+    font-size: 13px;
+    text-align: left;
+  }
+  .aw .aw-sum .aw-save.is-wait {
+    flex-direction: row;
+  }
+  .aw .aw-sum .aw-save__chips {
+    justify-content: flex-start;
+    gap: 6px;
   }
   .aw .aw-sum .aw-sum__acts {
     grid-column: 1 / -1;
+    grid-row: 3;
   }
   .aw .aw-sum__bg {
     background: radial-gradient(ellipse at 50% 100%, rgba(255, 200, 87, 0.18), transparent 60%), var(--aw-sheet);
@@ -805,7 +840,28 @@
     letter-spacing: 0.2em;
   }
   .aw .aw-career-hisaab .aw-career-title {
-    font-size: 28px;
+    font-size: 26px;
+  }
+  /* the eyebrow sits beside the title instead of above it, and the four numbers lose their Telugu line (it is in every section
+     title already): the header is ~25 px shorter and the tiles ~30 px, so the money columns show without scrolling */
+  .aw .aw-career-hisaab .aw-career-head__text {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: center;
+    gap: 0 14px;
+  }
+  .aw .aw-career-hisaab .aw-career-eyebrow {
+    order: 2;
+  }
+  .aw .aw-career-hisaab .aw-career-stat small .aw-te {
+    display: none;
+  }
+  .aw .aw-career-hisaab .aw-career-stat {
+    padding: 5px 9px 6px;
+  }
+  .aw .aw-career-hisaab .aw-career-stat b {
+    font-size: 18px;
   }
   .aw .aw-career-main {
     display: grid;
@@ -839,7 +895,7 @@
   }
 
   /* job board and quest log: the list on the left, the detail on the right, both scrolling by themselves */
-  .aw .aw-quest-menu {
+  .aw .aw-menu.aw-quest-menu {
     display: block;
     padding: 0;
     overflow: hidden;
@@ -902,6 +958,10 @@
   .aw .aw-quest-menu .aw-quest-board {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
   }
+  /* the quest log keeps its two columns on a 640 px wide phone too (quests.css stacks them under 760 px for portrait) */
+  .aw .aw-quest-menu .aw-quest-cols {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  }
   .aw .aw-quest-menu .aw-quest-list,
   .aw .aw-quest-menu .aw-quest-detail,
   .aw .aw-quest-menu .aw-quest-panel {
@@ -935,9 +995,10 @@
     min-height: 46px;
     font-size: 14px;
   }
+  /* in flow, not pinned: a pinned CLOSE slid up over the text above it when the panel was short ("Nothing finished yet" under the button) */
   .aw .aw-quest-menu .aw-quest-panel .aw-quest-btn--inline {
-    position: sticky;
-    bottom: 10px;
+    position: static;
+    margin-top: 8px;
   }
   .aw .aw-quest-menu .aw-quest-panel {
     padding-bottom: 12px;

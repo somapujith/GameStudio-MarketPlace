@@ -103,7 +103,7 @@ export default function LogPanel({ game, snap }) {
               <div className="aw-quest-none">
                 <p>No mission running.</p>
                 <p>
-                  Drive to <b>Mama&apos;s Garage</b>, pull up beside the <b>JOB BOARD</b> sign and press <kbd className="aw-key">E</kbd>.
+                  Drive to <b>Mama&apos;s Garage</b>, pull up beside the <b>JOB BOARD</b> sign and press <span className="aw-key">E</span>.
                 </p>
                 {q.tutorialState !== 'done' && (
                   <button type="button" data-nav className="aw-quest-btn" onClick={() => (game.ctx.closeMenu(), quests.startTutorial())}>
@@ -137,7 +137,7 @@ export default function LogPanel({ game, snap }) {
               <p className="aw-quest-none">Nothing finished yet. Take a job from the board.</p>
             )}
             <p className="aw-quest-footnote">
-              <kbd className="aw-key">Q</kbd> / <kbd className="aw-key">Esc</kbd> close
+              <span className="aw-key">Q</span> / <span className="aw-key">Esc</span> close
             </p>
             <button type="button" data-nav data-autofocus className="aw-quest-btn aw-quest-btn--inline" onClick={close}>
               CLOSE <span className="aw-te">మూసివేయి</span>
