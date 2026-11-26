@@ -69,7 +69,7 @@ export default function AutowalaGame() {
     let ro = null;
     let dead = false;
     (async () => {
-      await loadFonts();
+      const fonts = loadFonts(); // the fonts download while the city builds (only the UI needs them, and it mounts after the build)
       if (dead || !canvas.current) return;
       const t0 = performance.now();
       try {
@@ -77,6 +77,7 @@ export default function AutowalaGame() {
           { canvas: canvas.current, seed: CITY_SEED, hooks: { onSnapshot: setSnap, userId, onContext: (st) => setGpuLost(st === 'lost') } },
           (stage, n) => !dead && setLoading({ text: STAGE_TEXT[stage] || 'Loading', pct: Math.min(99, Math.round((n / TOTAL_STEPS) * 100)) }),
         );
+        await fonts;
         if (dead) {
           g.dispose(); // the player left while it was loading
           return;
