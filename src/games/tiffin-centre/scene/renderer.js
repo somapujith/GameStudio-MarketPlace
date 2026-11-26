@@ -12,7 +12,8 @@
 import {
   AgXToneMapping, NoToneMapping, PCFShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, WebGLRenderer,
 } from 'three';
-import { QUALITY, createScaler, createDrawCallGuard, frameBudgetFor, lowerQuality, shadowEveryFor, tierIndex } from './quality.js';
+import { probeBrowser } from './capabilities.js';
+import { QUALITY, applyDeviceTweaks, createScaler, createDrawCallGuard, frameBudgetFor, lowerQuality, shadowEveryFor, tierBudgetFor, tierIndex } from './quality.js';
 import { createSky } from './sky.js';
 import { createPost } from './post.js';
 import { programSort, skipDarkLights } from './gfx-tweaks.js';
@@ -59,12 +60,19 @@ function makeRenderer(canvas, q) {
 }
 
 export function createRenderer(canvas, { quality = 'medium', auto = true, onQuality, onScale, onContextLost, onContextRestored } = {}) {
+  let undoTweaks = () => {};
+  try {
+    undoTweaks = applyDeviceTweaks(probeBrowser()); // forced 'high' on an integrated GPU: FXAA instead of 4x MSAA (see quality.js deviceTweaks)
+  } catch {
+    /* no probe: the table stays as designed */
+  }
   const releaseLightSkip = skipDarkLights(); // before the first program compiles: a dark point light costs a distance test, not a PBR evaluation
   let renderer;
   try {
     renderer = makeRenderer(canvas, quality);
   } catch (err) {
     releaseLightSkip();
+    undoTweaks();
     throw err;
   }
   const sorter = programSort(renderer); // opaque draws grouped by shader program: far fewer program switches (and lighting uniform uploads) per frame
@@ -86,13 +94,30 @@ export function createRenderer(canvas, { quality = 'medium', auto = true, onQual
   let scale = 1; // dynamic resolution factor on top of the tier's pixel ratio
   const makeScaler = () => {
     const c = QUALITY[q];
-    const s = createScaler({ budget: frameBudgetFor(c), min: c.scaleMin ?? 0.5 });
+    const s = createScaler({ budget: frameBudgetFor(c), tierBudget: tierBudgetFor(c), min: c.scaleMin ?? 0.5 });
     s.restart(1);
     return s;
   };
   let scaler = makeScaler();
   const drawGuard = createDrawCallGuard(); // a tier that stays over its draw-call budget while missing the frame budget steps down (auto only)
   renderer.info.autoReset = false; // the post passes render several times a frame: count the whole frame, reset it ourselves in render()
+  // compile() / compileAsync() bind the HDR scene target when the tier has post: the output colour space is part of the program key, so programs
+  // compiled against the canvas (as the loader does) are never used by the frame and the real ones would compile mid-shift
+  for (const name of ['compile', 'compileAsync']) {
+    const orig = renderer[name]?.bind(renderer);
+    if (!orig) continue;
+    renderer[name] = (...args) => {
+      const rt = QUALITY[q]?.post ? post.sceneTarget : null;
+      if (!rt) return orig(...args);
+      const prev = renderer.getRenderTarget();
+      renderer.setRenderTarget(rt);
+      try {
+        return orig(...args);
+      } finally {
+        renderer.setRenderTarget(prev);
+      }
+    };
+  }
   const listeners = new Set();
   const scaleListeners = new Set();
   const lastTier = { from: null, reason: '' };
@@ -205,7 +230,7 @@ export function createRenderer(canvas, { quality = 'medium', auto = true, onQual
     }
     if (QUALITY[q].post) post.render(dt);
     else renderer.render(scene, camera);
-    if (warmUp <= 0 && auto && dt > 0 && drawGuard.push(dt, renderer.info.render.calls, q, frameBudgetFor(QUALITY[q]))) {
+    if (warmUp <= 0 && auto && dt > 0 && drawGuard.push(dt, renderer.info.render.calls, q, tierBudgetFor(QUALITY[q]))) {
       setQuality(lowerQuality(q), `${renderer.info.render.calls} draw calls per frame over the ${q} budget with frame time ${(dt * 1000).toFixed(0)} ms`);
     }
   };
@@ -236,6 +261,7 @@ export function createRenderer(canvas, { quality = 'medium', auto = true, onQual
     registry.delete(renderer);
     sorter.dispose();
     releaseLightSkip();
+    undoTweaks();
     renderer.dispose();
     listeners.clear();
     scaleListeners.clear();

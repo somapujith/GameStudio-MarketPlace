@@ -12,18 +12,29 @@ import { ShaderChunk } from 'three';
 
 const POINT_CALL = 'RE_Direct( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );';
 const POINT_OPEN = 'getPointLightInfo( pointLight, geometryPosition, directLight );';
+const POINT_FETCH = 'pointLight = pointLights[ i ];';
 
-/** The lighting chunk with every point-light RE_Direct call guarded by `directLight.visible` (pure: returns a new string; the input unchanged when it does not match). */
+/**
+ * The lighting chunk with the point-light loop made cheap for lights that do nothing (pure: returns a new string; the input unchanged when it does not match):
+ *  - a light whose colour uniform is zero (switched off) is skipped before its distance attenuation is even computed (a uniform branch: free),
+ *  - a light that reaches this fragment with zero colour (beyond its range) skips the PBR evaluation.
+ */
 export function guardPointLights(src) {
-  const open = src.indexOf(POINT_OPEN);
-  if (open < 0) return src;
+  const fetch = src.indexOf(POINT_FETCH);
+  const open = src.indexOf(POINT_OPEN, Math.max(0, fetch));
+  if (fetch < 0 || open < 0) return src;
   const call = src.indexOf(POINT_CALL, open);
   if (call < 0) return src;
   // only the first RE_Direct after the point-light info belongs to the point loop (the spot and directional loops come later and keep theirs)
   const nextLoop = src.indexOf('#pragma unroll_loop_end', open);
   if (nextLoop >= 0 && call > nextLoop) return src;
-  if (src.slice(open, call).includes('if ( directLight.visible )')) return src;
-  return `${src.slice(0, call)}if ( directLight.visible ) { ${POINT_CALL} }${src.slice(call + POINT_CALL.length)}`;
+  if (src.slice(fetch, call).includes('dot( pointLight.color')) return src; // already guarded
+  return (
+    `${src.slice(0, fetch)}${POINT_FETCH}
+		if ( dot( pointLight.color, vec3( 1.0 ) ) > 0.0 ) {` +
+    `${src.slice(fetch + POINT_FETCH.length, call)}if ( directLight.visible ) { ${POINT_CALL} }
+		}${src.slice(call + POINT_CALL.length)}`
+  );
 }
 
 let original = null;

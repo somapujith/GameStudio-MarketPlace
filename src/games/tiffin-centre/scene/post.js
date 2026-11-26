@@ -78,9 +78,9 @@ const AO_FRAG = /* glsl */ `
   uniform sampler2D tDepth; uniform vec2 uProj; uniform vec2 uInv; uniform float uRadius; uniform float uTime;
   varying vec2 vUv;
   ${LINEARIZE}
-  vec3 viewPos(vec2 uv) { float z = linZ(texture2D(tDepth, uv).x); return vec3((uv * 2.0 - 1.0) * vec2(1.0 / uProj.x, 1.0 / uProj.y) * z, -z); }
+  vec3 viewPos(vec2 uv) { float z = linZ(textureLod(tDepth, uv, 0.0).x); return vec3((uv * 2.0 - 1.0) * vec2(1.0 / uProj.x, 1.0 / uProj.y) * z, -z); }
   void main() {
-    float d0 = texture2D(tDepth, vUv).x;
+    float d0 = textureLod(tDepth, vUv, 0.0).x;
     if (d0 >= 0.99999) { gl_FragColor = vec4(1.0); return; }
     vec3 p = viewPos(vUv);
     vec3 pl = viewPos(vUv - vec2(uInv.x, 0.0)); vec3 pr = viewPos(vUv + vec2(uInv.x, 0.0));
@@ -114,15 +114,15 @@ const AO_BLUR_FRAG = /* glsl */ `
   varying vec2 vUv;
   ${LINEARIZE}
   void main() {
-    float z0 = linZ(texture2D(tDepth, vUv).x);
-    float sum = texture2D(tAO, vUv).x * 0.2;
+    float z0 = linZ(textureLod(tDepth, vUv, 0.0).x);
+    float sum = textureLod(tAO, vUv, 0.0).x * 0.2;
     float wsum = 0.2;
     for (int i = 1; i <= 3; i++) {
       for (int s = -1; s <= 1; s += 2) {
         vec2 uv = vUv + uDir * float(i * s) * 1.5;
-        float z = linZ(texture2D(tDepth, uv).x);
+        float z = linZ(textureLod(tDepth, uv, 0.0).x);
         float w = (0.2 / (1.0 + float(i))) * (1.0 - smoothstep(0.0, 0.08, abs(z - z0) / max(z0, 0.1)));
-        sum += texture2D(tAO, uv).x * w;
+        sum += textureLod(tAO, uv, 0.0).x * w;
         wsum += w;
       }
     }
@@ -149,17 +149,21 @@ const DOF_FRAG = /* glsl */ `
     vec3 acc = c0.rgb; float wsum = 1.0;
     float rad = max(coc0, 0.0);
     if (rad < 0.4) { gl_FragColor = c0; return; }
+    // the blur is at most a few pixels wide (uMax = H * 0.0036): 24 taps inside a 4 px radius is far more than it can show, so the tap count follows the radius
+    // (6 at the smallest blur, 24 at 10 px and more); the taps are explicit-LOD fetches (no screen-space derivatives in a loop)
+    float nTaps = clamp(rad * 2.4, 6.0, 24.0);
     for (int i = 0; i < 24; i++) {
       float fi = float(i);
+      if (fi >= nTaps) break;
       float a = (fi + ign) * 2.39996323;
-      float r = sqrt((fi + 0.5) / 24.0) * rad;
+      float r = sqrt((fi + 0.5) / nTaps) * rad;
       vec2 uv = vUv + vec2(cos(a), sin(a)) * r * uInv;
-      float ds = texture2D(tDepth, uv).x;
+      float ds = textureLod(tDepth, uv, 0.0).x;
       float zs = ds >= 0.99999 ? 600.0 : linZ(ds);
       float cs = cocOf(zs);
       // a sample in front of this pixel only counts when its own blur reaches this far; samples behind always count
       float w = zs >= z0 - 0.3 ? 1.0 : smoothstep(r - 1.0, r + 1.0, cs);
-      acc += texture2D(tColor, uv).rgb * w;
+      acc += textureLod(tColor, uv, 0.0).rgb * w;
       wsum += w;
     }
     gl_FragColor = vec4(acc / wsum, 1.0);
@@ -499,6 +503,10 @@ export function createPost(renderer, scene, camera) {
     },
     get size() {
       return { w: W, h: H };
+    },
+    /** The HDR scene target (null before build / without post): programs compiled against it are the ones the frame really uses. */
+    get sceneTarget() {
+      return sceneRT;
     },
     dispose() {
       disposeTargets();

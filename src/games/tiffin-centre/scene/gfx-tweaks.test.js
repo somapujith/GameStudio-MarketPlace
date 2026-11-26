@@ -11,6 +11,12 @@ describe('guardPointLights', () => {
     const end = out.indexOf('#pragma unroll_loop_end', open);
     const loop = out.slice(open, end);
     expect(loop).toContain('if ( directLight.visible ) { RE_Direct(');
+    // a light that is switched off is skipped before its attenuation is computed
+    const gate = out.indexOf('if ( dot( pointLight.color, vec3( 1.0 ) ) > 0.0 ) {');
+    expect(gate).toBeGreaterThan(out.indexOf('pointLight = pointLights[ i ];'));
+    expect(gate).toBeLessThan(open);
+    // the whole chunk stays brace-balanced
+    expect(out.split('{').length).toBe(out.split('}').length);
     // the spot and directional loops are untouched
     expect(out.slice(end)).not.toContain('if ( directLight.visible ) { RE_Direct(');
     expect(out.split('if ( directLight.visible ) { RE_Direct(').length - 1).toBe(1);

@@ -60,6 +60,33 @@ export function shadowEveryFor(cfg, dtAvg, current = 1) {
   return Math.min(max, want);
 }
 
+/**
+ * Tier overrides for the device in front of us (`caps` from capabilities.probeBrowser). A tier is designed for the machines Auto gives it to: 'high' is
+ * Auto's pick only for a discrete GPU, where 4x MSAA on a half-float target is fine. A player who FORCES 'high' on an integrated GPU (an identified GPU that is
+ * not discrete) would get 8 fps from that, so there it keeps every effect but trades the 4x MSAA for FXAA and caps the pixel ratio at 1.25 (the picture is
+ * about as sharp, the frame is about twice as cheap). An unidentified GPU is left alone.
+ */
+export function deviceTweaks(caps) {
+  if (!caps || !caps.renderer || caps.discreteGpu) return {};
+  return { high: { msaa: 0, fxaa: true, pixelRatio: 1.25 } };
+}
+
+/** Applies deviceTweaks to the (shared) tier table and returns a function that puts the original values back. */
+export function applyDeviceTweaks(caps, table = QUALITY) {
+  const tweaks = deviceTweaks(caps);
+  const saved = [];
+  for (const [tier, over] of Object.entries(tweaks)) {
+    if (!table[tier]) continue;
+    for (const [k, v] of Object.entries(over)) {
+      saved.push([tier, k, table[tier][k]]);
+      table[tier][k] = v;
+    }
+  }
+  return () => {
+    for (const [tier, k, v] of saved.reverse()) table[tier][k] = v;
+  };
+}
+
 export const tierIndex = (q) => QUALITY_ORDER.indexOf(q);
 export const lowerQuality = (q) => QUALITY_ORDER[Math.max(0, tierIndex(q) - 1)];
 export const minTier = (a, b) => (tierIndex(a) <= tierIndex(b) ? a : b);
@@ -114,7 +141,8 @@ export function createQualitySampler({ slowDt = 0.034, windowSec = 2.5, badRatio
  * `maxFlaps` flaps the scale is frozen (so a borderline device settles instead of oscillating). A downscale that did not speed the frame up by
  * `minGain` is a CPU-bound verdict: the scale is frozen at the value before those useless steps. Never raises the tier.
  */
-export function createScaler({ budget = 1 / 45, min = 0.5, step = 0.1, windowSec = 1.2, upSec = 6, upRatio = 0.62, cooldownSec = 1.5, maxFlaps = 2, maxDt = 1, minGain = 0.04 } = {}) {
+export function createScaler({ budget = 1 / 45, tierBudget = 0, min = 0.5, step = 0.1, windowSec = 1.2, upSec = 6, upRatio = 0.62, cooldownSec = 1.5, maxFlaps = 2, maxDt = 1, minGain = 0.04 } = {}) {
+  const tierLimit = () => (tierBudget > 0 ? Math.max(tierBudget, budget) : budget); // the frame time above which a tier drop may be asked for (a tier is a bigger loss than a few pixels)
   let scale = 1;
   let ceiling = 1; // the highest scale that has not been undone by a slowdown
   let flaps = 0;
@@ -131,6 +159,10 @@ export function createScaler({ budget = 1 / 45, min = 0.5, step = 0.1, windowSec
   let lastWasUp = false;
   let streakFrom = 1; // the scale before the first downscale of a streak that has not yet shown a gain
   let cpuBound = false;
+  let areaCost = 0; // seconds per unit of (scale^2), learned from how the frame time moved when the scale did: what a bigger picture would cost
+  let prevMean = 0;
+  let prevScale = 1;
+  let probe = 0; // seconds after an upscale in which a slowdown still counts as that upscale failing
   const reset = () => {
     sum = 0;
     n = 0;
@@ -154,6 +186,10 @@ export function createScaler({ budget = 1 / 45, min = 0.5, step = 0.1, windowSec
       streakFrom = to;
       lastWasUp = false;
       lastDownMean = 0;
+      areaCost = 0;
+      prevMean = 0;
+      prevScale = to;
+      probe = 0;
       cool = cooldownSec;
       upClock = 0;
       upSum = 0;
@@ -166,23 +202,37 @@ export function createScaler({ budget = 1 / 45, min = 0.5, step = 0.1, windowSec
         cool -= dt;
         return null;
       }
-      sum += dt;
+      if (probe > 0) {
+        probe -= dt;
+        if (probe <= 0) lastWasUp = false; // the upscale held: a later slowdown is not its fault
+      }
+      // a hitch (a shader compile, a texture upload, a GC pause) is not what a frame costs: it counts for at most 4 budgets, so one 700 ms stall inside a
+      // 1.2 s window does not read as a slow device and trigger a downscale
+      const ft = Math.min(dt, budget * 4);
+      sum += ft;
       n += 1;
       span += dt;
-      upSum += dt;
+      upSum += ft;
       upN += 1;
       upClock += dt;
       if (span >= windowSec) {
         const mean = sum / n;
         reset();
+        // learn what the pixels cost: when the scale moved between two windows, the frame-time change per unit of area (a CPU-bound frame learns ~0)
+        if (prevMean > 0 && Math.abs(scale * scale - prevScale * prevScale) > 1e-3) {
+          const k = Math.max(0, (prevMean - mean) / (prevScale * prevScale - scale * scale));
+          areaCost = areaCost > 0 ? areaCost * 0.5 + k * 0.5 : k;
+        }
+        prevMean = mean;
+        prevScale = scale;
         if (mean > budget) {
           upClock = 0;
           upSum = 0;
           upN = 0;
           if (cpuBound) {
-            // already shown that pixels are not the limit: stay where it was worth being and keep asking for the tier (the caller decides)
+            // already shown that pixels are not the limit: stay where it was worth being and, only when the frames are really slow, keep asking for the tier
             cool = cooldownSec * 4;
-            return { tier: 1, revertTo: scale };
+            return mean > tierLimit() ? { tier: 1, revertTo: scale } : null;
           }
           if (lastWasUp) {
             // the upscale we just made did not hold: undo it for good (the ceiling drops) and count a flap
@@ -213,9 +263,9 @@ export function createScaler({ budget = 1 / 45, min = 0.5, step = 0.1, windowSec
             scale = Math.min(1, Math.max(min, streakFrom));
             ceiling = scale;
             cool = cooldownSec * 4;
-            return { tier: 1, revertTo: scale };
+            return mean > tierLimit() ? { tier: 1, revertTo: scale } : { revertTo: scale };
           }
-          return { tier: 1 };
+          return mean > tierLimit() ? { tier: 1 } : null;
         }
       }
       if (!frozen && scale < 1 - 1e-6 && upClock >= upSec) {
@@ -223,9 +273,20 @@ export function createScaler({ budget = 1 / 45, min = 0.5, step = 0.1, windowSec
         upClock = 0;
         upSum = 0;
         upN = 0;
-        if (mean < budget * upRatio && scale + step <= ceiling + 1e-6) {
-          scale = Math.min(1, +(scale + step).toFixed(3));
+        // headroom: either clearly under budget, or on time (a vsync-locked display never shows less than one refresh) and a bigger picture is predicted
+        // to stay under the budget from what the pixels were seen to cost (unknown: half of the budget per unit of area)
+        const next = Math.min(1, +(scale + step).toFixed(3));
+        const dArea = next * next - scale * scale;
+        const k = areaCost > 0 ? areaCost : budget * 0.5;
+        const onTime = mean < budget * 0.92;
+        const predictedOk = mean + k * dArea < budget * 0.97;
+        const roomy = mean < budget * upRatio || (onTime && predictedOk);
+        // the learned cost may be stale (a heavy patch is over): every window that is on time but held back by the prediction makes it less sure
+        if (onTime && !predictedOk && areaCost > 0) areaCost *= 0.7;
+        if (roomy && scale + step <= ceiling + 1e-6) {
+          scale = next;
           lastWasUp = true;
+          probe = 3.5;
           cool = cooldownSec;
           return { scale };
         }
@@ -245,8 +306,13 @@ export function createScaler({ budget = 1 / 45, min = 0.5, step = 0.1, windowSec
  */
 export const DRAW_CALL_BUDGET = { lite: 250, low: 350, medium: 700, high: 1000 };
 
-/** The frame-time budget (seconds) the scaler and the guard hold a tier to: about 38 fps, or the tier's frame cap less 4 fps. */
-export const frameBudgetFor = (cfg) => (cfg && cfg.fpsCap ? 1 / (cfg.fpsCap + 4) : 1 / 38);
+/**
+ * The frame-time budget (seconds) the resolution scaler holds a tier to: 50 fps, or the tier's frame cap less 4 fps. Resolution is the cheap thing to give up, so the
+ * scaler reacts early (a 60 Hz display needs frames under 20 ms to hold its rate).
+ */
+export const frameBudgetFor = (cfg) => (cfg && cfg.fpsCap ? 1 / (cfg.fpsCap + 4) : 1 / 50);
+/** The frame time (seconds) above which a TIER drop may be asked for once the resolution cannot help: about 36 fps, or the frame cap less 4 fps. */
+export const tierBudgetFor = (cfg) => (cfg && cfg.fpsCap ? 1 / (cfg.fpsCap + 4) : 1 / 36);
 
 /**
  * createDrawCallGuard({ budgets, overSec, ema, maxDt }) -> { push(dt, calls, tier, frameBudget) -> boolean, reset(), state }
