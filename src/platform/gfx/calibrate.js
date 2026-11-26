@@ -14,17 +14,22 @@
 // A frame of a game is then ESTIMATED as max(cpu, gpu): cpu = calls * callUs, gpu = fill + tris + post (see estimateFrameMs). The tier models are
 // the game's own: DEFAULT_TIER_MODELS is a generic ladder; pass your tier table's real costs for a tight fit.
 //
-// GPU clocks: integrated GPUs idle at low clocks, so a few frames of throw-away fill work ("wake") run before anything is timed.
-// Timing: every slice ends in a 1-pixel readback (the only portable way to wait for the GPU) so the slice time = CPU submit + GPU execute.
-// The first slice of every test is deliberately tiny (1/16 of a layer / 40 calls) and the run aborts early on a machine too slow for its own
-// smallest slice (software rendering): the verdict is then "lowest tier" without ever stalling the page.
+// Measured on the dev laptop (integrated AMD Radeon, ANGLE / D3D11, 144 Hz), and why it is built this way:
+//   * the first draw of every distinct program costs ~25 ms of MAIN THREAD even after KHR_parallel_shader_compile reports it ready. So the benchmark uses two
+//     programs only, pays those first draws in a "wake" phase (one per frame, then a fence poll), and never lets a timed slice carry them;
+//   * a 1-pixel readback after a slice is bimodal (1.8 ms or 18 ms for the same work: it queues behind the compositor's own GPU work), so slices are timed with
+//     EXT_disjoint_timer_query_webgl2 (GPU execution time, nothing blocks the main thread; available in Chrome / Edge / most Android). Browsers without it fall
+//     back to blocking readbacks and the result is marked non-confident (the GPU class and the run-time governor carry the decision);
+//   * integrated GPUs idle at low clocks: the wake phase also ramps them up before anything is timed.
+// The first slice of every test is deliberately tiny (1/16 of a layer / 40 calls); a machine too slow for it (software rendering) gets "lowest tier" without a stall.
 
 import {
-  BufferAttribute, BufferGeometry, HalfFloatType, Mesh, MeshBasicMaterial, NoBlending, NormalBlending, OrthographicCamera, PlaneGeometry, RGBAFormat,
+  BufferAttribute, BufferGeometry, HalfFloatType, Mesh, NoBlending, NormalBlending, OrthographicCamera, PlaneGeometry, RGBAFormat,
   Scene, ShaderMaterial, UnsignedByteType, Vector2, WebGLRenderTarget, LinearFilter, NearestFilter,
 } from 'three';
 import { detectRefreshHz, snapRefresh, DEFAULT_LADDER } from './governor.js';
 import { TIER_ORDER, minTier } from './gpu.js';
+import { createGpuTimer } from './gpuTimer.js';
 
 // ---------------------------------------------------------------------------------------------------------------------------------
 // Pure part: cost model, recommendation, initial tier
@@ -163,9 +168,11 @@ export function chooseInitialTier({ gpu = null, calibration = null, memory = nul
 // ---------------------------------------------------------------------------------------------------------------------------------
 // Three.js workload
 
-const QUAD_VERT = /* glsl */ `
+// ONE vertex + fragment program serves the fill, calls and triangle tests (the first draw of every distinct program costs ~25 ms of main thread on
+// ANGLE / D3D11 even after KHR_parallel_shader_compile says "ready", measured on the dev laptop), plus one more for the post pass: two stalls, not four.
+const SCENE_VERT = /* glsl */ `
   varying vec2 vUv;
-  void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
+  void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
 `;
 const FILL_FRAG = /* glsl */ `
   varying vec2 vUv; uniform float uSeed;
@@ -196,12 +203,20 @@ const POST_FRAG = /* glsl */ `
 `;
 
 const MAX_PIXELS = 2.6e6; // the benchmark target never exceeds this (units are per pixel, so a 4K canvas is measured at a smaller size)
-const MAX_CALLS = 800;
-const TRIS_PER_DRAW = 100352; // 224 x 224 quads x 2
-const MAX_TRI_DRAWS = 24;
+const MAX_CALLS = 480;
+const GRID = 80; // quads per side of the triangle-test mesh
+const TRIS_PER_DRAW = GRID * GRID * 2; // 12,800
+const MAX_TRI_DRAWS = 96; // 1.23 Mtri at most
 
-/** The synthetic scenes and the `run(test, W)` entry point. `renderer` needs render / setRenderTarget / getRenderTarget / readRenderTargetPixels (and optionally compileAsync). */
-export function createThreeLoad(renderer, { width, height, halfFloat } = {}) {
+/**
+ * The synthetic scenes and the measuring entry points. `renderer` needs render / setRenderTarget / getRenderTarget (and readRenderTargetPixels for the sync mode).
+ * Two ways to time a slice, chosen once:
+ *   'timer'  EXT_disjoint_timer_query_webgl2 (Chrome, Edge, most Android): GPU execution time per slice, results arrive 1-3 frames later, NOTHING blocks the main
+ *            thread. The calls test uses max(CPU submit time, GPU time). This is also immune to the compositor's own GPU work, which makes sync readbacks bimodal.
+ *   'sync'   a 1-pixel readback after the slice (the only portable fence): the main thread waits for the GPU. Noisy; the runner marks the result non-confident.
+ * submit(id, W, now) -> handle { id, W, cpuMs, ms (-1 until done), done, dropped }; poll(now) resolves handles; sync handles are done immediately.
+ */
+export function createThreeLoad(renderer, { width, height, halfFloat, timer: timerOpt } = {}) {
   let w = Math.max(64, Math.round(width || 1280));
   let h = Math.max(64, Math.round(height || 720));
   const s = Math.sqrt(Math.min(1, MAX_PIXELS / (w * h)));
@@ -222,8 +237,8 @@ export function createThreeLoad(renderer, { width, height, halfFloat } = {}) {
 
   let rtMain = null;
   let rtHalf = null;
+  let sceneMat = null; // the shared fill / calls / tris program
   let fillScene = null;
-  let fillMat = null;
   let postScene = null;
   let postMat = null;
   let callsScene = null;
@@ -236,10 +251,28 @@ export function createThreeLoad(renderer, { width, height, halfFloat } = {}) {
   let compileFailed = false;
   let fence = null;
   let fenceCtx = null;
+  let gl = null;
   try {
-    const gl = renderer.getContext?.();
+    gl = renderer.getContext?.() || null;
     if (gl && typeof gl.fenceSync === 'function' && typeof gl.clientWaitSync === 'function') fenceCtx = gl;
   } catch { /* no context to ask */ }
+
+  // ---- timing mode
+  const gpuTimer = timerOpt === false ? null : timerOpt || (gl ? createGpuTimer(gl, { inflight: 3 }) : null);
+  const mode = gpuTimer && gpuTimer.supported ? 'timer' : 'sync';
+  const waiting = new Map(); // tag -> handle
+  let tagSeq = 0;
+  if (mode === 'timer') {
+    gpuTimer.onResult = (tag, ms) => {
+      const hnd = waiting.get(tag);
+      if (!hnd) return;
+      waiting.delete(tag);
+      hnd.gpuMs = ms;
+      hnd.dropped = ms < 0;
+      hnd.ms = ms < 0 ? -1 : hnd.id === 'calls' ? Math.max(hnd.cpuMs, ms) : ms;
+      hnd.done = true;
+    };
+  }
 
   const quadScene = (mat) => {
     const sc = new Scene();
@@ -248,67 +281,73 @@ export function createThreeLoad(renderer, { width, height, halfFloat } = {}) {
     sc.add(m);
     return sc;
   };
+  const triGeometry = () => {
+    const n = GRID;
+    const verts = (n + 1) * (n + 1);
+    const pos = new Float32Array(verts * 3);
+    for (let y = 0, k = 0; y <= n; y++) for (let x = 0; x <= n; x++, k += 3) {
+      pos[k] = x / n - 0.5;
+      pos[k + 1] = y / n - 0.5;
+      pos[k + 2] = 0;
+    }
+    const idx = new Uint16Array(n * n * 6);
+    for (let y = 0, k = 0; y < n; y++) for (let x = 0; x < n; x++, k += 6) {
+      const a = y * (n + 1) + x;
+      idx[k] = a;
+      idx[k + 1] = a + 1;
+      idx[k + 2] = a + n + 1;
+      idx[k + 3] = a + 1;
+      idx[k + 4] = a + n + 2;
+      idx[k + 5] = a + n + 1;
+    }
+    const geo = own('geos', new BufferGeometry());
+    geo.setAttribute('position', new BufferAttribute(pos, 3));
+    geo.setIndex(new BufferAttribute(idx, 1));
+    geo.computeBoundingSphere();
+    return geo;
+  };
+  const addCalls = (from, to, geo) => {
+    for (let i = from; i < to; i++) {
+      const m = new Mesh(geo, sceneMat);
+      m.scale.set(0.012, 0.012, 1);
+      m.position.set(-0.95 + ((i % 40) / 39) * 1.9, -0.95 + (Math.floor(i / 40) / 12) * 1.9, 0);
+      m.matrixAutoUpdate = false;
+      m.updateMatrix();
+      m.visible = false;
+      callsScene.add(m);
+      callMeshes.push(m);
+    }
+    callsScene.updateMatrixWorld(true);
+  };
 
+  // each step is a few ms of JS at most: the run spreads them over frames
   const stepFns = [
-    // 1. targets and the full-screen scenes
+    // 1. targets, the two programs, the full-screen scenes
     () => {
       rtMain = own('rts', new WebGLRenderTarget(w, h, { type: UnsignedByteType, format: RGBAFormat, depthBuffer: false, minFilter: NearestFilter, magFilter: NearestFilter }));
       rtHalf = own('rts', new WebGLRenderTarget(w, h, { type: useHalf ? HalfFloatType : UnsignedByteType, format: RGBAFormat, depthBuffer: false, minFilter: LinearFilter, magFilter: LinearFilter }));
-      fillMat = own('mats', new ShaderMaterial({ vertexShader: QUAD_VERT, fragmentShader: FILL_FRAG, uniforms: { uSeed: { value: 0.5 } }, depthTest: false, depthWrite: false, transparent: true, blending: NormalBlending }));
-      fillScene = quadScene(fillMat);
-      postMat = own('mats', new ShaderMaterial({ vertexShader: QUAD_VERT, fragmentShader: POST_FRAG, uniforms: { tSrc: { value: rtHalf.texture }, uInv: { value: new Vector2(1 / w, 1 / h) } }, depthTest: false, depthWrite: false, blending: NoBlending }));
+      sceneMat = own('mats', new ShaderMaterial({ vertexShader: SCENE_VERT, fragmentShader: FILL_FRAG, uniforms: { uSeed: { value: 0.5 } }, depthTest: false, depthWrite: false, transparent: true, blending: NormalBlending }));
+      fillScene = quadScene(sceneMat);
+      postMat = own('mats', new ShaderMaterial({ vertexShader: SCENE_VERT, fragmentShader: POST_FRAG, uniforms: { tSrc: { value: rtHalf.texture }, uInv: { value: new Vector2(1 / w, 1 / h) } }, depthTest: false, depthWrite: false, blending: NoBlending }));
       postScene = quadScene(postMat);
     },
-    // 2. many small draw calls
+    // 2-3. many small draw calls (half of them per step)
     () => {
       callsScene = new Scene();
-      const geo = own('geos', new PlaneGeometry(1, 1, 1, 1));
-      const mats = [0xff8040, 0x40c0ff, 0x80ff40, 0xffd040, 0xc040ff, 0x40ffb0].map((c) => own('mats', new MeshBasicMaterial({ color: c, depthTest: false, depthWrite: false })));
-      const cols = 40;
-      callMeshes = [];
-      for (let i = 0; i < MAX_CALLS; i++) {
-        const m = new Mesh(geo, mats[i % mats.length]);
-        m.scale.set(0.012, 0.012, 1);
-        m.position.set(-0.95 + ((i % cols) / (cols - 1)) * 1.9, -0.95 + (Math.floor(i / cols) / 20) * 1.9, 0);
-        m.matrixAutoUpdate = false;
-        m.updateMatrix();
-        m.visible = false;
-        callsScene.add(m);
-        callMeshes.push(m);
-      }
-      callsScene.updateMatrixWorld(true);
+      addCalls(0, MAX_CALLS / 2, own('geos', new PlaneGeometry(1, 1, 1, 1)));
     },
-    // 3. one heavy mesh, drawn many times
+    () => addCalls(MAX_CALLS / 2, MAX_CALLS, owned.geos[owned.geos.length - 1]),
+    // 4. one mesh of 12.8k triangles
     () => {
-      const n = 224;
-      const verts = (n + 1) * (n + 1);
-      const pos = new Float32Array(verts * 3);
-      for (let y = 0, k = 0; y <= n; y++) for (let x = 0; x <= n; x++, k += 3) {
-        pos[k] = x / n - 0.5;
-        pos[k + 1] = y / n - 0.5;
-        pos[k + 2] = Math.sin((x + y) * 0.2) * 0.002;
-      }
-      const idx = new Uint32Array(n * n * 6);
-      for (let y = 0, k = 0; y < n; y++) for (let x = 0; x < n; x++, k += 6) {
-        const a = y * (n + 1) + x;
-        idx[k] = a;
-        idx[k + 1] = a + 1;
-        idx[k + 2] = a + n + 1;
-        idx[k + 3] = a + 1;
-        idx[k + 4] = a + n + 2;
-        idx[k + 5] = a + n + 1;
-      }
-      const geo = own('geos', new BufferGeometry());
-      geo.setAttribute('position', new BufferAttribute(pos, 3));
-      geo.setIndex(new BufferAttribute(idx, 1));
-      geo.computeBoundingSphere();
-      const mat = own('mats', new MeshBasicMaterial({ color: 0x88aaff, depthTest: false, depthWrite: false }));
+      triGeo = triGeometry();
+    },
+    // 5. ... drawn many times
+    () => {
       trisScene = new Scene();
-      triMeshes = [];
       for (let i = 0; i < MAX_TRI_DRAWS; i++) {
-        const m = new Mesh(geo, mat);
+        const m = new Mesh(triGeo, sceneMat);
         m.scale.set(0.03, 0.03, 1);
-        m.position.set(-0.9 + (i % 8) * 0.25, -0.5 + Math.floor(i / 8) * 0.4, 0);
+        m.position.set(-0.9 + (i % 12) * 0.16, -0.7 + Math.floor(i / 12) * 0.2, 0);
         m.matrixAutoUpdate = false;
         m.updateMatrix();
         m.visible = false;
@@ -317,11 +356,11 @@ export function createThreeLoad(renderer, { width, height, halfFloat } = {}) {
       }
       trisScene.updateMatrixWorld(true);
     },
-    // 4. compile every program now (parallel, non-blocking where KHR_parallel_shader_compile exists)
+    // 6. compile every program now (parallel, non-blocking where KHR_parallel_shader_compile exists)
     () => {
       const all = [fillScene, postScene, callsScene, trisScene];
-      for (const m of callMeshes.slice(0, 6)) m.visible = true;
-      for (const m of triMeshes.slice(0, 1)) m.visible = true;
+      for (const m of callMeshes.slice(0, 2)) m.visible = true;
+      triMeshes[0].visible = true;
       try {
         const p = renderer.compileAsync ? Promise.all(all.map((sc) => renderer.compileAsync(sc, cam))) : Promise.resolve(all.forEach((sc) => renderer.compile?.(sc, cam)));
         p.then(() => { compiled = true; }, () => { compiled = true; compileFailed = true; });
@@ -333,6 +372,7 @@ export function createThreeLoad(renderer, { width, height, halfFloat } = {}) {
       for (const m of triMeshes) m.visible = false;
     },
   ];
+  let triGeo = null;
 
   const setRect = (rt, frac) => {
     if (frac >= 0.999) {
@@ -359,50 +399,80 @@ export function createThreeLoad(renderer, { width, height, halfFloat } = {}) {
     renderer.setRenderTarget(prevState.rt);
     renderer.autoClear = prevState.autoClear;
   };
-  const sync = () => renderer.readRenderTargetPixels(rtMain, 0, 0, 1, 1, buf);
+
+  /** Draws W units of test `id` (no waiting). */
+  const draw = (id, W) => {
+    if (id === 'fill') {
+      const layers = Math.max(1, Math.ceil(W / fullMP - 1e-9));
+      setRect(rtMain, W / (layers * fullMP));
+      renderer.setRenderTarget(rtMain);
+      for (let i = 0; i < layers; i++) {
+        sceneMat.uniforms.uSeed.value = 0.5 + i * 0.13;
+        renderer.render(fillScene, cam);
+      }
+    } else if (id === 'calls') {
+      const n = Math.max(1, Math.min(MAX_CALLS, Math.round(W)));
+      for (let i = 0; i < MAX_CALLS; i++) callMeshes[i].visible = i < n;
+      sceneMat.uniforms.uSeed.value = 0.5;
+      setRect(rtMain, 1);
+      renderer.setRenderTarget(rtMain);
+      renderer.render(callsScene, cam);
+    } else if (id === 'tris') {
+      const n = Math.max(1, Math.min(MAX_TRI_DRAWS, Math.round((W * 1e6) / TRIS_PER_DRAW)));
+      for (let i = 0; i < MAX_TRI_DRAWS; i++) triMeshes[i].visible = i < n;
+      sceneMat.uniforms.uSeed.value = 0.5;
+      setRect(rtMain, 1);
+      renderer.setRenderTarget(rtMain);
+      renderer.render(trisScene, cam);
+    } else if (id === 'post') {
+      const passes = Math.max(1, Math.ceil(W / fullMP - 1e-9));
+      setRect(rtMain, W / (passes * fullMP));
+      renderer.setRenderTarget(rtMain);
+      for (let i = 0; i < passes; i++) renderer.render(postScene, cam);
+    }
+  };
 
   const api = {
     width: w,
     height: h,
     pixels,
     halfFloat: useHalf,
+    mode,
     /** The tests, with the work range of one slice in each test's own unit. */
     tests: [
       { id: 'fill', unit: 'Mpix-layers', minW: fullMP / 16, maxW: fullMP * 14 },
       { id: 'calls', unit: 'calls', minW: 40, maxW: MAX_CALLS },
-      { id: 'tris', unit: 'Mtris', minW: (TRIS_PER_DRAW * 1) / 1e6, maxW: (TRIS_PER_DRAW * MAX_TRI_DRAWS) / 1e6 },
+      { id: 'tris', unit: 'Mtris', minW: TRIS_PER_DRAW / 1e6, maxW: (TRIS_PER_DRAW * MAX_TRI_DRAWS) / 1e6 },
       { id: 'post', unit: 'Mpix-passes', minW: fullMP / 8, maxW: fullMP * 10 },
     ],
     get ready() { return ready; },
     get compiled() { return compiled; },
     get compileFailed() { return compileFailed; },
-    /** One prepare step per call (each a few ms at most); returns true when everything is built. */
+    get pending() { return waiting.size; },
+    /** One prepare step per call (each a few ms of JS at most); returns true when everything is built. */
     prepare() {
       if (steps < stepFns.length) stepFns[steps++]();
       ready = steps >= stepFns.length;
       return ready;
     },
     /**
-     * Throw-away GPU work, NOT timed and not waited on: a small taste of EVERY test, so the first-use costs (pipeline-state creation in the driver, JIT warm-up of
-     * three's render path, geometry upload, the half-float target) and the idle GPU's low clocks are paid here, asynchronously, not inside a timed slice.
-     * It ends with a fence; warmReady() polls it without blocking.
+     * Throw-away GPU work, NOT timed: the first draw of every program, the geometry upload, the half-float target and the idle GPU's low clocks are paid here,
+     * spread over frames (step 0: the fill program, 1: calls + triangles (same program, new geometry), 2: the post program), so no timed slice carries them.
+     * Ends with a fence; warmReady() polls it without blocking.
      */
-    wake() {
+    wake(step = 0) {
       enter();
       try {
-        setRect(rtHalf, 1);
-        renderer.setRenderTarget(rtHalf);
-        renderer.render(fillScene, cam);
-        setRect(rtMain, 0.25);
-        renderer.setRenderTarget(rtMain);
-        renderer.render(fillScene, cam);
-        for (let i = 0; i < MAX_CALLS; i++) callMeshes[i].visible = i < 60;
-        setRect(rtMain, 1);
-        renderer.render(callsScene, cam);
-        for (let i = 0; i < MAX_TRI_DRAWS; i++) triMeshes[i].visible = i < 2;
-        renderer.render(trisScene, cam);
-        setRect(rtMain, 0.25);
-        renderer.render(postScene, cam);
+        const k = step % 3;
+        if (k === 0) {
+          setRect(rtHalf, 1);
+          renderer.setRenderTarget(rtHalf);
+          renderer.render(fillScene, cam);
+          draw('fill', fullMP / 4);
+        } else if (k === 1) {
+          draw('calls', 60);
+          draw('tris', (TRIS_PER_DRAW * 2) / 1e6);
+        } else draw('post', fullMP / 4);
       } finally {
         leave();
       }
@@ -427,44 +497,46 @@ export function createThreeLoad(renderer, { width, height, halfFloat } = {}) {
       fence = null;
       return true;
     },
-    /** Submits W units of test `id`, waits for the GPU, returns the elapsed ms (clock = `now`). */
-    run(id, W, now) {
+    /**
+     * Submits W units of test `id` and returns a handle { id, W, cpuMs, ms, done, dropped }. 'timer' mode: ms arrives through poll(), the call itself costs only the
+     * CPU submit time. 'sync' mode: waits for the GPU here (1 px readback) and the handle is done on return. Returns null when the GPU is too far behind to take
+     * another query (timer mode): try again next frame.
+     */
+    submit(id, W, now) {
+      const hnd = { id, W, cpuMs: 0, gpuMs: -1, ms: -1, done: false, dropped: false };
       enter();
-      const t0 = now();
       try {
-        if (id === 'fill') {
-          const layers = Math.max(1, Math.ceil(W / fullMP - 1e-9));
-          setRect(rtMain, W / (layers * fullMP));
-          renderer.setRenderTarget(rtMain);
-          for (let i = 0; i < layers; i++) {
-            fillMat.uniforms.uSeed.value = 0.5 + i * 0.13;
-            renderer.render(fillScene, cam);
-          }
-        } else if (id === 'calls') {
-          const n = Math.max(1, Math.min(MAX_CALLS, Math.round(W)));
-          for (let i = 0; i < MAX_CALLS; i++) callMeshes[i].visible = i < n;
-          setRect(rtMain, 1);
-          renderer.setRenderTarget(rtMain);
-          renderer.render(callsScene, cam);
-        } else if (id === 'tris') {
-          const n = Math.max(1, Math.min(MAX_TRI_DRAWS, Math.round((W * 1e6) / TRIS_PER_DRAW)));
-          for (let i = 0; i < MAX_TRI_DRAWS; i++) triMeshes[i].visible = i < n;
-          setRect(rtMain, 1);
-          renderer.setRenderTarget(rtMain);
-          renderer.render(trisScene, cam);
-        } else if (id === 'post') {
-          const passes = Math.max(1, Math.ceil(W / fullMP - 1e-9));
-          setRect(rtMain, W / (passes * fullMP));
-          renderer.setRenderTarget(rtMain);
-          for (let i = 0; i < passes; i++) renderer.render(postScene, cam);
+        if (mode === 'timer') {
+          if (!gpuTimer.begin()) return null;
+          const t0 = now();
+          draw(id, W);
+          hnd.cpuMs = now() - t0;
+          const tag = ++tagSeq;
+          waiting.set(tag, hnd);
+          gpuTimer.end(tag);
+        } else {
+          const t0 = now();
+          draw(id, W);
+          hnd.cpuMs = now() - t0;
+          renderer.readRenderTargetPixels(rtMain, 0, 0, 1, 1, buf);
+          hnd.ms = now() - t0;
+          hnd.done = true;
         }
-        sync();
       } finally {
         leave();
       }
-      return now() - t0;
+      return hnd;
+    },
+    /** Resolves finished timer queries (a no-op in sync mode). */
+    poll() {
+      if (mode === 'timer') gpuTimer.poll();
     },
     dispose() {
+      if (mode === 'timer') {
+        gpuTimer.onResult = null;
+        gpuTimer.dispose();
+      }
+      waiting.clear();
       for (const g of owned.geos) g.dispose();
       for (const m of owned.mats) m.dispose();
       for (const r of owned.rts) r.dispose();
@@ -482,24 +554,31 @@ export function createThreeLoad(renderer, { width, height, halfFloat } = {}) {
 // The runner
 
 /**
- * createCalibration({ renderer | load, gpu, viewport, tiers, now, raf, caf, maxMs, sliceMs, frameBudgetMs, ... }) -> { run(), cancel(), frame(ts) }
+ * createCalibration({ renderer | load, gpu, viewport, tiers, now, raf, caf, maxMs, ... }) -> { run(), cancel(), frame(ts) }
  *   run()     starts the rAF-driven run and resolves with the result (never rejects: a failure resolves { ok: false, error }).
  *   frame(ts) drive it yourself from your own loop instead (returns true when finished; read `result`).
- * `load` is the workload interface (createThreeLoad's shape); tests pass a fake.
+ * `load` is the workload interface (createThreeLoad's shape: tests, prepare, compiled, wake, warmReady, submit, poll, dispose, mode); tests pass a fake.
+ *
+ * Timeline: prepare (6 small JS steps, one per frame) -> wait for the programs to be READY -> wake (3-4 frames, one program's first use each) -> wait for the GPU
+ * fence -> measure. 'timer' mode keeps up to two slices in flight (their results arrive 1-3 frames later) and interleaves the four tests so latency is hidden;
+ * 'sync' mode runs blocking slices inside a per-frame budget. `maxMs` bounds the MEASURE phase (default 300); the start-up phases have their own bound
+ * (`startMaxMs`, default 500) because first-use costs on D3D11 are real stalls that no benchmark can shorten.
  */
 export function createCalibration(opts = {}) {
   const now = opts.now || (() => performance.now());
   const raf = opts.raf || ((fn) => requestAnimationFrame(fn));
   const caf = opts.caf || ((id) => cancelAnimationFrame(id));
   const maxMs = opts.maxMs ?? 300;
+  const startMaxMs = opts.startMaxMs ?? 500;
   const sliceMs = opts.sliceMs ?? 4; // the target duration of one slice
   const maxSliceMs = opts.maxSliceMs ?? 12;
-  const frameBudgetMs = opts.frameBudgetMs ?? 9; // all slices of one frame together
-  const abortSliceMs = opts.abortSliceMs ?? 40; // two slices in a row this slow (after the warm-up) mean the machine cannot be measured gently: stop
-  const wakeFrames = opts.wakeFrames ?? 3;
-  const warmWaitMs = opts.warmWaitMs ?? 120; // how long to wait (without blocking) for the GPU to finish the wake-up work
-
+  const frameBudgetMs = opts.frameBudgetMs ?? 9; // sync mode: all blocking slices of one frame together
+  const abortSliceMs = opts.abortSliceMs ?? 40; // sync mode: two slices in a row this slow (after the warm-up) mean the machine cannot be measured gently
+  const wakeFrames = opts.wakeFrames ?? 4;
   const compileWaitMs = opts.compileWaitMs ?? 110;
+  const warmWaitMs = opts.warmWaitMs ?? 120; // how long to wait (without blocking) for the GPU to finish the wake-up work
+  const maxInflight = opts.maxInflight ?? 4;
+  const perFrame = opts.perFrame ?? 2; // timer mode: slices submitted per frame (their CPU cost is the submit time only)
   const gpu = opts.gpu || null;
   const budgetMs = opts.budgetMs ?? 1000 / Math.min(opts.targetFps ?? 60, 240);
 
@@ -507,9 +586,10 @@ export function createCalibration(opts = {}) {
   let viewport = opts.viewport || null;
   let state = 'idle'; // idle | prepare | wake | measure | done
   let t0 = 0;
+  let tMeasure = 0;
   let tPrevRaf = -1;
   let frames = 0;
-  let wakeLeft = wakeFrames;
+  let wakeStep = 0;
   let compileSince = -1;
   let wakeSince = 0;
   let slowStreak = 0;
@@ -517,7 +597,7 @@ export function createCalibration(opts = {}) {
   let budgetNow = frameBudgetMs;
   let sliceNow = sliceMs;
   let maxSliceNow = maxSliceMs;
-  let testI = 0;
+  let rr = 0; // round-robin cursor over the tests (timer mode)
   let aborted = false;
   let cancelled = false;
   let tooSlow = false;
@@ -527,6 +607,7 @@ export function createCalibration(opts = {}) {
   const trace = [];
   const frameWork = [];
   const tests = [];
+  const inflight = []; // timer mode: { t, h }
   let result = null;
 
   const ensureLoad = () => {
@@ -539,7 +620,7 @@ export function createCalibration(opts = {}) {
       w = v.x;
       h = v.y;
     }
-    load = createThreeLoad(r, { width: w, height: h, halfFloat: opts.halfFloat });
+    load = createThreeLoad(r, { width: w, height: h, halfFloat: opts.halfFloat, timer: opts.timer });
   };
   const ensureViewport = () => {
     if (viewport) return;
@@ -562,15 +643,27 @@ export function createCalibration(opts = {}) {
     if (pts.length === 0) return minW;
     if (pts.length >= 3) return 0;
     const last = pts[pts.length - 1];
-    const perUnit = last.ms / last.W;
+    const perUnit = Math.max(last.ms / last.W, 1e-6);
     let W;
-    if (pts.length === 1) W = sliceNow / Math.max(perUnit, 1e-6);
+    if (pts.length === 1) W = sliceNow / perUnit;
     else W = last.W * 2;
-    const hi = Math.min(maxW, maxSliceNow / Math.max(perUnit, 1e-6));
+    const hi = Math.min(maxW, maxSliceNow / perUnit);
     W = Math.min(W, hi);
     // a test whose largest allowed slice is not meaningfully bigger than the last one cannot add information
     if (W < last.W * 1.4) return 0;
     return Math.max(W, minW);
+  }
+
+  function medianInterval(arr) {
+    const s = arr.filter((v) => v > 2 && v < 60).sort((a, b) => a - b);
+    return s.length >= 3 ? s[s.length >> 1] : 16.7;
+  }
+
+  function refreshFrom(arr) {
+    const sorted = arr.filter((v) => v > 2 && v < 50).sort((a, b) => a - b);
+    if (sorted.length < 3) return 0;
+    const q = sorted[Math.floor(sorted.length * 0.25)];
+    return snapRefresh(q, 50) || detectRefreshHz(sorted, sorted.length) || 0;
   }
 
   function finish(partial) {
@@ -578,40 +671,46 @@ export function createCalibration(opts = {}) {
     const ranMs = now() - t0;
     const units = { fillNsPerPx: 0, callUs: 0, mtriMs: 0, postNsPerPx: 0 };
     const fits = {};
+    const measuredTests = {};
     for (const t of tests) {
-      const f = fitSlope(t.points);
-      fits[t.def.id] = f;
+      fits[t.def.id] = fitSlope(t.points);
+      measuredTests[t.def.id] = t.points.length > 0;
     }
     // the fill / post work unit is a million pixels, so the slope in ms per million pixels IS ns per pixel
-    if (fits.fill) units.fillNsPerPx = fits.fill.b;
-    if (fits.calls) units.callUs = fits.calls.b * 1000;
-    if (fits.tris) units.mtriMs = fits.tris.b;
-    if (fits.post) units.postNsPerPx = fits.post.b;
-    // unmeasured tests (aborted early) get a pessimistic value from the slowest measured one so the verdict errs low
-    const measured = [units.fillNsPerPx > 0, units.callUs > 0, units.mtriMs > 0, units.postNsPerPx > 0];
-    if (!measured.every(Boolean)) {
-      if (!units.fillNsPerPx) units.fillNsPerPx = 25;
-      if (!units.callUs) units.callUs = 60;
-      if (!units.mtriMs) units.mtriMs = 8;
-      if (!units.postNsPerPx) units.postNsPerPx = units.fillNsPerPx * 0.6;
+    if (measuredTests.fill) units.fillNsPerPx = fits.fill.b;
+    if (measuredTests.calls) units.callUs = fits.calls.b * 1000;
+    if (measuredTests.tris) units.mtriMs = fits.tris.b;
+    if (measuredTests.post) units.postNsPerPx = fits.post.b;
+    // a test that never got a slice (the run ended early) falls back to a pessimistic value so the verdict errs low
+    const missing = Object.entries(measuredTests).filter(([, ok]) => !ok).map(([id]) => id);
+    if (missing.length) {
+      if (!measuredTests.fill) units.fillNsPerPx = 25;
+      if (!measuredTests.calls) units.callUs = 60;
+      if (!measuredTests.tris) units.mtriMs = 8;
+      if (!measuredTests.post) units.postNsPerPx = units.fillNsPerPx * 0.6;
     }
     ensureViewport();
     const hz = intervals.length >= 3 ? refreshFrom(intervals) : 0;
     const budget = hz > 0 && hz < (opts.targetFps ?? 60) ? 1000 / hz : budgetMs;
     const refMs = estimateFrameMs(units, REFERENCE_MODEL, viewport, 1).ms;
+    // timer-less browsers time slices with a blocking readback, which is noisy: their verdict is never "confident"
+    const confident = !partial && !missing.length && (load?.mode ?? 'timer') === 'timer';
     const recommended = partial === 'cancelled' ? null : tooSlow || partial === 'aborted'
       ? { tier: TIER_ORDER[0], scale: (opts.tiers?.[TIER_ORDER[0]]?.scaleMin ?? DEFAULT_TIER_MODELS.lite.scaleMin), estimates: {}, reasons: ['the machine was too slow to benchmark gently: lowest tier'], confident: false }
-      : { ...recommendTier({ units, viewport, tiers: opts.tiers || DEFAULT_TIER_MODELS, budgetMs: budget, capTier: gpu?.tierCap || null, ladder: opts.ladder || DEFAULT_LADDER }), confident: !partial };
+      : { ...recommendTier({ units, viewport, tiers: opts.tiers || DEFAULT_TIER_MODELS, budgetMs: budget, capTier: gpu?.tierCap || null, ladder: opts.ladder || DEFAULT_LADDER }), confident };
     result = {
       ok: true,
       partial: partial || false,
       cancelled,
+      mode: load?.mode ?? 'timer',
       ranMs: Math.round(ranMs),
+      measureMs: tMeasure ? Math.round(now() - tMeasure) : 0,
       frames,
       score: Math.round(1000 / Math.max(1, refMs)),
       refFrameMs: Math.round(refMs * 10) / 10,
       units,
       fits,
+      missing,
       pixels: load?.pixels || 0,
       viewport,
       halfFloat: !!load?.halfFloat,
@@ -632,17 +731,93 @@ export function createCalibration(opts = {}) {
     return true;
   }
 
-  function medianInterval(arr) {
-    const s = arr.filter((v) => v > 2 && v < 60).sort((a, b) => a - b);
-    return s.length >= 3 ? s[s.length >> 1] : 16.7;
+  const record = (t, h, extra = {}) => {
+    trace.push({ test: t.def.id, W: Math.round(h.W * 1000) / 1000, ms: Math.round(h.ms * 1000) / 1000, cpuMs: Math.round(h.cpuMs * 100) / 100, ...extra });
+  };
+
+  /**
+   * Timer mode. Each test is a queue of slice sizes: first the small probe; when its result is back, the two follow-ups (the size that fills a slice, and double
+   * that) go out TOGETHER, so a test needs two result latencies, not three; the four tests are interleaved so the latency of one is the work of another.
+   * Per frame: resolve finished slices, then submit up to `perFrame` slices (CPU cost: the submit time only; never more than `maxInflight` outstanding).
+   */
+  function measureTimer() {
+    load.poll(now);
+    for (let i = inflight.length - 1; i >= 0; i--) {
+      const { t, h } = inflight[i];
+      if (!h.done) continue;
+      inflight.splice(i, 1);
+      if (h.dropped || h.ms < 0) {
+        record(t, h, { dropped: true });
+        t.retries = (t.retries || 0) + 1;
+        if (t.retries > 3) t.failed = true;
+        else t.queue.unshift(h.W); // retry the same size
+        continue;
+      }
+      t.points.push({ W: h.W, ms: h.ms });
+      record(t, h);
+      if (t.points.length === 1 && !t.followed) {
+        t.followed = true;
+        const { maxW } = t.def;
+        const perUnit = Math.max(h.ms / h.W, 1e-6);
+        const W2 = Math.min(sliceNow / perUnit, maxW, maxSliceNow / perUnit);
+        if (W2 >= h.W * 1.4) {
+          t.queue.push(W2);
+          const W3 = Math.min(W2 * 2, maxW, maxSliceNow / perUnit);
+          if (W3 >= W2 * 1.4) t.queue.push(W3);
+        }
+      }
+    }
+    if (!inflight.length && tests.every((t) => t.failed || !t.queue.length)) return finish(false);
+    if (now() - tMeasure > maxMs) return finish('timeout');
+    let sent = 0;
+    for (let k = 0; k < tests.length && sent < perFrame && inflight.length < maxInflight; k++) {
+      const t = tests[(rr + k) % tests.length];
+      if (t.failed || !t.queue.length) continue;
+      // follow-ups wait for the probe's result; a test never has more than two slices outstanding
+      if (t.points.length === 0 && inflight.some((x) => x.t === t)) continue;
+      const h = load.submit(t.def.id, t.queue[0], now);
+      if (!h) return false; // the GPU is behind: wait a frame
+      t.queue.shift();
+      inflight.push({ t, h });
+      sent++;
+      rr = (rr + k + 1) % tests.length;
+    }
+    return false;
   }
 
-  function refreshFrom(arr) {
-    const sorted = arr.filter((v) => v > 2 && v < 50).sort((a, b) => a - b);
-    if (sorted.length < 3) return 0;
-    const q = sorted[Math.floor(sorted.length * 0.25)];
-    return snapRefresh(q, 50) || detectRefreshHz(sorted, sorted.length) || 0;
+  /** Sync mode: blocking slices inside this frame's budget. */
+  function measureSync(f0) {
+    for (;;) {
+      if (testI >= tests.length) return finish(false);
+      if (now() - tMeasure > maxMs) return finish('timeout');
+      const t = tests[testI];
+      const W = plan(t);
+      if (!W) {
+        testI++;
+        continue;
+      }
+      const used = now() - f0;
+      const last = t.points[t.points.length - 1];
+      const predicted = last ? Math.min(maxSliceNow, (last.ms / last.W) * W) : 1;
+      if (used > 0.1 && used + predicted > budgetNow) return false;
+      const h = load.submit(t.def.id, W, now);
+      if (h.ms > abortSliceMs) {
+        // one slow slice can be a first-use cost or another process on the GPU: drop it and retry next frame; two in a row is the machine
+        record(t, h, { dropped: true });
+        if (++slowStreak >= 2) {
+          tooSlow = true;
+          return finish('aborted');
+        }
+        return false;
+      }
+      slowStreak = 0;
+      t.points.push({ W, ms: h.ms });
+      record(t, h);
+      if (t.points.length >= 3 || !plan(t)) testI++;
+      if (now() - f0 > budgetNow) return false;
+    }
   }
+  let testI = 0;
 
   /** One rAF frame of the run. Returns true when finished. */
   function frame(ts) {
@@ -658,20 +833,18 @@ export function createCalibration(opts = {}) {
     frames++;
     try {
       ensureLoad();
-      if (f0 - t0 > maxMs && state !== 'measure') return finish('timeout');
+      if (f0 - t0 > startMaxMs && state !== 'measure') return finish('timeout');
       if (state === 'prepare') {
-        const done = load.prepare();
-        if (done) {
+        if (load.prepare()) {
           if (compileSince < 0) compileSince = now();
           if (load.compiled || now() - compileSince > compileWaitMs) state = 'wake';
         }
       } else if (state === 'wake') {
         if (!load.compiled && now() - compileSince <= compileWaitMs) {
           /* still compiling: keep waiting (the frames double as the vsync measurement) */
-        } else if (wakeLeft > 0) {
-          load.wake();
-          wakeLeft--;
-          if (wakeLeft === 0) wakeSince = now();
+        } else if (wakeStep < wakeFrames) {
+          load.wake(wakeStep++);
+          if (wakeStep === wakeFrames) wakeSince = now();
         } else if (load.warmReady && !load.warmReady() && now() - wakeSince < warmWaitMs) {
           /* the GPU is still working through the first-use costs of the wake-up draws: wait for it (a fence poll, no stall) */
         } else {
@@ -680,39 +853,12 @@ export function createCalibration(opts = {}) {
           sliceNow = Math.min(sliceMs, Math.max(2, budgetNow * 0.8));
           maxSliceNow = Math.min(maxSliceMs, Math.max(4, budgetNow * 1.4));
           state = 'measure';
+          tMeasure = now();
         }
       } else if (state === 'measure') {
-        // as many slices as fit this frame's budget
-        for (;;) {
-          if (testI >= tests.length) return finish(false);
-          if (now() - t0 > maxMs) return finish('timeout');
-          const t = tests[testI];
-          const W = plan(t);
-          if (!W) {
-            testI++;
-            continue;
-          }
-          const used = now() - f0;
-          const last = t.points[t.points.length - 1];
-          const predicted = last ? Math.min(maxSliceNow, (last.ms / last.W) * W) : 1;
-          if (used > 0.1 && used + predicted > budgetNow) break;
-          const ms = load.run(t.def.id, W, now);
-          const row = { test: t.def.id, W: Math.round(W * 1000) / 1000, ms: Math.round(ms * 100) / 100 };
-          if (ms > abortSliceMs) {
-            // one slow slice can be a first-use cost or another process on the GPU: drop it and retry next frame; two in a row is the machine
-            trace.push({ ...row, dropped: true });
-            if (++slowStreak >= 2) {
-              tooSlow = true;
-              return finish('aborted');
-            }
-            break;
-          }
-          slowStreak = 0;
-          t.points.push({ W, ms });
-          trace.push(row);
-          if (t.points.length >= 3 || !plan(t)) testI++;
-          if (now() - f0 > budgetNow) break;
-        }
+        if (load.mode === 'sync') {
+          if (measureSync(f0)) return true;
+        } else if (measureTimer()) return true;
       }
     } catch (err) {
       state = 'done';
@@ -732,7 +878,7 @@ export function createCalibration(opts = {}) {
 
   function init() {
     ensureLoad();
-    for (const def of load.tests) tests.push({ def, points: [] });
+    for (const def of load.tests) tests.push({ def, points: [], queue: [def.minW], followed: false, retries: 0, failed: false });
   }
 
   const api = {
@@ -781,7 +927,10 @@ export function createCalibration(opts = {}) {
     get result() { return result; },
     get aborted() { return aborted; },
     get progress() {
-      return state === 'done' ? 1 : tests.length ? Math.min(0.99, (testI + (tests[testI]?.points.length || 0) / 3) / tests.length) : 0;
+      if (state === 'done') return 1;
+      if (!tests.length) return 0;
+      const done = tests.reduce((s, t) => s + Math.min(3, t.points.length) / 3, 0) / tests.length;
+      return Math.min(0.99, state === 'measure' ? 0.3 + done * 0.7 : state === 'wake' ? 0.2 : 0.1);
     },
   };
   return api;

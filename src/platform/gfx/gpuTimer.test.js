@@ -71,6 +71,42 @@ describe('createGpuTimer', () => {
     expect(() => { t.begin(); t.end(); }).not.toThrow();
     expect(t.supported).toBe(false);
   });
+  it('a tagged query delivers its result through onResult(tag, ms) (zero is valid, a disjoint sample is -1) and does not feed lastMs', () => {
+    const f = fakeGl({ latency: 1, ns: 4_000_000 });
+    const t = createGpuTimer(f.gl);
+    const got = [];
+    t.onResult = (tag, ms) => got.push([tag, ms]);
+    expect(t.begin()).toBe(true);
+    t.end('a');
+    f.tick();
+    t.begin();
+    t.end('b');
+    for (let i = 0; i < 4; i++) { f.tick(); t.poll(); }
+    expect(got.map((g) => g[0])).toEqual(['a', 'b']);
+    expect(got[0][1]).toBeCloseTo(4, 5);
+    expect(t.lastMs).toBe(-1);
+    // a sample taken across a disjoint event is reported as -1
+    const f2 = fakeGl({ latency: 1, ns: 4_000_000, disjointAt: 1 });
+    const t2 = createGpuTimer(f2.gl);
+    const got2 = [];
+    t2.onResult = (tag, ms) => got2.push([tag, ms]);
+    t2.begin();
+    t2.end('d');
+    t2.poll(); // the fake starts the query's clock at its first poll
+    f2.tick();
+    t2.poll();
+    expect(got2).toEqual([['d', -1]]);
+    expect(t2.dropped).toBe(1);
+  });
+  it('begin() reports false when the GPU is too far behind to take another query', () => {
+    const f = fakeGl({ latency: 1000 });
+    const t = createGpuTimer(f.gl, { inflight: 2 });
+    expect(t.begin()).toBe(true);
+    t.end();
+    expect(t.begin()).toBe(true);
+    t.end();
+    expect(t.begin()).toBe(false);
+  });
   it('dispose frees the outstanding queries', () => {
     const f = fakeGl({ latency: 1000 });
     const t = createGpuTimer(f.gl);

@@ -21,7 +21,9 @@ export function createGpuTimer(gl, { inflight = 4 } = {}) {
     avgMs: -1,
     samples: 0,
     dropped: 0,
-    begin() {},
+    /** Optional: called as onResult(tag, ms) for every query ended with a tag (ms = -1 when the sample was discarded: disjoint / absurd). */
+    onResult: null,
+    begin() { return false; },
     end() {},
     poll() {},
     dispose() {},
@@ -47,7 +49,7 @@ export function createGpuTimer(gl, { inflight = 4 } = {}) {
       disjoint = !!gl.getParameter(ext.GPU_DISJOINT_EXT);
     } catch { /* ignore */ }
     while (queue.length) {
-      const q = queue[0];
+      const q = queue[0].q;
       let ready = false;
       try {
         ready = !!avail(q);
@@ -56,7 +58,7 @@ export function createGpuTimer(gl, { inflight = 4 } = {}) {
         return;
       }
       if (!ready) break;
-      queue.shift();
+      const { tag } = queue.shift();
       let ns = 0;
       try {
         ns = Number(result(q));
@@ -67,11 +69,17 @@ export function createGpuTimer(gl, { inflight = 4 } = {}) {
       try {
         del(q);
       } catch { /* ignore */ }
-      if (disjoint || !(ns > 0) || ns > 5e9) {
+      const tagged = tag !== undefined;
+      if (disjoint || !(ns >= 0) || ns > 5e9 || (!tagged && !(ns > 0))) {
         out.dropped++;
+        if (tagged) out.onResult?.(tag, -1);
         continue;
       }
       const ms = ns / 1e6;
+      if (tagged) {
+        out.onResult?.(tag, ms);
+        continue; // a tagged measurement is a one-off: it does not feed lastMs / avgMs (those follow the untagged frame queries)
+      }
       out.lastMs = ms;
       out.avgMs = out.avgMs < 0 ? ms : out.avgMs + (ms - out.avgMs) * 0.2;
       out.samples++;
@@ -79,24 +87,28 @@ export function createGpuTimer(gl, { inflight = 4 } = {}) {
   }
 
   out.poll = poll;
+  /** Starts a query; returns false when it did not start (the GPU is `inflight` queries behind: skip the sample instead of stalling). */
   out.begin = () => {
-    if (dead || active) return;
+    if (dead || active) return false;
     poll();
-    if (queue.length >= inflight) return; // the GPU is that far behind: skip this frame's sample instead of stalling
+    if (queue.length >= inflight) return false;
     try {
       const q = create();
       begin(q);
       active = q;
+      return true;
     } catch {
       dead = true;
       out.supported = false;
+      return false;
     }
   };
-  out.end = () => {
+  /** Ends the query; a `tag` (optional) makes its result arrive through onResult(tag, ms). */
+  out.end = (tag) => {
     if (!active) return;
     try {
       end();
-      queue.push(active);
+      queue.push({ q: active, tag });
     } catch {
       dead = true;
       out.supported = false;
@@ -105,7 +117,7 @@ export function createGpuTimer(gl, { inflight = 4 } = {}) {
   };
   out.dispose = () => {
     dead = true;
-    for (const q of queue) {
+    for (const { q } of queue) {
       try {
         del(q);
       } catch { /* ignore */ }

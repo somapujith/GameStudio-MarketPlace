@@ -121,6 +121,7 @@ export function createLoop(opts = {}) {
   const setT = opts.setTimeout || ((fn, ms) => setTimeout(fn, ms));
   const clearT = opts.clearTimeout || ((id) => clearTimeout(id));
 
+  const gpuTimer = opts.gpuTimer && opts.gpuTimer.supported !== false ? opts.gpuTimer : null;
   let running = false;
   let rafId = 0;
   let lastTs = -1;
@@ -161,6 +162,7 @@ export function createLoop(opts = {}) {
     const dtSec = Math.min(dtMs / 1000, maxDelta);
     const t0 = now();
     if (info) info.reset();
+    if (gpuTimer) gpuTimer.begin(); // one query spanning every GL command of the frame (the sim's own work issues none)
     state.steps = 0;
     if (fixedStep > 0) {
       acc += dtSec;
@@ -180,12 +182,13 @@ export function createLoop(opts = {}) {
       state.steps = 1;
     }
     if (render) render(state.alpha, dtSec);
+    if (gpuTimer) gpuTimer.end();
     const cpuMs = now() - t0;
     const calls = info ? info.render.calls : -1;
     frames++;
     if (dtMs > 0) {
       ring.push(dtMs, cpuMs, calls);
-      if (governor) governor.frame(dtMs, cpuMs, calls, opts.gpuTimer ? opts.gpuTimer.lastMs : -1);
+      if (governor) governor.frame(dtMs, cpuMs, calls, gpuTimer ? gpuTimer.lastMs : -1);
     }
   }
 

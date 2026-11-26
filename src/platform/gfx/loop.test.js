@@ -274,13 +274,26 @@ describe('createLoop: renderer.info and the stats ring', () => {
     expect(cpu).toBeCloseTo(3, 5);
     expect(calls).toBe(200);
   });
-  it('passes the GPU timer reading when one is given', () => {
+  it('wraps every frame in the GPU timer (begin before the sim, end after the render) and passes its reading on', () => {
     const env = makeEnv();
     const governor = { frame: vi.fn(), discontinuity() {} };
-    const loop = mkLoop(env, { governor, gpuTimer: { lastMs: 7.5 }, render: () => {} });
+    const order = [];
+    const gpuTimer = { supported: true, lastMs: 7.5, begin: () => order.push('begin'), end: () => order.push('end') };
+    const loop = mkLoop(env, { governor, gpuTimer, update: () => order.push('update'), render: () => order.push('render') });
     loop.start();
     run(env, 3, 60);
+    expect(order.slice(0, 4)).toEqual(['begin', 'update', 'render', 'end']);
     expect(governor.frame.mock.calls[0][3]).toBe(7.5);
+  });
+  it('an unsupported GPU timer is ignored (-1 reaches the governor)', () => {
+    const env = makeEnv();
+    const governor = { frame: vi.fn(), discontinuity() {} };
+    const begin = vi.fn();
+    const loop = mkLoop(env, { governor, gpuTimer: { supported: false, lastMs: -1, begin, end: begin }, render: () => {} });
+    loop.start();
+    run(env, 3, 60);
+    expect(begin).not.toHaveBeenCalled();
+    expect(governor.frame.mock.calls[0][3]).toBe(-1);
   });
   it('the ring is a fixed typed-array buffer: 5000 frames neither grow it nor replace the state object', () => {
     const env = makeEnv();
