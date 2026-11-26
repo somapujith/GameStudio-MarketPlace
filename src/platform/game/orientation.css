@@ -143,32 +143,58 @@
   color: rgba(255, 255, 255, 0.6);
 }
 
-/* ---- the turning phone ---- */
+/* ---- the turning phone ----
+   An HTML box (not SVG) so the turn runs on the compositor: no paint, no main-thread work per frame. It turns four times (about 14 s),
+   then rests on its side, so a phone left upright on this screen does not animate for ever. The arrow is static. */
 .og-icon {
+  position: relative;
   display: block;
-  overflow: visible;
-}
-.og-icon__body {
-  fill: rgba(0, 0, 0, 0.35);
-  stroke: var(--g-accent, #7b6dff);
-}
-.og-icon__screen {
-  fill: var(--g-soft, rgba(123, 109, 255, 0.2));
-}
-.og-icon__notch {
-  stroke: var(--g-accent-2, #4cc9f0);
-}
-.og-icon__arrow,
-.og-icon__arrowhead {
-  stroke: var(--g-accent-2, #4cc9f0);
+  flex: none;
+  width: var(--og-icon, 112px);
+  height: var(--og-icon, 112px);
 }
 .og-icon__phone {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: og-turn 3.4s cubic-bezier(0.6, 0, 0.3, 1) infinite;
+  position: absolute;
+  left: 30.8%;
+  top: 11.7%;
+  width: 38.4%;
+  height: 76.6%;
+  box-sizing: border-box;
+  border: 4.5px solid var(--g-accent, #7b6dff);
+  border-radius: 22%/11%;
+  background: rgba(0, 0, 0, 0.35);
+  transform: rotate(-90deg); /* resting pose: on its side */
+  animation: og-turn 3.4s cubic-bezier(0.6, 0, 0.3, 1) 4;
+  will-change: transform;
+}
+.og-icon__phone::before {
+  content: '';
+  position: absolute;
+  inset: 8% 9% 12%; /* the screen */
+  border-radius: 4px;
+  background: var(--g-soft, rgba(123, 109, 255, 0.2));
+}
+.og-icon__phone::after {
+  content: '';
+  position: absolute;
+  left: 32%;
+  right: 32%;
+  top: 3%;
+  height: 3px; /* the speaker */
+  border-radius: 2px;
+  background: var(--g-accent-2, #4cc9f0);
 }
 .og-icon--reverse .og-icon__phone {
+  transform: none;
   animation-name: og-turn-back;
+}
+.og-icon__arrow {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  stroke: var(--g-accent-2, #4cc9f0);
 }
 @keyframes og-turn {
   0%,
@@ -176,11 +202,8 @@
     transform: rotate(0deg);
   }
   46%,
-  78% {
-    transform: rotate(-90deg);
-  }
   100% {
-    transform: rotate(0deg);
+    transform: rotate(-90deg);
   }
 }
 @keyframes og-turn-back {
@@ -189,21 +212,15 @@
     transform: rotate(-90deg);
   }
   46%,
-  78% {
+  100% {
     transform: rotate(0deg);
   }
-  100% {
-    transform: rotate(-90deg);
-  }
 }
-/* reduced motion (the OS setting or the hub's own switch): no movement, the phone is already on its side */
+/* reduced motion (the OS setting or the hub's own switch): no movement; the phone stays in its resting pose, on its side */
 @media (prefers-reduced-motion: reduce) {
   .og-icon__phone {
     animation: none;
-    transform: rotate(-90deg);
-  }
-  .og-icon--reverse .og-icon__phone {
-    transform: rotate(0deg);
+    will-change: auto;
   }
   .og-btn:active {
     transform: none;
@@ -211,10 +228,7 @@
 }
 :root[data-motion='reduced'] .og-icon__phone {
   animation: none;
-  transform: rotate(-90deg);
-}
-:root[data-motion='reduced'] .og-icon--reverse .og-icon__phone {
-  transform: rotate(0deg);
+  will-change: auto;
 }
 :root[data-motion='reduced'] .og-btn:active {
   transform: none;
@@ -226,8 +240,7 @@
     gap: 8px;
   }
   .og-icon {
-    width: 72px;
-    height: 72px;
+    --og-icon: 72px;
   }
   .og-btn {
     min-height: 48px;

@@ -56,6 +56,7 @@ export default {
   ageRating: '12+',                     // string
   languages: ['English'],               // string[]
   platforms: ['Phone', 'Tablet', 'Desktop'],
+  orientation: 'landscape',             // 'landscape' | 'portrait' | 'any' (default): a game that must be played sideways on a phone or tablet, see section 11
   tags: ['Dice race', 'Classic'],       // search and chips
   highlights: [{ icon: 'users', title: 'Two to four players', text: 'One sentence.' }],   // icon = a HubIcon name
   howToPlay: [{ icon: 'dice', title: 'Roll', text: 'One sentence per step, 3-5 steps.' }],
@@ -184,3 +185,26 @@ loaders: { soloGame: () => import('./Solo.jsx'), onlineGame: () => import('./Onl
 - **Refresh.** After the tutorial the unlock shows without a reload: `UserRefresh` in `src/App.jsx` re-reads `/api/me` whenever the player leaves a `/play/*` route in the app, and the local key covers the same browser immediately. A game that leaves with a full page load re-reads `/api/me` on boot anyway.
 - **Server.** Add the id to `TUTORIAL_GAMES` (`worker/games/tutorial.js`), give the adapter `canHost({ env, user })`, and expose `tutorialDone` in `gameStats` of `/api/me`.
 - A game without `tutorial.requiredForRooms` is untouched by all of this.
+
+## 11. A game that must be played sideways (or upright): `orientation`
+
+A game whose controls only work in one orientation (the two 3D games are landscape games) says so in its manifest and gets the rest from the hub. Design and device matrix: `docs/perf/landscape.md`.
+
+```js
+// manifest.js
+orientation: 'landscape',   // 'landscape' | 'portrait' | 'any' (the default: no field, no gate)
+```
+
+- **What the hub does.** `src/pages/SoloGame.jsx` (solo screens) and `src/pages/OnlineGame.jsx` (room screens) wrap the game's screen in `<ManifestOrientationGate>` (`src/platform/game/OrientationGate.jsx`). On a **touch-first device** (phone or tablet: `(pointer: coarse)`) whose window is in the wrong orientation, the game stays mounted but hidden and `inert`, and a full-screen "Turn your phone sideways" screen (English and Telugu, an animated phone, reduced-motion aware, "Back to the game page", and "Tap to play in landscape" where the browser can lock the orientation) covers it. The moment the device is in the right orientation again the screen goes away and the game resumes, without a reload. **Desktop is never gated**, however narrow or tall the window is. On Android Chrome the first tap after the game opens also requests fullscreen and `screen.orientation.lock('landscape')` (released, with the fullscreen it entered, when the player leaves); iOS Safari cannot do either, so the screen is the whole solution there. While a game screen is up on a touch device the page's pinch zoom, pull-to-refresh and long-press menu are off (`lockGestures` from `src/lib/mobile.js`).
+- **What the game does.** Nothing is torn down, so a game with its own render loop and audio must stop them while the screen is up, and start them again after:
+
+  ```js
+  import { useGamePaused } from '@/platform/game/orientationContext.js';   // a tiny module: React only
+  const paused = useGamePaused();   // true only while the gate covers this screen; always false on desktop and outside a gate
+  useEffect(() => { if (paused) { engine.stop(); sound.suspend(); } else { engine.start(); sound.resume(); } }, [paused]);
+  ```
+
+  Do not restart the loop from an effect cleanup (it would also run on unmount). A local session with a clock (Tiffin Centre's tutorial) holds it while `paused`; an online room keeps running on the server, so tell the player in the lobby to turn the phone first. Autowala's example is `src/games/autowala/ui/useOrientationHold.js`.
+- **Layout.** Design the game for landscape first (reference sizes 640x360 ... 1024x768 and desktop), read `env(safe-area-inset-*)` for the notch (the wrapper also exports them as `--og-safe-top|right|bottom|left`), size from `100dvh`, and delete any "rotate your phone" hint of your own: the gate is the hint.
+- **The game page** needs nothing: `orientation` adds a generic "Best played in landscape" chip next to the players and duration and an "Orientation" row in the Details table (`orientationLabel` / `orientationDetail` in `src/platform/game/orientationPolicy.js`).
+- **Tests.** `registry.test.js` checks the value is one of the three; add `expect(manifest.orientation).toBe('landscape')` to the game's manifest test.

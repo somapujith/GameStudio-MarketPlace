@@ -18,18 +18,16 @@ import { gateCopy } from './orientationText.js';
 import { useOrientationPolicy } from './useOrientationPolicy.js';
 import './orientation.css';
 
-/** A phone that turns on its side (CSS-animated; `reverse` for the portrait policy). A static, already-turned phone under reduced motion. */
+/** A phone that turns on its side (a compositor-only CSS turn, four times, then it rests; `reverse` for the portrait policy). Static under reduced motion. */
 export function PhoneTurnIcon({ reverse = false, size = 112 }) {
   return (
-    <svg className={`og-icon${reverse ? ' og-icon--reverse' : ''}`} width={size} height={size} viewBox="0 0 120 120" aria-hidden="true" focusable="false">
-      <path className="og-icon__arrow" d="M88 22a44 44 0 0 1 22 30" fill="none" strokeWidth="5" strokeLinecap="round" />
-      <path className="og-icon__arrowhead" d="M104 40l7.5 14.5L96 54.5" fill="none" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
-      <g className="og-icon__phone">
-        <rect className="og-icon__body" x="37" y="14" width="46" height="92" rx="10" strokeWidth="5" />
-        <rect className="og-icon__screen" x="43" y="26" width="34" height="66" rx="3" />
-        <path className="og-icon__notch" d="M54 20h12M52 99h16" strokeWidth="3" strokeLinecap="round" />
-      </g>
-    </svg>
+    <span className={`og-icon${reverse ? ' og-icon--reverse' : ''}`} style={size === 112 ? undefined : { '--og-icon': `${size}px` }} aria-hidden="true">
+      <span className="og-icon__phone" />
+      <svg className="og-icon__arrow" viewBox="0 0 120 120" fill="none" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" focusable="false">
+        <path d="M88 22a44 44 0 0 1 22 30" />
+        <path d="M104 40l7.5 14.5L96 54.5" />
+      </svg>
+    </span>
   );
 }
 

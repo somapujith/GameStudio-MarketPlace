@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEVICES, fakeWindow } from './orientation.fakes.js';
 import { createOrientationController, LATE_MS, SETTLE_MS } from './orientationController.js';
+import { frameFreezer } from './orientationFreeze.js';
 import { canLockOrientation, canPlayLandscape, createLandscapeLock } from './orientationLock.js';
 import {
   deviceIsPortrait,
@@ -424,5 +425,126 @@ describe('createLandscapeLock: fullscreen + screen.orientation.lock', () => {
     lock.release();
     expect(await pending).toBe(false);
     expect(win.calls).not.toContain('lock:landscape');
+  });
+});
+
+describe('frameFreezer: every animation-frame loop of the page stops while the gate is up', () => {
+  // a window with a manual frame clock: `tick()` runs what the "browser" has scheduled
+  const rafWindow = () => {
+    let id = 0;
+    const scheduled = new Map();
+    const win = {
+      requestAnimationFrame: (cb) => (scheduled.set(++id, cb), id),
+      cancelAnimationFrame: (i) => scheduled.delete(i),
+    };
+    return {
+      win,
+      scheduled,
+      tick(t = 16) {
+        const run = [...scheduled];
+        scheduled.clear();
+        run.forEach(([, cb]) => cb(t));
+      },
+    };
+  };
+  // a loop like a minimap's: draws, asks for the next frame
+  const loop = (win) => {
+    const o = { runs: 0, id: 0 };
+    const step = () => {
+      o.runs++;
+      o.id = win.requestAnimationFrame(step);
+    };
+    o.id = win.requestAnimationFrame(step);
+    return o;
+  };
+
+  it('a desktop window never gets patched: nothing happens until the first freeze', () => {
+    const { win } = rafWindow();
+    const raf = win.requestAnimationFrame;
+    frameFreezer(win);
+    expect(win.requestAnimationFrame).toBe(raf);
+  });
+
+  it('frozen: the loops stop after the frame the browser already had scheduled, and nothing runs until the thaw', () => {
+    const r = rafWindow();
+    const a = loop(r.win);
+    const b = loop(r.win);
+    r.tick();
+    expect([a.runs, b.runs]).toEqual([1, 1]);
+    const f = frameFreezer(r.win);
+    f.freeze();
+    r.tick(); // the frame that was already scheduled: runs once, asks again, and is queued
+    r.tick();
+    r.tick();
+    expect([a.runs, b.runs]).toEqual([2, 2]);
+    expect(f.frozen).toBe(true);
+    expect(f.queued).toBe(2);
+    expect(r.scheduled.size).toBe(0); // nothing is waiting for a frame: the browser has nothing to wake up for
+    f.thaw();
+    expect(r.scheduled.size).toBe(2);
+    r.tick();
+    expect([a.runs, b.runs]).toEqual([3, 3]); // resumed, and still looping
+    r.tick();
+    expect([a.runs, b.runs]).toEqual([4, 4]);
+  });
+
+  it('a callback asked for while frozen runs exactly once after the thaw, in order, with the new frame time', () => {
+    const r = rafWindow();
+    const f = frameFreezer(r.win);
+    f.freeze();
+    const seen = [];
+    const i1 = r.win.requestAnimationFrame((t) => seen.push(['a', t]));
+    const i2 = r.win.requestAnimationFrame((t) => seen.push(['b', t]));
+    expect(i1).toBeLessThan(0); // synthetic ids are negative (and truthy, for `if (!raf)` guards)
+    expect(i2).not.toBe(i1);
+    f.thaw();
+    r.tick(99);
+    r.tick(115);
+    expect(seen).toEqual([['a', 99], ['b', 99]]);
+  });
+
+  it('cancelAnimationFrame works on a queued id, on an id already handed to the browser, and on ordinary ids', () => {
+    const r = rafWindow();
+    const f = frameFreezer(r.win);
+    const real = r.win.requestAnimationFrame(() => {}); // before the freeze: a real id
+    f.freeze();
+    const ran = [];
+    const queuedId = r.win.requestAnimationFrame(() => ran.push('queued'));
+    const keepId = r.win.requestAnimationFrame(() => ran.push('kept'));
+    const lateId = r.win.requestAnimationFrame(() => ran.push('late'));
+    r.win.cancelAnimationFrame(queuedId); // cancelled while queued
+    r.win.cancelAnimationFrame(real);
+    expect(r.scheduled.size).toBe(0);
+    f.thaw();
+    r.win.cancelAnimationFrame(lateId); // cancelled AFTER the thaw, through its stale negative id
+    r.tick();
+    expect(ran).toEqual(['kept']);
+    expect(keepId).toBeLessThan(0);
+  });
+
+  it('freeze and thaw are idempotent, there is one freezer per window, and a window with no rAF gets a harmless one', () => {
+    const r = rafWindow();
+    const f = frameFreezer(r.win);
+    expect(frameFreezer(r.win)).toBe(f);
+    f.freeze();
+    f.freeze();
+    f.thaw();
+    f.thaw();
+    expect(f.frozen).toBe(false);
+    const none = frameFreezer({});
+    none.freeze();
+    none.thaw();
+    expect(none.frozen).toBe(false);
+    expect(frameFreezer(null).queued).toBe(0);
+  });
+
+  it('after the thaw a plain request goes straight to the browser again', () => {
+    const r = rafWindow();
+    const f = frameFreezer(r.win);
+    f.freeze();
+    f.thaw();
+    const id = r.win.requestAnimationFrame(() => {});
+    expect(id).toBeGreaterThan(0);
+    expect(r.scheduled.has(id)).toBe(true);
   });
 });

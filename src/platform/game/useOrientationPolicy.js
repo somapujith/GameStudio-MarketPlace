@@ -1,6 +1,7 @@
 // useOrientationPolicy(policy): is this device in the orientation the game wants? And, on a phone or tablet that wants landscape, do the
 // platform's part of making it so: pin the screen sideways (Android: fullscreen + screen.orientation.lock on the first user gesture),
-// stop the browser's own gestures (pull-to-refresh, pinch, long-press menu), and undo all of it when the game screen goes away.
+// stop the browser's own gestures (pull-to-refresh, pinch, long-press menu), freeze the page's animation-frame loops while it is upright
+// (orientationFreeze.js), and undo all of it when the game screen goes away.
 //
 //   const o = useOrientationPolicy('landscape');
 //   o.gated             true while a touch device is upright: cover the game, stop the loop (o.paused is the same value)
@@ -13,15 +14,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { lockGestures } from '@/lib/mobile.js';
 import { createOrientationController } from './orientationController.js';
+import { frameFreezer } from './orientationFreeze.js';
 import { createLandscapeLock } from './orientationLock.js';
 import { normalizePolicy } from './orientationPolicy.js';
 
-/** `opts.win` replaces `window` (tests); `opts.lock` / `opts.gestures` = false switch the platform side effects off. */
+/** `opts.win` replaces `window` (tests); `opts.lock` / `opts.gestures` / `opts.freezeFrames` = false switch the platform side effects off. */
 export function useOrientationPolicy(policy = 'landscape', opts = {}) {
   const win = opts.win !== undefined ? opts.win : typeof window !== 'undefined' ? window : null;
   const pol = normalizePolicy(policy);
   const wantLock = opts.lock !== false;
   const wantGestures = opts.gestures !== false;
+  const wantFreeze = opts.freezeFrames !== false;
 
   const [ctl] = useState(() => createOrientationController({ win, policy: pol }));
   useEffect(() => {
@@ -55,6 +58,20 @@ export function useOrientationPolicy(policy = 'landscape', opts = {}) {
     if (!active || !wantGestures || !win || !win.document) return undefined;
     return lockGestures(win.document.documentElement);
   }, [active, wantGestures, win]);
+
+  // Once the game has been on screen, every animation-frame loop of the page stops while the gate is up (a game stops its own loop with
+  // useGamePaused(); this catches the rest: minimaps, polls, count-ups). Not before the first landscape moment: a game opened upright keeps
+  // LOADING behind the screen (its start-up yields through requestAnimationFrame), so it is ready when the player has turned the phone.
+  const seenLive = useRef(false);
+  useEffect(() => {
+    if (!snap.gated) seenLive.current = true;
+  }, [snap.gated]);
+  useEffect(() => {
+    if (!snap.gated || !wantFreeze || !seenLive.current || !win) return undefined;
+    const freezer = frameFreezer(win);
+    freezer.freeze();
+    return () => freezer.thaw(); // landscape again (or the screen is leaving): the queued frames run on the next real frame
+  }, [snap.gated, wantFreeze, win]);
 
   return useMemo(
     () => ({ policy: pol, gated: snap.gated, paused: snap.gated, portrait: snap.portrait, landscape: !snap.portrait, coarse: snap.coarse, keyboardOpen: snap.keyboardOpen, canLock, requestLandscape }),
