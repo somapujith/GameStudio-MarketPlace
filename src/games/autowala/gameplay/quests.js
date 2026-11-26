@@ -19,9 +19,9 @@ import { hashString, makeRng } from '../game/rng.js';
 import { createRouter } from '../world/routing.js';
 import { randomLook } from '../sim/autoModel.js';
 import { clearPassengers, seatPassengers } from './customers.js';
-import { DEFS, DEF_BY_ID, dailyJob, tutorialPlan } from './quest-defs.js';
+import { DEFS, DEF_BY_ID, dailyJob, replayOf, tutorialPlan } from './quest-defs.js';
 import { abandonRun, createRun, currentStep, feedRun, isUnlocked, normalizeSave, rankOf, recordComplete, runView, tickRun } from './quest-engine.js';
-import { dateKey } from './quest-math.js';
+import { dateKey, shouldRebuildOffers } from './quest-math.js';
 import { createBoardSign } from './quest-props.js';
 import { createQuestWorld } from './quest-world.js';
 
@@ -173,7 +173,8 @@ export function installQuests(ctx) {
   }
 
   const ensureOffers = (force) => {
-    if (force || offersDirty || ctx.clock.time - offersAt > OFFERS_STALE || !offers.length) buildOffers();
+    const boardOpen = state.menu === 'jobs'; // on the board the player accepts what they are looking at: never re-roll it under them
+    if (shouldRebuildOffers({ force, dirty: offersDirty, age: ctx.clock.time - offersAt, stale: OFFERS_STALE, empty: !offers.length, boardOpen })) buildOffers();
   };
 
   // ---- starting and ending missions ----------------------------------------------------------------------------------------------
@@ -223,7 +224,7 @@ export function installQuests(ctx) {
       }
     }
     persist();
-    ctx.toast(plan.tutorial ? `First day done! +Rs ${pay.cash}` : `Mission complete! +Rs ${pay.cash}`, { tone: 'gold', ms: 4200 });
+    ctx.toast(plan.replay ? 'Tutorial done again. Good practice!' : plan.tutorial ? `First day done! +Rs ${pay.cash}` : `Mission complete! +Rs ${pay.cash}`, { tone: 'gold', ms: 4200 });
     if (pay.rep > 0) ctx.toast(`+${pay.rep} reputation`, { tone: 'info', ms: 3000 });
     const before = rankOf({ rep: save.rep - pay.rep }).index;
     if (rankOf(save).index > before) ctx.toast(`New rank: ${rankOf(save).title}`, { tone: 'gold', ms: 4200 });
@@ -327,12 +328,13 @@ export function installQuests(ctx) {
     },
     startTutorial() {
       if (run) return false;
-      const plan = tutorialPlan({ city, route, rng: makeRng(7), player: { x: v.x, z: v.z } });
-      if (!plan) return false;
+      const first = tutorialPlan({ city, route, rng: makeRng(7), player: { x: v.x, z: v.z } });
+      if (!first) return false;
+      const plan = save.tutorial === 'done' ? replayOf(first) : first; // the pay is for the first time only
       return startRun(plan, true);
     },
     skipTutorial() {
-      if (save.tutorial == null || (run && tutorial)) save.tutorial = 'skipped';
+      if (save.tutorial == null || (run && tutorial && save.tutorial !== 'done')) save.tutorial = 'skipped'; // skipping a replay must not undo 'done'
       persist();
       if (run && tutorial) {
         const plan = run.plan;

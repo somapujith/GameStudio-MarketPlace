@@ -109,3 +109,10 @@ export const fmtClock = (s) => {
   const t = Math.max(0, Math.ceil(s));
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 };
+
+/**
+ * Should the job board be re-rolled now? Yes when asked to, when it is empty, or when it is dirty / stale AND the player is not
+ * looking at it: accepting a job on the open board must start the plan that is on screen, not a fresh roll.
+ */
+export const shouldRebuildOffers = ({ force = false, dirty = false, age = 0, stale = 25, empty = false, boardOpen = false } = {}) =>
+  !!(force || empty || (!boardOpen && (dirty || age > stale)));
