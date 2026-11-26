@@ -11,6 +11,7 @@ export const LOOK = {
   slop: 8, // px a press may wander and still be a tap (mouse); touch uses TOUCH_SLOP
   touchSlop: 12,
   tapMs: 500, // longer presses are not taps (they were holds that did not move: ignored)
+  touchTapMs: 700, // a finger rests longer on glass than a click lasts: a still touch up to this long is still a tap
   edgePx: 24,
   edgeBoost: 1.8,
   friction: 5.5, // inertia: velocity *= exp(-friction * dt)
@@ -46,6 +47,7 @@ export function createGesture() {
       g = {
         x0: x, y0: y, x, y, t0: t, t,
         slop: pointerType === 'touch' || pointerType === 'pen' ? LOOK.touchSlop : LOOK.slop,
+        tapMs: pointerType === 'touch' || pointerType === 'pen' ? LOOK.touchTapMs : LOOK.tapMs,
         drag: button > 0, // a right / middle button press only ever looks
         edge, button, vx: 0, vy: 0,
       };
@@ -78,7 +80,7 @@ export function createGesture() {
       if (!g) return null;
       const s = g;
       g = null;
-      if (!s.drag) return t - s.t0 <= LOOK.tapMs ? { type: 'tap', x: s.x0, y: s.y0 } : null;
+      if (!s.drag) return t - s.t0 <= s.tapMs ? { type: 'tap', x: s.x0, y: s.y0 } : null;
       // a pause before release kills the flick
       if (t - s.t > 90) return { type: 'drag', vYaw: 0, vPitch: 0 };
       return { type: 'drag', vYaw: clamp(s.vx, -LOOK.maxSpeed, LOOK.maxSpeed), vPitch: clamp(s.vy, -LOOK.maxSpeed, LOOK.maxSpeed) };

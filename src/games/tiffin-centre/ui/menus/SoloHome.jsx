@@ -5,6 +5,8 @@ import { PACE_OPTIONS, levelMapModel, paceOf, resumeViewModel, totalStars, unloc
 import { ChotuAvatar, DishGlyph, FeatureGlyph, Padlock, SkyGlyph, StallHeroArt, StarRow } from './art.jsx';
 import { radioKeys } from './hooks.js';
 import GraphicsSetting from './GraphicsSetting.jsx';
+import { useFullscreen } from '../hud/mobileUi.js';
+import { useTouchDevice } from '@/lib/mobile.js';
 import { paths } from '@/platform/paths.js';
 import { GAME_ID } from '@shared/tiffin-centre/catalog.js';
 import './menus.css';
@@ -124,6 +126,8 @@ export default function SoloHome({ progress = null, tutorialDone = false, unlock
   const showMap = tutorialDone || peek;
   const gamePath = paths.game(GAME_ID);
   const hasSave = !!resumeViewModel(saved, now);
+  const fullscreen = useFullscreen();
+  const touch = useTouchDevice();
 
   return (
     <main className="tc-menu tc-menu-home" aria-labelledby="tc-home-title">
@@ -140,6 +144,11 @@ export default function SoloHome({ progress = null, tutorialDone = false, unlock
         >
           <span aria-hidden="true">{'‹'}</span> Back
         </a>
+        {touch && fullscreen.supported && (
+          <button type="button" className="tc-menu-fs" aria-pressed={fullscreen.active} onClick={fullscreen.toggle}>
+            {fullscreen.active ? 'Exit fullscreen' : 'Fullscreen'}
+          </button>
+        )}
 
         <header className="tc-menu-hero">
           <StallHeroArt />

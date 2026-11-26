@@ -2,8 +2,10 @@
 // The pause menu also holds the player's settings: spoken language, subtitle style, customer voices (saved on this device) and the controls.
 import { useEffect, useRef, useState } from 'react';
 import { KEY_HELP } from '../hud/look.js';
-import { LANG_OPTIONS, SUB_OPTIONS, usePrefs, voiceNotice } from '../hud/prefs.js';
+import { LANG_OPTIONS, SUB_OPTIONS, readSynthPref, usePrefs, voiceNotice, writeSynthPref } from '../hud/prefs.js';
 import { useDialog } from './hooks.js';
+import { useFullscreen } from '../hud/mobileUi.js';
+import { useTouchDevice } from '@/lib/mobile.js';
 import GraphicsSetting from './GraphicsSetting.jsx';
 import Segmented from './Segmented.jsx';
 import './menus.css';
@@ -45,6 +47,9 @@ export default function PauseMenu({ open = false, onResume, onRestart, onQuit, m
   const root = useRef(null);
   const [ask, setAsk] = useState(null); // null | 'restart' | 'quit'
   const [prefs, setPrefs] = usePrefs();
+  const [robot, setRobot] = useState(() => readSynthPref());
+  const fullscreen = useFullscreen();
+  const touch = useTouchDevice();
   useDialog(root, {
     active: open,
     onEscape: () => (ask ? setAsk(null) : onResume?.()),
@@ -77,6 +82,11 @@ export default function PauseMenu({ open = false, onResume, onRestart, onQuit, m
               <button type="button" className="tc-menu-btn tc-menu-btn--plank" role="switch" aria-checked={!!muted} onClick={() => onMute?.(!muted)}>
                 Sound: {muted ? 'off' : 'on'}
               </button>
+              {touch && fullscreen.supported && (
+                <button type="button" className="tc-menu-btn tc-menu-btn--plank" role="switch" aria-checked={fullscreen.active} onClick={fullscreen.toggle}>
+                  Fullscreen: {fullscreen.active ? 'on' : 'off'}
+                </button>
+              )}
               <button type="button" className="tc-menu-btn tc-menu-btn--ghost" onClick={() => setAsk('quit')}>Leave the stall</button>
             </div>
             <details className="tc-menu-set" open>
@@ -89,6 +99,23 @@ export default function PauseMenu({ open = false, onResume, onRestart, onQuit, m
                 <button type="button" className="tc-menu-btn tc-menu-btn--sm" role="switch" aria-checked={!!prefs.voices} onClick={() => setPrefs({ voices: !prefs.voices })}>
                   Voices: {prefs.voices ? 'on' : 'off'}
                 </button>
+                {typeof audio?.setSynthEnabled === 'function' && (
+                  <button
+                    type="button"
+                    className="tc-menu-btn tc-menu-btn--sm"
+                    role="switch"
+                    aria-checked={robot}
+                    aria-label={`Robot voices for lines without a recording: ${robot ? 'on' : 'off'}`}
+                    disabled={!prefs.voices}
+                    onClick={() => {
+                      const next = writeSynthPref(!robot);
+                      setRobot(next);
+                      audio.setSynthEnabled(next);
+                    }}
+                  >
+                    Robot voices for lines without a recording: {robot ? 'on' : 'off'}
+                  </button>
+                )}
                 {note && <p className="tc-menu-set__note" role="note">{note}</p>}
               </div>
             </details>

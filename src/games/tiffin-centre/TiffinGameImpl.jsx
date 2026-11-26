@@ -9,6 +9,8 @@ import { createTiffinSceneAsync } from './scene/index.js';
 import { Hud } from './ui/hud/index.js';
 import { CoachMark, PauseMenu, QuitConfirm, Results, StatusScreen } from './ui/menus/index.js';
 import { paths } from '@/platform/paths.js';
+import { lockGestures } from '@/lib/mobile.js';
+import { useKeepAwake } from './ui/hud/mobileUi.js';
 import { GAME_ID } from '@shared/tiffin-centre/catalog.js';
 import { clearSavedShift, useSession } from './session/index.js';
 import './tiffin.css';
@@ -183,6 +185,11 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
       if (window.__tiffin?.session === session) delete window.__tiffin;
     };
   }, [session]);
+
+  // Touch screens: no pinch or double-tap zoom, no pull-to-refresh, no long-press menu on the play surface (the page is a game, not a document),
+  // and the screen stays on while a shift is running. Menus inside the root that scroll (results, pause) keep their own scrolling.
+  useEffect(() => (wrapRef.current ? lockGestures(wrapRef.current) : undefined), []);
+  useKeepAwake(status === 'playing' && !gated);
 
   // Browsers only allow sound after a gesture.
   useEffect(() => {

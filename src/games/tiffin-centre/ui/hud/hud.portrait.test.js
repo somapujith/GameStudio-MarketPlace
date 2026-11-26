@@ -13,15 +13,15 @@ import { mkCustomer, mkState } from './testState.js';
 
 const css = readFileSync(new URL('./hud.css', import.meta.url), 'utf8');
 const start = css.indexOf('B3 (docs/TIFFIN_CENTRE_PROOF_C.md)');
-const portrait = css.slice(css.indexOf('@media (max-width: 520px) and (orientation: portrait) {', start));
+const portrait = css.slice(css.indexOf('@media (max-width: 899px) and (orientation: portrait) {', start));
 const portraitBlock = portrait.slice(0, portrait.indexOf('/* small phones'));
 const px = (name) => Number(new RegExp(`--${name}: (\\d+)px`).exec(portraitBlock)?.[1]);
 
 describe('B3: phone portrait compact layout', () => {
-  it('the rules exist behind a width <= 520 portrait media query', () => {
+  it('the rules exist behind a width <= 899 portrait media query (phones and tablets held upright)', () => {
     expect(start).toBeGreaterThan(0);
     expect(portraitBlock.length).toBeGreaterThan(2000);
-    // the old stacked layout stays for tablets and wide windows: the compact one is NOT the default
+    // the old stacked layout stays for landscape tablets and wide windows: the compact one is NOT the default
     expect(css.slice(0, start)).not.toContain('--tcp-gap');
   });
   it('top bar: one block (banner + vitals over takings, buttons beside), shift name and cost folded away', () => {

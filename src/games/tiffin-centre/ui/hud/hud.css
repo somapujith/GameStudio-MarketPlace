@@ -820,7 +820,7 @@
 }
 
 /* =====================================================================================================================================
-   B3 (docs/TIFFIN_CENTRE_PROOF_C.md): PHONE PORTRAIT COMPACT. At 390 x 844 the stacked bands used to cover 67-91% of the height and an order chit
+   B3 (docs/TIFFIN_CENTRE_PROOF_C.md): PHONE AND TABLET PORTRAIT COMPACT (width <= 899 px, also tablets held upright). At 390 x 844 the stacked bands used to cover 67-91% of the height and an order chit
    grew to ~330 px of blank paper. The stall must be SEEN, so on a phone held upright (width <= 520 px, portrait) the HUD is a set of slim bands:
      top bar          one 50 px block: [clock + shift bar | hearts] over [takings + profit + star bar], buttons beside it (44 px each)
      availability     ONE 52 px row: the Stall button (the status strip unfolds from it, as a popover, over the scene) + dish icons with ready counts
@@ -832,7 +832,7 @@
 @media (max-width: 899px) and (min-height: 521px), (max-width: 599px) {
   .tc-hud-rail { align-items: flex-start; } /* chits keep their own height: a short chit is no longer stretched to the tallest one's */
 }
-@media (max-width: 520px) and (orientation: portrait) {
+@media (max-width: 899px) and (orientation: portrait) {
   .tc-hud {
     --tcp-gap: 6px; --tcp-top: 52px; --tcp-board: 56px; --tcp-rail: 84px; --tcp-hands: 44px; --tcp-dock: 84px;
     gap: var(--tcp-gap); padding-top: max(6px, env(safe-area-inset-top)); padding-bottom: max(6px, env(safe-area-inset-bottom));
@@ -946,4 +946,47 @@
   .tc-hud-status::-webkit-scrollbar { display: block; width: 6px; }
   .tc-hud-status::-webkit-scrollbar-thumb { border-radius: 3px; background: #b78f55; }
   .tc-hud-chips { min-height: 56px; }
+}
+
+/* =====================================================================================================================================
+   MOBILE PASS (real-emulation audit, docs/mobile-proofs/tiffin): the toast zone that also holds the one-time landscape tip, the Fullscreen
+   button, and on a touch screen (pointer: coarse): labels at 12 px or more, sentences at 14 px or more, 44 px targets with a 4 px gap.
+   Nothing below changes a mouse-driven screen, so the desktop layout is untouched.
+   ===================================================================================================================================== */
+.tc-hud-toastzone { position: absolute; left: 50%; top: calc(var(--tc-hud-top, 104px) + 4px); transform: translateX(-50%); display: grid; gap: 6px; justify-items: center; width: min(92vw, 420px); pointer-events: none; z-index: 6; }
+.tc-hud-toasts { position: static; left: auto; top: auto; transform: none; width: 100%; }
+.tc-hud-hint { pointer-events: auto; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 6px 6px 6px 12px; border-radius: 4px; border-left: 7px solid var(--h-turmeric); color: var(--h-char); background: var(--h-cream); box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35), 0 8px 14px rgba(0, 0, 0, 0.3); animation: tc-hud-toast-in 0.24s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.tc-hud-hint p { margin: 0; font-size: 14px; font-weight: 700; line-height: 1.3; }
+.tc-hud-hint-x { min-width: 68px; min-height: 44px; padding: 0 12px; border: 0; border-radius: 6px; font: 800 14px var(--h-font); color: var(--h-char); background: var(--h-plate); box-shadow: 0 3px 0 #556168, inset 0 1px 0 rgba(255, 255, 255, 0.8); }
+.tc-hud-hint-x:active { transform: translateY(2px); box-shadow: 0 1px 0 #556168; }
+/* the Fullscreen button needs a slot: a phone held upright has none left in the bottom row (the pause menu and the start screen have it) */
+@media (max-width: 520px) and (orientation: portrait) { .tc-hud-btn--fs { display: none; } }
+.tc-hud-btns .tc-hud-btn--fs { order: -1; }
+
+@media (pointer: coarse) {
+  /* labels: 12 px floor */
+  .tc-hud-lvl, .tc-hud-clock small, .tc-hud-daypart, .tc-hud-chip-name, .tc-hud-chip-name .tc-hud-te, .tc-hud-ready small, .tc-hud-chip-meta,
+  .tc-hud-mate-txt small, .tc-hud-who small, .tc-hud-dishname, .tc-hud-dishname .tc-hud-te, .tc-hud-collect-txt small, .tc-hud-hand-name .tc-hud-te,
+  .tc-hud-station-name, .tc-hud-station-name .tc-hud-te, .tc-hud-slot-secs, .tc-hud-sheet-counts, .tc-hud-sheet-meta, .tc-hud-event .tc-hud-te,
+  .tc-hud-event small, .tc-hud-sb-name, .tc-hud-sb-pend, .tc-hud-sb-n, .tc-hud-sb-fresh, .tc-hud-gas-label, .tc-hud-gas-swap small, .tc-hud-books,
+  .tc-hud-book small, .tc-hud-tend-txt small, .tc-hud-slot-flaw, .tc-hud-prep-short, .tc-hud-chip-board, .tc-hud-badge, .tc-hud-badge-secs, .tc-hud-half,
+  .tc-hud-sheet-why, .tc-hud-job-name .tc-hud-te, .tc-hud-job-note, .tc-hud-prep-name .tc-hud-te, .tc-hud-prep-how, .tc-hud-prep-stock em,
+  .tc-hud-prepbtn small, .tc-hud-buybtn small, .tc-hud-board-short, .tc-hud-collect-secs, .tc-hud-say-english, .tc-hud-say-roman, .tc-hud-hand-empty,
+  .tc-hud-shiftbar-left, .tc-hud-help-note, .tc-hud-keys kbd, .tc-hud-book b { font-size: 12px; }
+  .tc-hud-switch, .tc-hud-sheet-meta small, .tc-hud-sheet-row small { font-size: 12px; }
+  .tc-hud-say { font-size: 14px; }
+  .tc-hud-subs-native, .tc-hud-subs-roman, .tc-hud-say-native { font-size: 16px; }
+  .tc-hud-shiftbar-left { line-height: 12px; top: 0; }
+  .tc-hud-slot-secs { line-height: 16px; }
+  .tc-hud-hand-empty { letter-spacing: 0.02em; }
+  /* sentences: 14 px floor */
+  .tc-hud-rail-empty, .tc-hud-sheet-footnote, .tc-hud-keys dd, .tc-hud-subs-english, .tc-hud-subs[data-subs='both'] .tc-hud-subs-english, .tc-hud-say-english, .tc-hud-say-roman { font-size: 14px; }
+  .tc-hud-subs-native, .tc-hud-subs-roman { font-size: 17px; }
+  .tc-hud-help-note { font-size: 14px; }
+  /* the "TOKEN" caption is a paper-tag decoration (the number carries it, the aria-label says "Token 3"): a "#" replaces the 7 px letters */
+  .tc-hud-token small, .tc-hud-edge-token small, .tc-hud-subs-token small, .tc-hud-bubble-token small { display: none; }
+  .tc-hud-token b::before, .tc-hud-edge-token b::before, .tc-hud-subs-token b::before, .tc-hud-bubble-token b::before { content: '#'; margin-right: 1px; font-size: 0.6em; font-weight: 800; opacity: 0.7; vertical-align: 0.15em; }
+  /* 44 px targets, 4 px apart */
+  .tc-hud-quick { gap: 4px; }
+  .tc-hud-btns { gap: 6px; }
 }

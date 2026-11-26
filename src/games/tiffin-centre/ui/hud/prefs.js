@@ -131,3 +131,24 @@ export function voiceNotice(prefs, audio) {
   if (!missing.length) return '';
   return `${missing.map((l) => `No ${VOICE_NAMES[l]} voice on this device`).join('. ')}. Subtitles still show every line.`;
 }
+
+// ---- the separate "Robot voices" switch (the browser's synthetic speech for lines without a recording) ---------------------------------------------
+// Owned by audio/speech.js (key below, default OFF); the pause menu reads and writes the same key and tells the live audio object, so it needs no
+// import of the audio chunk. A blocked storage just means the choice lasts for this session only (audio.setSynthEnabled still applies it).
+export const SYNTH_KEY = 'jalebi.tiffin.voices.synth.v1';
+export function readSynthPref(storage = defaultStorage()) {
+  try {
+    const raw = storage?.getItem(SYNTH_KEY);
+    return raw === '1' || raw === 'true';
+  } catch {
+    return false;
+  }
+}
+export function writeSynthPref(on, storage = defaultStorage()) {
+  try {
+    storage?.setItem(SYNTH_KEY, on ? '1' : '0');
+  } catch {
+    /* blocked: session only */
+  }
+  return !!on;
+}

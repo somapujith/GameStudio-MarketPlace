@@ -42,7 +42,7 @@ describe('gesture classifier', () => {
     g.move({ x: 260, y: 300, t: 30 });
     expect(g.up({ t: 400 })).toEqual({ type: 'drag', vYaw: 0, vPitch: 0 });
     down(g, { t: 1000 });
-    expect(g.up({ t: 1000 + LOOK.tapMs + 50 })).toBeNull();
+    expect(g.up({ t: 1000 + LOOK.touchTapMs + 50 })).toBeNull();
   });
 
   it('edge swipes turn the head faster than a drag from the middle', () => {
@@ -75,6 +75,21 @@ describe('gesture classifier', () => {
     t.cancel();
     expect(t.active).toBe(false);
     expect(t.up({ t: 20 })).toBeNull();
+  });
+});
+
+describe('a finger rests longer than a click', () => {
+  it('a still touch up to touchTapMs is a tap, a mouse press that long is not', () => {
+    const t = createGesture();
+    t.down({ x: 50, y: 60, t: 0, pointerType: 'touch', viewportWidth: 400 });
+    expect(t.up({ t: LOOK.touchTapMs - 20 })).toEqual({ type: 'tap', x: 50, y: 60 });
+    const slow = createGesture();
+    slow.down({ x: 50, y: 60, t: 0, pointerType: 'touch', viewportWidth: 400 });
+    expect(slow.up({ t: LOOK.touchTapMs + 50 })).toBeNull(); // a long press: no action, no look
+    const m = createGesture();
+    m.down({ x: 50, y: 60, t: 0, pointerType: 'mouse', viewportWidth: 400 });
+    expect(m.up({ t: LOOK.tapMs + 100 })).toBeNull();
+    expect(LOOK.touchTapMs).toBeGreaterThan(LOOK.tapMs);
   });
 });
 

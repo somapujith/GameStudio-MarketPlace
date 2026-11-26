@@ -8,6 +8,7 @@ import { GAME_ID } from '@shared/tiffin-centre/catalog.js';
 import TiffinGame from './TiffinGame.jsx';
 import { StatusScreen } from './ui/menus/index.js';
 import { useRoomSession } from './session/index.js';
+import { useExitFullscreenOnUnmount } from './ui/hud/mobileUi.js';
 import './tiffin.css';
 
 function Shell({ children }) {
@@ -41,6 +42,7 @@ export default function OnlineGame() {
 
 function Table({ code }) {
   const navigate = useNavigate();
+  useExitFullscreenOnUnmount();
   const session = useRoomSession(code);
   const toGame = () => navigate(paths.game(GAME_ID), { replace: true });
 

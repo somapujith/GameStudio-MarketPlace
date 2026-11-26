@@ -43,7 +43,7 @@ export function StarBar({ profit, targets }) {
  * Props: { state, reduced, pops, lostN, lostIdx, canPause, onPause, onMute, muted, onLeave }. `onLeave` (co-op tables only: a room has no pause) fills the
  * pause button's slot with a Leave button, so the glue needs no floating Leave button over the dock.
  */
-export default function TopBar({ state, reduced, pops = [], lostN = 0, lostIdx = -1, canPause, onPause, onMute, muted, onLeave }) {
+export default function TopBar({ state, reduced, pops = [], lostN = 0, lostIdx = -1, canPause, onPause, onMute, muted, onLeave, fullscreen = null }) {
   const level = LEVELS[state.level];
   const hour = hourFromState(state);
   const clock = formatClock(hour);
@@ -123,6 +123,18 @@ export default function TopBar({ state, reduced, pops = [], lostN = 0, lostIdx =
         {onMute && (
           <button type="button" className="tc-hud-btn" onClick={() => onMute(!muted)} aria-pressed={!!muted} aria-label={muted ? 'Unmute' : 'Mute'}>
             <HudIcon name={muted ? 'volumeOff' : 'volume'} size={20} />
+          </button>
+        )}
+        {fullscreen?.supported && (
+          <button
+            type="button"
+            className="tc-hud-btn tc-hud-btn--fs"
+            aria-pressed={!!fullscreen.active}
+            aria-label={fullscreen.active ? 'Exit fullscreen' : 'Fullscreen'}
+            title={fullscreen.active ? 'Exit fullscreen' : 'Fullscreen'}
+            onClick={fullscreen.toggle}
+          >
+            <HudIcon name={fullscreen.active ? 'shrink' : 'expand'} size={20} />
           </button>
         )}
         {canPause && !onLeave && (

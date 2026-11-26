@@ -9,6 +9,7 @@ import { paths } from '@/platform/paths.js';
 import { tutorialDone } from '@/platform/game/tutorial.js';
 import { MAX_LEVEL, GAME_ID } from '@shared/tiffin-centre/catalog.js';
 import TiffinGame from './TiffinGame.jsx';
+import { useExitFullscreenOnUnmount } from './ui/hud/mobileUi.js';
 import { SoloHome, LevelBriefing } from './ui/menus/index.js';
 import {
   createLocalSession, getProgress, unlockedLevel, isTutorialDoneLocal, syncPendingTutorial,
@@ -31,6 +32,7 @@ export default function TiffinSolo({ game }) {
     setSession(null);
   }, []);
   useEffect(() => () => live.current?.quit?.(), []);
+  useExitFullscreenOnUnmount();
   useEffect(() => {
     syncPendingTutorial?.(); // a tutorial finished offline last time: tell the server now
   }, []);

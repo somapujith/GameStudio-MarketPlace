@@ -18,6 +18,7 @@ import EdgeIndicators from './EdgeIndicators.jsx';
 import HandsTray from './HandsTray.jsx';
 import HudIcon from './HudIcon.jsx';
 import OrderRail from './OrderRail.jsx';
+import OrientationHint from './OrientationHint.jsx';
 import PrepSheet from './PrepSheet.jsx';
 import { HelpCard, QuickBar } from './QuickBar.jsx';
 import StallStatus from './StallStatus.jsx';
@@ -39,6 +40,7 @@ import { pickBubbles, pickSubtitle } from './dialogue.js';
 import { createProjector } from './projector.js';
 import { usePrefs, voiceAvailable } from './prefs.js';
 import { useDialogue } from './useDialogue.js';
+import { createPointerGuard, hintSeen, markHintSeen, shouldShowLandscapeHint, useFullscreen, useViewport } from './mobileUi.js';
 import './hud.css';
 
 const EMPTY = new Set();
@@ -88,6 +90,22 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
   const projector = useMemo(() => createProjector(), []);
   const dlg = useDialogue(session, audio, { scene });
   const touch = useCoarse();
+  const viewport = useViewport();
+  const fullscreen = useFullscreen();
+  const [tipSeen, setTipSeen] = useState(() => hintSeen());
+  const showTip = shouldShowLandscapeHint({ viewport, playing: status === 'playing', seen: tipSeen, touch });
+  const dismissTip = () => {
+    markHintSeen();
+    setTipSeen(true);
+  };
+  useEffect(() => {
+    if (!showTip) return undefined;
+    const t = setTimeout(dismissTip, 14000);
+    return () => clearTimeout(t);
+  }, [showTip]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!tipSeen && viewport.landscape && viewport.phone && touch) dismissTip(); // they found it themselves
+  }, [tipSeen, viewport.landscape, viewport.phone, touch]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     session?.tutorial?.setPointer?.(touch ? 'touch' : 'keyboard');
   }, [touch, session]);
@@ -594,9 +612,18 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
   }, [bus, live, actions.runner]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- pointer on the canvas: tap works, drag looks -------------------------------------------------------------------------------------
+  // Fingers: ONE finger taps or looks; a second finger (a pinch, a two-finger scroll the browser might try) cancels the gesture and nothing
+  // acts until every finger is up. Taps need a short, still press (look.js: touch slop and tap time).
+  const guard = useRef(null);
+  if (!guard.current) guard.current = createPointerGuard();
   const onPickDown = (e) => {
     if (e.pointerType === 'mouse' && e.button > 2) return;
     stopInertia();
+    if (guard.current.add(e.pointerId) === 'multi') {
+      gesture.current.cancel();
+      if (pickRef.current) delete pickRef.current.dataset.look;
+      return;
+    }
     try {
       e.currentTarget.setPointerCapture?.(e.pointerId);
     } catch {
@@ -605,6 +632,7 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
     gesture.current.down({ x: e.clientX, y: e.clientY, t: e.timeStamp, pointerType: e.pointerType, button: e.button, viewportWidth: rootRef.current?.clientWidth || window.innerWidth });
   };
   const onPickMove = (e) => {
+    if (guard.current.blocked) return;
     if (gesture.current.active) {
       const r = gesture.current.move({ x: e.clientX, y: e.clientY, t: e.timeStamp });
       if (r) {
@@ -625,6 +653,11 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
   };
   const onPickUp = (e) => {
     if (pickRef.current) delete pickRef.current.dataset.look;
+    const wasMulti = guard.current.remove(e.pointerId);
+    if (wasMulti) {
+      gesture.current.cancel();
+      return;
+    }
     const r = gesture.current.up({ t: e.timeStamp });
     if (!r) return;
     if (r.type === 'drag') {
@@ -638,7 +671,8 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
     const t = scene?.pick?.(r.x, r.y);
     if (t) onTarget(t);
   };
-  const onPickCancel = () => {
+  const onPickCancel = (e) => {
+    guard.current.remove(e.pointerId);
     gesture.current.cancel();
     if (pickRef.current) delete pickRef.current.dataset.look;
   };
@@ -818,6 +852,7 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
           onMute={onMute}
           muted={muted}
           onLeave={leave}
+          fullscreen={touch ? fullscreen : null}
         />
         {online && (
           <CoopBar
@@ -872,7 +907,7 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
             onPrep={({ slot, ready }) => (ready ? doCollect(slot) : openPrep())}
           />
         </div>
-        <Toasts toasts={toasts} live={liveMsgs} />
+        <Toasts toasts={toasts} live={liveMsgs} hint={showTip ? <OrientationHint onDismiss={dismissTip} /> : null} />
         <GlossLive items={dlg.gloss} />
         {helpOpen && <HelpCard touch={touch} onClose={() => setHelpOpen(false)} />}
         {sheet && <ActionSheet sheet={sheet} state={state} avail={avail} onPick={pickSheetDish} onClose={() => setSheet(null)} onTend={doTend} />}
