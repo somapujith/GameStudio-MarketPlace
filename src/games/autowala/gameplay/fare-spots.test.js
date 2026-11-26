@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { generateCity } from '../world/layout.js';
 import { createColliders } from '../world/colliders.js';
+import { addBoundaries } from '../world/boundaries.js';
 import { makeRng } from '../game/rng.js';
 import { WORLD } from '../game/config.js';
 import { NEVER_DEST } from './fare-kinds.js';
@@ -262,5 +263,33 @@ describe('citywide board, shops and metro', () => {
     const stall = count(PLACE_KINDS.stall);
     expect(stall.student).toBeGreaterThan(stall.regular * 2);
     expect(PLACE_PAIR.restaurant).toBeGreaterThan(PLACE_PAIR.metro);
+  });
+});
+
+describe('hail spots and the lake keep-out', () => {
+  // the real lake collider (an ellipse 7.2 m inside Necklace Road) is wider than the water the spot test avoids (+4 m)
+  const real = createColliders();
+  addBoundaries(real, city);
+  it('no spot is inside the lake collider (28 of 31,699 valid spots used to be)', () => {
+    const rng = makeRng(5);
+    let inside = 0;
+    let checked = 0;
+    for (const e of city.edges) {
+      const a = city.nodes[e.a];
+      for (const side of [-1, 1]) {
+        for (let t = 0.06; t < 0.95; t += 0.04) {
+          const off = e.w / 2 + SPOT.gap;
+          const x = a.x + e.dx * e.len * t - e.dz * side * off;
+          const z = a.z + e.dz * e.len * t + e.dx * side * off;
+          if (isValidHailSpot(city, real, x, z)) {
+            checked++;
+            if (!real.drivable(x, z)) inside++;
+          }
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(1000);
+    expect(inside).toBe(0);
+    expect(rng()).toBeGreaterThanOrEqual(0);
   });
 });

@@ -126,6 +126,8 @@ export function isValidHailSpot(city, colliders, x, z) {
   if (!b || b.type === 'water') return false;
   if (Math.min(x - b.x0, b.x1 - x, z - b.z0, b.z1 - z) > SPOT.band) return false;
   if (colliders && colliders.inside(x, z, SPOT.colliderPad)) return false;
+  // the lake's collider is wider (ringX - 7.2) than the lake the spot test above avoids (+4 m): a customer must not wait in the water's keep-out
+  if (colliders && typeof colliders.drivable === 'function' && !colliders.drivable(x, z)) return false;
   return true;
 }
 
