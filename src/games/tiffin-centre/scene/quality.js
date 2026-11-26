@@ -53,14 +53,15 @@ export const KNOB_KEYS = ['fpsCap', 'scaleMin', 'characters', 'bakedCustomers', 
 
 /**
  * How many frames may pass between two redraws of the shadow map (the stall is static: only a few people move through it). `cfg.shadowEvery` is the most the
- * tier allows (1 = always every frame); the actual interval follows the smoothed frame time `dtAvg` (seconds): every frame while the tier holds ~55 fps,
- * every 2nd when frames are late, every 3rd when they are very late. `current` is the interval in use (a little hysteresis so it does not flip-flop).
+ * tier allows (1 = always every frame); the actual interval follows the smoothed frame time `dtAvg` (seconds): every frame while the tier holds ~36 fps or more,
+ * every 2nd when frames are late (> 28 ms), every 3rd when they are very late (> 45 ms). `current` is the interval in use (a little hysteresis so it does not flip-flop).
  */
 export function shadowEveryFor(cfg, dtAvg, current = 1) {
   const max = Math.max(1, cfg?.shadowEvery | 0 || 1);
   if (max <= 1 || !(dtAvg > 0)) return 1;
-  const up2 = current >= 2 ? 0.0158 : 0.0185;
-  const up3 = current >= 3 ? 0.027 : 0.032;
+  // conservative: skipping redraws makes frames alternate between a dear one and a cheap one, which is only worth it when the game is already below ~36 fps
+  const up2 = current >= 2 ? 0.024 : 0.028;
+  const up3 = current >= 3 ? 0.038 : 0.045;
   const want = dtAvg > up3 ? 3 : dtAvg > up2 ? 2 : 1;
   return Math.min(max, want);
 }

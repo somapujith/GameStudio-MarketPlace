@@ -345,20 +345,21 @@ describe('draw-call guard', () => {
 });
 
 describe('shadow refresh interval', () => {
-  it('is 1 on tiers that do not allow skipping, and follows the frame time on medium / high', () => {
+  it('is 1 on tiers that do not allow skipping, and follows the frame time on medium / high only when frames are late', () => {
     expect(shadowEveryFor(QUALITY.low, 0.05)).toBe(1);
     expect(shadowEveryFor(QUALITY.lite, 0.05)).toBe(1);
     expect(shadowEveryFor(QUALITY.medium, 0.0167)).toBe(1);
-    expect(shadowEveryFor(QUALITY.medium, 0.022)).toBe(2);
-    expect(shadowEveryFor(QUALITY.medium, 0.04)).toBe(3);
-    expect(shadowEveryFor(QUALITY.high, 0.04)).toBe(2); // high never skips more than every 2nd frame
+    expect(shadowEveryFor(QUALITY.medium, 0.022)).toBe(1); // 45 fps: no skipping (it would make the frames alternate)
+    expect(shadowEveryFor(QUALITY.medium, 0.03)).toBe(2);
+    expect(shadowEveryFor(QUALITY.medium, 0.05)).toBe(3);
+    expect(shadowEveryFor(QUALITY.high, 0.05)).toBe(2); // high never skips more than every 2nd frame
     expect(shadowEveryFor(QUALITY.medium, NaN)).toBe(1);
   });
   it('has hysteresis: it does not flip back to every frame until the frame time is clearly better', () => {
-    expect(shadowEveryFor(QUALITY.medium, 0.017, 1)).toBe(1);
-    expect(shadowEveryFor(QUALITY.medium, 0.017, 2)).toBe(2);
-    expect(shadowEveryFor(QUALITY.medium, 0.015, 2)).toBe(1);
-    expect(shadowEveryFor(QUALITY.medium, 0.03, 3)).toBe(3);
+    expect(shadowEveryFor(QUALITY.medium, 0.026, 1)).toBe(1);
+    expect(shadowEveryFor(QUALITY.medium, 0.026, 2)).toBe(2);
+    expect(shadowEveryFor(QUALITY.medium, 0.022, 2)).toBe(1);
+    expect(shadowEveryFor(QUALITY.medium, 0.04, 3)).toBe(3);
   });
 });
 
