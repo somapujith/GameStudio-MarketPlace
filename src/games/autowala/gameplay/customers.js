@@ -1,31 +1,29 @@
 // The 3D people: a waiting customer waving at the kerb, a walker (someone walking to the auto, leaving angry, getting out of it),
 // and the passenger sitting in the auto. Logic lives in fares.js; this file only builds, poses and disposes meshes.
-import { BoxGeometry, Group, Mesh, MeshStandardMaterial } from 'three';
-import { buildPerson } from '../sim/autoModel.js';
+import { buildCustomerRig } from '../sim/person-mesh.js';
 
 export const GROUND_Y = 0.2; // the pavement slab top
 const SHOULDER_Y = 1.19;
 const ARM_HALF = 0.23;
 
-/** A Group holding one or two people (`c.pax`) built from the customer's look, side by side. Faces +z; rotate it to face somewhere. */
+/**
+ * One or two people (`c.pax`) built from the customer's look, side by side, plus a suitcase when they carry one. Faces +z; rotate it
+ * to face somewhere. It is a single skinned mesh (sim/person-mesh.js): ONE draw call for the whole customer, and `userData.persons[i]`
+ * are the people's root Bones whose `userData.{lArm,rArm,lLeg,rLeg}` the pose functions below animate.
+ */
 export function createRig(c) {
-  const group = new Group();
-  const persons = [];
+  const people = [];
   for (let i = 0; i < c.pax; i++) {
-    const look = i === 0 ? c.look : { ...c.look, shirt: c.look2?.shirt || c.look.shirt };
-    const p = buildPerson({ ...look, pose: 'stand', scale: c.kind === 'elder' ? 0.94 : c.kind === 'student' ? 0.98 : 1, female: c.female });
-    p.position.x = c.pax === 1 ? 0 : i === 0 ? -0.42 : 0.42;
-    persons.push(p);
-    group.add(p);
+    people.push({
+      look: i === 0 ? c.look : { ...c.look, shirt: c.look2?.shirt || c.look.shirt },
+      female: c.female,
+      scale: c.kind === 'elder' ? 0.94 : c.kind === 'student' ? 0.98 : 1,
+      x: c.pax === 1 ? 0 : i === 0 ? -0.42 : 0.42,
+    });
   }
-  if (c.luggage) {
-    // a tourist with a suitcase at their feet
-    const bag = new Mesh(new BoxGeometry(0.42, 0.62, 0.22), new MeshStandardMaterial({ color: c.kind === 'tourist' ? '#2b6cb0' : '#8a3b2a', roughness: 0.6 }));
-    bag.position.set(c.pax === 1 ? 0.62 : 1.0, 0.31, 0.15);
-    bag.castShadow = true;
-    group.add(bag);
-  }
-  group.userData.persons = persons;
+  // a tourist with a suitcase at their feet
+  const bag = c.luggage ? { x: c.pax === 1 ? 0.62 : 1.0, color: c.kind === 'tourist' ? '#2b6cb0' : '#8a3b2a' } : null;
+  const group = buildCustomerRig(people, bag);
   group.userData.phase = Math.random() * 6.28;
   return group;
 }
