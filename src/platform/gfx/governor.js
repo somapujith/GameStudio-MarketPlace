@@ -80,7 +80,9 @@ const nearestIndex = (ladder, x) => {
   return best;
 };
 
-export function createGovernor(opts = {}) {
+export function createGovernor(rawOpts = {}) {
+  // an option passed as undefined means "not given" (callers forward optional settings): it must not override a default
+  const opts = Object.fromEntries(Object.entries(rawOpts).filter(([, v]) => v !== undefined));
   const tiers = opts.tiers || ['lite', 'low', 'medium', 'high'];
   const ladder = (opts.ladder || DEFAULT_LADDER).slice().sort((a, b) => b - a);
   const cfg = {

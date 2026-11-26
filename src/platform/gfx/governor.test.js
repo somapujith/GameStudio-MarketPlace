@@ -415,6 +415,12 @@ describe('callbacks, stability reports and external control', () => {
     expect(s.history.length).toBeGreaterThan(0);
     expect(s.history[0]).toHaveProperty('reason');
   });
+  it('options passed as undefined (forwarded optional settings) fall back to the defaults instead of breaking the controller', () => {
+    const gov = mk({ scaleMin: undefined, targetFps: undefined, callBudgets: undefined, ladder: undefined, refreshHz: undefined, maxTier: undefined });
+    expect(gov.budgetMs).toBeCloseTo(1000 / 60, 3);
+    simulate(gov, { seconds: 15, work: model(2, 26) });
+    expect(gov.scale).toBe(0.7);
+  });
   it('garbage frame times are ignored', () => {
     const gov = mk();
     for (const v of [0, -5, NaN, undefined, null, Infinity]) expect(gov.frame(v)).toBe(CHANGE_NONE);

@@ -134,6 +134,20 @@ describe('chooseInitialTier', () => {
   });
 });
 
+describe('chooseInitialTier with an unfinished benchmark', () => {
+  const rtx = gpuOf(RTX);
+  it('a partial / aborted result may lower the class cap by one tier at most', () => {
+    const aborted = { partial: 'aborted', recommended: { tier: 'lite', scale: 0.6, confident: false, reasons: ['too slow'] } };
+    const r = chooseInitialTier({ gpu: rtx, calibration: aborted });
+    expect(r.tier).toBe('medium'); // cap high -> one below
+    expect(r.reasons.join(' ')).toMatch(/incomplete/);
+    expect(chooseInitialTier({ gpu: gpuOf(RADEON), calibration: aborted }).tier).toBe('low'); // cap medium -> one below
+  });
+  it('a confident result is trusted fully', () => {
+    expect(chooseInitialTier({ gpu: rtx, calibration: { recommended: { tier: 'lite', scale: 0.6, confident: true } } }).tier).toBe('lite');
+  });
+});
+
 describe('shouldCalibrate', () => {
   it('skips for a player choice, a memory hit, software and no-WebGL2; runs otherwise', () => {
     expect(shouldCalibrate({ pref: 'low' }).run).toBe(false);
@@ -248,9 +262,49 @@ describe('createCalibration (fake workload)', () => {
     const w = fakeWorld({ fillNs: 600, callUs: 500, mtriMs: 100, postNs: 400, overhead: 2 }); // 2 Mpix x 600 ns x (1/16 layer) = 75 ms for the first slice
     const { result, longest } = drive(mkCal(w), w);
     expect(result.partial).toBe('aborted');
-    expect(result.recommended.tier).toBe('lite');
-    expect(longest).toBeLessThan(100); // one slice of 75 ms is the worst case; it never repeats
-    expect(result.trace.length).toBe(1);
+    expect(result.recommended).toMatchObject({ tier: 'lite', confident: false });
+    expect(longest).toBeLessThan(100); // one slice of 75 ms is the worst case
+    expect(result.trace.length).toBe(2); // the first slow slice is dropped and retried (it may be a first-use cost); the second one is the verdict
+    expect(result.trace.every((t) => t.dropped)).toBe(true);
+  });
+  it('a first-use hiccup (one slow slice) is dropped and retried, and the run still completes with a confident result', () => {
+    const w = fakeWorld({ fillNs: 3, callUs: 9, mtriMs: 1.6, postNs: 2 });
+    const realRun = w.load.run;
+    let first = true;
+    w.load.run = (id, W, now) => {
+      if (first) {
+        first = false;
+        w.clock.t += 55; // a pipeline-state compile inside the first timed slice
+        return 55;
+      }
+      return realRun(id, W, now);
+    };
+    const { result } = drive(mkCal(w), w);
+    expect(result.partial).toBe(false);
+    expect(result.recommended.confident).toBe(true);
+    expect(result.trace[0].dropped).toBe(true);
+    expect(result.units.fillNsPerPx).toBeCloseTo(3, 0);
+  });
+  it('waits (without blocking) for the GPU to finish the wake-up work, but only up to warmWaitMs', () => {
+    const w = fakeWorld();
+    let polls = 0;
+    w.load.warmReady = () => ++polls > 4;
+    const { result } = drive(mkCal(w), w);
+    expect(polls).toBeGreaterThan(4);
+    expect(result.partial).toBe(false);
+    const w2 = fakeWorld();
+    w2.load.warmReady = () => false; // never ready
+    const r2 = drive(mkCal(w2, { warmWaitMs: 50 }), w2).result;
+    expect(r2.ok).toBe(true);
+    expect(r2.ranMs).toBeLessThanOrEqual(330);
+  });
+  it('adapts its slices to a 144 Hz display: no frame spends more than ~half of its 6.9 ms on calibration', () => {
+    const w = fakeWorld({ fillNs: 3, callUs: 9, mtriMs: 1.6, postNs: 2 });
+    const { result, longest } = drive(mkCal(w), w, 144, 400);
+    expect(result.refreshHz).toBe(144);
+    expect(result.partial).toBe(false);
+    expect(longest).toBeLessThan(6);
+    expect(result.ranMs).toBeLessThanOrEqual(300);
   });
   it('waits for shader compilation but never longer than compileWaitMs', () => {
     const w = fakeWorld({ compileFrames: 1000 }); // never "compiles"
@@ -403,12 +457,13 @@ describe('createThreeLoad', () => {
     expect(r.render).toHaveBeenCalledTimes(3);
     load.dispose();
   });
-  it('wake submits throw-away fills without reading back', () => {
+  it('wake submits a throw-away taste of every test without reading back; warmReady is true without sync objects', () => {
     const r = stubRenderer();
     const load = createThreeLoad(r, { width: 640, height: 360 });
     while (!load.prepare());
-    load.wake(2);
-    expect(r.render).toHaveBeenCalledTimes(3);
+    load.wake();
+    expect(r.render).toHaveBeenCalledTimes(5); // fill (half-float), fill (small), calls, tris, post
+    expect(load.warmReady()).toBe(true);
     expect(r.readRenderTargetPixels).not.toHaveBeenCalled();
   });
   it('without float targets the half-float stand-in is 8 bit and reported', () => {

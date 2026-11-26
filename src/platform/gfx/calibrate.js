@@ -143,8 +143,18 @@ export function chooseInitialTier({ gpu = null, calibration = null, memory = nul
   }
   const rec = calibration?.recommended;
   if (rec && has(rec.tier)) {
-    const tier = minTier(rec.tier, cap);
-    return { tier, scale: tier === rec.tier ? rec.scale : 1, source: 'calibration', lock: false, maxTier: cap, reasons: [...(rec.reasons || []).slice(0, 2), ...(tier !== rec.tier ? [`capped to ${tier} by the GPU class (${gpu?.class})`] : [])] };
+    let tier = minTier(rec.tier, cap);
+    const reasons = [...(rec.reasons || []).slice(0, 2)];
+    if (tier !== rec.tier) reasons.push(`capped to ${tier} by the GPU class (${gpu?.class})`);
+    // an unfinished benchmark (timeout / aborted) may only lower the class cap by ONE step: it is weak evidence, and the governor corrects the rest at run time
+    if (rec.confident === false) {
+      const floor = tiers[Math.max(0, tiers.indexOf(cap) - 1)];
+      if (tiers.indexOf(tier) < tiers.indexOf(floor)) {
+        tier = floor;
+        reasons.push(`benchmark incomplete (${calibration.partial || 'partial'}): at most one tier below the GPU class cap`);
+      }
+    }
+    return { tier, scale: tier === rec.tier ? rec.scale : 1, source: 'calibration', lock: false, maxTier: cap, reasons };
   }
   const start = gpu?.tierCap && has(gpu.tierCap) ? (gpu.class === 'integrated' || gpu.class === 'unknown' ? minTier(gpu.tierCap, has('medium') ? 'medium' : gpu.tierCap) : gpu.tierCap) : has(fallback) ? fallback : tiers[0];
   return { tier: start, scale: 1, source: 'class', lock: false, maxTier: cap, reasons: [`GPU class ${gpu?.class ?? 'unknown'}: starts on ${start}`] };
@@ -224,6 +234,12 @@ export function createThreeLoad(renderer, { width, height, halfFloat } = {}) {
   let ready = false;
   let compiled = false;
   let compileFailed = false;
+  let fence = null;
+  let fenceCtx = null;
+  try {
+    const gl = renderer.getContext?.();
+    if (gl && typeof gl.fenceSync === 'function' && typeof gl.clientWaitSync === 'function') fenceCtx = gl;
+  } catch { /* no context to ask */ }
 
   const quadScene = (mat) => {
     const sc = new Scene();
@@ -366,19 +382,50 @@ export function createThreeLoad(renderer, { width, height, halfFloat } = {}) {
       ready = steps >= stepFns.length;
       return ready;
     },
-    /** Throw-away GPU work, NOT timed and not waited on: ramps up the clocks of an idle integrated GPU. */
-    wake(layers = 2) {
+    /**
+     * Throw-away GPU work, NOT timed and not waited on: a small taste of EVERY test, so the first-use costs (pipeline-state creation in the driver, JIT warm-up of
+     * three's render path, geometry upload, the half-float target) and the idle GPU's low clocks are paid here, asynchronously, not inside a timed slice.
+     * It ends with a fence; warmReady() polls it without blocking.
+     */
+    wake() {
       enter();
       try {
-        setRect(rtMain, 1);
-        renderer.setRenderTarget(rtMain);
-        for (let i = 0; i < layers; i++) renderer.render(fillScene, cam);
         setRect(rtHalf, 1);
         renderer.setRenderTarget(rtHalf);
         renderer.render(fillScene, cam);
+        setRect(rtMain, 0.25);
+        renderer.setRenderTarget(rtMain);
+        renderer.render(fillScene, cam);
+        for (let i = 0; i < MAX_CALLS; i++) callMeshes[i].visible = i < 60;
+        setRect(rtMain, 1);
+        renderer.render(callsScene, cam);
+        for (let i = 0; i < MAX_TRI_DRAWS; i++) triMeshes[i].visible = i < 2;
+        renderer.render(trisScene, cam);
+        setRect(rtMain, 0.25);
+        renderer.render(postScene, cam);
       } finally {
         leave();
       }
+      if (fenceCtx) {
+        try {
+          if (fence) fenceCtx.deleteSync(fence);
+          fence = fenceCtx.fenceSync(fenceCtx.SYNC_GPU_COMMANDS_COMPLETE, 0);
+          fenceCtx.flush();
+        } catch {
+          fence = null;
+        }
+      }
+    },
+    /** True when the GPU has finished everything submitted so far (or cannot tell): a non-blocking check, so waiting costs no frame time. */
+    warmReady() {
+      if (!fence || !fenceCtx) return true;
+      try {
+        const r = fenceCtx.clientWaitSync(fence, 0, 0);
+        if (r === fenceCtx.TIMEOUT_EXPIRED) return false;
+        fenceCtx.deleteSync(fence);
+      } catch { /* a lost context or a driver without sync objects: do not wait */ }
+      fence = null;
+      return true;
     },
     /** Submits W units of test `id`, waits for the GPU, returns the elapsed ms (clock = `now`). */
     run(id, W, now) {
@@ -422,6 +469,10 @@ export function createThreeLoad(renderer, { width, height, halfFloat } = {}) {
       for (const m of owned.mats) m.dispose();
       for (const r of owned.rts) r.dispose();
       owned.geos.length = owned.mats.length = owned.rts.length = 0;
+      try {
+        if (fence && fenceCtx) fenceCtx.deleteSync(fence);
+      } catch { /* ignore */ }
+      fence = null;
     },
   };
   return api;
@@ -444,8 +495,10 @@ export function createCalibration(opts = {}) {
   const sliceMs = opts.sliceMs ?? 4; // the target duration of one slice
   const maxSliceMs = opts.maxSliceMs ?? 12;
   const frameBudgetMs = opts.frameBudgetMs ?? 9; // all slices of one frame together
-  const abortSliceMs = opts.abortSliceMs ?? 30; // a slice this slow means the machine cannot be measured gently: stop
+  const abortSliceMs = opts.abortSliceMs ?? 40; // two slices in a row this slow (after the warm-up) mean the machine cannot be measured gently: stop
   const wakeFrames = opts.wakeFrames ?? 3;
+  const warmWaitMs = opts.warmWaitMs ?? 120; // how long to wait (without blocking) for the GPU to finish the wake-up work
+
   const compileWaitMs = opts.compileWaitMs ?? 110;
   const gpu = opts.gpu || null;
   const budgetMs = opts.budgetMs ?? 1000 / Math.min(opts.targetFps ?? 60, 240);
@@ -458,6 +511,12 @@ export function createCalibration(opts = {}) {
   let frames = 0;
   let wakeLeft = wakeFrames;
   let compileSince = -1;
+  let wakeSince = 0;
+  let slowStreak = 0;
+  // per-frame budgets follow the display: at 144 Hz a frame is 6.9 ms, so a slice must be ~3 ms or the frame misses its vsync
+  let budgetNow = frameBudgetMs;
+  let sliceNow = sliceMs;
+  let maxSliceNow = maxSliceMs;
   let testI = 0;
   let aborted = false;
   let cancelled = false;
@@ -505,9 +564,9 @@ export function createCalibration(opts = {}) {
     const last = pts[pts.length - 1];
     const perUnit = last.ms / last.W;
     let W;
-    if (pts.length === 1) W = sliceMs / Math.max(perUnit, 1e-6);
+    if (pts.length === 1) W = sliceNow / Math.max(perUnit, 1e-6);
     else W = last.W * 2;
-    const hi = Math.min(maxW, maxSliceMs / Math.max(perUnit, 1e-6));
+    const hi = Math.min(maxW, maxSliceNow / Math.max(perUnit, 1e-6));
     W = Math.min(W, hi);
     // a test whose largest allowed slice is not meaningfully bigger than the last one cannot add information
     if (W < last.W * 1.4) return 0;
@@ -541,8 +600,8 @@ export function createCalibration(opts = {}) {
     const budget = hz > 0 && hz < (opts.targetFps ?? 60) ? 1000 / hz : budgetMs;
     const refMs = estimateFrameMs(units, REFERENCE_MODEL, viewport, 1).ms;
     const recommended = partial === 'cancelled' ? null : tooSlow || partial === 'aborted'
-      ? { tier: TIER_ORDER[0], scale: (opts.tiers?.[TIER_ORDER[0]]?.scaleMin ?? DEFAULT_TIER_MODELS.lite.scaleMin), estimates: {}, reasons: ['the machine was too slow to benchmark gently: lowest tier'] }
-      : recommendTier({ units, viewport, tiers: opts.tiers || DEFAULT_TIER_MODELS, budgetMs: budget, capTier: gpu?.tierCap || null, ladder: opts.ladder || DEFAULT_LADDER });
+      ? { tier: TIER_ORDER[0], scale: (opts.tiers?.[TIER_ORDER[0]]?.scaleMin ?? DEFAULT_TIER_MODELS.lite.scaleMin), estimates: {}, reasons: ['the machine was too slow to benchmark gently: lowest tier'], confident: false }
+      : { ...recommendTier({ units, viewport, tiers: opts.tiers || DEFAULT_TIER_MODELS, budgetMs: budget, capTier: gpu?.tierCap || null, ladder: opts.ladder || DEFAULT_LADDER }), confident: !partial };
     result = {
       ok: true,
       partial: partial || false,
@@ -571,6 +630,11 @@ export function createCalibration(opts = {}) {
     resolveFn = null;
     fn?.(result);
     return true;
+  }
+
+  function medianInterval(arr) {
+    const s = arr.filter((v) => v > 2 && v < 60).sort((a, b) => a - b);
+    return s.length >= 3 ? s[s.length >> 1] : 16.7;
   }
 
   function refreshFrom(arr) {
@@ -605,9 +669,18 @@ export function createCalibration(opts = {}) {
         if (!load.compiled && now() - compileSince <= compileWaitMs) {
           /* still compiling: keep waiting (the frames double as the vsync measurement) */
         } else if (wakeLeft > 0) {
-          load.wake(2);
+          load.wake();
           wakeLeft--;
-        } else state = 'measure';
+          if (wakeLeft === 0) wakeSince = now();
+        } else if (load.warmReady && !load.warmReady() && now() - wakeSince < warmWaitMs) {
+          /* the GPU is still working through the first-use costs of the wake-up draws: wait for it (a fence poll, no stall) */
+        } else {
+          const med = medianInterval(intervals);
+          budgetNow = Math.min(frameBudgetMs, Math.max(3, med * 0.55));
+          sliceNow = Math.min(sliceMs, Math.max(2, budgetNow * 0.8));
+          maxSliceNow = Math.min(maxSliceMs, Math.max(4, budgetNow * 1.4));
+          state = 'measure';
+        }
       } else if (state === 'measure') {
         // as many slices as fit this frame's budget
         for (;;) {
@@ -621,17 +694,24 @@ export function createCalibration(opts = {}) {
           }
           const used = now() - f0;
           const last = t.points[t.points.length - 1];
-          const predicted = last ? Math.min(maxSliceMs, (last.ms / last.W) * W) : 1;
-          if (used > 0.1 && used + predicted > frameBudgetMs) break;
+          const predicted = last ? Math.min(maxSliceNow, (last.ms / last.W) * W) : 1;
+          if (used > 0.1 && used + predicted > budgetNow) break;
           const ms = load.run(t.def.id, W, now);
-          t.points.push({ W, ms });
-          trace.push({ test: t.def.id, W: Math.round(W * 1000) / 1000, ms: Math.round(ms * 100) / 100 });
+          const row = { test: t.def.id, W: Math.round(W * 1000) / 1000, ms: Math.round(ms * 100) / 100 };
           if (ms > abortSliceMs) {
-            tooSlow = true;
-            return finish('aborted');
+            // one slow slice can be a first-use cost or another process on the GPU: drop it and retry next frame; two in a row is the machine
+            trace.push({ ...row, dropped: true });
+            if (++slowStreak >= 2) {
+              tooSlow = true;
+              return finish('aborted');
+            }
+            break;
           }
+          slowStreak = 0;
+          t.points.push({ W, ms });
+          trace.push(row);
           if (t.points.length >= 3 || !plan(t)) testI++;
-          if (now() - f0 > frameBudgetMs) break;
+          if (now() - f0 > budgetNow) break;
         }
       }
     } catch (err) {
