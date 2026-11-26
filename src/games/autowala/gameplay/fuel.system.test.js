@@ -68,6 +68,31 @@ describe('refuelling at a pump', () => {
   });
 });
 
+describe('the E tap belongs to whoever needs it', () => {
+  it('is left alone when there is no pump and no rescue to make (the workshop door and the job board read it after fuel)', () => {
+    const r = rig({ fuel: 8, wallet: 500, x: 900, z: 900 });
+    r.tap();
+    r.run(0.5);
+    expect(r.ctx.input.pressed('interact')).toBe(true); // still there for the next system
+  });
+
+  it('is also left alone at a pump with a full tank', () => {
+    const r = rig({ fuel: 12, wallet: 500 });
+    r.step();
+    r.tap();
+    r.step();
+    expect(r.ctx.input.pressed('interact')).toBe(true);
+  });
+
+  it('is left for the rescue when the player is broke at the pump (and the rescue then takes it)', () => {
+    const r = rig({ fuel: 0, wallet: 0 });
+    r.run(0.5);
+    r.tap();
+    r.step();
+    expect(r.events.some((e) => e.type === 'fuel:rescue')).toBe(true);
+  });
+});
+
 describe("Mama's rescue", () => {
   it('lends a litre to a broke driver with an empty tank, also when stuck right at a pump', () => {
     for (const where of [{ x: 900, z: 900 }, { x: PUMP.x, z: PUMP.z }]) {

@@ -98,18 +98,28 @@ export function installFuel(ctx, kit) {
         }
       }
       const atPump = !!near && v.speed < FUEL.stationSpeed;
-      // ONE read of the tap per frame: `pressed` consumes it, so reading it in a condition that then fails (a broke player at the pump)
-      // would swallow the press Mama's rescue below needs.
-      let tap = ctx.input.pressed('interact');
+      // The E tap is read LAZILY and at most once per frame: `pressed` consumes it, so reading it up front would starve every system that
+      // runs after this one (the workshop door, the job board), and reading it in a condition that then fails (a broke player at the
+      // pump) would swallow the press Mama's rescue below needs.
+      let tapRead = false;
+      let tapVal = false;
+      const tap = () => {
+        if (!tapRead) {
+          tapRead = true;
+          tapVal = ctx.input.pressed('interact');
+        }
+        return tapVal;
+      };
 
       if (filling && (!atPump || v.fuel >= tank - 1e-4)) stopFilling(atPump ? 'full' : 'stop');
 
       if (atPump && !filling && v.fuel < tank - 0.05) {
         if (!eligible) {
           eligible = true;
-          tap = false; // a stale tap must not start the pump
-        } else if (tap && ctx.economy.wallet >= 1) {
-          tap = false;
+          tap();
+          tapVal = false; // a stale tap must not start the pump
+        } else if (ctx.economy.wallet >= 1 && tap()) {
+          tapVal = false;
           filling = true;
           acc = 0;
           pending = 0;
@@ -117,8 +127,8 @@ export function installFuel(ctx, kit) {
           added = 0;
         }
       } else if (!atPump) eligible = false;
-      else if (filling && tap) {
-        tap = false;
+      else if (filling && tap()) {
+        tapVal = false;
         stopFilling('stop');
       }
 
@@ -140,7 +150,7 @@ export function installFuel(ctx, kit) {
       }
 
       // Mama's rescue
-      if (!filling && v.fuel <= FUEL.empty && v.speed < 1.5 && rescueEligible && tap) {
+      if (!filling && v.fuel <= FUEL.empty && v.speed < 1.5 && rescueEligible && tap()) {
         const offer = rescueOffer(ctx.economy.wallet, clockT, lastCredit);
         if (offer.kind === 'can' && ctx.economy.spend(offer.cost, 'fuel-can')) {
           v.fuel = Math.min(tank, v.fuel + offer.litres);
