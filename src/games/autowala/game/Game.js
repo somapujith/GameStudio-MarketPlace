@@ -303,7 +303,7 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
     last = performance.now();
     programsSeen = gfx.renderer.info.programs ? gfx.renderer.info.programs.length : 0;
     raf = requestAnimationFrame(frame);
-    game.warmOther?.();
+    game.startBackground?.();
   };
   const stop = () => {
     running = false;
@@ -312,7 +312,7 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
   const resize = (w, h) => gfx.resize(w, h);
   const dispose = () => {
     disposed = true;
-    clearTimeout(bgTimer);
+    clearInterval(bgTimer);
     game.warm?.dispose();
     stop();
     for (const s of systems) {
@@ -377,7 +377,10 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
   const nightNow = () => recipeOf(scene).points > 0;
   // the light set the game is in and the other time of day, for a tier
   const phases = (q, { night = nightNow(), ...rest } = {}) => [lightSet(q, { night, baseSpots, ...rest }), lightSet(q, { night: !night, baseSpots, ...rest })];
-  const earlyWarm = warmer.warm(phases(gfx.quality)[0], { budgetMs: 8 }).catch(warnWarm);
+  // Both times of day are built while loading, overlapped with the systems installing: dusk comes 48 s into a game, and building a light set
+  // during play costs frames (each program has to be finished by the GPU process in between them), while behind the loading bar it is free.
+  const warmBothPhases = (q) => Promise.all(phases(q).map((set) => warmer.warm(set, { budgetMs: 8 }))).catch(warnWarm);
+  const earlyWarm = warmBothPhases(gfx.quality);
 
   // gameplay systems: a broken one is logged and skipped, it never takes the whole game down. Install times are kept in game.boot.
   const boot = { world: world.timings, systems: {} };
@@ -411,7 +414,7 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
   const t = performance.now();
   yield earlyWarm;
   prepareFirstFrame(); // the systems moved things (the auto's environment map, lights): the first frame is what is compiled now
-  yield warmer.warm(phases(gfx.quality)[0], { budgetMs: 8 }).catch(warnWarm); // what the systems added
+  yield warmBothPhases(gfx.quality); // what the systems added
   yield warmer.warmMaterials(passMaterials(gfx.composer)).catch(warnWarm);
   gfx.render(0); // one real frame into the pipeline: uploads the first view's geometry and textures and builds the shadow pass's depth programs
   boot.compile = Math.round(performance.now() - t);
@@ -432,7 +435,6 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
     }
     return false;
   };
-  const quick = { budgetMs: 6, maxPending: 8, batch: 8, pause: () => idleBreak(8) }; // after a quality change: dusk may be near
   // while the start menu is up nobody is playing: use the time at full speed; once the game is played, only while frames are healthy
   const idleOrTrickle = {
     budgetMs: 4,
@@ -442,23 +444,40 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
     ready: () => state.menu === 'start' || calm(),
   };
 
-  /**
-   * The rest of the warm-up, started with the game (the start menu is on screen for a few seconds): the other time of day (dusk comes a minute
-   * into a game), the workshop's light set for the current time of day, then textures. Also re-run after a quality change.
-   */
-  const warmOther = (q = gfx.quality) => {
-    clearTimeout(bgTimer);
-    if (!warmer.parallel) return;
-    bgTimer = setTimeout(async () => {
-      if (!running || disposed) return;
-      try {
-        const sets = [phases(q)[1], lightSet(q, { night: nightNow(), workshop: true, baseSpots })];
-        for (const set of sets) if ((await warmer.warm(set, idleOrTrickle)) === 'cancelled') return;
-        await warmer.warmTextures({ budgetMs: 3, pause: idleOrTrickle.pause, ready: idleOrTrickle.ready });
-      } catch (err) {
-        warnWarm(err);
+  // Building programs while the game runs is not free (each one has to be finished by the GPU process in between the frames), so it is done
+  // once, for the tier the game settles on: nothing is built for a tier until it has been in force for STABLE_MS (the frame sampler steps
+  // down within the first seconds on a slow GPU, and everything built for the tier it just left would be wasted).
+  const STABLE_MS = 8000;
+  let stableSince = performance.now();
+  const stable = () => performance.now() - stableSince > STABLE_MS;
+  const otherDone = new Set(); // tiers whose other time of day is built (the boot tier has both)
+  let texturesDone = false;
+  let bgBusy = false;
+
+  /** After a quality change: the other time of day for the tier that has settled. Once: the textures that were not in the first view. */
+  const background = async () => {
+    if (!running || disposed || bgBusy || !warmer.parallel || !stable()) return;
+    const q = gfx.quality;
+    if (otherDone.has(q) && texturesDone) return;
+    bgBusy = true;
+    try {
+      if (!otherDone.has(q)) {
+        if ((await warmer.warm(phases(q)[1], idleOrTrickle)) === 'cancelled') return;
+        otherDone.add(q);
       }
-    }, 100);
+      if (!texturesDone) {
+        if ((await warmer.warmTextures({ budgetMs: 3, pause: idleOrTrickle.pause, ready: idleOrTrickle.ready })) === 'cancelled') return;
+        texturesDone = true;
+      }
+    } catch (err) {
+      warnWarm(err);
+    } finally {
+      bgBusy = false;
+    }
+  };
+  const startBackground = () => {
+    clearInterval(bgTimer);
+    bgTimer = setInterval(background, 1000);
   };
 
   // the workshop adds a spot light and two point lights to the scene: another light set. It is built when the garage is near (the player
@@ -469,7 +488,7 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
   ctx.addSystem({
     update(dt) {
       // (the auto starts parked at the garage: the first seconds of play are left alone)
-      if (!garageFront || !warmer.parallel || workshopWarming || !running || clock.time < 15) return;
+      if (!garageFront || !warmer.parallel || workshopWarming || !running || clock.time < 15 || !stable()) return;
       garageClock -= dt;
       if (garageClock > 0) return;
       garageClock = 0.5;
@@ -482,19 +501,21 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
     },
   });
 
-  // the sampler stepped the quality down: its light set and shadow state are new programs, so build them first and switch when they are ready
+  // the sampler stepped the quality down: the new tier's light count and shadow state are new programs, so build the set the game is in
+  // first and switch when it is ready (the other time of day follows once the tier has settled)
   requestQuality = (q) => {
     const mine = ++qualityToken;
+    stableSince = performance.now();
     warmer.cancel();
     const workshop = state.menu === 'workshop';
-    const [first, second] = phases(q, { night: recipeOf(scene).points > (workshop ? 2 : 0), workshop });
+    const [first] = phases(q, { night: recipeOf(scene).points > (workshop ? 2 : 0), workshop });
     warmer
       .warm(first, { budgetMs: 6, batch: 8 })
       .catch(warnWarm)
       .then((r) => {
         if (mine !== qualityToken || disposed || r === 'cancelled') return;
-        applyQuality(q); // the tier switches as soon as the light set the game is in is ready...
-        return warmer.warm(second, quick).catch(warnWarm).then(() => warmOther(q)); // ...the other time of day follows
+        applyQuality(q);
+        stableSince = performance.now();
       });
   };
   // the GPU context came back: every program and texture is gone, so build the first frame's again (the renderer re-creates them on first use
@@ -502,11 +523,15 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
   contextRestored = () => {
     if (disposed) return;
     warmer.reset();
-    warmer.warm(phases(gfx.quality)[0], { budgetMs: 8 }).catch(warnWarm).then(() => warmOther());
+    otherDone.clear();
+    texturesDone = false;
+    stableSince = performance.now();
+    warmer.warm(phases(gfx.quality)[0], { budgetMs: 8 }).catch(warnWarm);
   };
+  otherDone.add(gfx.quality); // built above
   game.boot = boot;
   game.warm = warmer;
-  game.warmOther = warmOther;
+  game.startBackground = startBackground;
   return game;
 }
 
