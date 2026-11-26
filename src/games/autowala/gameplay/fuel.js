@@ -98,14 +98,18 @@ export function installFuel(ctx, kit) {
         }
       }
       const atPump = !!near && v.speed < FUEL.stationSpeed;
+      // ONE read of the tap per frame: `pressed` consumes it, so reading it in a condition that then fails (a broke player at the pump)
+      // would swallow the press Mama's rescue below needs.
+      let tap = ctx.input.pressed('interact');
 
       if (filling && (!atPump || v.fuel >= tank - 1e-4)) stopFilling(atPump ? 'full' : 'stop');
 
       if (atPump && !filling && v.fuel < tank - 0.05) {
         if (!eligible) {
           eligible = true;
-          ctx.input.pressed('interact'); // a stale tap must not start the pump
-        } else if (ctx.input.pressed('interact') && ctx.economy.wallet >= 1) {
+          tap = false; // a stale tap must not start the pump
+        } else if (tap && ctx.economy.wallet >= 1) {
+          tap = false;
           filling = true;
           acc = 0;
           pending = 0;
@@ -113,7 +117,10 @@ export function installFuel(ctx, kit) {
           added = 0;
         }
       } else if (!atPump) eligible = false;
-      else if (filling && ctx.input.pressed('interact')) stopFilling('stop');
+      else if (filling && tap) {
+        tap = false;
+        stopFilling('stop');
+      }
 
       if (filling) {
         acc += dt;
@@ -133,7 +140,7 @@ export function installFuel(ctx, kit) {
       }
 
       // Mama's rescue
-      if (!filling && v.fuel <= FUEL.empty && v.speed < 1.5 && rescueEligible && ctx.input.pressed('interact')) {
+      if (!filling && v.fuel <= FUEL.empty && v.speed < 1.5 && rescueEligible && tap) {
         const offer = rescueOffer(ctx.economy.wallet, clockT, lastCredit);
         if (offer.kind === 'can' && ctx.economy.spend(offer.cost, 'fuel-can')) {
           v.fuel = Math.min(tank, v.fuel + offer.litres);
