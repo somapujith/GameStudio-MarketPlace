@@ -32,10 +32,14 @@ afterAll(() => {
   delete globalThis.document;
 });
 
-/** Triangles and draw calls of the visible meshes (a draw call per mesh x material group; instanced meshes count once). */
+/**
+ * Triangles and draw calls of the visible meshes (a draw call per mesh x material group; instanced meshes count once), and the
+ * visible shadow casters (each one is a draw call in the shadow pass).
+ */
 export function measure(root) {
   let tris = 0;
   let calls = 0;
+  let casters = 0;
   root.traverse((o) => {
     if (!o.isMesh || !o.visible) return;
     let p = o.parent;
@@ -47,8 +51,9 @@ export function measure(root) {
     const per = g.index ? g.index.count / 3 : g.attributes.position.count / 3;
     tris += per * (o.isInstancedMesh ? o.count : 1);
     calls += Array.isArray(o.material) ? o.material.length : 1;
+    if (o.castShadow) casters++;
   });
-  return { tris: Math.round(tris), calls };
+  return { tris: Math.round(tris), calls, casters };
 }
 
 const FULL = {
@@ -74,7 +79,22 @@ describe('auto model budget', () => {
         expect(g.attributes.uv, name).toBeTruthy();
         expect(g.index, name).toBeNull();
       }
-      for (const must of ['paint', 'dark', 'chrome', 'roof', 'upper', 'curtains', 'seat', 'tyre', 'posts', 'tailLens', 'brake', 'hlLamp']) expect(slots[must], must).toBeTruthy();
+      for (const must of ['paint', 'matte', 'chrome', 'roof', 'curtains', 'seat', 'tyre', 'tyreR', 'tailLens', 'brake', 'hlLamp']) expect(slots[must], must).toBeTruthy();
+      // the dark / trim slot carries vertex colours (the player's matte material reads them)
+      expect(slots.matte.attributes.color, 'matte colours').toBeTruthy();
+    }
+    // the canopy variant has the same slots with the same vertex counts (only the positions move), and the roof really is higher
+    for (const hi of [false, true]) {
+      const flat = build.autoGeometries(hi);
+      const lifted = build.autoGeometries(hi, true);
+      expect(Object.keys(lifted).sort()).toEqual(Object.keys(flat).sort());
+      for (const k of Object.keys(flat)) expect(lifted[k].attributes.position.count, k).toBe(flat[k].attributes.position.count);
+      flat.roof.computeBoundingBox();
+      lifted.roof.computeBoundingBox();
+      expect(lifted.roof.boundingBox.max.y).toBeGreaterThan(flat.roof.boundingBox.max.y + 0.25);
+      flat.paint.computeBoundingBox();
+      lifted.paint.computeBoundingBox();
+      expect(lifted.paint.boundingBox.max.y).toBeCloseTo(flat.paint.boundingBox.max.y, 6); // the body shell does not move
     }
     // the rig never loses a part to a failed merge: every visible body mesh has triangles
     const p = build.buildAuto({ player: true });
@@ -93,7 +113,12 @@ describe('auto model budget', () => {
     expect(traffic.tris).toBeLessThanOrEqual(1500);
     expect(player.tris).toBeLessThanOrEqual(9000);
     expect(loaded.tris).toBeLessThanOrEqual(9000);
-    expect(traffic.calls).toBeLessThanOrEqual(20);
-    expect(player.calls).toBeLessThanOrEqual(48);
+    expect(traffic.calls).toBeLessThanOrEqual(14);
+    expect(player.calls).toBeLessThanOrEqual(27);
+    expect(loaded.calls).toBeLessThanOrEqual(64);
+    // only the big shell parts (tub, roof) and the driver cast shadows, however the auto is dressed
+    expect(player.casters).toBeLessThanOrEqual(3);
+    expect(loaded.casters).toBeLessThanOrEqual(3);
+    expect(traffic.casters).toBeLessThanOrEqual(4);
   });
 });

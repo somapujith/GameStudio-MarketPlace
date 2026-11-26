@@ -180,3 +180,14 @@ audio/     sound.js (+ audio/engine-*.js, ambience-*.js, radio-*.js), ui/Radio.j
 - Voices connect to the `voice` bus and horns to the `fx` bus of `audio/sound-bus.js` (`getBuses()`); both fall back to the master gain.
 - `<FareChoice/>` is mounted in `AutowalaGame.jsx`. The workshop has a Repair action that calls `ctx.career.repairCost()` / `repair()`.
 - Not done: wrong-way and no-entry streets, crossing notes, local (stadium-only) match traffic, visible dents on the auto, traffic-horn routing through the `fx` bus.
+
+---
+## Addendum 4: draw-call budget of the actors (perf overhaul, aw-gpu-actors)
+
+Draw calls, not triangles, are what the frame costs on an integrated GPU (~50 us each), so the people and the player's auto are built to be few calls:
+- **Customers** (`gameplay/customers.js createRig`, `sim/person-mesh.js`): a waiting customer (one or two people and a suitcase) is ONE `SkinnedMesh` = one camera-pass call and one shadow-pass call, and every customer shares one vertex-coloured material.
+  `rig.userData.persons[i]` is the person's root `Bone` (`.position.y` bounces) and `.userData.{lArm,rArm,lLeg,rLeg}` are `Bone`s with the same rest positions the old limb meshes had, so the pose functions animate them with the same `.position` / `.rotation` writes. Anything new that poses a customer keeps using those handles (do not look for `torso` / `head` / `mats`: they are not separate objects any more).
+  Disposing the rig's geometry frees its skeleton; the shared material is never disposed. The rig is moved / rotated as a whole (it is the mesh).
+- **The player's auto** (`sim/autoModel.js`): every static part is merged per material (paint, chrome, matte (vertex colours), seat, roof, curtains, lamps...). Only the tub, the roof and the driver cast shadows; bolt-on props from the workshop never do (`customize.js mountProp`). The high canopy no longer moves nodes for the posts / header / rear panel: `ud.canopyGeometry(on)` swaps the merged meshes to a second bake (`sim/auto-canopy.js`).
+  Contract changes: `userData.wheels` and `wheelParts` have TWO entries (the front wheel, and both rear wheels as one pair: they always spin together); `userData.posts` / `header` are gone; `plateRearM === plateFrontM`; `stripes.left === stripes.right` (one mesh, toggling either shows both), same for `swish`; the driver / riders are one mesh each (`userData.mats.shirt.color.set(...)` still recolours them).
+- Budget (asserted in `sim/auto-budget.test.js`): default rig <= 27 draw calls and <= 3 shadow casters, fully customised <= 64 calls and <= 3 casters.
