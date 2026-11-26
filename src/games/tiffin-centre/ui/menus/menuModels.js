@@ -567,6 +567,8 @@ const STATUS = {
   loading: { tone: 'info', icon: '...', eyebrow: 'Tiffin Centre', title: 'Lighting the stove...', body: 'Heating the tawa, filling the chai pot and setting out the plates.', busy: true, retry: '', exit: 'Back' },
   error: { tone: 'bad', icon: '!', glyph: 'alert', eyebrow: 'Kitchen trouble', title: 'The stove would not light, anna', body: 'Something went wrong while opening the centre. Your progress is safe. Try again in a moment.', busy: false, retry: 'Try again', exit: 'Back to games' },
   disconnected: { tone: 'info', icon: '~', glyph: 'offline', eyebrow: 'Connection lost', title: 'Line cut, miyan! Connection lost', body: 'The table cannot be reached right now. Check your signal and reconnect, your seat is held for a short while.', busy: false, retry: 'Reconnect', exit: 'Leave table' },
+  // the 3D context was taken away mid-shift (another tab, a driver reset, a phone low on memory): the browser usually hands it back by itself, so say that
+  lost: { tone: 'info', icon: '!', glyph: 'alert', eyebrow: 'Picture dropped', title: 'The picture dropped out', body: 'The phone or browser took the 3D view away for a moment. It usually comes back by itself and the shift stays on hold meanwhile. If it does not, press Try again.', busy: false, retry: 'Try again', exit: 'Leave the stall' },
   webgl: { tone: 'bad', icon: '3D', glyph: 'cube', eyebrow: 'Not supported here', title: 'This device cannot draw the 3D stall', body: 'Tiffin Centre needs WebGL, and this browser has it switched off or does not support it. Turn on hardware acceleration, update your browser, or open the game on another phone or computer.', busy: false, retry: 'Check again', exit: 'Back to games' },
 };
 export const STATUS_KINDS = Object.keys(STATUS);

@@ -29,6 +29,19 @@ export function tierNote(info) {
   return start ? `Running at ${t} now (started at ${start}, stepped down to keep it smooth).` : `Running at ${t} now (${how}).`;
 }
 
+/**
+ * What to tell the player when the picked setting is not what the running stall was built with (or null when they agree / nothing is known).
+ * `info` is scene.getTierInfo(); `pref` the setting just picked; `canApply` is true when an "Apply now" button is offered. Honest in both directions:
+ * the running tier is named, and so is when the pick takes effect.
+ */
+export function pendingNote(info, pref, canApply = false) {
+  const running = info && WORD[info.tier];
+  if (!running || !info.pref || info.pref === pref) return null;
+  const picked = pref === 'auto' ? 'Auto' : WORD[pref] || pref;
+  const when = canApply ? 'Press Apply now to rebuild the picture at once (the shift stays paused), or it starts the next time you open the stall.' : 'It starts the next time you open the stall.';
+  return `You picked ${picked}, but the stall is still running at ${running}. ${when}`;
+}
+
 /** The note shown for the selected setting. */
 export const gfxNote = (pref) => (GFX_OPTIONS.find((o) => o.id === pref) || GFX_OPTIONS[0]).note;
 
@@ -46,11 +59,15 @@ function readInfo(tierInfo) {
   }
 }
 
-/** Props: { tierInfo? (object, or a function returning scene.getTierInfo()), idPrefix? }. Saved on this device (localStorage via setGfxPref). */
-export default function GraphicsSetting({ tierInfo = null, idPrefix = 'tc-gfx' }) {
+/**
+ * Props: { tierInfo? (object, or a function returning scene.getTierInfo()), idPrefix?, onApply? }. Saved on this device (localStorage via setGfxPref).
+ * `onApply` (the pause menu passes it) rebuilds the picture at the picked tier right now; without it the choice starts the next time the stall opens.
+ */
+export default function GraphicsSetting({ tierInfo = null, idPrefix = 'tc-gfx', onApply = null }) {
   const [pref, setPref] = useState(() => getGfxPref());
   const info = readInfo(tierInfo);
   const now = tierNote(info);
+  const pending = pendingNote(info, pref, typeof onApply === 'function');
   return (
     <div className="tc-menu-gfx" data-gfx={pref}>
       <p className="tc-menu-set__h" id={`${idPrefix}-h`}>Graphics</p>
@@ -63,7 +80,18 @@ export default function GraphicsSetting({ tierInfo = null, idPrefix = 'tc-gfx' }
       />
       <p className="tc-menu-set__small" id={`${idPrefix}-note`} aria-live="polite">{gfxNote(pref)}</p>
       {now && <p className="tc-menu-set__small tc-menu-gfx__now">{now}</p>}
-      <p className="tc-menu-set__small tc-menu-gfx__apply">{GFX_APPLY_HINT}</p>
+      {pending ? (
+        <>
+          <p className="tc-menu-set__small tc-menu-gfx__apply" role="status">{pending}</p>
+          {typeof onApply === 'function' && (
+            <button type="button" className="tc-menu-btn tc-menu-btn--sm tc-menu-btn--plank" onClick={() => onApply(pref)}>
+              Apply now
+            </button>
+          )}
+        </>
+      ) : (
+        <p className="tc-menu-set__small tc-menu-gfx__apply">{GFX_APPLY_HINT}</p>
+      )}
     </div>
   );
 }
