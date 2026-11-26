@@ -6,6 +6,7 @@ import { GAMES, getGame, liveGames, relatedGames } from '@/games/registry.js';
 import { paths } from '@/platform/paths.js';
 import { SoloPanel } from '@/platform/game/ActionPanel.jsx';
 import { sectionList, detailRows, playersLabel } from '@/platform/game/detailModel.js';
+import { orientationLabel } from '@/platform/game/orientationPolicy.js';
 import { liveList, rankedList } from '@/platform/home/catalog.js';
 import { inviteGames } from '@/components/online/games.js';
 import { DEFAULTS, activeChips, applyFilters, matchesPlayers } from '@/platform/browse/filters.js';
@@ -39,6 +40,12 @@ describe('Autowala manifest', () => {
     for (const k of ['rating', 'ratings', 'installs', 'released', 'ageRating']) expect(autowala).not.toHaveProperty(k);
     expect(autowala.howToPlay.length).toBeGreaterThanOrEqual(3);
     expect(autowala.howToPlay.length).toBeLessThanOrEqual(4);
+  });
+
+  it('is a landscape game: the hub gates upright phones and tablets, and the game page says so', () => {
+    expect(autowala.orientation).toBe('landscape');
+    expect(orientationLabel(autowala)).toBe('Best played in landscape');
+    expect(Object.fromEntries(detailRows(autowala).map((r) => [r.label, r.value])).Orientation).toBe('Landscape on phones and tablets');
   });
 
   it('has no server adapter: the Worker never learns about a solo game', () => {

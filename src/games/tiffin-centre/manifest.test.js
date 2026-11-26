@@ -2,6 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import manifest from './manifest.js';
 import { GAMES, getGame, liveGames } from '../registry.js';
+import { detailRows } from '@/platform/game/detailModel.js';
+import { orientationLabel } from '@/platform/game/orientationPolicy.js';
 
 describe('tiffin-centre manifest', () => {
   it('has the contract fields', () => {
@@ -28,6 +30,12 @@ describe('tiffin-centre manifest', () => {
     expect(Object.keys(manifest.loaders).sort()).toEqual(['onlineGame', 'soloGame']);
     expect(manifest.loaders.soloGame).toBeTypeOf('function');
     expect(manifest.loaders.onlineGame).toBeTypeOf('function');
+  });
+
+  it('is a landscape game: the hub gates upright phones and tablets (solo screen and the online table), and the game page says so', () => {
+    expect(manifest.orientation).toBe('landscape');
+    expect(orientationLabel(manifest)).toBe('Best played in landscape');
+    expect(Object.fromEntries(detailRows(manifest).map((r) => [r.label, r.value])).Orientation).toBe('Landscape on phones and tablets');
   });
 
   it('carries honest store-listing metadata (no ratings, counts or invented dates)', () => {

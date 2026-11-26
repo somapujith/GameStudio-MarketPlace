@@ -88,6 +88,7 @@ export default {
 | `ageRating` | string, e.g. `'12+'` | age chip; must match your own assessment |
 | `languages` | string[] | e.g. `['English']` |
 | `platforms` | string[] | e.g. `['Phone','Tablet','Desktop']` |
+| `orientation` | `'landscape'` \| `'portrait'` \| `'any'` (default `'any'`) | a game that must be played sideways (or upright) on a phone or tablet: the solo and online pages cover it with a "turn your phone" screen while the device is in the wrong orientation, and the game page shows a "Best played in landscape" chip. Desktop is never gated. See `docs/ADDING_A_GAME.md` section 11 |
 | `tags` | string[] | search and chips (e.g. `['Dice race','Classic']`) |
 | `highlights` | `[{ icon, title, text }]` | "Why you'll like it" tiles; `icon` is a `HubIcon` name |
 | `howToPlay` | `[{ icon?, title, text }]` | short numbered "How to play" steps |
