@@ -37,13 +37,16 @@ play      ──► every frame: governor.frame(dt, cpuMs, calls, gpuMs)
 ## 2. Quick start
 
 ```js
-import { createAdaptiveQuality, runStandaloneCalibration, shouldCalibrate, createLoop, createDynamicRes, watchDeviceHints, warmShaders } from '@/platform/gfx';
+import {
+  probeGpu, createTierMemory, viewportClass, createAdaptiveQuality, runStandaloneCalibration, shouldCalibrate, createLoop, createDynamicRes, watchDeviceHints, warmShaders,
+} from '@/platform/gfx';
 
 const gpu0 = probeGpu();                                           // one throw-away context, cached
 const memory = createTierMemory({ game: 'tiffin-centre' }).get(gpu0.key, viewportClass(w, h, dpr));
 let calibration = null;
 if (shouldCalibrate({ gpu: gpu0, memory, pref }).run) calibration = await runStandaloneCalibration({ width: w, height: h, dpr, gpu: gpu0, tiers: MY_TIER_MODELS });
 
+const dyn = createDynamicRes();            // resolution scaling without re-allocating targets (section 5)
 const aq = createAdaptiveQuality({
   game: 'tiffin-centre', tiers: ['lite', 'low', 'medium', 'high'], pref: getGfxPref(),          // 'auto' or a tier
   viewport: { w, h, dpr }, gpu: gpu0, calibration,
