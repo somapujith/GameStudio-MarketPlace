@@ -21,8 +21,8 @@ function busyStall() {
   const s = game(5);
   s.tick = 40;
   s.money = 600;
-  s.cost = 180;
-  s.profit = 420;
+  s.cost = 230;
+  s.profit = 370; // cash (600) is over level 5's one-star target (390), profit is not: the star bar must follow profit
   s.gas.u = 150;
   s.stock.batter_dosa = 0;
   s.stock.batter_idly = 14;
@@ -66,9 +66,9 @@ describe('the HUD on a shift with the operations layer', () => {
 
   it('money shows cash, cost and profit, and the star bar is about profit', () => {
     expect(html).toContain('₹600');
-    expect(html).toContain('aria-label="Cost ₹180, profit ₹420"');
+    expect(html).toContain('aria-label="Cost ₹230, profit ₹370"');
     expect(html).toContain('Profit toward');
-    expect(html).toContain('aria-valuetext="0 of 3 stars"'); // level 5 needs 760 profit for one star
+    expect(html).toContain('aria-valuetext="0 of 3 stars"'); // level 5 needs 390 profit for one star: 370 is not enough, although the 600 in the till is
   });
 
   it('each pan has a Tend button with its gauge; the chai counter has none', () => {

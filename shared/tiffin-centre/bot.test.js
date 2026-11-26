@@ -191,10 +191,10 @@ describe('balance: a single bot (one action per tick, walking)', () => {
 });
 
 describe('balance: bots together', () => {
-  it('two bots reach three stars on level 4 at least sometimes (the co-op reward), and more often than one', () => {
+  it('two bots reach three stars on level 5 at least sometimes (the co-op reward), and more often than one', () => {
     const seeds = [...SEEDS, 9, 10, 11, 12];
-    const two = seeds.filter((seed) => play(4, 'normal', 2, seed).stars === 3).length;
-    const one = seeds.filter((seed) => play(4, 'normal', 1, seed).stars === 3).length;
+    const two = seeds.filter((seed) => play(5, 'normal', 2, seed).stars === 3).length;
+    const one = seeds.filter((seed) => play(5, 'normal', 1, seed).stars === 3).length;
     expect(two).toBeGreaterThanOrEqual(1);
     expect(two).toBeGreaterThan(one);
   });

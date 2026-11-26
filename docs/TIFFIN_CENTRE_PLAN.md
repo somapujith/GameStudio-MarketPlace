@@ -111,6 +111,14 @@ the line. The head can also be turned freely (drag on empty space, or Q/E and ar
   or a prep hand wins with the team; a seat that stood by wins nothing and is paid nothing (`stats.idle`). `cooked` counts a dish when it reaches somebody's hands (`take`
   credits the player who started it, `slot.by`); a burnt dish, or one cleared off the counter, never counts, so cooking food nobody takes is not a way to be paid.
 
+- **Difficulty curve (retuned 2026-11-27, `shared/tiffin-centre/balance.test.js`).** Reference players: the bot of `bot.js` is a FAST human (one action per tick, no thinking time);
+  a COMPETENT human takes 1.45x as long per action and loses 8% of free turns; a CASUAL one 1.8x and 15%. The yardstick is the OFFERED LOAD, dishes asked for per tick of the shift
+  (solo, normal pace): level 1..12 = .094 .099 .104 .109 .111 .114 .108 .123 .122 .123 .125 .132 (the table with the star scores per skill is in `docs/perf/tf-logic.md`). It rises with no cliff (Chai Time, level 7, is a
+  deliberate breather) and stays below what the fast bot can serve (about .2), so every shift is clearable solo; a casual player gets through shifts 1-3, a competent one through
+  most of 1-8, and the last four want a team (a team is offered `coopScale(n)` times the crowd and asked for that many times the star targets). Level 4 no longer takes three-dish
+  orders (`orderMax` 2; three come at level 5). Before: level 4 offered .197 (twice level 3) and levels 9-12 offered .23-.27, more than the bot can serve, so a star on level 9
+  was out of reach solo and the practice ladder (a star on n opens n + 1) stopped at level 8. Star targets are about 41% / 70% / 106% of what the fast bot earns solo on the level.
+
 ### Engine API (`shared/tiffin-centre/index.js` re-exports all; pure JS, JSON-serialisable state, no Date/Math.random)
 
 ```js

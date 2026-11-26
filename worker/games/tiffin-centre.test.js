@@ -460,6 +460,7 @@ describe('fuzz of the operations actions through the adapter (real engine)', () 
           } else if (['prep', 'collectPrep', 'tend', 'swapGas', 'board', 'buy'].includes(clean.type)) opsApplied += 1;
           s = res.state;
         }
+        if (tiffin.isOver(s)) break; // a collect on the last customer can end the shift before the tick
         s = tiffin.applyAction(s, tiffin.deadlines(s)[0].action).state;
         expect(() => JSON.stringify(s)).not.toThrow();
         for (const v of Object.values(s.stock || {})) expect(v).toBeGreaterThanOrEqual(0);
