@@ -23,6 +23,7 @@ import { makeRng } from '../game/rng.js';
 import { foliageMaterial, glowMaterial } from '../render/materials.js';
 import { chunkedInstances } from '../render/chunks.js';
 import { canvasTexture } from '../render/textures.js';
+import { createRoadProbe, dropSpotsOnRoads } from './prop-spots.js';
 
 function frondGeometry() {
   // one palm frond: an arched, drooping leaf strip along +x
@@ -134,6 +135,12 @@ export function buildProps(scene, city, colliders, shared, seed) {
     const rz = L.rz + 15 + (i % 2) * 5;
     palmSpots.push({ x: L.cx + Math.cos(t) * rx, z: L.cz + Math.sin(t) * rz, h: rng.range(0.9, 1.3), r: rng.range(0, 6.28) });
   }
+
+  // nothing solid in a lane: the park fill and the lamp / palm / tree offsets of one road can land on ANOTHER carriageway (Necklace Road)
+  const roadProbe = createRoadProbe(city);
+  dropSpotsOnRoads(roadProbe, treeSpots, 1.2);
+  dropSpotsOnRoads(roadProbe, palmSpots, 1.2);
+  dropSpotsOnRoads(roadProbe, lampSpots, 0.6);
 
   // trunks and posts are solid now that the auto may use the pavement (the same soft guardrail contact as a wall)
   for (const t of treeSpots) colliders.addCentered(t.x, t.z, 0.8, 0.8, 'prop', 5);
