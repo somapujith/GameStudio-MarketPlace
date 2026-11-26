@@ -142,10 +142,26 @@ describe('rain, cricket and festival change the crowd and what they order', () =
     const ctx = { hour: [22, 24], shiftTicks: 225, plan };
     expect(kindWeight('student', ctx, c.at + 1)).toBeGreaterThan(kindWeight('student', { ...ctx, plan: [] }, c.at + 1) * 1.9);
     expect(kindWeight('family', ctx, c.at + 1)).toBeLessThan(kindWeight('family', { ...ctx, plan: [] }, c.at + 1));
-    const sched = buildSchedule({ level: 11, seed: 5, players: 2 });
-    const inside = sched.filter((e) => e.at >= c.at && e.at < c.until);
-    const gaps = inside.slice(1).map((e, i) => e.at - inside[i].at);
-    expect(gaps.filter((g) => g === 1).length).toBeGreaterThanOrEqual(3);
+    // bursts: during the match 55% of the gaps are one tick (the rest are doubled), over many seeds a large share of the gaps in the window is 1
+    let ones = 0;
+    let total = 0;
+    let outside = 0;
+    let outsideTotal = 0;
+    for (let seed = 1; seed <= 12; seed++) {
+      const plan2 = eventPlan({ ids, seed, shiftTicks: 225 });
+      const win = plan2[0];
+      const sched = buildSchedule({ level: 11, seed, players: 2 });
+      const gapsOf = (list) => list.slice(1).map((e, i) => e.at - list[i].at);
+      const inside = gapsOf(sched.filter((e) => e.at >= win.at && e.at < win.until));
+      const rest = gapsOf(sched.filter((e) => e.at < win.at || e.at >= win.until));
+      ones += inside.filter((g) => g === 1).length;
+      total += inside.length;
+      outside += rest.filter((g) => g === 1).length;
+      outsideTotal += rest.length;
+    }
+    expect(total).toBeGreaterThan(20);
+    expect(ones / total).toBeGreaterThan(0.3);
+    expect(ones / total).toBeGreaterThan(3 * (outside / Math.max(1, outsideTotal)));
   });
 
   it('a festival makes the crowd bigger and tips better', () => {

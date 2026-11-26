@@ -221,6 +221,17 @@ describe('describeSavedShift', () => {
     expect(describeSavedShift(tutorialSnap()).title).toBe('Training Morning');
   });
 
+  it('a tutorial save reports its STEP (the training clock is frozen, so game time says nothing about how far it got); older saves without the step count do not', () => {
+    const withSteps = describeSavedShift(tutorialSnap({ driver: { journal: [3], restarts: 0, index: 37, steps: 128 } }));
+    expect(withSteps).toMatchObject({ mode: 'tutorial', step: 38, steps: 128 });
+    const old = describeSavedShift(tutorialSnap());
+    expect(old.step).toBeUndefined();
+    expect(old.steps).toBeUndefined();
+    expect(validateSnapshot(tutorialSnap({ driver: { journal: [3], restarts: 0, index: 2, steps: 0 } })).ok).toBe(false);
+    expect(validateSnapshot(tutorialSnap({ driver: { journal: [3], restarts: 0, index: 2, steps: 'many' } })).ok).toBe(false);
+    expect(validateSnapshot(tutorialSnap({ driver: { journal: [3], restarts: 0, index: 2, steps: 128 } })).ok).toBe(true);
+  });
+
   it('is null for anything that is not a snapshot', () => {
     expect(describeSavedShift(null)).toBe(null);
     expect(describeSavedShift({})).toBe(null);

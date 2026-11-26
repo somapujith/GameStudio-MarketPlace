@@ -7,7 +7,7 @@ import * as realEngine from '@shared/tiffin-centre/index.js';
 const COALESCE = new Set(['move', 'emote']); // only the newest of these matters
 /** Server refusals that are not worth a toast: a `move` to where the player already stands. */
 const QUIET_ERRORS = new Set(['Already there.']);
-const NEVER_FROM_CLIENT = new Set(['tick', 'spawn', 'tutorial-flags']);
+const NEVER_FROM_CLIENT = new Set(['tick', 'spawn', 'tutorial-flags', 'leave']);
 
 const num = (v, d) => (Number.isFinite(Number(v)) ? Number(v) : d);
 

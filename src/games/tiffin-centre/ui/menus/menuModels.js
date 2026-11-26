@@ -535,7 +535,10 @@ export function resumeViewModel(saved, now = Date.now()) {
   const tutorial = level === 0 || saved.mode === 'tutorial';
   const total = Math.max(1, Math.trunc(num(saved.shiftTicks, 1)));
   const tick = clamp(Math.trunc(num(saved.tick)), 0, total);
-  const pct = Math.round((tick / total) * 100);
+  // a tutorial's clock is frozen: how far it got is its step (saved as step / steps), only an older save falls back to game time
+  const steps = tutorial ? Math.trunc(num(saved.steps)) : 0;
+  const step = steps > 0 ? clamp(Math.trunc(num(saved.step, 1)), 1, steps) : 0;
+  const pct = steps > 0 ? Math.round(((step - 1) / steps) * 100) : Math.round((tick / total) * 100);
   const def = levelDef(level);
   const title = String(saved.title || def.name);
   const money = Math.max(0, Math.round(num(saved.money)));
@@ -547,7 +550,8 @@ export function resumeViewModel(saved, now = Date.now()) {
     te: def.te,
     paceLabel: PACE[paceOf(saved.pace)].label,
     pct,
-    left: shiftLength(total - tick),
+    left: steps > 0 ? '' : shiftLength(total - tick),
+    detail: steps > 0 ? `step ${step} of ${steps}` : `${shiftLength(total - tick)} left`,
     money,
     ago,
     heading: tutorial ? 'Continue tutorial' : 'Resume your shift',
