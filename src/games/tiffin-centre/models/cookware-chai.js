@@ -268,7 +268,7 @@ export function buildChaiSet() {
       flamePower = on ? Math.max(0.05, Math.min(1, power)) : 0;
       flame.visible = burnerOn;
       glow.visible = burnerOn;
-      if (light) light.visible = burnerOn;
+      // the light stays in the scene (intensity 0 when the burner is off): a changing point-light count recompiles every lit shader
       fm.uniforms.uPower.value = flamePower;
       for (const s of slots) {
         s.steam.points.visible = burnerOn;

@@ -298,7 +298,7 @@ export function buildKadaiSet() {
       flamePower = on ? Math.max(0.05, Math.min(1, power)) : 0;
       rings.forEach((m) => (m.visible = burnerOn));
       frontGlow.visible = burnerOn;
-      if (light) light.visible = burnerOn;
+      // the light stays in the scene (intensity 0 when the burner is off): a changing point-light count recompiles every lit shader
       for (const m of fm) m.uniforms.uPower.value = flamePower;
       for (const s of slots) {
         s.steam.points.visible = burnerOn;

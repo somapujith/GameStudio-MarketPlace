@@ -12,9 +12,10 @@
 import {
   AgXToneMapping, NoToneMapping, PCFShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, WebGLRenderer,
 } from 'three';
-import { QUALITY, createScaler, createDrawCallGuard, frameBudgetFor, lowerQuality, tierIndex } from './quality.js';
+import { QUALITY, createScaler, createDrawCallGuard, frameBudgetFor, lowerQuality, shadowEveryFor, tierIndex } from './quality.js';
 import { createSky } from './sky.js';
 import { createPost } from './post.js';
+import { programSort, skipDarkLights } from './gfx-tweaks.js';
 
 // the applier (light-apply.js) is built from the bare WebGLRenderer, so it finds the sky and the post pipeline through this registry
 const registry = new WeakMap();
@@ -58,7 +59,15 @@ function makeRenderer(canvas, q) {
 }
 
 export function createRenderer(canvas, { quality = 'medium', auto = true, onQuality, onScale, onContextLost, onContextRestored } = {}) {
-  const renderer = makeRenderer(canvas, quality);
+  const releaseLightSkip = skipDarkLights(); // before the first program compiles: a dark point light costs a distance test, not a PBR evaluation
+  let renderer;
+  try {
+    renderer = makeRenderer(canvas, quality);
+  } catch (err) {
+    releaseLightSkip();
+    throw err;
+  }
+  const sorter = programSort(renderer); // opaque draws grouped by shader program: far fewer program switches (and lighting uniform uploads) per frame
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = AgXToneMapping;
   renderer.toneMappingExposure = 1;
@@ -96,12 +105,26 @@ export function createRenderer(canvas, { quality = 'medium', auto = true, onQual
 
   const dpr = () => (typeof devicePixelRatio === 'number' && devicePixelRatio > 0 && devicePixelRatio) || 1;
   let pr = 1;
+  let builtPr = 0;
+  let builtW = 0;
+  let builtH = 0;
+  let shadowDirty = true; // the shadow map is (re)drawn on the next frame
+  let shadowTick = 0;
+  let shadowInterval = 1;
+  let dtAvg = 1 / 60; // smoothed frame time: decides how often the shadow map is redrawn (see render())
 
   const build = () => {
     const cfg = QUALITY[q];
     pr = Math.max(0.25, Math.min(cfg.pixelRatio, dpr()) * scale);
-    renderer.setPixelRatio(pr);
-    renderer.setSize(width, height, false);
+    // only touch the canvas when its size really changes (a resize of the drawing buffer reallocates the swap chain)
+    if (pr !== builtPr || width !== builtW || height !== builtH) {
+      renderer.setPixelRatio(pr);
+      renderer.setSize(width, height, false);
+      builtPr = pr;
+      builtW = width;
+      builtH = height;
+    }
+    shadowDirty = true;
     renderer.shadowMap.enabled = cfg.shadow > 0;
     renderer.toneMapping = cfg.post ? NoToneMapping : AgXToneMapping; // with post the pipeline tone-maps; without it the materials do
     sky.setTier(cfg.clouds, cfg.stars);
@@ -156,15 +179,30 @@ export function createRenderer(canvas, { quality = 'medium', auto = true, onQual
   const render = (dt) => {
     if (lost) return;
     clock += dt;
+    sorter.tick();
     renderer.info.reset();
     if (warmUp > 0) warmUp -= Math.min(dt, 1);
     else if (dt > 0 && dt < 1) {
       const verdict = scaler.push(dt);
+      if (verdict?.revertTo != null && Math.abs(verdict.revertTo - scale) > 1e-4) setScale(verdict.revertTo); // the steps that bought nothing are undone
       if (verdict?.scale) setScale(verdict.scale);
       else if (verdict?.tier && auto && q !== 'lite') setQuality(lowerQuality(q), `frame time ${(dt * 1000).toFixed(0)} ms at scale ${scale.toFixed(2)}`);
       else if (verdict?.tier && q === 'lite') scaler.restart(scale); // nothing lower than lite: keep the floor scale and stop asking
     }
     sky.follow(camera);
+    // the shadow map of the static stall does not need redrawing at the full frame rate: when frames are already late it is refreshed every 2nd / 3rd frame
+    // (the sun moves in hours, the casters that move are a few people; one frame of lag is a centimetre)
+    const sm = QUALITY[q];
+    if (sm.shadow > 0) {
+      if (dt > 0 && dt < 0.5) dtAvg += (dt - dtAvg) * 0.05;
+      renderer.shadowMap.autoUpdate = false;
+      shadowInterval = shadowEveryFor(sm, dtAvg, shadowInterval);
+      if (shadowDirty || ++shadowTick >= shadowInterval) {
+        renderer.shadowMap.needsUpdate = true;
+        shadowDirty = false;
+        shadowTick = 0;
+      }
+    }
     if (QUALITY[q].post) post.render(dt);
     else renderer.render(scene, camera);
     if (warmUp <= 0 && auto && dt > 0 && drawGuard.push(dt, renderer.info.render.calls, q, frameBudgetFor(QUALITY[q]))) {
@@ -180,6 +218,8 @@ export function createRenderer(canvas, { quality = 'medium', auto = true, onQual
   const onRestored = () => {
     lost = false;
     warmUp = 2.5;
+    shadowDirty = true;
+    builtPr = 0; // the drawing buffer is new
     sky.markEnvDirty();
     build();
     onContextRestored?.();
@@ -194,6 +234,8 @@ export function createRenderer(canvas, { quality = 'medium', auto = true, onQual
     post.dispose();
     sky.dispose();
     registry.delete(renderer);
+    sorter.dispose();
+    releaseLightSkip();
     renderer.dispose();
     listeners.clear();
     scaleListeners.clear();

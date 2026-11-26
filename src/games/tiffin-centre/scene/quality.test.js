@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { QUALITY, QUALITY_ORDER, KNOB_KEYS, pickQuality, lowerQuality, minTier, createQualitySampler, createScaler, createDrawCallGuard, DRAW_CALL_BUDGET, frameBudgetFor } from './quality.js';
+import { QUALITY, QUALITY_ORDER, KNOB_KEYS, pickQuality, lowerQuality, minTier, createQualitySampler, createScaler, createDrawCallGuard, DRAW_CALL_BUDGET, frameBudgetFor, shadowEveryFor } from './quality.js';
 
 describe('quality tiers', () => {
   it('has lite <= low <= medium <= high on every numeric knob and a pipeline that grows with the tier', () => {
@@ -130,6 +130,37 @@ describe('dynamic resolution scaler', () => {
     expect(out.some((v) => v.tier === 1)).toBe(true);
     expect(out.filter((v) => v.scale).length).toBeLessThanOrEqual(2);
   });
+  it('undoes the useless downscales when the frame is CPU bound, freezes there and does not keep asking the pixels to help', () => {
+    const s = createScaler({ budget: 0.03, min: 0.5, step: 0.1 });
+    const seen = [];
+    for (let i = 0; i < 6000; i++) {
+      const r = s.push(0.06); // 60 ms whatever the resolution
+      if (r) seen.push(r);
+    }
+    const tier = seen.find((v) => v.tier);
+    expect(tier).toBeTruthy();
+    expect(tier.revertTo).toBe(1); // the picture goes back to full resolution
+    expect(s.scale).toBe(1);
+    expect(s.cpuBound).toBe(true);
+    // afterwards it never lowers the scale again (a caller that ignores the tier verdict, such as an explicit Graphics choice, keeps a sharp picture)
+    const after = seen.slice(seen.indexOf(tier) + 1);
+    expect(after.every((v) => !v.scale)).toBe(true);
+    expect(s.scale).toBe(1);
+  });
+  it('keeps the steps that did help (GPU bound) and only reverts when a step bought nothing', () => {
+    const s = createScaler({ budget: 0.03, min: 0.5, step: 0.1 });
+    // the first two steps help (0.9 and 0.8), the rest is a CPU floor of 45 ms
+    let last = null;
+    for (let i = 0; i < 8000; i++) {
+      const dt = Math.max(0.045, 0.09 * s.scale * s.scale * s.scale);
+      const r = s.push(dt);
+      if (r?.tier) { last = r; break; }
+    }
+    expect(last).toBeTruthy();
+    expect(last.revertTo).toBeGreaterThan(0.6); // not all the way back to 1, not down to the floor: where the gain stopped
+    expect(last.revertTo).toBeLessThan(1);
+    expect(s.scale).toBe(last.revertTo);
+  });
   it('asks for a tier drop when even the floor is too slow', () => {
     const s = createScaler({ budget: 0.03, min: 0.8, step: 0.1 });
     let tier = false;
@@ -246,5 +277,23 @@ describe('draw-call guard', () => {
     }
     // low (293 calls) is under its own budget (350): the slow frames there are the resolution scaler's business, so the walk ends at low
     expect(seen).toEqual(['high', 'medium', 'low']);
+  });
+});
+
+describe('shadow refresh interval', () => {
+  it('is 1 on tiers that do not allow skipping, and follows the frame time on medium / high', () => {
+    expect(shadowEveryFor(QUALITY.low, 0.05)).toBe(1);
+    expect(shadowEveryFor(QUALITY.lite, 0.05)).toBe(1);
+    expect(shadowEveryFor(QUALITY.medium, 0.0167)).toBe(1);
+    expect(shadowEveryFor(QUALITY.medium, 0.022)).toBe(2);
+    expect(shadowEveryFor(QUALITY.medium, 0.04)).toBe(3);
+    expect(shadowEveryFor(QUALITY.high, 0.04)).toBe(2); // high never skips more than every 2nd frame
+    expect(shadowEveryFor(QUALITY.medium, NaN)).toBe(1);
+  });
+  it('has hysteresis: it does not flip back to every frame until the frame time is clearly better', () => {
+    expect(shadowEveryFor(QUALITY.medium, 0.017, 1)).toBe(1);
+    expect(shadowEveryFor(QUALITY.medium, 0.017, 2)).toBe(2);
+    expect(shadowEveryFor(QUALITY.medium, 0.015, 2)).toBe(1);
+    expect(shadowEveryFor(QUALITY.medium, 0.03, 3)).toBe(3);
   });
 });

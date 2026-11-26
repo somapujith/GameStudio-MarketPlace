@@ -257,7 +257,7 @@ export function buildPrepSet() {
   if (quality().lights) {
     light = new PointLight('#7aa8ff', 0.4, 1.0, 2);
     light.position.set(VX, COUNTER_TOP + 0.1, -0.05);
-    light.visible = false;
+    // always visible, intensity 0 when idle: a changing point-light count recompiles every lit shader
     g.add(light);
   }
 
@@ -293,7 +293,7 @@ export function buildPrepSet() {
     const ve = ctl.vessel;
     const boiling = !!ve && flags.burner;
     flame.visible = boiling;
-    if (light) light.visible = boiling;
+    // the light stays visible (intensity 0 when idle): a changing point-light count recompiles every lit shader
     fm.uniforms.uPower.value = flags.flame;
     for (const s of slots) {
       const own = s.device === 'vessel' && s.cur.st !== 'empty' && flags.burner;

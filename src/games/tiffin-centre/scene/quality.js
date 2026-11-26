@@ -18,33 +18,47 @@ export const QUALITY = {
     bulbLights: 0, tubeLight: false, lampLights: 0, shafts: false, clouds: 0, stars: false, reflect: 'none', heat: false,
     envSize: 32, envInterval: 6, texSize: 128, birds: 0, decor: 0.25, normalMaps: false, shadowRadius: 1,
     // runtime / model knobs (read by renderer.js, loader.js and the models, not by the stall or the street)
-    fpsCap: 30, scaleMin: 0.6, characters: 'lite', bakedCustomers: true, flatScenery: true, customerMeshBudget: 8, batchStatics: true,
+    fpsCap: 30, scaleMin: 0.6, characters: 'lite', bakedCustomers: true, flatScenery: true, customerMeshBudget: 8, batchStatics: true, shadowEvery: 1,
   },
   low: {
     pixelRatio: 1, shadow: 0, bloom: false, particles: 140, vehicles: 4, walkers: 3, lights: false, shelfDetail: 0.5, wires: false,
     post: false, msaa: 0, nativeAA: true, fxaa: false, ao: false, dof: false, grain: false, bloomScale: 0,
     bulbLights: 0, tubeLight: false, lampLights: 0, shafts: false, clouds: 0, stars: false, reflect: 'none', heat: false,
     envSize: 64, envInterval: 2.5, texSize: 128, birds: 0, decor: 0.5, normalMaps: false, shadowRadius: 1,
-    fpsCap: 0, scaleMin: 0.5, characters: 'low', bakedCustomers: true, flatScenery: false, customerMeshBudget: 8, batchStatics: true,
+    fpsCap: 0, scaleMin: 0.5, characters: 'low', bakedCustomers: true, flatScenery: false, customerMeshBudget: 8, batchStatics: true, shadowEvery: 1,
   },
   medium: {
     pixelRatio: 1.25, shadow: 1024, bloom: true, particles: 320, vehicles: 8, walkers: 6, lights: true, shelfDetail: 1, wires: true,
     post: true, msaa: 0, nativeAA: false, fxaa: true, ao: false, dof: false, grain: true, bloomScale: 0.5,
     bulbLights: 2, tubeLight: true, lampLights: 1, shafts: true, clouds: 1, stars: true, reflect: 'fake', heat: true,
     envSize: 128, envInterval: 0.6, texSize: 256, birds: 4, decor: 1, normalMaps: true, shadowRadius: 2,
-    fpsCap: 0, scaleMin: 0.5, characters: 'medium', bakedCustomers: false, flatScenery: false, customerMeshBudget: 64, batchStatics: true,
+    fpsCap: 0, scaleMin: 0.5, characters: 'medium', bakedCustomers: false, flatScenery: false, customerMeshBudget: 64, batchStatics: true, shadowEvery: 3,
   },
   high: {
     pixelRatio: 1.75, shadow: 2048, bloom: true, particles: 640, vehicles: 12, walkers: 10, lights: true, shelfDetail: 1, wires: true,
     post: true, msaa: 4, nativeAA: false, fxaa: false, ao: true, dof: true, grain: true, bloomScale: 0.5,
     bulbLights: 4, tubeLight: true, lampLights: 2, shafts: true, clouds: 2, stars: true, reflect: 'planar', heat: true,
     envSize: 256, envInterval: 0.2, texSize: 512, birds: 8, decor: 1.4, normalMaps: true, shadowRadius: 3,
-    fpsCap: 0, scaleMin: 0.5, characters: 'high', bakedCustomers: false, flatScenery: false, customerMeshBudget: 64, batchStatics: false,
+    fpsCap: 0, scaleMin: 0.5, characters: 'high', bakedCustomers: false, flatScenery: false, customerMeshBudget: 64, batchStatics: false, shadowEvery: 2,
   },
 };
 
 /** Keys that are runtime knobs rather than a monotone "more is better" quality value (the tier test skips them). */
-export const KNOB_KEYS = ['fpsCap', 'scaleMin', 'characters', 'bakedCustomers', 'flatScenery', 'customerMeshBudget', 'batchStatics'];
+export const KNOB_KEYS = ['fpsCap', 'scaleMin', 'characters', 'bakedCustomers', 'flatScenery', 'customerMeshBudget', 'batchStatics', 'shadowEvery'];
+
+/**
+ * How many frames may pass between two redraws of the shadow map (the stall is static: only a few people move through it). `cfg.shadowEvery` is the most the
+ * tier allows (1 = always every frame); the actual interval follows the smoothed frame time `dtAvg` (seconds): every frame while the tier holds ~55 fps,
+ * every 2nd when frames are late, every 3rd when they are very late. `current` is the interval in use (a little hysteresis so it does not flip-flop).
+ */
+export function shadowEveryFor(cfg, dtAvg, current = 1) {
+  const max = Math.max(1, cfg?.shadowEvery | 0 || 1);
+  if (max <= 1 || !(dtAvg > 0)) return 1;
+  const up2 = current >= 2 ? 0.0158 : 0.0185;
+  const up3 = current >= 3 ? 0.027 : 0.032;
+  const want = dtAvg > up3 ? 3 : dtAvg > up2 ? 2 : 1;
+  return Math.min(max, want);
+}
 
 export const tierIndex = (q) => QUALITY_ORDER.indexOf(q);
 export const lowerQuality = (q) => QUALITY_ORDER[Math.max(0, tierIndex(q) - 1)];
@@ -91,12 +105,14 @@ export function createQualitySampler({ slowDt = 0.034, windowSec = 2.5, badRatio
 /**
  * Dynamic resolution scaling. Feed `push(dt)` the frame time in seconds; it returns
  *   { scale }   when the render scale should change (1.0 down to `min`, in `step` steps, never back up past what was proven to hold),
- *   { tier: 1 } when scaling cannot help any more (already at the floor, or the first steps did not speed the frame up: CPU bound)
- *               and the tier should drop one step,
+ *   { tier: 1, revertTo? } when scaling cannot help any more (already at the floor, or the first steps did not speed the frame up: CPU bound)
+ *               and the tier should drop one step; `revertTo` is the scale to go back to when the steps that bought nothing are undone
+ *               (a CPU-bound frame must not be left blurry for no gain: the picture stays at the last scale that was worth it),
  *   null        otherwise.
  * Hysteresis: it scales down when the windowed mean frame time exceeds `budget`, and only scales back up after `upSec` of frames
  * well under `budget * upRatio`; an upscale that has to be undone counts as a flap (and lowers the ceiling), and after
- * `maxFlaps` flaps the scale is frozen (so a borderline device settles instead of oscillating). Never raises the tier.
+ * `maxFlaps` flaps the scale is frozen (so a borderline device settles instead of oscillating). A downscale that did not speed the frame up by
+ * `minGain` is a CPU-bound verdict: the scale is frozen at the value before those useless steps. Never raises the tier.
  */
 export function createScaler({ budget = 1 / 45, min = 0.5, step = 0.1, windowSec = 1.2, upSec = 6, upRatio = 0.62, cooldownSec = 1.5, maxFlaps = 2, maxDt = 1, minGain = 0.04 } = {}) {
   let scale = 1;
@@ -113,6 +129,8 @@ export function createScaler({ budget = 1 / 45, min = 0.5, step = 0.1, windowSec
   let lastDownMean = 0;
   let noGain = 0;
   let lastWasUp = false;
+  let streakFrom = 1; // the scale before the first downscale of a streak that has not yet shown a gain
+  let cpuBound = false;
   const reset = () => {
     sum = 0;
     n = 0;
@@ -122,6 +140,8 @@ export function createScaler({ budget = 1 / 45, min = 0.5, step = 0.1, windowSec
     get scale() { return scale; },
     get flaps() { return flaps; },
     get frozen() { return frozen; },
+    /** True once lowering the resolution was shown not to help (the frame is limited by the CPU / draw calls, not by pixels). */
+    get cpuBound() { return cpuBound; },
     setBudget(b) { budget = b; },
     /** After a tier change the old verdicts mean nothing: start over (the scale restarts at `to`). */
     restart(to = 1) {
@@ -129,7 +149,9 @@ export function createScaler({ budget = 1 / 45, min = 0.5, step = 0.1, windowSec
       ceiling = to;
       flaps = 0;
       frozen = false;
+      cpuBound = false;
       noGain = 0;
+      streakFrom = to;
       lastWasUp = false;
       lastDownMean = 0;
       cool = cooldownSec;
@@ -157,14 +179,23 @@ export function createScaler({ budget = 1 / 45, min = 0.5, step = 0.1, windowSec
           upClock = 0;
           upSum = 0;
           upN = 0;
+          if (cpuBound) {
+            // already shown that pixels are not the limit: stay where it was worth being and keep asking for the tier (the caller decides)
+            cool = cooldownSec * 4;
+            return { tier: 1, revertTo: scale };
+          }
           if (lastWasUp) {
             // the upscale we just made did not hold: undo it for good (the ceiling drops) and count a flap
             flaps += 1;
             ceiling = Math.max(min, +(scale - step).toFixed(3));
             if (flaps >= maxFlaps) frozen = true;
             noGain = 0;
+            streakFrom = scale;
           } else if (lastDownMean && mean > lastDownMean * (1 - minGain)) noGain += 1;
-          else noGain = 0;
+          else {
+            noGain = 0;
+            streakFrom = scale;
+          }
           lastWasUp = false;
           if (scale > min + 1e-6 && noGain < 2) {
             lastDownMean = mean;
@@ -172,9 +203,18 @@ export function createScaler({ budget = 1 / 45, min = 0.5, step = 0.1, windowSec
             cool = cooldownSec;
             return { scale };
           }
-          // at the floor, or two downscales in a row bought nothing (the CPU is the limit): the tier is the only lever left
+          // at the floor, or two downscales in a row bought nothing (the CPU is the limit): undo the useless steps, the tier is the only lever left
+          const wasUseless = noGain >= 2;
           lastDownMean = 0;
           noGain = 0;
+          if (wasUseless) {
+            cpuBound = true;
+            frozen = true;
+            scale = Math.min(1, Math.max(min, streakFrom));
+            ceiling = scale;
+            cool = cooldownSec * 4;
+            return { tier: 1, revertTo: scale };
+          }
           return { tier: 1 };
         }
       }

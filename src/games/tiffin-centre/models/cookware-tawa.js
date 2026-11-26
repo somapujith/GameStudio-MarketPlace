@@ -387,7 +387,7 @@ export function buildTawaSet() {
       archFlame.visible = on;
       glow.visible = on;
       frontGlow.visible = on;
-      if (light) light.visible = on;
+      // the light stays in the scene (intensity 0 when the burner is off): a changing point-light count recompiles every lit shader
     },
     /** The gas burner: flame, glow and the steam / smoke of the dishes on or off; `power` 0..1 shortens the flame (a low cylinder). */
     setBurner(on, power = 1) {
