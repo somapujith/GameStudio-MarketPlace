@@ -8,10 +8,10 @@ Everything below was measured in this session on the production build (`vite bui
 
 | | |
 |---|---|
-| Product defects found and fixed | **5** (co-op win credit, cooks flagged idle, stall ticking with nobody there, a leaving seat's dishes stranded, a difficulty curve with a cliff and unclearable late shifts) |
+| Product defects found and fixed | **6** (co-op win credit, cooks flagged idle, stall ticking with nobody there, a leaving seat's dishes stranded, a difficulty curve with a cliff and unclearable late shifts, a tutorial resume card that reported the minutes of a frozen clock) |
 | Test-harness defects found and fixed | 3 (an adapter fuzz that crashed when the shift ended before the tick, an events invariant that was too tight for the festival day, UI fixtures that hard-coded star targets) |
 | Areas audited with **no** defect found | tutorial (128 steps), station timing, orders / patience / tips / paying / unpaid / game over, stock / prep / gas / heat / board, results and persistence, skip, the room server against hostile clients, dialogue (1509 lines, 11.7k spoken utterances) |
-| Tests (`npx vitest run src/games/tiffin-centre shared/tiffin-centre worker`) | before: 117 files, 2610 tests. after: see "Tests" |
+| Tests (`npx vitest run src/games/tiffin-centre shared/tiffin-centre worker`) | before: 117 files, 2610 tests. **after: 120 files, 2653 tests** (+3 files, +43 tests), all green |
 | Commits | one per defect or feature, failing test first, see `git log perf/tf-logic` |
 
 ## Audit table
@@ -20,7 +20,7 @@ Everything below was measured in this session on the production build (`vite bui
 |---|---|---|---|---|
 | 1 | Tutorial: all 128 steps reachable and completable | Real browser, production build, a scripted player (the unit tests' tutorial bot, run in node, reading the live `session.state` out of the page and dispatching its actions into it) at 4x clock: `tutorial.finished`, 599 game ticks, **0 refused actions**, local flag `jalebi.tutorial.v1.tiffin-centre = 1`, the autosave slot cleared, one `POST /api/games/tiffin-centre/tutorial/complete` attempted (401 offline: `.pending` stays up, as designed). 125 of 128 step ids were seen by the 120 ms poll; the other three (`dosa-watch`, `inspect-clean`, `outro`) pass within one tick or finish the lesson before the poll, and are visited in the node driver test `a bot player completes the whole tutorial ... visiting every chapter and every step`. Unit: full play, 40-seed chaos (a player who keeps making mistakes), per-step stuck detectors, recover / rescue paths | pass | none needed |
 | 2 | Tutorial skip | Real browser: `tutorial.skip()` | `skipped` true, `finished` false, no tutorial flag (co-op stays locked), save cleared, status `paused` | none |
-| 3 | Tutorial resume after reload | Real browser (see "Resume" below) and `localSession.autosave.test.js` (journal replay lands on the exact state) | see below | none |
+| 3 | Tutorial resume after reload | Real browser: the scripted player to step 38 (`vada-cook`, tick 173), `session.pause()`, page reload, "Continue tutorial" on the home card, then to the end. Unit: `localSession.autosave.test.js` (journal replay lands on the exact state) | the replayed state is **byte-identical** (`JSON.stringify` equal, tick 173, step 38), the session comes back paused, the save is 5240 bytes, the tutorial then finishes. One defect: the card said "5% done, 57:07 left" (D6) | D6 |
 | 4 | Tawa, steamer, kadai, chai timing (cook / ready / burn) | Real browser on level 12: one dish on each station through the real `dispatch`, ready and burnt ticks read from `session.state` every 100 ms | dosa cook 5 burn 7 (ready tick 5, burnt tick 12), idly 7 / 14 (burnt at its `burnAt`), poori 6 / 6 (burnt at its `burnAt`), irani chai 4 / 10 (ready seen the next tick). Exactly the catalogue. A 3 s main-thread hitch (first shader compile of a level-12 customer) made the local runner catch up 3 ticks inside one frame (`MAX_CATCHUP_TICKS` 5), so "ready" was first *seen* at tick 10 for a dish that became ready at 7: the engine was right, the player lost 3 s (a rendering issue, see "For other streams") | none |
 | 5 | Dishes, recipes, ingredients | 13 dishes x `recipes.test.js`; the bot cooks every dish on level 12 in the balance runs; stock never negative / NaN in the 200-seed fuzz | pass | none |
 | 6 | Stock, prep counter, gas, heat / tending, sold-out board, market | Engine tests, `fuzz.test.js` (200 seeds locally, 60 in CI, every level, 1-4 players, hostile parameters), balance runs, real browser (level 12 HUD) | pass. The fuzz found one wrong invariant (events <= 4: the festival day legitimately runs 5 at once) | test only |
@@ -43,6 +43,7 @@ Everything below was measured in this session on the production build (`vite bui
 | D3 | **A table whose connections all dropped kept ticking for up to 5 minutes**: the team came back to a closed centre, and the Durable Object woke once a second (one alarm + one storage write) for nobody | `GameRoom.plan()` always scheduled the adapter's tick | generic `adapter.pauseWhenEmpty` seam: no tick timer while no seat has a live socket, the first player back restarts the timers (a full second to spare), an empty room is still abandoned after 5 minutes, one player alone keeps the clock running. Cost of a shift documented in the plan (below) | `tiffin-centre.room.test.js` x3 |
 | D4 | **A seat that left a running shift kept its dishes in hands that would never act again** | no `resignAction` | adapter `resignAction` -> engine `leave` (server only, not in the client allow-list): held dishes go to the most urgent waiting customer who needs them, else the bin; the seat stays in the result, flagged `left` until it acts again | `credit.test.js`, room tests, adapter tests |
 | D5 | **Difficulty curve** (below) | arrival gaps and star targets never measured against anything slower than the bot | retuned gaps, level 4 two-dish orders, star targets re-derived | `balance.test.js` |
+| D6 | **The tutorial resume card measured progress in game time.** After a reload at step 38 of 128 the home card read "Continue tutorial, 5% done, 57:07 left" | the tutorial's 3600-tick shift never runs out (patience and pay clocks are frozen) and the card computed `tick / shiftTicks` | the tutorial snapshot stores its step count; `describeSavedShift` reports `step` / `steps`; the card reads "29% done, step 38 of 128" (saves from before keep the old numbers) | `autosave.test.js`, `resume.test.js` |
 
 ### D5: the score curve (measured)
 
@@ -103,9 +104,9 @@ One shift is 150 to 300 ticks (`shiftTicks`) plus the stragglers; every tick is 
 | | files | tests |
 |---|---|---|
 | before (baseline on `ff7de38`) | 117 | 2610 |
-| after | see final line of this section | |
+| after | 120 | 2653 |
 
-New: `shared/tiffin-centre/credit.test.js` (12), `balance.test.js` (9), `dialogue/consistency.test.js` (12), 8 room-server tests (leave, pause, resume, abuse x5), an adapter registry / resign test, a `match.test.js` multi-winner test. Changed: tests that hard-coded the old star targets now derive from them (HUD and results fixtures), one statistical test replaces a single-seed one (cricket bursts), the fuzz bound for concurrent events.
+New: `shared/tiffin-centre/credit.test.js` (12), `balance.test.js` (9), `dialogue/consistency.test.js` (12), 9 room-server tests (leave, pause, return to a paused stall, a lone player, abuse x5), an adapter resign / pause test, a `match.test.js` multi-winner test, a tutorial-step test in `autosave.test.js` and `resume.test.js` each. One test, `scene/loader.test.js` "prefetchChunks loads the chunks one after another" (tf-cpu's, untouched), waits 1.2 s for idle-scheduled chunk loads and failed twice while other agents loaded the machine; it passes alone and in the shared checkout (a timing flake, not related to this work). Changed: tests that hard-coded the old star targets now derive from them (HUD and results fixtures), one statistical test replaces a single-seed one (cricket bursts), the fuzz bound for concurrent events.
 
 ## Proof screenshots (`docs/perf/tf-logic/`, JPEG, production build, 1280x800, real GPU)
 
@@ -116,6 +117,7 @@ New: `shared/tiffin-centre/credit.test.js` (12), `balance.test.js` (9), `dialogu
 | `tutorial-04-rush.jpg` | the final timed rush (Rush 1/2): three tokens with patience rings, the chit rail, availability strip, Hindi speech bubble and subtitle |
 | `tutorial-05-complete.jpg` | step 128 of 128, "Shabash anna! ... CO-OP is unlocked", all 16 chapter bars green |
 | `practice-01-home.jpg` | the solo home after the tutorial: "Open a table with friends", pace selector, the shift cards (level 1 open, the rest locked) |
+| `resume-01-card.jpg` | the home card after a reload mid-tutorial, with the step count (after D6) |
 | `practice-03-results.jpg` | the end of practice level 1 in the real browser: 2 stars, galla (takings, tips, cost, waste, fines, profit), the star ruler, the chit |
 | `mechanics-01-festival-stations.jpg` | level 12 with a dish on each station: "Idly (2 pc) burnt!", the stock status panel, the dock with Wipe / Top up / Skim and the prep counter |
 
@@ -139,5 +141,6 @@ New: `shared/tiffin-centre/credit.test.js` (12), `balance.test.js` (9), `dialogu
 - `worker/match.js` (3 lines): `won` also honours `result.winners` (generic, optional).
 - `worker/GameRoom.js` (about 25 lines): `isEmpty()`, the `pauseWhenEmpty` check in `plan()`, the re-anchor on the first reconnect (generic, opt-in per adapter).
 - `src/games/tiffin-centre/session/roomCore.js` (1 line): `leave` joins the actions a client never sends.
-- `src/games/tiffin-centre/ui/hud/ops.render.test.js`, `ui/menus/menus.ops.test.js` (tests only): fixtures follow the new star targets.
+- `src/games/tiffin-centre/ui/menus/menuModels.js` (`resumeViewModel`, 6 lines) and `ui/menus/SoloHome.jsx` (2 lines): the tutorial resume card shows its step (D6).
+- `src/games/tiffin-centre/ui/hud/ops.render.test.js`, `ui/menus/menus.ops.test.js`, `ui/menus/resume.test.js` (tests only): fixtures follow the new star targets; the resume test covers D6.
 - `docs/TIFFIN_CENTRE_PLAN.md`: win credit, pause when empty, the leave rule, the difficulty curve.
