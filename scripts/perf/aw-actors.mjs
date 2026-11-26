@@ -11,6 +11,8 @@
 //   shots   JPEGs in --dir: customers with FIXED looks in a hand-set pose (the data is rewritten and the body rebuilt), the auto in three
 //           finishes, default / fully customised / canopy, and the workshop showroom; the HUD is hidden
 //   frames  --rounds x --seconds of frame time at the POI
+//   leak    --cycles (10) times: go to the far corner of the map (every customer body is dropped), come back (new bodies are built) and print the
+//           renderer's geometry / texture / program counts: they must not grow from cycle to cycle
 // Draw calls do not depend on the GPU: --soft --no-lock gives the same counts on SwiftShader without waiting for the GPU lock.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -157,6 +159,21 @@ async function suite(c) {
   return out;
 }
 
+/** Drop every customer body and build new ones, over and over: GPU resources (geometries, bone textures) must not accumulate. */
+async function leak(c) {
+  await c.ev(pin(poiId, hour));
+  await c.sleep(3000);
+  const rows = [];
+  for (let i = 0; i < +(args.cycles || 10); i++) {
+    await c.ev("(() => { const g = window.__autowala; const half = g.world.city.half || 800; g.debug.teleport(-half + 40, -half + 40, 0); return true; })()");
+    await c.sleep(1800);
+    await c.ev(pin(poiId, hour));
+    await c.sleep(1800);
+    rows.push(await c.ev("(() => { const R = window.__autowala.gfx.renderer; return { geometries: R.info.memory.geometries, textures: R.info.memory.textures, programs: R.info.programs.length, rigs: window.__autowala.ctx.fares.waiting.filter((x) => x.rig).length, sceneChildren: window.__autowala.gfx.scene.children.length, heapMB: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1e6) : null }; })()"));
+  }
+  return rows;
+}
+
 const HIDE_HUD = "(() => { const s = document.createElement('style'); s.textContent = '.aw > *:not(.aw-canvas) { display: none !important; }'; document.head.appendChild(s); return true; })()";
 
 /** Customers with FIXED looks (their data is rewritten, then the body is dropped and rebuilt), frozen in a hand-set pose through the limb handles. */
@@ -179,11 +196,14 @@ async function shots(c) {
     out.push({ f, ...extra });
   };
   if (wanted.includes('cust')) {
+    await c.waitFor('window.__autowala.ctx.fares.waiting.filter((x) => x.rig).length >= 3', 60000); // customers spawn over time
     for (let i = 0; i < CUSTOMERS.length; i++) {
       const v = CUSTOMERS[i];
       const prep = await c.ev(`(() => { const g = window.__autowala; const list = g.ctx.fares.waiting.filter((x) => x.rig).sort((a, b) => a.dist - b.dist);
         const cu = list[${i}]; if (!cu) return { ok: false };
         const v = ${JSON.stringify(v)};
+        const X = 72, Z = 215.6, city = g.world.city; let best = Infinity, face = 0; for (const e of city.edges) { const A = city.nodes[e.a], B = city.nodes[e.b]; const dx = B.x - A.x, dz = B.z - A.z; const t = Math.max(0, Math.min(1, ((X - A.x) * dx + (Z - A.z) * dz) / (dx * dx + dz * dz || 1))); const px = A.x + dx * t, pz = A.z + dz * t; const d = Math.hypot(px - X, pz - Z); if (d < best) { best = d; face = Math.atan2(px - X, pz - Z); } }
+        cu.x = X; cu.z = Z; cu.face = face; // the same pavement spot in every build (the world is generated from a fixed seed), facing the nearest road
         cu.look = v.look; cu.look2 = v.look2 || null; cu.pax = v.pax; cu.kind = v.kind; cu.female = v.female; cu.luggage = v.luggage; cu.patience = v.angry ? 0.1 : 1; cu.patienceTotal = 1e9;
         window.__cust = cu; const half = g.world.city.half || 800; const tx = cu.x > 0 ? Math.max(-half + 30, cu.x - 700) : Math.min(half - 30, cu.x + 700); g.debug.teleport(tx, cu.z, 0); return { ok: true, id: cu.id }; })()`);
       await c.sleep(2500); // far away: the body is dropped
@@ -255,6 +275,7 @@ async function run() {
     if (cmd === 'actors') result = await actors(c);
     else if (cmd === 'suite') result = await suite(c);
     else if (cmd === 'shots') result = await shots(c);
+    else if (cmd === 'leak') result = await leak(c);
     else if (cmd === 'frames') {
       await c.ev(pin(poiId, hour));
       await c.sleep(3000);
