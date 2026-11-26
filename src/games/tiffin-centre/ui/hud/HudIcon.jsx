@@ -1,5 +1,6 @@
 // HUD icons: the hub's stroke Icon set where it has the glyph, a few of our own (day parts, hearts, alarm...) where it does not.
 import { Icon } from '@/components/shell/icons.jsx';
+import { scaled } from './DishIcon.jsx';
 
 const OWN = {
   sunrise: 'M3.5 18.5h17M7 18.5a5 5 0 0 1 10 0M12 7.5v3M5.4 10.9l1.8 1.8M18.6 10.9l-1.8 1.8M9.5 6l2.5-2.5L14.5 6',
@@ -40,12 +41,13 @@ const FILLED = new Set(['heart', 'heartCrack']);
 
 export default function HudIcon({ name, size = 22, className = '', title }) {
   const d = OWN[name];
-  if (!d) return <Icon name={name} size={size} className={className} title={title} />;
+  if (!d) return <Icon name={name} size={size} className={className} title={title} style={scaled(size)} />;
   return (
     <svg
       className={`hh-icon ${className}`.trim()}
       width={size}
       height={size}
+      style={scaled(size)}
       viewBox="0 0 24 24"
       fill={FILLED.has(name) ? 'currentColor' : 'none'}
       stroke="currentColor"

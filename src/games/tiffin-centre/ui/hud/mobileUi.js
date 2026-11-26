@@ -1,42 +1,8 @@
-// Tiffin Centre on a phone or tablet: fullscreen, keep-awake, the one-time "landscape gives a wider view" hint and the multi-touch rule for
-// the look surface. The pure helpers are tested in node (mobileUi.test.js); the hooks wrap src/lib/mobile.js, which feature-detects every
-// browser API (iPhone has no fullscreen on a page, only some browsers have a wake lock) and never throws.
+// Tiffin Centre on a phone or tablet: fullscreen, keep-awake and the multi-touch rule for the look surface. The pure helper is tested in node (mobileUi.test.js); the
+// hooks wrap src/lib/mobile.js, which feature-detects every browser API (iPhone has no fullscreen on a page, only some browsers have a wake lock) and never throws.
+// The "turn your phone sideways" hint is gone: touch devices held upright get the shell's orientation gate (src/platform/game), and the HUD is designed for landscape.
 import { useCallback, useEffect, useState } from 'react';
 import { enterFullscreen, exitFullscreen, fullscreenSupported, isFullscreen, keepAwake, useTouchDevice, useViewport } from '@/lib/mobile.js';
-
-export const HINT_KEY = 'jalebi.tiffin.landscapehint.v1';
-
-const store = () => {
-  try {
-    return typeof localStorage !== 'undefined' ? localStorage : null;
-  } catch {
-    return null;
-  }
-};
-
-/** Has the player already seen (and dismissed, or just been shown) the landscape hint? Blocked storage counts as "seen" so it never nags. */
-export function hintSeen(storage = store()) {
-  try {
-    return !storage || storage.getItem(HINT_KEY) === '1';
-  } catch {
-    return true;
-  }
-}
-export function markHintSeen(storage = store()) {
-  try {
-    storage?.setItem(HINT_KEY, '1');
-  } catch {
-    /* private mode: the hint just does not come back this session */
-  }
-}
-
-/**
- * Should the "turn your phone sideways" hint show? Only on a phone (short side under 600) held upright, with a touch screen, while the shift is
- * playing, and only once. The game stays fully playable upright: the hint is a tip, never a gate.
- */
-export function shouldShowLandscapeHint({ viewport, playing, seen, touch }) {
-  return !!(playing && touch && !seen && viewport && viewport.phone && viewport.portrait && !viewport.landscape);
-}
 
 /** Pointer bookkeeping for the look surface: a second finger down cancels the gesture and nothing acts until every finger is up. */
 export function createPointerGuard() {

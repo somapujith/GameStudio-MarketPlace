@@ -3,15 +3,24 @@
 // grey = no free slot and nothing ready. Tapping a chip walks you to the best station for that dish.
 // Operations layer: a dish the shelf cannot make says "Out of dosa batter" and offers "Mark sold out"; a dish off the board is struck through.
 import DishIcon from './DishIcon.jsx';
+import HudIcon from './HudIcon.jsx';
+import { useBoardSlim } from './boardPref.js';
 import { availabilityLabel, chipTone, dishInfo } from './hudLogic.js';
 
 // `children` is the stall status strip (events, gas, stock bars): it renders above the chips inside the same chalk board.
 // `board` is boardMap(state) (dish -> { on, short:{item,name}|null }), `onBoard(dish, on)` flips a dish on or off the board.
 export default function Availability({ rows, onChip, children, board = null, onBoard }) {
+  const [slim, toggleSlim] = useBoardSlim();
   if (!rows.length && !children) return null;
   return (
-    <section className="tc-hud-board" aria-label="Dish availability">
+    <section className="tc-hud-board" aria-label="Dish availability" data-slim={slim ? '1' : '0'}>
       {children}
+      {rows.length > 1 && (
+        <button type="button" className="tc-hud-board-toggle" aria-pressed={slim} aria-label={slim ? 'Show the dish board wider' : 'Make the dish board slim'} title={slim ? 'Wider dish board' : 'Slim dish board'} onClick={toggleSlim}>
+          <HudIcon name={slim ? 'chevL' : 'chevR'} size={14} />
+          <span>Dishes</span>
+        </button>
+      )}
       <ul className="tc-hud-chips">
         {rows.map((r) => {
           const d = dishInfo(r.dish);
@@ -41,6 +50,11 @@ export default function Availability({ rows, onChip, children, board = null, onB
                   <b>{r.ready}</b>
                   <small>ready</small>
                 </span>
+                {r.demand > 0 && (
+                  <span className="tc-hud-chip-badge" aria-hidden="true">
+                    {r.demand}
+                  </span>
+                )}
                 <span className="tc-hud-chip-meta">
                   {off && <span className="tc-hud-soldout">Sold out</span>}
                   {out && <span className="tc-hud-noslot tc-hud-outof">{`Out of ${out.name.toLowerCase()}`}</span>}

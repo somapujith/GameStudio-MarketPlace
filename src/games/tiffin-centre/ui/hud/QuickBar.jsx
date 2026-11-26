@@ -1,23 +1,13 @@
-// Small always-there buttons: spoken voices on/off, subtitle style, look straight ahead (only when your head is turned) and the controls help.
+// Small buttons under the left thumb: subtitle style, look straight ahead (only drawn while your head is turned) and the controls help. The customer voices
+// switch lives in the pause menu (Customers talk), with the language and the robot voices: one fewer thing in the corner of the picture.
 import HudIcon from './HudIcon.jsx';
 import { KEY_HELP } from './look.js';
 import { SUB_OPTIONS, nextOption } from './prefs.js';
 
-export function QuickBar({ prefs, onPrefs, turned, onRecentre, helpOpen, onHelp, voiceMissing }) {
+export function QuickBar({ prefs, onPrefs, turned, onRecentre, helpOpen, onHelp }) {
   const subLabel = SUB_OPTIONS.find((o) => o.id === prefs.subs)?.label || 'Subtitles';
   return (
     <div className="tc-hud-quick" role="group" aria-label="View and speech">
-      <button
-        type="button"
-        className="tc-hud-btn tc-hud-btn--sm"
-        aria-pressed={!!prefs.voices}
-        aria-label={prefs.voices ? 'Customer voices: on' : 'Customer voices: off'}
-        title={voiceMissing ? 'No voice for this language on this device' : 'Customer voices'}
-        onClick={() => onPrefs({ voices: !prefs.voices })}
-        data-warn={voiceMissing && prefs.voices ? '1' : undefined}
-      >
-        <HudIcon name={prefs.voices ? 'talk' : 'talkOff'} size={20} />
-      </button>
       <button
         type="button"
         className="tc-hud-btn tc-hud-btn--sm"
