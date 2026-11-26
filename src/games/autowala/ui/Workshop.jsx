@@ -10,6 +10,7 @@ import { useCountUp, useGamepad, useMedia } from './workshop/hooks.js';
 import { GridCell, InputRow, ItemRow, NavRow, UpgradeRow } from './workshop/Rows.jsx';
 import { BannerCard, PlateCard, StatsCard } from './workshop/Cards.jsx';
 import { LANDSCAPE_QUERY } from './menus/menuLayout.js';
+import { useTouchMode } from './hud/touchMode.js';
 import { CloseGlyph } from './menus/glyphs.jsx';
 import './workshop.css';
 
@@ -57,8 +58,11 @@ export default function Workshop({ game, snap }) {
   const openedAt = useRef(0);
 
   const data = profile?.data;
-  const wallet = snap?.wallet ?? data?.wallet ?? 0;
+  // the LIVE wallet, not the 10 Hz snapshot: right after a purchase every price tag and the button already use the new balance
+  const liveWallet = game?.ctx?.economy?.wallet;
+  const wallet = Number.isFinite(liveWallet) ? liveWallet : snap?.wallet ?? data?.wallet ?? 0;
   const shownWallet = useCountUp(wallet);
+  const touchMode = useTouchMode();
 
   // Mama's repair job: a pinned button above the list while the auto is dented (ctx.career.repairCost() > 0); also the R key and the pad's X
   const career = game?.ctx?.career;
@@ -128,16 +132,18 @@ export default function Workshop({ game, snap }) {
   const act = useCallback((r) => {
     if (!r || !ws) return;
     let res;
+    const wasOn = r.type === 'toggle' && getPath(profile.data.loadout, r.path) === true;
     if (r.type === 'item') res = ws.buy(r.path, r.value);
-    else if (r.type === 'toggle') res = ws.buy(r.path, !getPath(profile.data.loadout, r.path));
+    else if (r.type === 'toggle') res = ws.buy(r.path, !wasOn);
     else if (r.type === 'upgrade') res = ws.buy(r.path, (profile.data.upgrades[r.key] || 0) + 1);
     else if (r.type === 'input') res = ws.buy(r.path, texts[r.path] || '');
     if (!res) return;
     if (res.ok) {
-      setNote({ tone: res.already ? 'info' : 'good', text: res.already ? 'Already fitted' : `${res.price > 0 ? 'Installed' : 'Fitted'} ${res.name}${res.price > 0 ? `  -${fmtRs(res.price)}` : ''}` });
+      const text = res.already ? 'Already fitted' : wasOn ? `Took off ${r.name}` : `${res.price > 0 ? 'Installed' : 'Fitted'} ${res.name}${res.price > 0 ? `  -${fmtRs(res.price)}` : ''}`;
+      setNote({ tone: res.already ? 'info' : 'good', text });
       if (r.type === 'input') setTexts((t) => ({ ...t, [r.path]: getPath(profile.data.loadout, r.path) }));
     } else {
-      setNote({ tone: 'bad', text: res.code === 'funds' ? 'Not enough rupees' : res.reason });
+      setNote({ tone: 'bad', text: res.code === 'funds' ? (res.short > 0 ? `Not enough rupees: ${fmtRs(res.short)} short` : 'Not enough rupees') : res.reason });
       if (res.code === 'funds') setShake(true);
     }
     bump();
@@ -375,8 +381,14 @@ export default function Workshop({ game, snap }) {
   let action = null;
   if (nav.level === 2 && highlighted && hs) {
     const label = highlighted.type === 'input' ? 'Apply' : hs.tone === 'installed' ? (highlighted.type === 'toggle' ? 'Take off' : 'Installed') : hs.tone === 'max' ? 'Maxed' : highlighted.type === 'upgrade' ? 'Fit next level' : 'Install';
-    action = { label, price: hs.tone === 'price' || hs.tone === 'locked' ? hs.label : hs.tone === 'owned' ? 'Owned' : '', off: hs.tone === 'max' || (hs.tone === 'installed' && highlighted.type !== 'toggle') };
+    // too poor for it: the button says by how much (it still answers a press with the refusal note, so keyboard and pad get feedback too)
+    const poor = hs.price > 0 && hs.can === false;
+    action = poor
+      ? { label: 'Not enough rupees', price: `Need ${fmtRs(hs.price - wallet)} more`, off: false, poor: true }
+      : { label, price: hs.tone === 'price' || hs.tone === 'locked' ? hs.label : hs.tone === 'owned' ? 'Owned' : '', off: hs.tone === 'max' || (hs.tone === 'installed' && highlighted.type !== 'toggle'), poor: false };
   }
+  // the one-line description under the name; a note ("Installed ...", "Not enough rupees") takes its place so the foot never changes height
+  const detailLine = nav.level < 2 ? cat.blurb : highlighted?.type === 'upgrade' ? highlighted.blurb : highlighted?.type === 'input' ? `${highlighted.hint}.${highlighted.price > 0 ? ` ${fmtRs(highlighted.price)} per change.` : ''}` : '';
 
   const nameOf = highlighted?.name;
   const stateClass = `aw-ws${live ? '' : ' is-away'}${narrow ? ' is-narrow' : ''} is-${layout}`;
@@ -424,22 +436,13 @@ export default function Workshop({ game, snap }) {
         </div>
         <div className="aw-ws-foot">
           <div className="aw-ws-detail">
-            {nav.level === 2 && nameOf && (
-              <>
-                <b>{nameOf}</b>
-                {highlighted.type === 'upgrade' && <span>{highlighted.blurb}</span>}
-                {highlighted.type === 'input' && <span>{highlighted.hint}. {highlighted.price > 0 ? `${fmtRs(highlighted.price)} per change.` : ''}</span>}
-              </>
-            )}
-            {nav.level < 2 && (
-              <span>
-                {cat.blurb}
-              </span>
-            )}
-            {note && <em key={note.text} className={`aw-ws-note is-${note.tone}`} role="status">{note.text}</em>}
+            {nav.level === 2 && nameOf && <b>{nameOf}</b>}
+            <span className="aw-ws-detail-line" role="status" aria-live="polite">
+              {note ? <em key={note.text} className={`aw-ws-note is-${note.tone}`}>{note.text}</em> : detailLine}
+            </span>
           </div>
           {action && (
-            <button type="button" className={`aw-ws-buy${action.off ? ' is-off' : ''}`} onClick={activate}>
+            <button type="button" className={`aw-ws-buy${action.off ? ' is-off' : ''}${action.poor ? ' is-poor' : ''}`} aria-disabled={action.off || action.poor || undefined} onClick={activate}>
               <span>{action.label}</span>
               {action.price && <small>{action.price}</small>}
             </button>
@@ -449,15 +452,15 @@ export default function Workshop({ game, snap }) {
 
       {!narrow && card && <aside className="aw-ws-card is-dock">{card}</aside>}
 
-      {!narrow && (
+      {!narrow && (!touchMode || lastInput === 'pad') && (
         <footer className="aw-ws-legend" aria-hidden="true">
           {lastInput === 'pad' ? (
             <>
-              <span><kbd>D-pad</kbd> Select</span><span><kbd>A</kbd> Install</span><span><kbd>B</kbd> Back</span><span><kbd>LB</kbd><kbd>RB</kbd> Category</span><span><kbd>R-stick</kbd> Orbit</span><span><kbd>Y</kbd> Leave</span>
+              <span><b className="aw-ws-kc">D-pad</b> Select</span><span><b className="aw-ws-kc">A</b> Install</span><span><b className="aw-ws-kc">B</b> Back</span><span><b className="aw-ws-kc">LB</b><b className="aw-ws-kc">RB</b> Category</span><span><b className="aw-ws-kc">R-stick</b> Orbit</span><span><b className="aw-ws-kc">Y</b> Leave</span>
             </>
           ) : (
             <>
-              <span><kbd>&uarr;</kbd><kbd>&darr;</kbd> Select</span><span><kbd>&larr;</kbd><kbd>&rarr;</kbd> Swatches</span><span><kbd>Enter</kbd> Install</span><span><kbd>Esc</kbd> Back</span><span><kbd>A</kbd><kbd>D</kbd> / drag Orbit</span><span><kbd>Wheel</kbd> Zoom</span>
+              <span><b className="aw-ws-kc">&uarr;</b><b className="aw-ws-kc">&darr;</b> Select</span><span><b className="aw-ws-kc">&larr;</b><b className="aw-ws-kc">&rarr;</b> Swatches</span><span><b className="aw-ws-kc">Enter</b> Install</span><span><b className="aw-ws-kc">Esc</b> Back</span><span><b className="aw-ws-kc">A</b><b className="aw-ws-kc">D</b> / drag Orbit</span><span><b className="aw-ws-kc">Wheel</b> Zoom</span>
             </>
           )}
         </footer>

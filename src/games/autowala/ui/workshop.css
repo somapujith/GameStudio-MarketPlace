@@ -6,7 +6,7 @@
   pointer-events: none;
   color: var(--aw-text);
   font-family: var(--aw-font);
-  --ws-panel: rgba(8, 4, 18, 0.84);
+  --ws-panel: rgba(8, 4, 18, 0.9); /* a touch denser than it was with the blur: the blur is gone (it cost a full-screen filter pass over the live 3D view) */
   --ws-row: rgba(255, 255, 255, 0.045);
   --ws-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
@@ -135,8 +135,6 @@
   position: absolute;
   background: var(--ws-panel);
   border: 1px solid var(--aw-line);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
 }
 .aw .aw-ws-panel {
@@ -581,6 +579,11 @@
   color: #fff;
   font-size: 15px;
 }
+/* the description and the purchase note share ONE two-line slot: a note replacing the description never changes the foot's height */
+.aw .aw-ws-detail-line {
+  display: block;
+  min-height: 2.5em;
+}
 .aw .aw-ws-note {
   font-style: normal;
   font-weight: 800;
@@ -621,6 +624,14 @@
   background: rgba(255, 255, 255, 0.12);
   box-shadow: none;
   color: var(--aw-dim);
+}
+/* too poor for it: a red outline, the price line says how much is missing; still pressable (the press explains the refusal) */
+.aw .aw-ws-buy.is-poor {
+  background: rgba(255, 70, 96, 0.14);
+  box-shadow: none;
+  color: #ffb3bd;
+  outline: 1px solid rgba(255, 107, 128, 0.7);
+  outline-offset: -1px;
 }
 
 /* ---- info cards (right dock, or inline on phones) ---- */
@@ -787,7 +798,7 @@
   border: 1px solid var(--aw-line);
   transition: opacity 0.4s;
 }
-.aw .aw-ws-legend kbd {
+.aw .aw-ws-legend .aw-ws-kc {
   display: inline-block;
   min-width: 20px;
   margin-right: 4px;
@@ -850,6 +861,9 @@
 .aw .aw-ws.is-narrow .aw-ws-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; }
 .aw .aw-ws.is-narrow .aw-ws-stat { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'l v' 't t'; gap: 3px 6px; font-size: 12px; }
 .aw .aw-ws.is-narrow .aw-ws-stat-label { grid-area: l; }
+.aw .aw-ws-short { display: none; }
+.aw .aw-ws.is-narrow .aw-ws-long { display: none; }
+.aw .aw-ws.is-narrow .aw-ws-short { display: inline; }
 .aw .aw-ws.is-narrow .aw-ws-stat-track { grid-area: t; height: 8px; }
 .aw .aw-ws.is-narrow .aw-ws-stat-val { grid-area: v; min-width: 0; }
 .aw .aw-ws.is-narrow .aw-ws-input { font-size: 20px; }
@@ -887,9 +901,31 @@
   bottom: max(8px, env(safe-area-inset-bottom, 0px));
   width: min(46vw, 420px);
 }
-.aw .aw-ws.is-land .aw-ws-head h2 { font-size: 20px; }
-.aw .aw-ws.is-land .aw-ws-row { min-height: 50px; margin-bottom: 6px; }
-.aw .aw-ws.is-land .aw-ws-buy { min-height: 52px; }
+/* ... and it is tight: 360 px of height has to hold the header, a few rows and the buy button, so everything is one notch smaller */
+.aw .aw-ws.is-land .aw-ws-head { padding: 6px 10px; gap: 8px; }
+.aw .aw-ws.is-land .aw-ws-head h2 { font-size: 19px; }
+.aw .aw-ws.is-land .aw-ws-head p { margin-top: 1px; font-size: 12px; }
+.aw .aw-ws.is-land .aw-ws-list { padding: 6px 8px; }
+.aw .aw-ws.is-land .aw-ws-row { min-height: 46px; margin-bottom: 4px; padding-top: 5px; padding-bottom: 5px; font-size: 15px; }
+.aw .aw-ws.is-land .aw-ws-row.is-up { min-height: 58px; }
+.aw .aw-ws.is-land .aw-ws-list.is-grid { gap: 6px; }
+.aw .aw-ws.is-land .aw-ws-cell { min-height: 80px; padding: 5px 3px 4px; gap: 2px; }
+.aw .aw-ws.is-land .aw-ws-swatch { width: 36px; height: 36px; }
+.aw .aw-ws.is-land .aw-ws-cell-name { min-height: 0; line-height: 1.1; }
+.aw .aw-ws.is-land .aw-ws-foot { padding: 6px 10px 8px; gap: 8px; }
+.aw .aw-ws.is-land .aw-ws-detail { font-size: 13px; }
+.aw .aw-ws.is-land .aw-ws-detail b { font-size: 14px; }
+.aw .aw-ws.is-land .aw-ws-buy { min-height: 48px; min-width: 112px; font-size: 14px; }
+.aw .aw-ws.is-land .aw-ws-card-body { padding: 6px 10px 8px; }
+.aw .aw-ws.is-land .aw-ws-plate { height: 54px; }
+.aw .aw-ws.is-land .aw-ws-banner { padding: 8px 10px; font-size: 18px; }
+.aw .aw-ws.is-land .aw-ws-card-note { margin-top: 4px; }
+/* the stat card: three columns, label over number over a thin bar (the six stats take two short rows, not six) */
+.aw .aw-ws.is-land .aw-ws-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 10px; }
+.aw .aw-ws.is-land .aw-ws-stat { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'l' 'v' 't'; gap: 1px; }
+.aw .aw-ws.is-land .aw-ws-stat-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aw .aw-ws.is-land .aw-ws-stat-val { font-size: 13px; text-align: left; }
+.aw .aw-ws.is-land .aw-ws-stat-track { height: 5px; }
 
 /* short desktop windows */
 @media (max-height: 560px) and (min-width: 761px) {
