@@ -31,7 +31,7 @@ export function installFuel(ctx, kit) {
     if (filling) {
       ctx.setPrompt('fuel', `Refuelling... ${added.toFixed(1)} L, Rs ${paid}`, 'E');
     } else if (atPump && v.fuel < tank - 0.05) {
-      ctx.setPrompt('fuel', ctx.economy.wallet >= 1 ? `Hold E to refuel (Rs ${FUEL.price}/litre)` : 'Not enough money for CNG', 'E');
+      ctx.setPrompt('fuel', ctx.economy.wallet >= 1 ? `Press E to refuel (Rs ${FUEL.price}/litre)` : 'Not enough money for CNG', 'E');
     } else {
       ctx.setPrompt('fuel', null);
     }

@@ -290,9 +290,12 @@ export function installFares(ctx) {
     return false;
   }
 
+  /** Where a customer's feet are: the pavement slab, or the bare ground in a park block (there is no slab there, they used to float 20 cm). */
+  const groundAt = (x, z) => (typeof ctx.world?.heightAt === 'function' ? ctx.world.heightAt(x, z) : GROUND_Y);
+
   function attach(c) {
     c.rig = createRig(c);
-    c.rig.position.set(c.x, GROUND_Y, c.z);
+    c.rig.position.set(c.x, groundAt(c.x, c.z), c.z);
     c.rig.rotation.y = c.face;
     scene.add(c.rig);
     c.near = true;
@@ -350,7 +353,7 @@ export function installFares(ctx) {
     boarding = null;
     c.x = c.rig.position.x;
     c.z = c.rig.position.z;
-    c.rig.position.y = GROUND_Y;
+    c.rig.position.y = groundAt(c.x, c.z);
     waiting.push(c);
   }
 
@@ -644,6 +647,7 @@ export function installFares(ctx) {
       trip = riders[0].t;
       trip.shared = null;
       riders[0].rd.host = false;
+      ride.shareOk = false; // the second seat was used: no third rider (it would be built on the same seat slot and be invisible)
       fares.trip = trip;
     } else {
       choices.cancel();
@@ -696,7 +700,7 @@ export function installFares(ctx) {
     ctx.emit('fare:review', { stars: review.stars, text: review.text, te: review.te, customer: { id: t.id, name: t.name, te: t.te, kind: t.kind }, fare, tip });
     const stars = '★'.repeat(res.stars);
     const cut = rd.fareMul < 0.99 ? ' (cut)' : '';
-    const extra = bonus > 0 ? ` +Rs ${bonus} urgent` : '';
+    const extra = bonus > 0 ? ` (incl. Rs ${bonus} urgent bonus)` : ''; // the bonus is already inside `fare`
     const text = res.late ? `${t.name} arrived late: Rs ${fare} ${stars}` : tip > 0 ? `Rs ${fare}${extra} + Rs ${tip} tip ${stars}${cut}` : `Fare Rs ${fare}${extra} ${stars}${cut}`;
     ctx.toast(text, { tone: res.late || res.stars <= 2 || rd.fareMul < 0.99 ? 'bad' : tip > 0 || bonus > 0 ? 'gold' : 'good', ms: 3200 });
     sayLine(ctx, { id: 'fare:review', speaker: t.name, kind: t.kind, line: { en: `${stars}  "${review.text}"`, te: `${stars}  ${review.te}` } });
