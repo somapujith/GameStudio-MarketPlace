@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { readFileSync } from 'node:fs';
 import { GFX_KEY, getGfxPref, setGfxPref } from '../../scene/capabilities.js';
-import GraphicsSetting, { GFX_APPLY_HINT, GFX_OPTIONS, gfxNote, tierNote } from './GraphicsSetting.jsx';
+import GraphicsSetting, { GFX_APPLY_HINT, GFX_OPTIONS, gfxNote, pendingNote, tierNote } from './GraphicsSetting.jsx';
 import { PauseMenu, Results, SoloHome } from './index.js';
 
 const css = readFileSync(new URL('./menus.css', import.meta.url), 'utf8');
@@ -84,5 +84,35 @@ describe('QA-B B2: results show PROFIT first and use the side-by-side layout on 
   });
   it('the two-column results layout also applies from 900 px wide up to 900 px tall', () => {
     expect(css).toMatch(/@media \(max-height: 480px\) and \(min-width: 700px\), \(min-width: 900px\) and \(max-height: 900px\) \{\s*\.tc-menu-results__scroll \{ display: grid; grid-template-columns: 1fr 1fr;/);
+  });
+});
+
+describe('the Graphics setting says honestly what is running and when a pick takes effect', () => {
+  const running = (tier, pref = 'auto') => ({ tier, start: tier, pref, auto: tier });
+  it('names the running tier and the picked one when they differ, and offers Apply now only where the stall can rebuild', () => {
+    expect(pendingNote(running('low'), 'high')).toBe('You picked High, but the stall is still running at Low. It starts the next time you open the stall.');
+    expect(pendingNote(running('low'), 'high', true)).toMatch(/Press Apply now to rebuild the picture at once \(the shift stays paused\)/);
+    expect(pendingNote(running('medium', 'high'), 'auto', true)).toMatch(/You picked Auto, but the stall is still running at Medium/);
+  });
+  it('says nothing when the pick is already what runs, or when nothing is known about the running stall (the home screen)', () => {
+    expect(pendingNote(running('medium', 'medium'), 'medium', true)).toBe(null);
+    expect(pendingNote(running('low', 'auto'), 'auto', true)).toBe(null);
+    expect(pendingNote(null, 'high', true)).toBe(null);
+    expect(pendingNote({ tier: 'nope', pref: 'auto' }, 'high', true)).toBe(null);
+  });
+  it('the pause menu offers Apply now when the glue gives it a handler, the home screen never does', () => {
+    const withApply = html(h(GraphicsSetting, { tierInfo: running('low'), onApply: noop }));
+    expect(withApply).not.toContain('Apply now'); // the saved pick (auto) is what runs: nothing to apply yet
+    setGfxPref('high', memory());
+    expect(html(h(GraphicsSetting, { tierInfo: running('low'), onApply: noop }))).toContain('Apply now');
+    expect(html(h(GraphicsSetting, { tierInfo: running('low') }))).not.toContain('Apply now');
+    expect(html(h(GraphicsSetting, { tierInfo: running('low') }))).toContain('It starts the next time you open the stall.');
+  });
+  it('the glue rebuilds the picture on Apply now and keeps the pause card away while it loads', () => {
+    const impl = src('../../TiffinGameImpl.jsx');
+    expect(impl).toContain('const applyGraphics = useCallback(() => setSceneKey((k) => k + 1), []);');
+    expect(impl).toContain('}, [session, sceneKey]);');
+    expect(impl).toContain('onApplyGraphics={applyGraphics}');
+    expect(impl).toMatch(/const paused = status === 'paused' && !tutorialFinished && !gated && !!scene;/);
   });
 });

@@ -43,7 +43,7 @@ export function leaveCopy(mode) {
  * voice on this device (audio.isSpeechAvailable(lang) / audio.speech.isAvailable(lang)). The Graphics section picks the quality tier (saved on this device, applied the next time the stall opens);
  * `tierInfo` (optional: scene.getTierInfo() or a function returning it) lets it say which tier is running now.
  */
-export default function PauseMenu({ open = false, onResume, onRestart, onQuit, muted = false, onMute, audio = null, mode = 'practice', tierInfo = null }) {
+export default function PauseMenu({ open = false, onResume, onRestart, onQuit, muted = false, onMute, audio = null, mode = 'practice', tierInfo = null, onApplyGraphics = null }) {
   const root = useRef(null);
   const [ask, setAsk] = useState(null); // null | 'restart' | 'quit'
   const [prefs, setPrefs] = usePrefs();
@@ -122,7 +122,7 @@ export default function PauseMenu({ open = false, onResume, onRestart, onQuit, m
             </details>
             <details className="tc-menu-set" data-set="graphics">
               <summary>Graphics</summary>
-              <div className="tc-menu-set__body"><GraphicsSetting tierInfo={tierInfo} idPrefix="tc-pause-gfx" /></div>
+              <div className="tc-menu-set__body"><GraphicsSetting tierInfo={tierInfo} idPrefix="tc-pause-gfx" onApply={onApplyGraphics} /></div>
             </details>
             <details className="tc-menu-set">
               <summary>Controls</summary>

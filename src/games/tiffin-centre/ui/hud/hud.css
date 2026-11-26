@@ -165,6 +165,10 @@
 .tc-hud-mate-txt b, .tc-hud-mate-txt small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tc-hud-mate-txt small { opacity: 0.8; font-size: calc(10 * var(--u)); }
 .tc-hud-emotes { position: relative; display: flex; gap: calc(4 * var(--u)); }
+/* the hub's connection chip sits over the live picture: give it a dark plate so "Connected" reads on a bright sky */
+.tc-hud .tc-hud-coop .sr-conn { pointer-events: auto; }
+.tc-hud .tc-hud-coop .sr-conn .sr-conn__pill { padding: calc(3 * var(--u)) calc(10 * var(--u)); border-radius: calc(20 * var(--u)); color: var(--h-cream); background: rgba(36, 26, 20, 0.86); box-shadow: 0 calc(2 * var(--u)) 0 rgba(0, 0, 0, 0.4); }
+.tc-hud .tc-hud-coop .sr-conn .sr-conn__label { color: inherit; }
 .tc-hud-emote { width: calc(44 * var(--u)); height: calc(44 * var(--u)); }
 .tc-hud-emote-float { position: absolute; left: 50%; top: calc(-6 * var(--u)); width: calc(34 * var(--u)); height: calc(34 * var(--u)); margin-left: calc(-17 * var(--u)); display: grid; place-items: center; border-radius: 50%; background: var(--h-turmeric); color: var(--h-char); box-shadow: 0 calc(3 * var(--u)) 0 #8a5d00; animation: tc-hud-float 2.3s ease-out forwards; pointer-events: none; z-index: 4; }
 /* co-op: Leave takes the pause button's slot in the top bar (TopBar onLeave); the glue's own floating `.tc-leave` is hidden once it does */
@@ -764,7 +768,11 @@
   .tc-hud-board:not([data-slim='1']) .tc-hud-ready small { display: none; }
   .tc-hud-railbox { max-height: none; padding-top: calc(7 * var(--u)); }
   .tc-hud-rail { flex-direction: row; align-items: flex-start; overflow-x: auto; overflow-y: hidden; }
-  .tc-hud-chit { width: calc(170 * var(--u)); flex: none; }
+  .tc-hud-chit { width: auto; min-width: calc(120 * var(--u)); flex: none; }
+  .tc-hud-chit-main, .tc-hud-chit-main[data-badges='1'] { grid-template-columns: auto auto auto; grid-template-areas: 'token coin dishes'; }
+  .tc-hud-dishes { flex-wrap: nowrap; margin-top: 0; width: auto; }
+  .tc-hud-dishname, .tc-hud-badges { display: none; }
+  .tc-hud-collect { min-width: calc(150 * var(--u)); }
   .tc-hud-rail-empty { display: block; }
   .tc-hud-bottom { grid-template-columns: minmax(0, 1fr); }
   .tc-hud-dockwrap { justify-self: stretch; }

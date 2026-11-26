@@ -56,6 +56,9 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
   const [gl, setGl] = useState(null); // null | 'webgl' | 'lost'
   const [muted, setMuted] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  // "Apply now" in the pause menu's Graphics section: bumping this rebuilds the scene (and the audio) at the picked tier while the session stays paused
+  const [sceneKey, setSceneKey] = useState(0);
+  const applyGraphics = useCallback(() => setSceneKey((k) => k + 1), []);
   const [progress, setProgress] = useState({ p: 0, label: 'Lighting the stove...' });
   const navigate = useNavigate();
   const online = mode === 'online';
@@ -102,6 +105,7 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
     let ro = null;
     let off = null;
     let audio = null;
+    setProgress({ p: 0, label: 'Lighting the stove...' });
     (async () => {
       // the audio code is its own chunk (the context itself only starts on the first gesture)
       // the web fonts load WHILE the scene builds (the painted banner and menu board repaint when they arrive); a device without WebGL 2 is told at once
@@ -184,7 +188,7 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
       setScene(null);
       if (window.__tiffin?.session === session) delete window.__tiffin;
     };
-  }, [session]);
+  }, [session, sceneKey]);
 
   // Touch screens: no pinch or double-tap zoom, no pull-to-refresh, no long-press menu on the play surface (the page is a game, not a document),
   // and the screen stays on while a shift is running. Menus inside the root that scroll (results, pause) keep their own scrolling.
@@ -223,11 +227,11 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
 
   const shiftOver = status === 'done' || status === 'closed';
   const showResults = shiftOver || tutorialFinished;
-  const paused = status === 'paused' && !tutorialFinished && !gated;
+  const paused = status === 'paused' && !tutorialFinished && !gated && !!scene; // while a rebuilt picture loads (Apply now) the pause card waits
 
   let blocker = null;
   if (gl === 'webgl') blocker = 'webgl';
-  else if (gl === 'lost') blocker = 'error';
+  else if (gl === 'lost') blocker = 'lost';
   else if (status === 'error') blocker = 'error';
   else if (status === 'disconnected' && online) blocker = 'disconnected';
   else if ((!state && !shiftOver) || (!scene && !shiftOver)) blocker = 'loading';
@@ -256,6 +260,7 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
           onMute={onMute}
           audio={audio}
           tierInfo={() => scene?.getTierInfo?.()}
+          onApplyGraphics={applyGraphics}
           onResume={() => session.resume?.()}
           onRestart={() => session.restart?.()}
           onQuit={() => {
