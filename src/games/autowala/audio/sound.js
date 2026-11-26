@@ -10,7 +10,7 @@
 // Public handles: ctx.sound (also window.__autowala.sound) = { radio, stats(), buses(), ... }; snapshot key `radio`;
 // events listened to: crash, land, audio:volume, voice:line | voice:start | voice:end, menu; events emitted: radio:station.
 import { getBuses, setBusLevels, dropBuses } from './sound-bus.js';
-import { setMasterLevel } from './ctx.js';
+import { setMasterLevel, setMuted } from './ctx.js';
 import { normalizeAudio } from '../ui/menus/menuNav.js';
 import { createNoiseBuffer, createNoiseSource, safeStop, safeDisconnect } from './engine-kit.js';
 import { createEngineVoice } from './engine-voice.js';
@@ -215,6 +215,7 @@ export function installSound(ctx) {
       case 'audio:volume':
         setBusLevels(e);
         if ('master' in e) setMasterLevel(e.master);
+        if ('muted' in e) setMuted(e.muted); // the event is the contract: {master, fx, voice, music, muted}
         break;
       case 'voice:line':
         voiceUntil = Math.max(voiceUntil, nowS() + (Number(e.ms) > 0 ? Number(e.ms) / 1000 : 3) + 0.4);

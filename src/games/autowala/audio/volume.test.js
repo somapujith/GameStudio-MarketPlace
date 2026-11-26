@@ -100,6 +100,29 @@ describe('the three category buses', () => {
   });
 });
 
+describe('installSound follows the audio:volume event', () => {
+  it('master, the three buses and the mute flag all come from one event', async () => {
+    const { installSound } = await import('./sound.js');
+    const listeners = new Set();
+    const ctx = {
+      state: { menu: null, weather: 0 }, v: {}, clock: { hour: 12 }, profile: { data: { settings: {} } },
+      game: { on: (fn) => { listeners.add(fn); return () => listeners.delete(fn); } },
+      emit() {}, toast() {}, addSnapshot() {}, addSystem() {}, input: { pressed: () => false, held: () => false },
+    };
+    installSound(ctx);
+    const a = ctxMod.getAudio();
+    const b = busMod.getBuses();
+    const say = (e) => listeners.forEach((l) => l({ type: 'audio:volume', ...e }));
+    say({ master: 0.5, fx: 0.3, voice: 0.6, music: 0.9, muted: false });
+    expect(a.master.gain.value).toBeCloseTo(0.4, 10);
+    expect([b.fx.gain.value, b.voice.gain.value, b.music.gain.value]).toEqual([0.3, 0.6, 0.9]);
+    say({ muted: true });
+    expect(a.master.gain.value).toBe(0);
+    say({ muted: false });
+    expect(a.master.gain.value).toBeCloseTo(0.4, 10);
+  });
+});
+
 describe('the browser speech fallback (outside Web Audio)', () => {
   it('follows the voices slider and the master slider, and is silent when muted', () => {
     const { speechVolumeOf } = busMod;
