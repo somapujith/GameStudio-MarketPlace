@@ -531,6 +531,18 @@ export function createThreeLoad(renderer, { width, height, halfFloat, timer: tim
     poll() {
       if (mode === 'timer') gpuTimer.poll();
     },
+    /** Sync mode: the cost of the 1-pixel readback alone (no drawing), ms. The runner subtracts the smallest of a few of these from every slice. */
+    idle(now) {
+      enter();
+      try {
+        const t0 = now();
+        renderer.setRenderTarget(rtMain);
+        renderer.readRenderTargetPixels(rtMain, 0, 0, 1, 1, buf);
+        return now() - t0;
+      } finally {
+        leave();
+      }
+    },
     dispose() {
       if (mode === 'timer') {
         gpuTimer.onResult = null;
@@ -593,6 +605,7 @@ export function createCalibration(opts = {}) {
   let compileSince = -1;
   let wakeSince = 0;
   let slowStreak = 0;
+  let syncOverhead = 0;
   // per-frame budgets follow the display: at 144 Hz a frame is 6.9 ms, so a slice must be ~3 ms or the frame misses its vsync
   let budgetNow = frameBudgetMs;
   let sliceNow = sliceMs;
@@ -801,6 +814,7 @@ export function createCalibration(opts = {}) {
       const predicted = last ? Math.min(maxSliceNow, (last.ms / last.W) * W) : 1;
       if (used > 0.1 && used + predicted > budgetNow) return false;
       const h = load.submit(t.def.id, W, now);
+      h.ms = Math.max(0.02, h.ms - syncOverhead); // (0 for a load without an idle() probe)
       if (h.ms > abortSliceMs) {
         // one slow slice can be a first-use cost or another process on the GPU: drop it and retry next frame; two in a row is the machine
         record(t, h, { dropped: true });
@@ -852,6 +866,12 @@ export function createCalibration(opts = {}) {
           budgetNow = Math.min(frameBudgetMs, Math.max(3, med * 0.55));
           sliceNow = Math.min(sliceMs, Math.max(2, budgetNow * 0.8));
           maxSliceNow = Math.min(maxSliceMs, Math.max(4, budgetNow * 1.4));
+          if (load.mode === 'sync' && load.idle) {
+            // a blocking readback has a fixed cost (measured 1.8-18 ms on D3D11): take the smallest of a few empty ones and subtract it from every slice
+            syncOverhead = Infinity;
+            for (let i = 0; i < 3; i++) syncOverhead = Math.min(syncOverhead, load.idle(now));
+            if (!Number.isFinite(syncOverhead)) syncOverhead = 0;
+          }
           state = 'measure';
           tMeasure = now();
         }

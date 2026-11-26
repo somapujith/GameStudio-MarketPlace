@@ -434,6 +434,20 @@ describe('createCalibration: the two modes differ where they should', () => {
     expect(result.trace[0].dropped).toBe(true);
     expect(result.units.fillNsPerPx).toBeCloseTo(3, 0);
   });
+  it('sync mode subtracts the smallest of three empty readbacks from every slice (the readback has a fixed 2-18 ms cost on D3D11)', () => {
+    const w = fakeWorld({ fillNs: 3, callUs: 9, mtriMs: 1.6, postNs: 2, overhead: 6, mode: 'sync' });
+    const idles = [18, 6, 9]; // bimodal: the smallest is the truth
+    let k = 0;
+    w.load.idle = () => { const v = idles[k++ % 3]; w.clock.t += v; return v; };
+    const { result } = drive(mkCal(w), w);
+    expect(k).toBe(3);
+    expect(result.units.fillNsPerPx).toBeCloseTo(3, 0);
+    expect(result.units.callUs).toBeCloseTo(9, 0);
+    // without the subtraction the same machine reads as ~10x slower on the small slices
+    const w2 = fakeWorld({ fillNs: 3, callUs: 9, mtriMs: 1.6, postNs: 2, overhead: 6, mode: 'sync' });
+    const biased = drive(mkCal(w2), w2).result;
+    expect(biased.units.fillNsPerPx).toBeGreaterThan(result.units.fillNsPerPx * 1.3);
+  });
   it('timer mode with a very slow GPU (software-like): finishes with the lowest tier, never blocks the main thread', () => {
     const w = fakeWorld({ fillNs: 600, callUs: 500, mtriMs: 100, postNs: 400, mode: 'timer', cpuCallUs: 15 });
     const { result, longest } = drive(mkCal(w), w);
@@ -619,6 +633,17 @@ describe('createThreeLoad', () => {
     signalled = true;
     expect(load.warmReady()).toBe(true);
     expect(load.warmReady()).toBe(true);
+  });
+  it('idle(): a bare 1 px readback (no drawing), state restored', () => {
+    const r = stubRenderer();
+    const load = createThreeLoad(r, { width: 640, height: 360 });
+    while (!load.prepare());
+    let t = 0;
+    const ms = load.idle(() => (t += 2));
+    expect(ms).toBe(2);
+    expect(r.render).not.toHaveBeenCalled();
+    expect(r.readRenderTargetPixels).toHaveBeenCalledTimes(1);
+    expect(r.setRenderTarget).toHaveBeenLastCalledWith(null);
   });
   it('without float targets the half-float stand-in is 8 bit and reported', () => {
     const r = stubRenderer();
