@@ -547,6 +547,18 @@
     min-height: 44px;
     font-size: 14px;
   }
+  /* the four quality buttons share what the row leaves them instead of spilling out of the box at 640 px wide */
+  .aw .aw-start .aw-seg {
+    flex: 1 1 0;
+    min-width: 0;
+    margin-left: 6px;
+  }
+  .aw .aw-start .aw-seg button {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0 6px;
+    font-size: 13px;
+  }
   .aw .aw-start .aw-credit {
     margin: 0;
     flex-direction: row;

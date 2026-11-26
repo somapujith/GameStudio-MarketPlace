@@ -8,6 +8,7 @@ import { find, getPath, PLATE_STYLES, sanitizeBadge, sanitizeBanner, sanitizePla
 import { playHorn, stopHorn } from '../audio/horns.js';
 import { useCountUp, useGamepad, useMedia } from './workshop/hooks.js';
 import { GridCell, InputRow, ItemRow, NavRow, UpgradeRow } from './workshop/Rows.jsx';
+import { buyAction, purchaseNote } from './workshop/buyAction.js';
 import { BannerCard, PlateCard, StatsCard } from './workshop/Cards.jsx';
 import { LANDSCAPE_QUERY } from './menus/menuLayout.js';
 import { useTouchMode } from './hud/touchMode.js';
@@ -139,11 +140,10 @@ export default function Workshop({ game, snap }) {
     else if (r.type === 'input') res = ws.buy(r.path, texts[r.path] || '');
     if (!res) return;
     if (res.ok) {
-      const text = res.already ? 'Already fitted' : wasOn ? `Took off ${r.name}` : `${res.price > 0 ? 'Installed' : 'Fitted'} ${res.name}${res.price > 0 ? `  -${fmtRs(res.price)}` : ''}`;
-      setNote({ tone: res.already ? 'info' : 'good', text });
+      setNote(purchaseNote(res, r, wasOn));
       if (r.type === 'input') setTexts((t) => ({ ...t, [r.path]: getPath(profile.data.loadout, r.path) }));
     } else {
-      setNote({ tone: 'bad', text: res.code === 'funds' ? (res.short > 0 ? `Not enough rupees: ${fmtRs(res.short)} short` : 'Not enough rupees') : res.reason });
+      setNote(purchaseNote(res, r, wasOn));
       if (res.code === 'funds') setShake(true);
     }
     bump();
@@ -378,15 +378,8 @@ export default function Workshop({ game, snap }) {
   };
 
   // the action button under the list
-  let action = null;
-  if (nav.level === 2 && highlighted && hs) {
-    const label = highlighted.type === 'input' ? 'Apply' : hs.tone === 'installed' ? (highlighted.type === 'toggle' ? 'Take off' : 'Installed') : hs.tone === 'max' ? 'Maxed' : highlighted.type === 'upgrade' ? 'Fit next level' : 'Install';
-    // too poor for it: the button says by how much (it still answers a press with the refusal note, so keyboard and pad get feedback too)
-    const poor = hs.price > 0 && hs.can === false;
-    action = poor
-      ? { label: 'Not enough rupees', price: `Need ${fmtRs(hs.price - wallet)} more`, off: false, poor: true }
-      : { label, price: hs.tone === 'price' || hs.tone === 'locked' ? hs.label : hs.tone === 'owned' ? 'Owned' : '', off: hs.tone === 'max' || (hs.tone === 'installed' && highlighted.type !== 'toggle'), poor: false };
-  }
+  // (too poor for it: the button says by how much, and still answers a press with the refusal note, so keyboard and pad get feedback too)
+  const action = nav.level === 2 ? buyAction(highlighted, hs, wallet) : null;
   // the one-line description under the name; a note ("Installed ...", "Not enough rupees") takes its place so the foot never changes height
   const detailLine = nav.level < 2 ? cat.blurb : highlighted?.type === 'upgrade' ? highlighted.blurb : highlighted?.type === 'input' ? `${highlighted.hint}.${highlighted.price > 0 ? ` ${fmtRs(highlighted.price)} per change.` : ''}` : '';
 

@@ -144,9 +144,7 @@
   position: absolute;
   inset: 0;
   z-index: 60;
-  background: rgba(10, 4, 24, 0.84);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
+  background: rgba(10, 4, 24, 0.88); /* no backdrop blur: a full-screen filter pass over the live 3D view is not worth it */
   animation: aw-bigmap-in 0.18s ease-out;
 }
 .aw .aw-bigmap-canvas {
