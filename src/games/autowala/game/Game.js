@@ -373,13 +373,11 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
   // size the pipeline now (the screen's own resize afterwards is a no-op) so the composer's passes are built and compiled with the scene
   gfx.resize(canvas.clientWidth || canvas.width, canvas.clientHeight || canvas.height);
   prepareFirstFrame();
-  // Both times of day are built while loading: dusk comes a minute into a game, and building a light set in the middle of play (a few
-  // programs at a time, each a round trip to the GPU process) costs more than building it behind the loading bar. The lamp pool is lit
-  // when the scene has point lights visible.
+  // The lamp pool is lit when the scene has point lights visible: that is "night" for the light set.
   const nightNow = () => recipeOf(scene).points > 0;
+  // the light set the game is in and the other time of day, for a tier
   const phases = (q, { night = nightNow(), ...rest } = {}) => [lightSet(q, { night, baseSpots, ...rest }), lightSet(q, { night: !night, baseSpots, ...rest })];
-  const warmPhases = (q, opts) => Promise.all(phases(q).map((set) => warmer.warm(set, opts))).catch(warnWarm);
-  const earlyWarm = warmPhases(gfx.quality, { budgetMs: 8 });
+  const earlyWarm = warmer.warm(phases(gfx.quality)[0], { budgetMs: 8 }).catch(warnWarm);
 
   // gameplay systems: a broken one is logged and skipped, it never takes the whole game down. Install times are kept in game.boot.
   const boot = { world: world.timings, systems: {} };
@@ -413,7 +411,7 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
   const t = performance.now();
   yield earlyWarm;
   prepareFirstFrame(); // the systems moved things (the auto's environment map, lights): the first frame is what is compiled now
-  yield warmPhases(gfx.quality, { budgetMs: 8 }); // what the systems added, for both times of day
+  yield warmer.warm(phases(gfx.quality)[0], { budgetMs: 8 }).catch(warnWarm); // what the systems added
   yield warmer.warmMaterials(passMaterials(gfx.composer)).catch(warnWarm);
   gfx.render(0); // one real frame into the pipeline: uploads the first view's geometry and textures and builds the shadow pass's depth programs
   boot.compile = Math.round(performance.now() - t);
@@ -434,22 +432,33 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
     }
     return false;
   };
-  const trickle = { budgetMs: 3, maxPending: 4, batch: 6, pause: () => idleBreak(24), ready: calm };
   const quick = { budgetMs: 6, maxPending: 8, batch: 8, pause: () => idleBreak(8) }; // after a quality change: dusk may be near
+  // while the start menu is up nobody is playing: use the time at full speed; once the game is played, only while frames are healthy
+  const idleOrTrickle = {
+    budgetMs: 4,
+    maxPending: 6,
+    batch: 8,
+    pause: () => idleBreak(state.menu === 'start' ? 8 : 24),
+    ready: () => state.menu === 'start' || calm(),
+  };
 
-  /** The rest, a little at a time once the game runs: both light sets again (a no-op unless a quality change left one out), then textures. */
+  /**
+   * The rest of the warm-up, started with the game (the start menu is on screen for a few seconds): the other time of day (dusk comes a minute
+   * into a game), the workshop's light set for the current time of day, then textures. Also re-run after a quality change.
+   */
   const warmOther = (q = gfx.quality) => {
     clearTimeout(bgTimer);
     if (!warmer.parallel) return;
     bgTimer = setTimeout(async () => {
       if (!running || disposed) return;
       try {
-        for (const set of phases(q)) if ((await warmer.warm(set, trickle)) === 'cancelled') return;
-        await warmer.warmTextures({ budgetMs: 3, pause: trickle.pause, ready: calm });
+        const sets = [phases(q)[1], lightSet(q, { night: nightNow(), workshop: true, baseSpots })];
+        for (const set of sets) if ((await warmer.warm(set, idleOrTrickle)) === 'cancelled') return;
+        await warmer.warmTextures({ budgetMs: 3, pause: idleOrTrickle.pause, ready: idleOrTrickle.ready });
       } catch (err) {
         warnWarm(err);
       }
-    }, 800);
+    }, 100);
   };
 
   // the workshop adds a spot light and two point lights to the scene: another light set. It is built when the garage is near (the player
@@ -467,7 +476,7 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
       if (Math.hypot(v.x - garageFront.x, v.z - garageFront.z) > 170) return;
       workshopWarming = true;
       warmer
-        .warm(lightSet(gfx.quality, { night: nightNow(), workshop: true, baseSpots }), trickle)
+        .warm(lightSet(gfx.quality, { night: nightNow(), workshop: true, baseSpots }), idleOrTrickle)
         .catch(warnWarm)
         .then(() => { workshopWarming = false; });
     },
@@ -493,7 +502,7 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
   contextRestored = () => {
     if (disposed) return;
     warmer.reset();
-    warmPhases(gfx.quality, { budgetMs: 8 }).then(() => warmOther());
+    warmer.warm(phases(gfx.quality)[0], { budgetMs: 8 }).catch(warnWarm).then(() => warmOther());
   };
   game.boot = boot;
   game.warm = warmer;

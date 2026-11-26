@@ -47,6 +47,15 @@ const INIT = `(() => {
     scripts: e.scripts.map((x) => ({ inv: x.invoker, type: x.invokerType, fn: x.sourceFunctionName, url: (x.sourceURL || '').split('/').pop(), pos: x.sourceCharPosition, d: x.duration, fsl: x.forcedStyleAndLayoutDuration, ex: x.executionStart, pause: x.pauseDuration })),
   }));
   window.__mark = (n) => R.marks.push([performance.now(), n]);
+  // React: how many commits and how many components rendered (PerformedWork) per commit. A minimal DevTools hook is enough for React to report to.
+  R.react = { commits: 0, rendered: 0, maxRendered: 0 };
+  const countRendered = (f) => { let n = 0; const stack = [f]; while (stack.length) { const x = stack.pop(); if (!x) continue; if ((x.flags & 1) && typeof x.type === 'function') n++; if (x.sibling) stack.push(x.sibling); if (x.child) stack.push(x.child); } return n; };
+  window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
+    supportsFiber: true, renderers: new Map(), isDisabled: false,
+    inject(r) { this.renderers.set(this.renderers.size + 1, r); return this.renderers.size; },
+    onCommitFiberRoot(id, root) { try { const n = countRendered(root.current); R.react.commits++; R.react.rendered += n; if (n > R.react.maxRendered) R.react.maxRendered = n; } catch (e) { /* never break the page */ } },
+    onCommitFiberUnmount() {}, onPostCommitFiberRoot() {}, checkDCE() {},
+  };
   let last = performance.now();
   const tick = (n) => { R.frames.push([n, n - last]); last = n; requestAnimationFrame(tick); };
   requestAnimationFrame(tick);
@@ -210,6 +219,7 @@ async function run() {
     const pull = () => c.ev('JSON.stringify(window.__rec)').then(JSON.parse);
     const phase = async (name, fn, { grace = 0, profile = false, heap = false } = {}) => {
       const t0 = await mark(`${name}:start`);
+      const react0 = await c.ev('({ ...window.__rec.react })');
       let prof = null;
       let heapProf = null;
       if (heap) await c.send('HeapProfiler.startSampling', { samplingInterval: 4096 });
@@ -221,6 +231,8 @@ async function run() {
       await c.sleep(300); // let observers flush
       const rec = await pull();
       const s = summarise(rec, t0, t1, grace);
+      const dc = rec.react.commits - react0.commits;
+      s.react = { commits: dc, componentsPerCommit: dc ? +((rec.react.rendered - react0.rendered) / dc).toFixed(1) : 0, commitsPerSec: +(dc / ((t1 - t0) / 1000)).toFixed(1) };
       if (prof) s.profile = profileTables(prof);
       if (heapProf) s.alloc = heapTable(heapProf, (t1 - t0) / 1000);
       if (extra) s.extra = extra;
@@ -323,7 +335,10 @@ async function run() {
             await c.ev(`(() => { const G = window.__autowala; const i = ${JSON.stringify(info)}; G.debug.hour(${v.hour}); G.debug.weather(${v.weather}); G.debug.cam({ x: i.x - Math.sin(i.h) * 9 + Math.cos(i.h) * 2.5, y: 4.2, z: i.z - Math.cos(i.h) * 9 - Math.sin(i.h) * 2.5, yaw: i.h, pitch: -0.12, fov: 62 }); })()`);
             await c.sleep(v.weather ? 7000 : 4500); // the sky, the lamp lights and the rain settle
             const file = path.join(dir, `${label}-${v.id}.jpg`);
-            await c.shot(file);
+            // a JPEG of the page at 70 % size (the proofs in docs/perf/ stay under 150 KB)
+            const r = await c.send('Page.captureScreenshot', { format: 'jpeg', quality: 68, clip: { x: 0, y: 0, width: W, height: H, scale: 0.7 } });
+            fs.mkdirSync(path.dirname(file), { recursive: true });
+            fs.writeFileSync(file, Buffer.from(r.data, 'base64'));
             files.push(file);
           }
           await c.ev('window.__autowala.debug.cam(null); window.__autowala.debug.weather(0); true');
@@ -440,8 +455,9 @@ if (row.bootProfile) {
   console.log('   INCLUSIVE:'); for (const p of b.incl) console.log(`      ${String(p.ms).padStart(7)} ms ${String(p.pct).padStart(5)}%  ${p.fn}`);
 }
 for (const [name, s] of Object.entries(row.scenarios)) {
-  const { loafs, profile, alloc, sys, extra, mem, memBefore, memAfter, programList, ...rest } = s;
+  const { loafs, profile, alloc, sys, extra, mem, memBefore, memAfter, programList, react, ...rest } = s;
   console.log(`-- ${name}: ${f(rest)}`);
+  if (react) console.log(`   react: ${react.commits} commits (${react.commitsPerSec}/s), ${react.componentsPerCommit} components rendered per commit`);
   if (programList && programList.length) { console.log(`   programs created in this phase (${programList.length}):`); for (const p of programList.slice(0, 40)) console.log(`      ${p}`); }
   if (mem) console.log(`   mem ${JSON.stringify(mem)}${memBefore ? ` before=${JSON.stringify(memBefore)} after=${JSON.stringify(memAfter)}` : ''}`);
   if (name === 'cycles' && Array.isArray(extra)) for (const r of extra) console.log(`   ${JSON.stringify(r)}`);
