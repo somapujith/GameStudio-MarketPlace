@@ -143,6 +143,30 @@ describe('recovery: steps UP as well as down', () => {
     const last20 = r.changes.filter((c) => c.t > 100);
     expect(last20.length).toBeLessThan(12);
   });
+  it('real-GPU regression (dev laptop, 144 Hz panel, 60 fps target, GPU timer reading 20 % low): heavy load settles, failed ups stay bounded, and when the load drops it climbs all the way back', () => {
+    // fill-bound: 27.6 ms of GPU at full resolution (area law), 1/4 of that later. On a 144 Hz display work lands on multiples of 6.94 ms, so 14.3 ms predicted is 20.8 real.
+    const heavyAt = 12;
+    const gpuTrue = (tier, scale, t) => (t < heavyAt ? 27.6 : 6.9) * scale * scale;
+    const gov = mk({ refreshHz: 144, maxTier: 'medium' }); // (a quarter of the load would also predict room for the next tier: that is tested separately)
+    const r = simulate(gov, {
+      seconds: 60, refreshHz: 144, vsync: true, work: (tier, scale, t) => gpuTrue(tier, scale, t) + 1, gpu: (tier, scale, t) => gpuTrue(tier, scale, t) * 0.8,
+      passGpu: true, cpu: () => 2,
+    });
+    const heavy = r.changes.filter((c) => c.t < heavyAt);
+    expect(heavy[0].t).toBeLessThan(3);
+    expect(heavy[0].scale).toBe(0.7);
+    expect(gov.stats().history.some((h) => /did not hold/.test(h.reason))).toBe(true); // the quantised 144 Hz frame makes a rung that looks fine on paper fail
+    expect(heavy.length).toBeLessThanOrEqual(5); // two down steps (0.7, then the 0.6 that actually fits) plus at most two failed (reverted) ups
+    // after the drop the rung that kept failing is forgiven and the scale returns to 1 within ~15 s
+    expect(gov.scale).toBe(1);
+    expect(r.changes.at(-1).t).toBeLessThan(heavyAt + 20);
+  });
+  it('without the load dropping, a rung that failed twice stays frozen (no 5 minute probe loop)', () => {
+    const gov = mk({ refreshHz: 144 });
+    const r = simulate(gov, { seconds: 200, refreshHz: 144, vsync: true, work: (tier, scale) => 27.6 * scale * scale + 1, gpu: (tier, scale) => 27.6 * scale * scale * 0.8, passGpu: true, cpu: () => 2 });
+    expect(gov.scale).toBe(0.6); // 13.9 ms (two 144 Hz frames) is the largest dt that fits a 16.7 ms budget; 0.6 is the rung that lands on it
+    expect(r.changes.length).toBeLessThanOrEqual(11);
+  });
   it('tier up: with a GPU timer the headroom is visible even at vsync, and a better tier is taken after 20 s', () => {
     const gov = mk({ tier: 'low', maxTier: 'high' });
     const busy = (tier, scale) => 1 + 6 * scale * scale * TIER_COST[tier]; // gpu ms

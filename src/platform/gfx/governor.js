@@ -111,6 +111,8 @@ export function createGovernor(rawOpts = {}) {
     maxDtMs: 250,
     stableSaveMs: 8000,
     callOverMs: 2000,
+    gpuTimerBias: 1.25, // EXT_disjoint_timer_query reads ~20 % low against the frame (measured on the dev laptop): the headroom estimate inflates it
+    forgiveRatio: 0.75, // failed up-steps are forgiven when the frame time at the SAME rung falls below this fraction of what it was
     scaleMin: 0.5,
     ...opts,
   };
@@ -171,6 +173,9 @@ export function createGovernor(rawOpts = {}) {
   let stableSaved = false;
   let callOver = 0;
   let lastUpAt = -1e9;
+  let lastUpRef = 0; // the mean frame time at the stable rung just before the last up-step
+  let failRef = 0; // ...and, after that up-step failed, the reference the load must drop below (x forgiveRatio) before the rung is tried again
+  let failScaleI = -1;
   let calmMs = 0;
   const probeFail = new Uint8Array(ladder.length);
   const tierFail = new Uint8Array(tiers.length);
@@ -234,6 +239,8 @@ export function createGovernor(rawOpts = {}) {
     stableSaved = false;
     callOver = 0;
     probeFail.fill(0);
+    failRef = 0;
+    failScaleI = -1;
     baseScaleI = scaleI;
     log(kind === 'up' ? 'tier-up' : 'tier-down', from, tiers[i], reason, ratio);
     fire.tier({ reason, from, ratio, kind, scale: ladder[scaleI] });
@@ -252,8 +259,12 @@ export function createGovernor(rawOpts = {}) {
   }
 
   function stepDown(m, ratio, cpuMean, gpuMean, windowDur) {
-    // a down step soon after a probe up means that rung does not hold: remember it
-    if (t - lastUpAt < 30000 && scaleI > 0) probeFail[scaleI] = Math.min(255, probeFail[scaleI] + 1);
+    // a down step soon after a probe up means that rung does not hold: remember it (and the load it failed under)
+    if (t - lastUpAt < 30000 && scaleI > 0) {
+      probeFail[scaleI] = Math.min(255, probeFail[scaleI] + 1);
+      failRef = lastUpRef;
+      failScaleI = scaleI + 1;
+    }
     const floor = floorFor(tierI);
     // the main thread alone fills the frame (or the whole budget): fewer pixels cannot fit this tier into it
     const cpuBound = cpuMean >= 0 && cpuMean > Math.min(m * 0.8, budget) && !(gpuMean >= 0 && gpuMean > cpuMean);
@@ -285,17 +296,22 @@ export function createGovernor(rawOpts = {}) {
       const up = scaleI - 1;
       if (probeFail[up] >= cfg.maxProbeFailures) return CHANGE_NONE; // this rung failed twice: the model is wrong here, stay put until the load changes
       const predicted = load * (ladder[up] / ladder[scaleI]) ** 2;
-      const confident = predicted <= budget * cfg.upRatio;
+      // on a display faster than the budget (144 Hz, 60 fps target) a frame can only take whole multiples of the refresh interval: 14.3 ms of work lands on 20.8 ms
+      const interval = 1000 / (refreshHz || 60);
+      const vsyncSlots = Math.max(1, Math.floor((budget * 1.08) / interval));
+      const confident = predicted <= Math.min(budget * cfg.upRatio, vsyncSlots * interval * 0.95);
       if (confident && okMs >= cfg.upHoldMs) {
-        pending = { kind: 'up', mode: 'confirmed', from: scaleI };
+        pending = { kind: 'up', mode: 'confirmed', from: scaleI, refMean: m };
         lastUpAt = t;
+        lastUpRef = m;
         counts.scaleUp++;
         return setScaleIndex(up, 'up', `predicted ${predicted.toFixed(1)} ms fits ${budget.toFixed(1)} ms`, m / budget);
       }
       const hold = cfg.probeHoldMs * 2 ** Math.min(4, probeFail[up]);
       if (!confident && probeFail[up] < cfg.maxProbeFailures && okMs >= hold && m <= budget * cfg.okRatio) {
-        pending = { kind: 'up', mode: 'probe', from: scaleI };
+        pending = { kind: 'up', mode: 'probe', from: scaleI, refMean: m };
         lastUpAt = t;
+        lastUpRef = m;
         counts.scaleUp++;
         return setScaleIndex(up, 'up', `probe (frame time pinned at ${m.toFixed(1)} ms, no visible headroom)`, m / budget);
       }
@@ -305,7 +321,9 @@ export function createGovernor(rawOpts = {}) {
     if (locked || tierI >= maxI || tierFail[tierI + 1] >= cfg.maxTierFailures) return CHANGE_NONE;
     if (okMs < cfg.tierUpHoldMs) return CHANGE_NONE;
     const predicted = load * (costOf(tierI + 1) / costOf(tierI));
-    if (predicted <= budget * cfg.tierUpRatio) {
+    const tInterval = 1000 / (refreshHz || 60);
+    const tSlots = Math.max(1, Math.floor((budget * 1.08) / tInterval));
+    if (predicted <= Math.min(budget * cfg.tierUpRatio, tSlots * tInterval * 0.95)) {
       pending = { kind: 'tierUp', from: tierI };
       lastUpAt = t;
       counts.tierUp++;
@@ -353,7 +371,7 @@ export function createGovernor(rawOpts = {}) {
     const slowFrac = slow / k;
     // headroom estimate: with BOTH sides measured (cpu submit + gpu timer) the real load can be far below a vsync-pinned frame time.
     // cpuMs alone says nothing about the GPU, so without gpuMs the frame time itself is the load.
-    const busy = hadGpu && cpuMean >= 0 ? Math.max(cpuMean, gpuMean) : gpuMean;
+    const busy = (hadGpu && cpuMean >= 0 ? Math.max(cpuMean, gpuMean * cfg.gpuTimerBias) : gpuMean * cfg.gpuTimerBias);
     const load = busy > 0 ? Math.min(m, busy * 1.05) : m;
     last = { ratio, mean: m, cpu: cpuMean, gpu: gpuMean, calls: callsMean, slowFrac };
 
@@ -366,6 +384,8 @@ export function createGovernor(rawOpts = {}) {
           probeFail[p.from - 1 >= 0 ? p.from - 1 : 0] = Math.min(255, probeFail[p.from - 1 >= 0 ? p.from - 1 : 0] + 1);
           counts.reverts++;
           lastUpAt = -1e9;
+          failRef = p.refMean || m;
+          failScaleI = p.from;
           return setScaleIndex(p.from, 'down', `${p.mode} up did not hold (${ratio.toFixed(2)} x budget): reverted`, ratio);
         }
         probeFail[Math.max(0, scaleI)] = 0;
@@ -393,6 +413,13 @@ export function createGovernor(rawOpts = {}) {
           }
         } else noGain = 0;
       }
+    }
+
+    // ---- 1b. the load fell well below what it was when an up-step failed: the scene changed, the failure no longer says anything
+    if (failRef > 0 && scaleI === failScaleI && m < failRef * cfg.forgiveRatio) {
+      probeFail.fill(0);
+      failRef = 0;
+      failScaleI = -1;
     }
 
     // ---- 2. the draw-call guard (calls do not shrink with resolution: only the tier helps)
@@ -513,6 +540,8 @@ export function createGovernor(rawOpts = {}) {
     discontinuity,
     /** The scene changed (new area, day / night, crowd): failed probes may succeed now. */
     notifyLoadChange() {
+      failRef = 0;
+      failScaleI = -1;
       probeFail.fill(0);
       tierFail.fill(0);
       okMs = 0;
