@@ -23,7 +23,7 @@ APP_NAME = "Jalebi Games"
 # OPTIONAL: origins of a SPA hosted OUTSIDE this Worker (e.g. on Vercel), comma-separated, exact origins (no "*").
 # Those pages get CORS headers + bearer-token sign-in + WebSocket tickets. Empty/absent = same-origin only.
 # The SPA is built with VITE_API_ORIGIN=<this Worker's URL>. See docs/DEPLOY.md.
-ALLOWED_ORIGINS = "https://gamestudio-lac.vercel.app"
+ALLOWED_ORIGINS = "https://gamestudio-lac.vercel.app,https://www.jalebi.games,https://jalebi.games"
 
 # The Vite build output (`npm run build`). /api/* and /ws/* always run the Worker first;
 # every other path is served from the bundle, with SPA fallback to index.html for client
