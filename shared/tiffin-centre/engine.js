@@ -534,6 +534,25 @@ const H = {
     return undefined;
   },
 
+  /**
+   * A seat leaves the running shift (the room server's `resignAction`; the adapter's allow-list keeps clients from sending it). What they
+   * hold must not be stranded in hands that will never act again: each dish goes to the waiting customer (most urgent first) who still needs
+   * it, else into the bin. They stay in `players` (their counters still count for the result) flagged `left`; the flag clears when they act again.
+   */
+  leave(s, a, ev, p) {
+    if (p.left) return NOOP;
+    for (let i = p.hands.length - 1; i >= 0; i--) {
+      const dish = p.hands[i].dish;
+      let who = null;
+      for (const c of s.customers) if (c.st === 'waiting' && needsOf(c).includes(dish) && (!who || c.patience < who.patience)) who = c;
+      if (who) H.serve(s, { customer: who.id, hand: i }, ev, p);
+      else H.discard(s, { hand: i }, ev, p);
+    }
+    p.left = true; p.at = null;
+    ev.push({ type: 'player-left', by: p.id });
+    return undefined;
+  },
+
   // ---- the operations layer (ops.js): prep / collectPrep / buy / tend / swapGas
   prep: OPS_H.prep,
   collectPrep: OPS_H.collectPrep,
@@ -648,6 +667,7 @@ export function applyAction(state, action) {
     p = s.players[action.playerId];
   }
   const ev = [];
+  if (p && p.left && action.type !== 'leave') delete p.left; // a seat that acts again has come back (the copy is only kept when the action applies)
   const err = H[action.type](s, action, ev, p);
   if (err === NOOP) return { state, events: [] };
   if (err) return fail(err);

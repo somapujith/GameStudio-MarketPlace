@@ -149,6 +149,13 @@ Events (the array returned by every applyAction; scene = animation, audio = soun
 - **Server tick:** the adapter's `deadlines(state)` returns `[{ key:`tick-${state.tick}`, afterMs:TICK_MS, playerId:null, action:{type:'tick'}, anchor:'apply' }]`
   while playing; `turnPlayerId`/`idleAction` return `null`, `pendingPlayerIds` returns `[]` (nobody is "on turn"); `sanitizeAction` is an allow-list that
   REJECTS `tick`, `spawn`, `tutorial-flags` and unknown types. Each tick persists + broadcasts the whole state (small: keep state < 3 KB).
+- **Empty stall = paused stall** (adapter `pauseWhenEmpty: true`, `GameRoom.isEmpty()`): while no seat (that has not left) holds a live socket the room sets no
+  tick timer, so a deserted shift costs the Durable Object nothing (no alarm and no storage write per second) and a dropped connection never costs the team its hearts;
+  the first player back restarts the timers from that moment (a full second before the next tick). A room nobody returns to is abandoned after `ABANDON_MS` (5 min, nothing
+  recorded) as before. One player left alone keeps the clock running. **Cost of a shift** (free plan): one alarm + one storage write per tick (a shift is 150 to 300 ticks),
+  plus a coalesced room write every 5 s: about 180 to 360 request/write units per shift against the 100k/day free allowance, i.e. 270 or more full shifts a day.
+- **A seat that leaves** (`resignAction` -> engine `leave`, server only): the dishes it holds go to the most urgent waiting customer who still needs them, else into the bin;
+  the seat stays in the result with what it did, flagged `players[id].left` until it acts again (then it is back). Dishes of a seat that is only disconnected stay in its hands.
 - **Client:** `useRoomConnection(code, { onState })` from `src/components/online/useRoomConnection.js` (NOT `useOnlineGame`, which is Tycoon-coupled and
   locks input). Send with `send({ t:'action', action }, { queue:false })`. Rate limit is 40 messages / 5 s / user: coalesce, never spam `move`.
 - **Smoothness:** every incoming state records `tickAt = performance.now()`; the scene and HUD interpolate progress with

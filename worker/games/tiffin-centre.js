@@ -194,6 +194,23 @@ const adapter = {
     return { state, events: [], error: 'That did not work.' };
   },
 
+  /**
+   * An EMPTY stall (no seat has a live socket) is paused: the room stops ticking and does not wake once a second for nobody. The clock
+   * restarts, with a full second to spare, when the first player is back (GameRoom handleUpgrade); an empty room is abandoned after
+   * ABANDON_MS as before. This saves the Durable Object about one alarm and one storage write per second of every deserted shift, and
+   * means a dropped connection (a deploy, a tunnel, a phone call) never costs the whole team its hearts in the dark.
+   */
+  pauseWhenEmpty: true,
+
+  /**
+   * A seat that leaves a running shift (GameRoom onLeave): what they hold goes to a waiting customer or the bin (engine `leave`), so
+   * dishes are not stranded in hands that will never act again. Clients cannot send `leave` themselves (see sanitizeAction).
+   */
+  resignAction(state, playerId) {
+    if (!state || typeof state.players !== 'object' || !hasOwn(state.players, playerId) || state.players[playerId].left) return null;
+    return { type: 'leave', playerId };
+  },
+
   // Nobody is "on turn": the stall runs in real time, so the room never waits for a decision or plays for an idle seat.
   turnPlayerId: () => null,
   pendingPlayerIds: () => [],

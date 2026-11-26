@@ -90,3 +90,46 @@ describe('co-op win credit in the engine result', () => {
     expect(result(tut)).toMatchObject({ reason: 'tutorial', winnerId: 'p1', winners: ['p1'] });
   });
 });
+
+describe('a seat that leaves the running shift (the room\'s resignAction)', () => {
+  /** p1 holds a dosa and a chai; a customer waits for the dosa, nobody wants the chai. */
+  function holding() {
+    let s = team(2, 0, 4);
+    s = act(s, { type: 'spawn', customer: { kind: 'student', order: ['dosa'] } }).state;
+    s = act(s, { type: 'tutorial-flags', patience: true, pay: true }).state;
+    s = act(s, { type: 'cook', playerId: 'p1', station: 'tawa1', slot: 0, dish: 'dosa' }).state;
+    s = act(s, { type: 'cook', playerId: 'p1', station: 'chai1', slot: 0, dish: 'irani_chai' }).state;
+    s = tickN(s, 6);
+    s = act(s, { type: 'take', playerId: 'p1', station: 'tawa1', slot: 0 }).state;
+    s = act(s, { type: 'take', playerId: 'p1', station: 'chai1', slot: 0 }).state;
+    expect(s.players.p1.hands.map((h) => h.dish)).toEqual(['dosa', 'irani_chai']);
+    return s;
+  }
+
+  it('hands what they hold to a waiting customer who needs it and bins the rest, then is marked as gone', () => {
+    const r = act(holding(), { type: 'leave', playerId: 'p1' });
+    const s = r.state;
+    expect(s.players.p1).toMatchObject({ hands: [], at: null, left: true, served: 1 });
+    expect(s.customers[0].got).toEqual(['dosa']);
+    expect(r.events.map((e) => e.type)).toEqual(['discard', 'serve', 'eating', 'player-left']);
+    expect(r.events.at(-1)).toEqual({ type: 'player-left', by: 'p1' });
+    // the shift goes on for the one who stays
+    expect(applyAction(s, { type: 'tick' }).error).toBeUndefined();
+    expect(s.status).toBe('playing');
+  });
+
+  it('is a no-op the second time, an error for a stranger, and never lets the same seat act as gone twice', () => {
+    const s = act(holding(), { type: 'leave', playerId: 'p1' }).state;
+    expect(applyAction(s, { type: 'leave', playerId: 'p1' }).state).toBe(s);
+    expect(applyAction(s, { type: 'leave', playerId: 'nobody' }).error).toBeTruthy();
+    expect(applyAction(s, { type: 'leave' }).error).toBeTruthy();
+  });
+
+  it('a seat that comes back and acts again is no longer marked as gone', () => {
+    let s = act(holding(), { type: 'leave', playerId: 'p1' }).state;
+    expect(s.players.p1.left).toBe(true);
+    s = act(s, { type: 'move', playerId: 'p1', to: 'tawa1' }).state;
+    expect(s.players.p1.left).toBeUndefined();
+    expect(s.players.p1.at).toBe('tawa1');
+  });
+});

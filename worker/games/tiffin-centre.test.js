@@ -58,7 +58,19 @@ describe('registry and interface', () => {
     expect(tiffin.defaultSettings).not.toBe(DEFAULT_SETTINGS); // a copy: nobody can mutate the catalogue through the adapter
     expect(typeof tiffin.canHost).toBe('function');
     expect(tiffin.pieces).toBeUndefined();
-    expect(tiffin.resignAction).toBeUndefined();
+    expect(tiffin.pauseWhenEmpty).toBe(true);
+  });
+
+  it('resignAction: a seat that leaves releases what it holds (engine leave); unknown, prototype and already-gone seats have nothing to resign', () => {
+    const s = fresh();
+    expect(tiffin.resignAction(s, 'p1')).toEqual({ type: 'leave', playerId: 'p1' });
+    for (const id of ['zed', '__proto__', 'constructor', '', undefined, null, 7]) expect(tiffin.resignAction(s, id)).toBeNull();
+    expect(tiffin.resignAction(null, 'p1')).toBeNull();
+    const gone = tiffin.applyAction(s, tiffin.resignAction(s, 'p1')).state;
+    expect(gone.players.p1.left).toBe(true);
+    expect(tiffin.resignAction(gone, 'p1')).toBeNull();
+    // a client can never send it
+    expect(sanitizeAction({ type: 'leave', playerId: 'p1' }, 'p1')).toBeNull();
   });
 
   it('nobody is on turn: no turn player, nothing pending, no idle move', () => {

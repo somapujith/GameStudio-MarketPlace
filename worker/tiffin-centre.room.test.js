@@ -574,25 +574,58 @@ describe('reconnect and absence', () => {
     expect(a.ws.last('state').seq).toBe(h.r.seq);
   });
 
-  it('both players gone: the stall keeps running on the server clock until the shift is lost, then the match is recorded like any failed shift', async () => {
+  it('both players gone: the stall is PAUSED (no tick, no hearts lost, no alarm per second), and abandoned after ABANDON_MS like any deserted room', async () => {
     const h = await table({ level: 1, n: 2 });
     for (let i = 0; i < 3; i += 1) await playSecond(h, h.seats);
+    const tickBefore = h.r.state.tick;
+    const seqBefore = h.r.seq;
     for (const s of h.seats) await h.drop(s.ws);
     expect(h.r.noHumanSince).toEqual(expect.any(Number));
-    let n = 0;
-    while (h.r.status === 'playing' && n < 2000) {
+    // no second-by-second alarm any more: the next wake-up is the abandon deadline (or the end of a reconnect grace), never a tick
+    const startedAt = Date.now();
+    let wakes = 0;
+    while (h.r.status === 'playing' && wakes < 50) {
       await h.tick();
-      n += 1;
+      wakes += 1;
     }
-    stats.noHumans = { ticksUntilEnd: n, state: h.r.state.status, abandoned: h.r.abandoned, lives: h.r.state.lives };
-    // nobody is there to serve: the centre closes on its own well within the abandon window
+    stats.noHumansPaused = { wakes, ticksPlayed: h.r.state.tick - tickBefore, state: h.r.state.status, abandoned: h.r.abandoned, lives: h.r.state.lives };
+    expect(h.r.state.tick).toBe(tickBefore); // the stall stood still
+    expect(h.r.state.lives).toBe(5);
+    expect(h.r.seq).toBe(seqBefore);
+    expect(wakes).toBeLessThanOrEqual(4); // two grace ends and the abandon deadline: not a wake-up per second
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(ABANDON_MS - 1000);
     expect(h.r.status).toBe('finished');
-    expect(h.r.state.status).toBe('closed');
-    expect(n * TICK_MS).toBeLessThan(ABANDON_MS);
-    expect(h.r.abandoned).toBe(false);
-    for (let i = 0; i < 6 && !h.r.persisted; i += 1) await h.tick();
-    expect(persistMatch).toHaveBeenCalledTimes(1);
-    expect(persisted[0].players.map((p) => p.rank)).toEqual([2, 2]);
+    expect(h.r.abandoned).toBe(true);
+    expect(persistMatch).not.toHaveBeenCalled(); // nothing was played out: nothing is recorded
+  });
+
+  it('a player who comes back to a paused stall finds it as it was and gets a full second before the next tick', async () => {
+    const h = await table({ level: 3, n: 2 });
+    for (let i = 0; i < 5; i += 1) await playSecond(h, h.seats);
+    const before = JSON.stringify(h.r.state);
+    for (const s of h.seats) await h.drop(s.ws);
+    vi.setSystemTime(Date.now() + 90_000); // a minute and a half with nobody there (a deploy, a tunnel)
+    await h.tick();
+    expect(JSON.stringify(h.r.state)).toBe(before);
+    const back = await h.connect(user(1));
+    h.seats[0].ws = back;
+    expect(h.r.noHumanSince).toBeNull();
+    expect(back.last('state').state.tick).toBe(h.r.state.tick);
+    expect(h.ctx.alarmAt).toBeGreaterThanOrEqual(Date.now() + TICK_MS - 5); // not overdue: the tick comes a full second after the return
+    const tick = h.r.state.tick;
+    await h.tick();
+    expect(h.r.state.tick).toBe(tick + 1);
+    for (let i = 0; i < 3; i += 1) await playSecond(h, [h.seats[0]]);
+    expect(h.r.state.tick).toBe(tick + 4);
+  });
+
+  it('one player left alone keeps the clock running (only an EMPTY stall pauses)', async () => {
+    const h = await table({ level: 2, n: 2 });
+    const [a, b] = h.seats;
+    await h.drop(b.ws);
+    const tick = h.r.state.tick;
+    for (let i = 0; i < 6; i += 1) await playSecond(h, [a]);
+    expect(h.r.state.tick).toBe(tick + 6);
   });
 
   it('a 3 hour absence of both humans (the alarm only comes back afterwards) ends the room as abandoned: nothing is recorded', async () => {
@@ -621,6 +654,40 @@ describe('reconnect and absence', () => {
     expect(h.r.status).toBe('finished');
     expect(h.r.abandoned).toBe(true);
     expect(persistMatch).not.toHaveBeenCalled();
+  });
+
+  it('a player who leaves while holding dishes: the dishes go to a waiting customer or the bin, the seat is marked gone, nobody else is disturbed', async () => {
+    const h = await table({ level: 1, n: 2 });
+    const [a, b] = h.seats;
+    // run the stall with B only until B holds something (the greedy bot over the wire)
+    let guard = 0;
+    while (!h.r.state.players[b.id].hands.length && guard++ < 60) await playSecond(h, [b]);
+    expect(h.r.state.players[b.id].hands.length).toBeGreaterThan(0);
+    const held = h.r.state.players[b.id].hands.length;
+    const served = h.r.state.players[b.id].served;
+    const seq = h.r.seq;
+    await h.say(b.ws, { t: 'leave' });
+    const me = h.r.state.players[b.id];
+    expect(h.r.seq).toBeGreaterThan(seq); // the release is one broadcast state, like any action
+    expect(me).toMatchObject({ hands: [], left: true, at: null });
+    expect(me.served).toBeGreaterThanOrEqual(served);
+    const evTypes = a.ws.last('state').events.map((e) => e.type);
+    expect(evTypes).toContain('player-left');
+    expect(evTypes.filter((t) => t === 'serve' || t === 'discard').length).toBe(held);
+    expectInSync(h);
+    // A keeps the stall; B's seat still counts in the result with what B did
+    for (let i = 0; i < 3; i += 1) await playSecond(h, [a]);
+    expect(h.r.status).toBe('playing');
+  });
+
+  it('a client cannot send the leave action itself (it is the resignAction of the room): the allow-list refuses it', async () => {
+    const h = await table({ level: 1, n: 2 });
+    const [a] = h.seats;
+    const seq = h.r.seq;
+    await h.say(a.ws, { t: 'action', action: { type: 'leave', playerId: a.id } });
+    expect(a.ws.last('error').message).toBe('Invalid action.');
+    expect(h.r.seq).toBe(seq);
+    expect(h.r.state.players[a.id].left).toBeUndefined();
   });
 
   it('a player who leaves the running game: the other keeps the stall; when both leave the room is abandoned', async () => {
