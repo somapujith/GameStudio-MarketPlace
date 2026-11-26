@@ -1,7 +1,7 @@
 // Identical-camera screenshots of Tiffin Centre for before / after proofs.
 //
 //   node scripts/perf/tf-shot.mjs --base http://127.0.0.1:5770 --port 9816 --out docs/perf/tf-cpu --name after [--tier medium] [--hours 9,13,19.5] [--w 1280 --h 720 --dpr 1]
-//        [--customers] [--quality 72] [--no-lock]
+//        [--look x,y,z] [--level 1] [--hud] [--quality 72] [--no-lock]
 //
 // Starts the tutorial, pins the render scale to 1 and the clock to each hour in turn, waits for the env map and the lights to settle, and saves
 // <out>/<name>-h<hour>.jpg. With --customers it also shows the scene a few seconds after the tutorial spawns its first customer is NOT forced: use a
@@ -29,6 +29,7 @@ const tier = args.tier && args.tier !== true ? String(args.tier) : 'medium';
 const hours = String(args.hours || '9,13,19.5').split(',').map(Number);
 const level = +(args.level || 0);
 const wait = +(args.wait || 3) * 1000;
+const look = args.look && args.look !== true ? String(args.look).split(',').map(Number) : null;
 
 async function run() {
   const c = await launch({ port, w: W, h: H, gl: args.soft ? SOFT_FLAGS : GPU_FLAGS });
@@ -49,9 +50,16 @@ async function run() {
     await c.sleep(2500);
     // a fixed look: full resolution, no adaptation, the camera where the cook stands
     await c.ev('(() => { const g = window.__tiffin.scene.debug.gfx; g.holdAdaptation(1e6); g.setScale(1); return true; })()');
+    // the HUD and the tutorial card cover half of the picture: hide everything but the canvas (--hud keeps them)
+    if (!args.hud) await c.ev("document.querySelectorAll('.tc > *:not(canvas)').forEach((e) => { e.style.visibility = 'hidden'; }); true");
     for (const h of hours) {
       await c.ev(`window.__tiffin.scene.debug.setHour(${h}); true`);
       await c.sleep(wait);
+      if (look) {
+        // the head turns to a world point (x,y,z) and holds it for ~4 s: the street, the traffic
+        await c.ev(`window.__tiffin.scene.lookAt({ x: ${look[0]}, y: ${look[1]}, z: ${look[2]} }); true`);
+        await c.sleep(1800);
+      }
       // freeze the street animation's phase differences as far as possible: nothing to do, the shot is taken between frames
       const file = path.join(out, `${name}-h${String(h).replace('.', '_')}.jpg`);
       await c.shot(file, { jpeg: true, quality: +(args.quality || 72) });

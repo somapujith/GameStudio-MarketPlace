@@ -2,6 +2,7 @@
 // merged, vertex-coloured geometry (parts painted white take the per-instance tint) split in a body and an emissive "lights" part, drawn instanced:
 // the whole road costs about a dozen draw calls. Vehicles face +x (front = +x), origin on the ground in the middle of the wheelbase.
 import { BoxGeometry, CapsuleGeometry, CylinderGeometry, SphereGeometry, TorusGeometry, Matrix4, Quaternion, Euler, Vector3 } from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 const _m = new Matrix4();
 const _q = new Quaternion();
@@ -20,7 +21,13 @@ export function createVehicleKit(k) {
     for (let i = 0; i < uv.count; i++) uv.setXY(i, tintable, 0);
     list.push(g);
   };
-  const box = (l, w, h, d, hex, pos, rot, scl) => place(l, new BoxGeometry(w, h, d), hex, pos, rot, scl);
+  // Big panels (bodies, roofs, cabins) get softened edges: a bus or a scooter made only of hard-edged cubes reads as a toy brick, and the silhouette against the
+  // street is most of what you see of traffic. The small bits (struts, handles, lamps) stay sharp. The geometry is merged and instanced, so this costs triangles
+  // (a few thousand per vehicle type), never a draw call.
+  const box = (l, w, h, d, hex, pos, rot, scl) => {
+    const m = Math.min(w, h, d);
+    place(l, m >= 0.18 ? new RoundedBoxGeometry(w, h, d, 2, Math.min(0.12, m * 0.3)) : new BoxGeometry(w, h, d), hex, pos, rot, scl);
+  };
   const cyl = (l, rt, rb, h, seg, hex, pos, rot, scl) => place(l, new CylinderGeometry(rt, rb, h, seg), hex, pos, rot, scl);
   const sph = (l, r, hex, pos, scl, ws = 10, hs = 8) => place(l, new SphereGeometry(r, ws, hs), hex, pos, [0, 0, 0], scl);
   const cap = (l, r, len, hex, pos, rot, scl) => place(l, new CapsuleGeometry(r, len, 3, 8), hex, pos, rot, scl);
@@ -29,7 +36,20 @@ export function createVehicleKit(k) {
     cyl(l, r * 0.55, r * 0.55, w + 0.01, 10, '#9aa0a4', [x, y, z], [Math.PI / 2, 0, 0]);
   };
   const SKIN = ['#b98660', '#a8744e', '#8a5a3a', '#c4966c'];
-  const finish = (body, lights) => ({ body: body.length ? k.merge(body) : null, lights: lights.length ? k.merge(lights) : null });
+  /** Contact shading baked into the vertex colours: the lower part of a vehicle is darker (grounded, in the shade under the body), the roof is as painted. */
+  const grounded = (g) => {
+    const pos = g.attributes.position;
+    const col = g.attributes.color;
+    if (!col) return g;
+    for (let i = 0; i < pos.count; i++) {
+      const t = Math.min(1, Math.max(0, (pos.getY(i) - 0.08) / 1.1));
+      const f = 0.66 + 0.34 * t * t * (3 - 2 * t);
+      col.setXYZ(i, col.getX(i) * f, col.getY(i) * f, col.getZ(i) * f);
+    }
+    col.needsUpdate = true;
+    return g;
+  };
+  const finish = (body, lights, ground = true) => ({ body: body.length ? (ground ? grounded(k.merge(body)) : k.merge(body)) : null, lights: lights.length ? k.merge(lights) : null });
 
   const make = {
     /** three-wheeler: black lower body, white (tinted) cabin and canopy, driver in khaki */
@@ -172,13 +192,13 @@ export function createVehicleKit(k) {
       cap(b, 0.05, 0.3, '#ffffff', [0.0, 1.27, -0.235], [0, 0, -0.05]);
       cap(b, 0.04, 0.2, SKIN[0], [0.02, 1.02, 0.245], [0, 0, 0.05]);
       cap(b, 0.04, 0.2, SKIN[0], [-0.02, 1.02, -0.245], [0, 0, -0.05]);
-      return finish(b, []);
+      return finish(b, [], false);
     },
     walkerLeg() {
       const b = [];
       cap(b, 0.075, 0.62, '#ffffff', [0, -0.4, 0]);
       cyl(b, 0.065, 0.07, 0.07, 8, '#202020', [0.04, -0.82, 0]);
-      return finish(b, []);
+      return finish(b, [], false);
     },
   };
   return make;

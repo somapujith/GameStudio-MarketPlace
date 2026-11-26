@@ -58,7 +58,16 @@ async function gc(c) {
   }
   const u = await c.send('Runtime.getHeapUsage');
   const d = await c.send('Memory.getDOMCounters');
-  return { heapMB: +(u.usedSize / 1048576).toFixed(1), domNodes: d.nodes, jsListeners: d.jsEventListeners, documents: d.documents };
+  // the listeners on window and document, by type (a leaked effect shows up as a type that grows from cycle to cycle)
+  const lis = {};
+  for (const expr of ['window', 'document']) {
+    try {
+      const { result } = await c.send('Runtime.evaluate', { expression: expr });
+      const { listeners } = await c.send('DOMDebugger.getEventListeners', { objectId: result.objectId });
+      for (const l of listeners) lis[`${expr}.${l.type}`] = (lis[`${expr}.${l.type}`] || 0) + 1;
+    } catch { /* not available */ }
+  }
+  return { heapMB: +(u.usedSize / 1048576).toFixed(1), domNodes: d.nodes, jsListeners: d.jsEventListeners, documents: d.documents, listenersByType: lis };
 }
 
 const liveSummary = (ctxs) => {
@@ -103,7 +112,21 @@ async function run() {
     }
     const level = +(args.level ?? (mode === 'soak' ? 1 : 0));
     out.baseline = await gc(c);
-    if (mode === 'cycle') {
+    if (mode === 'route') {
+      // control: no game at all, only the hub's own routes (is the growth the game's, or the app shell's?)
+      const n = +(args.n || 5);
+      for (let i = 1; i <= n; i++) {
+        await c.ev("window.history.pushState({}, '', '/games/tiffin-centre'); window.dispatchEvent(new PopStateEvent('popstate')); true");
+        await c.sleep(2500);
+        await c.ev("window.history.pushState({}, '', '/play/tiffin-centre?tcdebug=1'); window.dispatchEvent(new PopStateEvent('popstate')); true");
+        await c.sleep(2500);
+        const after = await gc(c);
+        after.attachedNodes = await c.ev('document.querySelectorAll("*").length');
+        const row = { cycle: i, after };
+        out.cycles.push(row);
+        console.log(JSON.stringify(row));
+      }
+    } else if (mode === 'cycle') {
       const n = +(args.n || 5);
       for (let i = 1; i <= n; i++) {
         const t0 = Date.now();
@@ -117,6 +140,8 @@ async function run() {
         await c.ev("window.history.pushState({}, '', '/play/tiffin-centre?tcdebug=1'); window.dispatchEvent(new PopStateEvent('popstate')); true");
         await c.sleep(1500);
         const after = await gc(c);
+        after.attachedNodes = await c.ev('document.querySelectorAll("*").length');
+        after.canvases = await c.ev('document.querySelectorAll("canvas").length');
         const gl = await c.ev('(window.__glLive ? window.__glLive() : null)');
         const row = { cycle: i, readyMs, during: { geometries: during.geometries, textures: during.textures, programs: during.programs, ...liveSummary(during.contexts) }, after: { ...after, gl: liveSummary(gl) } };
         out.cycles.push(row);
@@ -138,6 +163,13 @@ async function run() {
         out.cycles.push(row);
         console.log(JSON.stringify(row));
       }
+    }
+    if (args.snapshot) {
+      // a V8 heap snapshot after the last cycle (open it in DevTools, or scripts/perf/tf-heap.mjs-style tooling): look for "Detached ..." nodes
+      const chunks = [];
+      c.on((d) => { if (d.method === 'HeapProfiler.addHeapSnapshotChunk') chunks.push(d.params.chunk); });
+      await c.send('HeapProfiler.takeHeapSnapshot', { reportProgress: false });
+      fs.writeFileSync(String(args.snapshot), chunks.join(''));
     }
     out.errors = c.logs.filter((l) => !/GL Driver|GPU stall|ReadPixels|AudioContext|api\/(config|me)|Failed to load resource|Program Info Log|X4000|X3595/.test(l)).slice(0, 6);
     return out;
