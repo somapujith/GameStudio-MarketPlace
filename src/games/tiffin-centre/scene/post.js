@@ -150,8 +150,8 @@ const DOF_FRAG = /* glsl */ `
     float rad = max(coc0, 0.0);
     if (rad < 0.4) { gl_FragColor = c0; return; }
     // the blur is at most a few pixels wide (uMax = H * 0.0036): 24 taps inside a 4 px radius is far more than it can show, so the tap count follows the radius
-    // (6 at the smallest blur, 24 at 10 px and more); the taps are explicit-LOD fetches (no screen-space derivatives in a loop)
-    float nTaps = clamp(rad * 2.4, 6.0, 24.0);
+    // (6 at the smallest blur, 24 at 13 px and more); the taps are explicit-LOD fetches (no screen-space derivatives in a loop)
+    float nTaps = clamp(rad * 1.8, 6.0, 24.0);
     for (int i = 0; i < 24; i++) {
       float fi = float(i);
       if (fi >= nTaps) break;

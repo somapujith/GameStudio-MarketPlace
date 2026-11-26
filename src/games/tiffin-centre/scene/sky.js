@@ -92,13 +92,15 @@ export function createSky({ clouds = 1, stars = true } = {}) {
     uNight: { value: 0 }, uStars: { value: 0 }, uCover: { value: 0.3 }, uGlow: { value: 0.5 }, uTime: { value: 0 }, uSunVis: { value: 1 }, uHaze: { value: 0.5 },
     uDisc: { value: 1 },
   };
-  const mk = (defines) => new ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: FRAG, defines, side: BackSide, depthWrite: false, depthTest: false, fog: false });
-  const material = mk({ CLOUD_OCT: clouds === 0 ? 0 : clouds === 1 ? 3 : 5, ...(stars ? {} : { NO_STARS: 1 }) });
+  // the visible dome is drawn LAST among the opaque objects with the depth test on (it sits at the far plane, so it only shades the pixels no geometry covered): drawn
+  // first with no depth test it ran the whole sky shader (gradient, sun glow, cloud noise) for every pixel of the screen, most of which the stall then painted over
+  const mk = (defines, last = false) => new ShaderMaterial({ uniforms, vertexShader: VERT, fragmentShader: FRAG, defines, side: BackSide, depthWrite: false, depthTest: last, fog: false });
+  const material = mk({ CLOUD_OCT: clouds === 0 ? 0 : clouds === 1 ? 3 : 5, ...(stars ? {} : { NO_STARS: 1 }) }, true);
   const envMaterial = mk({ CLOUD_OCT: 0, NO_STARS: 1 });
   const geo = new SphereGeometry(1, 40, 20);
   const mesh = new Mesh(geo, material);
   mesh.scale.setScalar(420);
-  mesh.renderOrder = -1000;
+  mesh.renderOrder = 1000; // after every other opaque draw (opaque renderOrders are small), before the transparent pass
   mesh.frustumCulled = false;
   mesh.name = 'sky';
 

@@ -9,6 +9,11 @@
 //           FXAA
 //   high    MSAA 4 HDR target + GTAO-lite + bloom + depth of field +      2048 PCF       4 bulbs + tube + 2 sodium   everything above + planar wet road, PMREM refreshed often
 //           grade + vignette + grain + chromatic fringe
+//
+// Runtime knobs (not 'more is better' values): fpsCap (frame cap), scaleMin (the lowest dynamic-resolution scale: 0.7 on medium / high so the picture is never
+// left blurry for a few fps, the tier is the lever after that), shadowEvery (the most frames between two redraws of the shadow map, see shadowEveryFor), the
+// model knobs (characters, bakedCustomers, flatScenery, customerMeshBudget, batchStatics: statics are merged on every tier now). deviceTweaks() trims 'high' on an
+// integrated GPU. Measured cost of each effect and what each tier gives on the dev laptop's integrated GPU: docs/perf/tf-gpu.md.
 export const QUALITY_ORDER = ['lite', 'low', 'medium', 'high'];
 
 export const QUALITY = {
@@ -32,14 +37,14 @@ export const QUALITY = {
     post: true, msaa: 0, nativeAA: false, fxaa: true, ao: false, dof: false, grain: true, bloomScale: 0.5,
     bulbLights: 2, tubeLight: true, lampLights: 1, shafts: true, clouds: 1, stars: true, reflect: 'fake', heat: true,
     envSize: 128, envInterval: 0.6, texSize: 256, birds: 4, decor: 1, normalMaps: true, shadowRadius: 2,
-    fpsCap: 0, scaleMin: 0.5, characters: 'medium', bakedCustomers: false, flatScenery: false, customerMeshBudget: 64, batchStatics: true, shadowEvery: 3,
+    fpsCap: 0, scaleMin: 0.7, characters: 'medium', bakedCustomers: false, flatScenery: false, customerMeshBudget: 64, batchStatics: true, shadowEvery: 3,
   },
   high: {
     pixelRatio: 1.75, shadow: 2048, bloom: true, particles: 640, vehicles: 12, walkers: 10, lights: true, shelfDetail: 1, wires: true,
     post: true, msaa: 4, nativeAA: false, fxaa: false, ao: true, dof: true, grain: true, bloomScale: 0.5,
     bulbLights: 4, tubeLight: true, lampLights: 2, shafts: true, clouds: 2, stars: true, reflect: 'planar', heat: true,
     envSize: 256, envInterval: 0.2, texSize: 512, birds: 8, decor: 1.4, normalMaps: true, shadowRadius: 3,
-    fpsCap: 0, scaleMin: 0.5, characters: 'high', bakedCustomers: false, flatScenery: false, customerMeshBudget: 64, batchStatics: false, shadowEvery: 2,
+    fpsCap: 0, scaleMin: 0.7, characters: 'high', bakedCustomers: false, flatScenery: false, customerMeshBudget: 64, batchStatics: true, shadowEvery: 2,
   },
 };
 
@@ -63,12 +68,12 @@ export function shadowEveryFor(cfg, dtAvg, current = 1) {
 /**
  * Tier overrides for the device in front of us (`caps` from capabilities.probeBrowser). A tier is designed for the machines Auto gives it to: 'high' is
  * Auto's pick only for a discrete GPU, where 4x MSAA on a half-float target is fine. A player who FORCES 'high' on an integrated GPU (an identified GPU that is
- * not discrete) would get 8 fps from that, so there it keeps every effect but trades the 4x MSAA for FXAA and caps the pixel ratio at 1.25 (the picture is
- * about as sharp, the frame is about twice as cheap). An unidentified GPU is left alone.
+ * not discrete) would get 8 fps from that, so there it keeps every effect but trades the 4x MSAA for FXAA, caps the pixel ratio at 1.1 and the shadow map at
+ * 1536 (the picture is about as sharp, the frame is about a third of the cost). An unidentified GPU is left alone.
  */
 export function deviceTweaks(caps) {
   if (!caps || !caps.renderer || caps.discreteGpu) return {};
-  return { high: { msaa: 0, fxaa: true, pixelRatio: 1.25 } };
+  return { high: { msaa: 0, fxaa: true, pixelRatio: 1.1, shadow: 1536 } };
 }
 
 /** Applies deviceTweaks to the (shared) tier table and returns a function that puts the original values back. */

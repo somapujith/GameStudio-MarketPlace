@@ -368,13 +368,13 @@ describe('device tweaks to the tier table', () => {
     expect(deviceTweaks({ renderer: '', discreteGpu: false })).toEqual({});
     expect(deviceTweaks({ renderer: 'NVIDIA GeForce RTX 3060', discreteGpu: true })).toEqual({});
     const igpu = deviceTweaks({ renderer: 'ANGLE (AMD, AMD Radeon(TM) Graphics)', discreteGpu: false });
-    expect(igpu.high).toEqual({ msaa: 0, fxaa: true, pixelRatio: 1.25 });
+    expect(igpu.high).toEqual({ msaa: 0, fxaa: true, pixelRatio: 1.1, shadow: 1536 });
     expect(igpu.medium).toBeUndefined();
   });
   it('applies to a table and restores it exactly', () => {
     const table = JSON.parse(JSON.stringify(QUALITY));
     const undo = applyDeviceTweaks({ renderer: 'Intel(R) UHD Graphics 620', discreteGpu: false }, table);
-    expect([table.high.msaa, table.high.fxaa, table.high.pixelRatio]).toEqual([0, true, 1.25]);
+    expect([table.high.msaa, table.high.fxaa, table.high.pixelRatio, table.high.shadow]).toEqual([0, true, 1.1, 1536]);
     expect(table.medium).toEqual(QUALITY.medium);
     undo();
     expect(table).toEqual(QUALITY);
