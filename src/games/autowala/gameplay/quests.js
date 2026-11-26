@@ -21,7 +21,7 @@ import { randomLook } from '../sim/autoModel.js';
 import { clearPassengers, seatPassengers } from './customers.js';
 import { DEFS, DEF_BY_ID, dailyJob, replayOf, tutorialPlan } from './quest-defs.js';
 import { abandonRun, createRun, currentStep, feedRun, isUnlocked, normalizeSave, rankOf, recordComplete, runView, tickRun } from './quest-engine.js';
-import { dateKey, shouldRebuildOffers } from './quest-math.js';
+import { createTrainTracker, dateKey, shouldRebuildOffers } from './quest-math.js';
 import { createBoardSign } from './quest-props.js';
 import { createQuestWorld } from './quest-world.js';
 
@@ -94,21 +94,8 @@ export function installQuests(ctx) {
 
   // ---- the live metro trains' velocity (for "beat the train") -------------------------------------------------------------
   const trains = world.metro?.trains || [];
-  const tracks = trains.map((t) => ({ x: t.x, z: t.z, vx: 0, vz: 0, t: 0 }));
-  let trackClock = 0;
-  const trackTrains = (dt) => {
-    trackClock += dt;
-    if (trackClock < 0.5) return;
-    for (let i = 0; i < trains.length; i++) {
-      const t = trains[i];
-      const k = tracks[i];
-      k.vx = (t.x - k.x) / trackClock;
-      k.vz = (t.z - k.z) / trackClock;
-      k.x = t.x;
-      k.z = t.z;
-    }
-    trackClock = 0;
-  };
+  const tracker = createTrainTracker(trains);
+  const tracks = tracker.tracks;
 
   // ---- the job board -------------------------------------------------------------------------------------------------------------
   const makeEnv = (seed) => ({
@@ -377,7 +364,7 @@ export function installQuests(ctx) {
       sample.jolt = v.jolt || 0;
       sample.distance = v.distance;
       sample.time = ctx.clock.time;
-      if (trains.length) trackTrains(dt);
+      if (trains.length) tracker.update(ctx.clock.sim ?? ctx.clock.time); // world time: the trains stand still behind a menu
 
       // the quest-log key (Q / the touch button / gamepad Back)
       if (input.pressed('quests')) {

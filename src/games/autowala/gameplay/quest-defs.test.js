@@ -8,7 +8,7 @@ import { createRouter } from '../world/routing.js';
 import { DAILY_POOL, DEFS, DEF_BY_ID, dailyJob, pickTrainRace, replayOf, tutorialPlan } from './quest-defs.js';
 import { createRun, feedRun, payout, tickRun } from './quest-engine.js';
 import { STEP_TYPES } from './quest-steps.js';
-import { dateKey, shouldRebuildOffers } from './quest-math.js';
+import { createTrainTracker, dateKey, shouldRebuildOffers } from './quest-math.js';
 import { rampHeight, prepareRamps } from './quest-ramps.js';
 
 let city;
@@ -344,6 +344,40 @@ describe('the job board is not re-rolled under the player', () => {
   it('but always builds when asked to (opening the board) or when there is nothing yet', () => {
     expect(shouldRebuildOffers({ ...base, force: true, boardOpen: true })).toBe(true);
     expect(shouldRebuildOffers({ ...base, empty: true, boardOpen: true })).toBe(true);
+  });
+});
+
+describe('createTrainTracker (the velocity Metro Rush plans with)', () => {
+  const trains = () => [{ x: 0, z: 0 }, { x: 100, z: 0 }];
+  it('measures speed over world time', () => {
+    const ts = trains();
+    const tr = createTrainTracker(ts);
+    let sim = 0;
+    tr.update(sim);
+    for (let i = 0; i < 90; i++) { // 1.5 s at 60 fps, train 0 moving +x at 14 m/s, train 1 standing
+      sim += 1 / 60;
+      ts[0].x += 14 / 60;
+      tr.update(sim);
+    }
+    expect(Math.hypot(tr.tracks[0].vx, tr.tracks[0].vz)).toBeCloseTo(14, 0);
+    expect(tr.tracks[1].vx).toBe(0);
+  });
+  it('a menu (world clock frozen) leaves the measured velocity alone instead of reading the trains as stopped', () => {
+    const ts = trains();
+    const tr = createTrainTracker(ts);
+    let sim = 0;
+    tr.update(sim);
+    for (let i = 0; i < 60; i++) { sim += 1 / 60; ts[0].x += 14 / 60; tr.update(sim); }
+    const before = tr.tracks[0].vx;
+    expect(before).toBeGreaterThan(10);
+    for (let i = 0; i < 600; i++) tr.update(sim); // ten seconds in the job board: sim time does not advance
+    expect(tr.tracks[0].vx).toBe(before);
+    for (let i = 0; i < 60; i++) { sim += 1 / 60; ts[0].x += 14 / 60; tr.update(sim); }
+    expect(tr.tracks[0].vx).toBeGreaterThan(10);
+  });
+  it('ignores junk times and a clock that goes backwards', () => {
+    const tr = createTrainTracker(trains());
+    expect(() => { tr.update(NaN); tr.update(undefined); tr.update(5); tr.update(2); tr.update(Infinity); }).not.toThrow();
   });
 });
 

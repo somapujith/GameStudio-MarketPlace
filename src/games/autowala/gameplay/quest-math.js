@@ -116,3 +116,37 @@ export const fmtClock = (s) => {
  */
 export const shouldRebuildOffers = ({ force = false, dirty = false, age = 0, stale = 25, empty = false, boardOpen = false } = {}) =>
   !!(force || empty || (!boardOpen && (dirty || age > stale)));
+
+/**
+ * Velocity of the live metro trains, measured over `every` seconds of WORLD time (the clock the trains run on, `clock.sim`), not of
+ * wall time: behind a menu the world clock stands still, so the trains do not move and a wall-clock window would read them as
+ * stopped (the job board would then never offer Metro Rush, which is accepted from the board). `update(now)` is called every frame.
+ * `trains` are { x, z } objects updated elsewhere; `tracks[i]` = { x, z, vx, vz }.
+ */
+export function createTrainTracker(trains, every = 0.5) {
+  const tracks = trains.map((t) => ({ x: t.x, z: t.z, vx: 0, vz: 0 }));
+  let acc = 0;
+  let last = NaN;
+  return {
+    tracks,
+    update(now) {
+      if (!Number.isFinite(now)) return;
+      if (Number.isNaN(last)) {
+        last = now;
+        return;
+      }
+      acc += Math.max(0, now - last);
+      last = now;
+      if (acc < every) return;
+      for (let i = 0; i < trains.length; i++) {
+        const t = trains[i];
+        const k = tracks[i];
+        k.vx = (t.x - k.x) / acc;
+        k.vz = (t.z - k.z) / acc;
+        k.x = t.x;
+        k.z = t.z;
+      }
+      acc = 0;
+    },
+  };
+}
