@@ -510,45 +510,34 @@
 
 /* ---- phone, sideways ------------------------------------------------------------------------------------------------------------ */
 @media (max-height: 520px) and (orientation: landscape) {
-  /* start: the title and the button on the left, controls and settings on the right */
+  /* start: the two-column layout itself is in landscape.css (every landscape window); these are the phone-height tightenings:
+     the whole right column (controls, settings, credit, footer) has to fit 360 px of height without scrolling */
   .aw .aw-start {
-    place-items: center;
     padding: var(--aw-st) var(--aw-sr) var(--aw-sb) var(--aw-sl);
-  }
-  .aw .aw-start .aw-start__card {
-    width: min(920px, 100%);
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    align-items: center;
-    gap: 14px 22px;
-  }
-  .aw .aw-start__hero,
-  .aw .aw-start__side {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    min-width: 0;
-  }
-  .aw .aw-start__side {
-    align-items: stretch;
-    gap: 8px;
   }
   .aw .aw-start .aw-start__cols {
     grid-template-columns: minmax(0, 1fr);
-    gap: 8px;
+    gap: 6px;
   }
   .aw .aw-start__box {
-    padding: 8px 12px 10px;
+    padding: 6px 12px 7px;
   }
   .aw .aw-start__box h2 {
-    margin-bottom: 4px;
+    margin-bottom: 3px;
   }
   .aw .aw-keys {
-    gap: 4px;
+    gap: 2px;
+  }
+  .aw .aw-start .aw-keys li {
+    font-size: 13px;
+    line-height: 1.25;
   }
   .aw .aw-start .aw-setrow {
-    margin-bottom: 6px;
+    margin-bottom: 3px;
+  }
+  .aw .aw-start .aw-setnote {
+    margin: 0 0 3px;
+    min-height: 2.7em;
   }
   .aw .aw-start .aw-start__tag {
     font-size: 14px;
@@ -560,16 +549,24 @@
   }
   .aw .aw-start .aw-credit {
     margin: 0;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0 8px;
   }
   .aw .aw-start__foot {
     margin-top: 0;
+    min-height: 44px;
   }
 
-  /* pause: thin header, list left, panel right, each scrolling on its own */
+  /* pause: the LIST owns the whole left column (all seven rows fit 360 px of height), the title and the panel stack on the right.
+     The body wrapper dissolves so the list, the header and the panel are grid cells of the root; each scrolls on its own. */
   .aw .aw-pm {
-    display: flex;
-    flex-direction: column;
-    padding: 0;
+    display: grid;
+    grid-template-columns: minmax(262px, 42%) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    column-gap: 16px;
+    padding: var(--aw-st) var(--aw-sr) var(--aw-sb) var(--aw-sl);
     overflow: hidden;
   }
   .aw .aw-pm__bg {
@@ -578,26 +575,29 @@
       var(--aw-sheet);
   }
   .aw .aw-pm__head {
-    flex: none;
+    grid-column: 2;
+    grid-row: 1;
+    min-width: 0;
     flex-wrap: nowrap;
     align-items: center;
     gap: 12px;
-    margin: 0;
-    padding: var(--aw-st) var(--aw-sr) 6px var(--aw-sl);
-    border-bottom: 1px solid var(--aw-line);
-    background: var(--aw-sheet);
+    margin: 0 0 8px;
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+  .aw .aw-pm__head h1 {
+    min-width: 0;
+    overflow: hidden;
   }
   .aw .aw-pm__head h1 span {
-    font-size: 34px;
+    font-size: 32px;
+  }
+  .aw .aw-pm__head p {
+    display: none;
   }
   .aw .aw-pm__body {
-    flex: 1 1 auto;
-    min-height: 0;
-    grid-template-columns: minmax(230px, 38%) minmax(0, 1fr);
-    gap: 16px;
-    align-items: stretch;
-    padding: 10px var(--aw-sr) var(--aw-sb) var(--aw-sl);
-    overflow: hidden;
+    display: contents;
   }
   .aw .aw-pm__list,
   .aw .aw-pm__right {
@@ -609,35 +609,81 @@
     touch-action: pan-y;
   }
   .aw .aw-pm__list {
+    grid-column: 1;
+    grid-row: 1 / -1;
+    gap: 3px;
+  }
+  .aw .aw-pm__right {
+    grid-column: 2;
+    grid-row: 2;
     gap: 8px;
   }
   .aw .aw-pm .aw-mrow {
-    min-height: 48px;
+    flex: none;
+    min-height: 44px;
     margin: 0;
-    padding: 4px 14px;
+    padding: 2px 14px;
+  }
+  .aw .aw-pm .aw-mrow__txt {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 9px;
   }
   .aw .aw-pm .aw-mrow__txt b {
-    font-size: 18px;
+    font-size: 17px;
+    letter-spacing: 0.05em;
   }
   .aw .aw-pm .aw-mrow__txt .aw-te {
-    font-size: 13px;
+    margin-top: 0;
+    font-size: 12.5px;
   }
   .aw .aw-pm .aw-pm__bar,
   .aw .aw-quest-menu .aw-quest-actions--bar {
     display: none;
   }
+  .aw .aw-pm .aw-pm__hints {
+    display: none;
+  }
   .aw .aw-pm .aw-panel {
     max-width: none;
+    padding: 10px 14px 12px;
+  }
+  .aw .aw-pm .aw-side__cell {
+    padding: 6px 14px 7px;
+  }
+  .aw .aw-pm .aw-side__cell b {
+    font-size: 19px;
+  }
+  .aw .aw-pm .aw-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .aw .aw-pm .aw-stat {
+    gap: 0;
+    padding: 5px 10px 6px;
+  }
+  .aw .aw-pm .aw-stat b {
+    font-size: 19px;
+  }
+  .aw .aw-pm .aw-legends {
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 10px 16px;
   }
   .aw .aw-slider {
-    flex: 0 0 130px;
-    width: 130px;
+    flex: 1 1 60px;
+    width: auto;
+    min-width: 60px;
+    max-width: 130px;
     height: 44px;
   }
   .aw .aw-slider u {
     width: 24px;
     height: 24px;
     margin-left: -12px;
+  }
+  .aw .aw-mrow--slider {
+    gap: 8px;
   }
 
   /* summary and hisaab: the title column on the left, the numbers on the right, the bar along the bottom */

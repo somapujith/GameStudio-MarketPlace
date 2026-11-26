@@ -5,8 +5,10 @@ import { START_KEYS, START_TOUCH } from './controls.js';
 import { focusFirst, useMenuInput } from './useMenuInput.js';
 import { useMenuLayout } from './menuLayout.js';
 import './sheet.css';
+import './landscape.css';
 import { QUALITIES, qualityLabel } from './menuNav.js';
 import { readSettings, saveSettings } from './settings.js';
+import { qualityInfo } from './PausePanels.jsx';
 import { formatRupees } from '../hud/hudLogic.js';
 import { useTouchMode } from '../hud/touchMode.js';
 import { VolumeIcon } from '../hud/icons.jsx';
@@ -22,7 +24,7 @@ export default function StartScreen({ game, snap, onStart, onHub }) {
     focusFirst(root.current, '[data-autofocus]');
   }, []);
   const p = game.ctx.profile.data;
-  const needsReload = st.quality !== null && st.quality !== snap.quality;
+  const info = qualityInfo(game, snap, st.quality);
 
   return (
     <div className="aw-menu aw-start" ref={root} data-layout={layout} role="dialog" aria-modal="true" aria-label="Autowala">
@@ -59,7 +61,7 @@ export default function StartScreen({ game, snap, onStart, onHub }) {
                   <li key={r.what}>
                     <span>
                       {r.keys.map((k) => (
-                        <kbd className="aw-key" key={k}>{k}</kbd>
+                        <span className="aw-key" key={k}>{k}</span>
                       ))}
                     </span>
                     <em>{r.what}</em>
@@ -90,7 +92,14 @@ export default function StartScreen({ game, snap, onStart, onHub }) {
                 ))}
               </div>
             </div>
-            {needsReload && <p className="aw-setnote">Quality changes apply after you reload the page.</p>}
+            <p className={`aw-setnote${info.reload ? ' is-warn' : ''}`} aria-live="polite">
+              {info.note}
+              {info.reload && (
+                <button type="button" data-nav className="aw-linkbtn aw-setnote__btn" onClick={() => window.location.reload()}>
+                  Reload now
+                </button>
+              )}
+            </p>
             <div className="aw-setrow">
               <span>Sound</span>
               <button

@@ -1,5 +1,9 @@
 // The right-hand content of the pause menu: the wallet / time / day card, BRIEF, STATS and the controls reference.
+// Key caps are <span class="aw-key">, never <kbd>: the hub's touch stylesheet hides every <kbd> on a coarse pointer, which emptied
+// the controls reference on phones.
 import { GAMEPAD, KEYBOARD, TOUCH } from './controls.js';
+import { bootQuality, qualityIsLive, runningQuality } from './settings.js';
+import { describeQuality } from './quality.js';
 import { StarShape } from '../hud/icons.jsx';
 import { formatClock, formatDistance, groupIndian, normalizeTrip } from '../hud/hudLogic.js';
 import { summaryDistance, summaryTime } from './sitting.js';
@@ -124,8 +128,10 @@ function Stat({ label, te, value, sub }) {
       <small>
         {label} <span className="aw-te">{te}</span>
       </small>
-      <b>{value}</b>
-      {sub && <em>{sub}</em>}
+      <div className="aw-stat__row">
+        <b>{value}</b>
+        {sub && <em>{sub}</em>}
+      </div>
     </div>
   );
 }
@@ -163,7 +169,7 @@ function Legend({ title, rows }) {
             {r.keys.map((k, i) => (
               <span key={k}>
                 {i > 0 && <i> / </i>}
-                <kbd className="aw-key">{k}</kbd>
+                <span className="aw-key">{k}</span>
               </span>
             ))}
           </span>
@@ -190,6 +196,29 @@ export function ControlsPanel({ touch = false }) {
         {!touch && <Legend title="TOUCH" rows={TOUCH} />}
       </div>
     </div>
+  );
+}
+
+/** What the quality choice means right now: the tier it runs at, what Auto does, and whether a reload is needed. */
+export function qualityInfo(game, snap, setting) {
+  return describeQuality({ setting, running: runningQuality(game, snap), live: qualityIsLive(game), booted: bootQuality(game) });
+}
+
+export function DisplayPanel({ info }) {
+  return (
+    <NotePanel title="DISPLAY" te="డిస్‌ప్లే">
+      <p>
+        Quality <b>{info.headline}</b>
+        {info.running ? (
+          <>
+            {' '}&middot; running at <b>{info.running}</b>
+          </>
+        ) : null}
+      </p>
+      {info.lines.map((l) => (
+        <p key={l}>{l}</p>
+      ))}
+    </NotePanel>
   );
 }
 

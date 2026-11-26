@@ -1,0 +1,43 @@
+/* Landscape-first layouts of the full-screen menus for EVERY landscape window (phone, tablet, desktop). sheet.css owns the phone
+   sheets (and menuLayout.test.js pins its media queries); this file is the wide-window part: the start screen becomes two columns
+   (title and button left, controls and settings right) instead of one tall column that does not fit a 360 px tall phone.
+   Selectors carry three classes so they win over the `display: contents` wrappers of sheet.css in any load order. */
+@media (min-width: 560px) and (orientation: landscape) {
+  .aw .aw-start {
+    place-items: center;
+    padding: var(--aw-st) var(--aw-sr) var(--aw-sb) var(--aw-sl);
+  }
+  .aw .aw-start .aw-start__card {
+    width: min(1040px, 100%);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+    gap: 14px clamp(18px, 3.4vw, 44px);
+  }
+  .aw .aw-start .aw-start__hero,
+  .aw .aw-start .aw-start__side {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+  }
+  .aw .aw-start .aw-start__side {
+    align-items: stretch;
+    gap: 8px;
+  }
+  .aw .aw-start .aw-start__cols {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .aw .aw-start .aw-title__en {
+    font-size: clamp(40px, min(6.4vw, 14vh), 100px);
+  }
+  .aw .aw-start .aw-title__te {
+    font-size: clamp(24px, min(3.6vw, 8vh), 46px);
+  }
+  .aw .aw-start .aw-go {
+    min-width: min(360px, 100%);
+    max-width: 100%;
+  }
+}

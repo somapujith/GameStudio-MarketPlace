@@ -8,7 +8,7 @@ import { paths } from '@/platform/paths.js';
 import { createRunClient } from '../gameplay/runApi.js';
 import { createSitting } from './menus/sitting.js';
 import { createSessionLog } from './menus/sessionLog.js';
-import { applyAudio, applyLanguage } from './menus/settings.js';
+import { applyAudio, applyLanguage, rememberBootQuality } from './menus/settings.js';
 import { setMuted } from '../audio/ctx.js';
 import StartScreen from './menus/StartScreen.jsx';
 import PauseMenu from './menus/PauseMenu.jsx';
@@ -27,6 +27,7 @@ export default function Menus({ game, snap }) {
     const sitting = createSitting(game, runs);
     const sl = createSessionLog(game);
     setKit({ runs, sitting, log: sl.log });
+    rememberBootQuality(game); // before any menu can change it: a reload is only needed when the choice moves away from this
     const s = game.ctx.profile.data.settings || {};
     setMuted(s.sound === false);
     applyLanguage(game);

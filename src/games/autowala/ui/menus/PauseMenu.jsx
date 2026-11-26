@@ -3,7 +3,7 @@
 // matching panel on the right. Original styling; navigation lives in useMenuInput (keys, gamepad) and the rows (mouse, touch).
 import { useEffect, useRef, useState } from 'react';
 import { CycleRow, NavRow, SliderRow, ToggleRow } from './MenuControls.jsx';
-import { BriefPanel, ControlsPanel, NotePanel, SideCard, StatsPanel } from './PausePanels.jsx';
+import { BriefPanel, ControlsPanel, DisplayPanel, NotePanel, SideCard, StatsPanel, qualityInfo } from './PausePanels.jsx';
 import { OPTION_ITEMS, ROOT_ITEMS, backPath, qualityLabel } from './menuNav.js';
 import { nextQuality, readSettings, saveSettings } from './settings.js';
 import { focusFirst, useMenuInput } from './useMenuInput.js';
@@ -58,9 +58,11 @@ export default function PauseMenu({ game, snap, sitting, log, onResume, onClockO
       panel = (
         <NotePanel title="PAUSED" te="విరామం">
           <p>The city keeps its engine running. Take your time.</p>
-          <p className="aw-note__keys">
-            <kbd className="aw-key">Esc</kbd> / <kbd className="aw-key">P</kbd> to jump back in
-          </p>
+          {!touch && (
+            <p className="aw-note__keys">
+              <span className="aw-key">Esc</span> / <span className="aw-key">P</span> to jump back in
+            </p>
+          )}
         </NotePanel>
       );
       break;
@@ -103,20 +105,13 @@ export default function PauseMenu({ game, snap, sitting, log, onResume, onClockO
       );
       break;
     case 'options/display': {
-      const needsReload = st.quality !== null && st.quality !== snap.quality;
+      const info = qualityInfo(game, snap, st.quality);
       rows = [
         <CycleRow key="q" index={0} label="QUALITY" te="నాణ్యత" value={qualityLabel(st.quality)} onCycle={(d) => { nextQuality(game, d); refresh(); }} />,
-        needsReload && <NavRow key="r" index={1} label="RELOAD NOW" te="రీలోడ్" tone="gold" onActivate={() => window.location.reload()} />,
+        info.reload && <NavRow key="r" index={1} label="RELOAD NOW" te="రీలోడ్" tone="gold" onActivate={() => window.location.reload()} />,
         <NavRow key="b" index={2} {...BACK} onActivate={back} />,
       ].filter(Boolean);
-      panel = (
-        <NotePanel title="DISPLAY" te="డిస్‌ప్లే">
-          <p>
-            Running at <b>{String(snap.quality || 'auto')}</b> quality. Auto picks the best setting for this device.
-          </p>
-          <p>A new quality setting is used after the page reloads.{needsReload ? ' Reload to see it now.' : ''}</p>
-        </NotePanel>
-      );
+      panel = <DisplayPanel info={info} />;
       break;
     }
     case 'options/controls':
@@ -169,7 +164,7 @@ export default function PauseMenu({ game, snap, sitting, log, onResume, onClockO
           {rows}
         </nav>
         <section className="aw-pm__right">
-          <SideCard snap={snap} />
+          {view === '' && <SideCard snap={snap} />}
           {panel}
         </section>
       </div>
@@ -178,12 +173,14 @@ export default function PauseMenu({ game, snap, sitting, log, onResume, onClockO
           {path.length ? 'BACK' : 'RESUME'}
         </button>
       </div>
-      <footer className="aw-pm__hints" aria-hidden="true">
-        <span><kbd className="aw-key">W</kbd><kbd className="aw-key">S</kbd> Move</span>
-        <span><kbd className="aw-key">Enter</kbd> Select</span>
-        <span><kbd className="aw-key">Esc</kbd> {path.length ? 'Back' : 'Resume'}</span>
-        <span><kbd className="aw-key">P</kbd> Resume</span>
-      </footer>
+      {!touch && (
+        <footer className="aw-pm__hints" aria-hidden="true">
+          <span><span className="aw-key">W</span><span className="aw-key">S</span> Move</span>
+          <span><span className="aw-key">Enter</span> Select</span>
+          <span><span className="aw-key">Esc</span> {path.length ? 'Back' : 'Resume'}</span>
+          <span><span className="aw-key">P</span> Resume</span>
+        </footer>
+      )}
     </div>
   );
 }
