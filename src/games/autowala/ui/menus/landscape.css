@@ -2,6 +2,14 @@
    sheets (and menuLayout.test.js pins its media queries); this file is the wide-window part: the start screen becomes two columns
    (title and button left, controls and settings right) instead of one tall column that does not fit a 360 px tall phone.
    Selectors carry three classes so they win over the `display: contents` wrappers of sheet.css in any load order. */
+/* A big screen (1080p and up) scales the full-screen menus with the HUD (--aw-ui-scale is written on .aw from the viewport height, see
+   scale.js: 1.0 at 720 px, 1.5 at 1080 px). Phones and small windows keep 1:1, they are tight on space already. */
+@media (min-height: 800px) and (min-width: 1000px) {
+  .aw .aw-menu,
+  .aw .aw-career-hisaab {
+    zoom: var(--aw-ui-scale, 1);
+  }
+}
 @media (min-width: 560px) and (orientation: landscape) {
   .aw .aw-start {
     place-items: center;

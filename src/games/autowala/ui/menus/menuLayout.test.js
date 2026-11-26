@@ -178,7 +178,8 @@ describe('sheet.css', () => {
 
 describe('landscape.css', () => {
   const css = read('landscape.css');
-  const top = blocks(css);
+  const all = blocks(css);
+  const top = all.filter((b) => b.head.startsWith('@media (min-width: 560px)'));
   it('makes the start screen two columns in every landscape window from 560 px wide, and only there', () => {
     expect(top).toHaveLength(1);
     expect(top[0].head).toBe('@media (min-width: 560px) and (orientation: landscape)');
@@ -190,6 +191,12 @@ describe('landscape.css', () => {
   });
   it('sizes the title from the viewport height too, so it never outgrows a 360 px tall phone', () => {
     expect(top[0].body).toMatch(/\.aw-title__en\s*{\s*font-size:\s*clamp\(40px, min\(6\.4vw, 14vh\), 100px\)/);
+  });
+  it('scales the menus with the HUD only on big screens, never on a phone or a small window', () => {
+    const big = all.find((b) => b.head.startsWith('@media (min-height: 800px)'));
+    expect(big.head).toBe('@media (min-height: 800px) and (min-width: 1000px)');
+    expect(big.body).toMatch(/\.aw \.aw-menu,\s*\.aw \.aw-career-hisaab\s*{\s*zoom:\s*var\(--aw-ui-scale, 1\)/);
+    expect(all).toHaveLength(2);
   });
 });
 
