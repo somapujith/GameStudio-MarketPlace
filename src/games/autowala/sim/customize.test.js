@@ -56,6 +56,7 @@ describe('buildAuto', () => {
       'dashAnchor', 'garlandAnchor', 'tailLampM', 'canopyGeometry', 'glass']) expect(ud[k], k).toBeTruthy();
     expect(ud.wheels).toHaveLength(2); // the front wheel, and both rear wheels as one spinning pair
     expect(ud.wheelParts).toHaveLength(2);
+    expect(ud.glassM.forceSinglePass).toBe(true); // a double-sided transparent plane would otherwise be drawn twice
     expect(ud.tailM).not.toBe(ud.tailLampM); // the game writes tailM every frame; the visible lamps are separate
     expect(t.userData.tailM).toBe(t.userData.tailLampM); // traffic keeps the original contract
   });

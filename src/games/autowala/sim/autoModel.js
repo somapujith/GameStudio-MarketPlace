@@ -333,6 +333,7 @@ export const autoGeometries = geometries;
 
 // materials that never change for traffic autos are shared between all of them
 let SHARED = null;
+// (the windscreen glass is ONE flat plane: the back-face pass of a double-sided transparent material would only draw nothing, so it is drawn in one pass)
 function sharedMaterials() {
   if (SHARED) return SHARED;
   SHARED = {
@@ -345,7 +346,7 @@ function sharedMaterials() {
     curtain: mat('#6b6046', { roughness: 0.85, metalness: 0, side: DoubleSide }),
     pane: new MeshStandardMaterial({ color: 0x0e1a24, roughness: 0.12, metalness: 0.55 }),
     flap: mat('#17141b', { roughness: 0.95, metalness: 0 }),
-    glass: new MeshStandardMaterial({ color: 0xbfe6f4, transparent: true, opacity: 0.38, roughness: 0.05, metalness: 0.6, side: 2 }),
+    glass: new MeshStandardMaterial({ color: 0xbfe6f4, transparent: true, opacity: 0.38, roughness: 0.05, metalness: 0.6, side: 2, forceSinglePass: true }),
     hl: new MeshBasicMaterial({ color: new Color('#fff4c8').multiplyScalar(2.2) }),
   };
   return SHARED;
@@ -391,7 +392,7 @@ export function buildAuto({ color = '#ffc400', player = false, driver = true, rn
   const flapM = M('flap', () => mat('#17141b', { roughness: 0.95, metalness: 0 }));
   const hlM = M('hl', () => new MeshBasicMaterial({ color: new Color('#fff4c8').multiplyScalar(2.2) }));
   const paneM = M('pane', () => new MeshStandardMaterial({ color: 0x0e1a24, roughness: 0.12, metalness: 0.55 }));
-  const glassM = M('glass', () => new MeshStandardMaterial({ color: 0xbfe6f4, transparent: true, opacity: 0.38, roughness: 0.05, metalness: 0.6, side: 2 }));
+  const glassM = M('glass', () => new MeshStandardMaterial({ color: 0xbfe6f4, transparent: true, opacity: 0.38, roughness: 0.05, metalness: 0.6, side: 2, forceSinglePass: true }));
   // the dark / trim parts: the player's rig colours them per vertex (dark chassis, pinstripe, banner board, beads); traffic autos keep the shared dark
   const matteM = hi ? mat('#ffffff', { roughness: 0.65, metalness: 0.25, vertexColors: true }) : M('dark', () => mat('#14181f', { roughness: 0.65, metalness: 0.25 }));
   const rect = (w, h, m) => new Mesh(new PlaneGeometry(w, h), m);
