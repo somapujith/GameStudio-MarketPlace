@@ -94,7 +94,7 @@ export default function PauseMenu({ game, snap, sitting, log, onResume, onClockO
       ];
       panel = (
         <NotePanel title="AUDIO" te="ధ్వని">
-          <p>Master volume and the sound switch apply right away. Effects, voices and music levels are saved for the sound systems that support them.</p>
+          <p>All four volumes and the sound switch apply right away and are saved on this device.</p>
           <p className="aw-credit">
             Voices are AI-generated
             <span className="aw-te">స్వరాలు AI తో తయారు చేయబడ్డాయి</span>

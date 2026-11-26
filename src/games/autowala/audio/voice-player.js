@@ -4,7 +4,7 @@
 //   file -> (no file) speechSynthesis te-IN voice if the browser has one -> (none) a short chime + the subtitle only.
 // Nothing here talks to any AI/voice API: the audio was generated offline by scripts/gen-voicelines.mjs.
 import { getAudio, isMuted } from './ctx.js';
-import { getBuses } from './sound-bus.js';
+import { getBuses, speechVolume } from './sound-bus.js';
 import { PERSONAS } from './voiceLines.js';
 import { spatial, estimateMs } from './voice-math.js';
 
@@ -200,7 +200,7 @@ export function createVoicePlayer({ base = VOICE_BASE, fetchFn = typeof fetch ==
           u.lang = teVoice.lang;
           u.pitch = persona?.speech?.pitch ?? 1;
           u.rate = persona?.speech?.rate ?? 1;
-          u.volume = sp ? Math.max(0.05, sp.gain) : 1;
+          u.volume = speechVolume(sp ? sp.gain : 1); // the browser's voice is outside Web Audio: apply the voices and master sliders by hand
           const guard = setTimeout(finishOnce, handle.ms * 2 + 2000);
           u.onend = u.onerror = () => {
             clearTimeout(guard);
