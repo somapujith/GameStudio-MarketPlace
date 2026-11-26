@@ -16,8 +16,9 @@ const rule = (css, sel) => {
   const re = new RegExp(`(?:^|\\n)${sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\{([^}]*)\\}`);
   return re.exec(css)?.[1] ?? '';
 };
+// a length in design pixels: calc(N * var(--u)), or var(--ud) (the stations dock, capped at 1.1 px so a full level-12 dock stays one row) / var(--ub) (the dish board, capped at 1.3 px)
 const u = (decl, prop) => {
-  const m = new RegExp(`(?:^|[;\\s])${prop}: calc\\((\\d+(?:\\.\\d+)?) \\* var\\(--u\\)\\)`).exec(decl);
+  const m = new RegExp(`(?:^|[;\\s])${prop}: calc\\((\\d+(?:\\.\\d+)?) \\* var\\(--u[db]?\\)\\)`).exec(decl);
   return m ? Number(m[1]) : null;
 };
 
@@ -35,6 +36,14 @@ describe('landscape first: one scale, one grid, no portrait phone layout', () =>
     expect(scale(3840, 2160)).toBe(1.7);
     expect(scale(390, 844)).toBe(1); // a narrow window does not grow the HUD
     expect(hud).toMatch(/\.tc-hud \{\s*--u: var\(--tc-u, 1px\);/);
+  });
+  it('the stations dock scales with --ud = min(--u, 1.1 px), its icons too, so a full level-12 dock is one row at 1080p', () => {
+    expect(rule(hud, '.tc-hud')).toContain('--ud: min(var(--u), 1.1px);');
+    expect(rule(hud, '.tc-hud')).toContain('--ub: min(var(--u), 1.3px);'); // the dish board: a 13-dish board stays under two thirds of a 1080p screen
+    expect(rule(hud, '.tc-hud-chips')).toContain('--tc-hud-u: var(--ub);');
+    expect(rule(hud, '.tc-hud-dockwrap')).toContain('--tc-hud-u: var(--ud);');
+    expect(rule(hud, '.tc-hud-slot')).toMatch(/width: calc\(44 \* var\(--ud\)\)/);
+    expect(rule(hud, '.tc-hud-btn')).toMatch(/width: calc\(44 \* var\(--u\)\)/); // everything else follows the full scale
   });
   it('sizes are written in --u (the file is calc(N * var(--u)) throughout, not px)', () => {
     const body = hud.slice(hud.indexOf('.tc-hud {'));
@@ -93,8 +102,8 @@ describe('44 px touch targets', () => {
     });
   }
   it('the slim Dishes tab is a 28 px tab with a 44 px hit area', () => {
-    expect(rule(hud, '.tc-hud-board-toggle')).toMatch(/min-height: calc\(28 \* var\(--u\)\)/);
-    expect(hud).toMatch(/\.tc-hud-board-toggle::after \{ content: ''; position: absolute; inset: calc\(-8 \* var\(--u\)\) calc\(-4 \* var\(--u\)\); \}/);
+    expect(rule(hud, '.tc-hud-board-toggle')).toMatch(/min-height: calc\(28 \* var\(--ub\)\)/);
+    expect(hud).toMatch(/\.tc-hud-board-toggle::after \{ content: ''; position: absolute; inset: calc\(-8 \* var\(--ub\)\) calc\(-4 \* var\(--ub\)\); \}/);
   });
 });
 
