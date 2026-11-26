@@ -52,6 +52,16 @@ const INIT = `(() => {
   requestAnimationFrame(tick);
   let g = null;
   Object.defineProperty(window, '__autowala', { configurable: true, get: () => g, set: (v) => { g = v; if (v) window.__mark('game-start'); } });
+  // every shader program the renderer builds, with the moment and its cache key (what differs from its siblings says why it was needed)
+  R.programs = [];
+  const seenPrograms = new Set();
+  const watchPrograms = () => {
+    requestAnimationFrame(watchPrograms);
+    const G = window.__autowala; const ps = G && G.gfx && G.gfx.renderer.info.programs;
+    if (!ps || ps.length === seenPrograms.size) return;
+    for (const p of ps) if (!seenPrograms.has(p.id)) { seenPrograms.add(p.id); R.programs.push({ t: performance.now(), id: p.id, name: p.name, key: String(p.cacheKey) }); }
+  };
+  requestAnimationFrame(watchPrograms);
   // an autopilot: follows a random walk of the road graph, re-places itself when stuck
   const P = (window.__pilot = { on: false, cur: -1, next: -1, prev: -1, seed: 12345, lastX: 0, lastZ: 0, lastT: 0, tele: 0, speedCap: 1 });
   const rnd = () => ((P.seed = (P.seed * 1664525 + 1013904223) >>> 0) / 4294967296);
@@ -99,7 +109,20 @@ function summarise(rec, t0, t1, grace = 0) {
   const longs = rec.longs.filter(([s]) => s >= t0 && s < t1);
   const loafs = rec.loafs.filter((l) => l.s >= t0 && l.s < t1).sort((a, b) => b.d - a.d);
   const lateLongs = longs.filter(([s]) => s >= t0 + grace * 1000);
+  // a program's kind: the shader id in its cache key ('physical', 'basic', 'sprite', 'points'...) and, for lit ones, the light counts (numbers after
+  // the precision / colour space tokens differ between light sets)
+  const kindOf = (p) => (p.key.split(',').find((tok) => /^[a-z]{3,}$/.test(tok) && !/^(highp|mediump|lowp|true|false|srgb|linear)/.test(tok)) || '?');
+  const firstOf = new Map();
+  for (const p of rec.programs || []) if (!firstOf.has(kindOf(p))) firstOf.set(kindOf(p), p);
+  const programs = (rec.programs || []).filter((p) => p.t >= t0 && p.t < t1).map((p) => {
+    const base = firstOf.get(kindOf(p));
+    const a = p.key.split(',');
+    const b = base ? base.key.split(',') : [];
+    const diff = base === p ? 'first of its kind' : a.map((v, i) => (v !== b[i] ? `#${i} ${String(b[i]).slice(0, 14)}->${String(v).slice(0, 14)}` : null)).filter(Boolean).slice(0, 4).join('; ');
+    return `${((p.t - t0) / 1000).toFixed(1)}s ${kindOf(p)}: ${diff}`;
+  });
   return {
+    programsCreated: programs.length, programList: programs,
     sec: +((t1 - t0) / 1000).toFixed(1), frames: counted.length, fps: +(1000 / (mean || 1)).toFixed(1), meanMs: +mean.toFixed(2),
     p95: q(ds, 0.95), p99: q(ds, 0.99), maxMs: +(ds[ds.length - 1] || 0).toFixed(1),
     hitches50: counted.filter((f) => f.d > 50).length, hitches100: counted.filter((f) => f.d > 100).length,
@@ -161,8 +184,20 @@ function heapTable(profile, seconds, top = 25) {
   return { totalMB: +(total / 1048576).toFixed(1), perSecKB: Math.round(total / 1024 / seconds), top: [...by.entries()].sort((a, b) => b[1] - a[1]).slice(0, top).map(([k, v]) => ({ fn: k, kbPerSec: Math.round(v / 1024 / seconds), pct: +((v / total) * 100).toFixed(1) })) };
 }
 
+async function launchRetrying() {
+  // under load (other agents' builds and test runs) Chrome sometimes needs longer than the launcher waits: try again
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await launch({ port, w: W, h: H, gl: args.soft ? SOFT_FLAGS : GPU_FLAGS });
+    } catch (err) {
+      if (attempt >= 3) throw err;
+      console.error(`Chrome did not start (attempt ${attempt}), retrying`);
+    }
+  }
+}
+
 async function run() {
-  const c = await launch({ port, w: W, h: H, gl: args.soft ? SOFT_FLAGS : GPU_FLAGS });
+  const c = await launchRetrying();
   const report = { label, tier: tier || 'auto', viewport: `${W}x${H}@${DPR}`, base, scenarios: {} };
   try {
     await c.viewport(W, H, DPR, false);
@@ -215,6 +250,8 @@ async function run() {
     const gs = rec0.marks.find((m) => m[1] === 'game-start');
     const bootRange = summarise(rec0, 0, gs ? gs[0] : tReady, 0);
     report.bootPhase = { ...bootRange, loadToStartScreenMs: Math.round(tReady) };
+    const tClick = await mark('click');
+    if (gs) report.startScreen = summarise(await pull(), gs[0], tClick, 0);
     await c.ev("window.__autowala.debug.drive(null); document.querySelector('.aw-go').click(); true");
     await c.ev('window.__gfx = window.__autowala.gfx.renderer; true');
     if (scenarios.includes('boot')) {
@@ -269,6 +306,29 @@ async function run() {
       } else if (name === 'eval') {
         // experiments: `--eval file.js` is an async function body run in the page; its return value is printed (see docs/perf/aw-cpu.md)
         await phase('eval', async () => c.ev(`(async () => { ${fs.readFileSync(String(args.eval), 'utf8')} })()`), { ...opts, grace: 0, profile: false, heap: false });
+      } else if (name === 'shots') {
+        // the same fixed camera, hour and weather on every build: JPEGs to compare before / after (named <shots>/<label>-<view>.jpg)
+        const dir = String(args.shots || path.join(os.tmpdir(), 'aw-cpu-shots'));
+        const views = [
+          { id: 'dusk', hour: 17.6, weather: 0 },
+          { id: 'noon', hour: 12, weather: 0 },
+          { id: 'night', hour: 21.5, weather: 0 },
+          { id: 'rain-night', hour: 21.5, weather: 0.9 },
+        ];
+        await phase('shots', async () => {
+          await c.ev('window.__pilot.on = false; window.__autowala.debug.drive(null); true');
+          const info = await c.ev(`(() => { const G = window.__autowala; const g = G.world.city.poiById.garage.front; const e = G.world.city.edges[g.edge]; G.debug.teleport(g.x, g.z, Math.atan2(e.dx, e.dz)); return { x: g.x, z: g.z, h: Math.atan2(e.dx, e.dz) }; })()`);
+          const files = [];
+          for (const v of views) {
+            await c.ev(`(() => { const G = window.__autowala; const i = ${JSON.stringify(info)}; G.debug.hour(${v.hour}); G.debug.weather(${v.weather}); G.debug.cam({ x: i.x - Math.sin(i.h) * 9 + Math.cos(i.h) * 2.5, y: 4.2, z: i.z - Math.cos(i.h) * 9 - Math.sin(i.h) * 2.5, yaw: i.h, pitch: -0.12, fov: 62 }); })()`);
+            await c.sleep(v.weather ? 7000 : 4500); // the sky, the lamp lights and the rain settle
+            const file = path.join(dir, `${label}-${v.id}.jpg`);
+            await c.shot(file);
+            files.push(file);
+          }
+          await c.ev('window.__autowala.debug.cam(null); window.__autowala.debug.weather(0); true');
+          return files;
+        }, { ...opts, grace: 0, profile: false, heap: false });
       } else if (name === 'cycles') {
         // enter / leave the game N times in the same tab (client-side navigation): the heap and the renderer's memory must come back each time
         const n = +(args.cycles || 5);
@@ -370,7 +430,8 @@ if (args.json) fs.writeFileSync(String(args.json), JSON.stringify(row, null, 1))
 const f = (o) => Object.entries(o).map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' ');
 console.log(`== ${row.label}  tier=${row.tier} (now ${JSON.stringify(row.tierNow)})  ${row.viewport}`);
 console.log(`boot: ${JSON.stringify(row.boot)} steps=${JSON.stringify(row.bootSteps)}`);
-console.log(`bootPhase: ${f({ ...row.bootPhase, loafs: undefined })}`);
+console.log(`bootPhase: ${f({ ...row.bootPhase, loafs: undefined, programList: undefined })}`);
+if (row.startScreen) { const { loafs, programList, ...rest } = row.startScreen; console.log(`startScreen (game running, start menu up, before the click): ${f(rest)}`); for (const l of loafs.slice(0, 3)) console.log(`   LoAF @${l.at}s ${l.ms}ms: ${l.scripts.join(' | ')}`); }
 for (const l of row.bootPhase.loafs) console.log(`   LoAF @${l.at}s ${l.ms}ms: ${l.scripts.join(' | ')}`);
 if (row.bootProfile) {
   const b = row.bootProfile;
@@ -379,8 +440,9 @@ if (row.bootProfile) {
   console.log('   INCLUSIVE:'); for (const p of b.incl) console.log(`      ${String(p.ms).padStart(7)} ms ${String(p.pct).padStart(5)}%  ${p.fn}`);
 }
 for (const [name, s] of Object.entries(row.scenarios)) {
-  const { loafs, profile, alloc, sys, extra, mem, memBefore, memAfter, ...rest } = s;
+  const { loafs, profile, alloc, sys, extra, mem, memBefore, memAfter, programList, ...rest } = s;
   console.log(`-- ${name}: ${f(rest)}`);
+  if (programList && programList.length) { console.log(`   programs created in this phase (${programList.length}):`); for (const p of programList.slice(0, 40)) console.log(`      ${p}`); }
   if (mem) console.log(`   mem ${JSON.stringify(mem)}${memBefore ? ` before=${JSON.stringify(memBefore)} after=${JSON.stringify(memAfter)}` : ''}`);
   if (name === 'cycles' && Array.isArray(extra)) for (const r of extra) console.log(`   ${JSON.stringify(r)}`);
   else if (extra) console.log(`   extra ${JSON.stringify(extra, null, name === 'eval' ? 1 : 0)}`);

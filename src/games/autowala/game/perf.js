@@ -33,6 +33,7 @@ export function createFramePerf({ now = () => performance.now(), slowMs = 33, ri
   let lastPrograms = -1;
   let lastTextures = -1;
   let lastGeometries = -1;
+  let lastTotal = 0;
   let started = false;
 
   const nameSystem = (name) => {
@@ -62,6 +63,7 @@ export function createFramePerf({ now = () => performance.now(), slowMs = 33, ri
 
   const end = (counters) => {
     const total = now() - t0;
+    lastTotal = total;
     frames++;
     if (!started) {
       // the first frames are shader compiles and uploads, not steady state: keep them out of the averages (they stay in `slow`)
@@ -133,5 +135,10 @@ export function createFramePerf({ now = () => performance.now(), slowMs = 33, ri
     slow.length = 0;
   };
 
-  return { begin, lap, sys, end, nameSystem, report, reset, get slowCount() { return slowCount; } };
+  return {
+    begin, lap, sys, end, nameSystem, report, reset,
+    get slowCount() { return slowCount; },
+    /** The total time of the last finished frame (ms): the game's background work waits while this is high. */
+    get last() { return lastTotal; },
+  };
 }
