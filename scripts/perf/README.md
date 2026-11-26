@@ -27,3 +27,13 @@ Read the numbers like this:
 
 `lock.mjs` is a machine-wide mutex: every run takes it, so two benchmarks never share the GPU. `cdp.mjs` is the small DevTools client the scripts use
 (it also launches Chrome from `CHROME_PATH` or the usual install folders, and only ever kills the Chrome it started).
+
+## Autowala actors (customers, the player's auto)
+`aw-actors.mjs` counts the draw calls of the people and the player's auto, split into camera pass (`v`) and shadow pass (`s`) per scene object, and
+holds the quality tier from the very first frame (the renderer's frame-time sampler otherwise drops a busy machine to `low`, which has no shadow pass):
+
+```powershell
+node scripts/perf/aw-actors.mjs --base http://127.0.0.1:5724 --port 9771 --cmd suite --compact --out suite.json   # customers + auto default / customised / canopy + frame time
+node scripts/perf/aw-actors.mjs --base http://127.0.0.1:5724 --port 9771 --cmd shots --dir shots --label before   # fixed-look customers, auto finishes, workshop
+node scripts/perf/aw-actors.mjs --soft --no-lock --w 960 --h 540 --dpr 1 --cmd actors --near cam ...             # draw calls are the same on SwiftShader: no GPU lock needed
+```
