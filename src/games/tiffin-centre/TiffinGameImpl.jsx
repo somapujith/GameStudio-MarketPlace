@@ -36,6 +36,15 @@ function LoadBar({ progress }) {
   );
 }
 
+/** User Timing mark for the load timeline (docs/perf/tf-cpu.md, scripts/perf/tf-load.mjs). */
+const mark = (name) => {
+  try {
+    performance.mark(name);
+  } catch {
+    /* no User Timing */
+  }
+};
+
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' &&
   (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || document.documentElement.dataset.motion === 'reduced');
@@ -105,8 +114,10 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
     (async () => {
       // the audio code is its own chunk (the context itself only starts on the first gesture)
       // the web fonts load WHILE the scene builds (the painted banner and menu board repaint when they arrive); a device without WebGL 2 is told at once
+      mark('tc:impl-start');
       const fontsReady = loadFonts();
       const { createTiffinAudio } = await import('./audio/index.js');
+      mark('tc:audio-chunk');
       if (dead || !canvasRef.current || !wrapRef.current) return;
       audio = createTiffinAudio({ meId: session.meId });
       audioRef.current = audio;
@@ -131,6 +142,7 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
         return;
       }
       if (!s) return; // disposed while loading
+      mark('tc:scene-built');
       await fontsReady;
       if (dead) {
         s.dispose();
@@ -165,6 +177,7 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
       if (session.state) push({ state: session.state, events: [], tickAt: session.tickAt });
       s.start();
       setScene(s);
+      mark('tc:scene-started');
       // a console/screenshot handle: only in dev builds or with ?tcdebug=1 in the URL (a solo shift is client-side anyway, but there is no reason to hand it out)
       if (import.meta.env?.DEV || /[?&]tcdebug=1\b/.test(window.location.search)) window.__tiffin = { session, scene: s, audio };
     })().catch((err) => {

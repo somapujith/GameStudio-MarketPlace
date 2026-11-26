@@ -30,6 +30,15 @@ export { QUALITY, QUALITY_ORDER, pickQuality } from './quality.js';
 export { getGfxPref, setGfxPref, GFX_PREFS } from './capabilities.js';
 export { WebglUnavailableError } from './renderer.js';
 
+/** A User Timing mark (the load timeline in docs/perf/tf-cpu.md and scripts/perf/tf-load.mjs read the `tc:*` ones). Free when the browser has none. */
+const mark = (name) => {
+  try {
+    performance.mark(name);
+  } catch {
+    /* no User Timing */
+  }
+};
+
 const DEFAULT_HOUR = 9;
 const PIN_HOLD_S = 4; // a lookAt that is never released lets go by itself after this long
 const EDGE_MARGIN = 30; // px: where the edge hint sits inside the canvas border
@@ -47,7 +56,10 @@ export function createTiffinSceneAsync(canvas, opts = {}) {
 }
 
 function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContextLost, onContextRestored, onQuality } = {}, isAsync = false) {
-  const step = (key, p) => ({ label: LOAD_STEPS[key] || key, p });
+  const step = (key, p) => {
+    mark(`tc:step:${key}:${p}`);
+    return { label: LOAD_STEPS[key] || key, p };
+  };
   // the tier: an explicit one wins; 'auto' follows the player's Graphics setting, then the device probe
   const explicit = QUALITY_ORDER.includes(quality);
   const caps = probeBrowser();
@@ -107,6 +119,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
   let disposed = false;
   const parked = []; // actors built once out of sight so their shaders are compiled (and stay cached) before the first customer walks up
   let running = false;
+  let firstFrame = false;
   let raf = 0;
   let last = 0;
   let t = 0;
@@ -171,8 +184,14 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     raf = requestAnimationFrame(frame);
     if (!gfx.shouldRender(nowMs)) return; // the tier's frame cap (30 fps on lite)
     tick(nowMs);
-    if (batcher && !batcher.done && ++framesWithState > 40) batcher.step(5);
-    else warmShaders();
+    if (!firstFrame) {
+      firstFrame = true;
+      mark('tc:first-frame');
+    }
+    if (batcher && !batcher.done && ++framesWithState > 40) {
+      batcher.step(5);
+      if (batcher.done) mark('tc:batch-done');
+    } else warmShaders();
   };
   // the tab was hidden: nothing to draw, nothing to adapt to
   let wantRun = false;
@@ -242,7 +261,10 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
         extras: DISH_IDS.map((id) => () => models.buildDish(id, 'good')),
       });
     }
-    if (!warmer.done) warmer.step(3);
+    if (!warmer.done) {
+      warmer.step(3);
+      if (warmer.done) mark('tc:warm-done');
+    }
   };
   gfx.onChange(() => {
     warmer?.cancel();
@@ -254,6 +276,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     setState(state, tickAt) {
       if (state && !stateSeen) {
         stateSeen = true;
+        mark('tc:first-state');
         startBatcher();
       }
       lastTickAt = tickAt ?? performance.now();
