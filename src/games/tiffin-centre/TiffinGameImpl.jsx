@@ -10,6 +10,7 @@ import { Hud } from './ui/hud/index.js';
 import { CoachMark, PauseMenu, QuitConfirm, Results, StatusScreen } from './ui/menus/index.js';
 import { paths } from '@/platform/paths.js';
 import { lockGestures } from '@/lib/mobile.js';
+import { useGamePaused } from '@/platform/game/orientationContext.js';
 import { useKeepAwake } from './ui/hud/mobileUi.js';
 import { GAME_ID } from '@shared/tiffin-centre/catalog.js';
 import { clearSavedShift, useSession } from './session/index.js';
@@ -59,6 +60,9 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
   const [progress, setProgress] = useState({ p: 0, label: 'Lighting the stove...' });
   const navigate = useNavigate();
   const online = mode === 'online';
+  // The hub's orientation gate (platform/game/OrientationGate.jsx, manifest `orientation: 'landscape'`): true while a phone or tablet is held
+  // upright and the "turn your phone" screen covers this one. Nothing is torn down: the scene stops drawing, the sound stops, a local shift's clock is held.
+  const upright = useGamePaused();
 
   // The shift clock of a LOCAL session is held until the stall is on screen, and again whenever the 3D view is missing: a local
   // session starts ticking the moment it is created, so a slow first load (chunks, fonts, shaders, first frame) or a device without
@@ -79,7 +83,16 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
     if (gl) hold(); // WebGL missing, or the context was lost mid-shift
   }, [gl, hold]);
   useEffect(() => {
-    if (!gated || !scene || gl) return undefined;
+    if (upright) hold(); // a local shift stops ticking behind the "turn your phone" screen (an online table keeps running: the server owns its clock)
+  }, [upright, hold]);
+  // the render loop: stopped while upright, started again the moment the device is landscape (both are idempotent; `start` resets the loop's clock)
+  useEffect(() => {
+    if (!scene) return;
+    if (upright) scene.stop?.();
+    else scene.start?.();
+  }, [scene, upright]);
+  useEffect(() => {
+    if (!gated || !scene || gl || upright) return undefined; // upright: stay held until the device is landscape again
     let r2 = 0;
     const r1 = requestAnimationFrame(() => {
       r2 = requestAnimationFrame(() => {
@@ -93,7 +106,7 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
       cancelAnimationFrame(r1);
       cancelAnimationFrame(r2);
     };
-  }, [gated, scene, gl, session]);
+  }, [gated, scene, gl, session, upright]);
 
   // The scene + audio live exactly as long as the session. Every session notification feeds both.
   useEffect(() => {
@@ -205,10 +218,14 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
   }, []);
 
   useEffect(() => {
-    if (status === 'playing') audioRef.current?.startAmbience();
+    if (status === 'playing' && !upright) audioRef.current?.startAmbience();
     else audioRef.current?.stopAmbience();
-    audioRef.current?.setSpeechPaused?.(status !== 'playing');
-  }, [status, scene, audio]);
+    audioRef.current?.setSpeechPaused?.(status !== 'playing' || upright);
+  }, [status, scene, audio, upright]);
+  // upright: silence the effects too (an online table keeps sending events); the player's own mute choice comes back with landscape
+  useEffect(() => {
+    audioRef.current?.setMuted(muted || upright);
+  }, [muted, upright, audio]);
 
   const onMute = useCallback((next) => {
     setMuted(next);

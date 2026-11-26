@@ -10,6 +10,7 @@ import { knownRoomGame, lookupResult, resolveOnlineRoute } from '@/components/on
 import GameLoadScreen from '@/components/online/GameLoadScreen.jsx';
 import StatusPanel from '@/components/online/StatusPanel.jsx';
 import HubIcon from '@/platform/game/HubIcon.jsx';
+import { ManifestOrientationGate } from '@/platform/game/OrientationGate.jsx';
 import '@/styles/online.css';
 import '@/styles/store-rooms.css';
 
@@ -237,5 +238,11 @@ function Dispatch({ gameId, code }) {
   }
 
   const GamePage = page.Comp;
-  return <GamePage key={`${game.id}:${code}`} />;
+  // `orientation: 'landscape'` in the manifest (Tiffin Centre): upright phones and tablets get the "turn your phone" screen over the table, and
+  // the game screen is paused through the OrientationGate context; desktop and games without the field are untouched (platform/game/OrientationGate.jsx)
+  return (
+    <ManifestOrientationGate game={game} backTo={paths.game(game.id)}>
+      <GamePage key={`${game.id}:${code}`} />
+    </ManifestOrientationGate>
+  );
 }
