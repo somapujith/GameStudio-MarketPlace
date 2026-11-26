@@ -5,6 +5,11 @@
 // loading screen is still up; KHR_parallel_shader_compile (when the browser has it) lets the driver link them on other threads and compileAsync
 // resolves when they are READY, so the first real frame does not stall. Textures are uploaded the same way (renderer.initTexture).
 //
+// Measured on the dev laptop (integrated AMD Radeon, ANGLE / D3D11): a program's FIRST DRAW right after compileAsync resolved cost 25-30 ms of main
+// thread (four distinct programs = four stalls); programs whose first draw came ~5 frames after readiness cost ~1 ms. So the promise resolves
+// `settleFrames` (default 2) frames after the last program reports ready, and the real lever is the NUMBER of programs (use the census): at ~25 ms
+// each, 300 programs are seconds of main thread however they are spread.
+//
 //   const job = warmShaders(renderer, scene, camera, { budgetMs: 4, onProgress: (p) => setLoadBar(p.done / p.total) });
 //   await job.promise;                       // job.cancel() any time
 //   if (dev) console.log(formatCensus(programCensus(renderer)));
@@ -70,6 +75,7 @@ export function warmShaders(renderer, scene, camera, opts = {}) {
   const now = opts.now || (() => performance.now());
   const nextFrame = opts.nextFrame || (() => new Promise((r) => requestAnimationFrame(() => r())));
   const target = opts.targetScene || scene;
+  const settleFrames = opts.settleFrames ?? 2;
   const { reps, textures } = collectWarmupWork(scene, { include: opts.include });
   const queue = [];
   const pending = [];
@@ -122,6 +128,7 @@ export function warmShaders(renderer, scene, camera, opts = {}) {
       if (queue.length && !cancelled) await nextFrame();
     }
     if (!cancelled) await Promise.all(pending); // ready = linked: the first real frame will not stall on them
+    for (let i = 0; i < settleFrames && !cancelled && pending.length; i++) await nextFrame(); // let the driver finish its post-link work (see the note above)
     return { compiled, textures: uploaded, ms: now() - t0, cancelled, errors };
   })();
   return job;

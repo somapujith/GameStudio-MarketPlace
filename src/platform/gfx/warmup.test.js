@@ -88,8 +88,8 @@ describe('warmShaders', () => {
     expect(res.cancelled).toBe(false);
     expect(job.progress).toBe(1);
     // 6 jobs x 1.5 ms with a 4 ms budget: 3 per slice (the check is after each job) -> 2 frame yields at most
-    expect(frameCount).toBeLessThanOrEqual(3);
-    expect(frameCount).toBeGreaterThanOrEqual(1);
+    expect(frameCount).toBeLessThanOrEqual(5); // 2 slices + the 2 settle frames after the programs report ready
+    expect(frameCount).toBeGreaterThanOrEqual(3);
   });
   it('slices big scenes: never more than budget+1 job per frame', async () => {
     const s = new Scene();
@@ -147,6 +147,17 @@ describe('warmShaders', () => {
     r.compileAsync.mockImplementation(() => Promise.reject(new Error('link failed')));
     const res = await warmShaders(r, sceneOf(3), new PerspectiveCamera(), { nextFrame: async () => {}, textures: false }).promise;
     expect(res.errors).toContain('link failed');
+  });
+  it('settleFrames: after the programs report ready the promise waits that many frames (default 2; 0 = none)', async () => {
+    const run = async (settle) => {
+      let frames = 0;
+      const job = warmShaders(fakeRenderer(), sceneOf(3), new PerspectiveCamera(), { nextFrame: async () => { frames++; }, textures: false, budgetMs: 1e9, ...(settle === undefined ? {} : { settleFrames: settle }) });
+      await job.promise;
+      return frames;
+    };
+    expect(await run(0)).toBe(0);
+    expect(await run(3)).toBe(3);
+    expect(await run()).toBe(2);
   });
   it('an empty scene resolves immediately', async () => {
     const res = await warmShaders(fakeRenderer(), new Scene(), new PerspectiveCamera(), { nextFrame: async () => {} }).promise;

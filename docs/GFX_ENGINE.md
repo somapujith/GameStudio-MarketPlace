@@ -78,11 +78,11 @@ loop.start();
 One versioned key per game (`jalebi.gfx.v1.<game>`). Every storage touch is guarded: private mode / blocked storage / quota (retries once with fewer entries, then degrades to memory) / corrupt JSON (discarded and removed) / wrong version / malformed entries (dropped one by one). It never throws.
 
 ### calibrate.js
-- `createCalibration({ renderer \| load, gpu, tiers, viewport, maxMs (300), ... })` -> `{ run(): Promise<result>, cancel(), frame(ts) }`. rAF driven, cancellable, never rejects. Spread over frames: slices sized from the previous measurement and from the **display refresh** (a slice is ~3 ms at 144 Hz, 4 ms at 60 Hz), one tiny probe slice first, a "wake" phase (a taste of every test + a **fence** polled without blocking) so first-use driver costs and idle GPU clocks are paid before anything is timed, one slow slice is dropped and retried (two in a row = abort with a *non-confident* "lowest tier").
+- `createCalibration({ renderer \| load, gpu, tiers, viewport, maxMs (300), startMaxMs (500), ... })` -> `{ run(): Promise<result>, cancel(), frame(ts) }`. rAF driven, cancellable, never rejects. Timeline: six small JS build steps (one per frame) -> wait for the programs to be READY -> a **wake** phase (one program's first draw per frame, then a **fence** polled without blocking) -> measure. Two real-GPU lessons shaped it (dev laptop, ANGLE / D3D11): the first draw of each distinct program costs ~25-30 ms of MAIN THREAD even after `KHR_parallel_shader_compile` says ready (so it uses TWO programs and pays them in the wake phase), and a 1-pixel readback after a slice is bimodal (1.8 ms or 18 ms for the same work, it queues behind the compositor), so slices are timed with **`EXT_disjoint_timer_query_webgl2`** (GPU execution time; nothing blocks the main thread; the calls test uses `max(CPU submit, GPU)`). Slice size follows the display refresh (~3 ms at 144 Hz), the four tests are interleaved with up to 4 slices in flight and the follow-up slices sent together (two result latencies per test). Browsers without the extension fall back to blocking readbacks (two slow slices in a row = abort with a lowest-tier verdict) and the result is marked `confident: false`. `maxMs` bounds the measure phase; the start-up phases have their own bound because first-use stalls are real.
 - It measures `fillNsPerPx` (alpha-blended ALU-heavy layers at the real canvas size), `callUs` (up to 800 tiny meshes), `mtriMs` (a 100k-triangle mesh drawn repeatedly), `postNsPerPx` (a half-float 9-tap pass), each as `ms = overhead + slope * work` from 2-3 slices.
 - `estimateFrameMs(units, model, viewport, scale)` = `max(cpu, gpu) * 1.1` with `cpu = calls * callUs`, `gpu = fill + tris + post`. `recommendTier({ units, viewport, tiers, budgetMs, capTier })` picks the HIGHEST tier that fits `0.85 * budget` at scale >= 0.9, else the highest that fits at any scale, else the lowest at its floor. **Pass your game's own tier models** (`DEFAULT_TIER_MODELS` is a generic ladder): `{ pixelRatio, layers (shaded overdraw), calls (in simple-call equivalents: lit shadowed materials cost more than the test's MeshBasicMaterial), mtris, post (full-screen passes), scaleMin }`.
 - `shouldCalibrate({ gpu, memory, pref })` -> `{ run, reason }`: skipped for a player choice, a memory hit, software rendering, no WebGL2.
-- `chooseInitialTier({ gpu, calibration, memory, pref, tiers })` -> `{ tier, scale, source: 'pref' \| 'memory' \| 'calibration' \| 'class', lock, maxTier, reasons }`. Guarantee: an integrated GPU never starts on `high` unless the player or its own remembered history says so. An unfinished (aborted / timed out) benchmark may lower the class cap by one tier at most.
+- `chooseInitialTier({ gpu, calibration, memory, pref, tiers })` -> `{ tier, scale, source: 'pref' \| 'memory' \| 'calibration' \| 'class', lock, maxTier, reasons }`. Guarantee: an integrated GPU never starts on `high` unless the player or its own remembered history says so. A non-confident benchmark (aborted / timed out / readback-timed) may lower the class cap by one tier at most.
 
 ### governor.js
 `createGovernor(options)` -> `gov`. Feed it every rendered frame: `gov.frame(dtMs, cpuMs = -1, calls = -1, gpuMs = -1)` returns `CHANGE_NONE | CHANGE_SCALE | CHANGE_TIER`; read `gov.scale`, `gov.tier`, `gov.budgetMs`, `gov.refreshHz`, `gov.fpsCap`, `gov.stableMs`. Callbacks: `onScale(scale, info)`, `onTier(tier, info)` (`info.scale` = the scale to use with it), `onStable({ tier, scale })` (once per settled rung, after 8 s), `onTierFailed(tier)`, `onRefresh(hz)`.
@@ -97,6 +97,7 @@ One versioned key per game (`jalebi.gfx.v1.<game>`). Every storage touch is guar
 | `tierCost` | `1.7^i` | relative cost per tier (for the tier-up prediction) |
 | `failedTiers` | [] | tiers tier memory says failed here: never tried |
 | `warmupMs` 800, `windowMs` 400, `downRatio` 1.15, `severeRatio` 1.6, `upRatio` 0.9, `upHoldMs` 2500, `probeHoldMs` 5000, `tierUpHoldMs` 20000 | | see section 7 |
+| `gpuTimerBias` 1.25, `forgiveRatio` 0.75 | | the GPU timer reads ~20 % low against the frame (measured), so headroom estimates inflate it; a rung that failed twice is forgiven automatically when the frame time at that rung falls below 75 % of what it was when it failed |
 
 Other methods: `hold(ms)` (ignore the next frames: a rebuild, a level load), `discontinuity()`, `notifyLoadChange()` (forgive failed probes: new area, day/night), `setHints({ batteryLow, lowPower, saveData, thermal, capFps })` -> fps cap (30), `setRefreshHz(hz)`, `setTier(tier, { scale, lock })` (the player changed the setting), `setMaxTier()`, `markTierFailed()`, `stats()` (p50 / p95 / p99, counts, probe failures, history of every decision with its reason).
 
@@ -114,7 +115,7 @@ Other methods: `hold(ms)` (ignore the next frames: a rebuild, a level load), `di
 `createDynamicRes({ scale })` -> `{ setScale(s), apply(target), sizeOf(target), reset(target), bind(target), uniforms }`; `DYNRES_GLSL` (`dynUv(uv)`), `rewriteSamples(glsl, ['tColor', ...])`, `createDynPass({ fragment, uniforms, dyn })` -> `{ render(renderer, target \| null, dyn), uniforms, dispose() }`, `createBlit(dyn)` (present a dynamic target on the canvas).
 
 ### warmup.js
-- `warmShaders(renderer, scene, camera, { budgetMs 4, textures true, include, onProgress, targetScene })` -> `{ promise, cancel(), progress, stats }`. One representative object per distinct (material, object features: instancing / skinning / morph / vertex colours / uv channels / shadow flags) is compiled through `compileAsync` (so it uses `KHR_parallel_shader_compile` readiness) and every texture is uploaded with `initTexture`, at most `budgetMs` per frame; the promise resolves when the programs are READY (linked), not merely submitted.
+- `warmShaders(renderer, scene, camera, { budgetMs 4, textures true, include, onProgress, targetScene, settleFrames 2 })` -> `{ promise, cancel(), progress, stats }`. (Measured on the dev laptop: a program's first draw right after `compileAsync` resolved cost 25-30 ms of main thread, ~1 ms five frames later; hence `settleFrames`. At ~25 ms per program the real lever is the NUMBER of programs: use the census.) One representative object per distinct (material, object features: instancing / skinning / morph / vertex colours / uv channels / shadow flags) is compiled through `compileAsync` (so it uses `KHR_parallel_shader_compile` readiness) and every texture is uploaded with `initTexture`, at most `budgetMs` per frame; the promise resolves when the programs are READY (linked), not merely submitted.
 - `warmRender(renderer, scene, camera, { makeTarget })`: one real draw into a tiny target with frustum culling off, restoring everything: uploads every geometry and compiles the shadow-depth programs, which `compile()` cannot reach. Run it behind the loading screen.
 - `programCensus(renderer \| programs)` -> `{ total, byName, groups: [{ name, count, varying: [{ label, distinct, values }] }], nearDuplicates, rarelyUsed }` and `formatCensus(c)`. Reads `renderer.info.programs`; names the cache-key tokens that vary (numDirLights, mapUv, vertexColors, toneMapping ... and the feature / state bit masks). `materialCensus(scene)` is the static pre-pass: estimated program variants and shareable duplicate materials, no renderer needed.
 
@@ -217,6 +218,20 @@ out.render(renderer, null, dyn);
 ### 6.1 Calibration models: the one thing a game must supply
 `calibrate.js` is only as good as the tier table it is given. Give it your real per-tier cost (measured with `bench.mjs` or `renderer.info`): `layers` ~ shaded overdraw (3-4 for a lit scene with a shadow pass), `calls` = `renderer.info.render.calls` x a complexity factor (lit + shadowed materials cost ~2x a MeshBasicMaterial draw), `mtris` = `renderer.info.render.triangles / 1e6`, `post` = number of full-screen passes at full resolution equivalent (a bloom pyramid is ~1-1.5), `pixelRatio` = the tier's. Validate: `createCalibration(...).run()` then compare `result.recommended.estimates[tier].ms` with the measured frame time of that tier on the same machine: they should be within ~30 %. Fix the model, not the benchmark.
 
+Suggested STARTING models, derived from the playbook's measured draw calls and the tier tables (unvalidated against `estimates`: adjust `layers` first):
+
+| game / tier | pixelRatio | layers | calls (simple-call equiv.) | mtris | post | scaleMin |
+|---|---|---|---|---|---|---|
+| Tiffin lite | 1 | 1.5 | 190 | 0.10 | 0 | 0.6 |
+| Tiffin low | 1 | 2.5 | 240 (159 measured x 1.5) | 0.15 | 0 | 0.5 |
+| Tiffin medium | 1.25 | 3.5 | 700 (324 x 2.2: lit, shadowed) | 0.30 | 3 (HDR + bloom pyramid + FXAA) | 0.5 |
+| Tiffin high | 1.75 | 5 | 1000 (439 x 2.3) | 0.40 | 7 (MSAA 4 + AO + DOF + bloom) | 0.5 |
+| Autowala low | 1 | 2.5 | 450 | 0.25 | 0 | 0.5 |
+| Autowala medium | 1.25 | 3.5 | 800 | 0.35 | 2 (MSAA + bloom) | 0.5 |
+| Autowala high | 1.75 | 4.5 | 1000 | 0.45 | 2.5 | 0.5 |
+
+Pass them as an object keyed by tier id (`tiers: { lite: {...}, ... }`).
+
 ### 6.2 Governor knobs (`governor.js`)
 - **It never reaches 1.0 on a machine that should**: raise `upRatio` slightly, lower `upHoldMs`, or check `stats().probeFailures` (a rung that failed twice is frozen until `notifyLoadChange()` or 2 minutes of calm). Call `notifyLoadChange()` when the scene changes (a new area, night, a crowd).
 - **It steps down too eagerly**: `downRatio` (1.15) and `downWindows` (2 windows of 400 ms) are the debounce; a one-off hitch never counts (frames over `max(3.5 x median, 80 ms)` are excluded, `dt > 250 ms` is a discontinuity).
@@ -232,7 +247,8 @@ A remembered tier is trusted over the benchmark. If a release changes the cost o
 Closed-loop tests (`governor.test.js`) simulate a game whose cost depends on the governor's own decisions, with vsync quantisation:
 - a steady overload converges to the right rung in < 3 s, then makes at most two bounded, immediately-reverted probes, then re-probes at most once per ~2 minutes (7 simulated minutes checked);
 - a load that fits never changes anything (60 s); a noisy load inside the dead band is left alone;
-- load drops -> it climbs back to 1.0 (vsync-pinned: via probes, ~5 s per rung; with headroom visible: 2.5 s per rung);
+- load drops -> it climbs back to 1.0 (vsync-pinned: via probes, ~5 s per rung; with headroom visible: 2.5 s per rung); rungs that failed before are forgiven automatically when the load at that rung falls to 75 %;
+- on a display faster than the budget (144 Hz panel, 60 fps target) "fits" is judged on whole refresh intervals (14.3 ms of work lands on 20.8 ms, not 14.3), the case that made two ups fail on the real GPU;
 - one-off stalls, start-up shader compiles and tab switches change nothing;
 - CPU-bound (cpuMs, or no gain from two scale steps): tier steps down within 3 s and the scale is restored to 1;
 - draw calls over the tier budget while missing the frame budget: tier down in ~2 s; a fast machine with many calls but a held frame rate is never punished;
