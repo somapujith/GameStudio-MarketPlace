@@ -60,52 +60,121 @@ html.hg-playing { height: 100%; }
   .hg-game--phone .hg-boardwrap { --hg-avail-h: calc(100dvh - var(--hg-top) - var(--hg-oppH) - var(--hg-dock, 200px) - 26px); }
 }
 
+/* ============================================================ tablet, portrait (600-959px wide)
+   Not compact (pods above / below the board, chat card under it). The block around the board is taller than game.css budgets
+   (top pods + my wallet bar + the chat card + gaps + the safe-area strips), which pushed the chat card below the fold and made the
+   whole frame scroll. A bigger budget keeps the frame on one screen; the board is a little smaller, never clipped. */
+@media (min-width: 600px) and (max-width: 959px) and (orientation: portrait) {
+  .hg-game:not(.hg-game--compact) { --hg-rows: calc(392px + var(--safe-bottom, 0px)); }
+}
+
 /* ============================================================ landscape phone */
+/* A phone on its side (and any short landscape window): the board takes the full height on the left, one panel on the right.
+   Panel, top to bottom: [back | round + target | menu], the opponents as ONE horizontally scrolling strip of small cards, then
+   (pinned to the bottom, thumb reach) your wallet + the action dock. The frame is a 2-column grid; the table (opponents + board)
+   is `display: contents` so both of its children are grid items of the frame. */
 .hg-game--land {
   --hg-top: 0px; --hg-pad: 8px; --hg-vt: max(6px, var(--safe-top)); --hg-vb: max(6px, var(--safe-bottom));
-  --hg-rcol: clamp(184px, 28vw, 250px);
+  --hg-sideL: calc(env(safe-area-inset-left, 0px) + 8px); --hg-sideR: calc(env(safe-area-inset-right, 0px) + 8px);
+  --hg-panel-min: 264px; --hg-colgap: 10px;
   --hg-board: min(
     calc(100vh - var(--hg-vt) - var(--hg-vb)),
-    calc(100vw - 172px - var(--hg-rcol) - 20px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))
+    calc(100vw - var(--hg-sideL) - var(--hg-sideR) - var(--hg-panel-min) - var(--hg-colgap))
   );
-  display: grid; flex-direction: initial; align-items: stretch;
-  grid-template-columns: minmax(0, 1fr) var(--hg-rcol); grid-template-rows: minmax(0, 1fr); column-gap: 8px;
-  padding-top: var(--hg-vt); padding-bottom: var(--hg-vb);
+  --hg-rcol: calc(100vw - var(--hg-board) - var(--hg-sideL) - var(--hg-sideR) - var(--hg-colgap));
+  display: grid; flex-direction: initial; align-items: start; align-content: stretch;
+  grid-template-columns: var(--hg-board) minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); column-gap: var(--hg-colgap); row-gap: 6px;
+  padding: var(--hg-vt) var(--hg-sideR) var(--hg-vb) var(--hg-sideL);
 }
 @supports (height: 100dvh) {
   .hg-game--land {
     --hg-board: min(
       calc(100dvh - var(--hg-vt) - var(--hg-vb)),
-      calc(100vw - 172px - var(--hg-rcol) - 20px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))
+      calc(100vw - var(--hg-sideL) - var(--hg-sideR) - var(--hg-panel-min) - var(--hg-colgap))
     );
   }
 }
-/* the top bar dissolves: back + round sit above the opponents, the menu button above the wallet */
-.hg-game--land .hg-top { display: contents; }
-.hg-game--land .hg-top > .hg-roundbtn:first-child { position: absolute; z-index: 5; left: calc(env(safe-area-inset-left, 0px) + 8px); top: var(--hg-vt); }
-.hg-game--land .hg-top > .hg-roundbtn:last-child { position: absolute; z-index: 5; right: calc(env(safe-area-inset-right, 0px) + 8px); top: var(--hg-vt); }
-.hg-game--land .hg-top-mid {
-  position: absolute; z-index: 4; left: calc(env(safe-area-inset-left, 0px) + 60px); top: var(--hg-vt); min-height: 44px; justify-content: center; align-items: flex-start;
+.hg-game--land .hg-table { display: contents; }
+.hg-game--land .hg-boardcol { grid-column: 1; grid-row: 1 / span 3; align-self: center; width: var(--hg-board); }
+.hg-game--land .hg-boardwrap { width: var(--hg-board); }
+/* top row of the panel: back, "Round 1/20 · ₹50L", (connection), menu */
+.hg-game--land .hg-top {
+  grid-column: 2; grid-row: 1; display: flex; align-items: center; gap: 8px; width: auto; max-width: none; min-height: 44px; margin: 0; padding: 0;
 }
-.hg-game--land .hg-table-title, .hg-game--land .hg-mode, .hg-game--land .hg-goal-sep { display: none; }
-.hg-game--land .hg-goal { justify-content: flex-start; }
+.hg-game--land .hg-top > .hg-roundbtn { flex: none; }
+.hg-game--land .hg-top-mid { flex: 1 1 0; min-width: 0; align-items: flex-start; text-align: left; }
+.hg-game--land .hg-top-row { min-width: 0; }
+.hg-game--land .hg-table-title, .hg-game--land .hg-mode, .hg-game--land .hg-goal-sep, .hg-game--land .hg-top-mid .nr { display: none; }
+.hg-game--land .hg-goal { justify-content: flex-start; flex-wrap: nowrap; gap: 0 6px; overflow: hidden; white-space: nowrap; }
 .hg-game--land .hg-top-mid .hg-goal { padding-left: 0; border-left: 0; }
-.hg-game--land .hg-table {
-  grid-column: 1; grid-row: 1; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr) var(--hg-board); column-gap: 8px; align-items: center; padding: 0;
-}
+.hg-game--land .hg-top-end { flex: none; display: flex; align-items: center; gap: 6px; }
+/* opponents: one strip, scrolls sideways, cards snap; room above for the "Turn" pill that sits on a card's top edge */
 .hg-game--land .hg-pods {
-  grid-column: 1; grid-row: 1; align-self: stretch; display: flex; flex-direction: column; justify-content: center; gap: 5px; min-height: 0; padding: 50px 0 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none;
+  grid-column: 2; grid-row: 2; display: flex; flex-direction: row; align-items: stretch; gap: 6px; min-width: 0; margin: 0; padding: 10px 2px 4px; list-style: none;
+  overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; scroll-snap-type: x proximity; scrollbar-width: none; touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
 }
 .hg-game--land .hg-pods::-webkit-scrollbar { display: none; }
-.hg-game--land .hg-boardcol { grid-column: 2; grid-row: 1; width: var(--hg-board); }
-.hg-game--land .hg-boardwrap { width: var(--hg-board); }
+.hg-game--land .hg-pods > .hg-pod { flex: 1 0 132px; min-width: 132px; max-width: 220px; scroll-snap-align: start; }
+.hg-game--land .hg-pods.hg-pods--me { display: block; overflow: visible; padding: 0; touch-action: auto; }
 .hg-game--land .hg-bottom {
-  grid-column: 2; grid-row: 1; align-self: end; max-height: 100%; overflow-y: auto; overscroll-behavior: contain;
+  grid-column: 2; grid-row: 3; align-self: end; max-height: 100%; overflow-y: auto; overscroll-behavior: contain; min-width: 0;
   border: 1px solid var(--line-strong); border-radius: 18px; padding: 8px; gap: 6px;
 }
-.hg-game--land .hg-table { grid-column: 1; }
-/* the frame is a 2-column grid; the board's grid lives in .hg-table (column 1 of the frame is wider than the pods + board need) */
-.hg-game--land .hg-table { margin-left: auto; margin-right: 0; width: 100%; }
+
+/* tight landscape (<= 380px tall: 640x360, 568x320): drop what is optional (goal bars) and tighten rows so the panel needs no scrolling */
+@media (max-height: 380px) {
+  .hg-game--land { row-gap: 4px; --hg-vt: max(4px, var(--safe-top)); --hg-vb: max(4px, var(--safe-bottom)); }
+  .hg-game--land .hg-pods { padding-top: 9px; padding-bottom: 2px; }
+  .hg-game--land .hg-pod__goal { display: none; }
+  .hg-game--land .hg-pod[data-cell='side'] .hg-pod__btn { min-height: 44px; padding-block: 3px; }
+  .hg-game--land .hg-pod[data-cell='wallet'] .hg-pod__btn { min-height: 48px; padding-block: 3px; }
+  .hg-game--land .hg-bottom { padding: 6px; gap: 4px; }
+  .hg-game--land .cp-actions.is-dock .cp-btn--lg { min-height: 44px; }
+}
+
+/* ============================================================ sheets on a short landscape screen */
+/* Bottom sheets keep every pixel of the height (no safe-top gap, grab zone and header slimmer) so the body has room to scroll. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .hg-sheet-root { padding-top: 0; }
+  .hg-sheet { max-height: 100%; max-width: min(680px, 100%); border-radius: 18px 18px 0 0; }
+  .hg-sheet-root[data-variant="dialog"] { padding-block: max(8px, var(--safe-top)) max(8px, var(--safe-bottom)); }
+  .hg-sheet-root[data-variant="dialog"] .hg-sheet { max-height: 100%; border-radius: 22px; }
+  .hg-sheet-grab { height: 14px; }
+  .hg-sheet-head { padding-bottom: 6px; }
+  .hg-sheet-head h2 { font-size: 19px; }
+  .hg-sheet-x { top: 4px; right: 4px; }
+  .hg-sheet-body { padding: 2px 16px 12px; }
+  .hg-sheet-foot { padding: 8px 16px 10px; }
+}
+
+/* the heavy sheets, side by side instead of stacked (the screen is wide, not tall) */
+@media (orientation: landscape) and (max-height: 520px) and (min-width: 560px) {
+  /* trade: "You get" | "You give" */
+  .tx-sheet .tx-panes { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto; column-gap: 40px; align-items: stretch; }
+  .tx-sheet .tx-panes > .tx-swap { position: absolute; left: 50%; top: 26px; grid-row: auto; margin-left: -22px; }
+  .tx-sheet .tx-swap svg { transform: none; }
+  /* auction: the district and the bidders on the left, the sealed bid on the right */
+  .hg-sheet.hga { max-width: min(860px, 100%); }
+  .hga .hg-sheet-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); column-gap: 16px; align-content: start; align-items: start; }
+  .hga .hg-sheet-body > * { grid-column: 1; }
+  .hga .hg-sheet-body > .hga-form, .hga .hg-sheet-body > .hga-locked, .hga .hg-sheet-body > .hga-private { grid-column: 2; grid-row: 1 / span 4; }
+  /* game over: no mascot / trophy, a smaller podium, so the result is on screen without scrolling */
+  .hg-sheet-root .mo-over .auto-mascot, .hg-sheet-root .mo-over .mo-over-trophy { display: none; }
+  .hg-sheet-root .mo-over .mo-over-head { padding-top: 6px; }
+  .hg-sheet-root .mo-over .mo-over-title { font-size: 22px; margin-top: 0; }
+  .hg-sheet-root .mo-over .mo-podium { margin-top: 8px; }
+  .hg-sheet-root .mo-over .mo-pod.p1 .mo-pod__block { height: 40px; }
+  .hg-sheet-root .mo-over .mo-pod.p2 .mo-pod__block { height: 30px; }
+  .hg-sheet-root .mo-over .mo-pod.p3 .mo-pod__block { height: 22px; }
+}
+@media (orientation: landscape) and (max-height: 520px) {
+  /* debt */
+  .hg-debt-band { margin: 0 12px; padding: 8px 12px 8px 10px; gap: 10px; }
+  .hg-debt-ico { width: 40px; height: 40px; border-radius: 12px; }
+  .hg-debt-band h2 { font-size: 20px; }
+  .hg-debt .hg-sheet-body { padding-top: 8px; }
+}
 
 /* ============================================================ compact pods (portrait cards, landscape column, wallet bar) */
 .hg-game--compact .hg-pod { container-type: normal; grid-area: auto; align-self: auto; }
@@ -233,7 +302,7 @@ html.hg-playing { height: 100%; }
   border: 0; border-radius: 50%; background: transparent; color: var(--text-dim); touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 }
 @keyframes ct-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-.hg-game--land .ct-card { left: auto; width: calc(var(--hg-rcol, 220px) + 8px); }
+.hg-game--land .ct-card { left: auto; width: calc(var(--hg-rcol, 220px) + 8px); max-width: calc(100vw - 16px); }
 
 /* landscape: the three dock tools share a ~220px column: labels only, the chat button stays an icon */
 .hg-game--land .ad-tools { gap: 6px; }
