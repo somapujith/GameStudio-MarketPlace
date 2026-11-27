@@ -13,6 +13,7 @@
 import fs from 'node:fs';
 import { GPU_FLAGS, SOFT_FLAGS, launch } from './cdp.mjs';
 import { withBenchLock } from './lock.mjs';
+import { summarise } from './tf-load.mjs';
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, a, i, all) => {
@@ -151,18 +152,29 @@ async function run() {
       const minutes = +(args.minutes || 5);
       const every = +(args.sample || 30) * 1000;
       await startShift(c, level);
-      await c.ev("window.__botOn = true; (async () => { const m = window.__tiffin.bot; window.__botTimer = setInterval(() => { try { const s = window.__tiffin.session; if (!s || !s.state || s.status !== 'playing') return; const a = m(s.state, s.meId); if (a) s.dispatch(a); } catch (e) { window.__botErr = String(e); } }, 400); })(); true");
+      await c.ev("window.__botOn = true; (async () => { const m = window.__tiffin.bot; window.__botTimer = setInterval(() => { try { const s = window.__tiffin.session; if (s && (s.status === 'done' || s.status === 'closed')) { window.__restarts = (window.__restarts || 0) + 1; s.restart && s.restart(); return; } if (!s || !s.state || s.status !== 'playing') return; const a = m(s.state, s.meId); if (a) s.dispatch(a); } catch (e) { window.__botErr = String(e); } }, 400); })(); true");
       await c.ev(`window.__frames = []; (() => { let last = 0; const f = (n) => { if (last) window.__frames.push(n - last); last = n; requestAnimationFrame(f); }; requestAnimationFrame(f); })(); true`);
+      if (args.profile) {
+        await c.send('Profiler.enable');
+        await c.send('Profiler.setSamplingInterval', { interval: 1000 });
+        await c.send('Profiler.start');
+      }
       const t0 = Date.now();
       while (Date.now() - t0 < minutes * 60000) {
         await c.sleep(every);
         const s = await c.ev(SAMPLE);
         const g = await gc(c);
-        const fr = await c.ev(`(() => { const f = window.__frames.splice(0); const s = f.slice().sort((a, b) => a - b); return { n: f.length, mean: +(f.reduce((a, b) => a + b, 0) / Math.max(1, f.length)).toFixed(1), p99: s.length ? +s[Math.floor(s.length * 0.99)].toFixed(1) : null, over50: f.filter((d) => d > 50).length, state: window.__tiffin && window.__tiffin.session.state && { tick: window.__tiffin.session.state.tick, customers: window.__tiffin.session.state.customers.length, money: window.__tiffin.session.state.money }, botErr: window.__botErr || null }; })()`);
+        const fr = await c.ev(`(() => { const f = window.__frames.splice(0); const s = f.slice().sort((a, b) => a - b); return { n: f.length, mean: +(f.reduce((a, b) => a + b, 0) / Math.max(1, f.length)).toFixed(1), p99: s.length ? +s[Math.floor(s.length * 0.99)].toFixed(1) : null, over50: f.filter((d) => d > 50).length, state: window.__tiffin && window.__tiffin.session.state && { tick: window.__tiffin.session.state.tick, customers: window.__tiffin.session.state.customers.length, money: window.__tiffin.session.state.money }, botErr: window.__botErr || null, restarts: window.__restarts || 0 }; })()`);
         const row = { t: Math.round((Date.now() - t0) / 1000), geometries: s.geometries, textures: s.textures, programs: s.programs, ...g, frames: fr };
         out.cycles.push(row);
         console.log(JSON.stringify(row));
       }
+    }
+    if (args.profile && mode === 'soak') {
+      const { profile } = await c.send('Profiler.stop');
+      out.profile = summarise(profile);
+      const NL = String.fromCharCode(10);
+      console.log('CPU profile ' + out.profile.totalMs + ' ms (the whole soak); self time:' + NL + out.profile.self.map((x) => `  ${String(x.ms).padStart(8)} ms ${String(x.pct).padStart(5)}%  ${x.fn}`).join(NL));
     }
     if (args.snapshot) {
       // a V8 heap snapshot after the last cycle (open it in DevTools, or scripts/perf/tf-heap.mjs-style tooling): look for "Detached ..." nodes

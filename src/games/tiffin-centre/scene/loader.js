@@ -336,14 +336,27 @@ export function createProgramWarmer({ renderer, scene, camera, post = false, ext
     return hidden;
   };
 
+  /** Does the subtree hold a light? (three.js counts those twice when the subtree is compiled as an object of the scene: see compileOne.) */
+  const holdsLight = (root) => {
+    let found = false;
+    root.traverse((o) => {
+      if (o.isLight) found = true;
+    });
+    return found;
+  };
+
   const compileOne = (root, lights) => {
     if (!root || !renderer?.compile) return;
     const before = programCount();
     const t0 = now();
     const prev = renderer.getRenderTarget?.() ?? null;
+    // renderer.compile(object, camera, scene) gathers the lights of the scene AND of the object (it is made for an object that is not in the scene yet). A unit that is
+    // already in the scene and holds lights (the stall: 8, the street: 1) therefore counted them twice: its programs were built for 19 point lights, the scene really
+    // has 10, and the first frame rebuilt 24 of the heaviest programs from scratch (20 s on a cold, shared GPU). Such a unit is compiled through the whole scene instead.
+    const own = root !== scene && holdsLight(root);
     try {
       if (post && rt) renderer.setRenderTarget(rt);
-      withEverythingVisible(root, lights, () => renderer.compile(root, camera, scene));
+      withEverythingVisible(root, lights, () => (own ? renderer.compile(scene, camera) : renderer.compile(root, camera, scene)));
     } catch (err) {
       stats.errors++;
       if (stats.errors === 1) console.warn('[tiffin] shader warm-up chunk skipped', err);

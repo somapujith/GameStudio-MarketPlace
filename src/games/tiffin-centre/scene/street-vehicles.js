@@ -10,7 +10,9 @@ const _e = new Euler();
 
 export function createVehicleKit(k) {
   /** a primitive transformed into place and painted: add(list, geometry, colour, [x,y,z], [rx,ry,rz], [sx,sy,sz]) */
-  const place = (list, g, hex, pos, rot = [0, 0, 0], scl = [1, 1, 1]) => {
+  const place = (list, g0, hex, pos, rot = [0, 0, 0], scl = [1, 1, 1]) => {
+    // mergeGeometries wants every geometry indexed or none: RoundedBoxGeometry is not indexed, so everything is
+    const g = g0.index ? g0.toNonIndexed() : g0;
     _e.set(rot[0], rot[1], rot[2], 'YXZ');
     _q.setFromEuler(_e);
     _m.compose(new Vector3(pos[0], pos[1], pos[2]), _q, new Vector3(scl[0], scl[1], scl[2]));

@@ -286,6 +286,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
   // so no program compiles mid-shift (it restarts after a tier change: the programs differ per tier)
   let warmer = null;
   let warmFrames = 0;
+  let settleInfo = null; // { linked, builtByFirstRender, names }: what settleFirstFrame left for the first real frame
   let settledAtLoad = false; // the scene itself was compiled behind the loading screen (settleFirstFrame): only the extras (one of each dish) are left
   const warmShaders = () => {
     if (!stateSeen || (batcher && !batcher.done) || disposed) return;
@@ -479,6 +480,8 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     debug: {
       setHour: (h) => { hourOverride = h; },
       get gfx() { return gfx; },
+      /** What the load linked and what the first real frame still had to build (programs): see settleFirstFrame. */
+      get settle() { return settleInfo; },
       stall,
       street,
       sync,
@@ -554,9 +557,32 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
       yield sleep(25);
     }
     mark('tc:programs-ready');
+    // "ready" is not "finished": on ANGLE / D3D11 a program is completed by its first synchronous query (uniform / attribute tables), one after the other on the GPU
+    // process's main thread, 25 ms (warm shader cache) to 120 ms (cold) each: 168 programs were one 4 to 20 s task inside the hidden first render, a frozen page (and
+    // Chrome's "page unresponsive" bar). Doing the queries here, a slice at a time, costs the same wall time but the loading bar keeps moving and no task is longer than ~150 ms.
+    const progs = gfx.renderer.info.programs.slice();
+    for (let k = 0; k < progs.length; ) {
+      const tp = performance.now();
+      while (k < progs.length && performance.now() - tp < 40) {
+        try {
+          progs[k].getUniforms();
+          progs[k].getAttributes();
+        } catch {
+          /* a program that failed to link: the draw will show it */
+        }
+        k++;
+      }
+      yield step('shaders', 0.99 + 0.009 * (k / Math.max(1, progs.length)));
+    }
+    mark('tc:programs-primed');
     settledAtLoad = true;
+    const known = new Set(progs.map((x) => x.id));
     gfx.render(0.016); // uploads, the shadow-pass and post programs: behind the loading screen, not in the first frame
     mark('tc:first-render');
+    // what the first real frame still had to build (should be the shadow-pass and post programs only): kept for scene.debug.settle
+    const added = gfx.renderer.info.programs.filter((x) => !known.has(x.id));
+    settleInfo = { linked: progs.length, builtByFirstRender: added.length, names: added.map((x) => x.name || x.cacheKey?.slice(0, 40) || '?') };
+    mark(`tc:first-render-new-programs:${added.length}`);
   }
 
   // compile every shader the first frames will need now (stall, street, a customer, a cook, the post passes), not when the first customer walks up
