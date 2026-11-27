@@ -480,22 +480,30 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
     bgTimer = setInterval(background, 1000);
   };
 
-  // the workshop adds a spot light and two point lights to the scene: another light set. It is built when the player is about to use it:
-  // at the garage and slow or stopped (a pause there costs nothing; driving past at speed does not trigger it), or while the start menu is up
-  // (the auto starts parked at the garage), for the time of day they are in.
+  // the workshop adds a spot light and two point lights to the scene: another light set. It is built when the player is about to use it: while
+  // the start menu is up (the auto starts parked at the garage, nobody is playing), or when they stop at the garage for 3 s (not in the first
+  // 20 s of a session, and never while driving past), for the time of day they are in.
   const garageFront = garage?.front;
+  const bootEnd = performance.now();
   let workshopWarming = false;
   let garageClock = 0;
+  let parked = 0;
   ctx.addSystem({
     update(dt) {
-      if (!garageFront || !warmer.parallel || workshopWarming || !running || !stable()) return;
+      if (!garageFront || !warmer.parallel || workshopWarming || !running) return;
       garageClock -= dt;
       if (garageClock > 0) return;
+      const step = 0.5 - garageClock; // time since the last check
       garageClock = 0.5;
-      if (Math.hypot(v.x - garageFront.x, v.z - garageFront.z) > 60 || (state.menu !== 'start' && v.speed > 6)) return;
+      const atGarage = Math.hypot(v.x - garageFront.x, v.z - garageFront.z) < 40 && v.speed < 1;
+      parked = atGarage ? parked + step : 0;
+      const menuTime = state.menu === 'start' && performance.now() - bootEnd > 2000;
+      if (!menuTime && !(stable() && clock.time > 20 && parked >= 3)) return;
+      const set = lightSet(gfx.quality, { night: nightNow(), workshop: true, baseSpots });
+      if (warmer.has(set)) return;
       workshopWarming = true;
       warmer
-        .warm(lightSet(gfx.quality, { night: nightNow(), workshop: true, baseSpots }), idleOrTrickle)
+        .warm(set, idleOrTrickle)
         .catch(warnWarm)
         .then(() => { workshopWarming = false; });
     },
