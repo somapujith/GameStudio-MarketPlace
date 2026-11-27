@@ -55,3 +55,19 @@ node scripts/perf/aw-probe.mjs --base ... --cmd boot      # long tasks and slow 
 ```
 `--tune '{\"medium\":{\"chunk\":1024}}'` overrides tier settings before the page loads (`tier()` in render/renderer.js); `--scale`, `--lights` set `gfx.setScale` / the lamp light count; `--poi --hour --weather` pin the player and the clock.
 Draw-call counts do not depend on the GPU: `--soft --no-lock` (SwiftShader) gives exact `draws` / `glcalls` / `programs` and screenshots without queueing for the GPU. Frame times only mean something on the real GPU, and on a machine other people are using they wobble by +-30%: compare back to back.
+
+## Several runs in one lock hold, and interleaved A/B (aw-int)
+The bench lock is a queue shared by every stream: six separate `bench.mjs` runs can wait an hour, the same six in one hold take five minutes. `matrix.mjs` takes the lock once and runs any of the scripts above (they all take `--no-lock`) one after another; keep a hold under ~8 minutes (the lock is treated as abandoned after 10):
+
+```powershell
+node scripts/perf/matrix.mjs --script bench.mjs --common "--game autowala" --runs "--base http://127.0.0.1:5861 --label before | --base http://127.0.0.1:5863 --label after | --base http://127.0.0.1:5863 --tier low --label after-low"
+```
+
+The machine's speed drifts by 20-40 % over a minute, so two settings are only comparable when measured round-robin in the same page. `aw-ab.mjs` does that for one build: every variant is a snippet of JS run in the game page, applied for a few seconds per round, several rounds, and the median per variant is printed with the frame time, the CPU time of `gfx.render` and the GPU time of the frame (the game's own timer query):
+
+```powershell
+node scripts/perf/aw-ab.mjs --base http://127.0.0.1:5863 --port 9912 --tier medium --poi charminar --hour 19.2 --rounds 4 --variants "base|scale.7=gfx.setScale(0.7)|bloom0|shadow50|noshadow|lights0"
+```
+Presets (see `PRESETS` in the script): `base`, `scale.8/.6/.5`, `bloom0/bloom2`, `shadow50/shadow100/shadow1024/noshadow`, `lights0/1/2`, `notraffic`. `--soft --no-lock` checks the harness on SwiftShader (the numbers then mean nothing).
+
+`bench.mjs` / `aw-hitch.mjs` print the shared governor's state for Autowala (tier and scale at the end, its decisions, the calibration's units and per-tier estimates when it ran, and the game's own hitch counter `perf.report().hitches`: frames over 33 / 50 / 100 ms since 3 s after START).

@@ -59,6 +59,7 @@ const MEASURE = (seconds) => `(async () => {
 /** In the page: the tier / scale the game is on now and what the shared governor has decided so far (absent on a build without it). */
 const AW_STATE = `(() => { const g = window.__autowala; const f = g.gfx; const a = g.adaptive; const st = a && a.governor.stats();
   return { tier: f.quality, scale: f.scale, renderScale: f.renderScale == null ? null : +f.renderScale.toFixed(3), pr: f.renderer.getPixelRatio(), boot: window.__autowalaBoot && window.__autowalaBoot.ms,
+    hitches: g.perf && g.perf.report().hitches, // frames > 33 / 50 / 100 ms since 3 s after START (the game's own counter)
     gov: st ? { start: a.describe(), refreshHz: st.refreshHz, counts: st.counts, history: st.history.map((h) => h.kind + ' ' + h.from + '->' + h.to + ' @' + h.t), tierFail: st.tierFailures } : null,
     calib: a && a.calibration ? { ranMs: a.calibration.ranMs, mode: a.calibration.mode, confident: a.calibration.recommended && a.calibration.recommended.confident, units: a.calibration.units, refreshHz: a.calibration.refreshHz, rec: a.calibration.recommended && { tier: a.calibration.recommended.tier, scale: a.calibration.recommended.scale, est: a.calibration.recommended.estimates } } : null }; })()`;
 
@@ -101,7 +102,7 @@ async function run() {
     if (args.profile) profile = await c.cpuProfile(Math.min(6000, SEC * 1000));
     const m = await c.ev(MEASURE(SEC));
     const end = game === 'autowala' ? await c.ev(AW_STATE) : null;
-    const row = { label, game, tierAsked: tier || 'auto', viewport: `${W}x${H}@${DPR}`, soft: !!args.soft, loadMs, bootLongTasks: boot, ...extra, ...m, ...(end ? { endTier: end.tier, endScale: end.scale, endRenderScale: end.renderScale, endGov: end.gov, calib: end.calib } : {}), errors: c.logs.filter((l) => !/GL Driver|GPU stall|ReadPixels|AudioContext|api\/(config|me)|Failed to load resource/.test(l)).slice(0, 8) };
+    const row = { label, game, tierAsked: tier || 'auto', viewport: `${W}x${H}@${DPR}`, soft: !!args.soft, loadMs, bootLongTasks: boot, ...extra, ...m, ...(end ? { endTier: end.tier, endScale: end.scale, endRenderScale: end.renderScale, endGov: end.gov, calib: end.calib, playHitches: end.hitches } : {}), errors: c.logs.filter((l) => !/GL Driver|GPU stall|ReadPixels|AudioContext|api\/(config|me)|Failed to load resource/.test(l)).slice(0, 8) };
     if (args.shot) await c.shot(String(args.shot));
     return { row, profile };
   } finally {

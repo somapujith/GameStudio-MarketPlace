@@ -38,12 +38,23 @@ export function viewOf(canvas, win = typeof window !== 'undefined' ? window : nu
 }
 
 /**
+ * The benchmark's verdict is a prediction from a ~250 ms micro-benchmark on a busy machine; a start scale far below 1 (a blurry picture for the
+ * whole first seconds) is the costly way to be wrong. Keep the tier it chose but start no softer than `minScale`; the governor takes over after its
+ * start-up hold and lowers the scale in a second if the frame rate really needs it. Returns a copy; null stays null.
+ */
+export function sharpenStart(calibration, minScale = GFX.startScaleMin) {
+  const rec = calibration && calibration.recommended;
+  if (!rec || !(rec.scale < minScale)) return calibration || null;
+  return { ...calibration, recommended: { ...rec, scale: minScale, reasons: [...(rec.reasons || []), `start scale raised from ${rec.scale} to ${minScale}: the governor lowers it if it must`] } };
+}
+
+/**
  * What the governor is told. `handlers` is an object the caller fills in later (the governor exists before the renderer does):
  * { onScale(scale, info), onTier(tier, info), onStable(info), onTierFailed(tier) }.
  * A generator so the calibration can be awaited by the staged boot: `yield*` it; it yields the calibration promise (a synchronous drain
  * skips the wait and starts from the GPU class alone).
  */
-export function* setupQuality({ pref = 'auto', view, handlers = {}, storage, gpu: gpuIn = null, calibrate = runStandaloneCalibration, now } = {}) {
+export function* setupQuality({ pref = 'auto', view, handlers = {}, storage, gpu: gpuIn = null, calibrate = runStandaloneCalibration, now, calibrateTimeoutMs = 5000 } = {}) {
   const gpu = gpuForTiers(gpuIn || probeGameGpu() || classifyGpu({}), TIERS);
   const memory = createTierMemory({ game: 'autowala', storage, now }).get(gpu.key, viewportClass(view.w, view.h, view.dpr));
   const decision = shouldCalibrate({ gpu, memory, pref, tiers: TIERS });
@@ -51,10 +62,16 @@ export function* setupQuality({ pref = 'auto', view, handlers = {}, storage, gpu
   if (decision.run) {
     // (drainAsync awaits a yielded promise but does not hand its value back: keep the result in a variable)
     let res = null;
-    yield Promise.resolve()
-      .then(() => calibrate({ width: view.w, height: view.h, dpr: view.dpr, gpu, tiers: GFX.models }))
-      .then((r) => { res = r || null; }, () => { res = null; });
-    calibration = res;
+    // (a benchmark that never answers must not hold the loading bar for ever: the GPU class decides after `calibrateTimeoutMs`)
+    let timer = 0;
+    const timeout = new Promise((r) => { timer = setTimeout(r, calibrateTimeoutMs); });
+    yield Promise.race([
+      Promise.resolve()
+        .then(() => calibrate({ width: view.w, height: view.h, dpr: view.dpr, gpu, tiers: GFX.models }))
+        .then((r) => { res = r || null; }, () => { res = null; }),
+      timeout,
+    ]).then(() => clearTimeout(timer));
+    calibration = sharpenStart(res);
   }
   const aq = createAdaptiveQuality({
     game: 'autowala',
@@ -66,6 +83,10 @@ export function* setupQuality({ pref = 'auto', view, handlers = {}, storage, gpu
     storage,
     now,
     targetFps: 60,
+    // The governor reads the display refresh from the frame intervals. A loop that is NOT vsync-locked (a benchmark with the frame cap off, a
+    // busy page) can look like a 50 Hz display when its frames happen to take a steady 20 ms, and the budget would relax to 20 ms: 50 fps would
+    // pass as "fine". Nobody plays on a 50 Hz panel; 55 is the floor of what it may call a refresh rate.
+    governor: { minRefreshHz: 55 },
     scaleMin: GFX.scaleMin,
     tierCost: GFX.tierCost,
     callBudgets: GFX.callBudget,
@@ -139,3 +160,14 @@ export function autoStartTier(gpu, tiers = TIERS) {
 }
 
 export { tierAbove, tierBelow };
+
+/**
+ * Tier memory is written when the governor has been stable for 8 s. The first 8 s on the start screen are a parked auto in front of a garage:
+ * not what play costs (new tiles, traffic, rain). `canSave()` false drops those writes, so the next session does not start on a tier that only
+ * held while nothing happened. (adaptive.js calls `memory.set` through the object it also returns as `aq.memory`, so wrapping it here works.)
+ */
+export function guardMemoryWrites(aq, canSave) {
+  const set = aq.memory.set.bind(aq.memory);
+  aq.memory.set = (...a) => (canSave() ? set(...a) : undefined);
+  return aq;
+}

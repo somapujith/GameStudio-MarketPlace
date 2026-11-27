@@ -15,6 +15,7 @@ dynamicRes.js   resolution scaling with no realloc render into a sub-rect of tar
 warmup.js       no first-use stalls                compile shaders + upload textures under a per-frame budget; program census
 batch.js        fewer draw calls                   merge by material, freeze static, tile for culling, instance, dispose
 adaptive.js     the wiring                         gpu + memory + calibration + governor in one call; device hints (battery, data saver)
+webgl.js        is WebGL 2 there at all?           probeWebgl2() BEFORE the 3D chunks are imported (a throw-away canvas), webglFailureText({ native }) for the message
 index.js        barrel                             import { ... } from '@/platform/gfx'
 ```
 

@@ -13,7 +13,7 @@ import { createVehicle } from '../sim/vehicle.js';
 import { createInput } from './input.js';
 import { createChaseCamera } from './camera.js';
 import { DAY, GFX, QUALITY } from './config.js';
-import { autoStartTier, createSwitchableTimer, memoryPlan, setupQuality, viewOf } from './gfx-control.js';
+import { autoStartTier, createSwitchableTimer, guardMemoryWrites, memoryPlan, setupQuality, viewOf } from './gfx-control.js';
 import { createTierSwitch } from './tier-switch.js';
 import { abandonable, claimCanvas } from './claim.js';
 
@@ -55,6 +55,7 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {}, claim = null
   const handlers = {};
   const { aq, gpu, calibration } = yield* setupQuality({ pref: prefOf(chosen), view: viewOf(canvas), handlers });
   const gov = aq.governor;
+  guardMemoryWrites(aq, () => !state.menu); // (not from the start screen: see gfx-control.js)
   const gfx = createRenderer(canvas, {
     quality: aq.initial.tier,
     maxQuality: aq.initial.maxTier,
@@ -131,6 +132,7 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {}, claim = null
     const was = state.menu;
     state.menu = null;
     input.clearTaps();
+    if (was === 'start') perf.markPlay(); // the hitch counters (perf.report().hitches) start with the shift, after a grace of 3 s
     if (was) emit('menu', { name: null, was });
   };
   const prompts = new Map();
@@ -229,10 +231,13 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {}, claim = null
   // The frame body, called by the shared loop (platform/gfx/loop.js: rAF, tab-hidden pause, no giant dt after it, and it feeds the governor
   // this frame's time, the CPU time of the body, the draw calls and the GPU time of the frame).
   let sunNight = -1;
+  let renderMs = 0; // the last frame's time inside gfx.render (GL submission and every wait on the GPU in it)
+  let frameT0 = 0;
   const frame = (rawDt) => {
     const dt = Math.min(rawDt, MAXDT);
+    frameT0 = performance.now();
 
-    perf.begin();
+    perf.begin(rawDt * 1000);
     switcher.frame(); // a finished tier swap lands on a frame boundary, before anything of this frame is drawn
     if (!state.paused) simulate(dt);
     perf.lap(PHASE.sim);
@@ -258,7 +263,9 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {}, claim = null
       sunNight = night;
       gfx.setBloomThreshold(bloomThreshold(night));
     }
+    const tRender = performance.now();
     gfx.render(rawDt);
+    renderMs = performance.now() - tRender;
     perf.lap(PHASE.render);
     if (gov.fpsCap !== loop.maxFps) loop.setMaxFps(gov.fpsCap); // battery / data saver: 30 fps
 
@@ -271,6 +278,16 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {}, claim = null
     const info = gfx.renderer.info;
     const programs = info.programs ? info.programs.length : 0;
     perf.end({ programs, textures: info.memory.textures, geometries: info.memory.geometries });
+    jsMs = performance.now() - frameT0 - renderMs;
+  };
+  // What the governor reads as "the main thread's time": the game's own JS (simulation, world, camera, HUD), NOT the time inside gfx.render. A
+  // frame is CPU-bound for the governor when that JS is the limit (a tier cuts JS); the render call is a mix of GL submission and waiting for the
+  // GPU that the loop cannot tell apart, so the render scale is tried first and the governor's no-gain check moves the tier when pixels were not
+  // the cost (a draw-call-bound GPU). Fed to the governor through this thin wrapper instead of the loop's own cpu figure.
+  let jsMs = 0;
+  const loopGovernor = {
+    frame: (dtMs, _cpuMs, calls, gpuMs) => gov.frame(dtMs, jsMs, calls, gpuMs),
+    discontinuity: (ms) => gov.discontinuity(ms),
   };
 
   const snapshot = () => {
@@ -381,7 +398,7 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {}, claim = null
   };
 
   const gpuTimer = createSwitchableTimer(gfx.renderer.getContext());
-  const loop = createLoop({ render: (alpha, dt) => frame(dt), governor: gov, info: gfx.renderer.info, gpuTimer, maxDelta: 0.25 });
+  const loop = createLoop({ render: (alpha, dt) => frame(dt), governor: loopGovernor, info: gfx.renderer.info, gpuTimer, maxDelta: 0.25 });
   const stopHints = watchDeviceHints(gov);
   // a teleport (the workshop, a fast travel, the probes): new surroundings, a new shadow box, a frame that is not evidence about the load
   const teleport0 = vehicle.teleport.bind(vehicle);
@@ -395,7 +412,8 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {}, claim = null
     ctx, systems, vehicle, input, world, state, clock, profile, start, stop, resize, dispose, snapshot, on, emit, debug, gfx, rig, perf,
     // the governor, its start decision and the tier-swap controller (read by probes and the settings menu): game.adaptive.describe() is one line
     adaptive: {
-      aq, gpu, calibration, governor: gov, loop, timer: gpuTimer, switcher, describe: () => aq.describe(),
+      aq, gpu, calibration, governor: gov, loop, timer: gpuTimer, describe: () => aq.describe(),
+      get switcher() { return switcher; }, // (created further down, once the warm-up exists)
       /** Run the start-up calibration again on a throw-away context (probes: validate the tier cost models against measured frame times). */
       recalibrate: (models = GFX.models) => runStandaloneCalibration({ width: canvas.clientWidth, height: canvas.clientHeight, dpr: window.devicePixelRatio || 1, gpu, tiers: models }),
     },

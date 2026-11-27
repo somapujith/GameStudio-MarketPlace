@@ -60,7 +60,7 @@ export const ECON = {
  *  traffic / peds  live vehicles / pedestrians;  far  the camera's far plane in metres (the fog hides it: sky.setFogFloor)
  */
 export const QUALITY = {
-  low: { pixelRatio: 1, pixelBudget: 1.6, shadow: 1024, shadowInterval: 0.05, chunk: 512, bloom: false, bloomLevels: 0, fxaa: true, msaa: 0, traffic: 22, peds: 90, far: 1000 },
+  low: { pixelRatio: 1, pixelBudget: 2.1, shadow: 1024, shadowInterval: 0.05, chunk: 512, bloom: false, bloomLevels: 0, fxaa: true, msaa: 0, traffic: 22, peds: 90, far: 1000 },
   medium: { pixelRatio: 1.25, pixelBudget: 2.6, shadow: 2048, shadowInterval: 0.024, chunk: 1024, bloom: true, bloomLevels: 4, fxaa: true, msaa: 0, traffic: 36, peds: 170, far: 1300 },
   high: { pixelRatio: 1.75, pixelBudget: 5, shadow: 2048, shadowInterval: 0, chunk: 1024, bloom: true, bloomLevels: 5, fxaa: true, msaa: 0, traffic: 52, peds: 260, far: 1600 },
 };
@@ -73,12 +73,13 @@ export const QUALITY = {
  *  callBudget draw calls a frame (camera + shadow pass) a tier is designed for; over it while missing the frame budget = a tier down
  */
 export const GFX = {
+  startScaleMin: 0.85, // a calibration may not start the game softer than this (the governor lowers it later if it must)
   startHoldMs: 4000, // the governor ignores the first seconds of play (first uploads, background compiles)
   teleportHoldMs: 1500,
   memoryHoldMs: 6000,
   scaleMin: { low: 0.6, medium: 0.6, high: 0.7 },
   tierCost: { low: 1, medium: 1.8, high: 2.6 },
-  callBudget: { low: 160, medium: 300, high: 420 },
+  callBudget: { low: 150, medium: 250, high: 300 },
   models: {
     low: { pixelRatio: 1, layers: 2.5, calls: 450, mtris: 0.25, post: 0.4, scaleMin: 0.6 },
     medium: { pixelRatio: 1.25, layers: 3.5, calls: 800, mtris: 0.35, post: 1.4, scaleMin: 0.6 },

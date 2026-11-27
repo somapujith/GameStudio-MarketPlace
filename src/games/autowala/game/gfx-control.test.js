@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { classifyGpu, createTierMemory, viewportClass } from '@/platform/gfx';
 import { GFX } from './config.js';
-import { autoStartTier, createSwitchableTimer, memoryPlan, probeGameGpu, setupQuality, viewOf } from './gfx-control.js';
+import { autoStartTier, createSwitchableTimer, guardMemoryWrites, memoryPlan, probeGameGpu, setupQuality, sharpenStart, viewOf } from './gfx-control.js';
 
 const fakeStorage = () => {
   const m = new Map();
@@ -75,6 +75,12 @@ describe('setupQuality: where the game starts', () => {
       const out = await drive(setupQuality({ pref: 'auto', view, gpu: integrated(), storage: fakeStorage(), calibrate }));
       expect(out.aq.initial).toMatchObject({ tier: 'medium', source: 'class' });
     }
+  });
+
+  it('a benchmark that never answers is given up on, and the GPU class decides', async () => {
+    const out = await drive(setupQuality({ pref: 'auto', view, gpu: integrated(), storage: fakeStorage(), calibrate: () => new Promise(() => {}), calibrateTimeoutMs: 30 }));
+    expect(out.aq.initial).toMatchObject({ tier: 'medium', source: 'class' });
+    expect(out.calibration).toBe(null);
   });
 
   it('a synchronous drain (tests, scripts) skips the benchmark and still gets a tier', () => {
@@ -162,5 +168,43 @@ describe('small helpers', () => {
     expect(GFX.tierCost.medium).toBeLessThan(GFX.tierCost.high);
     expect(GFX.callBudget.low).toBeLessThan(GFX.callBudget.medium);
     expect(GFX.models.low.pixelRatio).toBeLessThanOrEqual(GFX.models.medium.pixelRatio);
+  });
+});
+
+describe('guardMemoryWrites', () => {
+  it('drops the memory writes while the game says not to save, and keeps them otherwise', async () => {
+    const storage = fakeStorage();
+    const gpu = integrated();
+    const { aq } = await drive(setupQuality({ pref: 'auto', view, gpu, storage, calibrate: async () => null }));
+    let ok = false;
+    guardMemoryWrites(aq, () => ok);
+    const vp = viewportClass(view.w, view.h, view.dpr);
+    aq.memory.set(gpu.key, vp, { tier: 'medium', scale: 0.9 });
+    expect(aq.memory.get(gpu.key, vp)).toBe(null);
+    ok = true;
+    aq.memory.set(gpu.key, vp, { tier: 'medium', scale: 0.9 });
+    expect(aq.memory.get(gpu.key, vp)).toMatchObject({ tier: 'medium', scale: 0.9 });
+  });
+});
+
+describe('sharpenStart', () => {
+  it('raises a soft start scale to the floor, keeps the tier, and says so', () => {
+    const cal = { ok: true, recommended: { tier: 'low', scale: 0.6, confident: true, reasons: ['low only fits at scale 0.6'] } };
+    const out = sharpenStart(cal, 0.85);
+    expect(out.recommended).toMatchObject({ tier: 'low', scale: 0.85, confident: true });
+    expect(out.recommended.reasons.at(-1)).toContain('raised from 0.6 to 0.85');
+    expect(cal.recommended.scale).toBe(0.6); // the input is not touched
+  });
+  it('leaves a sharp start and a missing result alone', () => {
+    const cal = { recommended: { tier: 'medium', scale: 0.9, reasons: [] } };
+    expect(sharpenStart(cal, 0.85)).toBe(cal);
+    expect(sharpenStart(null)).toBe(null);
+    expect(sharpenStart({ recommended: null })).toEqual({ recommended: null });
+  });
+  it('the benchmark path applies it: a calibration that says low at 0.5 starts low at the game floor', async () => {
+    const calibrate = async () => ({ recommended: { tier: 'low', scale: 0.5, confident: true, reasons: [] } });
+    const out = await drive(setupQuality({ pref: 'auto', view, gpu: integrated(), storage: fakeStorage(), calibrate }));
+    expect(out.aq.initial).toMatchObject({ tier: 'low', source: 'calibration' });
+    expect(out.aq.initial.scale).toBeGreaterThanOrEqual(GFX.startScaleMin - 0.06); // the governor snaps it to its ladder
   });
 });
