@@ -44,10 +44,11 @@ export const MINOR_ACTIONS = [
  *     arrows:{w,h,x,y,gap}, leftW, rightW, h }
  * `leftW`/`rightW` are the widths (px, before safe-area insets) the wheel side / pedal side occupy, `h` the height from the bottom.
  */
-export function computeLayout({ w, h }, { size = 'M' } = {}) {
+export function computeLayout({ w, h }, { size = 'M', tray: wantTray = true } = {}) {
   const sc = SIZE_SCALE[size] || 1;
   const mode = orientationOf(w, h);
-  let btn = size === 'S' ? 48 : size === 'L' ? 56 : 52;
+  // landscape phones: 48 px buttons (44 px is the floor for a finger, 48 leaves room for a thumb that lands off-centre)
+  let btn = size === 'S' ? 48 : size === 'L' ? 56 : mode === 'land' && h <= 430 ? 48 : 52;
   if (mode === 'port' && w < 400) btn = Math.min(btn, 48); // keep a row of six inside a 360 px phone
   const mini = size === 'L' ? 44 : 40;
   const gap = 8;
@@ -56,9 +57,10 @@ export function computeLayout({ w, h }, { size = 'M' } = {}) {
   let gasW;
   let gasH;
   if (mode === 'land') {
-    wheel = clamp(Math.min(w * 0.28, h * 0.46), 116, 250) * sc;
-    gasW = clamp(h * 0.23, 68, 112) * sc;
-    gasH = clamp(h * 0.34, 104, 190) * sc;
+    // short and wide: the controls are sized from the HEIGHT (a thumb is a thumb) and stay low, so the road and the HUD keep the rest
+    wheel = clamp(Math.min(w * 0.26, h * 0.4), 112, 250) * sc;
+    gasW = clamp(h * 0.21, 64, 112) * sc;
+    gasH = clamp(h * 0.3, 96, 190) * sc;
   } else {
     wheel = clamp(w * 0.36, 112, 230) * sc;
     gasW = clamp(w * 0.2, 62, 104) * sc;
@@ -67,6 +69,7 @@ export function computeLayout({ w, h }, { size = 'M' } = {}) {
   let brakeW = gasW * 0.76;
   let brakeH = gasH * 0.68;
   const trayInline = mode === 'port' ? w >= 560 : h >= 560; // roomy: show the small row, else a "..." tray
+  const hasTray = wantTray !== false; // false: the HUD's More sheet carries those shortcuts, so the controls draw neither row nor tray
 
   const build = (f) => {
     const W = wheel * f;
@@ -88,36 +91,27 @@ export function computeLayout({ w, h }, { size = 'M' } = {}) {
     if (mode === 'land') {
       const gx = round(m + (GW - btn) / 2); // over the gas
       const bx = round(m + GW + gap + (BW - btn) / 2); // over the brake
-      const step = btn + 10;
-      const wide = w >= 780; // roomy: a third column beside the pedals; narrow: stack above them so the road stays free
-      const col = round(m + pedalsW + 14);
-      out.actions = wide
-        ? [
-            { id: 'boost', x: gx, y: round(m + GH + 10) },
-            { id: 'handbrake', x: bx, y: round(m + BH + 10) },
-            { id: 'interact', x: col, y: m },
-            { id: 'horn', x: col, y: m + step },
-            { id: 'camera', x: col, y: m + 2 * step },
-          ]
-        : [
-            { id: 'boost', x: gx, y: round(m + GH + 10) },
-            { id: 'horn', x: gx, y: round(m + GH + 10 + step) },
-            { id: 'handbrake', x: bx, y: round(m + BH + 10) },
-            { id: 'interact', x: bx, y: round(m + BH + 10 + step) },
-            // the camera is the least urgent: on a narrow screen it sits above the wheel, next to the "..." tray
-            { id: 'camera', x: round(m + btn + 4), y: round(m + W + 8), from: 'wheel' },
-          ];
-      if (trayInline) out.minor = { x: m, y: round(m + W + 8), from: 'wheel' };
-      let rightW = m + pedalsW + m;
+      const step = btn + 8;
+      // boost over the gas, drift over the brake, then ONE column of horn / interact / camera beside the pedals: the right thumb
+      // reaches all of it without leaving the corner, and the stack stays under ~half the screen height
+      const col = round(m + pedalsW + 8);
+      out.actions = [
+        { id: 'boost', x: gx, y: round(m + GH + 8) },
+        { id: 'handbrake', x: bx, y: round(m + BH + 8) },
+        { id: 'horn', x: col, y: m },
+        { id: 'interact', x: col, y: m + step },
+        { id: 'camera', x: col, y: m + 2 * step },
+      ];
+      if (hasTray && trayInline) out.minor = { x: m, y: round(m + W + 8), from: 'wheel' };
       let top = m + Math.max(GH, BH);
+      let rightW = m + pedalsW + m;
       for (const a of out.actions) {
-        if (a.from === 'wheel') continue;
         rightW = Math.max(rightW, a.x + btn + m);
         top = Math.max(top, a.y + btn);
       }
       const leftW = m + W + m;
-      const leftTop = m + W + 8 + (trayInline ? mini : btn);
-      return { ...out, leftW: round(leftW), rightW: round(rightW), h: round(Math.max(top, leftTop) + 6) };
+      const leftTop = m + W + (hasTray ? 8 + (trayInline ? mini : btn) : 0);
+      return { ...out, hasTray, leftW: round(leftW), rightW: round(rightW), h: round(Math.max(top, leftTop) + 6) };
     }
     // portrait: the actions are one row above the wheel and pedals, the pedal-side edge aligned
     const base = round(m + Math.max(W, GH) + 10);

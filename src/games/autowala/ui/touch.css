@@ -30,7 +30,7 @@
 .aw .aw-ct-wheel {
   border-radius: 50%;
   opacity: var(--ct-op, 0.88);
-  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.55));
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.55); /* a static shadow: a drop-shadow FILTER would be re-run on every turn of the wheel */
   cursor: grab;
 }
 .aw .aw-ct-wheel.is-passive {
@@ -138,7 +138,6 @@
   border-radius: 10px;
   background: repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.13) 0 3px, transparent 3px 11px);
   pointer-events: none;
-  mix-blend-mode: screen;
 }
 .aw .aw-ct-pedal__label {
   position: relative;

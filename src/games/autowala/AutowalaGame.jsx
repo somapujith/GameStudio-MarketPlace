@@ -22,6 +22,7 @@ import { FailureScreen, GpuLostScreen, LoadingScreen } from './ui/menus/BootScre
 import { applyUiScale } from './ui/scale.js';
 import useOrientationHold from './ui/useOrientationHold.js';
 import './ui/autowala.css';
+import './ui/hud/land.css'; // the landscape HUD layout: last, so it wins over the shared looks
 
 // What the loading bar says while each stage of the build runs.
 const STAGE_TEXT = {

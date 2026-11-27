@@ -11,6 +11,7 @@ import { CloseIcon, DuskIcon, FlagIcon, KindIcon, MoonIcon, MoreIcon, PauseIcon,
 import { dayPhase, formatClock, formatCountdown, formatDistance, formatEta, groupIndian, moodColor, normalizeTrip, timerTone } from './hudLogic.js';
 import { filterRules } from './layoutLogic.js';
 import { useChangeFlash, useCountUp } from './useCountUp.js';
+import { GearIcon, MapIcon, PhoneIcon, QuestIcon } from '../touch/icons.jsx';
 
 const PHASE_ICON = { night: MoonIcon, dawn: SunIcon, day: SunIcon, dusk: DuskIcon };
 
@@ -180,7 +181,16 @@ function QuestSummary({ a }) {
   );
 }
 
-export function MoreSheet({ open, onClose, game, snap, careerV, rulesV, weather }) {
+// The shortcuts the touch layer used to keep in its own "..." tray (one "More" button on the screen, not two). `onShortcut(input)` taps the
+// game input ('map' | 'phone' | 'quests'); 'controls' opens the touch-control settings (TouchControls listens for aw-touch-settings).
+export const SHORTCUTS = [
+  { id: 'map', label: 'Map', Icon: MapIcon },
+  { id: 'quests', label: 'Quests', Icon: QuestIcon },
+  { id: 'phone', label: 'Phone', Icon: PhoneIcon },
+  { id: 'controls', label: 'Controls', Icon: GearIcon },
+];
+
+export function MoreSheet({ open, onClose, game, snap, careerV, rulesV, weather, onShortcut }) {
   const r = Number.isFinite(snap.rating) ? Math.max(0, Math.min(5, snap.rating)) : 0;
   const rides = Math.max(0, Math.round(snap.rides || 0));
   const quest = snap.quest?.active || null;
@@ -196,6 +206,16 @@ export function MoreSheet({ open, onClose, game, snap, careerV, rulesV, weather 
             <CloseIcon size={22} />
           </button>
         </header>
+        {onShortcut && (
+          <div className="aw-sheet__keys" role="group" aria-label="Shortcuts">
+            {SHORTCUTS.map(({ id, label, Icon }) => (
+              <button key={id} type="button" className="aw-sheet__key" onClick={() => onShortcut(id)}>
+                <Icon size={20} />
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="aw-sheet__grid">
           <section className="aw-sheet__sec" data-k="rating" aria-label="Rating">
             <h3>Rating</h3>

@@ -33,6 +33,14 @@ export default function Hud({ game, snap }) {
   const pause = useCallback(() => game?.input?.setTouch('pause', true), [game]);
   const tapPrompt = useCallback((action) => game?.input?.setTouch(action, true), [game]);
   const toggleSheet = useCallback(() => setSheet((o) => !o), []);
+  const shortcut = useCallback(
+    (id) => {
+      setSheet(false);
+      if (id === 'controls') window.dispatchEvent(new CustomEvent('aw-touch-settings'));
+      else game?.input?.setTouch(id, true);
+    },
+    [game],
+  );
   const closeSheet = useCallback(() => setSheet(false), []);
   const menu = snap?.menu || '';
   const rules = rulesView(snap?.rules, snap?.kmh);
@@ -75,9 +83,9 @@ export default function Hud({ game, snap }) {
         <Prompt prompt={snap.prompt} touch={touch} onTap={tapPrompt} />
         <DriftFlair drifting={snap.drifting} charge={snap.driftCharge} />
         <div className="aw-corner">
-          <Speedometer snap={snap} compact sign={rules?.sign} />
+          <Speedometer snap={snap} compact pod={layout.land} sign={rules?.sign} />
         </div>
-        <MoreSheet open={sheet && !menu} onClose={closeSheet} game={game} snap={snap} careerV={careerV} rulesV={rules} weather={weather} />
+        <MoreSheet open={sheet && !menu} onClose={closeSheet} game={game} snap={snap} careerV={careerV} rulesV={rules} weather={weather} onShortcut={shortcut} />
       </div>
     );
   }

@@ -18,6 +18,7 @@ import { Pedal } from './touch/Pedals.jsx';
 import { MainActions, MinorActions } from './touch/Actions.jsx';
 import SettingsSheet from './touch/SettingsSheet.jsx';
 import { computeLayout, regionsFromRects, sideFor } from './touch/layout.js';
+import { hudLayout } from './hud/layoutLogic.js';
 import { createTouchBus } from './touch/touchBus.js';
 import { DEFAULTS, forcedByUrl, loadTouchSettings, saveTouchSettings } from './touch/touchSettings.js';
 import { useTilt } from './touch/useTilt.js';
@@ -87,7 +88,15 @@ export default function TouchControls({ game }) {
     };
   }, [bus]);
 
-  const layout = useMemo(() => computeLayout({ w: vp.w || 844, h: vp.h || 390 }, { size: settings.size }), [vp.w, vp.h, settings.size]);
+  // on a compact HUD layout (phones and tablets) the More sheet carries the map / quests / phone / controls shortcuts: no "..." tray here
+  const hudCompact = useMemo(() => hudLayout(vp, true).compact, [vp]);
+  const layout = useMemo(() => computeLayout({ w: vp.w || 844, h: vp.h || 390 }, { size: settings.size, tray: !hudCompact }), [vp.w, vp.h, settings.size, hudCompact]);
+  // the More sheet's "Controls" shortcut
+  useEffect(() => {
+    const open = () => setSheet(true);
+    window.addEventListener('aw-touch-settings', open);
+    return () => window.removeEventListener('aw-touch-settings', open);
+  }, []);
   // an orientation / size change re-flows the controls under the fingers: let go of everything
   useEffect(() => {
     if (bus) bus.releaseAll();
@@ -137,12 +146,14 @@ export default function TouchControls({ game }) {
       return undefined;
     }
     const rb = root.getBoundingClientRect();
+    // the HUD is drawn inside a zoom (--aw-ui-scale), so the regions it reads are in ITS pixels
+    const zs = parseFloat(getComputedStyle(root).getPropertyValue('--aw-ui-scale')) || 1;
     const items = [...layer.current.querySelectorAll('[data-ctl-zone]')].map((el) => {
       const r = el.getBoundingClientRect();
       return { zone: el.getAttribute('data-ctl-zone'), rect: { left: r.left - rb.left, right: r.right - rb.left, top: r.top - rb.top, bottom: r.bottom - rb.top, width: r.width } };
     });
     const reg = regionsFromRects(items, rb.width, rb.height, settings.hand);
-    set(reg.left, reg.right, reg.h, layout.mode);
+    set(reg.left / zs, reg.right / zs, reg.h / zs, layout.mode);
     return undefined;
   });
   useEffect(() => {

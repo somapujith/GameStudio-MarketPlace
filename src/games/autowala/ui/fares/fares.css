@@ -9,11 +9,9 @@
   width: min(560px, calc(100vw - 32px));
   padding: 10px 12px 12px;
   border-radius: 16px;
-  background: var(--aw-panel, rgba(18, 8, 36, 0.78));
+  background: rgba(18, 8, 36, 0.9); /* no backdrop blur over the live 3D view */
   border: 1px solid rgba(255, 61, 154, 0.55);
   box-shadow: 0 0 24px rgba(255, 61, 154, 0.25), 0 8px 22px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
   color: var(--aw-text, #fff3d6);
   font-family: var(--aw-font);
   pointer-events: auto;

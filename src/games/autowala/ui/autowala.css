@@ -149,6 +149,19 @@
   .aw-loadbar b { transition: none; }
 }
 
-/* ---- HUD scale (see ui/scale.js): --aw-ui-scale grows with the viewport height on big screens ---------------------------------------------- */
+/* ---- HUD scale (see ui/scale.js): --aw-ui-scale follows the viewport HEIGHT (0.92 on a 360 px phone, 1 at 430-720, 1.5 at 1080) ---------------
+   Every in-game overlay root zooms by the same factor, so panels that are placed relative to each other keep their gaps. Percentages are not
+   affected by zoom; `100vw` / `dvh` ARE (they scale too), which is why the HUD rules lean on % and on the control variables instead.
+   The touch controls size themselves in JS (ui/touch/layout.js) and the menus have their own rules (menus/menus.css). */
 .aw { --aw-ui-scale: 1; }
-.aw-hud:not(.aw-hud--compact) { zoom: var(--aw-ui-scale); }
+.aw-hud,
+.aw-mm,
+.aw-toasts,
+.aw-bursts,
+.aw-sub,
+.aw-fare,
+.aw-fare-chips,
+.aw-quest-tracker,
+.aw-quest-coach,
+.aw-quest-result,
+.aw-radio:not(.aw-radio--inline) { zoom: var(--aw-ui-scale); }
