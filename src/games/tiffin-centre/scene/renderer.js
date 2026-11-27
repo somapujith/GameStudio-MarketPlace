@@ -207,10 +207,12 @@ export function createRenderer(canvas, { quality = 'medium', auto = true, onQual
     clock += dt;
     sorter.tick();
     renderer.info.reset();
-    const compiling = compileHold.push(renderer.info.programs ? renderer.info.programs.length : 0, dt);
+    // a long frame right after a new program appeared is a compile stall (the first use of a program that is still linking blocks the main thread), not what the
+    // device can render; the normal frames in between still count, so a really slow GPU is still noticed during the warm-up
+    const stall = compileHold.push(renderer.info.programs ? renderer.info.programs.length : 0, dt) && dt > 3 * frameBudgetFor(QUALITY[q]);
     if (warmUp > 0) warmUp -= Math.min(dt, 1);
-    else if (compiling) {
-      /* a shader is still compiling: this frame says nothing about the device */
+    else if (stall) {
+      /* not judged */
     } else if (dt > 0 && dt < 1) {
       const verdict = scaler.push(dt);
       if (verdict?.revertTo != null && Math.abs(verdict.revertTo - scale) > 1e-4) setScale(verdict.revertTo); // the steps that bought nothing are undone
@@ -223,7 +225,7 @@ export function createRenderer(canvas, { quality = 'medium', auto = true, onQual
     // (the sun moves in hours, the casters that move are a few people; one frame of lag is a centimetre)
     const sm = QUALITY[q];
     if (sm.shadow > 0) {
-      if (dt > 0 && dt < 0.5 && !compiling) dtAvg += (dt - dtAvg) * 0.05;
+      if (dt > 0 && dt < 0.5 && !stall) dtAvg += (dt - dtAvg) * 0.05;
       renderer.shadowMap.autoUpdate = false;
       shadowInterval = shadowEveryFor(sm, dtAvg, shadowInterval);
       if (shadowDirty || ++shadowTick >= shadowInterval) {
@@ -234,7 +236,7 @@ export function createRenderer(canvas, { quality = 'medium', auto = true, onQual
     }
     if (QUALITY[q].post) post.render(dt);
     else renderer.render(scene, camera);
-    if (warmUp <= 0 && !compiling && auto && dt > 0 && drawGuard.push(dt, renderer.info.render.calls, q, tierBudgetFor(QUALITY[q]))) {
+    if (warmUp <= 0 && !stall && auto && dt > 0 && drawGuard.push(dt, renderer.info.render.calls, q, tierBudgetFor(QUALITY[q]))) {
       setQuality(lowerQuality(q), `${renderer.info.render.calls} draw calls per frame over the ${q} budget with frame time ${(dt * 1000).toFixed(0)} ms`);
     }
   };

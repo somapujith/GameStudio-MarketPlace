@@ -309,7 +309,7 @@ export function createScaler({ budget = 1 / 45, tierBudget = 0, min = 0.5, step 
  * createCompileHold({ holdSec }) -> { push(programCount, dt) -> boolean }
  * Feed it the number of compiled programs every frame. Returns true while the frame time must not be judged: a new program appeared in the last holdSec seconds (0.6 s by default)
  * (the first use of a program that is still linking blocks the main thread for 100 ms or more, and the loader's warm-up keeps compiling for about 16 s after the scene is
- * ready). Those frames say nothing about what the device can render; without this the scaler walked the picture down to 0.5, or the tier down to low, during the warm-up.
+ * ready). Long frames in that window say nothing about what the device can render (the renderer skips them, the normal frames still count); without this the scaler walked the picture down to 0.5, or the tier down to low, during the warm-up.
  */
 export function createCompileHold({ holdSec = 0.6 } = {}) {
   let last = -1;
