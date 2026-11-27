@@ -1,14 +1,17 @@
 // OWNER: metro agent. The metro's standard material: vertex colours, an instance-colour "tint" (the line colour) on the vertices that
 // ask for it (`aTint`), and a night glow on the vertices that ask for it (`aGlow`: 1 = lit at night, 2 = door light that follows the
 // per-instance `aOpen` attribute). One program serves the deck, the pillars, the stations and the trains.
-import { MeshStandardMaterial } from 'three';
+import { MeshLambertMaterial, MeshStandardMaterial } from 'three';
 
 const HEAD_FIX = ['#ifdef USE_INSTANCING', 'float sy = length(instanceMatrix[1].xyz);', 'if (aTint > 0.5) transformed.y = 1.0 + (position.y - 1.0) / sy;', '#endif'].join('\n');
 
 /** @param glow a shared { value } uniform (0.07 by day .. ~1.25 at night) */
 export function metroMaterial(glow, { doors = false, headFix = false, roughness = 0.85, metalness = 0.05, key = 'm' } = {}) {
-  const m = new MeshStandardMaterial({ vertexColors: true, roughness, metalness });
-  m.customProgramCacheKey = () => `metro-${key}-${doors ? 'd' : 'n'}${headFix ? 'h' : ''}`;
+  // concrete and steel at roughness >= 0.5 show no specular: Lambert (the train's glossy paint stays PBR)
+  const matte = roughness >= 0.5 && metalness <= 0.3;
+  const m = matte ? new MeshLambertMaterial({ vertexColors: true }) : new MeshStandardMaterial({ vertexColors: true, roughness, metalness });
+  // the shader text depends only on doors and headFix: deck, beam and station share ONE program (a program switch re-uploads the light state)
+  m.customProgramCacheKey = () => `metro-${matte ? 'l' : 's'}${doors ? 'd' : 'n'}${headFix ? 'h' : ''}`;
   m.onBeforeCompile = (shader) => {
     shader.uniforms.uGlow = glow;
     shader.vertexShader = shader.vertexShader

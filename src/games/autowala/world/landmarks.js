@@ -11,13 +11,14 @@ import {
   InstancedMesh,
   Mesh,
   MeshBasicMaterial,
+  MeshLambertMaterial,
   MeshStandardMaterial,
   Object3D,
   PlaneGeometry,
   RingGeometry,
   SphereGeometry,
 } from 'three';
-import { buildingMaterial, glowMaterial, setLookAttribute } from '../render/materials.js';
+import { BUILDING_LOOKS, buildingMaterial, glowMaterial, setLookAttribute } from '../render/materials.js';
 import { signTexture } from '../render/textures.js';
 import { freezeMatrices, mergeStaticMeshes } from '../render/merge-static.js';
 
@@ -27,7 +28,16 @@ const stdCache = new Map();
 const std = (color, o = {}) => {
   const key = `${color}|${JSON.stringify(o)}`;
   let m = stdCache.get(key);
-  if (!m) stdCache.set(key, (m = new MeshStandardMaterial({ color, roughness: 0.85, metalness: 0.02, ...o })));
+  if (!m) {
+    // matte stone / paint (roughness >= 0.5, not metallic) is Lambert: the same picture for ~40% of the pixel ALU; shiny parts stay PBR
+    const shiny = (o.metalness ?? 0.02) > 0.3 || (o.roughness ?? 0.85) < 0.5;
+    if (shiny) m = new MeshStandardMaterial({ color, roughness: 0.85, metalness: 0.02, ...o });
+    else {
+      const { roughness, metalness, ...rest } = o;
+      m = new MeshLambertMaterial({ color, ...rest });
+    }
+    stdCache.set(key, m);
+  }
   return m;
 };
 
@@ -75,7 +85,7 @@ export function buildLandmarks(scene, city, colliders, shared) {
   // a window-shader tower: an InstancedMesh of one, so the facade shader knows the building's real size
   const tower = (parent, w, h, d, x, z, color, look) => {
     const geo = new BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
-    const mesh = new InstancedMesh(geo, buildingMaterial(shared), 1);
+    const mesh = new InstancedMesh(geo, buildingMaterial(shared, !!BUILDING_LOOKS[look].glassy), 1);
     const o = new Object3D();
     o.position.set(x, 0, z);
     o.scale.set(w, h, d);

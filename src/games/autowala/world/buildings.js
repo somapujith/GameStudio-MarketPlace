@@ -8,16 +8,16 @@ import {
   InstancedBufferAttribute,
   Matrix4,
   Mesh,
-  MeshStandardMaterial,
+  MeshLambertMaterial,
   PlaneGeometry,
   Group,
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { makeRng } from '../game/rng.js';
-import { buildingMaterial, setLookAttribute, signAtlasMaterial } from '../render/materials.js';
+import { BUILDING_LOOKS, buildingMaterial, setLookAttribute, signAtlasMaterial } from '../render/materials.js';
 import { canvasTexture, signTexture } from '../render/textures.js';
 import { chunkedInstances, groupByChunk } from '../render/chunks.js';
-import { bakedCopy } from '../render/merge-static.js';
+import { bakedCopy, freezeMatrices } from '../render/merge-static.js';
 
 const PASTELS = ['#ff9fc2', '#ffc8a0', '#fff0a8', '#9ee8d0', '#8fd4f0', '#c9b0ff', '#ffb0a0', '#f6e0c8', '#ff7fa8', '#7fe0c4', '#ffd98a', '#f4a6d7'];
 const WARM = ['#e8b48a', '#f0c9a0', '#d99a84', '#f2d9b4', '#e6a79a', '#f5cf9a', '#dba9a0'];
@@ -192,13 +192,16 @@ export function buildBuildings(scene, city, colliders, shared, seed) {
   }
   const allLots = [];
   for (const [look, list] of Object.entries(lots)) for (const l of list) allLots.push({ ...l, look });
-  meshes.push(
-    ...chunkedInstances(group, geo, buildingMaterial(shared), allLots, at, (l, o) => {
-      o.position.set(l.cx, 0, l.cz);
-      o.scale.set(l.w, l.h, l.d);
-      return l.tint;
-    }, { castShadow: true, onMesh: (mesh, items) => setLookAttribute(mesh, items.map((l) => l.look)) }),
-  );
+  // matte walls (Lambert) and glass towers (Standard, for the sheen) are two materials: a tile draws its lots in at most 2 calls
+  for (const glassy of [false, true]) {
+    meshes.push(
+      ...chunkedInstances(group, geo, buildingMaterial(shared, glassy), allLots.filter((l) => !!BUILDING_LOOKS[l.look].glassy === glassy), at, (l, o) => {
+        o.position.set(l.cx, 0, l.cz);
+        o.scale.set(l.w, l.h, l.d);
+        return l.tint;
+      }, { castShadow: true, onMesh: (mesh, items) => setLookAttribute(mesh, items.map((l) => l.look)) }),
+    );
+  }
 
   // Small rooftop and street-edge details (tanks, roof boxes, villa roof slabs, compound walls, awnings): baked per tile into ONE static
   // vertex-coloured mesh, no shadows (they would only cost).
@@ -221,7 +224,7 @@ export function buildBuildings(scene, city, colliders, shared, seed) {
     const horizontal = a.facing === 'N' || a.facing === 'S';
     details.push(BOX({ x: a.x, z: a.z, y: 3.2, sx: horizontal ? a.span : 1.5, sy: 0.22, sz: horizontal ? 1.5 : a.span }, a.color));
   }
-  const detailMat = new MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.8, metalness: 0.05 });
+  const detailMat = new MeshLambertMaterial({ color: 0xffffff, vertexColors: true });
   const dm = new Matrix4();
   for (const tileItems of groupByChunk(details, at).values()) {
     const parts = tileItems.map((d) => {
@@ -272,5 +275,6 @@ export function buildBuildings(scene, city, colliders, shared, seed) {
     }),
   );
 
+  freezeMatrices(group); // nothing here ever moves: no per-frame matrix work
   return { group, meshes, buildingList, counts: Object.fromEntries(Object.entries(lots).map(([k, v]) => [k, v.length])) };
 }

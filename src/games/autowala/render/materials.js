@@ -1,7 +1,7 @@
 // Shared materials. The star is the building material: one MeshStandardMaterial per look, patched with onBeforeCompile so a
 // plain instanced box gets procedural windows (dark glass by day, lit after dark), floor ledges, a darker roof and a soft
 // ground shadow. No textures, so it works at any scale and every instance can have its own colour.
-import { Color, InstancedBufferAttribute, MeshBasicMaterial, MeshStandardMaterial, Vector2 } from 'three';
+import { Color, InstancedBufferAttribute, MeshBasicMaterial, MeshLambertMaterial, MeshStandardMaterial, Vector2 } from 'three';
 
 /** Values every material reads each frame. The sky system writes these. */
 export function createShared() {
@@ -19,9 +19,9 @@ export const BUILDING_LOOKS = {
   bazaar: { cell: [3.0, 3.4], ground: 3.8, glass: '#2d3b5c', litBias: 0.1, roughness: 0.85 },
   town: { cell: [3.4, 3.6], ground: 4.0, glass: '#2a3a58', litBias: 0.08, roughness: 0.85 },
   villa: { cell: [4.2, 3.4], ground: 3.2, glass: '#33425e', litBias: 0.1, roughness: 0.85 },
-  glass: { cell: [2.2, 3.9], ground: 7.0, glass: '#3a6a98', litBias: 0.12, roughness: 0.35 },
+  glass: { cell: [2.2, 3.9], ground: 7.0, glass: '#3a6a98', litBias: 0.12, roughness: 0.35, glassy: true },
   hangar: { cell: [9, 5], ground: 5.5, glass: '#2a3a58', litBias: 0.02, roughness: 0.85 },
-  cyber: { cell: [2.2, 3.9], ground: 7.0, glass: '#3a6a98', litBias: 0.14, roughness: 0.3 },
+  cyber: { cell: [2.2, 3.9], ground: 7.0, glass: '#3a6a98', litBias: 0.14, roughness: 0.3, glassy: true },
   hosp: { cell: [3.2, 3.4], ground: 4.0, glass: '#3a5a88', litBias: 0.3, roughness: 0.85 },
 };
 export const LOOK_NAMES = Object.keys(BUILDING_LOOKS);
@@ -95,14 +95,18 @@ const BUILDING_FRAG_EMIT = /* glsl */ `
 `;
 
 /**
- * THE building facade material (cities, landmark towers): one MeshStandardMaterial patched with onBeforeCompile so a plain instanced box
- * gets procedural windows (dark glass by day, lit after dark), floor ledges, a darker roof and a soft ground shadow. The facade values
- * come from BUILDING_LOOKS by the instance's `aLook` index (see setLookAttribute), so ONE material and ONE program serve every look.
+ * THE building facade material (cities, landmark towers): a lit material patched with onBeforeCompile so a plain instanced box gets
+ * procedural windows (dark glass by day, lit after dark), floor ledges, a darker roof and a soft ground shadow. The facade values come
+ * from BUILDING_LOOKS by the instance's `aLook` index (see setLookAttribute), so ONE material per flavour serves every look.
+ * Two flavours: matte walls use MeshLambertMaterial (the walls are roughness 0.85: a GGX specular term on every pixel of every facade, with
+ * 3-5 lamp lights, is ~2.5x the ALU of a Lambert term and invisible); `glassy` looks (glass towers) keep MeshStandardMaterial for the sheen.
  */
-export function buildingMaterial(shared) {
-  if (shared.buildingMat) return shared.buildingMat;
-  const m = new MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, metalness: 0.02 });
-  m.customProgramCacheKey = () => 'bldg-uber';
+export function buildingMaterial(shared, glassy = false) {
+  const cache = (shared.buildingMats ||= {});
+  const flavour = glassy ? 'glassy' : 'matte';
+  if (cache[flavour]) return cache[flavour];
+  const m = glassy ? new MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, metalness: 0.02 }) : new MeshLambertMaterial({ color: 0xffffff });
+  m.customProgramCacheKey = () => `bldg-uber-${flavour}`;
   const looks = LOOK_NAMES.map((n) => BUILDING_LOOKS[n]);
   const uniforms = {
     uCell: { value: looks.map((l) => new Vector2(l.cell[0], l.cell[1])) },
@@ -120,22 +124,26 @@ export function buildingMaterial(shared) {
       .replace('#include <begin_vertex>', `#include <begin_vertex>\n${BUILDING_VERT_BODY}`);
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>\n${BUILDING_FRAG_COMMON}`)
-      .replace('#include <color_fragment>', `#include <color_fragment>\n${BUILDING_FRAG_COLOR}`)
+      // (the Standard flavour darkens windows with metalness 0.55 and no environment map; the Lambert one does it in the colour)
+      .replace('#include <color_fragment>', `#include <color_fragment>\n${BUILDING_FRAG_COLOR}${glassy ? '' : '\n  diffuseColor.rgb *= 1.0 - 0.55 * gWin;'}`)
       .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\n${BUILDING_FRAG_ROUGH}`)
       .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>\n${BUILDING_FRAG_METAL}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\n${BUILDING_FRAG_EMIT}`);
   };
-  shared.buildingMat = m;
+  cache[flavour] = m;
   return m;
 }
 /** Foliage that sways in the wind (palms, trees, bunting): the vertex shader bends by height. */
 export function foliageMaterial(shared, { color = 0xffffff, sway = 0.35, roughness = 0.8, key = 'f', flat = true } = {}) {
-  const m = new MeshStandardMaterial({ color, roughness, metalness: 0, flatShading: flat, side: 2 });
-  m.customProgramCacheKey = () => `fol-${key}-${sway}`;
+  // Lambert: leaves are roughness 0.8 and flat shaded, a specular term on a whole canopy would only cost ALU
+  const m = new MeshLambertMaterial({ color, flatShading: flat, side: 2 });
+  // the bend strength is a uniform (it was baked into the shader text: one program per tree kind); trees, palms and bunting share ONE program
+  m.customProgramCacheKey = () => 'fol-sway';
   m.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = shared.uTime;
+    shader.uniforms.uSway = { value: sway };
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime;')
+      .replace('#include <common>', '#include <common>\nuniform float uTime; uniform float uSway;')
       .replace(
         '#include <begin_vertex>',
         `#include <begin_vertex>
@@ -144,7 +152,7 @@ export function foliageMaterial(shared, { color = 0xffffff, sway = 0.35, roughne
         #else
           float ph = 0.0;
         #endif
-        float bend = max(position.y, 0.0) * ${sway.toFixed(3)} * 0.06;
+        float bend = max(position.y, 0.0) * uSway * 0.06;
         transformed.x += sin(uTime * 1.6 + ph) * bend;
         transformed.z += cos(uTime * 1.3 + ph * 1.3) * bend * 0.8;`,
       );

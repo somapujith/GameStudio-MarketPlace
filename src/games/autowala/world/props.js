@@ -13,6 +13,7 @@ import {
   InstancedMesh,
   Mesh,
   MeshBasicMaterial,
+  MeshLambertMaterial,
   MeshStandardMaterial,
   Object3D,
   PointLight,
@@ -23,6 +24,7 @@ import { makeRng } from '../game/rng.js';
 import { foliageMaterial, glowMaterial } from '../render/materials.js';
 import { chunkedInstances } from '../render/chunks.js';
 import { canvasTexture } from '../render/textures.js';
+import { freezeMatrices } from '../render/merge-static.js';
 
 function frondGeometry() {
   // one palm frond: an arched, drooping leaf strip along +x
@@ -155,7 +157,7 @@ export function buildProps(scene, city, colliders, shared, seed) {
     b.translate(0.9, 6.3, 0.3);
     return mergeGeometries([a, b]);
   })();
-  const trunkMat = new MeshStandardMaterial({ color: 0x6b4a3a, roughness: 1, flatShading: true });
+  const trunkMat = new MeshLambertMaterial({ color: 0x6b4a3a, flatShading: true });
   const canopyMat = foliageMaterial(shared, { sway: 0.9, key: 'canopy' });
   treeSpots.forEach((t, i) => {
     t.i = i;
@@ -173,7 +175,7 @@ export function buildProps(scene, city, colliders, shared, seed) {
   const palmTrunkGeo = new CylinderGeometry(0.2, 0.34, 9, 6).translate(0, 4.5, 0);
   const crownGeo = palmCrown();
   crownGeo.translate(0, 9.1, 0);
-  const palmTrunkMat = new MeshStandardMaterial({ color: 0x8a6a56, roughness: 1, flatShading: true });
+  const palmTrunkMat = new MeshLambertMaterial({ color: 0x8a6a56, flatShading: true });
   const palmCrownMat = foliageMaterial(shared, { color: 0xffffff, sway: 0.5, key: 'palm' });
   palmSpots.forEach((p) => { p.tint = rng.pick(['#4fb35a', '#3fa56a', '#62c054', '#37a07a']); });
   const palmPlace = (p, ob) => {
@@ -246,6 +248,7 @@ export function buildProps(scene, city, colliders, shared, seed) {
   // (Switching them on at dusk used to recompile ~90 programs mid-game, and the boot compile built 88 programs for 8 lights that
   // were then thrown away on the first frame.)
   const POOL = 8;
+  const LIGHT_SHARE = 0.6;
   let active = POOL; // how many of them exist for the shaders (quality)
   const lights = [];
   for (let i = 0; i < POOL; i++) {
@@ -303,8 +306,12 @@ export function buildProps(scene, city, colliders, shared, seed) {
     }
   }
 
+  freezeMatrices(group); // the trees, lamps and bunting never move: no per-frame matrix work
+
+  // Game.applyQuality asks for 2 / 5 / 8; every point light costs ~4 GL uniform calls on EVERY program switch (~60 a frame) and ~70 ALU ops on
+  // every lit pixel, so the shaders get 60% of that (2 / 3 / 5): the nearest lamps keep their light, the farther ones keep their glow pool.
   const setLightCount = (n) => {
-    active = Math.max(0, Math.min(POOL, n | 0));
+    active = Math.max(0, Math.min(POOL, Math.ceil((n | 0) * LIGHT_SHARE)));
     for (let i = 0; i < POOL; i++) lights[i].visible = i < active;
     lastX = 1e9; // re-pick on the next update
   };
