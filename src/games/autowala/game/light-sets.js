@@ -4,7 +4,8 @@
 //   - the workshop's showroom adds a spot light and two point lights while it is open
 
 /** Real lamp lights in the street-lamp pool per quality tier. */
-export const POOL_LIGHTS = { low: 2, medium: 5, high: 8 };
+// (every point light is ~4 GL uniform calls on each program switch and ~70 ALU ops per lit pixel: 2 / 3 / 5, was 2 / 5 / 8)
+export const POOL_LIGHTS = { low: 2, medium: 3, high: 5 };
 
 /**
  * The light set a tier draws with, as totals in the terms warm.js compiles. `baseSpots` is the number of spot lights the scene always has

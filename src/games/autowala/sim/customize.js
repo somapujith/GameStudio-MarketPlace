@@ -32,10 +32,11 @@ import { makeBadgeTexture, makeCoverTexture, makeFlapTexture, makeRearWindowText
 import { buildDashGarland, buildDashToy, buildRoofProp } from './custom-props.js';
 import { buildAntenna, buildBumper, buildLadder, buildSideGuards } from './custom-rear.js';
 import { find, STRIPES } from '../gameplay/catalog.js';
+import { CANOPY_LIFT, canopyScales } from './auto-canopy.js';
+import { installPersonWarmup } from './person-mesh.js';
 
 export { diffLoadout, FIELDS };
 
-const CANOPY_LIFT = 0.3;
 const _rgb = [0, 0, 0]; // scratch for the per-frame rainbow (no allocation)
 const GLOW_BASE = 1.2; // underglow tube brightness (<= GLOW_MAX)
 
@@ -95,6 +96,10 @@ function mountProp(st, key, parent, prop) {
   free(st, key);
   if (!prop) return null;
   parent.add(prop.group);
+  // bolt-on parts are thin and sit under or beside the big shell parts, so they never cast a shadow (each caster is a draw call in the shadow pass)
+  prop.group.traverse((o) => {
+    if (o.isMesh) o.castShadow = false;
+  });
   own(st, key, () => {
     parent.remove(prop.group);
     prop.dispose();
@@ -371,25 +376,24 @@ export function applyLoadout(auto, loadout, opts = {}) {
   return changed;
 }
 
-/** High canopy: lift the roof and stretch the posts, rear panel and windscreen to meet it, so there is no gap. */
+/**
+ * High canopy: lift the roof and stretch the posts, rear panel and windscreen to meet it, so there is no gap. The merged roof / chrome /
+ * trim / curtain meshes swap to their canopy bake (autoModel.js); the nodes that carry decals and mounted props (roof, rear panel,
+ * window, windscreen glass, garland) move as before.
+ */
 function setCanopy(ud, st, on) {
   if (st.canopy === on) return;
   st.canopy = on;
   const lift = on ? CANOPY_LIFT : 0;
+  const k = canopyScales(CANOPY_LIFT);
+  ud.canopyGeometry?.(on);
   ud.roofGroup.position.y = lift;
-  const s = on ? (0.95 + CANOPY_LIFT) / 0.95 : 1;
+  const s = on ? k.upper : 1;
   ud.upperGroup.scale.y = s;
   ud.upperGroup.position.y = 1.05 * (1 - s);
   ud.windowGroup.position.y = lift / 2;
-  const ps = on ? (0.78 + CANOPY_LIFT) / 0.78 : 1;
-  for (const p of ud.posts) {
-    p.scale.y = ps;
-    p.position.y = 1.64 + lift / 2;
-  }
-  const gs = on ? (0.58 + CANOPY_LIFT) / 0.58 : 1;
-  ud.glass.scale.y = gs;
+  ud.glass.scale.y = on ? k.glass : 1;
   ud.glass.position.y = 1.745 + lift / 2;
-  ud.header.position.y = 2.03 + lift;
   ud.garlandAnchor.position.y = lift;
 }
 
@@ -544,6 +548,7 @@ export function installCustomization(ctx) {
   if (!ud) return;
   const profile = ctx.profile;
 
+  installPersonWarmup(ctx); // (the customers' shader is compiled with everything else at boot)
   let disposeEnv = () => {};
   try {
     disposeEnv = attachEnvironment(auto, ctx.gfx.renderer, ctx.envPrep);

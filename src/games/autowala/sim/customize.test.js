@@ -1,6 +1,7 @@
 // Builds the real auto in node (a no-op canvas stub stands in for the DOM) and dresses it in every catalogue item: nothing may
 // throw, previews must only touch what changed, and replaced parts must be disposed.
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { Vector3 } from 'three';
 import { DEFAULT_LOADOUT, OPTIONS, withPath } from '../gameplay/catalog.js';
 
 function ctx2d() {
@@ -52,8 +53,10 @@ describe('buildAuto', () => {
     const ud = p.userData;
     for (const k of ['body', 'wheels', 'front', 'hlM', 'tailM', 'brakeM', 'headlight', 'driver', 'pax', 'paint', 'roofGroup', 'upperGroup', 'windowGroup',
       'cover', 'rearWin', 'flaps', 'mudguard', 'stripes', 'swish', 'underglow', 'plates', 'badge', 'bannerM', 'bumperMount', 'rearMount', 'roofMount',
-      'dashAnchor', 'garlandAnchor', 'tailLampM', 'header', 'posts', 'glass']) expect(ud[k], k).toBeTruthy();
-    expect(ud.wheels).toHaveLength(3);
+      'dashAnchor', 'garlandAnchor', 'tailLampM', 'canopyGeometry', 'glass']) expect(ud[k], k).toBeTruthy();
+    expect(ud.wheels).toHaveLength(2); // the front wheel, and both rear wheels as one spinning pair
+    expect(ud.wheelParts).toHaveLength(2);
+    expect(ud.glassM.forceSinglePass).toBe(true); // a double-sided transparent plane would otherwise be drawn twice
     expect(ud.tailM).not.toBe(ud.tailLampM); // the game writes tailM every frame; the visible lamps are separate
     expect(t.userData.tailM).toBe(t.userData.tailLampM); // traffic keeps the original contract
   });
@@ -119,13 +122,24 @@ describe('applyLoadout', () => {
 
   it('the high canopy raises the roof, stretches the posts, and drops back', () => {
     const a = build.buildAuto({ player: true });
+    const top = (mesh) => {
+      mesh.geometry.computeBoundingBox();
+      return mesh.geometry.boundingBox.max.y;
+    };
+    const roofMesh = a.userData.body.children.find((o) => o.isMesh && o.material === a.userData.roofM);
+    const flatTop = top(roofMesh);
+    const glassScale = a.userData.glass.scale.y;
     custom.applyLoadout(a, withPath(DEFAULT_LOADOUT, 'roofStyle', 'high-canopy'));
     expect(a.userData.roofGroup.position.y).toBeGreaterThan(0.2);
     expect(a.userData.upperGroup.scale.y).toBeGreaterThan(1.2);
-    expect(a.userData.posts[0].scale.y).toBeGreaterThan(1.2);
+    expect(a.userData.glass.scale.y).toBeGreaterThan(glassScale);
+    // the merged roof / posts are the lifted bake now: same mesh, taller geometry
+    expect(top(roofMesh)).toBeGreaterThan(flatTop + 0.25);
     custom.applyLoadout(a, DEFAULT_LOADOUT);
     expect(a.userData.roofGroup.position.y).toBe(0);
     expect(a.userData.upperGroup.scale.y).toBe(1);
+    expect(top(roofMesh)).toBeCloseTo(flatTop, 6);
+    expect(a.userData.glass.scale.y).toBe(glassScale);
   });
 
   it('props mount, animate and unmount cleanly', () => {
@@ -167,6 +181,47 @@ describe('applyLoadout', () => {
     expect(a.userData.cover.face.material).toBe(a.userData.cover.faceM);
     expect(countMeshes(a)).toBe(base); // the stock bumper replaces the spiked one, the rest is gone
     custom.disposeCustomization(a);
+  });
+
+  it('the side stripes and the swish are ONE mesh each, wound so every face points out, and shown / hidden together', () => {
+    const a = build.buildAuto({ player: true });
+    for (const pair of [a.userData.stripes, a.userData.swish]) {
+      expect(pair.left).toBe(pair.right);
+      const g = pair.left.geometry;
+      expect(g.attributes.position.count).toBe(12); // two planes, two triangles each
+      const P = g.attributes.position;
+      const N = g.attributes.normal;
+      for (let t = 0; t < 12; t += 3) {
+        const [p0, p1, p2] = [0, 1, 2].map((k) => new Vector3().fromBufferAttribute(P, t + k));
+        const face = p1.clone().sub(p0).cross(p2.clone().sub(p0)).normalize();
+        const n = new Vector3().fromBufferAttribute(N, t);
+        expect(face.dot(n)).toBeGreaterThan(0.99); // winding agrees with the normal (a mirrored plane that kept its old winding would be culled)
+        const cx = (p0.x + p1.x + p2.x) / 3;
+        expect(Math.sign(n.x)).toBe(Math.sign(cx)); // right plane faces +x, left plane faces -x
+      }
+    }
+    custom.applyLoadout(a, withPath(DEFAULT_LOADOUT, 'decals.stripe', 'flame'));
+    expect(a.userData.stripes.left.visible).toBe(true);
+    custom.applyLoadout(a, withPath(DEFAULT_LOADOUT, 'decals.stripe', 'rainbow-swish'));
+    expect(a.userData.stripes.left.visible).toBe(false);
+    expect(a.userData.swish.left.visible).toBe(true);
+    custom.applyLoadout(a, DEFAULT_LOADOUT);
+    expect(a.userData.swish.left.visible).toBe(false);
+  });
+
+  it('bolt-on parts never cast shadows (each caster is a shadow-pass draw call)', () => {
+    const a = build.buildAuto({ player: true });
+    custom.applyLoadout(a, { ...DEFAULT_LOADOUT, rear: { cover: 'led-rainbow', bumper: 'spiked', flaps: 'peacock', ladder: true, antenna: true, sideGuards: true }, roofStyle: 'dome-lights', decals: { ...DEFAULT_LOADOUT.decals, dash: 'ganesh' }, interior: { seats: 'leopard', garland: true } });
+    let props = 0;
+    for (const mount of [a.userData.rearMount, a.userData.bumperMount, a.userData.roofMount, a.userData.dashAnchor, a.userData.garlandAnchor]) {
+      mount.traverse((o) => {
+        if (o.isMesh) {
+          props++;
+          expect(o.castShadow).toBe(false);
+        }
+      });
+    }
+    expect(props).toBeGreaterThan(10);
   });
 
   it('the tail lamps follow the loadout colour and brighten on the brake', () => {

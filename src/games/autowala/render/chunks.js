@@ -3,8 +3,12 @@
 // gives every tile its own bounding sphere, so the GPU only draws the few tiles near the camera.
 import { InstancedMesh, Object3D, Color } from 'three';
 
-/** Tile size in metres. Big enough to keep draw calls low, small enough that culling bites. */
-export const CHUNK = 256;
+/**
+ * Tile size in metres. The frame is bound by draw calls (a draw is ~50 us of CPU through the browser and the driver; a box city of 700k triangles is nothing for
+ * the GPU), so a tile is as BIG as culling still pays: the renderer sets it from the quality tier BEFORE the world is built (setChunkSize).
+ */
+export let CHUNK = 256;
+export const setChunkSize = (n) => { CHUNK = Math.max(128, n | 0); };
 
 /** Group items by map tile. `at(item)` -> [x, z]. */
 export function groupByChunk(items, at, size = CHUNK) {
