@@ -30,6 +30,7 @@ const PLACE = (pack, kinds) => `(async () => {
   const cq = await import(M + 'charquality.js');
   const cat = await import('/shared/tiffin-centre/catalog.js');
   const kit = await import('/src/games/tiffin-centre/scene/kit.js');
+  const ins = await import(M + 'inspector.js');
   const dbg = window.__tiffin.scene.debug; const sc = dbg.gfx.scene;
   let root = sc.getObjectByName('qa-people'); if (root) { sc.remove(root); root.userData.models?.forEach((x) => x.dispose?.()); }
   cq.setCharacterDrawMode({ merge: false, baked: false, limitShadows: true, pack: ${pack} });
@@ -39,7 +40,7 @@ const PLACE = (pack, kinds) => `(async () => {
   root.name = 'qa-people';
   const kinds = ${JSON.stringify(kinds)};
   kinds.forEach((k, i) => {
-    const mdl = m.buildCustomer(k, 7 + i);
+    const mdl = k === 'inspector' ? ins.buildInspector(7) : k === 'delivery' ? ins.buildDeliveryBoy(7) : k === 'avatar' ? m.buildAvatar({ color: '#ff8a1f', name: 'x' }) : m.buildCustomer(k, 7 + i);
     mdl.group.position.set(cat.LAYOUT.spotX(i), 0, cat.LAYOUT.spotZ);
     kit.shade(mdl.group);
     root.add(mdl.group);
@@ -47,7 +48,7 @@ const PLACE = (pack, kinds) => `(async () => {
   });
   root.userData.models = models;
   sc.add(root);
-  for (let f = 0; f < 8; f++) models.forEach((mdl) => { mdl.setMood('waiting'); mdl.update(0.05, 1 + f * 0.05); });
+  for (let f = 0; f < 8; f++) models.forEach((mdl) => { mdl.setMood?.('waiting'); mdl.update?.(0.05, 1 + f * 0.05); });
   return models.map((x) => x.group.userData.kind + ':' + x.triangles).join(' ');
 })()`;
 
@@ -66,14 +67,14 @@ async function run() {
     await c.ev('(() => { const g = window.__tiffin.scene.debug.gfx; g.holdAdaptation(1e6); g.setScale(1); return true; })()');
     await c.ev("document.querySelectorAll('.tc > *:not(canvas)').forEach((e) => { e.style.visibility = 'hidden'; }); true");
     await c.ev('(() => { const d = window.__tiffin.scene.debug; d.street.root.visible = false; window.__tiffin.scene.setReducedMotion(true); return true; })()'); // no head bob: two shots differ only in the people
-    const kinds = ['office', 'student', 'family', 'uncle', 'autowala', 'techie'];
+    const kinds = String(args.kinds || 'office,student,family,uncle,autowala,techie').split(','); // also: inspector, delivery, avatar
     for (const h of hours) {
       const files = {};
       for (const [name, pack] of [['rig', false], ['pack', true]]) {
         await c.ev(`window.__tiffin.scene.debug.setHour(${h}); true`);
         const info = await c.ev(PLACE(pack, kinds));
         await c.sleep(2500);
-        const f = path.join(out, `people-${name}-h${String(h).replace('.', '_')}.jpg`);
+        const f = path.join(out, `${args.name || 'people'}-${name}-h${String(h).replace('.', '_')}.jpg`);
         await c.shot(f, { jpeg: true, quality: 82 });
         files[name] = f;
         rows.push({ hour: h, mode: name, info, file: f });

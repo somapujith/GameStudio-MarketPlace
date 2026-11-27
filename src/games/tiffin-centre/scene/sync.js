@@ -25,6 +25,7 @@ import { createEventsFx, makeLevels, stepLevels } from './events-fx.js';
 import { createWeather } from './weather.js';
 
 const PI = Math.PI;
+const PRELOAD_DISH_QUALITIES = ['perfect', 'good']; // see preload()
 /** 0 (day) .. 1 (night) from the clock hour: dusk 18..19.5, dawn 4.6..6. */
 export const nightOf = (h) => {
   const x = ((h % 24) + 24) % 24;
@@ -1257,10 +1258,15 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
       yield name;
     }
     for (const id of DISH_IDS) {
-      try {
-        warmPark.add(dishClone(id, 'good')); // the prototype stays in the cache: the first plate of it is a clone
-      } catch (err) {
-        console.error('[tiffin] preload dish failed', id, err);
+      // 'perfect' is the one with the steam wisp (its own shader), 'good' the plain one; ok / burnt / broken differ by uniforms and geometry only (same programs), and
+      // a plate of those is built (3 to 8 ms, no compile) when somebody is first served one: preloading all five tripled the geometry count (910) for nothing
+      for (const q of PRELOAD_DISH_QUALITIES) {
+        if (q === 'perfect' && id !== DISH_IDS[0]) continue; // the wisp shader is one program for every dish: one 'perfect' plate compiles it
+        try {
+          warmPark.add(dishClone(id, q)); // the prototype stays in the cache: the first plate of it is a clone
+        } catch (err) {
+          console.error('[tiffin] preload dish failed', id, q, err);
+        }
       }
       yield `dish ${id}`;
     }

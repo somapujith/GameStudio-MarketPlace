@@ -24,11 +24,12 @@ const worldVisible = (o) => {
 };
 
 /** A cheap, stable text signature of everything about a material that changes how it renders (not its uuid or name). */
-export function materialSignature(m) {
+export function materialSignature(m, skip = null) {
   if (!m) return 'none';
   const parts = [m.type];
   for (const k of Object.keys(m)) {
     if (k[0] === '_' || k === 'uuid' || k === 'id' || k === 'name' || k === 'version' || k === 'userData' || k === 'needsUpdate' || k === 'listeners') continue;
+    if (skip && skip.includes(k)) continue;
     const v = m[k];
     if (v == null) continue;
     if (v.isColor) parts.push(`${k}:${v.getHexString()}`);
@@ -251,7 +252,41 @@ export function uberMaterialFor(m, side = m.side) {
 export const disposeUberMaterials = () => {
   for (const u of uberCache.values()) u.dispose();
   uberCache.clear();
+  for (const t of tintCache.values()) t.dispose();
+  tintCache.clear();
 };
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// tint merge: textured standard materials that differ ONLY in colour (the street's plasters: one texture set, six paints) are ONE draw call, the paint riding in the
+// vertex colours (three multiplies `material.color` and the vertex colour, and the material colour is white on the shared one)
+const tintCache = new Map();
+
+/** A textured MeshStandardMaterial whose only job is its map set and its colour: no emissive, no transparency, no shader patch, not a shared recipe material. */
+export function isTintable(m, liveMaterials) {
+  if (!m || !m.isMeshStandardMaterial || m.isMeshPhysicalMaterial || m.isShaderMaterial || !m.map) return false;
+  if (m.transparent || m.opacity < 1 || m.alphaTest > 0 || m.alphaMap || m.polygonOffset || m.wireframe || m.flatShading || m.vertexColors) return false;
+  if (!m.visible || m.userData?.noUber || m.userData?.shared || m.userData?.recipe) return false;
+  if (m.emissiveMap || (m.emissive && m.emissive.getHex() !== 0 && (m.emissiveIntensity ?? 1) > 0)) return false;
+  if (m.onBeforeCompile && String(m.onBeforeCompile).length > 60) return false;
+  if (m.map.isCanvasTexture || m.map.isVideoTexture) return false; // painted, per-object textures: nothing to share
+  if (liveMaterials?.has(m)) return false;
+  return true;
+}
+
+/** The shared white, vertex-coloured twin of `m` (one per signature without the colour). */
+export function tintMaterialFor(m) {
+  const key = materialSignature(m, ['color']);
+  let t = tintCache.get(key);
+  if (!t) {
+    t = m.clone();
+    t.color.setRGB(1, 1, 1);
+    t.vertexColors = true;
+    t.name = 'tint';
+    t.userData = { shared: true, tint: true };
+    tintCache.set(key, t);
+  }
+  return t;
+}
 
 // ---------------------------------------------------------------------------------------------------------------------------------
 function prepared(mesh, frameInv, colour, rm) {
@@ -336,12 +371,13 @@ export function* mergeStaticSteps(root, opts = {}) {
     const m = o.material;
     const flat = flatten && isFlattenable(m, live);
     const uber = !flat && !!opts.uber && isUberable(m, live);
+    const tint = !flat && !uber && !!opts.uber && !o.geometry.attributes.color && isTintable(m, live);
     // equivalent-but-distinct materials are merged only when none of them is live; otherwise the exact material object keeps its identity
-    const matKey = flat ? `flat:${flatMaterialFor(m).uuid}` : uber ? `uber:${uberMaterialFor(m).uuid}` : live.has(m) || m.isShaderMaterial || m.onBeforeCompile?.toString().length > 60 ? `obj:${m.uuid}` : `sig:${materialSignature(m)}`;
+    const matKey = flat ? `flat:${flatMaterialFor(m).uuid}` : uber ? `uber:${uberMaterialFor(m).uuid}` : tint ? `tint:${tintMaterialFor(m).uuid}` : live.has(m) || m.isShaderMaterial || m.onBeforeCompile?.toString().length > 60 ? `obj:${m.uuid}` : `sig:${materialSignature(m)}`;
     const frame = frames.get(o) || root;
     const key = `${frame.uuid}|${matKey}|${o.castShadow ? 1 : 0}${o.receiveShadow ? 1 : 0}|${o.renderOrder}|${o.layers.mask}|${m.transparent ? 1 : 0}`;
     let b = buckets.get(key);
-    if (!b) buckets.set(key, (b = { meshes: [], flat, uber, frame, material: flat ? flatMaterialFor(m) : uber ? uberMaterialFor(m) : m }));
+    if (!b) buckets.set(key, (b = { meshes: [], flat, uber, tint, frame, material: flat ? flatMaterialFor(m) : uber ? uberMaterialFor(m) : tint ? tintMaterialFor(m) : m }));
     b.meshes.push(o);
   });
 
@@ -355,7 +391,7 @@ export function* mergeStaticSteps(root, opts = {}) {
     b.frame.updateWorldMatrix(true, false);
     const frameInv = _inv.copy(b.frame.matrixWorld).invert().clone();
     for (const mesh of b.meshes) {
-      const g = prepared(mesh, frameInv, b.flat ? flatColor(mesh.material, c) : b.uber ? mesh.material.color : null, b.uber ? [mesh.material.roughness, mesh.material.metalness] : null);
+      const g = prepared(mesh, frameInv, b.flat ? flatColor(mesh.material, c) : b.uber || b.tint ? mesh.material.color : null, b.uber ? [mesh.material.roughness, mesh.material.metalness] : null);
       if (g) geos.push(g);
       else b.meshes = b.meshes.filter((x) => x !== mesh);
     }
@@ -364,7 +400,7 @@ export function* mergeStaticSteps(root, opts = {}) {
       continue;
     }
     // vertex colours only on materials that use them: a mixed bucket (some meshes with, some without) drops the attribute
-    if (!b.flat && !b.uber && !geos.every((g) => g.attributes.color)) for (const g of geos) g.deleteAttribute('color');
+    if (!b.flat && !b.uber && !b.tint && !geos.every((g) => g.attributes.color)) for (const g of geos) g.deleteAttribute('color');
     conform(geos);
     const merged = mergeGeometries(geos, false);
     for (const g of geos) g.dispose();

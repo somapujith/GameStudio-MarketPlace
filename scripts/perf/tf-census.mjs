@@ -1,7 +1,8 @@
 // Tiffin Centre: the SHADER PROGRAM census. Which materials / objects own the programs, which cache-key tokens split them, and whether any program
 // appears after the reveal.
 //
-//   node scripts/perf/tf-census.mjs --base http://127.0.0.1:5770 --port 9880 [--tier medium] [--level 1] [--seconds 60] [--json out.json] [--no-lock]
+//   node scripts/perf/tf-census.mjs --base http://127.0.0.1:5770 --port 9880 [--tier medium] [--level 1] [--seconds 60] [--json out.json] [--strict] [--no-lock]
+//   (--strict: exit 1 when any shader program is created after the reveal)
 //
 // --level 0 (default) plays the tutorial; --level N starts practice level N (customers, dishes, events and weather appear by themselves).
 // Samples renderer.info.programs / calls once a second after `window.__tiffin` exists (= after the reveal) and reports every second in which a program was
@@ -40,7 +41,7 @@ const SNAP = `(() => {
   });
   const used = progs.map((p) => { const e = byProg.get(p.id); return { id: p.id, name: p.name, mats: e ? e.mats.size : 0, owners: e ? Object.keys(e.owners).slice(0, 4).join(',') : '', types: e ? Object.keys(e.types).join('+') : '' }; });
   const late = progs.filter((p) => !window.__known.has(p.id)).map((p) => { const e = byProg.get(p.id); return { id: p.id, key: p.cacheKey.split(',').slice(0, 3).join(',') + ' ... ' + p.cacheKey.split(',').slice(-4).join(','), owners: e ? Object.keys(e.owners).join(',') : '', types: e ? Object.keys(e.types).join('+') : '' }; });
-  return { late, programs: progs, used, calls: R.info.render.calls, tris: R.info.render.triangles, scale: d.gfx.scale, quality: d.gfx.quality };
+  return { late, programs: progs, used, calls: R.info.render.calls, tris: R.info.render.triangles, scale: d.gfx.scale, quality: d.gfx.quality, reveal: d.reveal || null };
 })()`;
 
 async function run() {
@@ -89,6 +90,13 @@ for (let i = 1; i < res.timeline.length; i++) if (res.timeline[i][1] > res.timel
 console.log(`tier ${snap.quality} scale ${snap.scale}; reveal at ${res.readyAfter} ms after the wait started; programs at the reveal ${res.programsAtReveal}, after ${seconds} s ${snap.programs.length}; calls ${snap.calls}; tris ${snap.tris}`);
 if (snap.late.length) console.log(['late programs:', ...snap.late.map((l) => `  #${l.id} ${l.types} ${l.owners} ${l.key}`)].join('\n'));
 console.log(`programs created after the reveal: ${growth.length ? growth.join(', ') : 'none'}`);
+// the game's own counter (scene.debug.reveal: programs the renderer holds now that it did not hold when the loading screen went)
+const revealLate = snap.reveal ? snap.reveal.count : 0;
+if (snap.reveal) console.log(`scene.debug.reveal: ${snap.reveal.atReveal} programs at the reveal, ${revealLate} created since${revealLate ? ': ' + snap.reveal.late.map((p) => `#${p.id} ${p.name || p.key}`).join(', ') : ''}`);
+if (args.strict && (growth.length || revealLate)) {
+  console.log('STRICT: a shader program was compiled after the reveal');
+  process.exitCode = 1;
+}
 const live = snap.used.filter((u) => u.mats > 0);
 console.log(`live programs ${live.length}, dead ${snap.used.length - live.length}`);
 const byOwner = {};
@@ -99,4 +107,4 @@ for (const u of live) byType[`${u.name}/${u.types}`] = (byType[`${u.name}/${u.ty
 console.log('live programs by shader/material type: ' + JSON.stringify(byType));
 console.log(formatCensus(programCensus(snap.programs, { maxDiff: 1, maxPairs: 30 })));
 if (res.errors.length) console.log('console: ' + res.errors.join(' | '));
-process.exit(0);
+process.exit(process.exitCode || 0);
