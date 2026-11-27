@@ -6,7 +6,7 @@ import {
   REST_PITCH, BOB_CYCLE, BOB_Y, VIEW, MANUAL_HOLD_S, FOV_MAX, HFOV_MIN,
 } from './camera.js';
 import { createCameraRig } from './rig.js';
-import { createQualitySampler, pickQuality, lowerQuality, QUALITY } from './quality.js';
+import { pickQuality, lowerQuality, QUALITY } from './quality.js';
 import {
   tickFrac, hourAt, patienceFrac, payFrac, slotVisual, moodOf, laneOffset, stepAvatarX, workForEvent, hashSeed, avatarColor, wrapAngle,
   actionSeqFor, sampleSeq, seqDuration, SEQ, ACTION_KINDS, crowdOffset, arrivalStart, departureEnd,
@@ -382,16 +382,6 @@ describe('quality', () => {
     expect(lowerQuality('low')).toBe('lite');
     expect(lowerQuality('lite')).toBe('lite');
     expect(QUALITY.low.particles).toBeLessThan(QUALITY.high.particles);
-  });
-  it('steps down only after a window of mostly slow frames and ignores hidden-tab gaps', () => {
-    const s = createQualitySampler({ windowSec: 1 });
-    let verdict = false;
-    for (let i = 0; i < 40; i++) verdict = s.push(0.05) || verdict;
-    expect(verdict).toBe(true);
-    const ok = createQualitySampler({ windowSec: 1 });
-    let any = false;
-    for (let i = 0; i < 200; i++) any = ok.push(i === 50 ? 5 : 0.016) || any;
-    expect(any).toBe(false);
   });
 });
 

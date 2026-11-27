@@ -5,19 +5,23 @@
 //  - the post shaders fail       -> plain direct rendering (no bloom / FXAA, tone mapping by the renderer itself)
 //  - software rendering (SwiftShader, llvmpipe, ...) -> starts on 'low'
 //  - the GPU context is lost     -> the loop pauses; on restore the pipeline is rebuilt
-// A frame-time sampler steps the quality down (never up in the same session) when the device cannot hold ~40 fps; a shared governor
-// can switch it off (`gfx.autoTier = false`) and drive `gfx.setScale(s)` instead.
+// There is NO frame-time sampler in here any more: the shared governor (platform/gfx, wired in game/Game.js) decides the tier and the render
+// scale, and this module only carries them out cheaply. The pipeline is allocated ONCE for the highest tier the session may reach
+// (render/quality.js: allocRatio); a tier step or a scale step only changes a sub-rectangle, the number of bloom levels and the shadow
+// schedule, so neither reallocates anything. `gfx.autoTier = false` tells the game to ignore the governor (probes, tests).
 //
-// What the game reads: gfx.renderer / scene / camera / render(dt) / resize(w, h) / quality / cfg / caps / lost / dispose();
-// gfx.setScale(s) (render resolution 0.5..1, free: no reallocation), gfx.scale, gfx.cost (whole-frame draw calls, triangles, programs...),
-// gfx.invalidateShadows() (the shadow map is re-rendered on a schedule, not every frame; call it after a teleport).
+// What the game reads: gfx.renderer / scene / camera / render(dt) / resize(w, h) / quality / maxQuality / cfg / caps / lost / dispose();
+// gfx.setTier(q) (a tier step, no reallocation unless q is above maxQuality), gfx.setScale(s) (the governor's render scale 0.5..1, free),
+// gfx.scale / gfx.renderScale (the share of the allocation actually drawn), gfx.cost (whole-frame draw calls, triangles, programs...),
+// gfx.setBloomThreshold(t), gfx.invalidateShadows() (the shadow map is re-rendered on a schedule, not every frame; call it after a teleport).
 import { ACESFilmicToneMapping, PCFShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, UnsignedByteType, Vector2, WebGLRenderer, WebGLRenderTarget } from 'three';
 import { QUALITY } from '../game/config.js';
 import { setChunkSize } from './chunks.js';
 import { clampScale, createPost, disposeShared, pickHdrFormat } from './post.js';
+import { TIERS, allocRatio, effectiveScale, tierScale } from './quality.js';
 import { setAnisotropyCap } from './textures.js';
 
-const ORDER = ['low', 'medium', 'high'];
+const ORDER = TIERS;
 
 export class WebglUnsupported extends Error {
   constructor(message = 'WebGL 2 is not available') {
@@ -29,6 +33,7 @@ export class WebglUnsupported extends Error {
 /** A tier's settings, with the optional experiment overrides of the perf probe (globalThis.__awTune = { medium: { chunk: 1024 } }). */
 const tier = (q) => (globalThis.__awTune && globalThis.__awTune[q] ? { ...QUALITY[q], ...globalThis.__awTune[q] } : QUALITY[q]);
 
+/** The old core-count guess, kept only as a last resort when no GPU classification exists (the game uses the governor's choice). */
 export function pickQuality(saved) {
   if (ORDER.includes(saved)) return saved;
   const cores = (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 4;
@@ -77,7 +82,7 @@ export function opaqueByProgram(programOf) {
   };
 }
 
-export function createRenderer(canvas, { quality = 'medium', explicit = false, onQuality, onContext } = {}) {
+export function createRenderer(canvas, { quality = 'medium', maxQuality = null, scale: startScale = 1, explicit = false, onContext } = {}) {
   let renderer;
   try {
     renderer = new WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
@@ -105,10 +110,13 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
   const camera = new PerspectiveCamera(62, 1, 0.3, 1000);
 
   let q = software && !explicit ? 'low' : quality;
+  let maxQ = ORDER.includes(maxQuality) && ORDER.indexOf(maxQuality) >= ORDER.indexOf(q) ? maxQuality : q; // the highest tier the allocation covers
   setChunkSize(tier(q).chunk ?? 256); // the world is built right after this, in tiles of that size
   let post = null;
   const postShared = new Map(); // the post chain's materials survive a resize (their programs stay compiled)
-  let scale = 1;
+  let scale = clampScale(startScale); // the governor's scale
+  let rendered = 1; // the share of the allocation that is drawn: the tier's share x the governor's scale
+  let bloomT = 1.05; // the bright pass's threshold (the game follows the time of day, see post.bloomThreshold)
   let width = 1;
   let height = 1;
   const canvasSize = new Vector2();
@@ -116,7 +124,6 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
   let simple = false; // set when the post pipeline failed once: 8-bit, no bloom
   let direct = false; // set when even that failed: plain renderer.render
   let shaderFailed = false;
-  let warm = 4; // seconds of grace after a (re)build before the sampler may judge the frame time (shader compiles, first uploads)
   let autoTier = true;
   let shadowSince = 1;
   let shadowDirty = true;
@@ -137,7 +144,7 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
   };
 
   // ---- whole-frame cost, filled at the end of every frame (read it through gfx.cost)
-  const cost = { calls: 0, triangles: 0, lines: 0, points: 0, shadowCalls: 0, shadowTriangles: 0, programs: 0, geometries: 0, textures: 0, passes: 0, scale: 1 };
+  const cost = { calls: 0, triangles: 0, lines: 0, points: 0, shadowCalls: 0, shadowTriangles: 0, programs: 0, geometries: 0, textures: 0, passes: 0, scale: 1, renderScale: 1 };
   const sm = renderer.shadowMap;
   const shadowRender = sm.render.bind(sm);
   sm.render = (lights, sc, cam) => {
@@ -168,18 +175,26 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
     post = null;
   };
 
+  const view = () => ({ w: width, h: height, dpr: (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1.5 });
+  /** The bloom levels a tier draws (0 = none). */
+  const levelsOf = (name) => (tier(name).bloom ? tier(name).bloomLevels ?? 4 : 0);
+  /** Tell the pipeline what share of its allocation to draw: this tier's share of it, times the governor's scale. */
+  const applyScale = () => {
+    rendered = effectiveScale(tierScale(q, maxQ, view(), QUALITY), scale);
+    post?.setScale(rendered);
+  };
+
   const build = () => {
-    const cfg = tier(q);
+    const cfg = tier(maxQ); // the ALLOCATION is for the highest tier this session may reach
     setAnisotropyCap(q === 'low' ? 2 : Math.min(maxAniso, q === 'medium' ? 4 : 8));
     // assigning canvas.width / height reallocates the drawing buffer even when the value is the same (hundreds of ms on some drivers):
-    // only touch the canvas when its size or pixel ratio really changes (a tier step with the same ratio, a rebuild after a context loss)
-    const ratio = Math.min(cfg.pixelRatio, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1.5);
+    // only touch the canvas when its size or pixel ratio really changes (a rebuild after a context loss, a window resize)
+    const ratio = allocRatio(maxQ, view(), QUALITY);
     if (ratio !== renderer.getPixelRatio()) renderer.setPixelRatio(ratio);
     renderer.getSize(canvasSize);
     if (canvasSize.x !== width || canvasSize.y !== height) renderer.setSize(width, height, false);
     disposePost();
     shaderFailed = false;
-    warm = 4;
     shadowDirty = true; // the tier may have changed the shadow-map size
     if (direct || cfg.post === false) return; // (cfg.post === false: experiment / test of the direct fallback)
     const full = !simple;
@@ -187,14 +202,17 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
       const pr = renderer.getPixelRatio();
       post = createPost(renderer, {
         hdr: full && cfg.hdr !== 'none' ? hdrFormat : null, // (cfg.hdr === 'none': experiment / test of the 8-bit fallback)
-        bloomLevels: full && cfg.bloom ? cfg.bloomLevels ?? 4 : 0,
+        bloomLevels: full ? Math.max(levelsOf(maxQ), levelsOf(q)) : 0,
         fxaa: cfg.fxaa !== false,
         msaa: full ? Math.min(cfg.msaa || 0, maxSamples) : 0,
         bloomStrength: 0.3,
+        threshold: bloomT,
         shared: postShared,
       });
       post.setSize(width * pr, height * pr);
-      post.setScale(scale);
+      post.setLevels(levelsOf(q));
+      post.setThreshold(bloomT);
+      applyScale();
       post.warm();
     } catch (err) {
       console.warn('[autowala] post-processing unavailable, using a simpler pipeline', err);
@@ -265,28 +283,23 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
   canvas.addEventListener('webglcontextlost', onLost, false);
   canvas.addEventListener('webglcontextrestored', onRestored, false);
 
-  // frame-time sampler: ~2 s of slow frames drops one quality step (not during the warm-up, not when a governor took over)
-  let slow = 0;
-  let sampled = 0;
-  const sample = (dt) => {
-    if (warm > 0) {
-      warm -= dt;
-      slow = sampled = 0;
-      return;
+  /**
+   * A tier step: no reallocation, no new program (the caller warmed the tier's light set first, see game/tier-switch.js). Only a tier ABOVE
+   * the allocation (a player picking High on a GPU that was capped lower) reallocates, once.
+   */
+  const setTier = (next) => {
+    if (!ORDER.includes(next) || next === q) return q;
+    const grow = ORDER.indexOf(next) > ORDER.indexOf(maxQ);
+    q = next;
+    shadowDirty = true; // the tier may have changed the shadow-map size
+    if (grow) {
+      maxQ = next;
+      if (!lost) build();
+      return q;
     }
-    if (!autoTier) return;
-    sampled += dt;
-    if (dt > 0.032) slow += dt;
-    if (sampled < 2) return;
-    const bad = slow / sampled > 0.55;
-    slow = 0;
-    sampled = 0;
-    const i = ORDER.indexOf(q);
-    if (bad && i > 0) {
-      q = ORDER[i - 1];
-      build();
-      onQuality?.(q);
-    }
+    post?.setLevels(levelsOf(q));
+    applyScale();
+    return q;
   };
 
   // shadow map schedule: the sun's shadow box follows the player and is re-rendered every `shadowInterval` seconds (0 = every frame)
@@ -302,7 +315,6 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
   const render = (dt) => {
     if (lost) return;
     if (!prewarmed && !lost) prewarm();
-    sample(dt);
     info.reset();
     scheduleShadows(dt);
     if (post && shaderFailed) {
@@ -325,26 +337,44 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
     cost.geometries = info.memory.geometries;
     cost.textures = info.memory.textures;
     cost.scale = scale;
+    cost.renderScale = rendered;
   };
 
   const setBloom = (strength) => {
     post?.setBloom(strength);
   };
 
-  /** Render resolution as a fraction (0.5..1) of the drawing buffer: free, no reallocation. The composite upsamples. */
+  /** The governor's render scale (0.5..1; 1 = the tier's own resolution): free, no reallocation. The composite upsamples. */
   const setScale = (s) => {
     scale = clampScale(s);
-    post?.setScale(scale);
+    applyScale();
     return scale;
   };
 
-  const dispose = () => {
+  /** Memory pressure: give back what the tiers above `next` allocated (their bigger target, canvas and bloom pyramid) and settle on `next`. */
+  const shrinkTo = (next) => {
+    if (!ORDER.includes(next)) return q;
+    q = next;
+    maxQ = next;
+    shadowDirty = true;
+    if (!lost) build();
+    return q;
+  };
+
+  const setBloomThreshold = (t) => {
+    bloomT = t;
+    post?.setThreshold(t);
+  };
+
+  // loseContext: hand the GPU context back now (browsers allow only ~16 live ones). Not in dev: React StrictMode re-mounts onto the very same
+  // canvas, and a context that was force-lost cannot be drawn with again. (A stale build that never drew anything passes false.)
+  const dispose = ({ loseContext = !import.meta.env?.DEV } = {}) => {
     canvas.removeEventListener('webglcontextlost', onLost, false);
     canvas.removeEventListener('webglcontextrestored', onRestored, false);
     disposePost();
     disposeShared(postShared);
     renderer.dispose();
-    renderer.forceContextLoss?.(); // hand the GPU context back now: browsers allow only ~16 live ones
+    if (loseContext) renderer.forceContextLoss?.();
   };
 
   return {
@@ -354,7 +384,10 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
     resize,
     render,
     setBloom,
+    setBloomThreshold,
     setScale,
+    setTier,
+    shrinkTo,
     invalidateShadows() {
       shadowDirty = true;
     },
@@ -362,6 +395,10 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
     caps: { software, halfFloat, hdrFormat, maxSamples, maxAniso, webgl2: !!renderer.capabilities.isWebGL2 },
     get quality() {
       return q;
+    },
+    /** The highest tier the allocation covers (a tier step up to it is free). */
+    get maxQuality() {
+      return maxQ;
     },
     get cfg() {
       return tier(q);
@@ -372,13 +409,17 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
     get scale() {
       return scale;
     },
+    /** The share of the allocated target that is actually drawn (tier share x governor scale). */
+    get renderScale() {
+      return rendered;
+    },
     get cost() {
       return cost;
     },
     get post() {
       return post;
     },
-    /** false = the built-in frame-time sampler never changes the tier (a shared governor drives setScale instead). */
+    /** false = the game ignores the governor: the tier and the scale stay where they are (probes, tests). */
     get autoTier() {
       return autoTier;
     },

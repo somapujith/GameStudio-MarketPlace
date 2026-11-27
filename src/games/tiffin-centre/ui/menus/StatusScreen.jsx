@@ -1,6 +1,7 @@
 // Loading / error / lost-connection / no-WebGL, in the stall's voice, on the hub's StatusPanel.
 import StatusPanel from '@/components/online/StatusPanel.jsx';
 import { statusCopy } from './menuModels.js';
+import { isNativeApp } from '../../scene/capabilities.js'; // (pure: no three.js, already in the home chunk through GraphicsSetting)
 import './menus.css';
 
 const GLYPH_SIZE = 44;
@@ -26,9 +27,9 @@ export function StatusGlyph({ glyph, size = GLYPH_SIZE }) {
   return null;
 }
 
-/** Props: { kind: 'loading'|'error'|'disconnected'|'webgl', onRetry, onExit } */
-export default function StatusScreen({ kind = 'loading', onRetry, onExit }) {
-  const c = statusCopy(kind);
+/** Props: { kind: 'loading'|'error'|'disconnected'|'lost'|'webgl', onRetry, onExit, native? (default: the Android app, for the no-WebGL wording) } */
+export default function StatusScreen({ kind = 'loading', onRetry, onExit, native }) {
+  const c = statusCopy(kind, { native: native ?? isNativeApp() });
   const actions = [];
   if (c.retry && onRetry) actions.push({ label: c.retry, onClick: onRetry, primary: true });
   if (onExit) actions.push({ label: c.exit, onClick: onExit, primary: !actions.length && !c.busy });

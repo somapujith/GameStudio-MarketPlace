@@ -56,6 +56,13 @@ const MEASURE = (seconds) => `(async () => {
   };
 })()`;
 
+/** In the page: the tier / scale the game is on now and what the shared governor has decided so far (absent on a build without it). */
+const AW_STATE = `(() => { const g = window.__autowala; const f = g.gfx; const a = g.adaptive; const st = a && a.governor.stats();
+  return { tier: f.quality, scale: f.scale, renderScale: f.renderScale == null ? null : +f.renderScale.toFixed(3), pr: f.renderer.getPixelRatio(), boot: window.__autowalaBoot && window.__autowalaBoot.ms,
+    hitches: g.perf && g.perf.report().hitches, // frames > 33 / 50 / 100 ms since 3 s after START (the game's own counter)
+    gov: st ? { start: a.describe(), refreshHz: st.refreshHz, counts: st.counts, history: st.history.map((h) => h.kind + ' ' + h.from + '->' + h.to + ' @' + h.t), tierFail: st.tierFailures } : null,
+    calib: a && a.calibration ? { ranMs: a.calibration.ranMs, mode: a.calibration.mode, confident: a.calibration.recommended && a.calibration.recommended.confident, units: a.calibration.units, refreshHz: a.calibration.refreshHz, rec: a.calibration.recommended && { tier: a.calibration.recommended.tier, scale: a.calibration.recommended.scale, est: a.calibration.recommended.estimates } } : null }; })()`;
+
 async function run() {
   const c = await launch({ port, w: W, h: H, gl: args.soft ? SOFT_FLAGS : GPU_FLAGS });
   try {
@@ -87,14 +94,15 @@ async function run() {
     await c.ev(`window.__bootLongs = []; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__bootLongs.push(e.duration); }).observe({ entryTypes: ['longtask'] }); } catch {} true`);
     await c.sleep(WARM * 1000);
     const boot = await c.ev('({ n: window.__bootLongs.length, ms: Math.round(window.__bootLongs.reduce((a, b) => a + b, 0)), worst: Math.round(Math.max(0, ...window.__bootLongs)) })');
-    if (game === 'autowala') extra = await c.ev('({ tier: window.__autowala.gfx.quality, pr: window.__autowala.gfx.renderer.getPixelRatio(), boot: window.__autowalaBoot && window.__autowalaBoot.ms })');
+    if (game === 'autowala') extra = await c.ev(AW_STATE);
     else {
       extra = await c.ev('(() => { const g = window.__tiffin.scene.debug.gfx; return { tier: g.quality, scale: g.scale, pr: g.pixelRatio }; })()');
     }
     let profile;
     if (args.profile) profile = await c.cpuProfile(Math.min(6000, SEC * 1000));
     const m = await c.ev(MEASURE(SEC));
-    const row = { label, game, tierAsked: tier || 'auto', viewport: `${W}x${H}@${DPR}`, soft: !!args.soft, loadMs, bootLongTasks: boot, ...extra, ...m, errors: c.logs.filter((l) => !/GL Driver|GPU stall|ReadPixels|AudioContext|api\/(config|me)|Failed to load resource/.test(l)).slice(0, 8) };
+    const end = game === 'autowala' ? await c.ev(AW_STATE) : null;
+    const row = { label, game, tierAsked: tier || 'auto', viewport: `${W}x${H}@${DPR}`, soft: !!args.soft, loadMs, bootLongTasks: boot, ...extra, ...m, ...(end ? { endTier: end.tier, endScale: end.scale, endRenderScale: end.renderScale, endGov: end.gov, calib: end.calib, playHitches: end.hitches } : {}), errors: c.logs.filter((l) => !/GL Driver|GPU stall|ReadPixels|AudioContext|api\/(config|me)|Failed to load resource/.test(l)).slice(0, 8) };
     if (args.shot) await c.shot(String(args.shot));
     return { row, profile };
   } finally {

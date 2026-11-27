@@ -171,6 +171,48 @@ export function probeCanvasGl(doc = typeof document !== 'undefined' ? document :
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------
+// "Can this device run the 3D stall at all?", asked BEFORE any three.js / scene chunk is fetched
+/** The Android app (Capacitor)? A WebView has no hardware-acceleration setting to point the player at. Never throws. */
+export function isNativeApp(win = typeof window !== 'undefined' ? window : null) {
+  try {
+    return !!win?.Capacitor?.isNativePlatform?.();
+  } catch {
+    return false;
+  }
+}
+
+let webgl2Probe = null;
+/**
+ * { ok, reason }: can this browser create a WebGL 2 context (three.js 0.187 needs one)? A throw-away canvas, released at once, cached for the page's life, no three.js and no
+ * scene code: cheap enough (a few ms) to ask before the 3D chunks are downloaded, so a device that cannot draw the stall is told at once instead of after 5 to 9 s of
+ * downloads and parsing. Without a DOM (tests, SSR) nothing can be known and the answer is `ok`. Never throws.
+ */
+export function probeWebgl2({ doc = typeof document !== 'undefined' ? document : null, force = false } = {}) {
+  if (webgl2Probe && !force && doc === (typeof document !== 'undefined' ? document : null)) return webgl2Probe;
+  let out;
+  if (!doc?.createElement) out = { ok: true, reason: 'no document: not probed' };
+  else {
+    try {
+      const canvas = doc.createElement('canvas');
+      const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, depth: false, stencil: false, powerPreference: 'default', failIfMajorPerformanceCaveat: false });
+      if (gl) {
+        out = { ok: true, reason: '' };
+        try {
+          gl.getExtension('WEBGL_lose_context')?.loseContext();
+        } catch { /* ignore */ }
+      } else out = { ok: false, reason: 'the browser did not give a WebGL 2 context' };
+    } catch (err) {
+      out = { ok: false, reason: String(err?.message || err || 'WebGL 2 probe failed') };
+    }
+  }
+  if (doc === (typeof document !== 'undefined' ? document : null)) webgl2Probe = out;
+  return out;
+}
+export const forgetWebgl2Probe = () => {
+  webgl2Probe = null;
+};
+
+// ---------------------------------------------------------------------------------------------------------------------------------
 // Environment probe (navigator / window)
 export function probeEnv({ nav, win, mm } = {}) {
   nav = nav ?? (typeof navigator !== 'undefined' ? navigator : {});

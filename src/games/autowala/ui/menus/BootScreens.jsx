@@ -2,6 +2,7 @@
 // graphics card paused the game" (WebGL context lost). Styles live in ui/autowala.css (.aw-loading / .aw-failure / .aw-loadbox).
 // Every dead end offers a way out: reload (the usual cure) and back to the game page.
 import { Link } from 'react-router-dom';
+import { isNativeApp, webglFailureText } from '@/platform/gfx/webgl.js';
 
 const reload = () => window.location.reload();
 
@@ -23,18 +24,15 @@ export function LoadingScreen({ text = 'Loading', pct = 0 }) {
   );
 }
 
-/** kind: 'webgl' (no WebGL 2 / no hardware acceleration) | anything else (the build threw). */
-export function FailureScreen({ kind }) {
+/** kind: 'webgl' (no WebGL 2 / no hardware acceleration) | anything else (the build threw). `native`: inside the Android app (no hardware-acceleration switch to point at). */
+export function FailureScreen({ kind, native = isNativeApp() }) {
   const webgl = kind === 'webgl';
+  const text = webglFailureText({ native }, 'Autowala');
   return (
     <div className="aw-loading aw-failure" role="alert">
       <div>
-        <b>{webgl ? 'This browser can’t run the 3D city' : 'Autowala couldn’t start'}</b>
-        <p>
-          {webgl
-            ? 'Autowala needs WebGL 2 with hardware acceleration. Turn on hardware acceleration in your browser settings, or try an up-to-date Chrome, Edge, Firefox or Safari 16.4+.'
-            : 'Something went wrong while building the city. Reload the page; if it keeps happening, try another browser.'}
-        </p>
+        <b>{webgl ? text.title : 'Autowala couldn’t start'}</b>
+        <p>{webgl ? text.body : 'Something went wrong while building the city. Reload the page; if it keeps happening, try another browser.'}</p>
         <div className="aw-failure-acts">
           {!webgl && (
             <button type="button" className="aw-failure-btn" onClick={reload}>

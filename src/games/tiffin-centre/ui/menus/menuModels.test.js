@@ -180,5 +180,11 @@ describe('statusCopy', () => {
     expect(statusCopy('webgl').body).toMatch(/WebGL/);
     expect(statusCopy('disconnected').retry).toBe('Reconnect');
     expect(statusCopy('??')).toBe(statusCopy('error'));
+    // the Android app: the no-WebGL card without advice that cannot be followed in a WebView; the other kinds are unchanged
+    expect(statusCopy('webgl', { native: true }).title).toBe("This phone can't run this game");
+    expect(statusCopy('webgl', { native: true }).body).not.toMatch(/hardware acceleration|browser/i);
+    expect(statusCopy('webgl', { native: true }).retry).toBe('');
+    expect(statusCopy('webgl').title).toMatch(/cannot draw the 3D stall/);
+    expect(statusCopy('lost', { native: true })).toBe(statusCopy('lost'));
   });
 });

@@ -16,3 +16,4 @@ export { createFrameRing, createLoop } from './loop.js';
 export { createGpuTimer } from './gpuTimer.js';
 export { DYNRES_GLSL, DYNRES_VERT, createBlit, createDynPass, createDynamicRes, dynResUniforms, dynUv, rewriteSamples } from './dynamicRes.js';
 export { createAdaptiveQuality, readBattery, readDeviceHints, runStandaloneCalibration, watchDeviceHints } from './adaptive.js';
+export { isNativeApp, probeWebgl2, webglFailureText } from './webgl.js';

@@ -15,6 +15,7 @@ dynamicRes.js   resolution scaling with no realloc render into a sub-rect of tar
 warmup.js       no first-use stalls                compile shaders + upload textures under a per-frame budget; program census
 batch.js        fewer draw calls                   merge by material, freeze static, tile for culling, instance, dispose
 adaptive.js     the wiring                         gpu + memory + calibration + governor in one call; device hints (battery, data saver)
+webgl.js        is WebGL 2 there at all?           probeWebgl2() BEFORE the 3D chunks are imported (a throw-away canvas), webglFailureText({ native }) for the message
 index.js        barrel                             import { ... } from '@/platform/gfx'
 ```
 
@@ -101,6 +102,7 @@ One versioned key per game (`jalebi.gfx.v1.<game>`). Every storage touch is guar
 | `failedTiers` | [] | tiers tier memory says failed here: never tried |
 | `warmupMs` 800, `windowMs` 400, `downRatio` 1.15, `severeRatio` 1.6, `upRatio` 0.9, `upHoldMs` 2500, `probeHoldMs` 5000, `tierUpHoldMs` 20000 | | see section 7 |
 | `gpuTimerBias` 1.25, `forgiveRatio` 0.75 | | the GPU timer reads ~20 % low against the frame (measured), so headroom estimates inflate it; a rung that failed twice is forgiven automatically when the frame time at that rung falls below 75 % of what it was when it failed |
+| `tierDownRatio` 0, `futileMs` 60000 | | (added by the Tiffin integration) `tierDownRatio`: a tier step is only taken when the window's mean reaches this multiple of the budget (Tiffin: 1.6, so a CPU-bound 40 fps medium keeps its picture); `futileMs`: after a scale step bought nothing and no tier step was possible (locked tier, or vetoed by `tierDownRatio`) scale steps are not tried again for this long, doubling each time up to 8x, unless the overload is severe: without it a locked CPU-bound tier pumped the resolution 1 -> 0.6 -> 1 every 3 s (seen on the real GPU) |
 
 Other methods: `hold(ms)` (ignore the next frames: a rebuild, a level load), `discontinuity()`, `notifyLoadChange()` (forgive failed probes: new area, day/night), `setHints({ batteryLow, lowPower, saveData, thermal, capFps })` -> fps cap (30), `setRefreshHz(hz)`, `setTier(tier, { scale, lock })` (the player changed the setting), `setMaxTier()`, `markTierFailed()`, `stats()` (p50 / p95 / p99, counts, probe failures, history of every decision with its reason).
 
@@ -112,7 +114,7 @@ Other methods: `hold(ms)` (ignore the next frames: a rebuild, a level load), `di
 - `createFrameRing(capacity)`: typed-array ring of `dt / cpu / calls` with `mean`, `max`, `percentile`, `fps`, `over(ms)`. `push` allocates nothing.
 
 ### gpuTimer.js
-`createGpuTimer(gl)` -> `{ supported, begin(), end(), lastMs, avgMs, dispose() }`. `createLoop({ gpuTimer })` wraps every frame in `begin()/end()` and passes `lastMs` to the governor (without the loop: wrap all GL work of the frame yourself and pass it as the 4th argument of `gov.frame`). Results arrive a few frames late; disjoint samples are dropped; at most 4 queries in flight; one query per frame, never nested. With it, the governor sees real headroom on a vsync-pinned frame and can raise the TIER with evidence. (Available on the dev laptop's Chrome: `EXT_disjoint_timer_query_webgl2` is exposed.)
+`createGpuTimer(gl, { inflight = 4, disjointMs = 0 })` -> `{ supported, begin(), end(), lastMs, avgMs, dispose() }`. (`getParameter(GPU_DISJOINT_EXT)` is a SYNCHRONOUS round trip to the GPU process in Chrome: the main thread waits until every queued command has been decoded. Called every frame it removes the renderer's one frame of lead over the GPU. A game that runs the timer in play passes `disjointMs: 500`: the flag is read at most that often and only when a result is about to be used; the default 0 is exact and what the tests pin.) `createLoop({ gpuTimer })` wraps every frame in `begin()/end()` and passes `lastMs` to the governor (without the loop: wrap all GL work of the frame yourself and pass it as the 4th argument of `gov.frame`). Results arrive a few frames late; disjoint samples are dropped; at most 4 queries in flight; one query per frame, never nested. With it, the governor sees real headroom on a vsync-pinned frame and can raise the TIER with evidence. (Available on the dev laptop's Chrome: `EXT_disjoint_timer_query_webgl2` is exposed.)
 
 ### dynamicRes.js (section 5 has the full recipe)
 `createDynamicRes({ scale })` -> `{ setScale(s), apply(target), sizeOf(target), reset(target), bind(target), uniforms }`; `DYNRES_GLSL` (`dynUv(uv)`), `rewriteSamples(glsl, ['tColor', ...])`, `createDynPass({ fragment, uniforms, dyn })` -> `{ render(renderer, target \| null, dyn), uniforms, dispose() }`, `createBlit(dyn)` (present a dynamic target on the canvas).
@@ -155,6 +157,8 @@ Where the pieces live today: `scene/capabilities.js` (probe + `chooseTier` / `re
 8. **Persist**: nothing to do, `aq.governor`'s `onStable` writes tier memory.
 
 ### 4.2 Autowala
+
+**Status: integrated by aw-int (`docs/perf/aw-int.md`)**, with these differences from the recipe below, each learned on the real GPU: the post chain was already replaced by aw-gpu (no `EffectComposer`); the canvas and the scene target are allocated ONCE for the highest tier the session may reach and a tier is a share of them (so no tier step reallocates); the governor is fed the game's own JS time OUTSIDE the render call (a render call that mixes GL submission with GPU waits made every pixel-bound frame look CPU-bound); `minRefreshHz: 55` (a steady 20 ms frame is not a 50 Hz display); the calibration's units are noisy 2-10x on a busy machine, so the game keeps its own reading (`decideStart`: the highest tier up to the class cap that is not hopeless, a first reading above 20 us is repeated, units sanitised); a tier the governor leaves is marked failed for 5 minutes and a failed tier-up is not written to tier memory; a draw-call-bound tier gets a live scale floor of 1 (`createScaleFloors`); the next lower tier's programs are built behind the loading bar when the start is unproved (a compile in play is 300-600 ms frames per batch of programs). The WebGL 2 probe (`webgl.js`) runs before the 3D chunks are imported.
 
 Where: `render/renderer.js` (`pickQuality`, `createRenderer`: `build()` with `EffectComposer` + `RenderPass` + `UnrealBloomPass` + `OutputPass`, the step-down-only sampler), `render/chunks.js` (`chunkedInstances`), `render/dispose.js` (`disposeTree`), `game/config.js` (`QUALITY`), `game/Game.js` (`gameSteps`: `createRenderer(canvas, { quality: pickQuality(...) })`, the `frame()` loop, `resize`).
 

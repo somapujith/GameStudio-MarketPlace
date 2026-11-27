@@ -88,7 +88,8 @@ export function createSteam({ count = 10, rise = 0.35, size = 0.1, speed = 0.4, 
   points.renderOrder = 5;
   points.visible = false;
   points.onBeforeRender = (renderer, scene, camera) => {
-    const h = renderer.getDrawingBufferSize(_v).y;
+    // the canvas height times the dynamic render scale (scene/renderer.js sets `tcViewScale`): the picture is rendered into that fraction of the canvas
+    const h = renderer.getDrawingBufferSize(_v).y * (renderer.tcViewScale || 1);
     mat.uniforms.uPx.value = (camera.projectionMatrix.elements[5] * h) / 2;
   };
   return {
