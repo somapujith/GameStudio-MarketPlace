@@ -39,26 +39,12 @@ import { pickBubbles, pickSubtitle } from './dialogue.js';
 import { createProjector } from './projector.js';
 import { usePrefs } from './prefs.js';
 import { useDialogue } from './useDialogue.js';
-import { createPointerGuard, useFullscreen } from './mobileUi.js';
+import { createPointerGuard, useFullscreen, useTouchDevice } from './mobileUi.js';
 import './hud.css';
 
 const EMPTY = new Set();
 const TOAST_MS = 2600;
 const spotXOf = (c) => LAYOUT.spotX(c.spot);
-
-/** True on a touch-first device (decides the touch / keyboard wording of the help). */
-function useCoarse() {
-  const [coarse, setCoarse] = useState(false);
-  useEffect(() => {
-    if (typeof matchMedia !== 'function') return undefined;
-    const mq = matchMedia('(pointer: coarse)');
-    const on = () => setCoarse(mq.matches);
-    on();
-    mq.addEventListener?.('change', on);
-    return () => mq.removeEventListener?.('change', on);
-  }, []);
-  return coarse;
-}
 
 export default function HudLayer({ session, scene, audio = null, state, tickAt, status, connection, onMute, muted, onRunner, onLeave, reducedOverride }) {
   const osReduced = useReducedMotion();
@@ -88,7 +74,7 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
   const [prefs, setPrefs] = usePrefs();
   const projector = useMemo(() => createProjector(), []);
   const dlg = useDialogue(session, audio, { scene });
-  const touch = useCoarse();
+  const touch = useTouchDevice(); // touch-first screen? (decides the touch / keyboard wording): the rule shared with the pause menu and the start screen
   const fullscreen = useFullscreen();
   useEffect(() => {
     session?.tutorial?.setPointer?.(touch ? 'touch' : 'keyboard');
@@ -845,6 +831,7 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
           muted={muted}
           onLeave={leave}
           fullscreen={touch ? fullscreen : null}
+          touch={touch}
         />
         {online && (
           <CoopBar
