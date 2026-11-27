@@ -67,7 +67,7 @@ export const QUALITY = {
 
 /**
  * What the shared governor (platform/gfx) is told about this game.
- *  scaleMin   the lowest render scale per tier (below ~0.6 the picture is visibly soft: the tier drops instead). A LIVE floor of 1 replaces it for
+ *  scaleMin   the lowest render scale per tier (below ~0.7 the picture is visibly soft: the tier drops instead; measured: scale 0.6 bought 16 % of a medium frame). A LIVE floor of 1 replaces it for
  *             a tier that is bound by draw calls (game/gfx-control.js createScaleFloors): resolution buys nothing there
  *  tierCost   relative frame cost per tier, for the tier-up prediction: measured on the dev laptop's integrated GPU, charminar at dusk, 1536x864 @ 1.25:
  *             busy machine: low 16.2-18.0 ms, medium 22.9, high 22.0-25.6; quiet moment (11:07): low 12.8, medium 14.4, high 15.6 (at that device ratio
@@ -85,14 +85,16 @@ export const GFX = {
   teleportHoldMs: 1500,
   memoryHoldMs: 6000,
   tierRetryMs: 300000, // a tier the governor left because it could not hold the frame budget is not tried again for this long
-  pinnedScaleMin: 0.8, // a tier the player chose may be softened only down to this render scale (the tier itself never changes)
-  scaleMin: { low: 0.6, medium: 0.6, high: 0.7 },
+  // the picture is never softer than this because of the governor: the next lever is the tier. NOT 0.8: from 1 the first step lands on 0.8 and the governor's
+  // "did the resolution help?" check needs a SECOND step to reach its verdict; with a floor of 0.8 it never concluded and the picture stayed soft for nothing
+  scaleMin: { low: 0.7, medium: 0.7, high: 0.7 },
   tierCost: { low: 1, medium: 1.15, high: 1.25 },
+  recalibrateAboveCallUs: 20, // a benchmark whose draw-call unit reads above this is run once more and the faster reading of each unit is kept
   hopelessFactor: 2.5, // a calibrated start tier is the highest (up to the GPU class cap) whose estimated frame is within this multiple of the budget
   callBudget: { low: 150, medium: 250, high: 300 },
   models: {
-    low: { pixelRatio: 1, layers: 1.6, calls: 1100, mtris: 0.25, post: 1.0, scaleMin: 0.6 },
-    medium: { pixelRatio: 1.25, layers: 1.6, calls: 1500, mtris: 0.35, post: 1.4, scaleMin: 0.6 },
+    low: { pixelRatio: 1, layers: 1.6, calls: 1100, mtris: 0.25, post: 1.0, scaleMin: 0.7 },
+    medium: { pixelRatio: 1.25, layers: 1.6, calls: 1500, mtris: 0.35, post: 1.4, scaleMin: 0.7 },
     high: { pixelRatio: 1.75, layers: 1.8, calls: 1560, mtris: 0.45, post: 1.45, scaleMin: 0.7 },
   },
 };

@@ -47,6 +47,21 @@ export const sanitizeUnits = (u = {}) => ({
 });
 
 /**
+ * Two benchmark runs as one: the SMALLER of each unit. Contention (a busy main thread, a cold JIT, the page's own start-up) only ever makes a unit
+ * read slower than the machine is, so the faster of two readings is the better estimate. The rest (viewport, mode, refresh) comes from `a`.
+ */
+export function mergeMinUnits(a, b) {
+  if (!a || !a.units) return b || a || null;
+  if (!b || !b.units) return a;
+  const units = { ...a.units };
+  for (const k of Object.keys(b.units)) if (Number.isFinite(b.units[k]) && !(b.units[k] >= units[k])) units[k] = b.units[k];
+  return { ...a, units, runs: (a.runs || 1) + (b.runs || 1) };
+}
+
+/** Was the benchmark's draw-call unit slow enough to be a busy moment rather than a slow machine? (4-8 us on the dev laptop when quiet, 11-42 us seen at boot.) */
+export const suspiciousUnits = (cal, limit = GFX.recalibrateAboveCallUs) => !!(cal && cal.units && cal.units.callUs > limit);
+
+/**
  * Our own reading of the benchmark's units. The generic rule ("the highest tier that fits 85 % of the budget") is a tight decision on a noisy
  * measurement: the units of consecutive runs on the same laptop differ by 2-3x (callUs 11 / 14 / 16 / 22, the main thread is cold JIT and busy with the
  * page's own start-up while it runs), and a wrong LOW start stays low for at least 20 s (the governor climbs only with evidence), while a wrong HIGH
@@ -138,12 +153,25 @@ export function* setupQuality({ pref = 'auto', view, handlers = {}, storage, gpu
     // (a benchmark that never answers must not hold the loading bar for ever: the GPU class decides after `calibrateTimeoutMs`)
     let timer = 0;
     const timeout = new Promise((r) => { timer = setTimeout(r, calibrateTimeoutMs); });
-    yield Promise.race([
-      Promise.resolve()
-        .then(() => calibrate({ width: view.w, height: view.h, dpr: view.dpr, gpu, tiers: GFX.models }))
-        .then((r) => { res = r || null; }, () => { res = null; }),
-      timeout,
-    ]).then(() => clearTimeout(timer));
+    const run = () => Promise.resolve().then(() => calibrate({ width: view.w, height: view.h, dpr: view.dpr, gpu, tiers: GFX.models }));
+    const measure = async () => {
+      let first = null;
+      try {
+        first = await run();
+      } catch {
+        return null;
+      }
+      // one reading on a busy main thread can say 40 us a draw (the machine does 4-8): measure again and keep the faster of each unit
+      if (suspiciousUnits(first)) {
+        try {
+          return mergeMinUnits(first, await run());
+        } catch {
+          return first;
+        }
+      }
+      return first;
+    };
+    yield Promise.race([measure().then((r) => { res = r || null; }, () => { res = null; }), timeout]).then(() => clearTimeout(timer));
     calibration = sharpenStart(decideStart(res, { cap: gpu.tierCap }));
   }
   const floors = createScaleFloors();
@@ -173,8 +201,7 @@ export function* setupQuality({ pref = 'auto', view, handlers = {}, storage, gpu
   // a failed tier-up (a probe that missed the budget) is a fact about one noisy moment on a shared machine: the governor keeps it for this session, but
   // tier memory must not ban the tier for a week (adaptive.js writes it through memory.markFailed)
   aq.memory.markFailed = () => {};
-  // a tier the player CHOSE keeps its look: the governor may soften the picture only a little (only the resolution adapts on a pinned tier)
-  if (aq.initial.lock) floors.setMin(aq.initial.tier, GFX.pinnedScaleMin);
+  // (a tier the player CHOSE is locked: only the resolution adapts, down to the same floor as any tier)
   return { aq, gpu, calibration, decision, floors };
 }
 

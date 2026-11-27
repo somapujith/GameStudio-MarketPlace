@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { classifyGpu, createTierMemory, viewportClass } from '@/platform/gfx';
 import { GFX } from './config.js';
-import { autoStartTier, createScaleFloors, createSwitchableTimer, decideStart, guardMemoryWrites, insuranceTier, memoryPlan, probeGameGpu, resolutionUseless, sanitizeUnits, setupQuality, sharpenStart, viewOf } from './gfx-control.js';
+import { autoStartTier, createScaleFloors, createSwitchableTimer, decideStart, guardMemoryWrites, insuranceTier, memoryPlan, mergeMinUnits, suspiciousUnits, probeGameGpu, resolutionUseless, sanitizeUnits, setupQuality, sharpenStart, viewOf } from './gfx-control.js';
 
 const fakeStorage = () => {
   const m = new Map();
@@ -242,14 +242,13 @@ describe('scale floors', () => {
     expect(resolutionUseless(undefined)).toBe(false);
   });
 
-  it('a tier the player chose is softened only down to pinnedScaleMin, a pin to 1 is never lowered', async () => {
-    const out = await drive(setupQuality({ pref: 'medium', view, gpu: integrated(), storage: fakeStorage(), calibrate: async () => null }));
-    expect(out.floors.get('medium')).toBe(GFX.pinnedScaleMin);
-    expect(out.floors.get('low')).toBe(GFX.scaleMin.low);
+  it('a pin to 1 is never lowered by setMin', () => {
     const f = createScaleFloors({ low: 0.6, medium: 0.6, high: 0.7 });
     f.pin('medium');
     f.setMin('medium', 0.8);
     expect(f.get('medium')).toBe(1);
+    f.setMin('high', 0.9);
+    expect(f.get('high')).toBe(0.9);
   });
 
   it('the start-up path hands the governor the floors, seeded by the benchmark', async () => {
@@ -325,5 +324,36 @@ describe('insuranceTier: the fallback built behind the loading bar', () => {
     expect(insuranceTier(start('medium', 'pref', true), undefined, 16.7)).toBe(null);
     expect(insuranceTier(start('low', 'class'), undefined, 16.7)).toBe(null);
     expect(insuranceTier(start('medium', 'calibration'), { ms: 12 }, 16.7)).toBe(null);
+  });
+});
+
+describe('a suspicious benchmark is measured again', () => {
+  const quietish = { fillNsPerPx: 2.8, callUs: 6, mtriMs: 3, postNsPerPx: 2.7 };
+  const busy = { fillNsPerPx: 2.8, callUs: 41.6, mtriMs: 5, postNsPerPx: 2.9 };
+  it('keeps the smaller of each unit', () => {
+    const m = mergeMinUnits({ units: busy, viewport: { w: 1 }, runs: 1 }, { units: quietish });
+    expect(m.units).toEqual({ fillNsPerPx: 2.8, callUs: 6, mtriMs: 3, postNsPerPx: 2.7 });
+    expect(m.viewport).toEqual({ w: 1 });
+    expect(m.runs).toBe(2);
+    expect(mergeMinUnits(null, { units: quietish }).units).toEqual(quietish);
+    expect(mergeMinUnits({ units: busy }, null).units).toEqual(busy);
+  });
+  it('flags a draw-call unit above the limit only', () => {
+    expect(suspiciousUnits({ units: busy })).toBe(true);
+    expect(suspiciousUnits({ units: quietish })).toBe(false);
+    expect(suspiciousUnits(null)).toBe(false);
+  });
+  it('the start-up path runs the benchmark again for a busy first reading and starts on what the second says', async () => {
+    const results = [{ units: busy, viewport: view }, { units: quietish, viewport: view }];
+    const calibrate = vi.fn(async () => results.shift());
+    const out = await drive(setupQuality({ pref: 'auto', view, gpu: integrated(), storage: fakeStorage(), calibrate }));
+    expect(calibrate).toHaveBeenCalledTimes(2);
+    expect(out.calibration.units.callUs).toBe(6);
+    expect(out.aq.initial.tier).toBe('medium');
+  });
+  it('does not repeat a benchmark that read sensibly', async () => {
+    const calibrate = vi.fn(async () => ({ units: quietish, viewport: view }));
+    await drive(setupQuality({ pref: 'auto', view, gpu: integrated(), storage: fakeStorage(), calibrate }));
+    expect(calibrate).toHaveBeenCalledTimes(1);
   });
 });
