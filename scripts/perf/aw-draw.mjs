@@ -60,14 +60,14 @@ const PIN = (s) => `(() => {
   return true; })()`;
 
 const SCENES = [
-  { name: 'charminar-day', poi: 'charminar', hour: 14 },
-  { name: 'street-day', poi: 'irani', hour: 12 },
+  { name: 'charminar-day', poi: 'charminar', hour: 14, cam: true, dist: 70, h: 6, aim: 14 },
+  { name: 'street-day', poi: 'irani', hour: 12, cam: true, dist: 45, h: 5, aim: 6 },
   { name: 'shops-paradise', poi: 'paradise', hour: 12, cam: true, dist: 38, h: 4, aim: 6 },
-  { name: 'hitech-glass', poi: 'cyber', hour: 11 },
+  { name: 'hitech-glass', poi: 'cyber', hour: 11, cam: true, dist: 120, h: 14, aim: 40 },
   { name: 'metro', station: 'red-ameerpet', cam: true, dist: 45, h: 9, aim: 11 },
   { name: 'workshop', poi: 'garage', hour: 12, workshop: true },
   { name: 'night-paradise', poi: 'paradise', hour: 22, cam: true, dist: 38, h: 4, aim: 6 },
-  { name: 'rain-night-charminar', poi: 'charminar', hour: 21, weather: 1 },
+  { name: 'rain-night-charminar', poi: 'charminar', hour: 21, weather: 1, cam: true, dist: 48, h: 4.5, aim: 12 },
 ];
 
 /** Camera / shadow draws attributed to top-level scene objects, switches, materials; GL calls per frame; memory. All in one wrapped run of `n` frames. */
@@ -78,13 +78,17 @@ const MEASURE = (n) => `(async () => {
   const sm = R.shadowMap; const sr = sm.render.bind(sm);
   sm.render = (...a) => { inShadow = true; try { sr(...a); } finally { inShadow = false; } };
   const orig = R.renderBufferDirect.bind(R);
+  let glN = 0; let seg = null; const segs = new Map();
+  const closeSeg = () => { if (!seg) return; let t = segs.get(seg.k); if (!t) segs.set(seg.k, (t = { n: 0, calls: 0 })); t.n++; t.calls += glN - seg.at; seg = null; };
   const labelOf = new Map();
   const label = (r) => { let l = labelOf.get(r); if (l) return l; const i = scene.children.indexOf(r); let s = r.name || r.type; let m = r.isMesh ? r : null; if (!m) r.traverse((o) => { if (!m && o.isMesh) m = o; });
     if (!r.name && m) s += ':' + (m.isInstancedMesh ? 'inst' : m.isSkinnedMesh ? 'skin' : 'mesh') + ':' + (Array.isArray(m.material) ? m.material[0].type : m.material.type).replace('Material', '');
     l = (i < 0 ? '?' : i) + ':' + s; labelOf.set(r, l); return l; };
   R.renderBufferDirect = function (camera, sc, geometry, material, object, group) {
     let r = object; while (r.parent && r.parent !== scene) r = r.parent;
-    if (material !== lastMat) { lastMat = material; inShadow ? sw.sMat++ : sw.vMat++; const p = R.properties.get(material).currentProgram; if (p !== lastProg) { lastProg = p; inShadow ? sw.sProg++ : sw.vProg++; } }
+    closeSeg(); let cat = 'same';
+    if (material !== lastMat) { cat = 'mat'; lastMat = material; inShadow ? sw.sMat++ : sw.vMat++; const p = R.properties.get(material).currentProgram; if (p !== lastProg) { cat = 'prog'; lastProg = p; inShadow ? sw.sProg++ : sw.vProg++; } }
+    seg = { k: (inShadow ? 'S:' : 'V:') + cat + (object.isInstancedMesh ? ':inst' : ''), at: glN };
     if (!inShadow) { matSet.add(material.uuid); geoSet.add(geometry.uuid); const p = R.properties.get(material).currentProgram; if (p) progSet.add(p.id); }
     const key = (inShadow ? 'S ' : 'V ') + label(r);
     let t = tally.get(key); if (!t) tally.set(key, (t = { calls: 0, tris: 0, mats: new Set() }));
@@ -94,18 +98,19 @@ const MEASURE = (n) => `(async () => {
     return orig(camera, sc, geometry, material, object, group);
   };
   const proto = WebGL2RenderingContext.prototype; const counts = new Map(); const origGL = {};
-  for (const k of Object.getOwnPropertyNames(proto)) { let d; try { d = Object.getOwnPropertyDescriptor(proto, k); } catch { continue; } if (!d || typeof d.value !== 'function' || k === 'constructor') continue; origGL[k] = d.value; proto[k] = function (...a) { counts.set(k, (counts.get(k) || 0) + 1); return origGL[k].apply(this, a); }; }
+  for (const k of Object.getOwnPropertyNames(proto)) { let d; try { d = Object.getOwnPropertyDescriptor(proto, k); } catch { continue; } if (!d || typeof d.value !== 'function' || k === 'constructor') continue; origGL[k] = d.value; proto[k] = function (...a) { counts.set(k, (counts.get(k) || 0) + 1); glN++; return origGL[k].apply(this, a); }; }
   let frames = 0;
   await new Promise((res) => { const f = () => { if (++frames < ${n}) requestAnimationFrame(f); else res(); }; requestAnimationFrame(f); });
   for (const k of Object.keys(origGL)) proto[k] = origGL[k];
-  R.renderBufferDirect = orig; sm.render = sr;
+  R.renderBufferDirect = orig; sm.render = sr; seg = null;
+  const glCat = [...segs.entries()].map(([k, v]) => [k, +(v.n / frames).toFixed(1), +(v.calls / v.n).toFixed(1)]).sort((a, b) => b[1] * b[2] - a[1] * a[2]);
   const rows = [...tally.entries()].map(([k, v]) => ({ k, calls: +(v.calls / frames).toFixed(1), tris: Math.round(v.tris / frames), mats: v.mats.size })).sort((a, b) => b.calls - a.calls);
   const sum = (p) => rows.filter((r) => r.k.startsWith(p)).reduce((a, r) => ({ calls: a.calls + r.calls, tris: a.tris + r.tris }), { calls: 0, tris: 0 });
   const v = sum('V '); const s = sum('S ');
   const glRows = [...counts.entries()].map(([k, c]) => [k, +(c / frames).toFixed(1)]).sort((a, b) => b[1] - a[1]);
   const mem = R.info.memory;
   const objs = { meshes: 0, inst: 0, frozen: 0, objects: 0 }; scene.traverse((o) => { objs.objects++; if (o.isMesh) { objs.meshes++; if (o.isInstancedMesh) objs.inst++; } if (!o.matrixAutoUpdate) objs.frozen++; });
-  return { camera: +v.calls.toFixed(1), shadow: +s.calls.toFixed(1), camTris: Math.round(v.tris), shTris: Math.round(s.tris), gl: Math.round(glRows.reduce((a, r) => a + r[1], 0)), glTop: glRows.slice(0, 9),
+  return { camera: +v.calls.toFixed(1), shadow: +s.calls.toFixed(1), camTris: Math.round(v.tris), shTris: Math.round(s.tris), gl: Math.round(glRows.reduce((a, r) => a + r[1], 0)), glTop: glRows.slice(0, 9), glCat,
     sw: { vMat: +(sw.vMat / frames).toFixed(1), vProg: +(sw.vProg / frames).toFixed(1), sMat: +(sw.sMat / frames).toFixed(1), sProg: +(sw.sProg / frames).toFixed(1) },
     distinct: { materials: matSet.size, programs: progSet.size, geometries: geoSet.size }, mem: { geometries: mem.geometries, textures: mem.textures, programs: R.info.programs.length }, objs, rows: rows.slice(0, ${+(args.top || 16)}) };
 })()`;
@@ -220,6 +225,6 @@ if (cmd === 'scenes') {
   console.log(`label=${row.label} tier=${row.tier} gpu=${row.gpu} errors=${row.errors.length}`);
   console.log('scene'.padEnd(22), 'cam'.padStart(6), 'shad'.padStart(6), 'GL'.padStart(6), 'mat'.padStart(5), 'prog'.padStart(5), 'geo'.padStart(5), 'vMatSw'.padStart(7), 'vProgSw'.padStart(8), 'rGeo'.padStart(5), 'rTex'.padStart(5), 'rPrg'.padStart(5), 'objects'.padStart(8));
   for (const s of row.result) console.log(s.name.padEnd(22), String(s.camera).padStart(6), String(s.shadow).padStart(6), String(s.gl).padStart(6), String(s.distinct.materials).padStart(5), String(s.distinct.programs).padStart(5), String(s.distinct.geometries).padStart(5), String(s.sw.vMat).padStart(7), String(s.sw.vProg).padStart(8), String(s.mem.geometries).padStart(5), String(s.mem.textures).padStart(5), String(s.mem.programs).padStart(5), String(s.objs.objects).padStart(8));
-  if (args.rows) for (const s of row.result) { console.log(`\n-- ${s.name}  gl: ${s.glTop.map((r) => r.join('=')).join(' ')}`); for (const r of s.rows) console.log('  ', String(r.calls).padStart(6), String(r.tris).padStart(8), String(r.mats).padStart(4), r.k); }
+  if (args.rows) for (const s of row.result) { console.log(`\n-- ${s.name}  gl: ${s.glTop.map((r) => r.join('=')).join(' ')}`); console.log('   per-draw GL [category draws/frame calls/draw]: ' + s.glCat.map((r) => r.join(' ')).join(' | ')); for (const r of s.rows) console.log('  ', String(r.calls).padStart(6), String(r.tris).padStart(8), String(r.mats).padStart(4), r.k); }
 } else console.log(JSON.stringify(row.result, null, 1));
 process.exit(0);
