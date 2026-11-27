@@ -47,8 +47,11 @@
 }
 
 .aw-failure {
+  z-index: 90; /* above every menu and the HUD: the "graphics card paused" state must not show the HUD on top of its message */
   text-align: center;
-  padding: 24px;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  overflow-y: auto; /* a 360 px tall phone: the message and its buttons scroll rather than clip */
+  place-items: safe center;
   letter-spacing: 0;
   font-weight: 600;
 }
@@ -65,15 +68,34 @@
   color: var(--aw-dim);
   text-shadow: none;
 }
+.aw-failure-acts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
 .aw-failure-btn {
-  display: inline-block;
-  padding: 12px 20px;
+  display: inline-grid;
+  place-items: center;
+  min-height: 44px;
+  padding: 0 22px;
+  border: 0;
   border-radius: 999px;
   color: #120824;
   background: var(--aw-pink);
-  font-weight: 800;
+  font: 800 16px var(--aw-font);
   text-decoration: none;
   text-shadow: none;
+  cursor: pointer;
+}
+.aw-failure-btn.is-quiet {
+  color: var(--aw-text);
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 0 1px var(--aw-line);
+}
+.aw-failure-btn:focus-visible {
+  outline: 2px solid var(--aw-cyan);
+  outline-offset: 3px;
 }
 
 .aw-loadbox {
@@ -116,7 +138,17 @@
   font-weight: 600;
   letter-spacing: 0.04em;
   color: var(--aw-dim);
+  font-variant-numeric: tabular-nums;
+}
+.aw-loadpct {
+  display: inline-block;
+  min-width: 3.2ch; /* the percentage changing never moves the stage text beside it */
+  color: var(--aw-text);
 }
 @media (prefers-reduced-motion: reduce) {
   .aw-loadbar b { transition: none; }
 }
+
+/* ---- HUD scale (see ui/scale.js): --aw-ui-scale grows with the viewport height on big screens ---------------------------------------------- */
+.aw { --aw-ui-scale: 1; }
+.aw-hud:not(.aw-hud--compact) { zoom: var(--aw-ui-scale); }
