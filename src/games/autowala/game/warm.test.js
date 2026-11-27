@@ -53,7 +53,7 @@ describe('lightSet', () => {
     expect(lightSet('medium')).toEqual({ points: 0, spots: 1, shadow: true });
     expect(lightSet('medium', { night: true })).toEqual({ points: 3, spots: 1, shadow: true }); // POOL_LIGHTS.medium
     expect(lightSet('low', { night: true })).toEqual({ points: 2, spots: 1, shadow: false });
-    expect(lightSet('high', { night: true, workshop: true })).toEqual({ points: 10, spots: 2, shadow: true });
+    expect(lightSet('high', { night: true, workshop: true })).toEqual({ points: 7, spots: 2, shadow: true }); // POOL_LIGHTS.high + 2
     expect(lightSet('high', { workshop: true, baseSpots: 3 }).spots).toBe(4);
   });
 });
