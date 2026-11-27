@@ -31,6 +31,14 @@ export function PhoneTurnIcon({ reverse = false, size = 112 }) {
   );
 }
 
+const inNativeApp = () => {
+  try {
+    return typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
+  } catch {
+    return false;
+  }
+};
+
 /** The cover screen itself (also rendered on its own in tests). */
 export function TurnScreen({ policy = 'landscape', gameName, theme, backTo = '/', canLock = false, onPlay }) {
   const ref = useRef(null);
@@ -68,10 +76,13 @@ export function TurnScreen({ policy = 'landscape', gameName, theme, backTo = '/'
             <small lang="te">{te.back}</small>
           </Link>
         </div>
-        <p className="og-hint">
-          <span>{en.hint}</span>
-          <span lang="te">{te.hint}</span>
-        </p>
+        {/* "Screen rotation locked? Switch it off": not true inside the Android app, where the native lock overrides the OS rotation setting */}
+        {!inNativeApp() && (
+          <p className="og-hint">
+            <span>{en.hint}</span>
+            <span lang="te">{te.hint}</span>
+          </p>
+        )}
       </div>
     </div>
   );

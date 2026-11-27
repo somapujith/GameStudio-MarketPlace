@@ -479,6 +479,27 @@ describe('createLandscapeLock: fullscreen + screen.orientation.lock', () => {
     expect(w3.calls).toEqual([]);
   });
 
+  it('only a real gesture of the player arms the lock: not a synthetic key, not Escape, not a tap on the gate\'s own Back link', async () => {
+    const win = fakeWindow({});
+    const lock = createLandscapeLock({ win, doc: win.document });
+    const done = vi.fn();
+    lock.armFirstGesture(done);
+    const back = { closest: (sel) => (sel === '[data-og-back]' ? {} : null) }; // an element inside the Back link
+    const other = { closest: () => null };
+    win.fire('doc', 'keydown', { key: 'Escape', isTrusted: false }); // the Android Back-button bridge dispatches this
+    win.fire('doc', 'keydown', { key: 'Escape', isTrusted: true }); // Escape dismisses, it does not ask for landscape
+    win.fire('doc', 'click', { target: back, isTrusted: true }); // "Back to the game page" just leaves
+    win.fire('doc', 'touchend', { target: back, isTrusted: true });
+    win.fire('doc', 'keydown', { key: 'a', isTrusted: false }); // assistive tech / tests
+    await new Promise((r) => setTimeout(r, 0));
+    expect(win.calls).toEqual([]);
+    expect(win.listeners()).toBe(4); // still waiting for a real gesture
+    win.fire('doc', 'pointerup', { target: other, isTrusted: true });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(win.calls).toEqual(['fullscreen:enter', 'lock:landscape']);
+    expect(done).toHaveBeenCalledWith(true);
+  });
+
   it('leaving while the browser is still asking does not leave a lock behind', async () => {
     const win = fakeWindow({});
     const lock = createLandscapeLock({ win, doc: win.document });

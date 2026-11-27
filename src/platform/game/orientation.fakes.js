@@ -124,10 +124,10 @@ export function fakeWindow(spec = {}) {
     set(patch) {
       Object.assign(facts, patch);
     },
-    fire(target, type) {
+    fire(target, type, extra) {
       const t = target === 'win' ? win : target === 'doc' ? doc : target === 'vv' ? visualViewport : target === 'so' ? orientation : target;
       const s = handlers.get(`${idOf(t)}:${type}`);
-      if (s) [...s].forEach((fn) => fn({ type }));
+      if (s) [...s].forEach((fn) => fn({ type, ...extra }));
     },
     /** how many listeners are attached right now (all targets) */
     listeners: () => [...handlers.values()].reduce((n, s) => n + s.size, 0),

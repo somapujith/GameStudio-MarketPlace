@@ -60,7 +60,13 @@ export function createLandscapeLock({ win = typeof window !== 'undefined' ? wind
         GESTURES.forEach((g) => doc.removeEventListener(g, fire, true));
         disarm = null;
       };
-      const fire = () => {
+      const fire = (e) => {
+        // not a gesture of the player's: a synthetic event (assistive tech, a native Back-button bridge, a test) must not rotate the phone ...
+        if (e && e.isTrusted === false) return;
+        // ... Escape dismisses, it does not ask for landscape, and neither does a tap on the gate's own "Back to the game page" link (that one just leaves)
+        if (e && e.type === 'keydown' && e.key === 'Escape') return;
+        const target = e && e.target;
+        if (target && typeof target.closest === 'function' && target.closest('[data-og-back]')) return;
         off();
         api.request().then((ok) => onDone && onDone(ok), () => onDone && onDone(false));
       };
