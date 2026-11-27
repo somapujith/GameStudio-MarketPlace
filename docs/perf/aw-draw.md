@@ -25,7 +25,7 @@ The camera count includes the 8 draws of the post chain (aw-int's). The objects 
 
 **The brief's targets were not reached**: camera draws <= 100 (132 at Charminar, 119 in the street) and GL calls <= 800 (870 / 848; 744 in the rain at night). What is left, with numbers, and the levers, is in "What is left".
 
-Real GPU (1536x864 @ 1.25, medium held, frame-time sampler off), see "On the real GPU" below: the frame-time gain is **small and only just visible above the noise** (about +4 to +6 fps in the clean runs, p99 slightly lower); the number of frames over 50 ms in the 14-leg teleport tour fell from 119 to 44 (one run each).
+Real GPU (1536x864 @ 1.25, medium held, governor off), see "On the real GPU" below: the frame-time gain is **small and only just visible above the noise**: 0 to +11 % fps in the clean interleaved pairs (59.8 -> 66.7, 58.4 -> 58.0 fps; p99 34.8 -> 32.9 and 37.8 -> 34.7 ms), nothing measurable at the fixed Charminar camera, GPU timer 14-15 ms either way. The GL calls fell by 27 %; the frame did not fall by 27 %. The teleport-tour comparison is inconclusive (one quiet pair 119 -> 44 frames over 50 ms, one pair on a saturated machine 257 vs 392).
 
 ## What the frame is made of (measured, new in this report)
 
@@ -67,22 +67,37 @@ Default loadout, SwiftShader, camera / shadow: **27 / 3 -> 8 / 3** (`aw-actors.m
 
 ## On the real GPU
 
-REAL_GPU_SECTION
+Interleaved `aw-probe.mjs --cmd bench` (start view at the garage, the auto driving; 8 s after 8 s of warm-up; medium held; one lock hold each), base = main `7489c2a` (with aw-int's governor) served on 5864, new = this branch at `960ebf5` on 5863 (the two last tweaks, metro instance colour and customers at 300 m, are not in these runs):
+
+| pair | build | fps | mean / p50 / p99 ms | frames > 50 ms | camera + shadow draws (`gfx.cost`) | programs | geometries / textures |
+|---|---|---|---|---|---|---|---|
+| 1 | base | 59.8 | 16.7 / 15.8 / 34.8 | 0 | 154 + 35 | 176 | 333 / 74 |
+| 1 | new | **66.7** | 15.0 / 13.8 / 32.9 | 1 | 127 + 26 | 169 | 221 / 62 |
+| 2 | base | 58.4 | 17.1 / 16.2 / 37.8 | 2 | 151 + 32 | 176 | 330 / 71 |
+| 2 | new | 58.0 | 17.2 / 16.3 / 34.7 | 2 | 101 + 25 | 169 | 220 / 61 |
+| 3 | base | 43.6 | 22.9 / 18.5 / 133 | 21 | 151 + 33 | 176 | 329 / 71 |
+| 3 | new | 35.6 | 28.1 / 15.9 / 200 | 45 | 102 + 25 | 168 | 220 / 61 |
+
+Pair 3 is a run on a saturated machine (both builds have 20-45 frames over 50 ms with no program built: other sessions' work); I do not use it. An earlier set against the older main (`f0f0529`, quieter machine): base 50.9 fps (p99 40.7), new 54.8 and 57.5 fps (p99 37.5 and 33.9); the two hitchy runs of that set (base 37.4, new 31 fps) are noise. And the fixed-camera `--cmd frames` at Charminar (3 x 6 s, two interleaved rounds): base 51.4 / 48.5 fps, new 51.6 / 47.5 fps, `gfx.render` CPU 17.7 / 18.6 vs 17.4 / 18.8 ms; GPU timer (frame / scene / post): 14.2 / 10.1 / 2.6 and 14.8 / 12.2 / 3.0 against 15.2 / 11.7 / 2.8 and 13.2 / 9.9 / 2.7 ms.
+
+**Honest reading.** Over the clean runs the new build is 0-11 % faster and its p99 2-3 ms lower, which is about what the one-page matrix predicts (the world's ~130 draws are ~6.5 ms of a frame; 40 fewer draws is 1.5-2 ms) and within the run-to-run noise of this shared machine (+-1.5 ms). The 27 % fewer GL calls did not become 27 % less frame time: a floor of ~10 ms per frame (post chain, shadow pass, the auto / people / traffic, the ground) is untouched by this stream, and the frame is not purely bound by the calls this stream removed (the removed ones were mostly cheap same-material and identity-matrix draws; the program switches, 54 -> 53 in view, are what stays expensive). I claim fewer draw calls, GL calls, programs, materials, geometries and scene objects, and a small frame-time gain; not 60 fps at medium by this change alone.
 
 ## The teleport tour and the dusk freeze
 
-The 14-leg tour (`aw-draw.mjs --cmd tour`: Charminar noon / dusk, Cyber noon / night / rain, Birla, Golconda, airport, Paradise, stadium in rain, station, Mecca, garage, a CNG station in rain, hospital; 6 s each, real GPU, medium held), before -> after, one run each:
+The 14-leg tour (`aw-draw.mjs --cmd tour`: Charminar noon / dusk, Cyber noon / night / rain, Birla, Golconda, airport, Paradise, stadium in rain, station, Mecca, garage, a CNG station in rain, hospital; 6 s each, real GPU, medium held), one run per build and set:
 
-| | before | after |
+| | main `f0f0529` -> new (quieter machine) | main `7489c2a` -> new (saturated machine) |
 |---|---|---|
-| frames over 50 ms (84 s) | 119 | 44 |
-| main-thread long tasks / total | 111 / 11.3 s | 41 / 7.6 s |
-| worst frame | 744 ms | 882 ms |
-| new programs / textures / geometries in play | 84 / 24 / 25 | 84 / 27 / 26 |
+| frames over 50 ms (84 s) | 119 -> 44 | 257 -> 392 |
+| main-thread long tasks / total | 111 / 11.3 s -> 41 / 7.6 s | 237 / 28.0 s -> 358 / 32.0 s |
+| worst frame | 744 -> 882 ms | 702 -> 764 ms |
+| new programs / textures / geometries in play | 84 / 24 / 25 -> 84 / 27 / 26 | 87 / 8 / 9 -> 80 / 9 / 9 |
+
+**The tour cannot rank the two builds.** In the second pair most legs of BOTH builds show 30-45 frames over 50 ms with no program built (the machine was saturated by other sessions); the first pair was taken in a quieter period. I do not claim a hitch improvement. What the tour does give, in both pairs and both builds, is the attribution below: in every slow frame the game's own profiler puts >= 90 % of the time in the `render` phase (`sim` <= 18 ms, `world` <= 11 ms, `camera` <= 5 ms): there is no main-thread tile build, geometry merge or disposal after boot (the world is built once, staged; teleporting builds nothing), so there is nothing in `world/**` to time-slice. The hitches are programs compiled in play and first-sight uploads:
 
 What is left is not the scene, and not in my files:
 - **Dusk freeze (the lead's item 1, props.js:259).** Cause found and attributed: every program compiled in play during the tour is a **`MeshDepthMaterial` (shadow-pass) program**; the camera-pass programs of the night light set are all built by `game/warm.js`. At the first night frame (`hour` 17.9-18.5, the lamp pool's 3 lights become visible) the shadow pass needs the depth programs of the night set: skinned customers, the instanced scenery (terrain, props x2), the merged statics (my shadow proxies) and the auto's custom depth: **6-7 programs, ~750 ms in one frame on the real GPU** (`+prog6` at 757 ms in the tour; 3.3 s in SwiftShader, 3.1 s of it the terrain's instanced depth program). The depth programs depend on the light count because three puts the scene's light counts in every program key. Fix, for aw-int (`warm.js` / `Game.js`): build the depth programs for each light set too: render ONE shadow-casting frame behind the loading screen with the night set (the pool lights visible AND the auto's headlight spot visible, `gfx.invalidateShadows()`), or compile `MeshDepthMaterial` variants (instanced, skinned, plain, the `customDepthMaterial`s) against the night warm scene. (My attempt to prove it from outside the game, one `gfx.render` with the lights toggled in the same task, did not change the count: it does not reproduce the exact set of lights / spots of the night frame, so I did not claim a fix; I only made the cause certain.) The same applies to the workshop's set (+46 programs at the garage leg, 640-890 ms frames) and the rain legs (+31).
-- **Birla +1 program, 852 ms**: the textured depth program of the Bawarchi / Delhi sign boards; fixed (they do not cast any more).
+- **Birla +1 program (525-852 ms)**: the textured depth program of the Bawarchi / Delhi sign boards; fixed (they do not cast any more): the second pair shows `+prog 1` (525 ms) on main and `+prog 0` on this branch at that leg; the Garage (+16 to +46) and CNG-in-rain (+27 to +31) legs are the workshop and rain sets, aw-int's.
 - **First-sight uploads** (cyber night: 659 ms in one frame, +4 textures +4 geometries) are driver-side uploads of the first customers / merged tiles; the warm-up frame draws the scene once, but the shadow pass of the merged proxies (layer 1) is first seen at the first shadowed frame. Not separated further.
 
 ## Visual QA (`docs/perf/aw-draw/`, 960x540 grids, before | after, SwiftShader, same camera / hour / weather; I looked at every one)
