@@ -23,28 +23,30 @@ export const QUALITY = {
     bulbLights: 0, tubeLight: false, lampLights: 0, lightPool: 0, shafts: false, clouds: 0, stars: false, reflect: 'none', heat: false,
     envSize: 32, envInterval: 6, texSize: 128, birds: 0, decor: 0.25, normalMaps: false, shadowRadius: 1,
     // runtime / model knobs (read by renderer.js, loader.js and the models, not by the stall or the street)
-    fpsCap: 30, scaleMin: 0.6, characters: 'lite', bakedCustomers: true, flatScenery: true, customerMeshBudget: 8, batchStatics: true, shadowEvery: 1,
+    fpsCap: 30, scaleMin: 0.6, characters: 'lite', bakedCustomers: true, flatScenery: true, customerMeshBudget: 8, batchStatics: true, shadowEvery: 1, hdr: 'half',
   },
   low: {
     pixelRatio: 1, shadow: 0, bloom: false, particles: 140, vehicles: 4, walkers: 3, lights: false, shelfDetail: 0.5, wires: false,
     post: false, msaa: 0, nativeAA: true, fxaa: false, ao: false, dof: false, grain: false, bloomScale: 0,
     bulbLights: 0, tubeLight: false, lampLights: 0, lightPool: 0, shafts: false, clouds: 0, stars: false, reflect: 'none', heat: false,
     envSize: 64, envInterval: 2.5, texSize: 128, birds: 0, decor: 0.5, normalMaps: false, shadowRadius: 1,
-    fpsCap: 0, scaleMin: 0.5, characters: 'low', bakedCustomers: true, flatScenery: false, customerMeshBudget: 8, batchStatics: true, shadowEvery: 1,
+    fpsCap: 0, scaleMin: 0.5, characters: 'low', bakedCustomers: true, flatScenery: false, customerMeshBudget: 8, batchStatics: true, shadowEvery: 1, hdr: 'half',
   },
   medium: {
     pixelRatio: 1.25, shadow: 1024, bloom: true, particles: 320, vehicles: 8, walkers: 6, lights: true, shelfDetail: 1, wires: true,
     post: true, msaa: 0, nativeAA: false, fxaa: true, ao: false, dof: false, grain: true, bloomScale: 0.5,
     bulbLights: 2, tubeLight: true, lampLights: 1, lightPool: 3, shafts: true, clouds: 1, stars: true, reflect: 'fake', heat: true,
     envSize: 128, envInterval: 0.6, texSize: 256, birds: 4, decor: 1, normalMaps: true, shadowRadius: 2,
-    fpsCap: 0, scaleMin: 0.7, characters: 'medium', bakedCustomers: false, flatScenery: false, customerMeshBudget: 64, batchStatics: true, shadowEvery: 3,
+    // hdr 'r11': the scene's HDR colour in R11G11B10F (4 bytes a pixel, no alpha) instead of RGBA16F: half the traffic of the scene write and of every full-size read
+    // (interleaved A/B, 6 pairs by day and night: the scene pass -1.0 ms by day and -1.4 ms at night, the bloom's first pass 0.55 -> 0.26 ms)
+    fpsCap: 0, scaleMin: 0.7, characters: 'medium', bakedCustomers: false, flatScenery: false, customerMeshBudget: 64, batchStatics: true, shadowEvery: 3, hdr: 'r11',
   },
   high: {
     pixelRatio: 1.75, shadow: 2048, bloom: true, particles: 640, vehicles: 12, walkers: 10, lights: true, shelfDetail: 1, wires: true,
     post: true, msaa: 4, nativeAA: false, fxaa: false, ao: true, dof: true, grain: true, bloomScale: 0.5,
     bulbLights: 4, tubeLight: true, lampLights: 2, lightPool: 4, shafts: true, clouds: 2, stars: true, reflect: 'planar', heat: true,
     envSize: 256, envInterval: 0.2, texSize: 512, birds: 8, decor: 1.4, normalMaps: true, shadowRadius: 3,
-    fpsCap: 0, scaleMin: 0.7, characters: 'high', bakedCustomers: false, flatScenery: false, customerMeshBudget: 64, batchStatics: true, shadowEvery: 2,
+    fpsCap: 0, scaleMin: 0.7, characters: 'high', bakedCustomers: false, flatScenery: false, customerMeshBudget: 64, batchStatics: true, shadowEvery: 2, hdr: 'half',
   },
 };
 
@@ -160,7 +162,7 @@ export const SCALE_LADDER = [1, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.6, 0.5];
 export const SCALE_MIN = { lite: 0.6, low: 0.5, medium: 0.6, high: 0.6 };
 
 /** Relative cost of a tier for the governor's tier-up prediction and for the scale a tier change resumes at (measured: see docs/perf/tf-int.md). */
-export const TIER_COST = { lite: 1, low: 1.5, medium: 3.2, high: 5.5 };
+export const TIER_COST = { lite: 1, low: 1.6, medium: 3.3, high: 3.9 };
 
 /**
  * What one frame of each tier asks of the machine, in the units the start-up calibration measures (src/platform/gfx/calibrate.js): `layers` = shaded overdraw at the
@@ -183,10 +185,10 @@ export const TIFFIN_TIER_MODELS = {
  */
 export const REF_UNITS = { fillNsPerPx: 0.55, callUs: 3.0 };
 export const TIER_REF = {
-  lite: { fixedMs: 3.5, mpxMs: 1.4 },
-  low: { fixedMs: 5.5, mpxMs: 2.2 },
-  medium: { fixedMs: 9.5, mpxMs: 4.1 },
-  high: { fixedMs: 12.5, mpxMs: 7.5 },
+  lite: { fixedMs: 4.5, mpxMs: 1.5 },
+  low: { fixedMs: 6.5, mpxMs: 2.2 },
+  medium: { fixedMs: 10, mpxMs: 4 }, // day, 13:00: the scene pass 6.7 ms + 5.1 ms / Mpx, the post passes 1.7 ms + 0.8 / Mpx, FXAA 2.2 ms flat (measured: docs/perf/tf-int.md)
+  high: { fixedMs: 17, mpxMs: 2.6 },
 };
 
 /** Estimated frame ms of `tier` at `scale` for a viewport { w, h, dpr } (css px) on a machine whose calibration measured `units` ({ fillNsPerPx, callUs }). */
@@ -195,17 +197,21 @@ export function estimateTierMs(units, tier, viewport, scale = 1, table = TIER_RE
   if (!ref) return Infinity;
   const pr = Math.max(0.25, Math.min(QUALITY[tier]?.pixelRatio ?? 1, viewport.dpr || 1));
   const mpx = (viewport.w * viewport.h * pr * pr * scale * scale) / 1e6;
-  const pixel = Math.max(0.2, (units?.fillNsPerPx || REF_UNITS.fillNsPerPx) / REF_UNITS.fillNsPerPx);
-  const call = Math.max(0.2, (units?.callUs || REF_UNITS.callUs) / REF_UNITS.callUs);
+  // the calibration runs on a machine that is also doing other things (the loading screen, other tabs, other programs): a single reading swings by 30 to 40 %, and a
+  // tier chosen from a transient poisons tier memory for weeks. The factors are therefore bounded: a machine can be judged 1.6x slower at submitting calls and 3x slower
+  // at filling pixels than the reference, not more (a really weak machine is that slow, and the governor does the rest from real frames)
+  const pixel = Math.min(3, Math.max(0.3, (units?.fillNsPerPx || REF_UNITS.fillNsPerPx) / REF_UNITS.fillNsPerPx));
+  const call = Math.min(1.6, Math.max(0.4, (units?.callUs || REF_UNITS.callUs) / REF_UNITS.callUs));
   return ref.fixedMs * call + ref.mpxMs * mpx * pixel;
 }
 
 /**
  * The tier and scale to START on from a calibration: the highest tier (not above `capTier`) whose frame fits `budgetMs * headroom` at a scale of at least `goodScale`
- * (a post tier at 0.7 beats the plain tier at 1.0: the picture, not the pixels, is what a tier is), at the highest ladder scale that fits; else the highest tier that
+ * (0.6, the post tiers' floor: a post tier at 0.6 beats the plain tier at 1.0, the picture and not the pixels is what a tier is; the governor lowers the TIER from real
+ * frames, never from one calibration run), at the highest ladder scale that fits; else the highest tier that
  * fits at its floor; else the lowest tier at its floor. Returns { tier, scale, ms, estimates, reasons, confident }.
  */
-export function recommendStart({ units, viewport, capTier = 'high', budgetMs = 1000 / 60, goodScale = 0.7, headroom = 0.9, ladder = SCALE_LADDER, confident = true }) {
+export function recommendStart({ units, viewport, capTier = 'high', budgetMs = 1000 / 60, goodScale = 0.6, headroom = 0.9, ladder = SCALE_LADDER, confident = true }) {
   const est = {};
   const reasons = [];
   const top = Math.max(0, QUALITY_ORDER.indexOf(capTier));
@@ -223,7 +229,7 @@ export function recommendStart({ units, viewport, capTier = 'high', budgetMs = 1
         break;
       }
     }
-    if (fit && fit.scale >= goodScale - 1e-6) {
+    if (fit && fit.scale >= Math.max(floor, goodScale) - 1e-6) {
       reasons.push(`${tier} fits ${budgetMs.toFixed(1)} ms at scale ${fit.scale} (est. ${fit.ms.toFixed(1)} ms)`);
       return { tier, scale: fit.scale, ms: fit.ms, estimates: est, reasons, confident };
     }
@@ -236,8 +242,10 @@ export function recommendStart({ units, viewport, capTier = 'high', budgetMs = 1
 
 /**
  * The governor's policy for this game (see docs/GFX_ENGINE.md section 6.2): `downRatio` how far over the frame budget the windowed mean may sit before the scale
- * steps down (a vsync-locked 60 Hz display reads 1.00, so 1.04 never trips on a held frame rate and keeps an unlocked benchmark within ~58 fps);
+ * steps down (a vsync-locked 60 Hz display reads 1.00, so 1.04 never trips on a held frame rate and keeps an unlocked benchmark within ~58 fps); `tierDownRatio` how
+ * slow the frame must be before the TIER drops (1.6 x 16.7 = 27 ms, about 37 fps: a lower tier is a much bigger loss of picture than a slow-ish frame, and a CPU-bound
+ * medium at 40 fps keeps its bloom, shadows and lights);
  * `upRatio` how far under the budget a predicted frame must be before the scale steps up; `loadHoldMs` / `tierHoldMs` how long the governor ignores frames after the
  * load / after a tier change.
  */
-export const GOVERNOR_OPTIONS = { downRatio: 1.04, loadHoldMs: 3000, tierHoldMs: 2500 };
+export const GOVERNOR_OPTIONS = { downRatio: 1.04, tierDownRatio: 1.6, loadHoldMs: 3000, tierHoldMs: 2500, warmHoldMs: 1500 };

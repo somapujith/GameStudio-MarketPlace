@@ -52,6 +52,17 @@ describe('createGovernorFeed', () => {
     expect(g.seen.length).toBe(2);
   });
 
+  it('shows the governor nothing while paused (a tier switch or the post-load warm-up is running), and everything again after', () => {
+    const g = fakeGov();
+    let paused = true;
+    const feed = createGovernorFeed(g, () => 100, { none: 0, paused: () => paused });
+    for (let i = 0; i < 10; i++) expect(feed.frame(60, 50, 170, 40)).toBe(0);
+    expect(g.seen.length).toBe(0);
+    paused = false;
+    expect(feed.frame(16, 8, 170, 9)).toBe(7);
+    expect(g.seen.length).toBe(1);
+  });
+
   it('does not hide a slow device: long frames with NO new program reach the governor', () => {
     const g = fakeGov();
     const feed = createGovernorFeed(g, () => 100, { none: 0 });

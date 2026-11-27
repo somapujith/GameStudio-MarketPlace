@@ -106,9 +106,12 @@ describe('the tier cost model (estimateTierMs, recommendStart)', () => {
     expect(capped.tier).toBe('medium');
     const slow = recommendStart({ units: { fillNsPerPx: 1.6, callUs: 9 }, viewport: VP, capTier: 'medium' });
     expect(['lite', 'low']).toContain(slow.tier);
+    // the units are bounded (a calibration taken on a busy machine must not poison the start tier): 25 ns / px and 60 us / call read as 3x and 1.6x the reference
     const awful = recommendStart({ units: { fillNsPerPx: 25, callUs: 60 }, viewport: VP, capTier: 'high' });
-    expect(awful.tier).toBe('lite');
-    expect(awful.scale).toBe(SCALE_MIN.lite);
+    const bounded = recommendStart({ units: { fillNsPerPx: 0.55 * 3, callUs: 3 * 1.6 }, viewport: VP, capTier: 'high' });
+    expect(['lite', 'low']).toContain(awful.tier);
+    expect(awful.tier).toBe(bounded.tier);
+    expect(estimateTierMs({ fillNsPerPx: 25, callUs: 60 }, 'medium', VP, 1)).toBeCloseTo(estimateTierMs({ fillNsPerPx: 0.55 * 3, callUs: 3 * 1.6 }, 'medium', VP, 1), 6);
   });
 
   it('prefers a post tier at the good-scale floor over the next tier down at full resolution, and says why', () => {
@@ -166,6 +169,8 @@ describe('draw-call budgets and the governor tables', () => {
   it('lets the scale steps do the work before a tier step: a held frame rate on a 60 Hz display never trips the down threshold', () => {
     expect(GOVERNOR_OPTIONS.downRatio).toBeGreaterThan(1);
     expect(GOVERNOR_OPTIONS.downRatio).toBeLessThanOrEqual(1.1);
+    expect(GOVERNOR_OPTIONS.tierDownRatio).toBeGreaterThanOrEqual(1.3); // a tier drop only for a clearly slow frame
+    expect(GOVERNOR_OPTIONS.tierDownRatio).toBeLessThanOrEqual(2);
     expect(GOVERNOR_OPTIONS.loadHoldMs).toBeGreaterThanOrEqual(2000);
     expect(GFX_GAME_KEY).toBe('tiffin-centre');
   });

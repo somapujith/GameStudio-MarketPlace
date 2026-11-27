@@ -5,7 +5,8 @@
 import { Vector3 } from 'three';
 import { HOME_X } from '../../../../shared/tiffin-centre/movement.js';
 import {
-  CHANGE_NONE, classifyGpu, createAdaptiveQuality, createGpuTimer, createLoop, createTierMemory, probeGpu, runStandaloneCalibration, shouldCalibrate, viewportClass, watchDeviceHints,
+  CHANGE_NONE, classifyGpu, createAdaptiveQuality, createGpuTimer, createLoop, createTierMemory, formatCensus, probeGpu, programCensus, runStandaloneCalibration, shouldCalibrate, viewportClass,
+  watchDeviceHints,
 } from '../../../platform/gfx/index.js';
 import { createRenderer } from './renderer.js';
 import { createLightApplier } from './light-apply.js';
@@ -81,9 +82,16 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
   const vw = Math.max(2, initialSize?.w || (typeof window !== 'undefined' ? window.innerWidth : 0) || 1280);
   const vh = Math.max(2, initialSize?.h || (typeof window !== 'undefined' ? window.innerHeight : 0) || 720);
   const vdpr = Math.max(1, caps.dpr || (typeof devicePixelRatio === 'number' ? devicePixelRatio : 1) || 1);
+  // the GPU class from what the capability probe already read (one throw-away context, not two): the renderer string and the caps the classifier looks at
   let gpu0 = null;
   try {
-    gpu0 = probeGpu() || classifyGpu({ renderer: caps.renderer, vendor: caps.vendor });
+    gpu0 = caps.renderer
+      ? classifyGpu({
+        renderer: caps.renderer,
+        vendor: caps.vendor,
+        caps: { webgl: caps.webgl, maxTexture: caps.maxTexture, maxSamples: caps.maxSamples, maxAniso: caps.maxAniso, halfFloatRT: caps.halfFloatRT, floatRT: caps.floatRT, parallelCompile: caps.parallelCompile, timerQuery: false },
+      })
+      : probeGpu() || classifyGpu({});
   } catch {
     gpu0 = classifyGpu({ renderer: caps.renderer || '' });
   }
@@ -228,6 +236,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
   const fontsDoc = typeof document !== 'undefined' ? document.fonts : null;
   fontsDoc?.addEventListener?.('loadingdone', repaint);
 
+  let poolScan = 0;
   // main-thread time per section of a frame, for the benchmark tooling (scene.debug.profile): off in play, then one null check per section
   let prof = null;
   const lap = (k) => {
@@ -283,6 +292,10 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     lap('fx');
     highlight.update(dt, t, sync.resolve, reduced, hlView);
     lap('highlight');
+    if (++poolScan >= 90) {
+      poolScan = 0;
+      lightPool.refresh(); // a light the stall made without going through setStations / setSpots / setMenu is pooled within 1.5 s
+    }
     lightPool.update(dt, camera.position);
     lap('lightPool');
     if (renderIt) {
@@ -293,7 +306,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
 
   // ---- the frame loop (gfx createLoop): rAF, the tier's frame cap, tab hidden / shown without a catch-up step, GPU timing, and the governor fed every frame ----
   // A tier change is hidden behind a held frame (see switchTier): `switching` frames update the game but do not draw.
-  const timer = createGpuTimer(gfx.renderer.getContext());
+  const timer = createGpuTimer(gfx.renderer.getContext(), { disjointMs: 500 }); // (the disjoint flag is a synchronous round trip to the GPU process: not every frame)
   let timerPaused = false; // the benchmark tooling times single passes itself (scripts/perf/tf-probe.mjs): one TIME_ELAPSED query at a time
   const loopTimer = timer.supported
     ? { supported: true, begin: () => !timerPaused && timer.begin(), end: () => timer.end(), get lastMs() { return timer.lastMs; } }
@@ -304,7 +317,12 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
   gfx.gpuTimer = timer;
   // a frame within a compile storm (a program appeared in the last 0.6 s and the frame itself is a stall) says nothing about what the device renders
   let sw = null; // the tier switch in flight (see switchTier)
-  const govFeed = createGovernorFeed(gov, () => (gfx.renderer.info.programs ? gfx.renderer.info.programs.length : 0), { none: CHANGE_NONE, paused: () => !!sw });
+  // frames are not judged while the tier switches or while the post-load shader warm-up builds one of each dish (a frame of its own work each, 45 programs): that
+  // warm-up is what sank the old scaler to 0.5 in the first seconds; the governor starts looking when it is done (plus the hold below)
+  const govFeed = createGovernorFeed(gov, () => (gfx.renderer.info.programs ? gfx.renderer.info.programs.length : 0), {
+    none: CHANGE_NONE,
+    paused: () => !!sw || (!!warmer && !warmer.done),
+  });
   let appliedCap = -1;
   const applyFpsCap = () => {
     appliedCap = gov.fpsCap || 0;
@@ -475,7 +493,10 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     }
     if (!warmer.done) {
       warmer.step(3);
-      if (warmer.done) mark('tc:warm-done');
+      if (warmer.done) {
+        mark('tc:warm-done');
+        gov.hold(GOVERNOR_OPTIONS.warmHoldMs ?? 1500); // the last compile's frames are over: let the window refill with normal ones
+      }
     }
   };
   gfx.onChange(() => {
@@ -675,6 +696,11 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
       get lightPool() { return lightPool; },
       /** The start-up calibration result (null when none ran: a remembered tier, an explicit choice, the synchronous build): { units, recommended: { estimates } ... }. */
       get calibration() { return calibration; },
+      /** The program census of the renderer (gfx warmup.js): which tokens split the programs. `census(true)` returns the formatted text. */
+      census: (text = false) => {
+        const c = programCensus(gfx.renderer);
+        return text ? formatCensus(c) : c;
+      },
       /** What each tier switch of this session cost: [{ tier, ms, programs }]. */
       get tierSwitches() { return tierSwitches; },
       get switching() { return !!sw; },

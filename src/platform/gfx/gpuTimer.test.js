@@ -98,6 +98,30 @@ describe('createGpuTimer', () => {
     expect(got2).toEqual([['d', -1]]);
     expect(t2.dropped).toBe(1);
   });
+  it('with disjointMs the (synchronous) disjoint flag is read at most that often, and only when a result is about to be used', () => {
+    const f = fakeGl({ latency: 1, ns: 5_000_000 });
+    let reads = 0;
+    const orig = f.gl.getParameter;
+    f.gl.getParameter = (p) => {
+      reads++;
+      return orig(p);
+    };
+    let clock = 0;
+    const t = createGpuTimer(f.gl, { disjointMs: 500, now: () => clock });
+    for (let i = 0; i < 60; i++) {
+      clock += 16;
+      t.begin();
+      t.end();
+      f.tick();
+    }
+    expect(t.samples).toBeGreaterThan(30);
+    expect(reads).toBeLessThanOrEqual(3); // ~960 ms of frames: two or three reads, not sixty
+    // the default is exact: one read per poll
+    reads = 0;
+    const t2 = createGpuTimer(f.gl);
+    for (let i = 0; i < 10; i++) { t2.begin(); t2.end(); f.tick(); }
+    expect(reads).toBeGreaterThanOrEqual(10);
+  });
   it('begin() reports false when the GPU is too far behind to take another query', () => {
     const f = fakeGl({ latency: 1000 });
     const t = createGpuTimer(f.gl, { inflight: 2 });

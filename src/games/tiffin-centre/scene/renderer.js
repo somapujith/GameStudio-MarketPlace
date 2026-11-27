@@ -228,7 +228,9 @@ export function createRenderer(canvas, { quality = 'medium', onQuality, onScale,
    * the canvas. Returns true when the scale changed.
    */
   const setScale = (s) => {
-    const next = Math.max(0.25, Math.min(1, s));
+    let next = Math.max(0.25, Math.min(1, s));
+    // a direct tier (lite / low) re-sizes the canvas on every step (2 to 7 ms, a blank frame): it only follows the governor in tenths, not in the post tiers' 0.05 rungs
+    if (!QUALITY[q].post) next = Math.max(0.25, Math.round(next * 10) / 10);
     if (Math.abs(next - scale) < 1e-4) return false;
     scale = next;
     if (QUALITY[q].post) {

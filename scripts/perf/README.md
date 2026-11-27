@@ -25,5 +25,10 @@ Read the numbers like this:
 - `calls` / `tris` / `programs`: draw calls, triangles, compiled shader programs (the last render's counters; Tiffin counts a whole frame).
 - `--profile`: where the CPU goes. `(program)` is time not in JS (driver / GPU wait).
 
+Tiffin Centre experiments (tf-int): `tf-probe.mjs` runs ONE experiment script inside a live page (`--js file.js`; the body of an async function with `scene`, `gfx`, `args`, `h` in
+scope; `h.measure`, `h.gpu` (whole-frame GPU timer queries), `h.passes` (per post pass), `h.cpu` (per section of the frame), `h.info`), so an A/B is several measurements in ONE page load
+(same GPU clocks, same machine load) instead of two benchmark runs a minute apart. `tf-qa.mjs` takes identical-camera shots at several hours and in the rain for before / after proofs.
+Both take the bench lock like `bench.mjs`; to run several jobs under one lock hold, take `lock.mjs` once and give each job its own `--port` (a Chrome that is still closing holds the previous one).
+
 `lock.mjs` is a machine-wide mutex: every run takes it, so two benchmarks never share the GPU. `cdp.mjs` is the small DevTools client the scripts use
 (it also launches Chrome from `CHROME_PATH` or the usual install folders, and only ever kills the Chrome it started).
