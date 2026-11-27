@@ -538,6 +538,12 @@ export function createPost(renderer, scene, camera, { dyn = createDynamicRes() }
   return {
     build,
     render,
+    /** Frees every render target (a tier without post, a memory warning): the next `build()` allocates them again. */
+    release() {
+      disposeTargets();
+      builtKey = '';
+      cfg = null; // (prelink and the frame have nothing to do until the next build)
+    },
     /** The dynamic-resolution state: scale steps are `post.setScale(s)` (viewport and uniforms only: nothing is re-allocated, nothing recompiles). */
     dyn,
     setScale(s) {

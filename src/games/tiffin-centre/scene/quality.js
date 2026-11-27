@@ -251,4 +251,4 @@ export function recommendStart({ units, viewport, capTier = 'high', budgetMs = 1
  * `upRatio` how far under the budget a predicted frame must be before the scale steps up; `loadHoldMs` / `tierHoldMs` how long the governor ignores frames after the
  * load / after a tier change.
  */
-export const GOVERNOR_OPTIONS = { downRatio: 1.04, tierDownRatio: 1.6, stableSaveMs: 30000, loadHoldMs: 3000, tierHoldMs: 2500, warmHoldMs: 1500 };
+export const GOVERNOR_OPTIONS = { downRatio: 1.04, tierDownRatio: 1.6, stableSaveMs: 30000, loadHoldMs: 3000, tierHoldMs: 2500, warmHoldMs: 1500, memoryHoldMs: 5000 };

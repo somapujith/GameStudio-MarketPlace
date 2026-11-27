@@ -21,8 +21,8 @@ import { createSync } from './sync.js';
 import { makeArt } from './art.js';
 import { createTracker } from './tracker.js';
 import { whenFontsReady } from './textures.js';
-import { DRAW_CALL_BUDGET, GFX_GAME_KEY, GOVERNOR_OPTIONS, QUALITY, QUALITY_ORDER, SCALE_LADDER, SCALE_MIN, TIER_COST, TIFFIN_TIER_MODELS, pickQuality, recommendStart } from './quality.js';
-import { combineFpsCap, createGovernorFeed, startTier, usableCalibration } from './adapt.js';
+import { DRAW_CALL_BUDGET, GFX_GAME_KEY, GOVERNOR_OPTIONS, QUALITY, QUALITY_ORDER, SCALE_LADDER, SCALE_MIN, TIER_COST, TIFFIN_TIER_MODELS, minTier, pickQuality, recommendStart } from './quality.js';
+import { MEMORY_EVENT, combineFpsCap, createGovernorFeed, memoryResponse, startTier, usableCalibration } from './adapt.js';
 import { describeCaps, getGfxPref, probeBrowser, resolveTier, setGfxPref } from './capabilities.js';
 import { LOAD_STEPS, applyModelTier, createBatcher, createProgramWarmer, programsStatus, runAsync, runSync, sleep } from './loader.js';
 import { DISH_IDS } from '../../../../shared/tiffin-centre/catalog.js';
@@ -354,6 +354,46 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
   const loop = createLoop({ render: frame, governor: govFeed, info: gfx.renderer.info, gpuTimer: loopTimer, maxFps: gfx.cfg.fpsCap || 0, maxDelta: 0.1 });
   gov.setHints({ capFps: gfx.cfg.fpsCap || 0 }); // lite is capped at 30 fps: the governor's budget is that frame, not 16.7 ms
   const stopHints = watchDeviceHints(gov); // data saver / low battery: 30 fps cap
+  // ---- memory warnings: the Android bridge fires `jalebi:memory` ({ detail: { level: 'low' | 'critical' } }) on a real one. `low`: ONE step down (the resolution first, then
+  // the tier) and a hold; `critical`: the lowest tier at once and the GPU memory the tier does not need is given back. The governor may not climb back for two minutes.
+  const ceilingTier = auto ? minTier(aq.initial.maxTier || verdict.tier, verdict.tier) : q0; // what the governor may climb to when nothing is wrong
+  let lastMemoryAt = -1e9;
+  let memorySeen = null;
+  let memoryTimer = 0;
+  const memoryEvents = []; // [{ level, action, tier, scale }]: what each warning did (scene.debug.memoryEvents)
+  const handleMemory = (e) => {
+    if (disposed) return;
+    if (e && memorySeen === e) return; // fired on window and seen again on document
+    memorySeen = e;
+    const level = e?.detail?.level;
+    const now = performance.now();
+    if (level === 'low' && now - lastMemoryAt < 4000) return; // a burst of `low` is one warning
+    const r = memoryResponse(level, { tier: gfx.quality, scale: gfx.scale, ladder: SCALE_LADDER, scaleMin: SCALE_MIN, tiers: QUALITY_ORDER });
+    if (level === 'low' || level === 'critical') lastMemoryAt = now;
+    if (r.action === 'scale') {
+      gov.setTier(r.tier, { scale: r.scale }); // (an explicit tier stays locked: only the scale moves)
+      gfx.setScale(r.scale);
+    } else if (r.action === 'tier') {
+      gov.setTier(r.tier, { scale: r.scale });
+      switchTier(r.tier, `memory warning (${level})`, r.scale);
+    }
+    if (r.action !== 'none') {
+      gov.hold(GOVERNOR_OPTIONS.memoryHoldMs ?? 5000);
+      gov.setMaxTier(r.tier);
+      clearTimeout(memoryTimer);
+      memoryTimer = setTimeout(() => gov.setMaxTier(ceilingTier), 120000);
+    }
+    if (level === 'critical') {
+      try {
+        gfx.releaseMemory();
+      } catch {
+        /* best effort */
+      }
+    }
+    memoryEvents.push({ level, action: r.action, tier: r.tier, scale: r.scale });
+  };
+  if (typeof window !== 'undefined') window.addEventListener(MEMORY_EVENT, handleMemory);
+  if (typeof document !== 'undefined') document.addEventListener(MEMORY_EVENT, handleMemory);
   // a tier change: the tier's own frame cap and the governor's budget follow it
   gfx.onChange(() => {
     lightPool.setK(gfx.cfg.lightPool || 0);
@@ -629,6 +669,9 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
       sw?.warmer?.cancel();
       sw = null;
       lightPool.dispose();
+      clearTimeout(memoryTimer);
+      if (typeof window !== 'undefined') window.removeEventListener(MEMORY_EVENT, handleMemory);
+      if (typeof document !== 'undefined') document.removeEventListener(MEMORY_EVENT, handleMemory);
       fontsDoc?.removeEventListener?.('loadingdone', repaint);
       warmer?.cancel();
       shadowProxy?.dispose();
@@ -705,6 +748,9 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
         const c = programCensus(gfx.renderer);
         return text ? formatCensus(c) : c;
       },
+      /** What each memory warning did: [{ level, action: 'scale' | 'tier' | 'none', tier, scale }]; memory('low' | 'critical') fires the event the Android bridge fires. */
+      get memoryEvents() { return memoryEvents; },
+      memory: (level) => window.dispatchEvent(new CustomEvent(MEMORY_EVENT, { detail: { level } })),
       /** What each tier switch of this session cost: [{ tier, ms, programs }]. */
       get tierSwitches() { return tierSwitches; },
       get switching() { return !!sw; },

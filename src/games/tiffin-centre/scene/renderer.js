@@ -192,7 +192,19 @@ export function createRenderer(canvas, { quality = 'medium', onQuality, onScale,
     sky.setTier(cfg.clouds, cfg.stars);
     dyn.setScale(cfg.post ? scale : 1);
     if (cfg.post) post.build(cfg, width, height, pr);
+    else post.release(); // a tier without post keeps none of the HDR / bloom / FXAA targets (8 to 30 MB at 1080p)
     syncPoints();
+  };
+
+  /**
+   * Gives back GPU memory that the current tier does not need (a memory warning, see index.js): the post targets of a tier without post, the shadow map of a tier without
+   * shadows, the render lists. Everything is made again on demand; nothing visible changes.
+   */
+  const releaseMemory = () => {
+    const cfg = QUALITY[q];
+    if (!cfg.post) post.release();
+    renderer.renderLists?.dispose?.(); // (the sun's shadow map lives on the light: light-apply.js releases it when a tier has no shadows)
+    return { post: !!cfg.post };
   };
 
   const resize = (w, h) => {
@@ -322,6 +334,7 @@ export function createRenderer(canvas, { quality = 'medium', onQuality, onScale,
     dispose,
     setQuality,
     commitCanvas,
+    releaseMemory,
     setScale,
     /** The renderer's own compile functions, without the "bind the HDR target" wrapper (a caller that binds its own target, post.prelink, needs these). */
     rawCompile,

@@ -12,6 +12,33 @@ export function startTier({ auto, initial, ceiling }) {
   return auto ? minTier(initial, ceiling) : ceiling;
 }
 
+/** The DOM event the Android bridge fires on a real memory warning: `new CustomEvent('jalebi:memory', { detail: { level: 'low' | 'critical' } })`. */
+export const MEMORY_EVENT = 'jalebi:memory';
+
+/**
+ * What to give back on a memory warning. `low`: ONE step down, the resolution first (the next ladder rung above the tier's floor), the tier when the resolution cannot
+ * go lower (a direct tier has no dynamic resolution: its floor is 1). `critical`: the lowest tier at once. Anything else, or nothing left to give: `none`.
+ * `state` = { tier, scale, ladder (descending), scaleMin: { [tier]: n }, tiers (ascending) }. Returns { action: 'scale' | 'tier' | 'none', tier, scale }.
+ */
+export function memoryResponse(level, { tier, scale, ladder, scaleMin, tiers }) {
+  const none = { action: 'none', tier, scale };
+  if (level !== 'low' && level !== 'critical') return none;
+  const i = tiers.indexOf(tier);
+  if (i < 0) return none;
+  if (level === 'critical') return i > 0 ? { action: 'tier', tier: tiers[0], scale: 1 } : none;
+  const floor = scaleMin?.[tier] ?? 0.5;
+  let next = null;
+  for (const r of ladder) {
+    if (r < scale - 1e-6 && r >= floor - 1e-6) {
+      next = r;
+      break; // the ladder descends: the first rung below the current scale
+    }
+  }
+  if (next != null) return { action: 'scale', tier, scale: next };
+  if (i > 0) return { action: 'tier', tier: tiers[i - 1], scale: 1 };
+  return none;
+}
+
 /**
  * Is a start-up calibration result complete enough to move the start tier? An INCOMPLETE run (a test never got a slice: a busy machine, no timer queries; cancelled; or
  * flagged not confident) fills the units it could not measure with pessimistic sentinels (25 ns / pixel, 60 us / call): taken as a verdict it put a good laptop on `low`

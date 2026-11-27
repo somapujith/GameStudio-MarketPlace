@@ -43,6 +43,11 @@ export function createLightApplier({ scene, renderer, quality }) {
       sun.shadow.mapSize.set(s, s);
       sun.shadow.map?.dispose();
       sun.shadow.map = null;
+    } else if (s === 0 && shadowSize !== 0) {
+      // a tier without shadows (a tier switch, a memory warning) gives the shadow map back: 4 MB at 1024, 16 MB at 2048
+      shadowSize = 0;
+      sun.shadow.map?.dispose();
+      sun.shadow.map = null;
     }
     sun.shadow.radius = cfg.shadowRadius || 1;
     renderer.shadowMap.type = PCFShadowMap;

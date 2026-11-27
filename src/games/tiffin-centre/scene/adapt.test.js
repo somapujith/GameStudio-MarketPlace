@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { combineFpsCap, createGovernorFeed, startTier, usableCalibration } from './adapt.js';
+import { MEMORY_EVENT, combineFpsCap, createGovernorFeed, memoryResponse, startTier, usableCalibration } from './adapt.js';
 import { createGovernor } from '../../../platform/gfx/governor.js';
 import { GOVERNOR_OPTIONS, QUALITY_ORDER, SCALE_LADDER, SCALE_MIN, TIER_COST } from './quality.js';
 
@@ -22,6 +22,34 @@ describe('startTier', () => {
     expect(startTier({ auto: true, initial: 'medium', ceiling: 'high' })).toBe('medium');
     expect(startTier({ auto: true, initial: 'high', ceiling: 'low' })).toBe('low'); // a phone: the legacy cap wins
     expect(startTier({ auto: true, initial: 'lite', ceiling: 'medium' })).toBe('lite');
+  });
+});
+
+describe('memoryResponse (the Android bridge\'s jalebi:memory warnings)', () => {
+  const S = { ladder: SCALE_LADDER, scaleMin: SCALE_MIN, tiers: QUALITY_ORDER };
+  it('low: one step down, the resolution first (the next rung), only above the tier\'s floor', () => {
+    expect(memoryResponse('low', { ...S, tier: 'medium', scale: 1 })).toEqual({ action: 'scale', tier: 'medium', scale: 0.95 });
+    expect(memoryResponse('low', { ...S, tier: 'medium', scale: 0.75 })).toEqual({ action: 'scale', tier: 'medium', scale: 0.7 });
+    expect(memoryResponse('low', { ...S, tier: 'medium', scale: 0.7 })).toEqual({ action: 'scale', tier: 'medium', scale: 0.6 });
+  });
+  it('low at the floor of the tier steps the TIER down (and a direct tier, whose floor is 1, always does)', () => {
+    expect(memoryResponse('low', { ...S, tier: 'medium', scale: 0.6 })).toEqual({ action: 'tier', tier: 'low', scale: 1 });
+    expect(memoryResponse('low', { ...S, tier: 'high', scale: 0.6 })).toEqual({ action: 'tier', tier: 'medium', scale: 1 });
+    expect(memoryResponse('low', { ...S, tier: 'low', scale: 1 })).toEqual({ action: 'tier', tier: 'lite', scale: 1 });
+  });
+  it('critical: the lowest tier at once, from anywhere', () => {
+    expect(memoryResponse('critical', { ...S, tier: 'high', scale: 1 })).toEqual({ action: 'tier', tier: 'lite', scale: 1 });
+    expect(memoryResponse('critical', { ...S, tier: 'medium', scale: 0.8 })).toEqual({ action: 'tier', tier: 'lite', scale: 1 });
+  });
+  it('nothing left to give, an unknown level or tier: none', () => {
+    expect(memoryResponse('low', { ...S, tier: 'lite', scale: 1 }).action).toBe('none');
+    expect(memoryResponse('critical', { ...S, tier: 'lite', scale: 1 }).action).toBe('none');
+    expect(memoryResponse('moderate', { ...S, tier: 'medium', scale: 1 }).action).toBe('none');
+    expect(memoryResponse(undefined, { ...S, tier: 'medium', scale: 1 }).action).toBe('none');
+    expect(memoryResponse('low', { ...S, tier: 'ultra', scale: 1 }).action).toBe('none');
+  });
+  it('the event name is the one the bridge fires', () => {
+    expect(MEMORY_EVENT).toBe('jalebi:memory');
   });
 });
 

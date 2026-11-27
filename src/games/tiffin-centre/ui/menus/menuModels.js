@@ -571,7 +571,15 @@ const STATUS = {
   lost: { tone: 'info', icon: '!', glyph: 'alert', eyebrow: 'Picture dropped', title: 'The picture dropped out', body: 'The phone or browser took the 3D view away for a moment. It usually comes back by itself and the shift stays on hold meanwhile. If it does not, press Try again.', busy: false, retry: 'Try again', exit: 'Leave the stall' },
   webgl: { tone: 'bad', icon: '3D', glyph: 'cube', eyebrow: 'Not supported here', title: 'This device cannot draw the 3D stall', body: 'Tiffin Centre needs WebGL, and this browser has it switched off or does not support it. Turn on hardware acceleration, update your browser, or open the game on another phone or computer.', busy: false, retry: 'Check again', exit: 'Back to games' },
 };
+// the same card inside the Android app: a WebView has no hardware-acceleration switch and no "other browser" to point at, so no advice that cannot be followed
+const NATIVE_WEBGL = {
+  ...STATUS.webgl,
+  title: "This phone can't run this game",
+  body: 'Tiffin Centre draws its stall in 3D, and the graphics support on this phone is not enough for it. The other games still work. Try it on another phone or on a computer.',
+  retry: '',
+};
 export const STATUS_KINDS = Object.keys(STATUS);
-export const statusCopy = (kind) => STATUS[kind] || STATUS.error;
+/** The copy of a status screen; `{ native: true }` (the Android app) gives the no-WebGL card without browser advice. */
+export const statusCopy = (kind, { native = false } = {}) => (kind === 'webgl' && native ? NATIVE_WEBGL : STATUS[kind] || STATUS.error);
 
 export { GAME_ID };
