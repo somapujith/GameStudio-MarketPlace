@@ -22,13 +22,26 @@ Medium tier (sampler held), the same 8 s bench after 6 s of warm-up, 1920x1080 d
 | boot long tasks in the first seconds | 46-69 tasks, 4.4-6.9 s | 17-38 tasks, 2.2-5.2 s |
 | geometries / textures | 169 / 55 | 329 / 68 (merged meshes, atlas, per-tile bakes) |
 
-MERGED_ROWS
+After merging main (aw-cpu's staged boot and program warm-up, `164f239`), real GPU, same machine, same batch (the batch of high / low / second medium runs was still queued behind other people's benchmarks when this was written):
+
+| | base | merged branch |
+|---|---|---|
+| medium, sampler held: fps (mean frame) | 18.7 (53.6 ms) | 23.8 (42.0 ms) |
+| medium: p50 / p99 / worst frame | 39.9 / 117 / 1820 ms | 24.3 / 228 / 1233 ms |
+| medium: frames over 50 ms in 8 s | 26 | 42 |
+| medium: draw calls camera + shadow (`gfx.cost`) | n/a (reads 1); 390 + 142 by probe | 145 + 32 |
+| **default (auto) tier, the game's own pick, sampler on** | ends on **low**, 45 fps (22.2 ms), p99 74 ms, 9 hitches (first baseline run) | ends on **medium**, **47.5 fps (21.0 ms)**, p50 18.5, p99 64 ms, worst 74 ms, 8 hitches |
+
+Read the merged medium row with care: the box was at its busiest (the base run of the same batch managed 18.7 fps, its best earlier run 30), and the merged build's window still contained
+aw-cpu's background warm-up trickle (frames over 50 ms with 0 new programs). The auto row is the cleanest result: the sampler no longer judges the first 4 s after a (re)build, and with ~half the GPU time per frame the
+game stays on medium instead of falling to low, at a higher frame rate and with shadows, bloom and 3 lamp lights that low does not have. The exact draw-call / GL-call counts on the merged build are
+`--cmd draws` 160 camera + 34 shadow, 1609 GL calls a frame, 174 programs (day + night light sets built behind the loading screen).
 
 What the numbers say, plainly:
 - **Draw calls** (camera + shadow pass, medium, Charminar, the densest view): **530 -> ~195** (camera 390 -> 160, shadow 142 -> 34). GL calls per frame ~2000 -> ~1600.
 - **GPU time** (timer queries, same view, same session): whole frame **50 ms -> 17 ms**, scene pass 30 -> 14 ms, post chain 7.1 -> 2.8 ms.
 - **Programs**: 162 -> 88 for one light set (aw-cpu's warm-up now builds the day and the night set, 174, behind the loading screen); no program is compiled in play.
-- **60 fps in the default tier was NOT reached on this machine**: typical frame ~24 ms (p50), 38-39 fps mean in the good runs, p99 55-75 ms. The frame is now limited by per-draw cost in the browser / GPU
+- **60 fps in the default tier was NOT reached on this machine**: the auto tier ran 47.5 fps (p50 18.5 ms, p99 64 ms) in its one merged run, medium 38-39 fps (p50 24 ms, p99 55-75 ms) in the good runs. The frame is now limited by per-draw cost in the browser / GPU
   process (about 1600 GL calls a frame at ~10 us each here), not by pixels or triangles; see "What the frame is bound by". The remaining stutter is main-thread work in `Game.js` (aw-cpu's area), not GPU.
 
 ## What the frame is bound by (measured, not assumed)
