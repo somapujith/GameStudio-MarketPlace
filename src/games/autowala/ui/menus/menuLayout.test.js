@@ -196,7 +196,7 @@ describe('landscape.css', () => {
     const big = all.find((b) => b.head.startsWith('@media (min-height: 800px)'));
     expect(big.head).toBe('@media (min-height: 800px) and (min-width: 1000px)');
     expect(big.body).toMatch(/\.aw \.aw-menu,\s*\.aw \.aw-career-hisaab\s*{\s*zoom:\s*var\(--aw-ui-scale, 1\)/);
-    expect(all).toHaveLength(2);
+    expect(all).toHaveLength(4); // the big-screen scale, the start screen, and the two short-phone pause rules below
   });
 });
 
@@ -253,5 +253,18 @@ describe('fares.css', () => {
   });
   it('keeps the desktop buttons as they were', () => {
     expect(fares).toMatch(/\.aw \.aw-fare-opt\s*{[^}]*min-height:\s*52px/);
+  });
+});
+
+describe('the pause list on a short sideways phone', () => {
+  it('goes two columns wide at 400 px tall or less, so CLOCK OUT and QUIT TO HUB never need a scroll, and keeps 44 px rows', () => {
+    const lcss = read('landscape.css');
+    const short = lcss.slice(lcss.indexOf('@media (max-height: 400px) and (orientation: landscape) {'));
+    expect(short).toMatch(/\.aw \.aw-pm__list\s*{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*1fr 1fr/s);
+    expect(short).toMatch(/grid-auto-rows:\s*minmax\(44px,/);
+    expect(short).toMatch(/max-height: 400px\) and \(max-width: 760px\)[^{]*{[^}]*\.aw-te\s*{\s*display:\s*none/s);
+  });
+  it('the single-column rows never shrink below 44 px (they only grow to fill the column)', () => {
+    expect(sheet).toMatch(/\.aw \.aw-pm \.aw-mrow\s*{[^}]*flex:\s*1 1 44px;[^}]*min-height:\s*44px;[^}]*max-height:\s*58px/s);
   });
 });

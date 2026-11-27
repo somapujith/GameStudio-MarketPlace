@@ -16,9 +16,17 @@ const SENTENCE_FIXES = [
  * `step` = { label, te, key } from the tutorial snapshot (the current step); `touch` = is the player on a touch screen.
  * Returns { label, te, key } to show: on touch the key badge is dropped (there is no key to press) and the keyboard wording is replaced.
  */
+// the tutorial snapshot only carries the key of the CURRENT step; the other steps (BRIEF, quest log) are recognised by their wording
+const KEY_BY_LABEL = [
+  [/^Drive\. W or the up arrow/i, 'W'],
+  [/^Honk the horn\. Press H/i, 'H'],
+  [/^Press Esc to pause/i, 'Esc'],
+];
+export const inferKey = (label) => (KEY_BY_LABEL.find(([re]) => re.test(String(label || ''))) || [])[1] || '';
+
 export function coachStepText(step, touch) {
   const s = step || {};
-  const key = s.key || '';
+  const key = s.key || (touch ? inferKey(s.label) : '');
   if (!touch) return { label: s.label || '', te: s.te || '', key };
   const swap = key && TOUCH_TEXT[key];
   if (swap) return { label: swap.label, te: swap.te, key: '' };

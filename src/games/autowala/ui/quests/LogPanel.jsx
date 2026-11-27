@@ -7,10 +7,13 @@ import { fmtClock } from '../../gameplay/quest-math.js';
 import { clockTone, limitText, pct, rankProgress } from './questUi.js';
 import { useMenuLayout } from '../menus/menuLayout.js';
 import { CloseGlyph } from '../menus/glyphs.jsx';
+import { useTouchMode } from '../hud/touchMode.js';
+import { coachStepText } from './coachText.js';
 import '../menus/sheet.css';
 
 export default function LogPanel({ game, snap }) {
   const q = snap.quest;
+  const touch = useTouchMode();
   const root = useRef(null);
   const layout = useMenuLayout();
   const close = () => game.ctx.closeMenu();
@@ -71,7 +74,7 @@ export default function LogPanel({ game, snap }) {
                 <ol className="aw-quest-steps is-log">
                   {a.steps.map((s, i) => (
                     <li key={i} className={s.done ? 'is-done' : s.current ? 'is-now' : ''}>
-                      {s.label}
+                      {coachStepText(s, touch).label}
                     </li>
                   ))}
                 </ol>
@@ -103,7 +106,7 @@ export default function LogPanel({ game, snap }) {
               <div className="aw-quest-none">
                 <p>No mission running.</p>
                 <p>
-                  Drive to <b>Mama&apos;s Garage</b>, pull up beside the <b>JOB BOARD</b> sign and press <span className="aw-key">E</span>.
+                  Drive to <b>Mama&apos;s Garage</b>, pull up beside the <b>JOB BOARD</b> sign and {touch ? 'tap' : 'press'} <span className="aw-key">E</span>.
                 </p>
                 {q.tutorialState !== 'done' && (
                   <button type="button" data-nav className="aw-quest-btn" onClick={() => (game.ctx.closeMenu(), quests.startTutorial())}>
