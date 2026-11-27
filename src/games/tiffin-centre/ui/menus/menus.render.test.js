@@ -208,6 +208,15 @@ describe('StatusScreen', () => {
     const w = html(h(StatusScreen, { kind: 'webgl', onRetry: noop, onExit: noop }));
     expect(w).toContain('WebGL');
     expect(w).toContain('Back to games');
+    expect(w).toContain('Turn on hardware acceleration');
+  });
+  it('in the Android app the no-WebGL card has no browser advice and no retry (a WebView has no such setting)', () => {
+    const n = html(h(StatusScreen, { kind: 'webgl', native: true, onRetry: noop, onExit: noop }));
+    expect(n).toContain("This phone can&#x27;t run this game");
+    expect(n).not.toContain('hardware acceleration');
+    expect(n).not.toContain('update your browser');
+    expect(n).not.toContain('Check again');
+    expect(n).toContain('Back to games');
   });
 });
 

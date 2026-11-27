@@ -114,6 +114,8 @@ export function createGovernor(rawOpts = {}) {
     gpuTimerBias: 1.25, // EXT_disjoint_timer_query reads ~20 % low against the frame (measured on the dev laptop): the headroom estimate inflates it
     forgiveRatio: 0.75, // failed up-steps are forgiven when the frame time at the SAME rung falls below this fraction of what it was
     scaleMin: 0.5,
+    tierDownRatio: 0, // a tier step is only taken when the window's ratio reaches this (0 = whenever a down step is due): a game may prefer a slow-ish frame to a lower tier
+    futileMs: 60000, // after a scale step bought nothing and no tier step was possible, scale steps are not tried again for this long (doubling each time, up to 8x)
     ...opts,
   };
   const costOf = (i) => (opts.tierCost && opts.tierCost[tiers[i]]) ?? Math.pow(1.7, i);
@@ -177,6 +179,8 @@ export function createGovernor(rawOpts = {}) {
   let failRef = 0; // ...and, after that up-step failed, the reference the load must drop below (x forgiveRatio) before the rung is tried again
   let failScaleI = -1;
   let calmMs = 0;
+  let futileUntil = -1e9; // scale steps are pointless until then (see futileMs)
+  let futileCount = 0;
   const probeFail = new Uint8Array(ladder.length);
   const tierFail = new Uint8Array(tiers.length);
   if (opts.failedTiers) for (const f of opts.failedTiers) if (tiers.indexOf(f) >= 0) tierFail[tiers.indexOf(f)] = cfg.maxTierFailures;
@@ -249,6 +253,7 @@ export function createGovernor(rawOpts = {}) {
 
   function tierDown(reason, ratio, restoreScaleI = -1) {
     if (locked || tierI <= minI) return CHANGE_NONE;
+    if (ratio < cfg.tierDownRatio) return CHANGE_NONE;
     const next = tierI - 1;
     let to = restoreScaleI >= 0 ? restoreScaleI : nearestIndex(ladder, Math.min(1, ladder[scaleI] / Math.sqrt(Math.max(0.2, costOf(next) / costOf(tierI)))));
     to = Math.min(to, nearestIndex(ladder, floorFor(next))); // never below the new tier's floor (ladder is descending: smaller index = larger scale)
@@ -274,6 +279,8 @@ export function createGovernor(rawOpts = {}) {
       const r = tierDown(`cpu bound (cpu ${cpuMean.toFixed(1)} ms of ${m.toFixed(1)} ms)`, ratio, noGain > 0 ? baseScaleI : scaleI);
       if (r) return r;
     }
+    // the resolution was just shown not to help and nothing else can be given: stay put (only a severe overload tries again before the pause is over)
+    if (t < futileUntil && ratio < cfg.severeRatio) return CHANGE_NONE;
     if (ladder[scaleI] > floor + 1e-6) {
       const wanted = ladder[scaleI] * Math.sqrt(Math.min(1, (budget * 0.9) / m));
       let to = nearestIndex(ladder, wanted);
@@ -408,6 +415,7 @@ export function createGovernor(rawOpts = {}) {
             noGain = 0;
             const r = tierDown(`resolution did not help (${p.preMean.toFixed(1)} -> ${m.toFixed(1)} ms): cpu / draw-call bound`, ratio, restore);
             if (r) return r;
+            futileUntil = t + cfg.futileMs * 2 ** Math.min(3, futileCount++);
             if (restore !== scaleI) return setScaleIndex(restore, 'up', 'scale restored: lowering it bought nothing and no lower tier exists', ratio);
             return CHANGE_NONE;
           }
@@ -542,6 +550,8 @@ export function createGovernor(rawOpts = {}) {
     notifyLoadChange() {
       failRef = 0;
       failScaleI = -1;
+      futileUntil = -1e9;
+      futileCount = 0;
       probeFail.fill(0);
       tierFail.fill(0);
       okMs = 0;
@@ -576,6 +586,8 @@ export function createGovernor(rawOpts = {}) {
       scaleI = Math.max(0, nearestIndex(ladder, Math.max(scale, floorFor(i))));
       baseScaleI = scaleI;
       probeFail.fill(0);
+      futileUntil = -1e9;
+      futileCount = 0;
       discontinuity(cfg.tierWarmupMs);
     },
     setLock(v) { locked = !!v || tiers.length < 2; },

@@ -8,7 +8,7 @@
 //
 // Disjoint events (a power-state change, a context switch) make a result meaningless; those samples are dropped. Never nests: one begin/end per frame.
 
-export function createGpuTimer(gl, { inflight = 4 } = {}) {
+export function createGpuTimer(gl, { inflight = 4, disjointMs = 0, now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()) } = {}) {
   let ext = null;
   try {
     ext = gl?.getExtension?.('EXT_disjoint_timer_query_webgl2') || gl?.getExtension?.('EXT_disjoint_timer_query') || null;
@@ -42,12 +42,34 @@ export function createGpuTimer(gl, { inflight = 4 } = {}) {
   let active = null;
   let dead = false;
 
+  // `getParameter(GPU_DISJOINT_EXT)` is a SYNCHRONOUS round trip to the GPU process in Chrome: the main thread waits until every command it has queued has been
+  // decoded, so asking it every frame removes the one frame of lead the renderer has over the GPU (a game whose frame is JS + GL calls then pays both instead of the
+  // larger). With `disjointMs` > 0 the flag is read at most that often (and only when a result is about to be consumed); a disjoint event between two reads can let
+  // one bad sample through, which the plausibility filter below and the consumers' averaging absorb. 0 = every poll (the default: exact, and what the tests pin).
+  let lastDisjointAt = -1e9;
+  let disjointCache = false;
+  const readDisjoint = () => {
+    if (disjointMs > 0) {
+      const t = now();
+      if (t - lastDisjointAt < disjointMs) return disjointCache;
+      lastDisjointAt = t;
+    }
+    let d = false;
+    try {
+      d = !!gl.getParameter(ext.GPU_DISJOINT_EXT);
+    } catch { /* ignore */ }
+    disjointCache = d;
+    return d;
+  };
+
   function poll() {
     if (dead) return;
     let disjoint = false;
-    try {
-      disjoint = !!gl.getParameter(ext.GPU_DISJOINT_EXT);
-    } catch { /* ignore */ }
+    let checked = false;
+    if (disjointMs <= 0) {
+      disjoint = readDisjoint(); // exact: every poll (as before)
+      checked = true;
+    }
     while (queue.length) {
       const q = queue[0].q;
       let ready = false;
@@ -58,6 +80,10 @@ export function createGpuTimer(gl, { inflight = 4 } = {}) {
         return;
       }
       if (!ready) break;
+      if (!checked) {
+        disjoint = readDisjoint(); // only when a result is actually about to be used
+        checked = true;
+      }
       const { tag } = queue.shift();
       let ns = 0;
       try {
