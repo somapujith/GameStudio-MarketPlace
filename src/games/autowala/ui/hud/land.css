@@ -37,9 +37,9 @@
   gap: 6px;
   min-height: var(--hud-strip-h);
 }
-.aw[data-aw-layout$='-land'] .aw-cwallet { padding: 3px 10px 3px 9px; gap: 2px; border-radius: 12px; }
+.aw[data-aw-layout$='-land'] .aw-cwallet { min-width: 84px; padding: 3px 10px 3px 9px; gap: 2px; border-radius: 12px; } /* min widths: the numbers ticking never shift the trip chip */
 .aw[data-aw-layout$='-land'] .aw-cwallet__row b { font-size: 21px; }
-.aw[data-aw-layout$='-land'] .aw-cclock { padding: 3px 10px 3px 8px; gap: 6px; border-radius: 12px; }
+.aw[data-aw-layout$='-land'] .aw-cclock { min-width: 124px; padding: 3px 10px 3px 8px; gap: 6px; border-radius: 12px; }
 .aw[data-aw-layout$='-land'] .aw-cclock__time b { font-size: 19px; }
 .aw[data-aw-layout$='-land'] .aw-more-btn,
 .aw[data-aw-layout$='-land'] .aw-pausebtn--c { min-width: 44px; min-height: 44px; border-radius: 12px; }

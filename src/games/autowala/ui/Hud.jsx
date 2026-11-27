@@ -56,6 +56,19 @@ export default function Hud({ game, snap }) {
     fare: !!snap?.fareChoice,
     sheet: layout.compact && sheet,
   });
+  // Esc closes the open More sheet (and only that: it must not also open the pause menu) and hands the focus back to the More button
+  useEffect(() => {
+    if (!sheet) return undefined;
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      setSheet(false);
+      root.current?.querySelector('.aw-more-btn')?.focus({ preventScroll: true });
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [sheet]);
   // a menu (pause, workshop...) closes the sheet; so does leaving the compact layout
   useEffect(() => {
     if (menu || !layout.compact) setSheet(false);
