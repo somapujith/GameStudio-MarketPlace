@@ -363,6 +363,7 @@ async function run() {
           await c.ev('window.__pilot.on = false; true');
           await snapshot('start (in game)');
           for (let i = 1; i <= n; i++) {
+            await c.ev('window.__gfx = null; true'); // the harness's own handle on the renderer would keep the last game alive
             await go('/');
             await c.sleep(1500);
             await snapshot(`left #${i}`);
