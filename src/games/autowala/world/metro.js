@@ -25,7 +25,7 @@ import { TRAIN, buildSchedule, carOffsets, trainState } from './metro-trains.js'
 import { pointAt } from './metro-track.js';
 import { canvasTexture } from '../render/textures.js';
 
-const TILE = 384; // map tile for the instanced viaduct (culling granularity)
+const TILE = 768; // map tile for the instanced viaduct: the whole line is ~90k triangles, a draw call costs far more than culling saves
 const NEAR = 520; // trains farther than this from the focus are not animated
 const TRAINS_PER_LINE = { red: 3, blue: 3, green: 2 };
 
