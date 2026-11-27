@@ -39,6 +39,7 @@ export { diffLoadout, FIELDS };
 
 const _rgb = [0, 0, 0]; // scratch for the per-frame rainbow (no allocation)
 const GLOW_BASE = 1.2; // underglow tube brightness (<= GLOW_MAX)
+export const GLASS_LIT = 0.25; // the windscreen's lit colour = tint colour x this (see the tint step)
 
 // ------------------------------------------------------------------------------------------------------------ bookkeeping
 
@@ -192,8 +193,11 @@ export function applyLoadout(auto, loadout, opts = {}) {
     });
   }
   if (detail && has('tint')) {
+    // The glass is blended over what is behind it, but it is LIT like a painted surface: a pale tint colour at full strength turned the
+    // windscreen into a milky white sheet wherever it faced the light (the front / workshop views). A tint darkens, it does not glow:
+    // the lit colour is scaled down, the opacity (how much of the view it darkens) is the tint level's.
     const t = tintSpec(look.tint.id);
-    ud.glassM.color.set(t.color);
+    ud.glassM.color.set(t.color).multiplyScalar(GLASS_LIT);
     ud.glassM.opacity = t.opacity;
   }
   if (detail && has('wheels')) {
