@@ -291,6 +291,31 @@ describe('CPU / draw-call bound: the tier, not the resolution', () => {
     expect(gov.tier).toBe('medium');
     expect(gov.scale).toBeLessThan(1);
   });
+  it('tierDownRatio: a mildly slow CPU-bound frame keeps its tier (a game may prefer 40 fps to a lower tier), a badly slow one drops it', () => {
+    const mild = mk({ tierDownRatio: 1.6 });
+    simulate(mild, { seconds: 30, work: () => 24, cpu: () => 22, vsync: false }); // 24 ms = ratio 1.44, resolution cannot help
+    expect(mild.tier).toBe('medium');
+    const bad = mk({ tierDownRatio: 1.6 });
+    simulate(bad, { seconds: 30, work: (tier) => 12 + 22 * TIER_COST[tier], cpu: (tier) => 10 + 21 * TIER_COST[tier], vsync: false }); // 34 ms = ratio 2.0
+    expect(bad.tier).not.toBe('medium');
+  });
+  it('a CPU-bound load on a locked tier does not pump the resolution: the futile scale step is undone once and not retried for a long while', () => {
+    const gov = mk({ lockTier: true });
+    const r = simulate(gov, { seconds: 150, work: () => 25, cpu: () => 23, vsync: false });
+    expect(gov.scale).toBe(1);
+    const late = r.changes.filter((c) => c.t > 12);
+    expect(late.length).toBeLessThanOrEqual(3); // 60 s, then 120 s pauses: one retry (a dip and the way back) in 150 s, not one cycle every 3 s
+    expect(r.changes.length).toBeLessThanOrEqual(6);
+  });
+  it('a severe overload still moves the scale during the futile pause, and notifyLoadChange ends the pause', () => {
+    const gov = mk({ lockTier: true });
+    let heavy = false;
+    simulate(gov, { seconds: 15, work: () => (heavy ? 60 : 25), cpu: () => 23, vsync: false }); // futile at 25 ms
+    expect(gov.scale).toBe(1);
+    heavy = true; // now 60 ms and resolution-dependent
+    simulate(gov, { seconds: 15, work: (tier, scale) => (heavy ? 10 + 50 * scale * scale : 25), cpu: () => 8, vsync: false, t0: 15000 });
+    expect(gov.scale).toBeLessThan(1);
+  });
   it('the lowest tier at the scale floor stays put (nothing more to give)', () => {
     const gov = mk({ tier: 'lite' });
     const r = simulate(gov, { seconds: 20, work: model(2, 400) });
