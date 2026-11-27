@@ -159,6 +159,15 @@ async function suite(c) {
   return out;
 }
 
+/** Frames over 40 ms in the first --seconds (20) of play, with the number of shader programs at that moment: a first-customer shader compile shows up here. */
+async function hitch(c) {
+  return c.ev(`(async () => {
+    const R = window.__autowala.gfx.renderer; const rows = []; let last = performance.now(); const t0 = last; const end = t0 + ${+(args.seconds || 20)} * 1000; let p0 = R.info.programs.length;
+    await new Promise((res) => { const f = (n) => { const dt = n - last; last = n; const p = R.info.programs.length; if (dt > 40) rows.push({ t: Math.round(n - t0), dt: Math.round(dt), programs: p, newPrograms: p - p0, rigs: window.__autowala.ctx.fares.waiting.filter((x) => x.rig).length }); p0 = p; if (n < end) requestAnimationFrame(f); else res(); }; requestAnimationFrame(f); });
+    return { hitches: rows, programsEnd: R.info.programs.length };
+  })()`);
+}
+
 /** Drop every customer body and build new ones, over and over: GPU resources (geometries, bone textures) must not accumulate. */
 async function leak(c) {
   await c.ev(pin(poiId, hour));
@@ -180,6 +189,7 @@ const HIDE_HUD = "(() => { const s = document.createElement('style'); s.textCont
 const CUSTOMERS = [
   { name: 'solo', look: { shirt: '#2d7be8', skin: '#a86e4a', hair: '#1b1220', female: false }, pax: 1, kind: 'regular', female: false, luggage: false, angry: false },
   { name: 'duo-bag', look: { shirt: '#e8453c', skin: '#c08a62', hair: '#2a1a12', female: true }, look2: { shirt: '#f2c230' }, pax: 2, kind: 'tourist', female: true, luggage: true, angry: false },
+  { name: 'walker', look: { shirt: '#a05cf0', skin: '#8d5a3c', hair: '#1b1220', female: true }, pax: 1, kind: 'women', female: true, luggage: false, angry: false, walk: true },
   { name: 'angry-elder', look: { shirt: '#2fb572', skin: '#6f4430', hair: '#3a2a22', female: false }, pax: 1, kind: 'elder', female: false, luggage: false, angry: true },
 ];
 
@@ -196,7 +206,7 @@ async function shots(c) {
     out.push({ f, ...extra });
   };
   if (wanted.includes('cust')) {
-    await c.waitFor('window.__autowala.ctx.fares.waiting.filter((x) => x.rig).length >= 3', 60000); // customers spawn over time
+    await c.waitFor('window.__autowala.ctx.fares.waiting.filter((x) => x.rig).length >= 4', 60000); // customers spawn over time
     for (let i = 0; i < CUSTOMERS.length; i++) {
       const v = CUSTOMERS[i];
       const prep = await c.ev(`(() => { const g = window.__autowala; const list = g.ctx.fares.waiting.filter((x) => x.rig).sort((a, b) => a.dist - b.dist);
@@ -214,13 +224,14 @@ async function shots(c) {
       await c.sleep(1800); // back: the body is rebuilt from the rewritten data
       const posed = await c.ev(`(() => { const g = window.__autowala; const cu = window.__cust; if (!cu || !cu.rig) return { ok: false, why: 'no rig' };
         g.state.paused = true; cu.rig.visible = true;
-        for (const p of cu.rig.userData.persons) { const u = p.userData; const a = 0.5; u.rArm.rotation.z = -a; u.rArm.position.set(0.25 + Math.sin(a) * 0.23, 1.19 + Math.cos(a) * 0.23, 0.06);
+        for (const p of cu.rig.userData.persons) { const u = p.userData; if (${v.walk ? 'true' : 'false'}) { const sn = 0.7; u.lLeg.rotation.x = sn; u.rLeg.rotation.x = -sn; u.rArm.rotation.set(-sn * 0.8, 0, 0); u.lArm.rotation.set(sn * 0.8, 0, 0); u.rArm.position.set(0.27, 1.01, 0.06); u.lArm.position.set(-0.27, 1.01, 0.06); p.position.y = 0.03; continue; } const a = 0.5; u.rArm.rotation.z = -a; u.rArm.position.set(0.25 + Math.sin(a) * 0.23, 1.19 + Math.cos(a) * 0.23, 0.06);
           ${v.angry ? 'const b = 0.45; u.lArm.rotation.z = b; u.lArm.position.set(-0.25 - Math.sin(b) * 0.23, 1.19 + Math.cos(b) * 0.23, 0.06);' : ''}
           p.position.y = 0; }
         return { ok: true, persons: cu.rig.userData.persons.length, type: cu.rig.type }; })()`);
       await c.sleep(1200);
       await take(`cust-${v.name}`, { prep, posed });
-      await c.ev('window.__autowala.state.paused = false; true');
+      await c.ev('(() => { const g = window.__autowala; g.state.paused = false; window.__cust.x = 20000; window.__cust.z = 20000; return true; })()'); // out of sight: its body is dropped before the next customer stands here
+      await c.sleep(600);
     }
   }
   if (wanted.includes('auto')) {
@@ -270,12 +281,13 @@ async function run() {
     await c.viewport(W, H, DPR, false);
     await c.ev('1');
     await START(c);
-    await c.sleep(+(args.warm || 5) * 1000);
+    await c.sleep(+(args.warm ?? 5) * 1000);
     let result;
     if (cmd === 'actors') result = await actors(c);
     else if (cmd === 'suite') result = await suite(c);
     else if (cmd === 'shots') result = await shots(c);
     else if (cmd === 'leak') result = await leak(c);
+    else if (cmd === 'hitch') result = await hitch(c);
     else if (cmd === 'frames') {
       await c.ev(pin(poiId, hour));
       await c.sleep(3000);
