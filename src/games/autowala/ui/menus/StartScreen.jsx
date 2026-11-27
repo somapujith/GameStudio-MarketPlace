@@ -19,7 +19,7 @@ export default function StartScreen({ game, snap, onStart, onHub }) {
   const layout = useMenuLayout();
   const [, bump] = useState(0);
   const st = readSettings(game);
-  useMenuInput(root, { active: true, onStart });
+  useMenuInput(root, { active: true, onStart, onBack: onHub }); // Esc and the Android Back button leave to the hub
   useEffect(() => {
     focusFirst(root.current, '[data-autofocus]');
   }, []);
@@ -127,7 +127,7 @@ export default function StartScreen({ game, snap, onStart, onHub }) {
           <span>
             Wallet <b>{formatRupees(p.wallet)}</b> &middot; {p.rides} {p.rides === 1 ? 'ride' : 'rides'}
           </span>
-          <button type="button" data-nav className="aw-linkbtn" onClick={onHub}>
+          <button type="button" data-nav data-native-back className="aw-linkbtn" onClick={onHub}>
             Back to hub
           </button>
         </footer>

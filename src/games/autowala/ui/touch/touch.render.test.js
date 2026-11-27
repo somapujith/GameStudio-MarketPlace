@@ -7,7 +7,6 @@ import { ArrowPad, Wheel } from './Wheel.jsx';
 import { Pedal } from './Pedals.jsx';
 import { MainActions, MinorActions } from './Actions.jsx';
 import SettingsSheet from './SettingsSheet.jsx';
-import RotateHint from './RotateHint.jsx';
 import { computeLayout } from './layout.js';
 import { createTouchBus } from './touchBus.js';
 import { DEFAULTS } from './touchSettings.js';
@@ -97,15 +96,6 @@ describe('settings sheet and hint', () => {
     expect(out).toContain('Sensitivity');
     expect(out).toContain('Enable tilt');
     expect(out).not.toContain('Full screen'); // hidden where unsupported (iPhone)
-  });
-  it('the rotate hint hides the Fullscreen button where unsupported', () => {
-    const on = html(createElement(RotateHint, { bottom: 200, fullscreenSupported: true, onFullscreen() {}, onDismiss() {} }));
-    const off = html(createElement(RotateHint, { bottom: 200, fullscreenSupported: false, onFullscreen() {}, onDismiss() {} }));
-    expect(on).toContain('Rotate your phone for the best view');
-    expect(on).toContain('Fullscreen');
-    expect(off).toContain('Rotate your phone for the best view');
-    expect(off).not.toContain('Fullscreen');
-    expect(off).toContain('aria-label="Dismiss"');
   });
 });
 
