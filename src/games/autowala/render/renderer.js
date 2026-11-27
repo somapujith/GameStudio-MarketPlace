@@ -181,7 +181,8 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
     shaderFailed = false;
     warm = 4;
     shadowDirty = true; // the tier may have changed the shadow-map size
-    if (direct || cfg.post === false) return; // (cfg.post === false: experiment / test of the direct fallback)    const full = !simple;
+    if (direct || cfg.post === false) return; // (cfg.post === false: experiment / test of the direct fallback)
+    const full = !simple;
     try {
       const pr = renderer.getPixelRatio();
       post = createPost(renderer, {
@@ -390,6 +391,7 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
     },
     /** The render target the scene is drawn into (null before the first resize / when drawing directly): game/warm.js compiles against it. */
     get target() {
-      return post ? post.targets.scene : null;    },
+      return post ? post.targets.scene : null;
+    },
   };
 }
