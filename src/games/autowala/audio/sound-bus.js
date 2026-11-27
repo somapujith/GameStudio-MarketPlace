@@ -8,7 +8,7 @@
 //   const out = getBuses()?.fx ?? getAudio().master;      // effects
 // The bus gains follow the saved settings (audio.fx / audio.voice / audio.music, 0..1) and the `audio:volume` event
 // ({ master, fx, voice, music, muted }); master itself is still applied by ui/menus/settings.js.
-import { getAudio } from './ctx.js';
+import { getAudio, getMasterLevel, isMuted } from './ctx.js';
 
 const levels = { fx: 1, voice: 1, music: 1 };
 let built = null; // { ac, master, fx, voice, music }
@@ -35,6 +35,14 @@ export function setBusLevels(a) {
   levels.music = lvl(a.music, levels.music);
   apply();
 }
+
+/**
+ * The volume of the browser's own speech voice (speechSynthesis, the fallback when a voice file is missing). It does not go through
+ * Web Audio, so the voices slider and the master slider have to be applied by hand: 0..1, 0 when muted.
+ */
+export const speechVolumeOf = (spatialGain, voice, master, muted = false) =>
+  muted ? 0 : Math.min(1, Math.max(0, (Number.isFinite(spatialGain) ? Math.max(0.05, spatialGain) : 1) * lvl(voice, 1) * lvl(master, 1)));
+export const speechVolume = (spatialGain) => speechVolumeOf(spatialGain, levels.voice, getMasterLevel(), isMuted());
 
 /** Current levels (read-only copy for tests / the debug hook). */
 export const busLevels = () => ({ ...levels });

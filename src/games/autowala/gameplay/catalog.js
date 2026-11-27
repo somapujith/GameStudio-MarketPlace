@@ -66,7 +66,7 @@ export const FINISHES = named([
   ['chrome', 'Chrome', 900, { roughness: 0.08, metalness: 1, clearcoat: 1 }],
 ]);
 
-/** Number plates. `text` rules: A-Z, 0-9, space and hyphen, 1-10 characters (see sanitizePlate). Changing the text costs PLATE_TEXT_PRICE. */
+/** Number plates. `text` rules: A-Z, 0-9, space and hyphen, 1-12 characters (see sanitizePlate). Changing the text costs PLATE_TEXT_PRICE. */
 export const PLATE_TEXT_PRICE = 250;
 export const PLATE_MAX = 12;
 export const PLATE_STYLES = named([

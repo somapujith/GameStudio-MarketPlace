@@ -25,6 +25,7 @@ export const isNight = (hour) => Number.isFinite(hour) && (hour >= MOD.nightFrom
  */
 export function normalizeDemand(d) {
   if (d == null) return null;
+  if (typeof d === 'object' && d.peak === false) return null; // the career says this band is not a peak: no surcharge chip named "Early morning"
   const demand = typeof d === 'number' ? d : Number(d.mult ?? d.multiplier ?? d.mul);
   if (!Number.isFinite(demand)) return null;
   const mult = 1 + (demand - 1) * MOD.peakShare;
@@ -98,13 +99,16 @@ export const URGENT = {
   meeting: { id: 'meeting', en: 'Late for a meeting', te: 'మీటింగ్‌కి లేట్' },
 };
 
+/** A metro station id: the real ones are `<line>-<name>` ('red-miyapur', 'blue-ameerpet'); 'metro...' covers older ids and test fixtures. */
+export const isMetroId = (id) => /^(metro|red|blue|green)([-_]|$)/i.test(String(id ?? ''));
+
 /**
  * Is this customer in a hurry? A rusher always is (the reason follows the destination); others rarely.
  * `roll` 0..1. Returns a URGENT entry or null.
  */
 export function urgentFor(kind, destPoiId, roll = 0.5) {
   const byDest = destPoiId === 'station' ? URGENT.train : destPoiId === 'airport' ? URGENT.flight : destPoiId === 'hospital' ? URGENT.hospital : null;
-  if (kind === 'rusher') return byDest || (destPoiId && String(destPoiId).startsWith('metro') ? URGENT.train : URGENT.meeting);
+  if (kind === 'rusher') return byDest || (isMetroId(destPoiId) ? URGENT.train : URGENT.meeting);
   if (destPoiId === 'hospital' && (kind === 'elder' || kind === 'women' || kind === 'regular') && roll < 0.35) return URGENT.hospital;
   if (destPoiId === 'station' && kind !== 'tourist' && roll < 0.12) return URGENT.train;
   if (kind === 'student' && roll < 0.05) return URGENT.exam;

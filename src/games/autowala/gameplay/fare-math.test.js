@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeRng } from '../game/rng.js';
 import { FARE, KINDS, KIND_IDS, NAMES, makeIdentity, pickKind } from './fare-kinds.js';
-import { brakeHit, complaintReason, crashHit, estimateFare, meterNow, moodStep, patienceStep, rushTimeLimit, settleRide, starsFromScore } from './fare-math.js';
+import { brakeHit, complaintReason, crashHit, estimateFare, hardStopStep, meterNow, moodStep, newHardStop, patienceStep, rushTimeLimit, settleRide, starsFromScore } from './fare-math.js';
 
 const ride = (kind, kmh, seconds, extra = {}, mood0) => {
   let mood = mood0 ?? KINDS[kind].start;
@@ -192,5 +192,70 @@ describe('patience', () => {
   it('can be slowed (a ride in progress)', () => {
     expect(patienceStep(1, 50, 10, 0.5)).toBeGreaterThan(patienceStep(1, 50, 10, 1));
     expect(patienceStep(1, 50, 0, 1)).toBe(1);
+  });
+});
+
+
+describe('hardStopStep (a hard stop is felt once, not once per frame)', () => {
+  // brake at `decel` m/s^2 from `v0` until stopped, sampled at `fps`; returns how many hard stops fired and the final mood
+  const brakeRun = (kind, v0, decel, fps) => {
+    const st = newHardStop(v0);
+    const dt = 1 / fps;
+    let mood = KINDS[kind].start;
+    let hits = 0;
+    let v = v0;
+    for (let i = 0; i < fps * 3; i++) {
+      v = Math.max(0, v - decel * dt);
+      if (hardStopStep(st, v, dt)) {
+        hits++;
+        mood = brakeHit(kind, mood);
+      }
+    }
+    return { hits, mood };
+  };
+
+  it('fires exactly once for a full brake, at any frame rate', () => {
+    for (const fps of [20, 30, 60, 144, 240]) expect(brakeRun('regular', 18, 30, fps).hits, `${fps} fps`).toBe(1);
+  });
+
+  it('the passenger ends up with the same mood at every frame rate (one hit)', () => {
+    const a = brakeRun('women', 18, 30, 30).mood;
+    expect(brakeRun('women', 18, 30, 144).mood).toBeCloseTo(a, 10);
+    expect(a).toBeCloseTo(KINDS.women.start - KINDS.women.brake, 10);
+  });
+
+  it('a gentle stop or a slow auto is not a hard stop', () => {
+    expect(brakeRun('regular', 18, 8, 60).hits).toBe(0);
+    expect(brakeRun('regular', 6, 30, 60).hits).toBe(0); // under 7 m/s there is nothing to throw anyone forward
+  });
+
+  it('two separate emergency stops count twice', () => {
+    const st = newHardStop(20);
+    let hits = 0;
+    let v = 20;
+    const dt = 1 / 60;
+    for (let i = 0; i < 600; i++) {
+      // brake hard to a stop, wait, accelerate away, brake hard again
+      const t = i * dt;
+      if (t < 0.6) v = Math.max(0, v - 30 * dt);
+      else if (t < 2) v = 0;
+      else if (t < 4) v = Math.min(20, v + 6 * dt);
+      else v = Math.max(0, v - 30 * dt);
+      if (hardStopStep(st, v, dt)) hits++;
+    }
+    expect(hits).toBe(2);
+  });
+
+  it('ignores a zero or negative dt and keeps tracking the speed', () => {
+    const st = newHardStop(20);
+    expect(hardStopStep(st, 0, 0)).toBe(false);
+    expect(st.fwd).toBe(0);
+    expect(hardStopStep(st, 0, -1)).toBe(false);
+  });
+
+  it('a menu that holds the auto at speed is not a crash stop once the speed is re-synced', () => {
+    const st = newHardStop(20);
+    st.fwd = 0; // fares.js re-syncs the speed every menu frame
+    expect(hardStopStep(st, 0, 1 / 60)).toBe(false);
   });
 });

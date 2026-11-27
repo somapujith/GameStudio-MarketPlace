@@ -19,9 +19,9 @@ import { hashString, makeRng } from '../game/rng.js';
 import { createRouter } from '../world/routing.js';
 import { randomLook } from '../sim/autoModel.js';
 import { clearPassengers, seatPassengers } from './customers.js';
-import { DEFS, DEF_BY_ID, dailyJob, tutorialPlan } from './quest-defs.js';
+import { DEFS, DEF_BY_ID, dailyJob, replayOf, tutorialPlan } from './quest-defs.js';
 import { abandonRun, createRun, currentStep, feedRun, isUnlocked, normalizeSave, rankOf, recordComplete, runView, tickRun } from './quest-engine.js';
-import { dateKey } from './quest-math.js';
+import { createTrainTracker, dateKey, shouldRebuildOffers } from './quest-math.js';
 import { createBoardSign } from './quest-props.js';
 import { createQuestWorld } from './quest-world.js';
 
@@ -94,21 +94,8 @@ export function installQuests(ctx) {
 
   // ---- the live metro trains' velocity (for "beat the train") -------------------------------------------------------------
   const trains = world.metro?.trains || [];
-  const tracks = trains.map((t) => ({ x: t.x, z: t.z, vx: 0, vz: 0, t: 0 }));
-  let trackClock = 0;
-  const trackTrains = (dt) => {
-    trackClock += dt;
-    if (trackClock < 0.5) return;
-    for (let i = 0; i < trains.length; i++) {
-      const t = trains[i];
-      const k = tracks[i];
-      k.vx = (t.x - k.x) / trackClock;
-      k.vz = (t.z - k.z) / trackClock;
-      k.x = t.x;
-      k.z = t.z;
-    }
-    trackClock = 0;
-  };
+  const tracker = createTrainTracker(trains);
+  const tracks = tracker.tracks;
 
   // ---- the job board -------------------------------------------------------------------------------------------------------------
   const makeEnv = (seed) => ({
@@ -173,7 +160,8 @@ export function installQuests(ctx) {
   }
 
   const ensureOffers = (force) => {
-    if (force || offersDirty || ctx.clock.time - offersAt > OFFERS_STALE || !offers.length) buildOffers();
+    const boardOpen = state.menu === 'jobs'; // on the board the player accepts what they are looking at: never re-roll it under them
+    if (shouldRebuildOffers({ force, dirty: offersDirty, age: ctx.clock.time - offersAt, stale: OFFERS_STALE, empty: !offers.length, boardOpen })) buildOffers();
   };
 
   // ---- starting and ending missions ----------------------------------------------------------------------------------------------
@@ -223,7 +211,7 @@ export function installQuests(ctx) {
       }
     }
     persist();
-    ctx.toast(plan.tutorial ? `First day done! +Rs ${pay.cash}` : `Mission complete! +Rs ${pay.cash}`, { tone: 'gold', ms: 4200 });
+    ctx.toast(plan.replay ? 'Tutorial done again. Good practice!' : plan.tutorial ? `First day done! +Rs ${pay.cash}` : `Mission complete! +Rs ${pay.cash}`, { tone: 'gold', ms: 4200 });
     if (pay.rep > 0) ctx.toast(`+${pay.rep} reputation`, { tone: 'info', ms: 3000 });
     const before = rankOf({ rep: save.rep - pay.rep }).index;
     if (rankOf(save).index > before) ctx.toast(`New rank: ${rankOf(save).title}`, { tone: 'gold', ms: 4200 });
@@ -327,12 +315,13 @@ export function installQuests(ctx) {
     },
     startTutorial() {
       if (run) return false;
-      const plan = tutorialPlan({ city, route, rng: makeRng(7), player: { x: v.x, z: v.z } });
-      if (!plan) return false;
+      const first = tutorialPlan({ city, route, rng: makeRng(7), player: { x: v.x, z: v.z } });
+      if (!first) return false;
+      const plan = save.tutorial === 'done' ? replayOf(first) : first; // the pay is for the first time only
       return startRun(plan, true);
     },
     skipTutorial() {
-      if (save.tutorial == null || (run && tutorial)) save.tutorial = 'skipped';
+      if (save.tutorial == null || (run && tutorial && save.tutorial !== 'done')) save.tutorial = 'skipped'; // skipping a replay must not undo 'done'
       persist();
       if (run && tutorial) {
         const plan = run.plan;
@@ -375,7 +364,7 @@ export function installQuests(ctx) {
       sample.jolt = v.jolt || 0;
       sample.distance = v.distance;
       sample.time = ctx.clock.time;
-      if (trains.length) trackTrains(dt);
+      if (trains.length) tracker.update(ctx.clock.sim ?? ctx.clock.time); // world time: the trains stand still behind a menu
 
       // the quest-log key (Q / the touch button / gamepad Back)
       if (input.pressed('quests')) {

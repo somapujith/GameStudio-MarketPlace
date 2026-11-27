@@ -37,7 +37,7 @@ const HANDLERS = {
     init: () => ({ held: 0 }),
     tick(def, st, dt, s) {
       const r = def.r ?? 14;
-      if (hyp(s.x - def.x, s.z - def.z) > r) {
+      if (!(hyp(s.x - def.x, s.z - def.z) <= r)) { // not `> r`: a NaN position is not inside the ring
         st.held = 0;
         return null;
       }

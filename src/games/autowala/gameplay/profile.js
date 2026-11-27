@@ -24,7 +24,12 @@ export function defaultProfile() {
   };
 }
 
-const num = (v, d = 0, max = 1e9) => (Number.isFinite(Number(v)) ? Math.max(0, Math.min(max, Math.floor(Number(v)))) : d);
+/** A whole number 0..max; anything that is not a real number (null, '', true, {}, NaN, Infinity) falls back to `d`. */
+const num = (v, d = 0, max = 1e9) => {
+  const ok = (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '')) && Number.isFinite(Number(v));
+  return ok ? Math.max(0, Math.min(max, Math.floor(Number(v)))) : d;
+};
+const QUALITIES = ['low', 'medium', 'high'];
 
 export function normalizeProfile(raw) {
   const d = defaultProfile();
@@ -36,7 +41,7 @@ export function normalizeProfile(raw) {
     wallet: num(raw.wallet, d.wallet),
     totalEarned: num(raw.totalEarned),
     rides: num(raw.rides),
-    ratingSum: Math.max(0, Number(raw.ratingSum) || 0),
+    ratingSum: Math.min(1e9, num(Math.round(Number(raw.ratingSum) * 10), 0, 1e10) / 10),
     ratingCount: num(raw.ratingCount),
     distance: num(raw.distance),
     bestFare: num(raw.bestFare),
@@ -44,12 +49,47 @@ export function normalizeProfile(raw) {
     owned,
     upgrades: normalizeUpgrades(raw.upgrades),
     quests: raw.quests && typeof raw.quests === 'object' ? raw.quests : {},
-    settings: { ...d.settings, ...(raw.settings && typeof raw.settings === 'object' ? raw.settings : {}) },
+    ...(raw.career && typeof raw.career === 'object' && !Array.isArray(raw.career) ? { career: raw.career } : {}), // career.js sanitises its own part
+    settings: normalizeSettings(raw.settings, d.settings),
   };
 }
 
+/** The saved settings over the defaults; `quality` is checked here because Game.js treats any truthy value as "chosen by the player". */
+export function normalizeSettings(raw, defaults = defaultProfile().settings) {
+  const s = { ...defaults, ...(raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}) };
+  s.quality = QUALITIES.includes(s.quality) ? s.quality : null;
+  return s;
+}
+
+/** localStorage, or null when the browser blocks it (the getter itself throws a SecurityError with cookies off). */
+function defaultStorage() {
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage : null;
+  } catch {
+    return null;
+  }
+}
+
+/** What another tab saved, folded into this tab's live data without losing either side's progress. Returns true when something changed. */
+export function mergeProfiles(data, theirs) {
+  let changed = false;
+  for (const k of ['totalEarned', 'rides', 'ratingCount', 'distance', 'bestFare']) {
+    if (theirs[k] > data[k]) {
+      data[k] = theirs[k];
+      changed = true;
+    }
+  }
+  if (theirs.ratingCount >= data.ratingCount && theirs.ratingSum > data.ratingSum) {
+    data.ratingSum = theirs.ratingSum;
+    changed = true;
+  }
+  for (const k of Object.keys(theirs.owned)) if (!data.owned[k]) { data.owned[k] = true; changed = true; }
+  for (const [k, lvl] of Object.entries(theirs.upgrades)) if (lvl > (data.upgrades[k] || 0)) { data.upgrades[k] = lvl; changed = true; } // in place: state.upgrades aliases it
+  return changed;
+}
+
 /** A live profile: `data` is mutated in place by the game; `save()` is debounced and also runs on page hide. */
-export function createProfile(userId, storage = typeof localStorage !== 'undefined' ? localStorage : null) {
+export function createProfile(userId, storage = defaultStorage()) {
   const key = keyFor(userId);
   let data = defaultProfile();
   try {
@@ -59,7 +99,28 @@ export function createProfile(userId, storage = typeof localStorage !== 'undefin
     /* unreadable: start fresh */
   }
   let timer = 0;
-  const write = () => {
+  /** Another tab of the same account saved: take its wallet (it is the newer view) and keep the best of every counter. */
+  const adopt = (txt) => {
+    try {
+      const theirs = normalizeProfile(JSON.parse(txt));
+      const changed = mergeProfiles(data, theirs);
+      if (theirs.wallet !== data.wallet) {
+        data.wallet = theirs.wallet;
+        return true;
+      }
+      return changed;
+    } catch {
+      return false;
+    }
+  };
+  const write = (merge = true) => {
+    if (merge) try {
+      // a tab that was in the background may not have seen the other tab's last save yet: never overwrite progress it made
+      const cur = storage?.getItem(key);
+      if (cur) mergeProfiles(data, normalizeProfile(JSON.parse(cur)));
+    } catch {
+      /* unreadable: ours wins */
+    }
     try {
       storage?.setItem(key, JSON.stringify(data));
     } catch {
@@ -68,26 +129,35 @@ export function createProfile(userId, storage = typeof localStorage !== 'undefin
   };
   const save = () => {
     clearTimeout(timer);
-    timer = setTimeout(write, 400);
+    timer = setTimeout(() => write(), 400);
   };
   const flush = () => {
     clearTimeout(timer);
     write();
   };
   const onHide = () => flush();
+  const onStorage = (e) => {
+    if (e && e.key === key && typeof e.newValue === 'string') adopt(e.newValue);
+  };
   if (typeof window !== 'undefined') {
     window.addEventListener('pagehide', onHide);
     window.addEventListener('visibilitychange', onHide);
+    window.addEventListener('storage', onStorage);
   }
+  /** Back to a new account's state. In place, so objects that alias parts of `data` (state.upgrades) stay live. */
   const reset = () => {
-    data = defaultProfile();
-    flush();
+    const fresh = defaultProfile();
+    for (const k of Object.keys(data)) delete data[k];
+    Object.assign(data, fresh);
+    clearTimeout(timer);
+    write(false); // not merged: the stored progress is exactly what is being thrown away
   };
   const dispose = () => {
     flush();
     if (typeof window !== 'undefined') {
       window.removeEventListener('pagehide', onHide);
       window.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('storage', onStorage);
     }
   };
   return {
@@ -97,6 +167,7 @@ export function createProfile(userId, storage = typeof localStorage !== 'undefin
     save,
     flush,
     reset,
+    adopt,
     dispose,
     rating: () => (data.ratingCount ? data.ratingSum / data.ratingCount : 0),
   };

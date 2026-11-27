@@ -17,6 +17,23 @@ function fakeGame() {
 }
 const runs = () => { const r = { started: 0, start() { r.started++; return Promise.resolve({ ok: true }); } }; return r; };
 
+describe('missions in the sitting', () => {
+  it('counts completed missions (not the tutorial, not before begin()) and reports them to the server', () => {
+    const g = fakeGame();
+    const s = createSitting(g, runs(), { now: () => 0 });
+    g.emit('quest:complete', { id: 'x' });
+    s.begin();
+    g.emit('quest:complete', { id: 'biryani' });
+    g.emit('quest:complete', { id: 'tutorial', tutorial: true });
+    g.emit('quest:complete', { id: 'kites' });
+    g.emit('quest:fail', { id: 'race' });
+    expect(s.stats().quests).toBe(2);
+    expect(runStatsFrom(s.stats()).quests).toBe(2);
+    s.begin();
+    expect(s.stats().quests).toBe(0);
+  });
+});
+
 describe('createSitting', () => {
   it('measures from begin(), not from the start of the game', () => {
     const g = fakeGame();
@@ -81,6 +98,7 @@ describe('createSitting', () => {
     expect(s.started).toBe(false);
     expect(s.stats()).toMatchObject({ earned: 0, fares: 0, seconds: 0, distance: 0 });
     expect(runStatsFrom({ earned: 5, seconds: 40, distance: 90, fares: 1, tips: 2 })).toEqual({ earned: 5, seconds: 40, distance: 90, fares: 1, quests: 0, style: 0 });
+    expect(runStatsFrom({ earned: 5, seconds: 40, distance: 90, fares: 1, quests: 3.4 }).quests).toBe(3);
   });
 });
 

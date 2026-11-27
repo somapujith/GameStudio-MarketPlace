@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { expenseRows, incomeRows, sparkBars, verdict, widgetModel } from './hisaabModel.js';
+import { expenseRows, incomeRows, liveView, sparkBars, verdict, widgetModel } from './hisaabModel.js';
 
 describe('Hisaab rows', () => {
   it('lists income, tips only when earned', () => {
@@ -51,5 +51,21 @@ describe('widgetModel', () => {
     expect(w.ladder.pct).toBe(26);
     expect(widgetModel({ fatigue: 0.1 }).fatigue.show).toBe(false);
     expect(widgetModel({ damage: 0.9 }).damage.tone).toBe('bad');
+  });
+});
+
+describe('liveView (the open Hisaab must not show a stale bill or ladder)', () => {
+  const h = { repairCost: 340, ladder: { owned: false, canBuy: true } };
+  it('prefers the live career snapshot', () => {
+    expect(liveView(h, { repairCost: 0, ladder: { owned: true } })).toEqual({ ladder: { owned: true }, repairCost: 0 });
+  });
+  it('falls back to the frozen record when there is no snapshot', () => {
+    expect(liveView(h, null)).toEqual({ ladder: h.ladder, repairCost: 340 });
+    expect(liveView(h, { repairCost: 'x' }).repairCost).toBe(340);
+    expect(liveView(null, undefined)).toEqual({ ladder: null, repairCost: 0 });
+  });
+  it('never returns a negative or fractional bill', () => {
+    expect(liveView(h, { repairCost: -5 }).repairCost).toBe(0);
+    expect(liveView(h, { repairCost: 12.6 }).repairCost).toBe(13);
   });
 });

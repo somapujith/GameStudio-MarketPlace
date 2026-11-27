@@ -31,7 +31,7 @@ export function installFuel(ctx, kit) {
     if (filling) {
       ctx.setPrompt('fuel', `Refuelling... ${added.toFixed(1)} L, Rs ${paid}`, 'E');
     } else if (atPump && v.fuel < tank - 0.05) {
-      ctx.setPrompt('fuel', ctx.economy.wallet >= 1 ? `Hold E to refuel (Rs ${FUEL.price}/litre)` : 'Not enough money for CNG', 'E');
+      ctx.setPrompt('fuel', ctx.economy.wallet >= 1 ? `Press E to refuel (Rs ${FUEL.price}/litre)` : 'Not enough money for CNG', 'E');
     } else {
       ctx.setPrompt('fuel', null);
     }
@@ -98,14 +98,28 @@ export function installFuel(ctx, kit) {
         }
       }
       const atPump = !!near && v.speed < FUEL.stationSpeed;
+      // The E tap is read LAZILY and at most once per frame: `pressed` consumes it, so reading it up front would starve every system that
+      // runs after this one (the workshop door, the job board), and reading it in a condition that then fails (a broke player at the
+      // pump) would swallow the press Mama's rescue below needs.
+      let tapRead = false;
+      let tapVal = false;
+      const tap = () => {
+        if (!tapRead) {
+          tapRead = true;
+          tapVal = ctx.input.pressed('interact');
+        }
+        return tapVal;
+      };
 
       if (filling && (!atPump || v.fuel >= tank - 1e-4)) stopFilling(atPump ? 'full' : 'stop');
 
       if (atPump && !filling && v.fuel < tank - 0.05) {
         if (!eligible) {
           eligible = true;
-          ctx.input.pressed('interact'); // a stale tap must not start the pump
-        } else if (ctx.input.pressed('interact') && ctx.economy.wallet >= 1) {
+          tap();
+          tapVal = false; // a stale tap must not start the pump
+        } else if (ctx.economy.wallet >= 1 && tap()) {
+          tapVal = false;
           filling = true;
           acc = 0;
           pending = 0;
@@ -113,7 +127,10 @@ export function installFuel(ctx, kit) {
           added = 0;
         }
       } else if (!atPump) eligible = false;
-      else if (filling && ctx.input.pressed('interact')) stopFilling('stop');
+      else if (filling && tap()) {
+        tapVal = false;
+        stopFilling('stop');
+      }
 
       if (filling) {
         acc += dt;
@@ -133,7 +150,7 @@ export function installFuel(ctx, kit) {
       }
 
       // Mama's rescue
-      if (!filling && v.fuel <= FUEL.empty && v.speed < 1.5 && rescueEligible && ctx.input.pressed('interact')) {
+      if (!filling && v.fuel <= FUEL.empty && v.speed < 1.5 && rescueEligible && tap()) {
         const offer = rescueOffer(ctx.economy.wallet, clockT, lastCredit);
         if (offer.kind === 'can' && ctx.economy.spend(offer.cost, 'fuel-can')) {
           v.fuel = Math.min(tank, v.fuel + offer.litres);

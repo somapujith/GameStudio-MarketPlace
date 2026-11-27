@@ -404,6 +404,11 @@ export function tutorialPlan(env) {
   };
 }
 
+/** The tutorial played again: same steps, no pay and no reputation (the first run paid them; replaying must not be a money farm). */
+export function replayOf(plan) {
+  return { ...plan, reward: { cash: 0, rep: 0 }, replay: true };
+}
+
 /** The daily job for a date: the same on every device that day. Returns { defId, plan } (plan may be null), or null. */
 export function dailyJob(env, key = dateKey()) {
   const id = dailyPick(key, DAILY_POOL);
