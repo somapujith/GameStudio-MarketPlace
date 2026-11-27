@@ -273,7 +273,7 @@ async function run() {
     } else {
       await play(4);
     }
-    const memInfo = () => c.ev('(() => { const i = window.__gfx.info; return { geo: i.memory.geometries, tex: i.memory.textures, programs: i.programs ? i.programs.length : 0, heapMB: performance.memory ? +(performance.memory.usedJSHeapSize / 1048576).toFixed(1) : null }; })()');
+    const memInfo = () => c.ev('(() => { const i = window.__autowala.gfx.renderer.info; return { geo: i.memory.geometries, tex: i.memory.textures, programs: i.programs ? i.programs.length : 0, heapMB: performance.memory ? +(performance.memory.usedJSHeapSize / 1048576).toFixed(1) : null }; })()');
     report.tierNow = await c.ev('({ tier: window.__autowala.gfx.quality, pr: window.__autowala.gfx.renderer.getPixelRatio() })');
 
     const opts = { grace: GRACE, profile: !!args.profile, heap: !!args.heap };

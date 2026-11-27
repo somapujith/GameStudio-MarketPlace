@@ -480,19 +480,19 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
     bgTimer = setInterval(background, 1000);
   };
 
-  // the workshop adds a spot light and two point lights to the scene: another light set. It is built when the garage is near (the player
-  // is about to need it), for the time of day they are in.
+  // the workshop adds a spot light and two point lights to the scene: another light set. It is built when the player is about to use it:
+  // at the garage and slow or stopped (a pause there costs nothing; driving past at speed does not trigger it), or while the start menu is up
+  // (the auto starts parked at the garage), for the time of day they are in.
   const garageFront = garage?.front;
   let workshopWarming = false;
   let garageClock = 0;
   ctx.addSystem({
     update(dt) {
-      // (the auto starts parked at the garage: the first seconds of play are left alone)
-      if (!garageFront || !warmer.parallel || workshopWarming || !running || clock.time < 15 || !stable()) return;
+      if (!garageFront || !warmer.parallel || workshopWarming || !running || !stable()) return;
       garageClock -= dt;
       if (garageClock > 0) return;
       garageClock = 0.5;
-      if (Math.hypot(v.x - garageFront.x, v.z - garageFront.z) > 170) return;
+      if (Math.hypot(v.x - garageFront.x, v.z - garageFront.z) > 60 || (state.menu !== 'start' && v.speed > 6)) return;
       workshopWarming = true;
       warmer
         .warm(lightSet(gfx.quality, { night: nightNow(), workshop: true, baseSpots }), idleOrTrickle)
