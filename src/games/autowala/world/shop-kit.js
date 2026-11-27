@@ -335,7 +335,9 @@ export function shapeBoard(kit, shape, w, h, depth, faceMat, sideMat) {
   for (let i = 0; i < pos.count; i++) uv.setXY(i, (pos.getX(i) + w / 2) / w, pos.getY(i) / h);
   kit.track.geos.push(g);
   const m = new Mesh(g, [faceMat, sideMat]);
-  m.castShadow = true;
+  // (a caster with a textured material gets its own shadow-pass program, built the first time the board is in the sun's box: a hitch of
+  // ~250 ms on an integrated GPU, for a shadow on its own wall that nobody can see)
+  m.castShadow = false;
   m.receiveShadow = true;
   return m;
 }

@@ -136,14 +136,14 @@ async function tour(c) {
   await c.ev(`(() => { window.__tour = { longs: [] }; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__tour.longs.push(Math.round(e.duration)); }).observe({ entryTypes: ['longtask'] }); } catch {} return true; })()`);
   const rows = [];
   for (const [poi, hour, weather] of LEGS) {
-    await c.ev(`(() => { const g = window.__autowala; const p = g.world.city.poiById[${JSON.stringify(poi)}]; if (p) { const f = p.front || p; g.debug.teleport(f.x, f.z, 0); } g.debug.hour(${hour}); g.debug.weather(${weather}); window.__tour.longs.length = 0; window.__tour.t0 = performance.now(); return !!p; })()`);
+    await c.ev(`(() => { const g = window.__autowala; const p = g.world.city.poiById[${JSON.stringify(poi)}]; if (p) { const f = p.front || p; g.debug.teleport(f.x, f.z, 0); } g.debug.hour(${hour}); g.debug.weather(${weather}); window.__tour.longs.length = 0; window.__tour.t0 = performance.now(); g.perf.reset(); return !!p; })()`);
     const r = await c.ev(`(async () => {
       const R = window.__autowala.gfx.renderer; const p0 = R.info.programs.length; const t0 = R.info.memory.textures; const g0 = R.info.memory.geometries;
       const dts = []; let last = performance.now(); const end = last + ${LEG} * 1000;
       await new Promise((res) => { const f = (n) => { dts.push(n - last); last = n; if (n < end) requestAnimationFrame(f); else res(); }; requestAnimationFrame(f); });
       dts.shift(); const s = dts.slice().sort((a, b) => a - b);
       const first = dts.slice(0, 30).filter((d) => d > 50).length;
-      return { fps: +(1000 / (dts.reduce((a, b) => a + b, 0) / dts.length)).toFixed(1), p99: +s[Math.floor(s.length * 0.99)].toFixed(1), max: +s[s.length - 1].toFixed(0), hitches50: dts.filter((d) => d > 50).length, hitchesFirst30: first, longTasks: window.__tour.longs.length, longMs: window.__tour.longs.reduce((a, b) => a + b, 0), longWorst: Math.max(0, ...window.__tour.longs), newPrograms: R.info.programs.length - p0, newTextures: R.info.memory.textures - t0, newGeometries: R.info.memory.geometries - g0 };
+      return { fps: +(1000 / (dts.reduce((a, b) => a + b, 0) / dts.length)).toFixed(1), p99: +s[Math.floor(s.length * 0.99)].toFixed(1), max: +s[s.length - 1].toFixed(0), hitches50: dts.filter((d) => d > 50).length, hitchesFirst30: first, longTasks: window.__tour.longs.length, longMs: window.__tour.longs.reduce((a, b) => a + b, 0), longWorst: Math.max(0, ...window.__tour.longs), newPrograms: R.info.programs.length - p0, newTextures: R.info.memory.textures - t0, newGeometries: R.info.memory.geometries - g0, perf: (() => { const rep = window.__autowala.perf.report(); return { slow: rep.slow.slice().sort((a, b) => b.ms - a.ms).slice(0, 4).map((e) => e.ms + 'ms @' + Math.round(e.at - window.__tour.t0) + ' ' + JSON.stringify(e.phases) + (e.sys ? ' sys=' + e.sys : '') + (e.programs ? ' +prog' + e.programs : '') + (e.textures ? ' +tex' + e.textures : '') + (e.geometries ? ' +geo' + e.geometries : '')), systemsMax: Object.entries(rep.systems).sort((a, b) => b[1].max - a[1].max).slice(0, 3).map(([k, v]) => k + '=' + v.max.toFixed(1)), phasesMax: Object.entries(rep.phases).map(([k, v]) => k + '=' + v.max.toFixed(1)).join(' ') }; })() };
     })()`);
     rows.push({ poi, hour, weather, ...r });
   }
@@ -229,5 +229,9 @@ if (cmd === 'scenes') {
   if (args.progs) for (const s of row.result) { console.log(`
 -- programs in the camera pass: ${s.name} (${s.progs.length})`); for (const p of s.progs) console.log('  ', String(p.calls).padStart(5), String(p.mats).padStart(3), p.mat.padEnd(26), p.key.padEnd(22), p.who); }
   if (args.rows) for (const s of row.result) { console.log(`\n-- ${s.name}  gl: ${s.glTop.map((r) => r.join('=')).join(' ')}`); console.log('   per-draw GL [category draws/frame calls/draw]: ' + s.glCat.map((r) => r.join(' ')).join(' | ')); for (const r of s.rows) console.log('  ', String(r.calls).padStart(6), String(r.tris).padStart(8), String(r.mats).padStart(4), r.k); }
+} else if (cmd === 'tour' && !args.json) {
+  console.log(`label=${row.label} tier=${row.tier} gpu=${row.gpu}`);
+  console.log('sum', JSON.stringify(row.result.sum));
+  for (const r of row.result.rows) { console.log(`${r.poi.padEnd(10)} h${String(r.hour).padEnd(5)} w${r.weather} fps ${r.fps} p99 ${r.p99} max ${r.max} >50ms ${r.hitches50} (first30 ${r.hitchesFirst30}) longTasks ${r.longTasks}/${r.longMs}ms worst ${r.longWorst} +prog ${r.newPrograms} +tex ${r.newTextures} +geo ${r.newGeometries}`); if (r.perf) { for (const e of r.perf.slow) console.log('      slow', e); console.log('      maxPhases', r.perf.phasesMax, '| top systems', r.perf.systemsMax.join(' ')); } }
 } else console.log(JSON.stringify(row.result, null, 1));
 process.exit(0);
