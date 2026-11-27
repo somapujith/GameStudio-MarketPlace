@@ -126,6 +126,10 @@ const PIN = (s) => `(() => {
   if (${JSON.stringify(!!s.workshop)}) { g.ctx.workshop.open(); }
   return true; })()`;
 
+/** After the workshop has opened and settled: a FIXED free camera round the bay (the orbit camera drifts with time, which makes pictures incomparable). */
+const WORKSHOP_CAM = (c) => `(() => { const g = window.__autowala; const sp = g.ctx.workshop.spot; const dx = ${c[0]}, dy = ${c[1]}, dz = ${c[2]};
+  g.debug.cam({ x: sp.x + dx, y: dy, z: sp.z + dz, yaw: Math.atan2(-dx, -dz), pitch: Math.atan2(0.9 - dy, Math.hypot(dx, dz)), fov: 62 }); return true; })()`;
+
 export const SCENES = [
   { name: 'charminar-day', poi: 'charminar', hour: 12, cam: true, dist: 70, h: 6, aim: 14 },
   { name: 'street-day', poi: 'irani', hour: 12, cam: true, dist: 45, h: 5, aim: 6 },
@@ -139,12 +143,44 @@ export const SCENES = [
   { name: 'rain-day', poi: 'charminar', hour: 13, weather: 1, cam: true, dist: 60, h: 5, aim: 12 },
   { name: 'workshop-day', poi: 'garage', hour: 12, workshop: true },
   { name: 'workshop-night', poi: 'garage', hour: 22, workshop: true },
+  { name: 'wfix-day-a', poi: 'garage', hour: 12, workshop: true, wcam: [5.5, 2.4, 6.5] },
+  { name: 'wfix-night-a', poi: 'garage', hour: 22, workshop: true, wcam: [5.5, 2.4, 6.5] },
+  { name: 'wfix-night-b', poi: 'garage', hour: 22, workshop: true, wcam: [-6.5, 2.2, 5.0] },
+  { name: 'wfix-dusk-b', poi: 'garage', hour: 18.6, workshop: true, wcam: [-6.5, 2.2, 5.0] },
   { name: 'garage-dusk-chase', poi: 'garage', hour: 18.2 },
   { name: 'garage-night-chase', poi: 'garage', hour: 22 },
 ];
 
 if (args.list) {
   console.log(SCENES.map((s) => s.name).join('\n'));
+  process.exit(0);
+}
+
+// --compose "a.jpg|b.jpg" --out pair.jpg [--labels "before|after"] [--cell 960x540]: one JPEG (q72) with the pictures side by side (a headless Chrome does the drawing)
+if (args.compose) {
+  const files = String(args.compose).split('|');
+  const labels = String(args.labels || 'before|after').split('|');
+  const [cw, ch] = String(args.cell || '960x540').split('x').map(Number);
+  const c = await launch({ port, w: 400, h: 300, gl: SOFT_FLAGS });
+  try {
+    const urls = files.map((f) => `data:image/jpeg;base64,${fs.readFileSync(f).toString('base64')}`);
+    const data = await c.ev(`(async () => {
+      const urls = ${JSON.stringify(urls)}; const labels = ${JSON.stringify(labels)};
+      const cv = document.createElement('canvas'); cv.width = ${cw} * urls.length; cv.height = ${ch}; const g = cv.getContext('2d');
+      for (let i = 0; i < urls.length; i++) {
+        const img = new Image(); img.src = urls[i]; await img.decode();
+        const k = Math.max(${cw} / img.width, ${ch} / img.height); const w = img.width * k, h = img.height * k; // cover, centred
+        g.save(); g.beginPath(); g.rect(i * ${cw}, 0, ${cw}, ${ch}); g.clip(); g.drawImage(img, i * ${cw} + (${cw} - w) / 2, (${ch} - h) / 2, w, h); g.restore();
+        g.font = 'bold 20px sans-serif'; g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(i * ${cw}, 0, 150, 30); g.fillStyle = '#fff'; g.fillText(labels[i] || '', i * ${cw} + 10, 22);
+      }
+      return cv.toDataURL('image/jpeg', 0.72).split(',')[1];
+    })()`);
+    fs.mkdirSync(path.dirname(String(args.out)), { recursive: true });
+    fs.writeFileSync(String(args.out), Buffer.from(data, 'base64'));
+    console.log(`${args.out} ${(fs.statSync(String(args.out)).size / 1024).toFixed(0)} KB`);
+  } finally {
+    c.close();
+  }
   process.exit(0);
 }
 
@@ -174,6 +210,7 @@ async function run() {
       await c.ev('window.__autowala.state.paused = false; true');
       await c.ev(PIN(s));
       await c.sleep(SETTLE * 1000);
+      if (s.wcam) { await c.sleep(2000); await c.ev(WORKSHOP_CAM(s.wcam)); await c.sleep(500); }
       if (args.pause) { await c.ev('window.__autowala.state.paused = true; true'); await c.sleep(400); } // traffic, people, fares stand still: a diff is the variant, not the city moving
       const imgs = [];
       for (const v of variants) {

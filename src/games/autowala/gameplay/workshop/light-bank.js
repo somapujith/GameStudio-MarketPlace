@@ -50,7 +50,9 @@ export function borrowLights({ scene, auto, props }) {
       head.target.quaternion.identity();
       head.position.copy(saved.position);
       head.target.position.copy(saved.targetPosition);
-      head.color.setHex(saved.color);
+      // the colour the loadout wants NOW (a headlight bought in the workshop changed it while the spot was lent: sim/customize.js keeps it in headlightHex)
+      if (auto.userData.headlightHex) head.color.set(auto.userData.headlightHex);
+      else head.color.setHex(saved.color);
       head.distance = saved.distance;
       head.angle = saved.angle;
       head.penumbra = saved.penumbra;

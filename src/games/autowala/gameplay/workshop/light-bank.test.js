@@ -32,6 +32,17 @@ function fakeProps() {
 const worldPos = (o) => o.getWorldPosition(new Vector3());
 
 describe('borrowLights', () => {
+  it('gives the headlight back in the colour the loadout chose while it was lent (a headlight bought in the workshop)', () => {
+    const scene = new Scene();
+    const { auto, headlight } = autoWithHeadlight();
+    scene.add(auto);
+    auto.userData.headlightHex = '#ff0000';
+    const bank = borrowLights({ scene, auto, props: fakeProps() });
+    auto.userData.headlightHex = '#00aaff'; // customize.js: the player bought a blue headlight while the garage was open
+    bank.release();
+    expect(headlight.color.getHexString()).toBe('00aaff');
+  });
+
   it('has nothing to lend without a headlight or a pool that can lend', () => {
     const scene = new Scene();
     expect(borrowLights({ scene, auto: new Group(), props: fakeProps() })).toBeNull();

@@ -220,7 +220,8 @@ export function applyLoadout(auto, loadout, opts = {}) {
   // ---- lamps
   if (detail && has('lights.head')) {
     ud.hlM.color.set(look.head.hex).multiplyScalar(2.2);
-    ud.headlight?.color.set(look.head.hex);
+    ud.headlightHex = look.head.hex; // (the workshop borrows the spot as its key light and hands it back in THIS colour: gameplay/workshop/light-bank.js)
+    if (!ud.headlightLent) ud.headlight?.color.set(look.head.hex);
   }
   if (detail && has('lights.tail')) {
     const c = new Color(look.tail.hex);
