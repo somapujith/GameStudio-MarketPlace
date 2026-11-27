@@ -131,7 +131,7 @@ export default function PauseMenu({ open = false, onResume, onRestart, onQuit, m
             </div>
           </div>
         )}
-        <p className="tc-menu-keys" aria-hidden="true"><kbd>Esc</kbd> {ask ? 'back' : 'resume'}</p>
+        {!touch && <p className="tc-menu-keys" aria-hidden="true"><kbd>Esc</kbd> {ask ? 'back' : 'resume'}</p>}
       </div>
     </div>
   );

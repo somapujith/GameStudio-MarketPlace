@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { stickValue, knobOffset, rawPosition, detectCoarse, STICK_DEAD } from './touchMath.js';
+import { stickValue, knobOffset, rawPosition, STICK_DEAD } from './touchMath.js';
 
 const rect = { left: 100, width: 200 }; // centre at x = 200
 
@@ -55,11 +55,3 @@ describe('knob position', () => {
   });
 });
 
-describe('detectCoarse', () => {
-  it('reads (pointer: coarse) and never throws', () => {
-    expect(detectCoarse((q) => ({ matches: q === '(pointer: coarse)' }))).toBe(true);
-    expect(detectCoarse(() => ({ matches: false }))).toBe(false);
-    expect(detectCoarse(undefined)).toBe(false);
-    expect(detectCoarse(() => { throw new Error('x'); })).toBe(false);
-  });
-});

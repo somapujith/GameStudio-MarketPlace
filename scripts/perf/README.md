@@ -76,3 +76,16 @@ node scripts/perf/aw-ab.mjs --base http://127.0.0.1:5863 --port 9912 --tier medi
 Presets (see `PRESETS` in the script): `base`, `scale.8/.6/.5`, `bloom0/bloom2`, `shadow50/shadow100/shadow1024/noshadow`, `lights0/1/2`, `notraffic`, `timeroff`. `--soft --no-lock` checks the harness on SwiftShader (the numbers then mean nothing).
 
 `bench.mjs` / `aw-hitch.mjs` print the shared governor's state for Autowala (tier and scale at the end, its decisions, the calibration's units and per-tier estimates when it ran, and the game's own hitch counter `perf.report().hitches`: frames over 33 / 50 / 100 ms since 3 s after START).
+
+
+## Touch layouts and the Autowala HUD cost (ui-touch)
+`ui-touch.mjs` measures the HUD of either game on touch tablets / phones: every visible HUD box by `getBoundingClientRect`, the pairs that overlap, boxes off-screen, clipped text (Tiffin), and a screenshot per size. Software GL by default (layout only):
+
+```powershell
+node scripts/perf/ui-touch.mjs --game autowala --worst [--fare] --base http://127.0.0.1:5871 --port 9940 --sizes 842x618,1024x768,1366x1024 --shots docs/perf/ui-touch --name aw
+node scripts/perf/ui-touch.mjs --game tiffin   --worst --level 5 --base http://127.0.0.1:5871 --port 9943 --sizes 842x618,1024x768   # no --level: the tutorial with its coach card
+```
+`aw-hud.mjs` is the HUD A/B for Autowala on the real GPU (takes the bench lock): the car keeps changing speed, and variants run round-robin in ONE page session: `hud`, `nohud` (everything over the canvas hidden), `frozen` (HUD visible but no snapshots reach it), `name=<css selector>` (that part hidden), `name~<css rules>` (extra CSS). Per variant: frame time (mean / p50 / p95 / p99, frames over 33 / 50 ms), long animation frames, and main-thread ms per second from `Performance.getMetrics` (task, script, layout, style recalc and their counts), plus the CPU of the GPU process and the renderer (`SystemInfo.getProcessInfo`). `--cmd profile` is a V8 profile per script file with the HUD on / hidden.
+```powershell
+node scripts/perf/aw-hud.mjs --base http://127.0.0.1:5871 --port 9944 --tier low --cmd ab --rounds 5 --seconds 5 --variants "hud|frozen|nohud"
+```

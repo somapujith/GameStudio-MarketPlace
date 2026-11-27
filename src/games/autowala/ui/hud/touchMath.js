@@ -34,11 +34,3 @@ export function rawPosition(x, rect) {
   return clamp((x - (rect.left + half)) / half, -1, 1);
 }
 
-/** Is this a phone / tablet style device? (Used once at mount; a touch on screen also switches the controls on.) */
-export function detectCoarse(matchMediaFn) {
-  try {
-    return !!(typeof matchMediaFn === 'function' && matchMediaFn('(pointer: coarse)').matches);
-  } catch {
-    return false;
-  }
-}

@@ -5,6 +5,7 @@
 // Progress is by CHAPTER (Look, Tokens, Tawa, ...) as a segmented strip plus "Step n of N", not one dot per step. The wording follows the
 // device: `textTouch` / `hintTouch` on a touch screen, `text` / `hint` with a keyboard. A step with a recipe offers the recipe card.
 import { useEffect, useRef, useState } from 'react';
+import { useTouchDevice } from '@/lib/mobile.js';
 import RecipeCard from '../hud/RecipeCard.jsx';
 import { ChotuAvatar } from './art.jsx';
 import { coachInsets, coachStepFromTutorial, coachViewModel } from './menuModels.js';
@@ -13,6 +14,8 @@ import './menus.css';
 const FOLD_MS = 9000;
 const WIDE = '(min-width: 900px) and (min-height: 521px)';
 
+// a layout query (the bar's size class); whether the player is on a touch screen is NOT asked here: that is `useTouchDevice` (src/lib/mobile.js),
+// the one rule shared with the HUD, the pause menu and the start screen (a WebView that reports pointer: fine on a tablet still counts as touch)
 const useMedia = (query, fallback = false) => {
   const [on, setOn] = useState(fallback);
   useEffect(() => {
@@ -30,10 +33,10 @@ const useMedia = (query, fallback = false) => {
  * Props: { step: { id, say?, text, textTouch?, te?, hint?, hintTouch?, hintMs?, controls?, recipe?, ack? }, index (0-based), total, onSkip(), onNext?(),
  *          chapters?, chapter?, touch? }
  * or just { tutorial } (a session's `tutorial` object or a driver): the step, index, total, chapters and recipe are read from it.
- * `onNext` shows a Got it / Done button for steps that wait for a tap rather than for a game event. `touch` defaults to (pointer: coarse).
+ * `onNext` shows a Got it / Done button for steps that wait for a tap rather than for a game event. `touch` defaults to the shared touch-first rule (useTouchDevice).
  */
 export default function CoachMark({ step: stepProp, tutorial, index: indexProp, total: totalProp, onSkip, onNext, chapters, chapter, touch: touchProp }) {
-  const coarse = useMedia('(pointer: coarse)');
+  const coarse = useTouchDevice();
   const wide = useMedia(WIDE);
   const touch = touchProp ?? coarse;
   const step = stepProp ?? coachStepFromTutorial(tutorial);

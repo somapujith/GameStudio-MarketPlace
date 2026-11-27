@@ -22,6 +22,9 @@ import { FailureScreen, GpuLostScreen, LoadingScreen } from './ui/menus/BootScre
 import { applyUiScale } from './ui/scale.js';
 import { hudLayout } from './ui/hud/layoutLogic.js';
 import { useTouchMode } from './ui/hud/touchMode.js';
+import { SnapStoreProvider, createSnapStore, shallowEqual, useSnapView } from './ui/hud/snapStore.js';
+import { SLICES } from './ui/hud/picks.js';
+import { same } from './game/snapshot.js';
 import { viewportInfo } from '@/lib/mobile.js';
 import useOrientationHold from './ui/useOrientationHold.js';
 import './ui/autowala.css';
@@ -64,7 +67,10 @@ export default function AutowalaGame() {
   const userId = user?.id ?? null;
   const wrap = useRef(null);
   const canvas = useRef(null);
-  const [snap, setSnap] = useState(null);
+  // The ~10 Hz HUD snapshot lives in an external store, not in React state: every publish used to re-render this whole tree. Each piece below reads
+  // its own slice (ui/hud/picks.js) and re-renders only when that slice changed; `ready` flips once, when the first snapshot has arrived.
+  const [store] = useState(() => createSnapStore());
+  const [ready, setReady] = useState(false);
   const [game, setGame] = useState(null);
   const [failure, setFailure] = useState(null); // 'webgl' | 'error' when the game could not start
   const [gpuLost, setGpuLost] = useState(false);
@@ -90,13 +96,18 @@ export default function AutowalaGame() {
     let g = null;
     let ro = null;
     let dead = false;
+    const onSnapshot = (s) => {
+      if (dead) return;
+      store.set(s);
+      setReady(true); // a no-op after the first snapshot (same value: React bails out without rendering)
+    };
     (async () => {
       const fonts = loadFonts(); // the fonts download while the city builds (only the UI needs them, and it mounts after the build)
       if (dead || !canvas.current) return;
       const t0 = performance.now();
       try {
         g = await createGameAsync(
-          { canvas: canvas.current, seed: CITY_SEED, hooks: { onSnapshot: setSnap, userId, onContext: (st) => setGpuLost(st === 'lost') } },
+          { canvas: canvas.current, seed: CITY_SEED, hooks: { onSnapshot, userId, onContext: (st) => setGpuLost(st === 'lost') } },
           (stage, n) => !dead && setLoading({ text: STAGE_TEXT[stage] || 'Loading', pct: Math.min(99, Math.round((n / TOTAL_STEPS) * 100)) }),
         );
         await fonts;
@@ -119,6 +130,7 @@ export default function AutowalaGame() {
       ro.observe(wrap.current);
       g.start();
       window.__autowala = g; // handy in the console; also used by the screenshot tooling
+      window.__autowalaStore = store; // the HUD snapshot store: .version() counts the snapshots React was offered (scripts/perf/aw-hud.mjs)
       setGame(g);
     })();
     return () => {
@@ -127,7 +139,7 @@ export default function AutowalaGame() {
       g?.dispose();
       if (window.__autowala === g) delete window.__autowala;
     };
-  }, [userId]);
+  }, [userId, store]);
 
   return (
     <div className="aw" ref={wrap}>
@@ -135,21 +147,27 @@ export default function AutowalaGame() {
       {!game && !failure && <LoadingScreen text={loading.text} pct={loading.pct} />}
       {failure && <FailureScreen kind={failure} />}
       {gpuLost && <GpuLostScreen />}
-      {game && snap && (
-        <>
-          <Hud game={game} snap={snap} />
-          <FareChoice game={game} snap={snap} />
-          <Minimap game={game} snap={snap} />
+      {game && ready && (
+        <SnapStoreProvider value={store}>
+          <Hud game={game} />
+          <Slice as={FareChoice} game={game} store={store} pick={SLICES.fare} equal={same} />
+          <Slice as={Minimap} game={game} store={store} pick={SLICES.menu} />
           <Toasts game={game} />
           <Subtitles game={game} />
-          <QuestLog game={game} snap={snap} />
-          <Hisaab game={game} snap={snap} />
-          <Radio game={game} snap={snap} />
+          <Slice as={QuestLog} game={game} store={store} pick={SLICES.quest} equal={same} />
+          <Slice as={Hisaab} game={game} store={store} pick={SLICES.hisaab} />
+          <Slice as={Radio} game={game} store={store} pick={SLICES.radio} />
           <TouchControls game={game} />
-          <Workshop game={game} snap={snap} />
-          <Menus game={game} snap={snap} />
-        </>
+          <Slice as={Workshop} game={game} store={store} pick={SLICES.workshop} />
+          <Slice as={Menus} game={game} store={store} pick={SLICES.menus} />
+        </SnapStoreProvider>
       )}
     </div>
   );
+}
+
+/** One overlay piece fed from the store: it gets `snap` = its slice of the snapshot and re-renders only when that slice changed. */
+function Slice({ as: C, game, store, pick, equal = shallowEqual }) {
+  const snap = useSnapView(store, pick, equal);
+  return <C game={game} snap={snap} />;
 }

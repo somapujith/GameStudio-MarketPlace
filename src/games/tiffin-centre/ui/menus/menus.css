@@ -847,7 +847,7 @@ html[data-motion='reduced'] .tc-menu-brief__timer { display: none; }
 .tc-menu-controls dl > div:has(> dt:empty) { grid-template-columns: minmax(0, 1fr); }
 .tc-menu-controls dt:empty { display: none; }
 
-@media (max-height: 600px) and (min-width: 600px) {
+@media (max-height: 640px) and (min-width: 600px) { /* a small tablet (842x618) is as short as it is wide enough for two columns */
   .tc-menu-pause .tc-menu-panel { width: min(100%, 760px); }
   .tc-menu-pause__cols { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 4px 18px; align-items: start; }
   .tc-menu-pause__cols > .tc-menu-stack { grid-template-columns: 1fr 1fr; margin-top: 8px; }
@@ -857,7 +857,7 @@ html[data-motion='reduced'] .tc-menu-brief__timer { display: none; }
   .tc-menu-pause .tc-menu-paint { font-size: 24px; }
   .tc-menu-pause .tc-menu-keys { display: none; }
 }
-@media (max-height: 480px) and (min-width: 640px) {
+@media ((max-height: 480px) and (min-width: 640px)), ((max-height: 640px) and (min-width: 780px)) { /* ... and the shift briefing: one column is ~900 px tall there */
   .tc-menu-brief__card { grid-auto-flow: row dense; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); align-content: start; align-items: start; justify-items: stretch; column-gap: 16px; width: min(100%, 880px); }
   .tc-menu-brief__sky { grid-column: 1 / -1; }
   .tc-menu-brief .tc-menu-eyebrow, .tc-menu-brief .tc-menu-banner, .tc-menu-brief > .tc-menu-brief__card > .tc-menu-btn, .tc-menu-brief__card > .tc-menu-btn { grid-column: 1; text-align: center; }
