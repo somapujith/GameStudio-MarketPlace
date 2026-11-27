@@ -126,7 +126,8 @@ describe('applyLoadout', () => {
       mesh.geometry.computeBoundingBox();
       return mesh.geometry.boundingBox.max.y;
     };
-    const roofMesh = a.userData.body.children.find((o) => o.isMesh && o.material === a.userData.roofM);
+    const roofMesh = a.userData.merged.body; // (the roof is a slot of the merged body mesh on the player's rig)
+    expect(roofMesh.parent).toBe(a.userData.body);
     const flatTop = top(roofMesh);
     const glassScale = a.userData.glass.scale.y;
     custom.applyLoadout(a, withPath(DEFAULT_LOADOUT, 'roofStyle', 'high-canopy'));
