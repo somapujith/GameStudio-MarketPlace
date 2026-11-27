@@ -235,7 +235,7 @@
 /* ---- the More sheet: the shortcuts the touch layer used to keep in its "..." tray ------------------------------------------------- */
 .aw-sheet__keys {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
   gap: 8px;
   margin: 0 0 10px;
 }

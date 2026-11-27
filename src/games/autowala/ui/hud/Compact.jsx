@@ -11,7 +11,7 @@ import { CloseIcon, DuskIcon, FlagIcon, KindIcon, MoonIcon, MoreIcon, PauseIcon,
 import { dayPhase, formatClock, formatCountdown, formatDistance, formatEta, groupIndian, moodColor, normalizeTrip, timerTone } from './hudLogic.js';
 import { filterRules } from './layoutLogic.js';
 import { useChangeFlash, useCountUp } from './useCountUp.js';
-import { GearIcon, MapIcon, PhoneIcon, QuestIcon } from '../touch/icons.jsx';
+import { GearIcon, MapIcon, PhoneIcon, QuestIcon, RadioIcon } from '../touch/icons.jsx';
 
 const PHASE_ICON = { night: MoonIcon, dawn: SunIcon, day: SunIcon, dusk: DuskIcon };
 
@@ -187,6 +187,7 @@ export const SHORTCUTS = [
   { id: 'map', label: 'Map', Icon: MapIcon },
   { id: 'quests', label: 'Quests', Icon: QuestIcon },
   { id: 'phone', label: 'Phone', Icon: PhoneIcon },
+  { id: 'radio', label: 'Radio', Icon: RadioIcon, needs: 'radio' }, // only when the game has a radio
   { id: 'controls', label: 'Controls', Icon: GearIcon },
 ];
 
@@ -215,7 +216,7 @@ export function MoreSheet({ open, onClose, game, snap, careerV, rulesV, weather,
         </header>
         {onShortcut && (
           <div className="aw-sheet__keys" role="group" aria-label="Shortcuts">
-            {SHORTCUTS.map(({ id, label, Icon }) => (
+            {SHORTCUTS.filter((k) => !k.needs || hasRadio).map(({ id, label, Icon }) => (
               <button key={id} type="button" className="aw-sheet__key" onClick={() => onShortcut(id)}>
                 <Icon size={20} />
                 <span>{label}</span>
