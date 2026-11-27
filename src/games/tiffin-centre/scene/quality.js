@@ -175,6 +175,66 @@ export const TIFFIN_TIER_MODELS = {
 };
 
 /**
+ * Measured cost of each tier on the reference machine (the dev laptop's integrated AMD Radeon, 1920x1080 drawing buffer, GPU timer medians of whole frames, day and
+ * night averaged): `fixedMs` the part that does not move with the render scale (draw submission, shadow pass, FXAA at canvas size), `mpxMs` ms per million RENDERED
+ * pixels. `REF_UNITS` are the calibration units (fill ns / pixel, ms / draw-call equivalent) that machine measured at: another machine's frame is these two numbers
+ * scaled by how much faster or slower ITS calibration was. The shared `estimateFrameMs` takes max(cpu, gpu) and so cannot express "a fixed cost plus a pixel cost", which
+ * is what these frames are (the CPU's draw submission and the GPU's work serialise through the driver); this table is what Tiffin's start tier is chosen from.
+ */
+export const REF_UNITS = { fillNsPerPx: 0.55, callUs: 3.0 };
+export const TIER_REF = {
+  lite: { fixedMs: 3.5, mpxMs: 1.4 },
+  low: { fixedMs: 5.5, mpxMs: 2.2 },
+  medium: { fixedMs: 9.5, mpxMs: 4.1 },
+  high: { fixedMs: 12.5, mpxMs: 7.5 },
+};
+
+/** Estimated frame ms of `tier` at `scale` for a viewport { w, h, dpr } (css px) on a machine whose calibration measured `units` ({ fillNsPerPx, callUs }). */
+export function estimateTierMs(units, tier, viewport, scale = 1, table = TIER_REF) {
+  const ref = table[tier];
+  if (!ref) return Infinity;
+  const pr = Math.max(0.25, Math.min(QUALITY[tier]?.pixelRatio ?? 1, viewport.dpr || 1));
+  const mpx = (viewport.w * viewport.h * pr * pr * scale * scale) / 1e6;
+  const pixel = Math.max(0.2, (units?.fillNsPerPx || REF_UNITS.fillNsPerPx) / REF_UNITS.fillNsPerPx);
+  const call = Math.max(0.2, (units?.callUs || REF_UNITS.callUs) / REF_UNITS.callUs);
+  return ref.fixedMs * call + ref.mpxMs * mpx * pixel;
+}
+
+/**
+ * The tier and scale to START on from a calibration: the highest tier (not above `capTier`) whose frame fits `budgetMs * headroom` at a scale of at least `goodScale`
+ * (a post tier at 0.7 beats the plain tier at 1.0: the picture, not the pixels, is what a tier is), at the highest ladder scale that fits; else the highest tier that
+ * fits at its floor; else the lowest tier at its floor. Returns { tier, scale, ms, estimates, reasons, confident }.
+ */
+export function recommendStart({ units, viewport, capTier = 'high', budgetMs = 1000 / 60, goodScale = 0.7, headroom = 0.9, ladder = SCALE_LADDER, confident = true }) {
+  const est = {};
+  const reasons = [];
+  const top = Math.max(0, QUALITY_ORDER.indexOf(capTier));
+  let anyFit = null;
+  for (let i = top; i >= 0; i--) {
+    const tier = QUALITY_ORDER[i];
+    const floor = SCALE_MIN[tier];
+    est[tier] = Math.round(estimateTierMs(units, tier, viewport, 1) * 10) / 10;
+    let fit = null;
+    for (const s of ladder) {
+      if (s < floor - 1e-6) continue;
+      const ms = estimateTierMs(units, tier, viewport, s);
+      if (ms <= budgetMs * headroom) {
+        fit = { tier, scale: s, ms };
+        break;
+      }
+    }
+    if (fit && fit.scale >= goodScale - 1e-6) {
+      reasons.push(`${tier} fits ${budgetMs.toFixed(1)} ms at scale ${fit.scale} (est. ${fit.ms.toFixed(1)} ms)`);
+      return { tier, scale: fit.scale, ms: fit.ms, estimates: est, reasons, confident };
+    }
+    if (fit && !anyFit) anyFit = fit;
+    reasons.push(fit ? `${tier} only fits at scale ${fit.scale}` : `${tier} does not fit ${budgetMs.toFixed(1)} ms even at its floor`);
+  }
+  if (anyFit) return { tier: anyFit.tier, scale: anyFit.scale, ms: anyFit.ms, estimates: est, reasons, confident };
+  return { tier: QUALITY_ORDER[0], scale: SCALE_MIN[QUALITY_ORDER[0]], ms: estimateTierMs(units, QUALITY_ORDER[0], viewport, SCALE_MIN[QUALITY_ORDER[0]]), estimates: est, reasons, confident };
+}
+
+/**
  * The governor's policy for this game (see docs/GFX_ENGINE.md section 6.2): `downRatio` how far over the frame budget the windowed mean may sit before the scale
  * steps down (a vsync-locked 60 Hz display reads 1.00, so 1.04 never trips on a held frame rate and keeps an unlocked benchmark within ~58 fps);
  * `upRatio` how far under the budget a predicted frame must be before the scale steps up; `loadHoldMs` / `tierHoldMs` how long the governor ignores frames after the

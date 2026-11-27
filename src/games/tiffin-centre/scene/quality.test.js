@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { QUALITY, QUALITY_ORDER, KNOB_KEYS, pickQuality, lowerQuality, minTier, DRAW_CALL_BUDGET, GFX_GAME_KEY, GOVERNOR_OPTIONS, SCALE_LADDER, SCALE_MIN, TIER_COST, TIFFIN_TIER_MODELS, shadowEveryFor, deviceTweaks, applyDeviceTweaks, createCompileHold } from './quality.js';
+import { QUALITY, QUALITY_ORDER, KNOB_KEYS, pickQuality, lowerQuality, minTier, DRAW_CALL_BUDGET, GFX_GAME_KEY, GOVERNOR_OPTIONS, REF_UNITS, SCALE_LADDER, SCALE_MIN, TIER_COST, TIFFIN_TIER_MODELS, estimateTierMs, recommendStart, shadowEveryFor, deviceTweaks, applyDeviceTweaks, createCompileHold } from './quality.js';
 
 describe('quality tiers', () => {
   it('has lite <= low <= medium <= high on every numeric knob and a pipeline that grows with the tier', () => {
@@ -70,6 +70,60 @@ describe('quality tiers', () => {
     expect(minTier('lite', 'medium')).toBe('lite');
     expect(pickQuality('lite')).toBe('lite');
     expect(pickQuality('auto', { tier: 'lite' })).toBe('lite');
+  });
+});
+
+describe('the tier cost model (estimateTierMs, recommendStart)', () => {
+  const VP = { w: 1536, h: 864, dpr: 1.25 };
+  it('grows with the tier and with the resolution, and a faster machine is estimated faster', () => {
+    const ms = (tier, s = 1, units = REF_UNITS) => estimateTierMs(units, tier, VP, s);
+    for (let i = 1; i < QUALITY_ORDER.length; i++) expect(ms(QUALITY_ORDER[i])).toBeGreaterThan(ms(QUALITY_ORDER[i - 1]));
+    for (const q of QUALITY_ORDER) expect(ms(q, 0.7)).toBeLessThan(ms(q, 1));
+    expect(ms('medium', 1, { fillNsPerPx: 0.25, callUs: 1.4 })).toBeLessThan(ms('medium'));
+    expect(ms('medium', 1, { fillNsPerPx: 1.1, callUs: 6 })).toBeGreaterThan(ms('medium'));
+    expect(estimateTierMs(REF_UNITS, 'nope', VP)).toBe(Infinity);
+  });
+
+  it('is a fixed cost plus a pixel cost: halving the pixels does not halve the frame', () => {
+    const a = estimateTierMs(REF_UNITS, 'medium', VP, 1);
+    const b = estimateTierMs(REF_UNITS, 'medium', VP, Math.SQRT1_2); // half the pixels
+    expect(b).toBeGreaterThan(a / 2);
+    expect(b).toBeLessThan(a);
+  });
+
+  it('starts the reference machine (the dev laptop) on medium at a modest scale, not on low at full resolution', () => {
+    const r = recommendStart({ units: REF_UNITS, viewport: VP, capTier: 'medium' });
+    expect(r.tier).toBe('medium');
+    expect(r.scale).toBeGreaterThanOrEqual(0.7);
+    expect(r.ms).toBeLessThanOrEqual((1000 / 60) * 0.9);
+  });
+
+  it('a fast machine starts at full resolution, a slow one on a lower tier, a hopeless one on lite; never above the GPU class cap', () => {
+    const fast = recommendStart({ units: { fillNsPerPx: 0.1, callUs: 0.6 }, viewport: VP, capTier: 'high' });
+    expect(fast.tier).toBe('high');
+    expect(fast.scale).toBe(1);
+    const capped = recommendStart({ units: { fillNsPerPx: 0.1, callUs: 0.6 }, viewport: VP, capTier: 'medium' });
+    expect(capped.tier).toBe('medium');
+    const slow = recommendStart({ units: { fillNsPerPx: 1.6, callUs: 9 }, viewport: VP, capTier: 'medium' });
+    expect(['lite', 'low']).toContain(slow.tier);
+    const awful = recommendStart({ units: { fillNsPerPx: 25, callUs: 60 }, viewport: VP, capTier: 'high' });
+    expect(awful.tier).toBe('lite');
+    expect(awful.scale).toBe(SCALE_MIN.lite);
+  });
+
+  it('prefers a post tier at the good-scale floor over the next tier down at full resolution, and says why', () => {
+    // a machine on which medium fits only at ~0.7: it must still start on medium
+    const units = { fillNsPerPx: 0.62, callUs: 3.2 };
+    const r = recommendStart({ units, viewport: VP, capTier: 'medium' });
+    expect(r.tier).toBe('medium');
+    expect(r.reasons[0]).toMatch(/medium fits/);
+    // with a stricter good-scale floor the same machine drops to low
+    const strict = recommendStart({ units, viewport: VP, capTier: 'medium', goodScale: 0.95 });
+    expect(strict.tier).not.toBe('medium');
+  });
+
+  it('carries the confidence flag through', () => {
+    expect(recommendStart({ units: REF_UNITS, viewport: VP, confident: false }).confident).toBe(false);
   });
 });
 

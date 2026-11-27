@@ -20,7 +20,7 @@ import { createSync } from './sync.js';
 import { makeArt } from './art.js';
 import { createTracker } from './tracker.js';
 import { whenFontsReady } from './textures.js';
-import { DRAW_CALL_BUDGET, GFX_GAME_KEY, GOVERNOR_OPTIONS, QUALITY, QUALITY_ORDER, SCALE_LADDER, SCALE_MIN, TIER_COST, TIFFIN_TIER_MODELS, pickQuality } from './quality.js';
+import { DRAW_CALL_BUDGET, GFX_GAME_KEY, GOVERNOR_OPTIONS, QUALITY, QUALITY_ORDER, SCALE_LADDER, SCALE_MIN, TIER_COST, TIFFIN_TIER_MODELS, pickQuality, recommendStart } from './quality.js';
 import { combineFpsCap, createGovernorFeed, startTier } from './adapt.js';
 import { describeCaps, getGfxPref, probeBrowser, resolveTier, setGfxPref } from './capabilities.js';
 import { LOAD_STEPS, applyModelTier, createBatcher, createProgramWarmer, programsStatus, runAsync, runSync, sleep } from './loader.js';
@@ -101,6 +101,14 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
       yield runStandaloneCalibration({ width: vw, height: vh, dpr: vdpr, gpu: gpu0, tiers: TIFFIN_TIER_MODELS }).then((r) => {
         calibration = r;
       });
+      // the shared estimate is max(cpu, gpu) of generic tier models; Tiffin's frames are a fixed draw cost PLUS a pixel cost (quality.js TIER_REF): the measured
+      // units (fill ns / pixel, call us) go through Tiffin's own table, and a post tier at a modest scale beats the plain tier at full resolution
+      if (calibration?.ok && calibration.units && calibration.recommended) {
+        const rec = recommendStart({
+          units: calibration.units, viewport: { w: vw, h: vh, dpr: vdpr }, capTier: gpu0.tierCap, budgetMs: calibration.budgetMs || 1000 / 60, confident: calibration.recommended.confident !== false,
+        });
+        calibration = { ...calibration, recommended: { ...calibration.recommended, tier: rec.tier, scale: rec.scale, estimates: rec.estimates, reasons: rec.reasons, confident: rec.confident } };
+      }
     }
   }
   let gov = null; // the frame governor (below): the callbacks of createAdaptiveQuality reach it through this binding
@@ -663,6 +671,8 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
       get governor() { return gov; },
       get loop() { return loop; },
       get aq() { return aq; },
+      /** The pool that serves the stall's small lights through a few proxy lights (light-pool.js): setK(0) switches it off. */
+      get lightPool() { return lightPool; },
       /** The start-up calibration result (null when none ran: a remembered tier, an explicit choice, the synchronous build): { units, recommended: { estimates } ... }. */
       get calibration() { return calibration; },
       /** What each tier switch of this session cost: [{ tier, ms, programs }]. */
