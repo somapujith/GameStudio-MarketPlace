@@ -44,10 +44,14 @@ const START = async (c) => {
   await c.waitFor('!!window.__autowala', 60000);
   const startMs = Date.now() - t0;
   await c.ev("window.__gfxForBench = () => window.__autowala.gfx.renderer; true");
-  if (!args['keep-sampler']) await c.ev('window.__autowala.gfx.autoTier = false; true'); // builds with the frame-time sampler: hold the tier asked for
+  if (!args['keep-sampler']) await c.ev('window.__autowala.gfx.autoTier = false; true'); // the shared governor is ignored: hold the tier (and the scale) asked for
+  // the game's own frame timer query must not nest with this script's per-pass queries (cmd gpu / suite)
+  if (cmd === 'gpu' || cmd === 'suite') await c.ev('(() => { const a = window.__autowala.adaptive; if (a) a.timer.enabled = false; return true; })()');
   if (args.scale !== undefined) await c.ev('window.__autowala.gfx.setScale(' + (+args.scale) + '); true'); // experiment: render resolution
   if (args.lights !== undefined) await c.ev('window.__autowala.world.props.setLightCount(' + (+args.lights) + '); true'); // experiment: point lights in every lit shader
   await c.ev('window.__autowala.debug.drive({ throttle: 1 }); true');
+  // --nohud: the page's HTML over the canvas is hidden (is a stall the GL frame or the compositor mixing the HUD with it?)
+  if (args.nohud) await c.ev("(() => { const st = document.createElement('style'); st.textContent = '.aw > *:not(.aw-canvas) { display: none !important; }'; document.head.appendChild(st); return true; })()");
   return startMs;
 };
 

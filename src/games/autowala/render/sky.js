@@ -221,6 +221,7 @@ export function createSky(scene) {
   }
 
   const shadowFocus = new Vector3();
+  let fogFloor = 0; // the thinnest fog allowed: dense enough that the far plane cuts nothing visible (render/quality.js fogFloorFor)
 
   function update(hour, focus, dt, time = 0, weather = 0) {
     const h = ((hour % 24) + 24) % 24;
@@ -260,7 +261,7 @@ export function createSky(scene) {
     // fog = horizon colour, thicker in rain
     state.fogColor.copy(palette.hor).lerp(palette.mid, 0.18);
     scene.fog.color.copy(state.fogColor);
-    scene.fog.density = s.fog * (1 + weather * 1.6);
+    scene.fog.density = Math.max(s.fog, fogFloor) * (1 + weather * 1.6);
 
     dome.position.copy(focus);
     sunGlow.position.copy(focus).addScaledVector(sunDir, 900);
@@ -279,6 +280,11 @@ export function createSky(scene) {
   /** Quality switch: shadow-map size, and shadows on/off (off = no shadow pass at all). */
   function setShadows(size, on) {
     key.castShadow = !!on;
+    if (!on && key.shadow.map) {
+      // shadows off (the low tier, a memory warning): give the 2048 x 2048 depth map back instead of keeping it allocated
+      key.shadow.map.dispose();
+      key.shadow.map = null;
+    }
     if (on && key.shadow.mapSize.x !== size) {
       key.shadow.mapSize.set(size, size);
       key.shadow.map?.dispose();
@@ -286,5 +292,10 @@ export function createSky(scene) {
     }
   }
 
-  return { update, state, palette, key, hemi, setShadows };
+  /** The lowest fog density (exp2): the day palette's own fog is so thin that towers are cut by the camera's far plane. */
+  const setFogFloor = (d) => {
+    fogFloor = Math.max(0, d || 0);
+  };
+
+  return { update, state, palette, key, hemi, setShadows, setFogFloor };
 }

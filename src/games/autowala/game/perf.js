@@ -8,6 +8,8 @@
 //   ... world.update ...  perf.lap(PHASE.world);
 //   perf.sys(index, ms)                       // inside the systems loop (index from perf.nameSystem)
 //   perf.end({ programs, textures, geometries });   // counters of the renderer, to tell a shader compile from an upload
+//   perf.begin(dtMs) takes the frame INTERVAL too, and perf.markPlay() starts the clock of the hitch counters: frames over 33 / 50 / 100 ms
+//   between rAF callbacks once `graceMs` of play have passed (the game's target is zero over 50 ms after the first 3 s).
 export const PHASES = ['sim', 'world', 'camera', 'render', 'snap'];
 export const PHASE = Object.fromEntries(PHASES.map((n, i) => [n, i]));
 
@@ -15,7 +17,7 @@ const MAX_SYSTEMS = 40;
 const EMA = 0.05;
 
 /** @param {{ now?: () => number, slowMs?: number, ring?: number }} opts */
-export function createFramePerf({ now = () => performance.now(), slowMs = 33, ring = 48 } = {}) {
+export function createFramePerf({ now = () => performance.now(), slowMs = 33, ring = 48, graceMs = 3000 } = {}) {
   const phaseAvg = new Float64Array(PHASES.length);
   const phaseMax = new Float64Array(PHASES.length);
   const cur = new Float64Array(PHASES.length); // this frame's phase times
@@ -35,6 +37,9 @@ export function createFramePerf({ now = () => performance.now(), slowMs = 33, ri
   let lastGeometries = -1;
   let lastTotal = 0;
   let started = false;
+  let playAt = -1; // when play started (markPlay); frames before playAt + graceMs are not counted as hitches
+  let dtNow = 0;
+  const hitch = { frames: 0, over33: 0, over50: 0, over100: 0, worst: 0, ms50: 0 };
 
   const nameSystem = (name) => {
     const i = names.indexOf(name);
@@ -44,8 +49,9 @@ export function createFramePerf({ now = () => performance.now(), slowMs = 33, ri
     return names.length - 1;
   };
 
-  const begin = () => {
+  const begin = (dtMs = 0) => {
     t0 = tl = now();
+    dtNow = dtMs;
     cur.fill(0);
     sysCur.fill(0);
   };
@@ -85,6 +91,16 @@ export function createFramePerf({ now = () => performance.now(), slowMs = 33, ri
       frameAvg += (total - frameAvg) * EMA;
       if (total > frameMax) frameMax = total;
     }
+    if (playAt >= 0 && dtNow > 0 && t0 - playAt >= graceMs) {
+      hitch.frames++;
+      if (dtNow > 33) hitch.over33++;
+      if (dtNow > 50) {
+        hitch.over50++;
+        hitch.ms50 += dtNow;
+      }
+      if (dtNow > 100) hitch.over100++;
+      if (dtNow > hitch.worst) hitch.worst = dtNow;
+    }
     if (total > slowMs) {
       slowCount++;
       let topSys = -1;
@@ -118,6 +134,7 @@ export function createFramePerf({ now = () => performance.now(), slowMs = 33, ri
     slowCount,
     frame: { avg: round(frameAvg), max: round(frameMax) },
     phases: Object.fromEntries(PHASES.map((n, i) => [n, { avg: round(phaseAvg[i]), max: round(phaseMax[i]) }])),
+    hitches: { ...hitch, worst: Math.round(hitch.worst), ms50: Math.round(hitch.ms50), playing: playAt >= 0 },
     systems: Object.fromEntries(names.map((n, i) => [n, { avg: round(sysAvg[i]), max: round(sysMax[i]) }])),
     slow: slow.slice(),
   });
@@ -133,10 +150,17 @@ export function createFramePerf({ now = () => performance.now(), slowMs = 33, ri
     slowCount = 0;
     started = false;
     slow.length = 0;
+    hitch.frames = hitch.over33 = hitch.over50 = hitch.over100 = hitch.worst = hitch.ms50 = 0;
+  };
+
+  /** Play starts now: the hitch counters begin after `graceMs`. (Calling it again restarts the clock and the counters.) */
+  const markPlay = (at = now()) => {
+    playAt = at;
+    hitch.frames = hitch.over33 = hitch.over50 = hitch.over100 = hitch.worst = hitch.ms50 = 0;
   };
 
   return {
-    begin, lap, sys, end, nameSystem, report, reset,
+    begin, lap, sys, end, nameSystem, report, reset, markPlay,
     get slowCount() { return slowCount; },
     /** The total time of the last finished frame (ms): the game's background work waits while this is high. */
     get last() { return lastTotal; },

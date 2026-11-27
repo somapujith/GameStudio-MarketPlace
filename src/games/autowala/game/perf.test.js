@@ -85,3 +85,48 @@ describe('createFramePerf', () => {
     expect(last).toBeLessThan(40);
   });
 });
+
+describe('hitch counters', () => {
+  /** Drive frames by hand: each gets an interval (the rAF gap) and the clock moves by it. */
+  const drive = (p, now, gaps) => {
+    for (const g of gaps) {
+      now.t += g;
+      p.begin(g);
+      p.end();
+    }
+  };
+
+  it('count nothing before play starts, nor during the grace seconds', () => {
+    const now = { t: 0 };
+    const p = createFramePerf({ now: () => now.t, graceMs: 3000 });
+    drive(p, now, [16, 200, 16]); // the loading / start screen
+    expect(p.report().hitches).toMatchObject({ frames: 0, over50: 0, playing: false });
+    p.markPlay();
+    drive(p, now, [16, 300, 16, 90]); // inside the grace: a compile on the first customer, say
+    expect(p.report().hitches.over50).toBe(0);
+  });
+
+  it('count frames over 33, 50 and 100 ms and the worst once the grace has passed', () => {
+    const now = { t: 0 };
+    const p = createFramePerf({ now: () => now.t, graceMs: 1000 });
+    p.markPlay();
+    drive(p, now, Array(70).fill(16)); // 1.1 s of steady frames
+    drive(p, now, [16, 40, 60, 120, 16]);
+    const h = p.report().hitches;
+    expect(h).toMatchObject({ over33: 3, over50: 2, over100: 1, worst: 120, ms50: 180, playing: true });
+    expect(h.frames).toBeGreaterThan(0);
+  });
+
+  it('start again with markPlay (and clear with reset)', () => {
+    const now = { t: 0 };
+    const p = createFramePerf({ now: () => now.t, graceMs: 0 });
+    p.markPlay();
+    drive(p, now, [16, 80]);
+    expect(p.report().hitches.over50).toBe(1);
+    p.markPlay();
+    expect(p.report().hitches.over50).toBe(0);
+    drive(p, now, [90]);
+    p.reset();
+    expect(p.report().hitches.over50).toBe(0);
+  });
+});

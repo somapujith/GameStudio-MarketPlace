@@ -15,6 +15,7 @@ dynamicRes.js   resolution scaling with no realloc render into a sub-rect of tar
 warmup.js       no first-use stalls                compile shaders + upload textures under a per-frame budget; program census
 batch.js        fewer draw calls                   merge by material, freeze static, tile for culling, instance, dispose
 adaptive.js     the wiring                         gpu + memory + calibration + governor in one call; device hints (battery, data saver)
+webgl.js        is WebGL 2 there at all?           probeWebgl2() BEFORE the 3D chunks are imported (a throw-away canvas), webglFailureText({ native }) for the message
 index.js        barrel                             import { ... } from '@/platform/gfx'
 ```
 
@@ -156,6 +157,8 @@ Where the pieces live today: `scene/capabilities.js` (probe + `chooseTier` / `re
 8. **Persist**: nothing to do, `aq.governor`'s `onStable` writes tier memory.
 
 ### 4.2 Autowala
+
+**Status: integrated by aw-int (`docs/perf/aw-int.md`)**, with these differences from the recipe below, each learned on the real GPU: the post chain was already replaced by aw-gpu (no `EffectComposer`); the canvas and the scene target are allocated ONCE for the highest tier the session may reach and a tier is a share of them (so no tier step reallocates); the governor is fed the game's own JS time OUTSIDE the render call (a render call that mixes GL submission with GPU waits made every pixel-bound frame look CPU-bound); `minRefreshHz: 55` (a steady 20 ms frame is not a 50 Hz display); the calibration's units are noisy 2-10x on a busy machine, so the game keeps its own reading (`decideStart`: the highest tier up to the class cap that is not hopeless, a first reading above 20 us is repeated, units sanitised); a tier the governor leaves is marked failed for 5 minutes and a failed tier-up is not written to tier memory; a draw-call-bound tier gets a live scale floor of 1 (`createScaleFloors`); the next lower tier's programs are built behind the loading bar when the start is unproved (a compile in play is 300-600 ms frames per batch of programs). The WebGL 2 probe (`webgl.js`) runs before the 3D chunks are imported.
 
 Where: `render/renderer.js` (`pickQuality`, `createRenderer`: `build()` with `EffectComposer` + `RenderPass` + `UnrealBloomPass` + `OutputPass`, the step-down-only sampler), `render/chunks.js` (`chunkedInstances`), `render/dispose.js` (`disposeTree`), `game/config.js` (`QUALITY`), `game/Game.js` (`gameSteps`: `createRenderer(canvas, { quality: pickQuality(...) })`, the `frame()` loop, `resize`).
 

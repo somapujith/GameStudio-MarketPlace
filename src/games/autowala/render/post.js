@@ -75,6 +75,22 @@ export function bloomGain(strength, levels, radius = 0.42) {
   return (strength * ref * w[0]) / w.reduce((a, b) => a + b, 0);
 }
 
+/**
+ * What fraction of a pixel's colour the bloom's bright pass keeps (the same arithmetic as FRAG_PREFILTER's `tap`, so it can be tested):
+ * 0 well under the threshold, the excess over it above, a quadratic knee of half-width `knee` in between.
+ */
+export function brightPass(luma, threshold, knee) {
+  const soft = Math.min(2 * knee, Math.max(0, luma - threshold + knee));
+  const s = (soft * soft) / (4 * knee + 1e-4);
+  return Math.max(s, luma - threshold) / Math.max(luma, 1e-4);
+}
+
+/**
+ * The bloom threshold for the time of day (`night` 0..1 from the sky): neon and lamps are the point of the glow at night (1.05, as before),
+ * but by day sunlit paint and chrome highlights sit in 1.2..4 and must not glow, so the threshold rises towards 2.2 at noon.
+ */
+export const bloomThreshold = (night) => 1.05 + (1 - Math.min(1, Math.max(0, night))) * 1.15;
+
 // ------------------------------------------------------------------------------------------------ support probes
 
 const probed = new Map();
@@ -124,18 +140,23 @@ void main() {
   gl_Position = vec4(position.xy, 0.0, 1.0);
 }`;
 
-// threshold + 4x4 box downsample into level 0 (1/4 resolution). Each of the four taps is a bilinear fetch of a 2x2 block; the threshold
-// is applied per tap (a thin neon line must not average itself away) and the Karis weight 1/(1+luma) keeps one hot pixel from flickering.
+// bright pass + 4x4 box downsample into level 0 (1/4 resolution). Each of the four taps is a bilinear fetch of a 2x2 block; the bright pass is
+// applied per tap (a thin neon line must not average itself away) and the Karis weight 1/(1+luma) keeps one hot pixel from flickering.
+// The bright pass keeps only the EXCESS over the threshold (a pixel at 1.2 with a threshold of 1.05 feeds the bloom 0.15, not 1.2: the old
+// "pass the whole colour above a hard edge" bloomed every sunlit white line and chrome highlight at noon), through a quadratic soft knee so
+// nothing switches on at an edge. Neon at night is many times over the threshold: it passes almost whole.
 const FRAG_PREFILTER = /* glsl */ `
 precision highp float;
 precision highp sampler2D;
-uniform sampler2D tSrc; uniform vec2 uTexel; uniform vec2 uScale; uniform float uThreshold;
+uniform sampler2D tSrc; uniform vec2 uTexel; uniform vec2 uScale; uniform float uThreshold; uniform float uKnee;
 in vec2 vUv;
 out vec4 fragColor;
 vec3 tap(vec2 p) {
   vec3 c = textureLod(tSrc, clamp(p, 0.5 * uTexel, uScale - 0.5 * uTexel), 0.0).rgb;
   float l = dot(c, vec3(0.2126729, 0.7151522, 0.0721750));
-  return c * smoothstep(uThreshold, uThreshold + 0.01, l);
+  float soft = clamp(l - uThreshold + uKnee, 0.0, 2.0 * uKnee);
+  soft = soft * soft / (4.0 * uKnee + 1e-4);
+  return c * (max(soft, l - uThreshold) / max(l, 1e-4));
 }
 void main() {
   vec2 p = vUv * uScale;
@@ -251,17 +272,21 @@ export function disposeShared(shared) {
 
 /**
  * @param renderer  THREE.WebGLRenderer (toneMappingExposure is read from it, as OutputPass does; ACES is fixed here)
- * @param opts      { hdr: 'r11g11b10' | 'half' | null, bloomLevels: 0..5, fxaa: boolean, msaa: number, bloomStrength, threshold, radius, shared: Map }
+ * @param opts      { hdr: 'r11g11b10' | 'half' | null, bloomLevels: 0..5 (the pyramid is ALLOCATED for this many; setLevels() picks how many are drawn),
+ *                    fxaa: boolean, msaa: number, bloomStrength, threshold, knee, radius, minScale, shared: Map }
  */
 export function createPost(renderer, opts = {}) {
   const hdr = opts.hdr ?? null;
-  const levels = hdr ? Math.max(0, Math.min(5, opts.bloomLevels ?? 0)) : 0;
+  const levels = hdr ? Math.max(0, Math.min(5, opts.bloomLevels ?? 0)) : 0; // allocated
+  let active = levels; // used right now (0 = the composite without bloom): a tier step changes this, never the allocation
   const fxaa = opts.fxaa !== false;
   const msaa = Math.max(0, opts.msaa | 0);
   const radius = opts.radius ?? 0.42;
-  const weights = bloomWeights(Math.max(1, levels), radius);
+  const weightsFor = [];
+  for (let n = 0; n <= 5; n++) weightsFor.push(bloomWeights(Math.max(1, n), radius));
   let strength = opts.bloomStrength ?? 0.3;
   let scale = 1;
+  const minScale = opts.minScale ?? 0.3; // a tier below the allocated one draws a fraction of it, and the governor's scale comes on top
 
   const geometry = triangle();
   const camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
@@ -277,7 +302,7 @@ export function createPost(renderer, opts = {}) {
   let S = opts.shared && opts.shared.get(sharedKey);
   if (!S) {
     const U = {
-      prefilter: { tSrc: { value: null }, uTexel: { value: new Vector2() }, uScale: { value: new Vector2(1, 1) }, uThreshold: { value: opts.threshold ?? 1.05 } },
+      prefilter: { tSrc: { value: null }, uTexel: { value: new Vector2() }, uScale: { value: new Vector2(1, 1) }, uThreshold: { value: opts.threshold ?? 1.05 }, uKnee: { value: opts.knee ?? 0.3 } },
       down: { tSrc: { value: null }, uTexel: { value: new Vector2() } },
       up: { tSrc: { value: null }, uTexel: { value: new Vector2() }, uWeight: { value: 1 } },
       comp: {
@@ -291,6 +316,8 @@ export function createPost(renderer, opts = {}) {
       up: raw('aw-bloom-up', FRAG_UP, U.up),
       comp: raw('aw-composite', FRAG_COMPOSITE, U.comp, { ...(fxaa ? { FXAA: '' } : {}), ...(levels ? { BLOOM: '' } : {}) }),
     };
+    // the same composite without the bloom term, for a tier step that turns the glow off (same uniforms object; both programs are compiled up front)
+    if (levels) mats.compPlain = raw('aw-composite-plain', FRAG_COMPOSITE, U.comp, { ...(fxaa ? { FXAA: '' } : {}) });
     Object.assign(mats.up, { blending: CustomBlending, blendEquation: AddEquation, blendSrc: OneFactor, blendDst: OneFactor, blendSrcAlpha: OneFactor, blendDstAlpha: OneFactor });
     S = { U, mats };
     opts.shared?.set(sharedKey, S);
@@ -325,7 +352,7 @@ export function createPost(renderer, opts = {}) {
   };
 
   function setScale(s) {
-    scale = clampScale(s);
+    scale = clampScale(s, minScale);
     const r = scaleRect(W, H, scale);
     if (sceneRT) sceneRT.viewport.set(0, 0, r.w, r.h);
     U.comp.uScale.value.set(r.u, r.v);
@@ -359,26 +386,28 @@ export function createPost(renderer, opts = {}) {
     renderer.render(scene, camera3);
     renderer.autoClear = false; // every later pass overwrites (or, for the up-chain, adds to) what is already in its target
 
-    if (levels) {
+    const lv = active;
+    const weights = weightsFor[lv];
+    if (lv) {
       U.prefilter.tSrc.value = sceneRT.texture;
       pass(mats.prefilter, mips[0]);
-      for (let i = 1; i < levels; i++) {
+      for (let i = 1; i < lv; i++) {
         U.down.tSrc.value = mips[i - 1].texture;
         U.down.uTexel.value.set(1 / mips[i - 1].width, 1 / mips[i - 1].height);
         pass(mats.down, mips[i]);
       }
-      for (let i = levels - 2; i >= 0; i--) {
+      for (let i = lv - 2; i >= 0; i--) {
         U.up.tSrc.value = mips[i + 1].texture;
         U.up.uTexel.value.set(0.5 / mips[i + 1].width, 0.5 / mips[i + 1].height);
         U.up.uWeight.value = weights[i + 1] / weights[0];
         pass(mats.up, mips[i]);
       }
       U.comp.tBloom.value = mips[0].texture;
-      U.comp.uBloom.value = bloomGain(strength, levels, radius);
+      U.comp.uBloom.value = bloomGain(strength, lv, radius);
     }
     U.comp.tScene.value = sceneRT.texture;
     U.comp.toneMappingExposure.value = renderer.toneMappingExposure;
-    pass(mats.comp, null);
+    pass(lv || !mats.compPlain ? mats.comp : mats.compPlain, null);
     renderer.setRenderTarget(prevTarget);
     renderer.autoClear = prevAuto;
   }
@@ -409,6 +438,18 @@ export function createPost(renderer, opts = {}) {
     dispose,
     setBloom(k) {
       strength = Math.max(0, k);
+    },
+    /** The bright pass's threshold (HDR luma): see bloomThreshold(night). */
+    setThreshold(t) {
+      U.prefilter.uThreshold.value = Math.max(0.5, t);
+    },
+    /** How many pyramid levels are drawn (0..allocated; 0 = no bloom at all). No allocation, no new program. */
+    setLevels(n) {
+      active = Math.max(0, Math.min(levels, n | 0));
+      return active;
+    },
+    get activeLevels() {
+      return active;
     },
     get scale() {
       return scale;

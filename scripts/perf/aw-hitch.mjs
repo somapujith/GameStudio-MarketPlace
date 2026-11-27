@@ -232,6 +232,8 @@ async function run() {
       await c.sleep(300); // let observers flush
       const rec = await pull();
       const s = summarise(rec, t0, t1, grace);
+      // the tier / scale the game is on and what the shared governor decided during this phase (absent on a build without it)
+      s.gfx = await c.ev("(() => { const g = window.__autowala; const f = g && g.gfx; const a = g && g.adaptive; if (!f) return null; const st = a && a.governor.stats(); return { tier: f.quality, scale: f.scale, renderScale: f.renderScale == null ? null : +f.renderScale.toFixed(3), calls: f.cost && f.cost.calls, programs: f.cost && f.cost.programs, gov: st ? { counts: st.counts, history: st.history.map((h) => h.kind + ' ' + h.from + '->' + h.to + ' @' + h.t) } : null }; })()");
       const dc = rec.react.commits - react0.commits;
       s.react = { commits: dc, componentsPerCommit: dc ? +((rec.react.rendered - react0.rendered) / dc).toFixed(1) : 0, commitsPerSec: +(dc / ((t1 - t0) / 1000)).toFixed(1) };
       if (prof) s.profile = profileTables(prof);
