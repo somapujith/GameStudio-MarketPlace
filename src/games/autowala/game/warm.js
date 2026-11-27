@@ -4,7 +4,8 @@
 // `renderer.compile` only starts the first part, and only for the state it is called in, so a warm-up must be told what the game will draw with:
 //   - the OUTPUT TARGET: the game draws into the composer's render target (linear, no tone mapping); the canvas is a different program variant
 //   - the LIGHT SET: the number of point / spot lights and whether the sun casts shadows are part of every lit program (a lamp pool that goes
-//     on at dusk, the workshop's spotlights, the low tier without shadows are all different variants)
+//     on at dusk, the low tier without shadows are different variants; the workshop is NOT one: it borrows the street's lights) AND of every depth
+//     program of the sun's shadow pass, which `renderer.compile` never builds: depthParts / depthStandIn below do
 // This module compiles a given light set against a throw-away "warm scene" that holds clones of the lights (the real scene is never touched,
 // so it can run while the game is playing), in small slices, waits for the driver (KHR_parallel_shader_compile) without blocking, and then
 // reads every program's locations a few at a time, so the first draw finds everything ready.
