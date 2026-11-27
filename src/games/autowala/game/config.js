@@ -70,7 +70,8 @@ export const QUALITY = {
  *  scaleMin   the lowest render scale per tier (below ~0.6 the picture is visibly soft: the tier drops instead). A LIVE floor of 1 replaces it for
  *             a tier that is bound by draw calls (game/gfx-control.js createScaleFloors): resolution buys nothing there
  *  tierCost   relative frame cost per tier, for the tier-up prediction: measured on the dev laptop's integrated GPU, charminar at dusk, 1536x864 @ 1.25:
- *             low 16.2-18.0 ms, medium 22.9, high 22.0-25.6 (at that device ratio high draws the same pixels as medium)
+ *             busy machine: low 16.2-18.0 ms, medium 22.9, high 22.0-25.6; quiet moment (11:07): low 12.8, medium 14.4, high 15.6 (at that device ratio
+ *             high draws the same pixels as medium). The ratio moves with the load (the shadow pass and the lamps are the fixed part): 1 / 1.15 / 1.25
  *  callBudget draw calls a frame (camera + shadow + post) a tier is designed for; over it while missing the frame budget = a tier down
  *  models     the start-up calibration's cost model per tier (platform/gfx/calibrate.js: ms = max(cpu, gpu) * 1.1, cpu = calls * callUs, gpu = layers *
  *             Mpix * fillNs + mtris * mtriMs + post * Mpix * postNs). FITTED to measured frame times (docs/perf/aw-int.md, "Validating the tier models"):
@@ -86,7 +87,8 @@ export const GFX = {
   tierRetryMs: 300000, // a tier the governor left because it could not hold the frame budget is not tried again for this long
   pinnedScaleMin: 0.8, // a tier the player chose may be softened only down to this render scale (the tier itself never changes)
   scaleMin: { low: 0.6, medium: 0.6, high: 0.7 },
-  tierCost: { low: 1, medium: 1.35, high: 1.45 },
+  tierCost: { low: 1, medium: 1.15, high: 1.25 },
+  hopelessFactor: 2.5, // a calibrated start tier is the highest (up to the GPU class cap) whose estimated frame is within this multiple of the budget
   callBudget: { low: 150, medium: 250, high: 300 },
   models: {
     low: { pixelRatio: 1, layers: 1.6, calls: 1100, mtris: 0.25, post: 1.0, scaleMin: 0.6 },

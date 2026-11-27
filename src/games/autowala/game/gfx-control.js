@@ -2,7 +2,7 @@
 // player's choice, then what this machine did last time, then a ~250 ms start-up calibration behind the loading bar, then the GPU class),
 // and the frame governor that keeps the frame rate from then on. Game.js owns the consequences (what a tier step does to the world);
 // this module owns the decisions and stays free of the game object, so the pure parts are unit-tested (gfx-control.test.js).
-import { classifyGpu, createAdaptiveQuality, createGpuTimer, createTierMemory, runStandaloneCalibration, shouldCalibrate, viewportClass } from '@/platform/gfx';
+import { classifyGpu, createAdaptiveQuality, createGpuTimer, createTierMemory, estimateFrameMs, runStandaloneCalibration, shouldCalibrate, viewportClass } from '@/platform/gfx';
 import { GFX } from './config.js';
 import { TIERS, gpuForTiers, tierAbove, tierBelow } from '../render/quality.js';
 
@@ -35,6 +35,38 @@ export function viewOf(canvas, win = typeof window !== 'undefined' ? window : nu
   const w = (canvas && canvas.clientWidth) || win?.innerWidth || 1280;
   const h = (canvas && canvas.clientHeight) || win?.innerHeight || 720;
   return { w, h, dpr: (win && win.devicePixelRatio) || 1 };
+}
+
+const clampTo = (v, lo, hi) => (Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : lo);
+/** The benchmark's units limited to what a real machine can be: a run on a busy main thread reads 100x too slow on one of them (mtriMs 293 was seen). */
+export const sanitizeUnits = (u = {}) => ({
+  fillNsPerPx: clampTo(u.fillNsPerPx, 0.1, 8),
+  callUs: clampTo(u.callUs, 0.5, 40),
+  mtriMs: clampTo(u.mtriMs, 0.3, 12),
+  postNsPerPx: clampTo(u.postNsPerPx, 0.1, 8),
+});
+
+/**
+ * Our own reading of the benchmark's units. The generic rule ("the highest tier that fits 85 % of the budget") is a tight decision on a noisy
+ * measurement: the units of consecutive runs on the same laptop differ by 2-3x (callUs 11 / 14 / 16 / 22, the main thread is cold JIT and busy with the
+ * page's own start-up while it runs), and a wrong LOW start stays low for at least 20 s (the governor climbs only with evidence), while a wrong HIGH
+ * start is corrected within seconds. So the tier is the highest one up to the class cap whose estimated frame is not hopeless (<= `hopeless` x the
+ * budget); the governor and the tier memory do the fine work. Units are sanitised first. Returns a copy whose `recommended` is replaced; a
+ * calibration without units (aborted, too slow to run) is returned as it is.
+ */
+export function decideStart(calibration, { models = GFX.models, cap = 'medium', budgetMs = 1000 / 60, hopeless = GFX.hopelessFactor, tiers = TIERS } = {}) {
+  if (!calibration || !calibration.units || !calibration.viewport) return calibration || null;
+  const units = sanitizeUnits(calibration.units);
+  const estimates = {};
+  for (const t of tiers) {
+    const e = estimateFrameMs(units, models[t], calibration.viewport, 1);
+    estimates[t] = { ms: Math.round(e.ms * 10) / 10, scale: 1, cpu: Math.round(e.cpu * 10) / 10, gpu: Math.round(e.gpu * 10) / 10 };
+  }
+  const limit = budgetMs * hopeless;
+  let tier = tiers[0];
+  for (const t of tiers) if (tiers.indexOf(t) <= tiers.indexOf(cap) && estimates[t].ms <= limit) tier = t;
+  const reasons = [`${tier}: estimated ${estimates[tier].ms} ms a frame (${estimates[tier].cpu >= estimates[tier].gpu ? 'draw-call' : 'pixel'}-bound) against a budget of ${budgetMs.toFixed(1)} ms; the governor refines it`];
+  return { ...calibration, recommended: { tier, scale: 1, estimates, reasons, confident: true } };
 }
 
 /**
@@ -112,7 +144,7 @@ export function* setupQuality({ pref = 'auto', view, handlers = {}, storage, gpu
         .then((r) => { res = r || null; }, () => { res = null; }),
       timeout,
     ]).then(() => clearTimeout(timer));
-    calibration = sharpenStart(res);
+    calibration = sharpenStart(decideStart(res, { cap: gpu.tierCap }));
   }
   const floors = createScaleFloors();
   floors.seed(calibration);
@@ -138,9 +170,24 @@ export function* setupQuality({ pref = 'auto', view, handlers = {}, storage, gpu
     onStable: (info) => handlers.onStable?.(info),
     onTierFailed: (t) => handlers.onTierFailed?.(t),
   });
+  // a failed tier-up (a probe that missed the budget) is a fact about one noisy moment on a shared machine: the governor keeps it for this session, but
+  // tier memory must not ban the tier for a week (adaptive.js writes it through memory.markFailed)
+  aq.memory.markFailed = () => {};
   // a tier the player CHOSE keeps its look: the governor may soften the picture only a little (only the resolution adapts on a pinned tier)
   if (aq.initial.lock) floors.setMin(aq.initial.tier, GFX.pinnedScaleMin);
   return { aq, gpu, calibration, decision, floors };
+}
+
+/**
+ * Does the start tier need its fallback's programs built behind the loading bar? Yes when nothing has proved the start: no remembered result, not a
+ * player's choice (the tier is locked), and the benchmark did not say the tier fits the frame budget. Returns the fallback tier (the one below) or null.
+ * `initial` = aq.initial, `est` = the benchmark's estimate for the start tier ({ ms }) or undefined, `budgetMs` = the governor's frame budget.
+ */
+export function insuranceTier(initial, est, budgetMs, tiers = TIERS) {
+  const below = tiers[Math.max(0, tiers.indexOf(initial.tier) - 1)];
+  if (below === initial.tier || initial.lock || initial.source === 'memory' || initial.source === 'pref') return null;
+  if (est && est.ms <= budgetMs) return null;
+  return below;
 }
 
 /**
@@ -148,7 +195,8 @@ export function* setupQuality({ pref = 'auto', view, handlers = {}, storage, gpu
  * the queries (rebuild() makes new ones). `lastMs` is -1 while it is off.
  */
 export function createSwitchableTimer(gl) {
-  let raw = createGpuTimer(gl);
+  // disjointMs: getParameter(GPU_DISJOINT_EXT) is a synchronous round trip to the GPU process in Chrome (tf-int's finding): read it twice a second, not every frame
+  let raw = createGpuTimer(gl, { disjointMs: 500 });
   let on = true;
   return {
     get supported() {
@@ -174,7 +222,7 @@ export function createSwitchableTimer(gl) {
       } catch {
         /* the context is gone with its queries */
       }
-      raw = createGpuTimer(newGl);
+      raw = createGpuTimer(newGl, { disjointMs: 500 });
     },
     dispose() {
       raw.dispose();

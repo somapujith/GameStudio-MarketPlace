@@ -73,6 +73,6 @@ The machine's speed drifts by 20-40 % over a minute, so two settings are only co
 ```powershell
 node scripts/perf/aw-ab.mjs --base http://127.0.0.1:5863 --port 9912 --tier medium --poi charminar --hour 19.2 --rounds 4 --variants "base|scale.7=gfx.setScale(0.7)|bloom0|shadow50|noshadow|lights0"
 ```
-Presets (see `PRESETS` in the script): `base`, `scale.8/.6/.5`, `bloom0/bloom2`, `shadow50/shadow100/shadow1024/noshadow`, `lights0/1/2`, `notraffic`. `--soft --no-lock` checks the harness on SwiftShader (the numbers then mean nothing).
+Presets (see `PRESETS` in the script): `base`, `scale.8/.6/.5`, `bloom0/bloom2`, `shadow50/shadow100/shadow1024/noshadow`, `lights0/1/2`, `notraffic`, `timeroff`. `--soft --no-lock` checks the harness on SwiftShader (the numbers then mean nothing).
 
 `bench.mjs` / `aw-hitch.mjs` print the shared governor's state for Autowala (tier and scale at the end, its decisions, the calibration's units and per-tier estimates when it ran, and the game's own hitch counter `perf.report().hitches`: frames over 33 / 50 / 100 ms since 3 s after START).

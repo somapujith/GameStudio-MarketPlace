@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { classifyGpu, createTierMemory, viewportClass } from '@/platform/gfx';
 import { GFX } from './config.js';
-import { autoStartTier, createScaleFloors, createSwitchableTimer, guardMemoryWrites, memoryPlan, probeGameGpu, resolutionUseless, setupQuality, sharpenStart, viewOf } from './gfx-control.js';
+import { autoStartTier, createScaleFloors, createSwitchableTimer, decideStart, guardMemoryWrites, insuranceTier, memoryPlan, probeGameGpu, resolutionUseless, sanitizeUnits, setupQuality, sharpenStart, viewOf } from './gfx-control.js';
 
 const fakeStorage = () => {
   const m = new Map();
@@ -257,5 +257,73 @@ describe('scale floors', () => {
     const out = await drive(setupQuality({ pref: 'auto', view, gpu: integrated(), storage: fakeStorage(), calibrate }));
     expect(out.floors.get('low')).toBe(1);
     expect(out.floors.get('medium')).toBe(GFX.scaleMin.medium);
+  });
+});
+
+describe('decideStart: our reading of the benchmark', () => {
+  const viewport = { w: 1536, h: 864, dpr: 1.25 };
+  // units measured on the dev laptop (docs/perf/aw-int.md): busy run, quiet-ish run, and a run whose mtriMs was a 100x outlier
+  const busy = { fillNsPerPx: 2.82, callUs: 14.06, mtriMs: 4.48, postNsPerPx: 2.79 };
+  const outlier = { fillNsPerPx: 2.79, callUs: 17.2, mtriMs: 293, postNsPerPx: 2.72 };
+  const phone = { fillNsPerPx: 9, callUs: 38, mtriMs: 11, postNsPerPx: 9 };
+  const quiet = { fillNsPerPx: 0.55, callUs: 3, mtriMs: 1.35, postNsPerPx: 0.69 };
+  const cal = (units, vp = viewport) => ({ ok: true, units, viewport: vp, recommended: { tier: 'low', scale: 0.6, confident: true, estimates: {}, reasons: ['generic'] } });
+
+  it('keeps an integrated laptop on its class cap even when the busy benchmark says medium misses the budget (a wrong low start stays low)', () => {
+    const out = decideStart(cal(busy), { cap: 'medium' });
+    expect(out.recommended.tier).toBe('medium');
+    expect(out.recommended.estimates.medium.ms).toBeGreaterThan(16.7); // it IS over the budget: the governor will see it, and decide with evidence
+    expect(out.recommended.confident).toBe(true);
+  });
+
+  it('is not fooled by one absurd unit (mtriMs 293): the units are sanitised', () => {
+    expect(sanitizeUnits({ mtriMs: 293, callUs: 0.01, fillNsPerPx: NaN, postNsPerPx: 99 })).toEqual({ fillNsPerPx: 0.1, callUs: 0.5, mtriMs: 12, postNsPerPx: 8 });
+    expect(decideStart(cal(outlier), { cap: 'medium' }).recommended.tier).toBe('medium');
+  });
+
+  it('a hopeless machine (a weak phone: > 2.5 x the budget even for medium) starts on low', () => {
+    const out = decideStart(cal(phone, { w: 844, h: 390, dpr: 3 }), { cap: 'medium' });
+    expect(out.recommended.estimates.medium.ms).toBeGreaterThan(41.7);
+    expect(out.recommended.tier).toBe('low');
+  });
+
+  it('never goes above the class cap, whatever the units say', () => {
+    expect(decideStart(cal(quiet), { cap: 'medium' }).recommended.tier).toBe('medium');
+    expect(decideStart(cal(quiet), { cap: 'high' }).recommended.tier).toBe('high');
+    expect(decideStart(cal(quiet), { cap: 'low' }).recommended.tier).toBe('low');
+  });
+
+  it('keeps the answer of a benchmark without units (aborted or too slow to run) and survives null', () => {
+    const aborted = { ok: true, recommended: { tier: 'low', scale: 0.6, reasons: ['aborted'] } };
+    expect(decideStart(aborted)).toBe(aborted);
+    expect(decideStart(null)).toBe(null);
+  });
+
+  it('the start-up path applies it: a measured laptop starts on medium', async () => {
+    const calibrate = async () => cal(busy);
+    const out = await drive(setupQuality({ pref: 'auto', view, gpu: integrated(), storage: fakeStorage(), calibrate }));
+    expect(out.aq.initial).toMatchObject({ tier: 'medium', source: 'calibration' });
+  });
+
+  it('a failed tier-up is not written to tier memory for a week', async () => {
+    const storage = fakeStorage();
+    const gpu = integrated();
+    const out = await drive(setupQuality({ pref: 'auto', view, gpu, storage, calibrate: async () => null }));
+    out.aq.memory.markFailed(gpu.key, viewportClass(view.w, view.h, view.dpr), 'medium');
+    expect(out.aq.memory.isFailed(gpu.key, viewportClass(view.w, view.h, view.dpr), 'medium')).toBe(false);
+  });
+});
+
+describe('insuranceTier: the fallback built behind the loading bar', () => {
+  const start = (tier, source, lock = false) => ({ tier, source, lock });
+  it('is the tier below an unproved start', () => {
+    expect(insuranceTier(start('medium', 'class'), undefined, 16.7)).toBe('low');
+    expect(insuranceTier(start('high', 'calibration'), { ms: 30 }, 16.7)).toBe('medium');
+  });
+  it('is skipped for a remembered tier, a chosen tier, the lowest tier and a start the benchmark says fits', () => {
+    expect(insuranceTier(start('medium', 'memory'), undefined, 16.7)).toBe(null);
+    expect(insuranceTier(start('medium', 'pref', true), undefined, 16.7)).toBe(null);
+    expect(insuranceTier(start('low', 'class'), undefined, 16.7)).toBe(null);
+    expect(insuranceTier(start('medium', 'calibration'), { ms: 12 }, 16.7)).toBe(null);
   });
 });

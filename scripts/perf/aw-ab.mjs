@@ -44,6 +44,7 @@ const PRESETS = {
   lights0: ['g.world.props.setLightCount(0)', 'g.world.props.setLightCount(3)'],
   lights1: ['g.world.props.setLightCount(1)', 'g.world.props.setLightCount(3)'],
   lights2: ['g.world.props.setLightCount(2)', 'g.world.props.setLightCount(3)'],
+  timeroff: ['g.adaptive.timer.enabled = false', 'g.adaptive.timer.enabled = true'], // the game's own GPU timer query (no timer, no per-frame query)
   notraffic: ['g.ctx.gfx.cfg.traffic = 0; g.ctx.gfx.cfg.peds = 0', 'g.ctx.gfx.cfg.traffic = 36; g.ctx.gfx.cfg.peds = 170'],
 };
 const specs = String(args.variants || 'base|scale.5|bloom0|shadow50|noshadow|lights0')

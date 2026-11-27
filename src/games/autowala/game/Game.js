@@ -13,7 +13,7 @@ import { createVehicle } from '../sim/vehicle.js';
 import { createInput } from './input.js';
 import { createChaseCamera } from './camera.js';
 import { DAY, GFX, QUALITY } from './config.js';
-import { autoStartTier, createSwitchableTimer, guardMemoryWrites, memoryPlan, resolutionUseless, setupQuality, viewOf } from './gfx-control.js';
+import { autoStartTier, createSwitchableTimer, guardMemoryWrites, insuranceTier, memoryPlan, resolutionUseless, setupQuality, viewOf } from './gfx-control.js';
 import { createTierSwitch } from './tier-switch.js';
 import { abandonable, claimCanvas } from './claim.js';
 
@@ -492,6 +492,15 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {}, claim = null
   yield earlyWarm;
   prepareFirstFrame(); // the systems moved things (the auto's environment map, lights): the first frame is what is compiled now
   yield warmBothPhases(gfx.quality); // what the systems added
+  // Insurance: a start that nothing has proved (a benchmark that says the tier is over the frame budget, or no benchmark at all, and no remembered
+  // result) may have to step down within seconds, and a tier step needs the lower tier's programs: building them in play is a run of 300-600 ms frames
+  // (each batch of programs makes the GPU process stop drawing). Behind the loading bar it costs ~1.7 s of boot and no frame. A remembered tier, a
+  // player's choice and a benchmark that says the tier fits (est <= budget) skip it.
+  const fallbackTier = insuranceTier(aq.initial, calibration && calibration.recommended && calibration.recommended.estimates && calibration.recommended.estimates[gfx.quality], gov.budgetMs);
+  if (fallbackTier) {
+    yield warmBothPhases(fallbackTier);
+    boot.insured = fallbackTier;
+  }
   yield warmer.warmMaterials(passMaterials(gfx.composer)).catch(warnWarm);
   gfx.render(0); // one real frame into the pipeline: uploads the first view's geometry and textures and builds the shadow pass's depth programs
   boot.compile = Math.round(performance.now() - t);
@@ -608,7 +617,8 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {}, claim = null
     const [first] = phases(q, { night: recipeOf(scene).points > (workshop ? 2 : 0), workshop });
     // a trickle, like the other in-play warm-ups (a few programs at a time, only while frames are healthy): the swap waits a little longer and
     // no frame takes the compile storm of building ~90 programs at once (frames of 250-520 ms when that was done in a burst)
-    return warmer.warm(first, { ...idleOrTrickle, maxPending: 10 }).catch((err) => {
+    // (globalThis.__awTune.swapWarm overrides the options for experiments: aw-probe --tune '{"swapWarm":{"maxPending":3}}')
+    return warmer.warm(first, { ...idleOrTrickle, maxPending: 10, ...(globalThis.__awTune && globalThis.__awTune.swapWarm) }).catch((err) => {
       warnWarm(err);
       return 'failed';
     });
@@ -698,6 +708,7 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {}, claim = null
     warmer.warm(phases(gfx.quality)[0], { budgetMs: 8 }).catch(warnWarm);
   };
   otherDone.add(gfx.quality); // built above
+  if (boot.insured) otherDone.add(boot.insured);
   game.boot = boot;
   game.warm = warmer;
   game.startBackground = startBackground;
