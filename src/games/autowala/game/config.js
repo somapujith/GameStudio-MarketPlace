@@ -47,8 +47,19 @@ export const ECON = {
   jugaadBonus: 60,
 };
 
+/**
+ * Quality tiers, monotone: every number that costs more or looks better only goes up from low to high.
+ *  pixelRatio      cap on the drawing-buffer density (the device ratio may be lower)
+ *  shadow          shadow-map size; shadows are OFF on low (Game.applyQuality)
+ *  shadowInterval  seconds between shadow-map re-renders (0 = every frame): the sun's box follows the player on a texel grid, so a stale map
+ *                  only lags moving casters by a frame or two
+ *  chunk          map-tile size (m) of the culled instance sets: bigger = fewer draw calls, more off-screen triangles (render/chunks.js)
+ *  bloom / bloomLevels  the neon glow: levels of the dual-Kawase pyramid (1/4 resolution and below)
+ *  fxaa            edge anti-aliasing in the composite; msaa  samples on the scene target (0: off, the composite's FXAA does the work)
+ *  traffic / peds  live vehicles / pedestrians;  drawDist  view distance in metres
+ */
 export const QUALITY = {
-  low: { pixelRatio: 1, shadow: 1024, bloom: false, traffic: 22, peds: 90, drawDist: 300 },
-  medium: { pixelRatio: 1.25, shadow: 2048, bloom: true, traffic: 36, peds: 170, drawDist: 420 },
-  high: { pixelRatio: 1.75, shadow: 2048, bloom: true, traffic: 52, peds: 260, drawDist: 560 },
+  low: { pixelRatio: 1, shadow: 1024, shadowInterval: 0.05, chunk: 512, bloom: false, bloomLevels: 0, fxaa: true, msaa: 0, traffic: 22, peds: 90, drawDist: 300 },
+  medium: { pixelRatio: 1.25, shadow: 2048, shadowInterval: 0.024, chunk: 1024, bloom: true, bloomLevels: 4, fxaa: true, msaa: 0, traffic: 36, peds: 170, drawDist: 420 },
+  high: { pixelRatio: 1.75, shadow: 2048, shadowInterval: 0, chunk: 1024, bloom: true, bloomLevels: 5, fxaa: true, msaa: 0, traffic: 52, peds: 260, drawDist: 560 },
 };

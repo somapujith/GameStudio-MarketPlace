@@ -4,7 +4,7 @@
 // and disposed when replaced, so flicking through the garage never leaks.
 //
 // Events consumed (ctx.game.on):  loadout { loadout, preview }  -> re-apply;  honk -> play the saved horn.
-import { Color, MeshBasicMaterial, PMREMGenerator } from 'three';
+import { Color, HalfFloatType, MeshBasicMaterial, PMREMGenerator, PerspectiveCamera, WebGLRenderTarget } from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { playHorn, stopHorn } from '../audio/horns.js';
 import {
@@ -32,10 +32,11 @@ import { makeBadgeTexture, makeCoverTexture, makeFlapTexture, makeRearWindowText
 import { buildDashGarland, buildDashToy, buildRoofProp } from './custom-props.js';
 import { buildAntenna, buildBumper, buildLadder, buildSideGuards } from './custom-rear.js';
 import { find, STRIPES } from '../gameplay/catalog.js';
+import { CANOPY_LIFT, canopyScales } from './auto-canopy.js';
+import { installPersonWarmup } from './person-mesh.js';
 
 export { diffLoadout, FIELDS };
 
-const CANOPY_LIFT = 0.3;
 const _rgb = [0, 0, 0]; // scratch for the per-frame rainbow (no allocation)
 const GLOW_BASE = 1.2; // underglow tube brightness (<= GLOW_MAX)
 
@@ -95,6 +96,10 @@ function mountProp(st, key, parent, prop) {
   free(st, key);
   if (!prop) return null;
   parent.add(prop.group);
+  // bolt-on parts are thin and sit under or beside the big shell parts, so they never cast a shadow (each caster is a draw call in the shadow pass)
+  prop.group.traverse((o) => {
+    if (o.isMesh) o.castShadow = false;
+  });
   own(st, key, () => {
     parent.remove(prop.group);
     prop.dispose();
@@ -371,25 +376,24 @@ export function applyLoadout(auto, loadout, opts = {}) {
   return changed;
 }
 
-/** High canopy: lift the roof and stretch the posts, rear panel and windscreen to meet it, so there is no gap. */
+/**
+ * High canopy: lift the roof and stretch the posts, rear panel and windscreen to meet it, so there is no gap. The merged roof / chrome /
+ * trim / curtain meshes swap to their canopy bake (autoModel.js); the nodes that carry decals and mounted props (roof, rear panel,
+ * window, windscreen glass, garland) move as before.
+ */
 function setCanopy(ud, st, on) {
   if (st.canopy === on) return;
   st.canopy = on;
   const lift = on ? CANOPY_LIFT : 0;
+  const k = canopyScales(CANOPY_LIFT);
+  ud.canopyGeometry?.(on);
   ud.roofGroup.position.y = lift;
-  const s = on ? (0.95 + CANOPY_LIFT) / 0.95 : 1;
+  const s = on ? k.upper : 1;
   ud.upperGroup.scale.y = s;
   ud.upperGroup.position.y = 1.05 * (1 - s);
   ud.windowGroup.position.y = lift / 2;
-  const ps = on ? (0.78 + CANOPY_LIFT) / 0.78 : 1;
-  for (const p of ud.posts) {
-    p.scale.y = ps;
-    p.position.y = 1.64 + lift / 2;
-  }
-  const gs = on ? (0.58 + CANOPY_LIFT) / 0.58 : 1;
-  ud.glass.scale.y = gs;
+  ud.glass.scale.y = on ? k.glass : 1;
   ud.glass.position.y = 1.745 + lift / 2;
-  ud.header.position.y = 2.03 + lift;
   ud.garlandAnchor.position.y = lift;
 }
 
@@ -435,13 +439,37 @@ function setEnvIntensity(auto, level) {
   }
 }
 
-/** Give the auto a subtle image-based reflection (PMREM of a neutral room). Returns a disposer. */
-export function attachEnvironment(auto, renderer) {
+/**
+ * Start building the environment map's room shaders now, in the background: rendering the room is the first draw of its three or four
+ * materials, and each first draw waits for the driver to compile and link (~100-300 ms apiece). Started at the beginning of the game's
+ * boot, the driver has finished by the time `attachEnvironment` runs. Returns what to hand to it, or null (then it just does it all itself).
+ */
+export function prepareEnvironment(renderer) {
+  try {
+    const pm = new PMREMGenerator(renderer);
+    const room = new RoomEnvironment();
+    // the room is drawn into a render target (PMREM's cube): a different program variant from drawing to the canvas
+    const target = new WebGLRenderTarget(2, 2, { type: HalfFloatType });
+    const prev = renderer.getRenderTarget();
+    renderer.setRenderTarget(target);
+    try {
+      renderer.compile(room, new PerspectiveCamera(90, 1, 0.1, 100));
+    } finally {
+      renderer.setRenderTarget(prev);
+    }
+    return { pm, room, target };
+  } catch {
+    return null;
+  }
+}
+
+/** Give the auto a subtle image-based reflection (PMREM of a neutral room). `prepared` comes from `prepareEnvironment`. Returns a disposer. */
+export function attachEnvironment(auto, renderer, prepared = null) {
   const st = stateOf(auto);
   let pm = null;
   try {
-    pm = new PMREMGenerator(renderer);
-    const room = new RoomEnvironment();
+    pm = prepared?.pm || new PMREMGenerator(renderer);
+    const room = prepared?.room || new RoomEnvironment();
     st.envMap = pm.fromScene(room, 0.04).texture;
     room.traverse((o) => {
       o.geometry?.dispose?.();
@@ -452,6 +480,7 @@ export function attachEnvironment(auto, renderer) {
     st.envMap = null;
   } finally {
     pm?.dispose();
+    prepared?.target?.dispose();
   }
   refreshEnv(auto);
   return () => {
@@ -519,9 +548,10 @@ export function installCustomization(ctx) {
   if (!ud) return;
   const profile = ctx.profile;
 
+  installPersonWarmup(ctx); // (the customers' shader is compiled with everything else at boot)
   let disposeEnv = () => {};
   try {
-    disposeEnv = attachEnvironment(auto, ctx.gfx.renderer);
+    disposeEnv = attachEnvironment(auto, ctx.gfx.renderer, ctx.envPrep);
   } catch (err) {
     console.warn('[autowala] customisation environment failed', err);
   }

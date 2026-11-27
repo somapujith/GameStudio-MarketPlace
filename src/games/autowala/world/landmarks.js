@@ -11,16 +11,35 @@ import {
   InstancedMesh,
   Mesh,
   MeshBasicMaterial,
+  MeshLambertMaterial,
   MeshStandardMaterial,
   Object3D,
   PlaneGeometry,
   RingGeometry,
   SphereGeometry,
 } from 'three';
-import { buildingMaterial, glowMaterial } from '../render/materials.js';
+import { BUILDING_LOOKS, buildingMaterial, glowMaterial, setLookAttribute } from '../render/materials.js';
 import { signTexture } from '../render/textures.js';
+import { createBakeRegistry, freezeMatrices, mergeStaticMeshes } from '../render/merge-static.js';
 
-const std = (color, o = {}) => new MeshStandardMaterial({ color, roughness: 0.85, metalness: 0.02, ...o });
+// one material per distinct look: the hand-built models ask for the same few colours hundreds of times, and parts only merge
+// (render/merge-static.js) when they share a material
+const stdCache = new Map();
+const std = (color, o = {}) => {
+  const key = `${color}|${JSON.stringify(o)}`;
+  let m = stdCache.get(key);
+  if (!m) {
+    // matte stone / paint (roughness >= 0.5, not metallic) is Lambert: the same picture for ~40% of the pixel ALU; shiny parts stay PBR
+    const shiny = (o.metalness ?? 0.02) > 0.3 || (o.roughness ?? 0.85) < 0.5;
+    if (shiny) m = new MeshStandardMaterial({ color, roughness: 0.85, metalness: 0.02, ...o });
+    else {
+      const { roughness, metalness, ...rest } = o;
+      m = new MeshLambertMaterial({ color, ...rest });
+    }
+    stdCache.set(key, m);
+  }
+  return m;
+};
 
 export function buildLandmarks(scene, city, colliders, shared) {
   const root = new Group();
@@ -66,13 +85,14 @@ export function buildLandmarks(scene, city, colliders, shared) {
   // a window-shader tower: an InstancedMesh of one, so the facade shader knows the building's real size
   const tower = (parent, w, h, d, x, z, color, look) => {
     const geo = new BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
-    const mesh = new InstancedMesh(geo, buildingMaterial(shared, look), 1);
+    const mesh = new InstancedMesh(geo, buildingMaterial(shared, !!BUILDING_LOOKS[look].glassy), 1);
     const o = new Object3D();
     o.position.set(x, 0, z);
     o.scale.set(w, h, d);
     o.updateMatrix();
     mesh.setMatrixAt(0, o.matrix);
     mesh.setColorAt(0, new Color(color));
+    setLookAttribute(mesh, [look]);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.frustumCulled = false;
@@ -198,7 +218,7 @@ export function buildLandmarks(scene, city, colliders, shared) {
       const g = new Group();
       g.position.set(p.x, 0, p.z);
       root.add(g);
-      const look = { cell: [2.2, 3.9], ground: 7, glass: '#3a6a98', key: 'glass', litBias: 0.14, roughness: 0.3 };
+      const look = 'cyber'; // a name in BUILDING_LOOKS (render/materials.js)
       box(g, Math.min(p.w - 16, 70), 3, Math.min(p.d - 16, 70), MAT.white, 0, 0, 0);
       tower(g, 26, 118, 26, -16, -10, '#7fb8f0', look);
       tower(g, 24, 96, 24, 18, 12, '#b18af0', look);
@@ -371,7 +391,7 @@ export function buildLandmarks(scene, city, colliders, shared) {
       root.add(g);
       const W = Math.min(34, p.w - 8);
       const D = Math.min(20, p.d - 8);
-      tower(g, W, 20, D, 0, 0, '#f4f0ff', { cell: [3.2, 3.4], ground: 4, glass: '#3a5a88', key: 'hosp', litBias: 0.3 });
+      tower(g, W, 20, D, 0, 0, '#f4f0ff', 'hosp');
       const cross = new Mesh(new PlaneGeometry(6, 6), glowMaterial(0xffffff, 1.3, signTexture('redcross', { w: 128, h: 128, bg: '#ffffff', border: '#ff2a3a', glow: false, lines: [{ text: '+', font: '800 120px sans-serif', color: '#ff2a3a', dy: 4 }] })));
       put(g, cross, 0, 15, D / 2 + 0.2, { cast: false, receive: false });
       const sg = glowSign('hospital', 14, 3, '#071a2a', '#3dd68c', [{ text: 'CARE HOSPITAL', font: '800 54px "Bricolage Grotesque Variable", Impact, sans-serif', color: '#c8ffe8' }, { text: '24×7 EMERGENCY', font: '700 26px "Bricolage Grotesque Variable", sans-serif', color: '#ff5d6a' }]);
@@ -423,8 +443,24 @@ export function buildLandmarks(scene, city, colliders, shared) {
     spots[id] = { x: p.x, z: p.z };
   }
 
+  // Static batching: a landmark is dozens of tiny meshes, each a draw call in the camera pass AND in the shadow pass (they were ~60 +
+  // ~57 calls a frame with Charminar in view). Bake every landmark into one mesh per material; parts too small to show in the shadow
+  // map stop casting.
+  // plain Lambert parts merge across colours into a handful of vertex-coloured materials (stone, flat-shaded rock, double-sided...)
+  const bake = createBakeRegistry();
+  let merged = { before: 0, after: 0 };
+  for (const g of root.children) {
+    const r = mergeStaticMeshes(g, { minShadowRadius: 1.2, bake });
+    merged = { before: merged.before + r.before, after: merged.after + r.after };
+    freezeMatrices(g);
+  }
+  stdCache.clear(); // the materials live on in the meshes; the cache must not keep them (or a disposed one) across rebuilds
+
+  // the stone glow: the original materials (parts that stayed alone) and the shared baked ones (every stone has the same glow strength)
+  const litBaked = [...new Set(lit.map(([m]) => bake.materialFor(m)).filter(Boolean))];
   function update(night) {
     for (const [m, k] of lit) m.emissiveIntensity = night * k;
+    for (const m of litBaked) m.emissiveIntensity = night * 0.34;
   }
-  return { group: root, update, spots };
+  return { group: root, update, spots, merged };
 }

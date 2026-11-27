@@ -82,7 +82,6 @@ export default function Minimap({ game, snap }) {
     let scale = zoomForSpeed(0);
     let last = performance.now();
     let clock = 0;
-    let sinceDraw = 1; // redraw at ~30 Hz while moving and ~12 Hz when parked: a 120 px map does not need the display's full rate
     let textT = 99;
     let streetT = 99;
     let streetX = 1e9;
@@ -132,30 +131,32 @@ export default function Minimap({ game, snap }) {
       setText(distRef.current, dist);
     };
 
+    let sinceDraw = 0;
+    const DRAW_EVERY = 0.028; // s: the lens is a small disc, 30-36 redraws a second look the same as 60-144 and halve the canvas work
     const frame = (now) => {
       raf = requestAnimationFrame(frame);
-      const dt = Math.min(0.1, Math.max(0, (now - last) / 1000));
+      const frameDt = Math.min(0.1, Math.max(0, (now - last) / 1000));
       last = now;
-      clock += dt;
+      clock += frameDt;
       // M toggles the big map (poll the one-shot; menus ignore it)
       if (ctx.input?.pressed?.('map') && !menuRef.current) toggleRef.current();
       if (document.hidden || menuRef.current || openRef.current) return;
-      sinceDraw += dt;
-      if (sinceDraw < (live.speed > 0.4 ? 1 / 30 : 1 / 12) - 0.004) return;
-      const ddt = Math.min(0.1, sinceDraw);
+      sinceDraw += frameDt;
+      if (sinceDraw < DRAW_EVERY) return;
+      const dt = sinceDraw; // the smoothing below runs once per redraw, over the time since the last one
       sinceDraw = 0;
       try {
         readLive(ctx, live);
-        heading = heading === null ? live.heading : heading + angleDiff(heading, live.heading) * (1 - Math.exp(-14 * ddt));
-        scale += (zoomForSpeed(live.speed) - scale) * (1 - Math.exp(-2.4 * ddt));
+        heading = heading === null ? live.heading : heading + angleDiff(heading, live.heading) * (1 - Math.exp(-14 * dt));
+        scale += (zoomForSpeed(live.speed) - scale) * (1 - Math.exp(-2.4 * dt));
         if (vpKey !== `${window.innerWidth}x${window.innerHeight}` || devDpr !== (window.devicePixelRatio || 1)) fit(); // resized, zoomed the page or moved to another screen
         if (!o.cityMap) o.cityMap = getCityMap(city);
         o.t = clock;
         o.selectedId = live.target?.type === 'pickup' ? live.target.id : null;
         makeView(view, live.x, live.z, heading, scale, o.cx, o.cy);
         drawMap(g, o);
-        textT += ddt;
-        streetT += ddt;
+        textT += dt;
+        streetT += dt;
         if (textT > 0.2) {
           textT = 0;
           updatePill();

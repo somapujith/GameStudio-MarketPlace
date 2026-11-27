@@ -10,7 +10,7 @@ import {
   IcosahedronGeometry,
   InstancedMesh,
   Mesh,
-  MeshStandardMaterial,
+  MeshLambertMaterial,
   Object3D,
   PlaneGeometry,
   ShaderMaterial,
@@ -21,6 +21,9 @@ import {
 import { WORLD } from '../game/config.js';
 import { makeRng } from '../game/rng.js';
 import { groundTexture } from '../render/textures.js';
+
+/** renderOrder of the big flat opaque surfaces: after every building, before the sky dome (10000). */
+export const LATE = 100;
 
 const WATER_VERT = /* glsl */ `
   #include <common>
@@ -69,11 +72,14 @@ export function buildTerrain(scene, city, sky) {
   scene.add(group);
 
   // ground: a big plane far past the ring road
-  const gmat = new MeshStandardMaterial({ map: groundTexture(), color: 0xffe0c8, roughness: 1, metalness: 0 });
+  const gmat = new MeshLambertMaterial({ map: groundTexture(), color: 0xffe0c8 }); // roughness 1: Lambert is the same picture for a fraction of the ALU
   const ground = new Mesh(new PlaneGeometry(H * 4, H * 4), gmat);
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = -0.02;
   ground.receiveShadow = true;
+  // the big flat surfaces (ground, roads, pavements, shore) are drawn AFTER the buildings: the depth test then rejects the pixels they would
+  // have shaded behind a wall (a PBR pixel with 5 lights is ~900 ALU ops, and the ground fills half the screen)
+  ground.renderOrder = LATE;
   group.add(ground);
 
   // lake
@@ -96,10 +102,11 @@ export function buildTerrain(scene, city, sky) {
   group.add(lake);
 
   // lake shore: a darker rim so the water has an edge, plus Buddha's island
-  const rim = new Mesh(makeEllipse(L.rx + 11, L.rz + 11, 72), new MeshStandardMaterial({ color: 0xc9a98f, roughness: 1 }));
+  const rim = new Mesh(makeEllipse(L.rx + 11, L.rz + 11, 72), new MeshLambertMaterial({ color: 0xc9a98f }));
   rim.position.set(L.cx, 0.02, L.cz);
+  rim.renderOrder = LATE;
   group.add(rim);
-  const island = new Mesh(new CylinderGeometry(22, 26, 1.2, 20), new MeshStandardMaterial({ color: 0xb59a86, roughness: 1, flatShading: true }));
+  const island = new Mesh(new CylinderGeometry(22, 26, 1.2, 20), new MeshLambertMaterial({ color: 0xb59a86, flatShading: true }));
   island.position.set(L.cx + 8, 0.3, L.cz + 4);
   island.receiveShadow = true;
   group.add(island);
@@ -123,7 +130,7 @@ export function buildTerrain(scene, city, sky) {
   for (const [cx, cz] of [[-310, -330], [330, -380], [-640, 120], [620, 120], [-380, 600], [420, 560]]) {
     for (let k = 0; k < 9; k++) place(cx + rng.range(-40, 40), cz + rng.range(-40, 40), rng.range(9, 28));
   }
-  const rockMat = new MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, flatShading: true });
+  const rockMat = new MeshLambertMaterial({ color: 0xffffff, flatShading: true });
   const im = new InstancedMesh(rockGeo, rockMat, rocks.length);
   const o = new Object3D();
   const c = new Color();
@@ -142,7 +149,7 @@ export function buildTerrain(scene, city, sky) {
 
   // far mountains: flat low-poly silhouettes at the horizon, tinted by the fog so they fade in the haze
   const far = new Group();
-  const farMat = new MeshStandardMaterial({ color: 0x8a5a78, roughness: 1, flatShading: true });
+  const farMat = new MeshLambertMaterial({ color: 0x8a5a78, flatShading: true });
   for (let i = 0; i < 18; i++) {
     const a = (i / 18) * Math.PI * 2 + rng.range(-0.1, 0.1);
     const d = rng.range(1150, 1500);

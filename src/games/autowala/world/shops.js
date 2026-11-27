@@ -9,11 +9,12 @@ import { buildParadise } from './shop-paradise.js';
 import { buildBawarchi } from './shop-bawarchi.js';
 import { buildDelhi } from './shop-delhi.js';
 import { buildOyo } from './shop-oyo.js';
+import { SLICE, drain } from '../game/steps.js';
 
 const BUILDERS = { paradise: buildParadise, bawarchi: buildBawarchi, delhi: buildDelhi, oyo: buildOyo };
 
-/** -> { shops: [{ id, brand, name, te, kind, x, z, front:{x,z,edge,t}, hail:{x,z} }], update(night, time), dispose() } */
-export function buildShops(scene, city, colliders, shared, sky) {
+/** The same build as `buildShops`, as a staged generator: it yields SLICE after every shopfront, so the game can give the browser a break. */
+export function* shopSteps(scene, city, colliders, shared, sky) {
   const kit = createKit(scene);
   const shops = [];
   const timings = {};
@@ -28,6 +29,7 @@ export function buildShops(scene, city, colliders, shared, sky) {
     const f = plan.footprint;
     colliders.addCentered(f.cx, f.cz, f.w, f.d, 'building', 16);
     shops.push({ id: plan.id, brand: plan.brand, name: plan.name, te: plan.te, kind: plan.kind, x: plan.x, z: plan.z, front: plan.front, hail: plan.hail });
+    yield SLICE;
   }
   // pavement stalls: ~25 carts, instanced into a few merged meshes
   const stalls = planStalls(city, { count: 25, blocked: (x, z, pad) => !!colliders.inside(x, z, pad), avoid: shops.map((s) => s.hail) });
@@ -40,6 +42,7 @@ export function buildShops(scene, city, colliders, shared, sky) {
       shops.push({ id: st.id, brand: 'stall', name: st.name, te: st.te, kind: 'stall', x: st.x, z: st.z, front: r ? { x: r.x, z: r.z, edge: r.edge.id, t: r.t } : { x: st.x, z: st.z }, hail: st.hail });
     }
   }
+  yield SLICE;
   kit.loadFonts();
   kit.update(0, 0);
   return {
@@ -52,4 +55,9 @@ export function buildShops(scene, city, colliders, shared, sky) {
       kit.dispose();
     },
   };
+}
+
+/** -> { shops: [{ id, brand, name, te, kind, x, z, front:{x,z,edge,t}, hail:{x,z} }], update(night, time), dispose() } */
+export function buildShops(scene, city, colliders, shared, sky) {
+  return drain(shopSteps(scene, city, colliders, shared, sky));
 }

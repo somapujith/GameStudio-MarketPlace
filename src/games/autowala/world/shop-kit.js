@@ -14,6 +14,7 @@ import {
   Matrix4,
   Mesh,
   MeshBasicMaterial,
+  MeshLambertMaterial,
   MeshStandardMaterial,
   PlaneGeometry,
   Quaternion,
@@ -371,7 +372,8 @@ export function createKit(scene) {
     return m;
   };
   const mats = {
-    solid: own(new MeshStandardMaterial({ color: new Color(1.18, 1.18, 1.18), vertexColors: true, roughness: 0.82, metalness: 0.02 })),
+    // matte walls and furniture: Lambert (roughness 0.82 shows no specular; a PBR pixel with 3-5 lamp lights is ~2.5x the ALU)
+    solid: own(new MeshLambertMaterial({ color: new Color(1.18, 1.18, 1.18), vertexColors: true })),
     metal: own(new MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.34, metalness: 0.7 })),
     // lit things (bulbs, light strips): unlit; dimmer by day so only night makes them pop (bloom threshold is 1.05)
     lamp: own(new MeshBasicMaterial({ color: 0xffffff, vertexColors: true })),

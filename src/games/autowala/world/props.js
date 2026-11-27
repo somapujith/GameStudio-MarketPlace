@@ -13,6 +13,7 @@ import {
   InstancedMesh,
   Mesh,
   MeshBasicMaterial,
+  MeshLambertMaterial,
   MeshStandardMaterial,
   Object3D,
   PointLight,
@@ -23,6 +24,7 @@ import { makeRng } from '../game/rng.js';
 import { foliageMaterial, glowMaterial } from '../render/materials.js';
 import { chunkedInstances } from '../render/chunks.js';
 import { canvasTexture } from '../render/textures.js';
+import { freezeMatrices } from '../render/merge-static.js';
 import { createRoadProbe, dropSpotsOnRoads } from './prop-spots.js';
 
 function frondGeometry() {
@@ -162,7 +164,7 @@ export function buildProps(scene, city, colliders, shared, seed) {
     b.translate(0.9, 6.3, 0.3);
     return mergeGeometries([a, b]);
   })();
-  const trunkMat = new MeshStandardMaterial({ color: 0x6b4a3a, roughness: 1, flatShading: true });
+  const trunkMat = new MeshLambertMaterial({ color: 0x6b4a3a, flatShading: true });
   const canopyMat = foliageMaterial(shared, { sway: 0.9, key: 'canopy' });
   treeSpots.forEach((t, i) => {
     t.i = i;
@@ -180,7 +182,7 @@ export function buildProps(scene, city, colliders, shared, seed) {
   const palmTrunkGeo = new CylinderGeometry(0.2, 0.34, 9, 6).translate(0, 4.5, 0);
   const crownGeo = palmCrown();
   crownGeo.translate(0, 9.1, 0);
-  const palmTrunkMat = new MeshStandardMaterial({ color: 0x8a6a56, roughness: 1, flatShading: true });
+  const palmTrunkMat = new MeshLambertMaterial({ color: 0x8a6a56, flatShading: true });
   const palmCrownMat = foliageMaterial(shared, { color: 0xffffff, sway: 0.5, key: 'palm' });
   palmSpots.forEach((p) => { p.tint = rng.pick(['#4fb35a', '#3fa56a', '#62c054', '#37a07a']); });
   const palmPlace = (p, ob) => {
@@ -247,9 +249,12 @@ export function buildProps(scene, city, colliders, shared, seed) {
     }, { receiveShadow: false }),
   );
 
-  // ---- real lights near the player: a pool that jumps to the closest lamps
+  // ---- real lights near the player: a pool that jumps to the closest lamps. They are on at night only: the number of VISIBLE point lights is
+  // part of every lit material's shader, and game/warm.js builds both light sets (day, night) behind the loading screen, so the dusk switch
+  // compiles nothing. Every light is ~4 GL uniform calls on each program switch and ~70 ALU ops per lit pixel, which is why the tiers ask
+  // for few of them (game/light-sets.js POOL_LIGHTS) and why they are off by day.
   const POOL = 8;
-  let active = POOL; // how many of them are on (quality)
+  let active = POOL; // how many of them are on at night (quality)
   const lights = [];
   for (let i = 0; i < POOL; i++) {
     const pl = new PointLight(0xffb35c, 0, 30, 2);
@@ -263,11 +268,23 @@ export function buildProps(scene, city, colliders, shared, seed) {
     (lampGrid.get(k) || lampGrid.set(k, []).get(k)).push(i);
   });
   const best = [];
+  let lastX = 1e9;
+  let lastZ = 1e9;
+  let lastNight = -1;
   function update(focus, night) {
     poolMat.opacity = night * 0.6;
     const on = night > 0.18;
     for (let i = 0; i < POOL; i++) lights[i].visible = on && i < active;
-    if (!on) return;
+    if (!on) {
+      lastX = 1e9;
+      return;
+    }
+    // re-pick the closest lamps only after the player moved a few metres (it is a sort of ~60 lamps), and when the dusk level changed
+    const moved = (focus.x - lastX) ** 2 + (focus.z - lastZ) ** 2 > 4;
+    if (!moved && Math.abs(night - lastNight) < 0.004) return;
+    lastNight = night;
+    lastX = focus.x;
+    lastZ = focus.z;
     best.length = 0;
     const cx = Math.floor(focus.x / 64);
     const cz = Math.floor(focus.z / 64);
@@ -293,6 +310,10 @@ export function buildProps(scene, city, colliders, shared, seed) {
     }
   }
 
-  const setLightCount = (n) => { active = Math.max(0, Math.min(POOL, n | 0)); };
-  return { group, meshes, update, setLightCount, lampSpots, treeSpots, palmSpots, counts: { trees: treeSpots.length, palms: palmSpots.length, lamps: lampSpots.length, bunting: bunting.length } };
+  freezeMatrices(group); // the trees, lamps and bunting never move: no per-frame matrix work
+
+  const setLightCount = (n) => {
+    active = Math.max(0, Math.min(POOL, n | 0));
+    lastX = 1e9; // re-pick on the next update
+  };  return { group, meshes, update, setLightCount, lampSpots, treeSpots, palmSpots, counts: { trees: treeSpots.length, palms: palmSpots.length, lamps: lampSpots.length, bunting: bunting.length } };
 }

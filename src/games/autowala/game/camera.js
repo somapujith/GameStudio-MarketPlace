@@ -4,9 +4,14 @@ import { Vector3 } from 'three';
 import { angleDiff, clamp, damp } from './rng.js';
 import { fovForAspect } from './cameraFov.js';
 
+const IGNORE_KERB = { ignore: ['kerb', 'lake'] }; // read-only options for colliders.resolve (shared: nothing allocated per frame)
+const NO_EXTRA = {};
+
 export function createChaseCamera(camera, colliders) {
   const pos = new Vector3();
   const look = new Vector3();
+  const targetPos = new Vector3();
+  const probe = { x: 0, z: 0 };
   let yaw = 0;
   let shake = 0;
   let dist = 8.4;
@@ -18,7 +23,7 @@ export function createChaseCamera(camera, colliders) {
 
   const kick = (amount) => { shake = Math.min(1.2, shake + amount); };
 
-  function update(dt, v, extra = {}) {
+  function update(dt, v, extra = NO_EXTRA) {
     t += dt;
     const spd = v.speed;
     // camera yaw follows the heading but leans toward the direction of travel while sliding
@@ -44,10 +49,11 @@ export function createChaseCamera(camera, colliders) {
         cz = v.z - cy * Math.max(d, 2.6);
       }
     }
-    const targetPos = new Vector3(cx, v.y + height, cz);
+    targetPos.set(cx, v.y + height, cz);
     if (m !== 2 && colliders) {
-      const q = { x: targetPos.x, z: targetPos.z };
-      if (colliders.resolve(q, 2.6, { ignore: ['kerb', 'lake'] })) { targetPos.x = q.x; targetPos.z = q.z; }
+      probe.x = targetPos.x;
+      probe.z = targetPos.z;
+      if (colliders.resolve(probe, 2.6, IGNORE_KERB)) { targetPos.x = probe.x; targetPos.z = probe.z; }
     }
     if (snap) { pos.copy(targetPos); snap = false; }
     pos.x = damp(pos.x, targetPos.x, 11, dt);
