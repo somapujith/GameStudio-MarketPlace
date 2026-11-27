@@ -5,13 +5,13 @@
      data-aw-fare='1'             a fare question is open      data-aw-sheet='1'   the More sheet is open
    Desktop never matches any of it, so the desktop stylesheets (hud.css, rules.css, ...) stay exactly as they were.
 
+   This file holds the shared looks of the compact HUD and its PORTRAIT layout (a narrow desktop window; upright phones get the hub's
+   "turn your device" gate). The LANDSCAPE layout is hud/land.css, which loads after this file and wins.
+
    CONTROL-ZONE CONTRACT. The on-screen driving controls publish three custom properties on the .aw root (px lengths WITH a unit,
    0px when the controls are hidden):  --aw-ctl-left-w (steering wheel area), --aw-ctl-right-w (pedal area), --aw-ctl-h (their height
    from the bottom edge). They are read below with fallbacks (30vw / 32vw / 38dvh landscape, 30dvh portrait on touch layouts, 0px
-   elsewhere). Landscape: the minimap and the speedometer hang under the top strip, the alerts / toasts / prompts / fare question live in
-   the band between them and ABOVE the control height, the captions sit in the gap between wheel and pedals. Portrait: the minimap and the
-   speedometer stand on the control zone, and the prompt / fare question sit on top of them. The centre 40% of the width and the bottom
-   35% of the height carry no panels (only transient prompts and captions). */
+   elsewhere). Portrait: the minimap and the speedometer stand on the control zone, and the prompt / fare question sit on top of them. */
 .aw[data-aw-compact='1'] {
   --hud-pad: 10px;
   --hud-sa-t: env(safe-area-inset-top, 0px);
@@ -40,11 +40,6 @@
   --hud-ctl-r: var(--aw-ctl-right-w, 32vw);
   --hud-ctl-h: var(--aw-ctl-h, 30dvh);
 }
-.aw[data-aw-layout='tablet-land'] {
-  --hud-mm: 176px;
-  --hud-sp: 160px;
-  --hud-strip-h: 56px;
-}
 .aw[data-aw-layout='phone-port'] {
   --hud-mm: clamp(112px, 34vw, 156px);
   --hud-sp: clamp(124px, 38vw, 170px);
@@ -65,15 +60,7 @@
   --hud-strip-h: 56px;
   --hud-trip-h: 64px;
 }
-/* where the lanes start: landscape = right under the strip; portrait = under the strip row AND the trip row */
-.aw[data-aw-layout$='-land'] {
-  --hud-lane-top: calc(var(--hud-y-t) + var(--hud-strip-h) + 8px);
-  --hud-gap-l: calc(var(--hud-x-l) + var(--hud-mm) + 14px);
-  --hud-gap-r: calc(var(--hud-x-r) + var(--hud-sp) + 14px);
-  /* the prompt / fare zone keeps clear of the minimap's route pill too */
-  --hud-zone-l: calc(var(--hud-x-l) + var(--hud-mm) + 100px);
-  --hud-zone-b: calc(var(--hud-ctl-h) + var(--hud-sa-b) + 10px);
-}
+/* where the lanes start: portrait = under the strip row AND the trip row (landscape: hud/land.css) */
 .aw[data-aw-layout$='-port'] {
   --hud-lane-top: calc(var(--hud-y-t) + var(--hud-strip-h) + 6px + var(--hud-trip-h) + 8px);
   --hud-gap-l: var(--hud-x-l);
@@ -93,10 +80,6 @@
 .aw[data-aw-layout$='-port'][data-aw-alerts='1'] { --hud-lane2-top: calc(var(--hud-lane-top) + 44px); }
 .aw[data-aw-layout$='-port'][data-aw-alerts='2'],
 .aw[data-aw-layout$='-port'][data-aw-alerts='3'] { --hud-lane2-top: calc(var(--hud-lane-top) + 44px); }
-.aw[data-aw-layout$='-land'] { --hud-lane2-top: calc(var(--hud-lane-top) + 6px); }
-.aw[data-aw-layout$='-land'][data-aw-alerts='1'],
-.aw[data-aw-layout$='-land'][data-aw-alerts='2'] { --hud-lane2-top: calc(var(--hud-lane-top) + 44px); }
-.aw[data-aw-layout$='-land'][data-aw-alerts='3'] { --hud-lane2-top: calc(var(--hud-lane-top) + 82px); }
 
 /* ---- the panels share one look ---------------------------------------------------------------------------------------------- */
 .aw-cwallet,
@@ -125,9 +108,6 @@
   pointer-events: none;
   grid-template-columns: auto minmax(0, 1fr) auto 48px 48px;
   grid-template-areas: 'w t c m p';
-}
-.aw[data-aw-layout$='-land'] .aw-strip {
-  min-height: var(--hud-strip-h);
 }
 .aw[data-aw-layout$='-port'] .aw-strip {
   grid-template-columns: minmax(0, 1fr) auto 48px 48px;
@@ -468,10 +448,6 @@
   gap: 6px;
   pointer-events: none;
 }
-.aw[data-aw-layout$='-land'] .aw-alerts {
-  left: var(--hud-gap-l);
-  right: var(--hud-gap-r);
-}
 .aw[data-aw-layout$='-port'] .aw-alerts {
   left: var(--hud-x-l);
   right: var(--hud-x-r);
@@ -544,10 +520,6 @@
   right: var(--hud-x-r);
   display: block;
 }
-.aw[data-aw-layout$='-land'] .aw-corner {
-  top: var(--hud-lane-top);
-  bottom: auto;
-}
 .aw[data-aw-layout$='-port'] .aw-corner {
   top: auto;
   bottom: calc(var(--hud-ctl-h) + var(--hud-sa-b) + 10px);
@@ -574,8 +546,6 @@
 }
 .aw[data-aw-compact='1'] .aw-limit b { font-size: 17px; }
 .aw[data-aw-compact='1'] .aw-sp-warn { font-size: 12px; top: -16px; }
-.aw[data-aw-layout$='-land'] .aw-charge > span { display: none; }
-.aw[data-aw-layout$='-land'] .aw-charge { grid-template-columns: auto 1fr; }
 
 /* ---- prompts ("Press E to ...", "Take X along") and the drift flair: their own zone above the controls ----------------------------- */
 .aw[data-aw-compact='1'] .aw-prompt {
@@ -621,17 +591,7 @@
   max-width: 520px;
   animation: none;
 }
-.aw[data-aw-layout$='-land'] .aw-fare .aw-fare-opts { grid-template-columns: repeat(3, 1fr); }
-/* the ride chips sit under the alert lane */
-.aw[data-aw-layout$='-land'] .aw-fare-chips {
-  top: var(--hud-lane2-top);
-  left: var(--hud-gap-l);
-  right: var(--hud-gap-r);
-  transform: none;
-  width: auto;
-  justify-content: flex-start;
-}
-/* the tutorial card (landscape: see the LANDSCAPE block, it waits for a roomier moment), the mission result card and the floating mission tracker: the tracker moves into the More sheet */
+/* the tutorial card, the mission result card and the floating mission tracker: the tracker moves into the More sheet */
 .aw[data-aw-compact='1'] .aw-quest-tracker { display: none; }
 .aw[data-aw-compact='1'] .aw-quest-coach {
   top: var(--hud-lane2-top);
@@ -828,48 +788,9 @@
 .aw-sheet .aw-rule__txt em { font-size: 14px; }
 .aw-sheet .aw-rule small { font-size: 12px; }
 
-/* ---- LANDSCAPE: the real controls publish a tall region (their action arc makes --aw-ctl-h about 60% of the screen), so the minimap and the
-   speedometer live in the free GAP between the wheel area and the pedal area, flanking its edges just under the strip; the alert chips take
-   the column above the wheel, the toasts the column above the action buttons, and prompts / the fare question / captions the bottom of the gap. */
-.aw[data-aw-layout$='-land'] {
-  --hud-mm: clamp(96px, 31dvh, 124px);
-  --hud-sp: clamp(100px, 32dvh, 126px);
-  --hud-gap-l: calc(var(--hud-ctl-l) + 10px);
-  --hud-gap-r: calc(var(--hud-ctl-r) + 10px);
-  --hud-zone-l: var(--hud-gap-l);
-  --hud-zone-b: calc(var(--hud-sa-b) + 108px); /* above the caption bar */
-  --hud-lane2-top: var(--hud-lane-top);
-}
-.aw[data-aw-layout='tablet-land'] {
-  --hud-mm: 150px;
-  --hud-sp: 150px;
-  --hud-zone-b: calc(var(--hud-sa-b) + 118px);
-}
-.aw[data-aw-layout$='-land'] .aw-corner { right: var(--hud-gap-r); top: var(--hud-lane-top); }
-.aw[data-aw-layout$='-land'] .aw-alerts {
-  left: var(--hud-x-l);
-  right: auto;
-  width: calc(var(--hud-ctl-l) - var(--hud-x-l) - 6px);
-  min-width: 150px;
-  flex-direction: column;
-  flex-wrap: nowrap;
-  overflow: hidden;
-}
-.aw[data-aw-layout$='-land'] .aw-alerts .aw-rules { flex-direction: column; flex-wrap: nowrap; }
-.aw[data-aw-layout$='-land'] .aw-alerts .aw-rule small { display: none; }
-.aw[data-aw-layout$='-land'] .aw-alerts .aw-rage { width: 100%; box-sizing: border-box; }
-.aw[data-aw-layout$='-land'] .aw-fare-chips { display: none; }
-.aw[data-aw-layout$='-land'] .aw-quest-coach {
-  top: auto;
-  bottom: calc(var(--hud-zone-b) + 62px);
-  left: var(--hud-zone-l);
-  right: var(--hud-gap-r);
-  width: auto;
-  max-width: 460px;
-  margin-inline: auto;
-}
+/* a fare question owns the coach's spot while it is open; the ride chips need the width the lanes use (landscape layout: hud/land.css) */
 .aw[data-aw-fare='1'] .aw-quest-coach { display: none; }
-.aw[data-aw-layout$='-land'] .aw-quest-result { top: var(--hud-lane-top); }
+.aw[data-aw-layout$='-land'] .aw-fare-chips { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .aw[data-aw-compact='1'] .aw-sheet { animation: none; }
   .aw-more-btn__dot.is-urgent,

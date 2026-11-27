@@ -208,11 +208,22 @@
 }
 .aw[data-aw-layout$='-land'] .aw-sub,
 .aw[data-aw-compact='1'][data-aw-layout$='-land'] .aw-sub {
-  left: var(--hud-gap-l);
-  right: var(--hud-gap-r);
-  bottom: calc(var(--hud-above-pod) + 52px);
-  max-width: min(460px, calc(100% - var(--hud-gap-l) - var(--hud-gap-r)));
+  /* captions live in the lane under the alerts (top-centre), not over the car and the prompt at the bottom; a running tutorial card pushes them down */
+  top: var(--hud-lane2-top);
+  bottom: auto;
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  width: fit-content;
+  max-width: min(460px, 46%);
+  max-height: none;
+  overflow: visible;
 }
+.aw[data-aw-layout$='-land'] .aw-sub .aw-sub-te { font-size: 17px; line-height: 1.35; }
+.aw[data-aw-layout$='-land'] .aw-sub .aw-sub-en { font-size: 13px; }
+.aw[data-aw-layout$='-land']:has(.aw-quest-coach) .aw-sub { top: calc(var(--hud-lane2-top) + 64px); }
+/* the drift banner is the lowest priority of the things that share that lane */
+.aw[data-aw-layout$='-land']:has(.aw-sub, .aw-quest-coach) .aw-drift { display: none; }
 .aw[data-aw-layout$='-land'] .aw-drift,
 .aw[data-aw-compact='1'][data-aw-layout$='-land'] .aw-drift {
   /* a banner in the lane under the alerts (it sat on the car and on the camera button at the bottom) */

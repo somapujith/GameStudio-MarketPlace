@@ -13,6 +13,9 @@ const subtitles = read('../subtitles.css');
 const toasts = read('toasts.css');
 const radio = read('../radio.css');
 const hud = read('../hud.css');
+const land = read('land.css');
+const root = read('../autowala.css');
+const game = readFileSync(join(dir, '../../AutowalaGame.jsx'), 'utf8');
 
 const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '');
 /** Every `selector { body }` of a stylesheet (media blocks flattened), as [selectorText, bodyText]. */
@@ -103,10 +106,10 @@ describe('type sizes', () => {
 describe('the minimap is bigger than before and opens the full map', () => {
   it('uses the --hud-mm size (>= 104px, 34dvh landscape = 127..140px at 375..412px tall; the old landscape disc was 120px)', () => {
     expect(bodyOf(minimap, '.aw[data-aw-compact=\'1\'] .aw-mm')).toContain('--aw-mm-size: var(--hud-mm)');
-    expect(phone).toMatch(/--hud-mm: clamp\(104px, 34dvh, 150px\)/);
-    for (const h of [375, 390, 400, 412]) expect(Math.min(150, Math.max(104, 0.34 * h))).toBeGreaterThan(120);
+    expect(land).toMatch(/--hud-mm: clamp\(92px, 30dvh, 128px\)/); // landscape phone: 108 px at 360 tall, 117 at 390, 128 from 427
+    for (const h of [360, 390, 412]) expect(Math.min(128, Math.max(92, 0.3 * h))).toBeGreaterThanOrEqual(92);
+    expect(land).toMatch(/tablet-land'\] \{[^}]*--hud-mm: clamp\(130px, 21dvh, 176px\)/s);
     expect(phone).toMatch(/--hud-mm: clamp\(112px, 34vw, 156px\)/);
-    expect(phone).toContain('--hud-mm: 176px');
     expect(phone).toContain('--hud-mm: 200px');
   });
   it('the whole disc is the tap target and a corner mark says so', () => {
@@ -157,7 +160,7 @@ describe('toasts: up to 3, never the old "newest only" rule', () => {
   });
   it('portrait stacks under the alert lane, landscape under the alert lane (never over the road centre)', () => {
     expect(bodyOf(toasts, '.aw[data-aw-layout$=\'-port\'] .aw-toasts')).toContain('var(--hud-lane2-top)');
-    expect(bodyOf(toasts, '.aw[data-aw-layout$=\'-land\'] .aw-toasts')).toContain('var(--hud-lane-top)');
+    expect(bodyOf(land, ".aw[data-aw-layout$='-land'] .aw-toasts")).toContain('var(--hud-lane-top)');
   });
 });
 
@@ -186,5 +189,73 @@ describe('the phone rules cannot leak onto desktop', () => {
     expect(bodyOf(hud, '.aw-hud-tl')).toContain('top: 14px');
     expect(bodyOf(hud, '.aw-corner')).toContain('right: 18px');
     expect(bodyOf(hud, '.aw-sp')).toContain('--sp-size: 196px');
+  });
+});
+
+
+describe('the landscape HUD (hud/land.css)', () => {
+  it('loads after every other HUD stylesheet so it wins at equal specificity', () => {
+    const order = [...game.matchAll(/import '([^']+\.css)'/g)].map((m) => m[1]);
+    expect(order[order.length - 1]).toBe('./ui/hud/land.css');
+  });
+  it('the strip is 44 px on a phone, 52 on a tablet; its buttons are at least 44 px', () => {
+    expect(bodyOf(land, ".aw[data-aw-layout$='-land']")).toContain('--hud-strip-h: 44px');
+    expect(bodyOf(land, ".aw[data-aw-layout='tablet-land']")).toContain('--hud-strip-h: 52px');
+    const btn = bodyOf(land, ".aw[data-aw-layout$='-land'] .aw-more-btn");
+    expect(px(btn, 'min-width')).toBeGreaterThanOrEqual(44);
+    expect(px(btn, 'min-height')).toBeGreaterThanOrEqual(44);
+    expect(land).toContain('grid-template-columns: auto minmax(0, 1fr) auto 44px 44px');
+  });
+  it('the speedometer is the bottom-centre pod, clear of the thumbs, and never sits on the road ahead', () => {
+    const corner = bodyOf(land, ".aw[data-aw-layout$='-land'] .aw-corner");
+    expect(corner).toContain('left: 50%');
+    expect(corner).toContain('bottom: var(--hud-pod-b)');
+    expect(land).toContain('.aw-sp--pod');
+  });
+  it('the minimap hangs under the strip on the left, toasts and alerts have their own lanes', () => {
+    const mm = bodyOf(land, ".aw[data-aw-layout$='-land'] .aw-mm");
+    expect(mm).toContain('top: var(--hud-lane-top)');
+    expect(mm).toContain('left: var(--hud-x-l)');
+    expect(bodyOf(land, ".aw[data-aw-layout$='-land'] .aw-toasts")).toContain('right: var(--hud-x-r)');
+    expect(bodyOf(land, ".aw[data-aw-layout$='-land'] .aw-alerts")).toContain('left: 50%');
+  });
+  it('captions and the tutorial card never use a transform to centre (their entrance animations own it)', () => {
+    expect(bodyOf(land, ".aw[data-aw-compact='1'][data-aw-layout$='-land'] .aw-sub")).not.toContain('transform');
+    expect(bodyOf(land, ".aw[data-aw-layout$='-land'] .aw-quest-coach")).not.toContain('transform');
+  });
+  it('the More sheet shortcuts are 44 px targets', () => {
+    expect(px(bodyOf(land, '.aw-sheet__key'), 'min-height')).toBeGreaterThanOrEqual(44);
+  });
+});
+
+describe('the HUD scale zoom', () => {
+  it('every in-game overlay root zooms by --aw-ui-scale, and the variable has a fallback of 1', () => {
+    expect(root).toContain('--aw-ui-scale: 1');
+    for (const sel of ['.aw-hud', '.aw-mm', '.aw-toasts', '.aw-sub', '.aw-fare', '.aw-quest-coach', '.aw-quest-tracker', '.aw-quest-result']) expect(root).toContain(`${sel},`.replace(/,$/, ''));
+    expect(root).toContain('zoom: var(--aw-ui-scale)');
+  });
+});
+
+describe('the HUD is cheap over a live WebGL canvas', () => {
+  const sheets = { hud, phone, land, minimap, subtitles, toasts, radio, rules: read('rules.css'), fares: read('../fares/fares.css'), quests: read('../quests/quests.css'), touch: read('../touch.css'), career: read('../career/career.css') };
+  it('no backdrop-filter, no blur, no mix-blend-mode, no filter animations', () => {
+    for (const [name, css] of Object.entries(sheets)) {
+      const text = stripComments(css);
+      expect(text, `${name}: backdrop-filter`).not.toMatch(/backdrop-filter/);
+      expect(text, `${name}: blur()`).not.toMatch(/blur\(/);
+      expect(text, `${name}: mix-blend-mode`).not.toMatch(/mix-blend-mode/);
+    }
+  });
+  it('no keyframes animate box-shadow, filter or layout properties', () => {
+    for (const [name, css] of Object.entries(sheets)) {
+      const text = stripComments(css);
+      for (const m of text.matchAll(/@keyframes\s+([\w-]+)\s*\{((?:[^{}]*\{[^{}]*\})+)\s*\}/g)) {
+        expect(m[2], `${name}: @keyframes ${m[1]}`).not.toMatch(/box-shadow|filter\s*:|(width|height|top|left|right|bottom|margin|padding)\s*:/);
+      }
+    }
+  });
+  it('the wheel has a static shadow, not a drop-shadow filter that re-runs while it turns', () => {
+    expect(bodyOf(sheets.touch, '.aw .aw-ct-wheel')).not.toContain('filter');
+    expect(bodyOf(sheets.touch, '.aw .aw-ct-wheel')).toContain('box-shadow');
   });
 });

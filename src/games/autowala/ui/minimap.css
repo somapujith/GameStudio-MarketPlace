@@ -258,17 +258,12 @@
 }
 
 /* ---- phones and tablets (Hud.jsx writes data-aw-compact / data-aw-layout on the .aw root; hud/phone.css has the tokens) ---------------
-   A BIG disc (tap it for the full-screen map): landscape = under the top strip on the left, portrait = standing on the wheel area.
+   A BIG disc (tap it for the full-screen map): portrait = standing on the wheel area (landscape: hud/land.css, under the top strip on the left).
    The route pill and the street name sit under it, left-aligned so they never run off the screen edge. */
 .aw[data-aw-compact='1'] .aw-mm {
   --aw-mm-size: var(--hud-mm);
   left: var(--hud-x-l);
   align-items: flex-start;
-}
-.aw[data-aw-layout$='-land'] .aw-mm {
-  top: var(--hud-lane-top);
-  bottom: auto;
-  left: var(--hud-gap-l); /* in the gap between the wheel area and the pedal area, never over the controls */
 }
 .aw[data-aw-layout$='-port'] .aw-mm {
   top: auto;
@@ -281,7 +276,6 @@
   font-size: 13px;
   overflow: hidden;
 }
-.aw[data-aw-layout$='-land'] .aw-mm-pill { max-width: calc(var(--aw-mm-size) + 90px); }
 .aw[data-aw-compact='1'] .aw-mm-pill-kind { display: none; }
 .aw[data-aw-compact='1'] .aw-mm-street {
   align-self: flex-start;
