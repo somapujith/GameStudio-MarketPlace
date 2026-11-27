@@ -175,12 +175,12 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
     shaderFailed = false;
     warm = 4;
     shadowDirty = true; // the tier may have changed the shadow-map size
-    if (direct) return;
+    if (direct || cfg.post === false) return; // (cfg.post === false: experiment / test of the direct fallback)
     const full = !simple;
     try {
       const pr = renderer.getPixelRatio();
       post = createPost(renderer, {
-        hdr: full ? hdrFormat : null,
+        hdr: full && cfg.hdr !== 'none' ? hdrFormat : null, // (cfg.hdr === 'none': experiment / test of the 8-bit fallback)
         bloomLevels: full && cfg.bloom ? cfg.bloomLevels ?? 4 : 0,
         fxaa: cfg.fxaa !== false,
         msaa: full ? Math.min(cfg.msaa || 0, maxSamples) : 0,

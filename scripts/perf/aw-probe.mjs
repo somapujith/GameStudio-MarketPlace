@@ -304,7 +304,7 @@ async function shots(c) {
   fs.mkdirSync(dir, { recursive: true });
   await c.ev(HIDE_HUD);
   const out = [];
-  for (const s of SHOTS) {
+  for (const s of SHOTS.filter((x) => !args.only || String(args.only).split(',').includes(x.name))) {
     await c.ev(`(() => { const g = window.__autowala; g.debug.drive(null); const p = g.world.city.poiById[${JSON.stringify(s.poi)}]; const f = p.front || p;
       g.debug.teleport(f.x, f.z, 0);
       g.debug.hour(${s.hour}); g.debug.weather(${s.weather});
