@@ -6,45 +6,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { GPU_FLAGS, launch } from './cdp.mjs';
 import { withBenchLock } from './lock.mjs';
+import { takeClasses as snapshot } from './heapsnap.mjs';
 
 const args = Object.fromEntries(process.argv.slice(2).reduce((a, x, i, all) => (x.startsWith('--') ? [...a, [x.slice(2), all[i + 1] && !all[i + 1].startsWith('--') ? all[i + 1] : true]] : a), []));
 const base = args.base || 'http://127.0.0.1:5730';
 const port = +(args.port || 9770);
 const tier = args.tier && args.tier !== true ? String(args.tier) : 'low';
 const cycles = +(args.cycles || 4);
-
-/** Heap snapshot -> Map(name -> { n, size }) for objects and closures (the flat `nodes` array, see the V8 heap snapshot format). */
-async function snapshot(c) {
-  const chunks = [];
-  const off = c.on;
-  let handler;
-  const done = new Promise((resolve) => {
-    handler = (d) => { if (d.method === 'HeapProfiler.addHeapSnapshotChunk') chunks.push(d.params.chunk); };
-    off(handler);
-    resolve();
-  });
-  await done;
-  await c.send('HeapProfiler.collectGarbage');
-  await c.send('HeapProfiler.takeHeapSnapshot', { reportProgress: false });
-  const snap = JSON.parse(chunks.join(''));
-  const f = snap.snapshot.meta.node_fields;
-  const types = snap.snapshot.meta.node_types[0];
-  const stride = f.length;
-  const iT = f.indexOf('type');
-  const iN = f.indexOf('name');
-  const iS = f.indexOf('self_size');
-  const out = new Map();
-  for (let i = 0; i < snap.nodes.length; i += stride) {
-    const t = types[snap.nodes[i + iT]];
-    if (t !== 'object' && t !== 'closure' && t !== 'array' && t !== 'native') continue;
-    const key = `${t}:${snap.strings[snap.nodes[i + iN]]}`.slice(0, 90);
-    const e = out.get(key) || { n: 0, size: 0 };
-    e.n++;
-    e.size += snap.nodes[i + iS];
-    out.set(key, e);
-  }
-  return out;
-}
+const play = +(args.play || 0); // seconds of driving per visit (a scripted steer / throttle), 0 = stand on the start screen / idle
 
 const run = async () => {
   const c = await launch({ port, w: 1536, h: 864, gl: GPU_FLAGS });
@@ -57,7 +26,12 @@ const run = async () => {
       await c.waitFor("!!document.querySelector('.aw-go')", 180000);
       await c.ev("document.querySelector('.aw-go').click(); true");
       await c.waitFor('!!window.__autowala', 60000);
-      await c.sleep(5000);
+      if (play > 0) {
+        // drive: the auto weaves along with a slow sine on the steering (it crashes into things, which is also play)
+        await c.ev('(() => { const G = window.__autowala; let t = 0; window.__heapDrive = setInterval(() => { t += 0.25; G.debug.drive({ throttle: 0.8, steer: Math.sin(t * 0.6) * 0.5 }); }, 250); return true; })()');
+        await c.sleep(play * 1000);
+        await c.ev('clearInterval(window.__heapDrive); window.__autowala && window.__autowala.debug.drive(null); true');
+      } else await c.sleep(5000);
     };
     const go = (p) => c.ev(`history.pushState({}, '', ${JSON.stringify(p)}); window.dispatchEvent(new PopStateEvent('popstate')); true`);
     await enter();
@@ -72,6 +46,8 @@ const run = async () => {
       }
     }
     const last = await snapshot(c);
+    const total = (m) => [...m.values()].reduce((a, e) => a + e.size, 0);
+    console.log(`heap after the 1st visit ${(total(first) / 1048576).toFixed(1)} MB, after the last ${(total(last) / 1048576).toFixed(1)} MB (objects, closures, arrays, native)`);
     const rows = [];
     for (const [k, v] of last) {
       const a = first.get(k) || { n: 0, size: 0 };

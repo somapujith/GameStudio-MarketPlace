@@ -18,6 +18,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { GPU_FLAGS, SOFT_FLAGS, launch } from './cdp.mjs';
 import { withBenchLock } from './lock.mjs';
+import { grew, retainerPaths, takeClasses, takeSnapshot, totalBytes } from './heapsnap.mjs';
 
 const args = Object.fromEntries(
   process.argv.slice(2).reduce((acc, a, i, all) => {
@@ -180,7 +181,7 @@ function profileTables(profile, top = 28) {
 }
 
 /** Allocation sampling profile -> bytes per allocating function. */
-function heapTable(profile, seconds, top = 25) {
+function heapTable(profile, seconds, top = 80) {
   const by = new Map();
   const walk = (n) => {
     const k = `${n.callFrame.functionName || '(anon)'}  ${(n.callFrame.url || '').replace(/^.*\/(assets|src)\//, '$1/')}:${n.callFrame.lineNumber + 1}`;
@@ -190,7 +191,7 @@ function heapTable(profile, seconds, top = 25) {
   };
   walk(profile.head);
   const total = [...by.values()].reduce((a, b) => a + b, 0) || 1;
-  return { totalMB: +(total / 1048576).toFixed(1), perSecKB: Math.round(total / 1024 / seconds), top: [...by.entries()].sort((a, b) => b[1] - a[1]).slice(0, top).map(([k, v]) => ({ fn: k, kbPerSec: Math.round(v / 1024 / seconds), pct: +((v / total) * 100).toFixed(1) })) };
+  return { totalMB: +(total / 1048576).toFixed(1), perSecKB: Math.round(total / 1024 / seconds), top: [...by.entries()].sort((a, b) => b[1] - a[1]).slice(0, top).map(([k, v]) => ({ fn: k, kbPerSec: +(v / 1024 / seconds).toFixed(2), pct: +((v / total) * 100).toFixed(1) })) };
 }
 
 async function launchRetrying() {
@@ -222,7 +223,7 @@ async function run() {
       const react0 = await c.ev('({ ...window.__rec.react })');
       let prof = null;
       let heapProf = null;
-      if (heap) await c.send('HeapProfiler.startSampling', { samplingInterval: 4096 });
+      if (heap) await c.send('HeapProfiler.startSampling', { samplingInterval: +(args.heapinterval || 4096) });
       if (profile) { await c.send('Profiler.setSamplingInterval', { interval: 250 }); await c.send('Profiler.start'); }
       const extra = await fn();
       if (profile) prof = (await c.send('Profiler.stop')).profile;
@@ -348,6 +349,7 @@ async function run() {
         // enter / leave the game N times in the same tab (client-side navigation): the heap and the renderer's memory must come back each time
         const n = +(args.cycles || 5);
         const rows = [];
+        const classSnaps = {};
         const go = (path) => c.ev(`history.pushState({}, '', ${JSON.stringify(path)}); window.dispatchEvent(new PopStateEvent('popstate')); true`);
         const snapshot = async (label) => {
           await c.send('HeapProfiler.collectGarbage');
@@ -364,13 +366,25 @@ async function run() {
             await go('/');
             await c.sleep(1500);
             await snapshot(`left #${i}`);
+            if (args.snapcycles && (i === 2 || i === n)) classSnaps[i] = await takeClasses(c); // --snapcycles: heap classes after the 2nd and the last visit
             await go('/play/autowala');
             await c.waitFor("!!document.querySelector('.aw-go')", 120000);
-            await c.ev("document.querySelector('.aw-go').click(); true");
+            // --nostart: leave from the start screen without pressing START; --cycleplay S: seconds of driving per visit (default 6)
+            if (!args.nostart) await c.ev("document.querySelector('.aw-go').click(); true");
             await c.waitFor('!!window.__autowala', 30000);
-            await c.ev('window.__gfx = window.__autowala.gfx.renderer; window.__pilot.on = true; true');
-            await c.sleep(6000);
-            await snapshot(`in game #${i} (6 s of driving)`);
+            const playS = +(args.cycleplay || 6);
+            await c.ev(`window.__gfx = window.__autowala.gfx.renderer; window.__pilot.on = ${args.nostart ? 'false' : 'true'}; true`);
+            await c.sleep(args.nostart ? 3000 : playS * 1000);
+            await snapshot(args.nostart ? `on the start screen #${i}` : `in game #${i} (${playS} s of driving)`);
+          }
+          if (args.retain) {
+            // --retain <regex of a class name>: after the last visit the game is gone, so what is still there is leaked: print what holds it
+            const snap = await takeSnapshot(c);
+            for (const path of retainerPaths(snap, new RegExp(String(args.retain)), 3)) console.log(['RETAIN', ...path].join(String.fromCharCode(10) + '  '));
+          }
+          if (args.snapcycles && classSnaps[2] && classSnaps[n]) {
+            console.log(`SNAP heap classes after leaving #2: ${(totalBytes(classSnaps[2]) / 1048576).toFixed(1)} MB, after leaving #${n}: ${(totalBytes(classSnaps[n]) / 1048576).toFixed(1)} MB`);
+            for (const r of grew(classSnaps[2], classSnaps[n]).slice(0, 40)) console.log(`SNAP ${String(r.dsize).padStart(10)} B ${String(r.dn).padStart(7)} objects (now ${r.n})  ${r.k}`);
           }
           return rows;
         }, { grace: 0 });
@@ -470,7 +484,7 @@ for (const [name, s] of Object.entries(row.scenarios)) {
     for (const f of slowShow) console.log(`   slow frame ${f.ms} ms: ${Object.entries(f.phases).filter(([, v]) => v > 1).map(([k, v]) => `${k}=${v}`).join(' ')}${f.sys ? ` top-system ${f.sys}` : ''}${f.programs ? ` +${f.programs} programs` : ''}${f.textures ? ` +${f.textures} textures` : ''}${f.geometries ? ` +${f.geometries} geometries` : ''}`);
   }
   for (const l of loafs) console.log(`   LoAF @${l.at}s ${l.ms}ms (block ${l.block}, render ${l.render}): ${l.scripts.join(' | ')}`);
-  if (alloc) { console.log(`   alloc: ${alloc.totalMB} MB total, ${alloc.perSecKB} KB/s`); for (const a of alloc.top.slice(0, 14)) console.log(`      ${String(a.kbPerSec).padStart(6)} KB/s ${String(a.pct).padStart(5)}%  ${a.fn}`); }
+  if (alloc) { console.log(`   alloc: ${alloc.totalMB} MB total, ${alloc.perSecKB} KB/s`); for (const a of alloc.top.filter((x, i) => i < 14 || (args.allocmatch && new RegExp(String(args.allocmatch)).test(x.fn)))) console.log(`      ${String(a.kbPerSec).padStart(6)} KB/s ${String(a.pct).padStart(5)}%  ${a.fn}`); }
   if (profile) {
     console.log(`   profile ${profile.totalMs} ms; by place: ${JSON.stringify(profile.files)}`);
     console.log('   SELF:');
