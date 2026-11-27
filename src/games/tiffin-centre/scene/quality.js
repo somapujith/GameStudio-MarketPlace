@@ -1,4 +1,4 @@
-﻿// Quality tiers, the frame-time sampler and the dynamic resolution scaler. Pure (no WebGL), unit-tested. The device probe and the tier
+// Quality tiers, the frame-time sampler and the dynamic resolution scaler. Pure (no WebGL), unit-tested. The device probe and the tier
 // choice live in capabilities.js; this file owns the tier tables and the runtime adaptation.
 //
 //   tier    post pipeline                                                shadows        real lights                 extras
@@ -20,7 +20,7 @@ export const QUALITY = {
   lite: {
     pixelRatio: 1, shadow: 0, bloom: false, particles: 60, vehicles: 0, walkers: 2, lights: false, shelfDetail: 0.25, wires: false,
     post: false, msaa: 0, nativeAA: false, fxaa: false, ao: false, dof: false, grain: false, bloomScale: 0,
-    bulbLights: 0, tubeLight: false, lampLights: 0, shafts: false, clouds: 0, stars: false, reflect: 'none', heat: false,
+    bulbLights: 0, tubeLight: false, lampLights: 0, lightPool: 0, shafts: false, clouds: 0, stars: false, reflect: 'none', heat: false,
     envSize: 32, envInterval: 6, texSize: 128, birds: 0, decor: 0.25, normalMaps: false, shadowRadius: 1,
     // runtime / model knobs (read by renderer.js, loader.js and the models, not by the stall or the street)
     fpsCap: 30, scaleMin: 0.6, characters: 'lite', bakedCustomers: true, flatScenery: true, customerMeshBudget: 8, batchStatics: true, shadowEvery: 1,
@@ -28,28 +28,28 @@ export const QUALITY = {
   low: {
     pixelRatio: 1, shadow: 0, bloom: false, particles: 140, vehicles: 4, walkers: 3, lights: false, shelfDetail: 0.5, wires: false,
     post: false, msaa: 0, nativeAA: true, fxaa: false, ao: false, dof: false, grain: false, bloomScale: 0,
-    bulbLights: 0, tubeLight: false, lampLights: 0, shafts: false, clouds: 0, stars: false, reflect: 'none', heat: false,
+    bulbLights: 0, tubeLight: false, lampLights: 0, lightPool: 0, shafts: false, clouds: 0, stars: false, reflect: 'none', heat: false,
     envSize: 64, envInterval: 2.5, texSize: 128, birds: 0, decor: 0.5, normalMaps: false, shadowRadius: 1,
     fpsCap: 0, scaleMin: 0.5, characters: 'low', bakedCustomers: true, flatScenery: false, customerMeshBudget: 8, batchStatics: true, shadowEvery: 1,
   },
   medium: {
     pixelRatio: 1.25, shadow: 1024, bloom: true, particles: 320, vehicles: 8, walkers: 6, lights: true, shelfDetail: 1, wires: true,
     post: true, msaa: 0, nativeAA: false, fxaa: true, ao: false, dof: false, grain: true, bloomScale: 0.5,
-    bulbLights: 2, tubeLight: true, lampLights: 1, shafts: true, clouds: 1, stars: true, reflect: 'fake', heat: true,
+    bulbLights: 2, tubeLight: true, lampLights: 1, lightPool: 3, shafts: true, clouds: 1, stars: true, reflect: 'fake', heat: true,
     envSize: 128, envInterval: 0.6, texSize: 256, birds: 4, decor: 1, normalMaps: true, shadowRadius: 2,
     fpsCap: 0, scaleMin: 0.7, characters: 'medium', bakedCustomers: false, flatScenery: false, customerMeshBudget: 64, batchStatics: true, shadowEvery: 3,
   },
   high: {
     pixelRatio: 1.75, shadow: 2048, bloom: true, particles: 640, vehicles: 12, walkers: 10, lights: true, shelfDetail: 1, wires: true,
     post: true, msaa: 4, nativeAA: false, fxaa: false, ao: true, dof: true, grain: true, bloomScale: 0.5,
-    bulbLights: 4, tubeLight: true, lampLights: 2, shafts: true, clouds: 2, stars: true, reflect: 'planar', heat: true,
+    bulbLights: 4, tubeLight: true, lampLights: 2, lightPool: 4, shafts: true, clouds: 2, stars: true, reflect: 'planar', heat: true,
     envSize: 256, envInterval: 0.2, texSize: 512, birds: 8, decor: 1.4, normalMaps: true, shadowRadius: 3,
     fpsCap: 0, scaleMin: 0.7, characters: 'high', bakedCustomers: false, flatScenery: false, customerMeshBudget: 64, batchStatics: true, shadowEvery: 2,
   },
 };
 
 /** Keys that are runtime knobs rather than a monotone "more is better" quality value (the tier test skips them). */
-export const KNOB_KEYS = ['fpsCap', 'scaleMin', 'characters', 'bakedCustomers', 'flatScenery', 'customerMeshBudget', 'batchStatics', 'shadowEvery'];
+export const KNOB_KEYS = ['fpsCap', 'scaleMin', 'characters', 'bakedCustomers', 'flatScenery', 'customerMeshBudget', 'batchStatics', 'shadowEvery', 'hdr'];
 
 /**
  * How many frames may pass between two redraws of the shadow map (the stall is static: only a few people move through it). `cfg.shadowEvery` is the most the

@@ -78,8 +78,18 @@ const KIT = `(() => {
     const res = {}; let sum = 0; for (const k of Object.keys(by)) { res[k] = median(by[k]); sum += res[k] * 1; } res.sumOfMedians = +sum.toFixed(2);
     return res;
   };
+  // main-thread ms per post pass (the JS + GL submission of each pass), and per section of the frame (scene.debug.profile), mean per frame over the window
+  const cpu = async (sec) => {
+    const g = window.__tiffin.scene.debug.gfx; const by = {}; let cur = 0;
+    g.post.setProbe((name, begin) => { const n = performance.now(); if (begin) cur = n; else (by[name] ||= []).push(n - cur); });
+    window.__tiffin.scene.debug.profile.start();
+    const t0 = performance.now(); while (performance.now() - t0 < sec * 1000) await frames(1);
+    const prof = window.__tiffin.scene.debug.profile.stop(); g.post.setProbe(null);
+    const passes = {}; for (const k of Object.keys(by)) passes[k] = +(by[k].reduce((a, b) => a + b, 0) / by[k].length).toFixed(3);
+    return { passes, sections: prof && prof.ms, frames: prof && prof.frames };
+  };
   const info = () => { const g = window.__tiffin.scene.debug.gfx; const i = g.renderer.info; return { tier: g.quality, scale: g.scale, pr: g.pixelRatio, calls: i.render.calls, tris: i.render.triangles, programs: i.programs ? i.programs.length : null, geometries: i.memory.geometries, textures: i.memory.textures }; };
-  return { sleep, frames, measure, median, gpu, passes, info, stats };
+  return { sleep, frames, measure, median, gpu, passes, cpu, info, stats };
 })()`;
 
 async function run() {

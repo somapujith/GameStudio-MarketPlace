@@ -1,4 +1,4 @@
-﻿// The post-processing pipeline (medium and high tiers). Everything is hand-rolled so each effect costs only what it must:
+// The post-processing pipeline (medium and high tiers). Everything is hand-rolled so each effect costs only what it must:
 //   scene (HDR, MSAA on high, depth texture)  ->  [high] depth-of-field  ->  bloom (dual-Kawase pyramid, thresholded on emissives and sun glints)
 //   -> final: ambient occlusion (high) x scene + bloom, exposure, filmic tone map (AgX), daypart colour grade, heat shimmer, chromatic fringe,
 //      vignette, film grain, sRGB  ->  [medium] FXAA  ->  canvas.
@@ -11,8 +11,8 @@
 // target re-creation, no program change. The last pass (FXAA, or the final composite on high) draws on the canvas at full size and upsamples the used
 // sub-rect with the target's linear filter.
 import {
-  AdditiveBlending, BufferAttribute, BufferGeometry, DepthTexture, HalfFloatType, LinearFilter, NoBlending, NoColorSpace, OrthographicCamera, RGBAFormat,
-  ShaderMaterial, UnsignedByteType, Vector2, WebGLRenderTarget, DataTexture, UnsignedIntType, DepthFormat, Scene, Mesh,
+  AdditiveBlending, BufferAttribute, BufferGeometry, DepthTexture, HalfFloatType, LinearFilter, NoBlending, NoColorSpace, OrthographicCamera, RGBAFormat, RGBFormat,
+  ShaderMaterial, UnsignedByteType, UnsignedInt101111Type, Vector2, WebGLRenderTarget, DataTexture, UnsignedIntType, DepthFormat, Scene, Mesh,
 } from 'three';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { DYNRES_GLSL, createDynamicRes, rewriteSamples } from '../../../platform/gfx/dynamicRes.js';
@@ -372,7 +372,7 @@ export function createPost(renderer, scene, camera, { dyn = createDynamicRes() }
   function build(nextCfg, w, h, pixelRatio) {
     const nW = Math.max(2, Math.floor(w * pixelRatio));
     const nH = Math.max(2, Math.floor(h * pixelRatio));
-    const key = `${nW}x${nH}|${nextCfg.msaa || 0}|${nextCfg.dof ? 1 : 0}${nextCfg.ao ? 1 : 0}${nextCfg.fxaa ? 1 : 0}${nextCfg.bloom ? 1 : 0}|${nextCfg.bloomScale || 0}`;
+    const key = `${nW}x${nH}|${nextCfg.msaa || 0}|${nextCfg.dof ? 1 : 0}${nextCfg.ao ? 1 : 0}${nextCfg.fxaa ? 1 : 0}${nextCfg.bloom ? 1 : 0}|${nextCfg.bloomScale || 0}|${nextCfg.hdr || 'half'}`;
     cfg = nextCfg;
     if (key === builtKey && sceneRT) return false;
     disposeTargets();
@@ -382,8 +382,11 @@ export function createPost(renderer, scene, camera, { dyn = createDynamicRes() }
     const needDepth = cfg.ao || cfg.dof;
     const depthTexture = needDepth ? new DepthTexture(W, H, UnsignedIntType) : undefined;
     if (depthTexture) depthTexture.format = DepthFormat;
-    sceneRT = new WebGLRenderTarget(W, H, rtOpts({ depthBuffer: true, samples: cfg.msaa || 0, ...(depthTexture ? { depthTexture } : {}) }));
-    if (cfg.dof) rtA = new WebGLRenderTarget(W, H, rtOpts());
+    // the scene's HDR colour: RGBA16F (8 bytes a pixel) or, with cfg.hdr 'r11', R11G11B10F (4 bytes: half the memory traffic of every full-size pass that writes or
+    // reads it; no alpha, 6-bit mantissa, which the film grain hides)
+    const hdr = cfg.hdr === 'r11' ? { type: UnsignedInt101111Type, format: RGBFormat } : {};
+    sceneRT = new WebGLRenderTarget(W, H, rtOpts({ depthBuffer: true, samples: cfg.msaa || 0, ...hdr, ...(depthTexture ? { depthTexture } : {}) }));
+    if (cfg.dof) rtA = new WebGLRenderTarget(W, H, rtOpts(hdr));
     if (cfg.ao) {
       const aw = Math.max(2, W >> 1);
       const ah = Math.max(2, H >> 1);

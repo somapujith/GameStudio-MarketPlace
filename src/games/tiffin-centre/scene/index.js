@@ -9,6 +9,7 @@ import {
 } from '../../../platform/gfx/index.js';
 import { createRenderer } from './renderer.js';
 import { createLightApplier } from './light-apply.js';
+import { createLightPool } from './light-pool.js';
 import { lightingAt, makeLighting } from './lighting.js';
 import { createCameraRig } from './rig.js';
 import { createStall } from './stall.js';
@@ -104,12 +105,13 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
   }
   let gov = null; // the frame governor (below): the callbacks of createAdaptiveQuality reach it through this binding
   let gfx = null;
+  let switchTierFn = null; // assigned once the scene exists (the governor's onTier is bound before it)
   const aq = createAdaptiveQuality({
     game: GFX_GAME_KEY, tiers: QUALITY_ORDER, pref: prefNow, viewport: { w: vw, h: vh, dpr: vdpr }, gpu: gpu0, calibration,
     callBudgets: DRAW_CALL_BUDGET, scaleMin: SCALE_MIN, ladder: SCALE_LADDER, tierCost: TIER_COST,
     governor: { ...GOVERNOR_OPTIONS },
     onScale: (s) => gfx?.setScale(s),
-    onTier: (tier, info) => switchTier(tier, info.reason, info.scale),
+    onTier: (tier, info) => switchTierFn?.(tier, info.reason, info.scale),
   });
   gov = aq.governor;
   // the verdict above is a ceiling too (phones, Safari, no float targets: chooseTier): an Auto start never exceeds it and the governor never climbs past it
@@ -169,6 +171,20 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
   undo.push(() => highlight.dispose());
   const sync = createSync({ scene, camera, stall, fx, art, tr, quality: cfg, reducedMotion: reduced, onShake: (a) => rig.shake(a) });
 
+  // the stall's small lights (station flames, candles, the prep lamp) are served by a few proxy lights: see light-pool.js. They are pooled BEFORE anything compiles, so
+  // the shaders are built for the pooled light count, and again whenever the stall rebuilds its stations / spots (the new lights must not show up in a shader).
+  const lightPool = createLightPool({ scene, k: cfg.lightPool || 0 });
+  lightPool.refresh();
+  for (const n of ['setStations', 'setSpots', 'setMenu']) {
+    const orig = stall[n];
+    stall[n] = (...a) => {
+      const r = orig(...a);
+      lightPool.refresh();
+      return r;
+    };
+  }
+  undo.push(() => lightPool.dispose());
+
   const size = { w: 300, h: 150 };
   if (initialSize && initialSize.w > 1 && initialSize.h > 1) {
     // the canvas size is known before the build: the render targets of the post pipeline are made once, at their real size
@@ -204,18 +220,34 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
   const fontsDoc = typeof document !== 'undefined' ? document.fonts : null;
   fontsDoc?.addEventListener?.('loadingdone', repaint);
 
+  // main-thread time per section of a frame, for the benchmark tooling (scene.debug.profile): off in play, then one null check per section
+  let prof = null;
+  const lap = (k) => {
+    if (!prof) return;
+    const n = performance.now();
+    prof.sum[k] = (prof.sum[k] || 0) + (n - prof.t);
+    prof.t = n;
+  };
   const tick = (dtSec, renderIt = true) => {
     const dt = Math.min(Math.max(dtSec, 0), 0.1);
     t += dt;
     const now = performance.now();
+    if (prof) {
+      prof.t = now;
+      prof.frames++;
+    }
     const st = sync.state;
     const hour = hourOverride ?? (st ? hourAt(st, tickFrac(now, lastTickAt)) : DEFAULT_HOUR);
     lightingAt(hour, L, sync.world); // + the overcast / wet look of the rain event and the power cut (smoothed levels from the sync layer)
     lightApply.apply(L);
+    lap('light');
     stall.setLight(L, t);
     street.setLight(L);
+    lap('setLight');
     stall.update(dt, t);
+    lap('stall');
     street.update(dt, t);
+    lap('street');
     // the cook walks (shared kinematics), then the eye follows, then everything that depends on where the eye is
     sync.advance(dt);
     const me = sync.me();
@@ -235,11 +267,20 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     }
     rig.update(dt, t);
     sync.setSun(L.sunDir); // where a person's shadow falls (a person outside the view is hidden only when their shadow is outside it too)
+    lap('rig');
     sync.update(dt, t, now, rig.lookDelta);
+    lap('sync');
     // the glow / particle sizes are in pixels of the PICTURE that is rendered (canvas ratio x the dynamic render scale)
     fx.update(dt, (size.h * gfx.pixelRatio) / (2 * Math.tan((camera.fov * Math.PI) / 360)), camera.position);
+    lap('fx');
     highlight.update(dt, t, sync.resolve, reduced, hlView);
-    if (renderIt) gfx.render(dt);
+    lap('highlight');
+    lightPool.update(dt, camera.position);
+    lap('lightPool');
+    if (renderIt) {
+      gfx.render(dt);
+      lap('render');
+    }
   };
 
   // ---- the frame loop (gfx createLoop): rAF, the tier's frame cap, tab hidden / shown without a catch-up step, GPU timing, and the governor fed every frame ----
@@ -285,6 +326,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
   const stopHints = watchDeviceHints(gov); // data saver / low battery: 30 fps cap
   // a tier change: the tier's own frame cap and the governor's budget follow it
   gfx.onChange(() => {
+    lightPool.setK(gfx.cfg.lightPool || 0);
     gov.setHints({ capFps: gfx.cfg.fpsCap || 0 });
     applyFpsCap();
   });
@@ -311,6 +353,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     const warmer = createProgramWarmer({ renderer: gfx.renderer, scene: gfx.scene, camera: gfx.camera, post: !!gfx.cfg.post, hiddenLights: !!gfx.cfg.lights, extras: [], bigChunk: Infinity });
     sw = { tier, stage: 'kick', known, warmer, progs: null, k: 0, t0: performance.now(), tLink: 0 };
   };
+  switchTierFn = switchTier;
   /** One slice of the tier switch per frame. Returns true on the frame that finishes it (the caller draws that frame). */
   const stepSwitch = () => {
     const s = sw;
@@ -552,6 +595,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
       timer.dispose();
       sw?.warmer?.cancel();
       sw = null;
+      lightPool.dispose();
       fontsDoc?.removeEventListener?.('loadingdone', repaint);
       warmer?.cancel();
       shadowProxy?.dispose();
@@ -619,9 +663,25 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
       get governor() { return gov; },
       get loop() { return loop; },
       get aq() { return aq; },
+      /** The start-up calibration result (null when none ran: a remembered tier, an explicit choice, the synchronous build): { units, recommended: { estimates } ... }. */
+      get calibration() { return calibration; },
       /** What each tier switch of this session cost: [{ tier, ms, programs }]. */
       get tierSwitches() { return tierSwitches; },
       get switching() { return !!sw; },
+      /** Main-thread ms per section of a frame: profile.start(), later profile.stop() -> { frames, ms: { light, setLight, stall, street, rig, sync, fx, highlight, render } } (mean per frame). */
+      profile: {
+        start() {
+          prof = { t: 0, frames: 0, sum: {} };
+        },
+        stop() {
+          const p = prof;
+          prof = null;
+          if (!p) return null;
+          const ms = {};
+          for (const k of Object.keys(p.sum)) ms[k] = +(p.sum[k] / Math.max(1, p.frames)).toFixed(3);
+          return { frames: p.frames, ms };
+        },
+      },
       /** Force a tier change the way the governor asks for one (tooling and tests). */
       switchTier: (tier, scale = 1) => switchTier(tier, 'debug', scale),
       /** What the load linked and what the first real frame still had to build (programs): see settleFirstFrame. */

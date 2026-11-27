@@ -1,4 +1,4 @@
-﻿import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { QUALITY, QUALITY_ORDER, KNOB_KEYS, pickQuality, lowerQuality, minTier, DRAW_CALL_BUDGET, GFX_GAME_KEY, GOVERNOR_OPTIONS, SCALE_LADDER, SCALE_MIN, TIER_COST, TIFFIN_TIER_MODELS, shadowEveryFor, deviceTweaks, applyDeviceTweaks, createCompileHold } from './quality.js';
 
 describe('quality tiers', () => {
