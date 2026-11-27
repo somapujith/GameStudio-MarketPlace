@@ -35,6 +35,8 @@ const subscribe = (fn) => {
 const getSnapshot = () => touch;
 
 export const isTouchMode = () => touch;
+/** The controls were switched on by a setting or ?touch=1: the HUD must lay itself out around them like on a real touch screen. */
+export const enableTouchMode = () => setTouchMode(true);
 
 /** React hook: true while the touch controls should be on screen. */
 export function useTouchMode() {

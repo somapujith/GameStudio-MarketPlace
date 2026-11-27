@@ -39,11 +39,17 @@ describe('hudLayout: which HUD each screen gets', () => {
     expect(layoutOf(1280, 800, false).kind).toBe('desktop');
     expect(layoutOf(1280, 800, false).compact).toBe(false);
     expect(layoutOf(1366, 768, false).kind).toBe('desktop');
-    expect(layoutOf(1280, 900, true).kind).toBe('desktop');
+    expect(layoutOf(1280, 900, false).kind).toBe('desktop');
+  });
+  it('a touch screen of any size gets the compact HUD (an iPad Pro is desktop by size, but its controls need the layout)', () => {
+    expect(layoutOf(1366, 1024, true).kind).toBe('tablet-land');
+    expect(layoutOf(1280, 900, true).kind).toBe('tablet-land');
+    expect(layoutOf(1366, 1024, true).compact).toBe(true);
   });
   it('survives a missing viewport', () => {
     expect(hudLayout(null).kind).toBe('desktop');
-    expect(hudLayout(undefined, true).compact).toBe(false);
+    expect(hudLayout(undefined, false).compact).toBe(false);
+    expect(hudLayout(undefined, true).compact).toBe(true); // a touch screen of unknown size still gets the compact HUD
   });
 });
 
@@ -82,10 +88,11 @@ describe('controlFallback: the wheel / pedal areas when the controls do not publ
 });
 
 describe('toastCap: how many toasts may stack', () => {
-  it('4 on desktop (unchanged), 3 on phones and tablets, 1 on a short portrait phone', () => {
+  it('4 on desktop (unchanged), 2 on a sideways phone, 3 on tablets and portrait phones, 1 on a short portrait phone', () => {
     expect(toastCap(layoutOf(1280, 800, false))).toBe(DESKTOP_TOASTS);
     expect(DESKTOP_TOASTS).toBe(4);
-    expect(toastCap(layoutOf(844, 390))).toBe(3);
+    expect(toastCap(layoutOf(844, 390))).toBe(2);
+    expect(toastCap(layoutOf(1024, 768))).toBe(3);
     expect(toastCap(layoutOf(390, 844))).toBe(3);
     expect(toastCap(layoutOf(768, 1024))).toBe(3);
     expect(toastCap(layoutOf(360, 640))).toBe(1);

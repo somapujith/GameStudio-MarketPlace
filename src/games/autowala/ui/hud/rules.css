@@ -34,10 +34,20 @@
   background: var(--hud-red);
   color: #fff;
   border-color: #fff7e6;
-  animation: aw-limit-pulse 0.7s ease-in-out infinite;
 }
-@keyframes aw-limit-pulse {
-  50% { box-shadow: 0 0 0 7px rgba(255, 77, 94, 0.35), 0 3px 10px rgba(0, 0, 0, 0.5); }
+/* the speeding pulse is a ring that scales and fades (transform + opacity run on the compositor; animating box-shadow repaints every frame) */
+.aw-limit.is-over::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 77, 94, 0.55);
+  pointer-events: none;
+  animation: aw-limit-ring 0.9s ease-out infinite;
+}
+@keyframes aw-limit-ring {
+  from { opacity: 1; transform: scale(0.96); }
+  to { opacity: 0; transform: scale(1.4); }
 }
 
 /* ---- rules strip: pills above the speedometer -------------------------------------------------------------------------------- */
@@ -283,7 +293,7 @@
   color: var(--aw-dim);
 }
 .aw-job__chai.is-urgent:not(:disabled) {
-  animation: aw-job-pulse 1.2s ease-in-out infinite;
+  animation: aw-pulse 1.2s ease-in-out infinite; /* opacity only */
 }
 .aw-job__chai:disabled {
   opacity: 0.5;
@@ -292,9 +302,6 @@
 .aw-job__chai:focus-visible {
   outline: 2px solid var(--aw-cyan);
   outline-offset: 2px;
-}
-@keyframes aw-job-pulse {
-  50% { box-shadow: 0 0 0 4px rgba(255, 200, 87, 0.28); }
 }
 
 /* ---- rain chip inside the clock ------------------------------------------------------------------------------------------------ */

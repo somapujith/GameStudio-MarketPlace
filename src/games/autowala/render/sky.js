@@ -119,12 +119,16 @@ export function createSky(scene) {
 
   // soft puffy clouds: a few additive sprites that catch the sunset colour
   const cloudTex = canvasTexture(128, 64, (g, w, h) => {
-    const gr = g.createRadialGradient(w / 2, h / 2, 2, w / 2, h / 2, w / 2);
+    // an ellipse that fades to nothing exactly at the canvas edge: a circle of radius w/2 on a canvas only h high is cut off at the top
+    // and bottom while it is still 30% opaque, which drew every cloud as a hard-edged rectangle
+    g.translate(w / 2, h / 2);
+    g.scale(1, h / w);
+    const gr = g.createRadialGradient(0, 0, 2, 0, 0, w / 2);
     gr.addColorStop(0, 'rgba(255,255,255,0.95)');
     gr.addColorStop(0.5, 'rgba(255,255,255,0.35)');
     gr.addColorStop(1, 'rgba(255,255,255,0)');
     g.fillStyle = gr;
-    g.fillRect(0, 0, w, h);
+    g.fillRect(-w / 2, -w / 2, w, w);
   });
   // 26 clouds in ONE draw call: an instanced billboard whose position (angle, radius, height around the player) and size live in
   // per-instance attributes and whose drift is a single uniform. (They were 26 Sprites with 26 materials: ~13 draw calls in view.)

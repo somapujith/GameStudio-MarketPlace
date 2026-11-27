@@ -10,28 +10,19 @@
 // setPedals (analogue gas / brake).
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { buzz } from '@/lib/haptics.js';
-import { enterFullscreen, exitFullscreen, fullscreenSupported, isFullscreen, keepAwake, lockGestures, lockOrientation, useTouchDevice, useViewport } from '@/lib/mobile.js';
-import { useTouchMode } from './hud/touchMode.js';
+import { enterFullscreen, exitFullscreen, fullscreenSupported, isFullscreen, keepAwake, lockGestures, lockOrientation, unlockOrientation, useTouchDevice, useViewport } from '@/lib/mobile.js';
+import { enableTouchMode, useTouchMode } from './hud/touchMode.js';
+import { useHudLayout } from './hud/useHudLayout.js';
 import { useGameMenu } from './hud/useGameMenu.js';
 import { ArrowPad, Wheel } from './touch/Wheel.jsx';
 import { Pedal } from './touch/Pedals.jsx';
 import { MainActions, MinorActions } from './touch/Actions.jsx';
 import SettingsSheet from './touch/SettingsSheet.jsx';
-import RotateHint from './touch/RotateHint.jsx';
 import { computeLayout, regionsFromRects, sideFor } from './touch/layout.js';
 import { createTouchBus } from './touch/touchBus.js';
 import { DEFAULTS, forcedByUrl, loadTouchSettings, saveTouchSettings } from './touch/touchSettings.js';
 import { useTilt } from './touch/useTilt.js';
 import './touch.css';
-
-const HINT_KEY = 'jalebi.autowala.touch.rotate-hint';
-const readHint = () => {
-  try {
-    return sessionStorage.getItem(HINT_KEY) === '1';
-  } catch {
-    return false;
-  }
-};
 
 export default function TouchControls({ game }) {
   const touchDevice = useTouchDevice();
@@ -40,13 +31,15 @@ export default function TouchControls({ game }) {
   const vp = useViewport();
   const [settings, setSettings] = useState(loadTouchSettings);
   const [sheet, setSheet] = useState(false);
-  const [hintGone, setHintGone] = useState(readHint);
   const [full, setFull] = useState(() => isFullscreen());
   const layer = useRef(null);
   const wheelRef = useRef(null);
 
   const forced = settings.force || forcedByUrl();
   const shown = !!game && !menu && (touchDevice || touchMode || forced);
+  useEffect(() => {
+    if (forced) enableTouchMode(); // a mouse machine with the controls switched on: the HUD lays itself out around them too
+  }, [forced]);
   const live = shown && !sheet; // the sheet covers the controls: nothing may stay pressed under it
 
   const bus = useMemo(() => (game?.input ? createTouchBus(game.input) : null), [game]);
@@ -98,7 +91,15 @@ export default function TouchControls({ game }) {
     };
   }, [bus]);
 
-  const layout = useMemo(() => computeLayout({ w: vp.w || 844, h: vp.h || 390 }, { size: settings.size }), [vp.w, vp.h, settings.size]);
+  // on a compact HUD layout (phones and tablets) the More sheet carries the map / quests / phone / controls shortcuts: no "..." tray here
+  const hudCompact = useHudLayout().compact;
+  const layout = useMemo(() => computeLayout({ w: vp.w || 844, h: vp.h || 390 }, { size: settings.size, tray: !hudCompact }), [vp.w, vp.h, settings.size, hudCompact]);
+  // the More sheet's "Controls" shortcut
+  useEffect(() => {
+    const open = () => setSheet(true);
+    window.addEventListener('aw-touch-settings', open);
+    return () => window.removeEventListener('aw-touch-settings', open);
+  }, []);
   // an orientation / size change re-flows the controls under the fingers: let go of everything
   useEffect(() => {
     if (bus) bus.releaseAll();
@@ -148,12 +149,14 @@ export default function TouchControls({ game }) {
       return undefined;
     }
     const rb = root.getBoundingClientRect();
+    // the HUD is drawn inside a zoom (--aw-ui-scale), so the regions it reads are in ITS pixels
+    const zs = parseFloat(getComputedStyle(root).getPropertyValue('--aw-ui-scale')) || 1;
     const items = [...layer.current.querySelectorAll('[data-ctl-zone]')].map((el) => {
       const r = el.getBoundingClientRect();
       return { zone: el.getAttribute('data-ctl-zone'), rect: { left: r.left - rb.left, right: r.right - rb.left, top: r.top - rb.top, bottom: r.bottom - rb.top, width: r.width } };
     });
     const reg = regionsFromRects(items, rb.width, rb.height, settings.hand);
-    set(reg.left, reg.right, reg.h, layout.mode);
+    set(reg.left / zs, reg.right / zs, reg.h / zs, layout.mode);
     return undefined;
   });
   useEffect(() => {
@@ -168,28 +171,35 @@ export default function TouchControls({ game }) {
     };
   }, [shown]);
 
+  // The shared orientation gate (src/platform/game) pins landscape for the whole game. This button is the player's own fullscreen
+  // toggle (settings sheet): what IT turned on is turned off again when the game screen unmounts, so the hub never stays sideways.
+  const ours = useRef({ fullscreen: false, lock: false });
+  useEffect(() => {
+    const mine = ours.current;
+    return () => {
+      if (mine.lock) unlockOrientation();
+      if (mine.fullscreen) exitFullscreen();
+      mine.lock = false;
+      mine.fullscreen = false;
+    };
+  }, []);
   const toggleFullscreen = useCallback(async () => {
     if (isFullscreen()) {
       await exitFullscreen();
+      ours.current.fullscreen = false;
     } else {
       const ok = await enterFullscreen(document.documentElement);
-      if (ok) lockOrientation('landscape');
+      if (ok) {
+        ours.current.fullscreen = true;
+        ours.current.lock = await lockOrientation('landscape');
+      }
     }
     setFull(isFullscreen());
-  }, []);
-  const dismissHint = useCallback(() => {
-    setHintGone(true);
-    try {
-      sessionStorage.setItem(HINT_KEY, '1');
-    } catch {
-      /* private mode */
-    }
   }, []);
 
   if (!shown || !bus) return null;
   const wheelSide = sideFor(settings.hand, 'wheel');
   const pedalSide = sideFor(settings.hand, 'pedal');
-  const showHint = vp.portrait && vp.phone && !hintGone;
   const canFull = fullscreenSupported();
 
   return (
@@ -221,7 +231,6 @@ export default function TouchControls({ game }) {
         <MainActions layout={layout} side={pedalSide} wheelSide={wheelSide} bus={bus} fx={fx} />
         <MinorActions layout={layout} bus={bus} fx={fx} wheelSide={wheelSide} pedalSide={pedalSide} onSettings={() => setSheet(true)} />
       </div>
-      {showHint && <RotateHint bottom={layout.h + 10} fullscreenSupported={canFull} onFullscreen={toggleFullscreen} onDismiss={dismissHint} />}
       {sheet && (
         <SettingsSheet
           settings={settings}

@@ -64,6 +64,12 @@ export function speedFx(kmh, boosting = false) {
   return { vignette, lines };
 }
 
+// ---- prompts ---------------------------------------------------------------------------------------------------------------
+/** "Press E to enter Mama's Garage" -> "Tap to enter Mama's Garage": on a touch screen the prompt itself is the button. Other texts pass through. */
+export function touchPromptText(text) {
+  return String(text ?? '').replace(/^\s*(?:press|hold)\s+(?:the\s+)?(?:[a-z0-9]|enter|space)\s+to\s+/i, 'Tap to ');
+}
+
 // ---- numbers ---------------------------------------------------------------------------------------------------------------
 /** 1234567 -> '12,34,567' (Indian grouping). Negative and non-finite are handled. */
 export function groupIndian(n) {

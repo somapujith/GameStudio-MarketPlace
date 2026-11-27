@@ -11,12 +11,10 @@
   padding: 8px 18px 10px;
   text-align: center;
   pointer-events: none;
-  background: var(--aw-panel, rgba(18, 8, 36, 0.78));
+  background: rgba(18, 8, 36, 0.9); /* no backdrop blur: it makes the compositor read back the live 3D view every frame */
   border: 1px solid color-mix(in srgb, var(--aw-sub-c, #fff) 55%, transparent);
   border-radius: 14px;
   box-shadow: 0 0 22px color-mix(in srgb, var(--aw-sub-c, #fff) 28%, transparent), 0 6px 18px rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
   animation: aw-sub-in 160ms ease-out both;
   transition: opacity 320ms ease, transform 320ms ease;
 }

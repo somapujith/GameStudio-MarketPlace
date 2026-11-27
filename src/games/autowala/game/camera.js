@@ -2,6 +2,7 @@
 // It steps in when a building is between it and the auto so you never end up looking at a wall.
 import { Vector3 } from 'three';
 import { angleDiff, clamp, damp } from './rng.js';
+import { fovForAspect } from './cameraFov.js';
 
 const IGNORE_KERB = { ignore: ['kerb', 'lake'] }; // read-only options for colliders.resolve (shared: nothing allocated per frame)
 const NO_EXTRA = {};
@@ -69,10 +70,13 @@ export function createChaseCamera(camera, colliders) {
     camera.lookAt(look);
     camera.rotateZ(-v.roll * 0.35 + (v.drifting ? -v.slip * 0.05 : 0));
 
+    // the lens is designed as a 16:9 vertical fov (60 at rest, 75 flat out, +9 boosting) and then fitted to the real aspect ratio, so a
+    // wide-and-short phone does not turn into a fisheye and a 4:3 tablet or portrait window does not turn into a keyhole (cameraFov.js)
     const targetFov = 60 + clamp(spd / 30, 0, 1) * 15 + (v.boosting ? 9 : 0) + (m === 2 ? 8 : 0);
     fov = damp(fov, targetFov, 4, dt);
-    if (Math.abs(camera.fov - fov) > 0.05) {
-      camera.fov = fov;
+    const lens = fovForAspect(fov, camera.aspect);
+    if (Math.abs(camera.fov - lens) > 0.05) {
+      camera.fov = lens;
       camera.updateProjectionMatrix();
     }
   }

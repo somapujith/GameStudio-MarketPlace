@@ -158,7 +158,10 @@ describe('sheet.css', () => {
   it('puts the list left and the detail right on a sideways phone, stacked on an upright one', () => {
     const land = media.find((b) => b.head === `@media ${LANDSCAPE_QUERY}`);
     const port = media.find((b) => b.head === `@media ${PORTRAIT_QUERY}`);
-    expect(land.body).toMatch(/\.aw-pm__body\s*{[^}]*grid-template-columns:\s*minmax\(230px, 38%\) minmax\(0, 1fr\)/);
+    // the pause menu: the body wrapper dissolves so the list owns the whole left column and the title + panel stack on the right
+    expect(land.body).toMatch(/\.aw \.aw-pm\s*{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(262px, 42%\) minmax\(0, 1fr\)/);
+    expect(land.body).toMatch(/\.aw-pm__body\s*{\s*display:\s*contents/);
+    expect(land.body).toMatch(/\.aw-pm__list\s*{[^}]*grid-row:\s*1 \/ -1/);
     expect(land.body).toMatch(/\.aw-quest-board\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, 1\.1fr\)/);
     expect(port.body).toMatch(/\.aw-pm__body\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/);
     expect(port.body).toMatch(/\.aw-quest-board,\s*\.aw \.aw-quest-menu \.aw-quest-cols\s*{[^}]*gap/);
@@ -170,6 +173,52 @@ describe('sheet.css', () => {
     expect(land.body).toMatch(/\.aw-pm__bar,\s*\.aw \.aw-quest-menu \.aw-quest-actions--bar\s*{\s*display:\s*none/);
     expect(port.body).toMatch(/\.aw-quest-menu \.aw-quest-actions\s*{\s*display:\s*none/);
     expect(port.body).toMatch(/\.aw-quest-menu \.aw-quest-actions--bar\s*{[^}]*display:\s*flex/);
+  });
+});
+
+describe('landscape.css', () => {
+  const css = read('landscape.css');
+  const all = blocks(css);
+  const top = all.filter((b) => b.head.startsWith('@media (min-width: 560px)'));
+  it('makes the start screen two columns in every landscape window from 560 px wide, and only there', () => {
+    expect(top).toHaveLength(1);
+    expect(top[0].head).toBe('@media (min-width: 560px) and (orientation: landscape)');
+    expect(top[0].body).toMatch(/\.aw-start__card\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, 1fr\)/);
+  });
+  it('outranks the display: contents wrappers of sheet.css (three classes against two)', () => {
+    expect(sheet).toMatch(/\.aw \.aw-start__hero,/); // the flattened wrapper
+    expect(top[0].body).toMatch(/\.aw \.aw-start \.aw-start__hero,\s*\.aw \.aw-start \.aw-start__side\s*{[^}]*display:\s*flex/);
+  });
+  it('sizes the title from the viewport height too, so it never outgrows a 360 px tall phone', () => {
+    expect(top[0].body).toMatch(/\.aw-title__en\s*{\s*font-size:\s*clamp\(40px, min\(6\.4vw, 14vh\), 100px\)/);
+  });
+  it('scales the menus with the HUD only on big screens, never on a phone or a small window', () => {
+    const big = all.find((b) => b.head.startsWith('@media (min-height: 800px)'));
+    expect(big.head).toBe('@media (min-height: 800px) and (min-width: 1000px)');
+    expect(big.body).toMatch(/\.aw \.aw-menu,\s*\.aw \.aw-career-hisaab\s*{\s*zoom:\s*var\(--aw-ui-scale, 1\)/);
+    expect(all).toHaveLength(4); // the big-screen scale, the start screen, and the two short-phone pause rules below
+  });
+});
+
+describe('the menus keep the GPU free and the key caps visible on touch screens', () => {
+  const files = ['sheet.css', 'menus.css', 'landscape.css', '../workshop.css', '../career/career.css', '../quests/quests.css', '../radio.css', '../minimap.css'];
+  const styles = files.map((f) => [f, read(f).replace(/\/\*[\s\S]*?\*\//g, '')]);
+  it('uses no backdrop-filter, no filter: blur and no mix-blend-mode in the menu style sheets', () => {
+    for (const [f, css] of styles) {
+      expect(css, `${f} has a backdrop-filter`).not.toMatch(/backdrop-filter/);
+      expect(css, `${f} has a blur filter`).not.toMatch(/filter:\s*[^;]*blur\(/);
+      expect(css, `${f} has mix-blend-mode`).not.toMatch(/mix-blend-mode/);
+    }
+  });
+  it('never animates a box-shadow (it repaints every frame over the live 3D view)', () => {
+    for (const [f, css] of styles) {
+      for (const m of css.matchAll(/@keyframes\s+([\w-]+)\s*{((?:[^{}]|{[^{}]*})*)}/g)) {
+        expect(m[2], `${f} @keyframes ${m[1]} animates box-shadow`).not.toMatch(/box-shadow/);
+      }
+    }
+  });
+  it('draws key caps with span.aw-key, because the hub hides every <kbd> on a coarse pointer', () => {
+    for (const f of ['PauseMenu.jsx', 'PausePanels.jsx', 'StartScreen.jsx']) expect(read(f).replace(/\/\/.*$/gm, ''), `${f} uses <kbd>`).not.toMatch(/<kbd[\s>]/);
   });
 });
 
@@ -204,5 +253,18 @@ describe('fares.css', () => {
   });
   it('keeps the desktop buttons as they were', () => {
     expect(fares).toMatch(/\.aw \.aw-fare-opt\s*{[^}]*min-height:\s*52px/);
+  });
+});
+
+describe('the pause list on a short sideways phone', () => {
+  it('goes two columns wide at 400 px tall or less, so CLOCK OUT and QUIT TO HUB never need a scroll, and keeps 44 px rows', () => {
+    const lcss = read('landscape.css');
+    const short = lcss.slice(lcss.indexOf('@media (max-height: 400px) and (orientation: landscape) {'));
+    expect(short).toMatch(/\.aw \.aw-pm__list\s*{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*1fr 1fr/s);
+    expect(short).toMatch(/grid-auto-rows:\s*minmax\(44px,/);
+    expect(short).toMatch(/max-height: 400px\) and \(max-width: 760px\)[^{]*{[^}]*\.aw-te\s*{\s*display:\s*none/s);
+  });
+  it('the single-column rows never shrink below 44 px (they only grow to fill the column)', () => {
+    expect(sheet).toMatch(/\.aw \.aw-pm \.aw-mrow\s*{[^}]*flex:\s*1 1 44px;[^}]*min-height:\s*44px;[^}]*max-height:\s*58px/s);
   });
 });

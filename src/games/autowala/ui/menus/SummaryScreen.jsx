@@ -50,7 +50,7 @@ function SaveBox({ phase, result, onRetry, onSignIn }) {
     return (
       <div className="aw-save is-local" role="status">
         <p>
-          Drive a little longer to save a score online: a shift needs at least {MIN_SECONDS} seconds ({result.need} to go). Your progress is saved on this device.
+          Too short to save a score online: a shift needs {MIN_SECONDS} seconds ({result.need} to go). Your progress is saved on this device.
         </p>
       </div>
     );
@@ -139,8 +139,9 @@ export default function SummaryScreen({ game, sitting, runs, onKeepDriving, onHu
           />
           <Tile label="Time" te="సమయం" value={summaryTime(stats.seconds)} />
         </div>
-        <SaveBox phase={phase} result={result} onRetry={save} onSignIn={onSignIn} />
         </div>
+        {/* a sibling of the stats, not inside them: a sideways phone puts it under the title, where the save result is never scrolled away */}
+        <SaveBox phase={phase} result={result} onRetry={save} onSignIn={onSignIn} />
         <div className="aw-sum__acts aw-sheet-bar">
           <button type="button" data-nav data-autofocus className="aw-btn is-primary" onClick={onKeepDriving}>
             KEEP DRIVING

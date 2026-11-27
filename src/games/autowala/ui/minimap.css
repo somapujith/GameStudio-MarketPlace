@@ -28,7 +28,6 @@
     0 0 24px 5px rgba(255, 61, 154, 0.45),
     inset 0 0 20px rgba(18, 8, 36, 0.95);
   overflow: hidden;
-  animation: aw-mm-glow 3.6s ease-in-out infinite alternate;
 }
 .aw .aw-mm-canvas {
   position: absolute;
@@ -124,11 +123,6 @@
 }
 .aw .aw-mm-street:empty { display: none; }
 
-@keyframes aw-mm-glow {
-  from { filter: drop-shadow(0 0 2px rgba(55, 230, 255, 0.25)); }
-  to { filter: drop-shadow(0 0 7px rgba(55, 230, 255, 0.55)); }
-}
-
 /* phones: a smaller disc */
 @media (max-width: 640px), (max-height: 520px) {
   .aw .aw-mm { --aw-mm-size: 150px; left: calc(10px + env(safe-area-inset-left, 0px)); bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
@@ -144,9 +138,7 @@
   position: absolute;
   inset: 0;
   z-index: 60;
-  background: rgba(10, 4, 24, 0.84);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
+  background: rgba(10, 4, 24, 0.88); /* no backdrop blur: a full-screen filter pass over the live 3D view is not worth it */
   animation: aw-bigmap-in 0.18s ease-out;
 }
 .aw .aw-bigmap-canvas {
@@ -166,6 +158,10 @@
   display: flex;
   flex-direction: column;
   gap: 1px;
+  padding: 5px 12px 6px;
+  border-radius: 12px;
+  background: rgba(10, 4, 24, 0.78); /* a plate behind the title: it no longer drowns in the map's own labels */
+  border: 1px solid var(--aw-line);
   pointer-events: none;
   text-shadow: 0 0 16px var(--aw-pink);
 }
@@ -242,28 +238,32 @@
   .aw .aw-bigmap-hint { display: none; }
   .aw .aw-bigmap-title b { font-size: 17px; }
 }
+@media (pointer: coarse) {
+  .aw .aw-bigmap-hint { display: none; } /* "scroll", "click" and "Esc" mean nothing to a finger: the close button is on screen */
+}
+/* a short (landscape phone) window: the second legend row (the mouse hint) would cover a third of the map, so only the colour key stays */
+@media (max-height: 520px) {
+  .aw .aw-bigmap-hint { display: none; }
+  .aw .aw-bigmap-title { top: calc(8px + env(safe-area-inset-top, 0px)); }
+  .aw .aw-bigmap-tools { top: calc(8px + env(safe-area-inset-top, 0px)); }
+  .aw .aw-bigmap-legend { bottom: calc(8px + env(safe-area-inset-bottom, 0px)); padding: 5px 12px; }
+}
 @keyframes aw-bigmap-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .aw .aw-mm-disc { animation: none; }
   .aw .aw-bigmap { animation: none; }
   .aw .aw-mm { transition: none; }
 }
 
 /* ---- phones and tablets (Hud.jsx writes data-aw-compact / data-aw-layout on the .aw root; hud/phone.css has the tokens) ---------------
-   A BIG disc (tap it for the full-screen map): landscape = under the top strip on the left, portrait = standing on the wheel area.
+   A BIG disc (tap it for the full-screen map): portrait = standing on the wheel area (landscape: hud/land.css, under the top strip on the left).
    The route pill and the street name sit under it, left-aligned so they never run off the screen edge. */
 .aw[data-aw-compact='1'] .aw-mm {
   --aw-mm-size: var(--hud-mm);
   left: var(--hud-x-l);
   align-items: flex-start;
-}
-.aw[data-aw-layout$='-land'] .aw-mm {
-  top: var(--hud-lane-top);
-  bottom: auto;
-  left: var(--hud-gap-l); /* in the gap between the wheel area and the pedal area, never over the controls */
 }
 .aw[data-aw-layout$='-port'] .aw-mm {
   top: auto;
@@ -276,7 +276,6 @@
   font-size: 13px;
   overflow: hidden;
 }
-.aw[data-aw-layout$='-land'] .aw-mm-pill { max-width: calc(var(--aw-mm-size) + 90px); }
 .aw[data-aw-compact='1'] .aw-mm-pill-kind { display: none; }
 .aw[data-aw-compact='1'] .aw-mm-street {
   align-self: flex-start;

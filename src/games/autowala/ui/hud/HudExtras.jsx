@@ -1,6 +1,6 @@
 // The interaction prompt chip, the drift flair and the full-screen effects (speed vignette + lines, crash flash, low-fuel edge).
 import { useState } from 'react';
-import { crashFlash, driftTier, fuelTone, promptAction, rageView, speedFx } from './hudLogic.js';
+import { crashFlash, driftTier, fuelTone, promptAction, rageView, speedFx, touchPromptText } from './hudLogic.js';
 import { useGameEvent } from './useGameMenu.js';
 
 export function Prompt({ prompt, touch, onTap }) {
@@ -10,7 +10,7 @@ export function Prompt({ prompt, touch, onTap }) {
   const body = (
     <>
       <kbd className="aw-keycap">{key}</kbd>
-      <span>{prompt.text}</span>
+      <span>{tappable ? touchPromptText(prompt.text) : prompt.text}</span>
     </>
   );
   return tappable ? (
