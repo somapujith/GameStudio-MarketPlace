@@ -6,7 +6,15 @@ is either a counter (programs, GL calls: exact), or taken back to back in one lo
 
 ## Headline
 
-TBD-HEADLINE
+**On the final build, the default tier on this laptop's integrated GPU, no shader program is built after the loading bar** (day cycle, rain, garage, 7-leg tour: main builds 166, 16 of them in the
+shadow pass, at 549-644 ms a frame; the game's own counter of frames over 100 ms: 17 -> 0), **the daytime frame is 17 % cheaper** (the bloom's seven passes are skipped while nothing reaches its threshold:
+12.15 -> 10.11 ms in one page, picture identical to 0.03 of 255; post chain by day 8 passes / 95 GL calls -> 1 / 11), and the workshop no longer has a light set of its own (it borrows the street's: 2 x 75 programs and the
+trickle of 700-900 ms frames at the garage gone; the night garage differs a little in the picture). Alternating with main in one hold, auto tier 1536x864: **67.4 -> 74.2 fps median (+10 %)**, p99 32.7 -> 31.6 ms, ended on
+scale 1.0 in 3 of 3 (main: 1.0 / 0.69 / 1.0). Quiet-machine runs reach 138-150 fps, but the machine's speed moved 2x between holds, so that is not a measured gain of this branch.
+
+**Not reached, plainly:** p99 <= 25 ms (the HUD's frames hold it at 26-33 ms even at 100 fps), zero frames over 50 ms after the first 3 s (0 on quiet windows, 0-8 on busy ones, none of them a program build), and
+a steady render scale >= 0.85 under load (the governor goes to 0.55-0.9 or low when other sessions use the GPU). Shadow cadence and program-switch / material merging were measured or inspected and **do not pay**
+(sections 3, 4). Details, tables, pictures and what I could not prove below.
 
 ## What was measured, and with what (new tools in `scripts/perf/`)
 
@@ -34,30 +42,34 @@ Two different causes, not one:
 * `game/warm.js`: a light set now includes its shadow pass. `depthParts(scene)` lists one caster per distinct shadow program (kind of object x side x custom depth material), `depthStandIn` is
   three's shared depth material (`new MeshDepthMaterial()` in r187: NOT the RGBA-packed one, which was the first attempt and missed) configured as `getDepthMaterial` does, and each one is
   compiled against a light-only scene with the recipe's lights and **no fog** (the shadow pass hands the program key an empty scene; `fog` is a bit of every key: this was the second
-  miss). 14 more programs at boot (7 per set), compiled in parallel with the rest.
+  miss). At boot the **night** set's 7 depth programs are built this way, in parallel with the rest. **The day set's are not**: a first version built both and was bisected
+  (`aw-probe --cmd boot`, interleaved, the 400 frames after START, sum of the frames over 40 ms): both sets 2.1-2.5 s, day only 2.4 s, **night only 1.6 s, main 1.5-2.0 s**. Building the day set ahead
+  made the loading bar 0.6 s shorter (`game.boot.compile` 0.6 s against 1.2 s) and the first seconds of play ~0.5 s worse: the programs the boot frame no longer waits for leave their first-draw
+  work to the GPU process while the player already plays. The day set is the one the boot frame draws for real, so it stays with the boot frame (`warm(set, { depth: false })`); later calls (a tier
+  step, a restored context) still build both. On the final build the same probe reads: new 2.5 / 3.2 / 2.5 s, main 2.6 / 2.7 / 3.0 s (a busier moment: both worse, no difference).
 * The workshop **borrows** its three lights (`gameplay/workshop/light-bank.js`): two lamp-pool lights (`world/props.js` `lend` / `unlend`) are the pink and cyan rims and the auto's headlight spot is
   the key light; while any is lent the day shows as many lights as the night does (`game/light-sets.js` `visibleLights`), so a lit garage is one of the two light sets that are built at boot. The
   in-play workshop warm-up in `Game.js` is deleted; `lightSet` has no `workshop` flag. The headlight comes back in the colour the loadout has at that moment (a headlight bought inside the
   garage: `sim/customize.js` keeps `ud.headlightHex`; found while reviewing, not by a test of the old behaviour).
 
-**Proof** (`aw-warm.mjs --strict`, final build, SwiftShader, `--warm 25`): **0 programs built in play** over day, dusk, night, dawn, dusk, night, rain by night and by day, the garage by day, by night
-and in the rain, and a 7-leg teleport tour (Charminar dusk, Cyber night / rain, Birla, stadium in rain, station, CNG in rain): `programs after boot 175 = programs at the end 175`, exit 0. Main in
-the same harness: 77 (SwiftShader, 3.8 s for the first frame of the garage) / 165 (real GPU).
+**Proof** (`aw-warm.mjs --strict --tour`, final build, SwiftShader, `--warm 25`, exit code 0): **0 programs built in play** over day, dusk, night, dawn, dusk, night, rain by night and by day, the garage by day,
+by night and in the rain, and a 7-leg teleport tour (Charminar dusk, Cyber night / rain, Birla, stadium in rain, station, CNG in rain). Main in the same harness: 77 (SwiftShader) / 165 (real GPU).
 
-Real GPU, `aw-warm.mjs --tour`, medium held, one run each (back to back, the same hold), 24 phases (the life cycle above + the 7-leg tour):
+Real GPU, `aw-warm.mjs --tour`, medium held, 24 phases (the life cycle above + the 7-leg tour); main and the final build one run each, back to back in one session, **the machine was busier during the
+final run** (sustained 40-60 ms frames in the dusk and station phases):
 
-| | main `6aaf2be` | aw-final |
+| | main `6aaf2be` | aw-final (final build) |
 |---|---|---|
-| programs after the loading bar | 167 | 175 (+8: the night set's depth programs; the day set's were already built by the first frame, now they are built in parallel earlier) |
-| `game.boot.compile` (ms; a second main run 1485 / a second final run 741) | 1370 | **727** |
+| programs after the loading bar | 167 | 174 (+7: the night set's depth programs) |
+| `game.boot.compile` (ms) | 1370 (a second main run: 1485) | 1341 (no gain: see above; the first version measured 727-741) |
 | programs built in play | **166** (16 of them in the shadow pass) | **0** (0 in the shadow pass) |
-| frames over 40 ms / over 150 ms | 37 / 15 | 33 / **1** |
-| worst frame | 644 ms (workshop opening), 599 ms (dawn), 571 ms (night) | **152 ms** (the first dusk, see below), then 86 ms |
-| the game's own counter (frames > 50 / > 100 ms since 3 s after START) | 29 / 17 | 24 / **1** |
-| frames in the run | 9966 | 8899 |
+| frames over 50 ms | 27 | 36 (sustained 50-90 ms frames of a loaded machine, no program built in any) |
+| frames over 150 ms / worst frame | 15 / 644 ms (workshop opening), 599 ms (dawn), 571 ms (night) | **0 / 89 ms** |
+| the game's own counter (frames > 50 / > 100 ms since 3 s after START) | 29 / 17 | 53 / **0** |
+| frames in the run | 9966 | 7636 |
 
-The remaining 32 frames of 40-90 ms in the aw-final run are spread over the phases (no program built in any of them; not attributed further: machine and GPU contention, the HUD's snapshot
-frames, first-sight uploads; `workshop-day` has 7 of them, 41-75 ms). **One frame of 152 ms remains at the first dusk** (on main that frame was the 549 ms freeze): see "Unfinished".
+So what is removed is the compile-caused freezes (15 frames of 150-640 ms in this window; 17 frames over 100 ms in the game's counter -> 0); the 40-90 ms frames that remain are not caused by
+program builds and move with the load of the machine.
 
 ## 2. The post chain
 
@@ -74,9 +86,11 @@ that the pause does not stop) at Charminar (12:00), the shops, the glass towers 
 reallocation or a new program (the plain composite is built up front). Chain by day: **8 passes / 95 GL calls -> 1 pass / 11 GL calls** (-88 %). Interleaved in one page (Charminar, 12:00, medium held, 4 rounds, table in section 3): **12.15 -> 10.11 ms per frame (82.3 -> 98.9 fps)**, CPU time of `gfx.render` 11.0 -> 9.2 ms, GPU timer 10.7 -> 10.2 ms,
 and `base` was the faster of the two in every round. The p99 does not move (31.1 -> 26.7 ms: the HUD's frames, see below).
 
-**What did not, and why** (target "<= 4 passes, <= 80 GL calls": met by day, **not at night: 8 / 95**): folding the three up-passes into one combine pass (-2 passes, -22 calls) or dropping a level
-(`bloom3`: -2 passes) changes the glow of the neon, which is the point of the night picture; the gain is ~0.2 ms of CPU per pass at night only (about 1 % of the average frame over a day
-cycle), so I left it. (Measured anyway at 21:00: `bloom3` 13.9 ms and `bloom0` 13.9 ms against 12.2 ms for the 4-level chain, in a page that drifted by 4-6 ms: no measurable gain, so no reason to change the night picture.)
+**What did not, and why** (target "<= 4 passes, <= 80 GL calls": met by day, **not at night: 8 / 95**): dropping a bloom level on medium (`bloomLevels: 3`: -2 passes, 95 -> 73 GL calls at night) changes the
+picture very little: `aw-shots.mjs`, paused world, 4 vs 3 levels at three night cameras: mean absolute difference **0.03 / 0.11 / 0.04 of 255**, 0.01-1.07 % of the pixels over 2 levels, worst pixel 12-29 levels (the core
+of the neon sign's halo); 2 levels: 0.04-0.22, up to 5 % of the pixels over 2 levels. But its frame-time gain is ~0.2 ms of CPU per pass, at night only (about 1 % of the average frame over a day cycle), and
+I could not measure it: `bloom3` 13.9 ms and `bloom0` 13.9 ms against 12.2 ms for the 4 levels at 21:00, in a page that drifted by 4-6 ms. So I did not apply it (it is the first thing to try when the night
+frame is the problem); folding the three up-passes into one combine pass (also -2 passes, ~-22 calls) would change the glow's shape and I did not try it.
 
 ## 3. Shadow cadence (not changed: it does not pay)
 
@@ -125,7 +139,93 @@ workshop avoids being a third one. (`bloomon` in `aw-ab.mjs` re-enables the day 
 
 ## 6. Final measurement
 
-TBD-STEP6
+**Read this first.** The laptop was shared with the other streams the whole time. The SAME build measured 138-150 fps (p99 12-14 ms, medium, scale 1) in one hold and 56-70 fps (p99 32-47 ms, the governor
+lowering the scale to 0.55-0.9) in another a few minutes later; the start-up calibration's units moved 5x between two runs (fill 0.44 vs 2.8 ns / px). Single runs, and any two runs minutes apart, cannot
+rank two builds. What can: counters (programs, GL calls), the in-page interleaved A/B of section 3, and `bench.mjs` runs of the two builds **alternating in one hold** (below, A). Every row says what it is.
+`bench.mjs`: 8 s warm-up, 12 s measured (frames over 50 ms are counted in that window; "play" is the game's own counter, frames over 33 / 50 / 100 ms since 3 s after START, which includes the warm-up).
+Builds: "main" = `6aaf2be`. "final" = this branch as committed, **in A only** (and the GPU program probe of section 1). Everything else (B, C, D, E, F) was measured on commit `71e9983`: the same rendering and
+the same workshop, but the boot also built the day set's depth programs (section 1: ~0.6 s shorter boot, ~0.5 s worse first seconds); steady-state frames are identical.
+
+### A. Default (auto) tier, 1536x864 @ 1.25, main and the final build alternating in one hold (3 pairs)
+
+| run | fps | mean ms | p50 | p95 | p99 | max | frames > 50 ms | play 33 / 50 / 100 | tier -> end (scale) | programs at the end |
+|---|---|---|---|---|---|---|---|---|---|---|
+| main 1 | 65.2 | 15.3 | 14.1 | 31.2 | 32.7 | 46.6 | 0 | 14 / 6 / 2 | medium -> medium (1.0) | 317 |
+| **final 1** | **73.0** | 13.7 | 13.1 | 28.4 | 31.6 | 33.0 | 0 | 10 / 6 / 4 | medium -> medium (1.0) | 324 |
+| main 2 | 67.4 | 14.8 | 13.6 | 31.3 | 33.1 | 51.5 | 1 | 21 / 11 / 5 | medium -> medium (**0.69**) | 317 |
+| **final 2** | **74.2** | 13.5 | 12.6 | 28.9 | 32.0 | 48.3 | 0 | 11 / 5 / 3 | medium -> medium (1.0) | 324 |
+| main 3 | 83.4 | 12.0 | 11.3 | 15.8 | 29.4 | 33.0 | 0 | 6 / 5 / 2 | medium -> medium (1.0) | 317 |
+| **final 3** | 83.3 | 12.0 | 11.1 | 24.9 | 30.2 | 32.7 | 0 | 7 / 7 / 3 | medium -> medium (1.0) | 324 |
+| median | main 67.4 -> final **74.2** (+10 %) | 14.8 -> 13.5 | 13.6 -> 12.6 | 31.2 -> 28.4 | 32.7 -> 31.6 | 46.6 -> 33.0 | 0 -> 0 | | main ended on scale 1.0 / 0.69 / 1.0, final on 1.0 x 3 | |
+
+(The 317 / 324 programs are 167 / 174 plus the lower tier's two light sets: this laptop was loaded, so the calibration was pessimistic and the unproved start built the fallback tier behind the loading
+bar in both builds. On a quiet moment the calibration says "fits" and neither builds it: 175 programs, rows C.) The game starts at hour 17:24, so these windows are dusk, which is the heavier time of day
+(bloom on, lamp lights about to come on).
+
+### B. Other viewports, same method
+
+| viewport | main | final |
+|---|---|---|
+| 1920x1080 @ 1, three pairs alternating (second hold) | 58.2 / 65.3 / 59.6 fps, p99 44.3 / 46.6 / 46.9 ms, frames > 50 ms 1 / 3 / 5, ended on medium 0.69 / **low** 1.0 / medium 0.69 | 55.7 / 69.8 / 57.9 fps, p99 42.1 / 32.1 / 41.1 ms, frames > 50 ms 3 / 0 / 1, ended on medium 0.69 / medium 1.0 / medium 0.91 |
+| 1920x1080 @ 1, three + two runs in separate holds (commit `71e9983`) | 68.4 / 75.1 fps, p99 31.8 / 32.4 ms, 0 frames > 50 ms, medium 1.0 | 83.0 / 60.1 / 73.9 fps, p99 35.7 / 55.1 / 34.9 ms; **7 / 10 / 0 frames > 50 ms and a 604 / 770 ms frame in two runs**: the governor stepped medium -> low during the window while the lower tier's second light set was still being built (programs 318 / 250 / 325) |
+| 844x390 @ 3 (a phone landscape), separate holds | 106.8 / 86.0 fps, p99 24.4 / 32.5 ms, 0 frames > 50 ms | 77.9 / 86.7 / 95.2 fps, p99 52.1 / 30.1 / 29.0 ms; the first run stepped to low with a 639 ms frame (11 frames > 50 ms) |
+
+The two stalls of 600-770 ms are the known unproved-start tier step (aw-int, section 4.2: "a tier step whose fallback was not built at boot"); this stream does not touch `tier-switch.js` or the
+governor, and the alternating hold above shows main doing the same (a medium -> low step at 1080p, 65 fps), but I cannot say the final build is *not* more exposed to it: those separate-hold runs happened at
+the busiest minutes of the session. I list them because they are the worst numbers I measured for the new build.
+
+### C. Quiet-machine holds (commit `71e9983`, six runs each, one hold per build, 2-3 minutes apart)
+
+| tier asked, 1536x864 @ 1.25 | fps | mean ms | p50 | p95 | p99 | max | > 50 ms | end tier (scale) | programs |
+|---|---|---|---|---|---|---|---|---|---|
+| auto, main, 3 runs | 89.9 / 85.4 / 75.7 | 11.1 / 11.7 / 13.2 | 10.6 / 11.2 / 12.5 | 16.1 / 17.1 / 28.6 | 28.8 / 29.7 / 31.4 | 31.7 / 32.3 / 32.9 | 0 / 0 / 0 | medium (1.0) x 3 | 317 |
+| auto, final, 3 runs | **150 / 145 / 138** | 6.7 / 6.9 / 7.3 | 6.4 / 6.6 / 6.8 | 10.5 / 10.7 / 11.9 | **12.4 / 13.4 / 14.1** | 24.1 / 21.0 / 23.3 | 0 / 0 / 0 | medium (1.0) x 3 | **175** |
+| low, main / final | 114.5 / 132.7 | 8.7 / 7.5 | 8.2 / 6.1 | 12.1 / 14.5 | 27.3 / 26.7 | 30.7 / 40.1 | 0 / 0 | low (1.0) | 154 / 154 |
+| medium, main / final | 85.9 / 76.2 | 11.7 / 13.1 | 11.2 / 12.3 | 19.5 / 28.9 | 30.5 / 31.6 | 33.0 / 32.8 | 0 / 0 | medium (1.0) | 167 / 175 |
+| high, main / final | 74.6 / 81.3 | 13.4 / 12.3 | 13.0 / 11.8 | 29.1 / 17.4 | 32.1 / 31.5 | 32.7 / 32.8 | 0 / 0 | high (1.0) | 166 / 175 |
+
+These are real runs and the auto rows show what the machine does when it is quiet (the calibration read 8.7 ms for medium: "fits", no fallback built, 3.1 s from page to ready against 4.6-5.3 s for main), but
+main's rows were taken in a **louder** minute (its calibration read fill 2.8 ns / px, 6x the final's): **do not read 85 -> 145 fps as the gain of this branch**. The honest comparison is A.
+
+### D. In-page A/B (section 3): medium, Charminar, same page
+
+At 12:00 the day frame is 10.1 ms (98.9 fps, p50 10.3, p99 26.7) of which `gfx.render` is 9.2 ms of CPU and the GPU timer 10.2 ms; with the old behaviour (bloom drawn) 12.2 ms / 11.0 ms CPU / 10.7 ms GPU. At 21:00 the
+frame is 12.2 ms (82 fps, p99 32.1) with 11.1 ms of CPU and 12.1 ms of GPU. Main in its own page at 12:00: 11.1 ms (90.3 fps, p99 29.2), 10.1 ms CPU, 9.8 ms GPU. (The frame is bound by the CPU side -- GL calls -- and
+the GPU timer together: neither is far below the other, so a saving on one side alone buys about half of itself.)
+
+### E. In-play stalls (`aw-hitch.mjs --scenarios boot,drive`, auto tier, 8 s of play after START + 30 s of autopilot driving; two runs per build, alternating, commit `71e9983`)
+
+| phase | main | final |
+|---|---|---|
+| drive 30 s: programs built | 1 and **149** (the workshop trickle at 17 s) | **0 and 0** |
+| drive 30 s: frames > 50 / > 100 ms, ms in them | 8 / 4, 1396 ms and **25 / 18, 4543 ms** | 6 / 3, 832 ms and 6 / 3, 920 ms |
+| drive 30 s: p99, max frame | 31.9 / 43.5 ms, 482 / 428 ms | 32.4 / 32.0 ms, 375 / 426 ms |
+| first 8 s after START: frames > 50 ms | 4 / 3 | **9 / 8** (the first version; see section 1: the day set's depth programs. The fix measures like main: 400 frames after START, sum of frames > 40 ms 2.5-3.2 s against 2.6-3.0 s) |
+
+The frames of 100-480 ms that are left in the drive are in `gfx.render` with no program, texture or geometry created in them (the game's own slow-frame attribution): GL / GPU waits on a shared GPU. The target "zero
+frames over 50 ms after the first 3 s" is **not met**: 6 per 30 s here, 0-8 per 12 s in the bench windows (0 on the quiet ones).
+
+### F. 5-minute soak (`aw-hitch.mjs --scenarios boot,soak --seconds 300`, auto tier, autopilot, commit `71e9983`)
+
+22212 frames, 74.8 fps average, p99 34.8 ms (the machine was loaded: the governor ended on **low, scale 0.81 -> render scale 0.65**), 42 frames over 50 ms (0.19 %), 3 over 100 ms, the worst 643 ms in the first 3 s.
+**Flat:** programs 325 -> 325 (0 created in 300 s), textures 61 -> 62, geometries 219 -> 223, JS heap 63.8 -> 67.0 MB (before / after the run, no forced GC), 2886 React commits at 9.6 / s.
+
+### Targets, default tier, this laptop, 1536x864 @ 1.25
+
+| target | where it stands |
+|---|---|
+| >= 60 fps average | **met on a quiet machine, not on a busy one.** Quiet: 138-150 fps (rows C), 99 fps in the day A/B; busy: 56-83 fps (A, B). With the other streams running it is 65-83 fps: all six alternating runs of A are at or above 65 fps (main 65 / 67 / 83, final 73 / 74 / 83). |
+| p99 <= 25 ms | **not met** except on the quietest runs (12-14 ms, rows C). In every busy run and in every in-page A/B it is 26-33 ms, and `noshadow` / `bloom0` do not move it: it is the HUD's snapshot frames (aw-int, section 6: one frame in seven is ~15 ms longer; ui-touch's work) |
+| zero frames > 50 ms after the first 3 s | **not met**: 0 in the quiet bench windows, 0-8 in the busy ones, 6 per 30 s of driving. The compile-caused ones are gone (0 programs built in play; main: 17 frames over 100 ms in the game's counter -> 0). The rest are GL waits with nothing created. |
+| render scale >= 0.85 in steady state | **met on a quiet machine** (medium at 1.0 in all quiet runs, 3 of 3 in A for the final build); **not under load**: the governor goes to 0.55-0.9 or to low (the soak ended on 0.65) |
+| start to playable | the first version of this branch measured -1.5 to -2 s on the quiet holds (3.1 s against 4.6-5.3 s) and -0.6 s on `game.boot.compile`; the final build gives the day set's depth programs back to the boot frame, so expect **the same as main** (`game.boot.compile` 1341 ms against 1370 ms); I did not re-run the quiet holds on the final commit |
+
+What is the next lever: (1) **the HUD** (p99 and the 15 ms frame in every seventh: `game/snapshot.js`, `ui/**`, ui-touch); (2) **the machine is the limit on a busy day, not the picture**: at 74 fps the CPU side of
+`gfx.render` (GL calls through ANGLE: 860-1000 a frame, `uniformMatrix4fv` 25 % of the main thread in the profile) is as large as the GPU's, so only fewer GL calls help: the shops' textured materials (~25 calls), props (23
+draws, needs BatchedMesh), the night chain's last two passes (-22 calls, picture-neutral, see Screenshots); (3) the **first ~3 s after START** (3-7 frames of 100-400 ms in `gfx.render` with nothing created, on main as well: the GPU process appears to be
+still busy with the boot's first-draw work; not proven what exactly, my best guess is also the lower tier's programs that `belowWarmed` compiles while the start menu is up): try skipping the below-tier warm for
+starts the calibration says fit, as `insuranceTier` does, and measure `aw-probe --cmd boot --menu-wait 2` (new option: linger on the start screen like a player) against 0.
+
 
 ## Screenshots (`docs/perf/aw-final/`, 12 JPEG q72, each < 105 KB, left = main `6aaf2be`, right = this branch)
 
@@ -159,13 +259,22 @@ finds it worth it. I did not apply it: its frame-time gain was not measurable in
   unlit) loses its halo by day; the switch is under `night` 0.04 (dusk), where the difference is under 2 levels.
 * `props.lend` is a single loan (the workshop); a second borrower would need a counter. The loan survives a tier step (`setLightCount`) and the game being closed with the garage open (`workshop.dispose`
   releases it).
-* Boot adds 14 depth programs (7 per set) and loses the blocking depth compile of the first frame: measured TBD-BOOT.
+* Boot builds the night set's 7 depth programs ahead (+7 programs: 174 after boot against 167) and leaves the day set's to the boot frame, as main does (`game.boot.compile` 1341 ms against 1370). Building both was 0.6 s faster
+  to boot and 0.5 s worse in the first seconds of play (section 1): a measured trade I did not take.
 * The cost model in `GFX.models` (`calls: 1500` for medium) was fitted before this work and was not re-fitted: the bloom skip takes ~85 of ~1500 call-equivalents off a daytime frame, which the
   start-up calibration (units move 2-10x between runs on this laptop) cannot resolve.
 
 ## Unfinished / next levers
 
-TBD-NEXT
+1. **The first ~3 s after START** still has 3-7 frames of 100-400 ms inside `gfx.render` with no program, texture or geometry created (main too). Hypothesis, not proven: the GPU process finishing the boot's first-draw
+   work and the below-tier warm; see the end of section 6 for the experiment (`aw-probe.mjs --menu-wait`).
+2. **One 80-150 ms frame at the first dusk** (first-sight uploads of the night-only objects: +3-4 textures, +2 geometries over the sweep, 0 programs; absent in one of two runs). `renderer.prewarm` skips invisible
+   objects, so a hidden night group is uploaded on its first visible frame: reveal hidden objects for the boot frame and restore them.
+3. **The night chain is still 8 passes / 95 GL calls** (73 with `bloomLevels: 3` for medium, picture-neutral: 0.03-0.11 of 255 mean difference; not applied, no measurable frame gain).
+4. **Shops' textured materials and props** (section 4): ~25 + ~20 GL calls a frame, a per-shop atlas and BatchedMesh respectively.
+5. The in-page A/B of the night variants drifted by 4-6 ms; a quiet-machine rerun of sections 3 and 6 on the final commit (I measured B-F one commit earlier) would tighten every number here.
+6. `GFX.models` (the calibration's cost model) was not re-fitted for the cheaper daytime frame.
+7. The 600-770 ms tier-step frames of two 1080p / phone runs (section 6, B): the unproved-start path of aw-int, untouched here; worth a look by whoever owns `game/tier-switch.js`.
 
 ## Files
 

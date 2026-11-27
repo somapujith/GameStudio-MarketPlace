@@ -90,3 +90,4 @@ node scripts/perf/aw-warm.mjs --base http://127.0.0.1:5881 --port 9961 --soft --
 node scripts/perf/aw-shots.mjs --base http://127.0.0.1:5881 --port 9965 --soft --no-lock --pause --diffs --scenes charminar-day,night-paradise --variants "base|nobloom=window.__autowala.gfx.post.setLevels(0)" --reset "window.__autowala.gfx.post.setLevels(4)"
 ```
 `aw-ab.mjs` presets added: `bloom3`, `bloomon` (force the bloom back on by day), `shadow33`.
+`aw-probe.mjs --cmd boot --menu-wait 2` lingers 2 s on the start screen before pressing START (a player does; the game's background work gets that time): the first seconds of play are sensitive to it. `--cmd boot` prints the frames over 40 ms among the first 400 after START; compare builds interleaved (`matrix.mjs`) and sum them.
