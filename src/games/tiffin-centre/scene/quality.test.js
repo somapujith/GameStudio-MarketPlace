@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { QUALITY, QUALITY_ORDER, KNOB_KEYS, pickQuality, lowerQuality, minTier, createQualitySampler, createScaler, createDrawCallGuard, DRAW_CALL_BUDGET, frameBudgetFor, tierBudgetFor, shadowEveryFor, deviceTweaks, applyDeviceTweaks } from './quality.js';
+import { QUALITY, QUALITY_ORDER, KNOB_KEYS, pickQuality, lowerQuality, minTier, createQualitySampler, createScaler, createDrawCallGuard, DRAW_CALL_BUDGET, frameBudgetFor, tierBudgetFor, shadowEveryFor, deviceTweaks, applyDeviceTweaks, createCompileHold } from './quality.js';
 
 describe('quality tiers', () => {
   it('has lite <= low <= medium <= high on every numeric knob and a pipeline that grows with the tier', () => {
@@ -379,5 +379,43 @@ describe('device tweaks to the tier table', () => {
     expect(table.medium).toEqual(QUALITY.medium);
     undo();
     expect(table).toEqual(QUALITY);
+  });
+});
+
+describe('compile hold', () => {
+  it('holds for a moment after a new program appears and is quiet while the count is steady', () => {
+    const h = createCompileHold({ holdSec: 0.5 });
+    expect(h.push(100, 0.016)).toBe(false); // the first reading is only a reference
+    expect(h.push(100, 0.016)).toBe(false);
+    expect(h.push(101, 0.4)).toBe(true); // a program appeared: this frame is a compile stall
+    expect(h.push(101, 0.016)).toBe(true); // still inside the window
+    expect(h.push(101, 0.2)).toBe(true); // the frame that uses up the hold is held too
+    expect(h.holding).toBe(false);
+    expect(h.push(101, 0.016)).toBe(false); // judged again
+  });
+  it('keeps holding while programs keep appearing (the warm-up ramp) and ignores a hidden-tab gap', () => {
+    const h = createCompileHold({ holdSec: 0.6 });
+    h.push(10, 0.016);
+    let held = 0;
+    for (let i = 1; i <= 50; i++) if (h.push(10 + i, 0.3)) held++;
+    expect(held).toBe(50);
+    expect(h.push(60, 60)).toBe(true); // a 60 s gap counts as at most one second
+    expect(h.push(60, 1)).toBe(false);
+  });
+  it('lets a scaler see a device that is slow for real: the hold only covers compile frames', () => {
+    const h = createCompileHold();
+    const s = createScaler({ budget: 0.02, min: 0.5, step: 0.1 });
+    let verdicts = 0;
+    for (let i = 0; i < 400; i++) {
+      // steady program count, every frame 40 ms
+      if (!h.push(250, 0.04)) if (s.push(0.04)) verdicts++;
+    }
+    expect(verdicts).toBeGreaterThan(0);
+    // the same slow frames while programs keep appearing are not judged
+    const h2 = createCompileHold();
+    const s2 = createScaler({ budget: 0.02, min: 0.5, step: 0.1 });
+    let v2 = 0;
+    for (let i = 0; i < 400; i++) if (!h2.push(100 + i, 0.04)) if (s2.push(0.04)) v2++;
+    expect(v2).toBe(0);
   });
 });
