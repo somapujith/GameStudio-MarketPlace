@@ -61,6 +61,7 @@ function palmCrown() {
 export function buildProps(scene, city, colliders, shared, seed) {
   const rng = makeRng(seed ^ 0x7ee5);
   const group = new Group();
+  group.name = 'props';
   scene.add(group);
   const o = new Object3D();
   const col = new Color();

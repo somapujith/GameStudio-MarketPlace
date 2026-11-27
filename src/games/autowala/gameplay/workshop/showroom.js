@@ -22,11 +22,15 @@ const disposeTree = (root) => {
 export function createEntryRing(scene, x, y, z) {
   const g = new Group();
   g.position.set(x, y + 0.14, z);
-  const ringMat = new MeshStandardMaterial({ color: 0x1a0612, emissive: PINK, emissiveIntensity: MAX_EMISSIVE, transparent: true, opacity: 0.95, side: DoubleSide, roughness: 0.6 });
+  // The two rings are all emissive (their lit base is near black), so they are unlit: a lit transparent double-sided material was 4 draws
+  // of ~11 GL calls each (every light of the scene is uploaded per program); unlit and single pass (flat) it is 2 draws of ~4.
+  const ringMat = new MeshBasicMaterial({ color: PINK, transparent: true, opacity: 0.95, side: DoubleSide, forceSinglePass: true });
+  ringMat.color.multiplyScalar(MAX_EMISSIVE);
   const ring = new Mesh(new RingGeometry(3.15, 3.95, 56), ringMat);
   ring.rotation.x = -Math.PI / 2;
   g.add(ring);
-  const innerMat = new MeshStandardMaterial({ color: 0x06161c, emissive: CYAN, emissiveIntensity: MAX_EMISSIVE, transparent: true, opacity: 0.9, side: DoubleSide, roughness: 0.6 });
+  const innerMat = new MeshBasicMaterial({ color: CYAN, transparent: true, opacity: 0.9, side: DoubleSide, forceSinglePass: true });
+  innerMat.color.multiplyScalar(MAX_EMISSIVE);
   const inner = new Mesh(new RingGeometry(2.45, 2.7, 56), innerMat);
   inner.rotation.x = -Math.PI / 2;
   inner.position.y = 0.01;
@@ -55,8 +59,8 @@ export function createEntryRing(scene, x, y, z) {
     group: g,
     update(t) {
       const p = 0.5 + 0.5 * Math.sin(t * 2.2);
-      ringMat.emissiveIntensity = MAX_EMISSIVE * (0.78 + 0.22 * p);
-      innerMat.emissiveIntensity = MAX_EMISSIVE * (0.7 + 0.3 * (1 - p));
+      ringMat.color.setHex(PINK).multiplyScalar(MAX_EMISSIVE * (0.78 + 0.22 * p));
+      innerMat.color.setHex(CYAN).multiplyScalar(MAX_EMISSIVE * (0.7 + 0.3 * (1 - p)));
       inner.rotation.z = t * 0.5;
       colMat.opacity = 0.36 + 0.14 * p;
     },

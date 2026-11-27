@@ -69,6 +69,7 @@ const WATER_FRAG = /* glsl */ `
 export function buildTerrain(scene, city, sky) {
   const H = WORLD.half;
   const group = new Group();
+  group.name = 'terrain';
   scene.add(group);
 
   // ground: a big plane far past the ring road

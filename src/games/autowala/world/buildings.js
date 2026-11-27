@@ -178,6 +178,7 @@ export function buildBuildings(scene, city, colliders, shared, seed) {
   // ---- ONE instanced mesh per map tile for all the lots (render/chunks.js culls far tiles in the view and in the shadow pass); the facade
   // look is a per-instance attribute of the single building material, so a tile costs one draw call however many looks it holds.
   const group = new Group();
+  group.name = 'buildings';
   scene.add(group);
   const geo = unitBox();
   const meshes = [];

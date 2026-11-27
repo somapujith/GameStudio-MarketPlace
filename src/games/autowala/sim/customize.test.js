@@ -3,6 +3,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Vector3 } from 'three';
 import { DEFAULT_LOADOUT, OPTIONS, withPath } from '../gameplay/catalog.js';
+import { SLOT } from './auto-uber.js';
 
 function ctx2d() {
   let font = '12px x';
@@ -126,7 +127,8 @@ describe('applyLoadout', () => {
       mesh.geometry.computeBoundingBox();
       return mesh.geometry.boundingBox.max.y;
     };
-    const roofMesh = a.userData.body.children.find((o) => o.isMesh && o.material === a.userData.roofM);
+    const roofMesh = a.userData.merged.body; // (the roof is a slot of the merged body mesh on the player's rig)
+    expect(roofMesh.parent).toBe(a.userData.body);
     const flatTop = top(roofMesh);
     const glassScale = a.userData.glass.scale.y;
     custom.applyLoadout(a, withPath(DEFAULT_LOADOUT, 'roofStyle', 'high-canopy'));
@@ -232,6 +234,72 @@ describe('applyLoadout', () => {
     custom.updateCustomization(a, { t: 0, dt: 0.016, speed: 0, hornTime: 0, jolt: 0, night: 0, braking: true });
     expect(a.userData.tailLampM.color.b).toBeGreaterThan(idle);
     expect(a.userData.tailLampM.color.b).toBeGreaterThan(a.userData.tailLampM.color.r);
+  });
+
+  it("the player's merged meshes read the part materials, by reference, every frame", () => {
+    const a = build.buildAuto({ player: true });
+    const ud = a.userData;
+    const { a: A, b: B } = ud.uber;
+    const frame = () => ud.merged.body.onBeforeRender(); // (what three calls right before the merged body draws)
+    const visible = (name) => A[SLOT[name] * 4 + 3] === 1;
+    frame();
+    for (const name of ['chrome', 'matte', 'seat', 'roof', 'curtains', 'paneSides', 'tailLens', 'tailRef', 'brake', 'hlLamp', 'emblem', 'plates', 'banner', 'paneCenter', 'tyre', 'rim', 'spokes', 'face', 'flapDecal', 'badge']) {
+      expect(visible(name), name).toBe(true);
+    }
+    expect(visible('whites')).toBe(false); // hidden until the whitewall wheels are fitted
+    // Game.syncAuto writes the brake lamp every frame
+    ud.brakeM.color.setScalar(2.6).multiply({ r: 1, g: 0.12, b: 0.16 });
+    frame();
+    expect(B[SLOT.brake * 4]).toBeCloseTo(2.6);
+    expect(B[SLOT.brake * 4 + 1]).toBeCloseTo(0.312);
+    // a roof colour, glowing wheels, the whitewalls
+    custom.applyLoadout(a, { ...DEFAULT_LOADOUT, paint: { ...DEFAULT_LOADOUT.paint, roof: 'white' }, wheels: 'neon-cyan' });
+    frame();
+    expect(A[SLOT.roof * 4]).toBeCloseTo(ud.roofM.color.r);
+    expect(B[SLOT.rim * 4 + 2]).toBeGreaterThan(0.5); // the rim glows cyan
+    custom.applyLoadout(a, withPath(DEFAULT_LOADOUT, 'wheels', 'whitewall'));
+    frame();
+    expect(visible('whites')).toBe(true);
+    // the per-part environment strength reaches the data materials too
+    expect(ud.envBag).toContain(ud.chrome);
+    expect(B[SLOT.chrome * 4 + 3]).toBeCloseTo(ud.chrome.envMapIntensity);
+    expect(ud.chrome.envMapIntensity).toBeGreaterThan(B[SLOT.seat * 4 + 3]); // chrome reflects more than the vinyl
+  });
+
+  it('patterned seats / curtains and the LED cover switch to their textured stand-ins (and hide their slot)', () => {
+    const a = build.buildAuto({ player: true });
+    const ud = a.userData;
+    const frame = () => ud.merged.body.onBeforeRender();
+    const visible = (name) => ud.uber.a[SLOT[name] * 4 + 3] === 1;
+    expect(ud.merged.seat.visible).toBe(false);
+    custom.applyLoadout(a, { ...DEFAULT_LOADOUT, interior: { seats: 'leopard', garland: false }, curtains: 'floral', rear: { ...DEFAULT_LOADOUT.rear, cover: 'led-pink' } });
+    frame();
+    expect(ud.merged.seat.visible).toBe(true);
+    expect(ud.merged.curtains.visible).toBe(true);
+    expect(ud.cover.face.visible).toBe(true); // the glowing LED panel draws on the real face mesh
+    for (const name of ['seat', 'curtains', 'face', 'emblem']) expect(visible(name), name).toBe(false);
+    custom.applyLoadout(a, DEFAULT_LOADOUT);
+    frame();
+    expect(ud.merged.seat.visible).toBe(false);
+    expect(ud.merged.curtains.visible).toBe(false);
+    expect(ud.cover.face.visible).toBe(false);
+    for (const name of ['seat', 'curtains', 'face', 'emblem']) expect(visible(name), name).toBe(true);
+  });
+
+  it('the windscreen tint darkens the view instead of glowing a pale lit colour (the milky front windscreen)', () => {
+    const a = build.buildAuto({ player: true });
+    const m = a.userData.glassM;
+    const lum = () => 0.2126 * m.color.r + 0.7152 * m.color.g + 0.0722 * m.color.b;
+    expect(lum()).toBeLessThan(0.25); // linear: the clear tint's #bfe6f4 is ~0.73 lit at full strength
+    expect(m.opacity).toBeCloseTo(0.38);
+    const levels = [0, 1, 2, 3].map((t) => {
+      custom.applyLoadout(a, withPath(DEFAULT_LOADOUT, 'tint', t));
+      return { lum: lum(), opacity: m.opacity };
+    });
+    for (let i = 1; i < 4; i++) {
+      expect(levels[i].opacity).toBeGreaterThan(levels[i - 1].opacity); // each level hides more of the view...
+      expect(levels[i].lum).toBeLessThanOrEqual(levels[i - 1].lum); // ...and is no brighter
+    }
   });
 
   it('traffic autos accept colour changes too', () => {

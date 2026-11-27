@@ -58,7 +58,7 @@ function beamGeometry() {
 }
 
 function additive(depthTest) {
-  const m = new MeshBasicMaterial({ vertexColors: true, transparent: true, blending: AdditiveBlending, depthWrite: false, depthTest, side: DoubleSide, fog: false, toneMapped: false });
+  const m = new MeshBasicMaterial({ vertexColors: true, transparent: true, blending: AdditiveBlending, depthWrite: false, depthTest, side: DoubleSide, fog: false, toneMapped: false, forceSinglePass: true }); // (additive: the back-face and front-face passes would add up to the same picture in half the draws)
   if (depthTest) {
     m.polygonOffset = true;
     m.polygonOffsetFactor = -2;
@@ -126,6 +126,7 @@ export function createMarkerKit(scene, { rings = 44, diamonds = 44, beams = 14 }
     end() {
       ringMesh.count = nr; beamMesh.count = nb; diaMesh.count = nd;
       for (const m of [ringMesh, beamMesh, diaMesh]) {
+        m.visible = m.count > 0; // an empty instanced mesh still costs a program switch
         m.instanceMatrix.needsUpdate = true;
         m.instanceColor.needsUpdate = true;
       }
