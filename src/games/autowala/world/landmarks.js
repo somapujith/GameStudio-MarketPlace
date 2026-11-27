@@ -20,7 +20,7 @@ import {
 } from 'three';
 import { BUILDING_LOOKS, buildingMaterial, glowMaterial, setLookAttribute } from '../render/materials.js';
 import { signTexture } from '../render/textures.js';
-import { freezeMatrices, mergeStaticMeshes } from '../render/merge-static.js';
+import { createBakeRegistry, freezeMatrices, mergeStaticMeshes } from '../render/merge-static.js';
 
 // one material per distinct look: the hand-built models ask for the same few colours hundreds of times, and parts only merge
 // (render/merge-static.js) when they share a material
@@ -446,16 +446,21 @@ export function buildLandmarks(scene, city, colliders, shared) {
   // Static batching: a landmark is dozens of tiny meshes, each a draw call in the camera pass AND in the shadow pass (they were ~60 +
   // ~57 calls a frame with Charminar in view). Bake every landmark into one mesh per material; parts too small to show in the shadow
   // map stop casting.
+  // plain Lambert parts merge across colours into a handful of vertex-coloured materials (stone, flat-shaded rock, double-sided...)
+  const bake = createBakeRegistry();
   let merged = { before: 0, after: 0 };
   for (const g of root.children) {
-    const r = mergeStaticMeshes(g, { minShadowRadius: 1.2 });
+    const r = mergeStaticMeshes(g, { minShadowRadius: 1.2, bake });
     merged = { before: merged.before + r.before, after: merged.after + r.after };
     freezeMatrices(g);
   }
   stdCache.clear(); // the materials live on in the meshes; the cache must not keep them (or a disposed one) across rebuilds
 
+  // the stone glow: the original materials (parts that stayed alone) and the shared baked ones (every stone has the same glow strength)
+  const litBaked = [...new Set(lit.map(([m]) => bake.materialFor(m)).filter(Boolean))];
   function update(night) {
     for (const [m, k] of lit) m.emissiveIntensity = night * k;
+    for (const m of litBaked) m.emissiveIntensity = night * 0.34;
   }
   return { group: root, update, spots, merged };
 }

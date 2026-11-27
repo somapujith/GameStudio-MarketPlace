@@ -1,7 +1,7 @@
 // Static batching: a hand-built landmark is dozens of tiny Meshes (a minaret alone is a cylinder, rings, a dome, a cone, a chhatri...),
 // each its own draw call in the camera pass AND in the shadow pass. Once a model is finished and never moves again, everything under
 // it that shares a material (and the same shadow flags) can be baked into the model's local space and drawn as ONE mesh.
-import { BufferAttribute, Matrix4, Mesh } from 'three';
+import { BufferAttribute, Matrix4, Mesh, MeshLambertMaterial } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const KEEP = ['position', 'normal', 'uv'];
@@ -34,6 +34,32 @@ export function bakedCopy(geo, m) {
   return g;
 }
 
+/**
+ * Colour baking: many hand-built models ask for the same few Lambert looks in dozens of colours. Parts whose material is a plain Lambert
+ * (no map, no vertex colours, opaque) merge into ONE vertex-coloured material per (flat shading, side, emissive colour), their own colour
+ * baked into the vertices. The registry keeps those shared materials, so every model of a world uses the same few.
+ */
+export function createBakeRegistry() {
+  const map = new Map();
+  const key = (m) => (m.isMeshLambertMaterial && !m.map && !m.vertexColors && !m.transparent && !m.alphaMap ? `${m.flatShading ? 1 : 0}|${m.side}|${m.emissive.getHex()}` : null);
+  return {
+    /** The shared vertex-coloured material standing in for `m`, or null when `m` cannot be baked. */
+    materialFor(m) {
+      const k = key(m);
+      if (k === null) return null;
+      let s = map.get(k);
+      if (!s) {
+        s = new MeshLambertMaterial({ vertexColors: true, flatShading: m.flatShading, side: m.side, emissive: m.emissive.clone(), emissiveIntensity: 0 });
+        map.set(k, s);
+      }
+      return s;
+    },
+    get materials() {
+      return [...map.values()];
+    },
+  };
+}
+
 /** Radius of the largest dimension of a mesh in the units of the merge root (rough: bounding sphere x the largest world scale). */
 function worldRadius(mesh, root) {
   if (!mesh.geometry.boundingSphere) mesh.geometry.computeBoundingSphere();
@@ -47,9 +73,10 @@ function worldRadius(mesh, root) {
  * Merge every plain Mesh under `root` that shares a material, castShadow and receiveShadow into one Mesh per combination, in `root`'s own
  * local space. Instanced meshes, skinned meshes, multi-material meshes and anything with `userData.keep` stay as they are.
  *   opts.minShadowRadius  parts smaller than this (metres) stop casting a shadow (they cannot be seen in a 0.08 m / texel shadow map)
+ *   opts.bake             a createBakeRegistry(): plain Lambert parts are merged across colours (see there)
  * Returns { before, after, meshes } (draw-call candidates before / after).
  */
-export function mergeStaticMeshes(root, { minShadowRadius = 0 } = {}) {
+export function mergeStaticMeshes(root, { minShadowRadius = 0, bake = null } = {}) {
   root.updateWorldMatrix(true, true);
   const groups = new Map();
   const doomed = [];
@@ -58,16 +85,27 @@ export function mergeStaticMeshes(root, { minShadowRadius = 0 } = {}) {
     if (o === root || !o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || Array.isArray(o.material) || o.userData.keep || !o.visible) return;
     before++;
     if (minShadowRadius > 0 && o.castShadow && worldRadius(o, root) < minShadowRadius) o.castShadow = false;
-    const key = `${o.material.uuid}|${o.castShadow ? 1 : 0}|${o.receiveShadow ? 1 : 0}|${o.renderOrder}`;
+    const baked = bake ? bake.materialFor(o.material) : null;
+    const material = baked || o.material;
+    const key = `${material.uuid}|${o.castShadow ? 1 : 0}|${o.receiveShadow ? 1 : 0}|${o.renderOrder}`;
     let g = groups.get(key);
-    if (!g) groups.set(key, (g = { material: o.material, cast: o.castShadow, receive: o.receiveShadow, order: o.renderOrder, list: [] }));
+    if (!g) groups.set(key, (g = { material, baked: !!baked, cast: o.castShadow, receive: o.receiveShadow, order: o.renderOrder, list: [] }));
     g.list.push(o);
   });
   const meshes = [];
   inv.copy(root.matrixWorld).invert();
   for (const g of groups.values()) {
     if (g.list.length < 2) continue;
-    const parts = g.list.map((o) => bakedCopy(o.geometry, rel.copy(inv).multiply(o.matrixWorld)));
+    const parts = g.list.map((o) => {
+      const p = bakedCopy(o.geometry, rel.copy(inv).multiply(o.matrixWorld));
+      if (g.baked) {
+        const n = p.attributes.position.count;
+        const col = new Float32Array(n * 3);
+        for (let i = 0; i < n; i++) col.set([o.material.color.r, o.material.color.g, o.material.color.b], i * 3);
+        p.setAttribute('color', new BufferAttribute(col, 3));
+      }
+      return p;
+    });
     const geo = mergeGeometries(parts, false);
     parts.forEach((p) => p.dispose());
     if (!geo) continue;

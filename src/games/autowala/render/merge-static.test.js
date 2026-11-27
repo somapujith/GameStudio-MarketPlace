@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { BoxGeometry, Box3, Vector3, Group, InstancedMesh, Mesh, MeshBasicMaterial, MeshStandardMaterial, CylinderGeometry } from 'three';
-import { bakedCopy, freezeMatrices, mergeStaticMeshes } from './merge-static.js';
+import { BoxGeometry, Box3, Vector3, Group, InstancedMesh, Mesh, MeshBasicMaterial, MeshLambertMaterial, MeshStandardMaterial, CylinderGeometry } from 'three';
+import { bakedCopy, createBakeRegistry, freezeMatrices, mergeStaticMeshes } from './merge-static.js';
 
 const mat = (c) => new MeshStandardMaterial({ color: c });
 
@@ -114,5 +114,50 @@ describe('bakedCopy', () => {
     const c = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
     const dot = c[0] * n.getX(0) + c[1] * n.getY(0) + c[2] * n.getZ(0);
     expect(dot).toBeGreaterThan(0);
+  });
+});
+
+describe('colour baking', () => {
+  const lam = (c, o = {}) => new MeshLambertMaterial({ color: c, ...o });
+  function painted() {
+    const g = new Group();
+    for (const [i, c] of ['#ff0000', '#00ff00', '#0000ff', '#ffff00'].entries()) {
+      const m = new Mesh(new BoxGeometry(1, 1, 1), lam(c));
+      m.position.set(i * 2, 0.5, 0);
+      m.castShadow = true;
+      g.add(m);
+    }
+    const shiny = new Mesh(new BoxGeometry(1, 1, 1), new MeshStandardMaterial({ color: '#ffffff', metalness: 0.8, roughness: 0.2 }));
+    const shiny2 = new Mesh(new BoxGeometry(1, 1, 1), shiny.material);
+    shiny2.position.x = 5;
+    g.add(shiny, shiny2);
+    return g;
+  }
+
+  it('merges plain Lambert parts of different colours into ONE vertex-coloured mesh and leaves PBR parts alone', () => {
+    const g = painted();
+    const bake = createBakeRegistry();
+    const r = mergeStaticMeshes(g, { bake });
+    expect(r.meshes.length).toBe(2); // the baked Lambert mesh + the shared-material PBR mesh
+    const baked = r.meshes.find((m) => m.material.isMeshLambertMaterial);
+    expect(baked.material.vertexColors).toBe(true);
+    const col = baked.geometry.getAttribute('color');
+    expect(col.count).toBe(4 * 36);
+    const distinct = new Set(Array.from({ length: col.count }, (_, i) => `${col.getX(i).toFixed(3)},${col.getY(i).toFixed(3)},${col.getZ(i).toFixed(3)}`));
+    expect(distinct.size).toBe(4);
+    expect(r.meshes.find((m) => m.material.isMeshStandardMaterial).material.metalness).toBe(0.8);
+  });
+
+  it('shares the baked material between models and keeps flat-shaded / emissive looks apart', () => {
+    const bake = createBakeRegistry();
+    const a = bake.materialFor(lam('#aa0000'));
+    const b = bake.materialFor(lam('#00aa00'));
+    expect(a).toBe(b);
+    expect(bake.materialFor(lam('#aa0000', { flatShading: true }))).not.toBe(a);
+    const glow = lam('#aa0000', { emissive: '#ff8a4a' });
+    expect(bake.materialFor(glow)).not.toBe(a);
+    expect(bake.materialFor(glow).emissiveIntensity).toBe(0);
+    expect(bake.materialFor(new MeshStandardMaterial())).toBeNull();
+    expect(bake.materialFor(lam('#ffffff', { transparent: true }))).toBeNull();
   });
 });

@@ -249,6 +249,18 @@ async function bench(c) {
   if (args.shot && args.shot !== true) await c.shot(String(args.shot));
   return { ...m, boot, profile };
 }
+/** How many GL calls of each kind one frame makes (wraps WebGL2RenderingContext.prototype): where the CPU time of gfx.render goes. */
+async function glCalls(c) {
+  if (args.poi) await pin(c, String(args.poi), +(args.hour || 18), +(args.weather || 0));
+  return c.ev(`(async () => {
+    const proto = WebGL2RenderingContext.prototype; const counts = new Map(); const orig = {};
+    for (const k of Object.getOwnPropertyNames(proto)) { let d; try { d = Object.getOwnPropertyDescriptor(proto, k); } catch { continue; } if (!d || typeof d.value !== 'function' || k === 'constructor') continue; orig[k] = d.value; proto[k] = function (...a) { counts.set(k, (counts.get(k) || 0) + 1); return orig[k].apply(this, a); }; }
+    let frames = 0; await new Promise((res) => { const f = () => { if (++frames < ${+(args.frames || 30)}) requestAnimationFrame(f); else res(); }; requestAnimationFrame(f); });
+    for (const k of Object.keys(orig)) proto[k] = orig[k];
+    const rows = [...counts.entries()].map(([k, v]) => [k, +(v / frames).toFixed(1)]).sort((a, b) => b[1] - a[1]);
+    return { frames, total: +rows.reduce((a, r) => a + r[1], 0).toFixed(0), top: rows.slice(0, 18) };
+  })()`);
+}
 const LEGS = [
   ['charminar', 12, 0], ['charminar', 19.2, 0], ['cyber', 22.5, 0], ['cyber', 12, 1], ['birla', 19, 0], ['golconda', 23, 0], ['airport', 8, 0], ['paradise', 21, 0],
   ['stadium', 22, 1], ['station', 17.6, 0], ['mecca', 12, 0], ['garage', 5, 0], ['cng_north', 15, 0.6], ['hospital', 0.5, 0],
@@ -334,6 +346,7 @@ async function run() {
       const tr = args['no-tour'] ? null : await tour(c);
       result = { bench: b, draws: d, gpu: g, tour: tr };
     }
+    else if (cmd === 'glcalls') result = await glCalls(c);
     else if (cmd === 'eval') result = await c.ev(String(args.js)); // --js "<expression>": anything in the page (may be async)
     else if (cmd === 'boot') result = await c.ev('({ boot: window.__autowalaBoot && window.__autowalaBoot.ms, longs: window.__bootLongs, programs: window.__autowala.gfx.renderer.info.programs.length, world: window.__autowala.world.timings, sys: window.__autowala.boot && window.__autowala.boot.systems, compile: window.__autowala.boot && window.__autowala.boot.compile })');
     const info = await c.ev('({ tier: window.__autowala.gfx.quality, gpu: (() => { const gl = window.__autowala.gfx.renderer.getContext(); const e = gl.getExtension("WEBGL_debug_renderer_info"); return e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : "?"; })(), timer: !!window.__autowala.gfx.renderer.getContext().getExtension("EXT_disjoint_timer_query_webgl2") })');

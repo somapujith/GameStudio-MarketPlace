@@ -59,7 +59,7 @@ export const ECON = {
  *  traffic / peds  live vehicles / pedestrians;  drawDist  view distance in metres
  */
 export const QUALITY = {
-  low: { pixelRatio: 1, shadow: 1024, shadowInterval: 0.05, chunk: 384, bloom: false, bloomLevels: 0, fxaa: true, msaa: 0, traffic: 22, peds: 90, drawDist: 300 },
-  medium: { pixelRatio: 1.25, shadow: 2048, shadowInterval: 0.024, chunk: 512, bloom: true, bloomLevels: 4, fxaa: true, msaa: 0, traffic: 36, peds: 170, drawDist: 420 },
-  high: { pixelRatio: 1.75, shadow: 2048, shadowInterval: 0, chunk: 512, bloom: true, bloomLevels: 5, fxaa: true, msaa: 0, traffic: 52, peds: 260, drawDist: 560 },
+  low: { pixelRatio: 1, shadow: 1024, shadowInterval: 0.05, chunk: 512, bloom: false, bloomLevels: 0, fxaa: true, msaa: 0, traffic: 22, peds: 90, drawDist: 300 },
+  medium: { pixelRatio: 1.25, shadow: 2048, shadowInterval: 0.024, chunk: 1024, bloom: true, bloomLevels: 4, fxaa: true, msaa: 0, traffic: 36, peds: 170, drawDist: 420 },
+  high: { pixelRatio: 1.75, shadow: 2048, shadowInterval: 0, chunk: 1024, bloom: true, bloomLevels: 5, fxaa: true, msaa: 0, traffic: 52, peds: 260, drawDist: 560 },
 };
