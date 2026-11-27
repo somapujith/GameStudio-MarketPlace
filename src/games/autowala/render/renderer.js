@@ -81,6 +81,7 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
   let bloom = null;
   let width = 1;
   let height = 1;
+  const canvasSize = new Vector2();
   let lost = false;
   let simple = false; // set when the full pipeline failed once
 
@@ -97,8 +98,12 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
   const build = () => {
     const cfg = QUALITY[q];
     setAnisotropyCap(q === 'low' ? 2 : Math.min(maxAniso, q === 'medium' ? 4 : 8));
-    renderer.setPixelRatio(Math.min(cfg.pixelRatio, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1.5));
-    renderer.setSize(width, height, false);
+    // assigning canvas.width / height reallocates the drawing buffer even when the value is the same (hundreds of ms on some drivers):
+    // only touch the canvas when its size or pixel ratio really changes (a tier step with the same ratio, a rebuild after a context loss)
+    const ratio = Math.min(cfg.pixelRatio, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1.5);
+    if (ratio !== renderer.getPixelRatio()) renderer.setPixelRatio(ratio);
+    renderer.getSize(canvasSize);
+    if (canvasSize.x !== width || canvasSize.y !== height) renderer.setSize(width, height, false);
     disposeComposer();
     const full = !simple;
     try {
@@ -127,8 +132,11 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
   };
 
   const resize = (w, h) => {
-    width = Math.max(2, Math.floor(w));
-    height = Math.max(2, Math.floor(h));
+    const nw = Math.max(2, Math.floor(w));
+    const nh = Math.max(2, Math.floor(h));
+    if (nw === width && nh === height && composer && !lost) return; // the game sizes the pipeline during boot (shader warm-up): the screen's first resize is a no-op
+    width = nw;
+    height = nh;
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
     if (!lost) build();
@@ -202,6 +210,13 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
     },
     get lost() {
       return lost;
+    },
+    /** The post-processing composer (null before the first resize / when drawing directly) and the render target the scene is drawn into. */
+    get composer() {
+      return composer;
+    },
+    get target() {
+      return composer ? composer.readBuffer : null;
     },
   };
 }

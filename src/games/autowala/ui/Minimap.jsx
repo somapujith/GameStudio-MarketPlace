@@ -119,14 +119,20 @@ export default function Minimap({ game, snap }) {
       setText(distRef.current, dist);
     };
 
+    let sinceDraw = 0;
+    const DRAW_EVERY = 0.028; // s: the lens is a small disc, 30-36 redraws a second look the same as 60-144 and halve the canvas work
     const frame = (now) => {
       raf = requestAnimationFrame(frame);
-      const dt = Math.min(0.1, Math.max(0, (now - last) / 1000));
+      const frameDt = Math.min(0.1, Math.max(0, (now - last) / 1000));
       last = now;
-      clock += dt;
+      clock += frameDt;
       // M toggles the big map (poll the one-shot; menus ignore it)
       if (ctx.input?.pressed?.('map') && !menuRef.current) toggleRef.current();
       if (document.hidden || menuRef.current || openRef.current) return;
+      sinceDraw += frameDt;
+      if (sinceDraw < DRAW_EVERY) return;
+      const dt = sinceDraw; // the smoothing below runs once per redraw, over the time since the last one
+      sinceDraw = 0;
       try {
         readLive(ctx, live);
         heading = heading === null ? live.heading : heading + angleDiff(heading, live.heading) * (1 - Math.exp(-14 * dt));
