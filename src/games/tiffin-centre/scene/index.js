@@ -325,7 +325,8 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
   // warm-up is what sank the old scaler to 0.5 in the first seconds; the governor starts looking when it is done (plus the hold below)
   const govFeed = createGovernorFeed(gov, () => (gfx.renderer.info.programs ? gfx.renderer.info.programs.length : 0), {
     none: CHANGE_NONE,
-    paused: () => !!sw || (!!warmer && !warmer.done),
+    // (the warm-up gate is bounded: a slow machine builds its dishes slowly, and a governor blind for the whole of it left a frame at 33 ms at full resolution for 37 s)
+    paused: () => !!sw || (!!warmer && !warmer.done && performance.now() - warmStartedAt < (GOVERNOR_OPTIONS.warmGateMs ?? 10000)),
   });
   let appliedCap = -1;
   const applyFpsCap = () => {
@@ -523,6 +524,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
   // shader warm-up (loader.js): once the first state is in and the batcher is done, compile what the game really draws with, a slice per frame,
   // so no program compiles mid-shift (it restarts after a tier change: the programs differ per tier)
   let warmer = null;
+  let warmStartedAt = 0;
   let warmFrames = 0;
   let settleInfo = null; // { linked, builtByFirstRender, names }: what settleFirstFrame left for the first real frame
   let settledAtLoad = false; // the scene itself was compiled behind the loading screen (settleFirstFrame): only the extras (one of each dish) are left
@@ -530,6 +532,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     if (!stateSeen || (batcher && !batcher.done) || disposed) return;
     if (!warmer) {
       if (++warmFrames < 30) return;
+      warmStartedAt = performance.now();
       warmer = createProgramWarmer({
         renderer: gfx.renderer, scene, camera, post: !!gfx.cfg.post, hiddenLights: !!gfx.cfg.lights, units: !settledAtLoad,
         extras: DISH_IDS.map((id) => () => models.buildDish(id, 'good')),
