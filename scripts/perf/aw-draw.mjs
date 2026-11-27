@@ -53,7 +53,8 @@ const PIN = (s) => `(() => {
   g.debug.teleport(front.x, front.z, ${+(s.heading || 0)});
   g.debug.weather(${+(s.weather || 0)}); g.debug.hour(${+(s.hour || 14)});
   window.__pinT = setInterval(() => g.debug.hour(${+(s.hour || 14)}), 100);
-  if (${JSON.stringify(!!s.cam)}) { let dx = front.x - at.x, dz = front.z - at.z; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+  if (${JSON.stringify(!!s.xyz)}) { g.debug.cam({ x: ${+(s.xyz?.[0] || 0)}, y: ${+(s.xyz?.[1] || 6)}, z: ${+(s.xyz?.[2] || 0)}, yaw: ${+(s.yaw || 0)}, pitch: ${+(s.pitch || 0)}, fov: 62 }); }
+  else if (${JSON.stringify(!!s.cam)}) { let dx = front.x - at.x, dz = front.z - at.z; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
     const cx = at.x + dx * ${+(s.dist || 60)}, cz = at.z + dz * ${+(s.dist || 60)}; const hd = Math.hypot(at.x - cx, at.z - cz);
     g.debug.cam({ x: cx, y: ${+(s.h || 6)}, z: cz, yaw: Math.atan2(at.x - cx, at.z - cz), pitch: Math.atan2(${+(s.aim || 10)} - ${+(s.h || 6)}, hd), fov: 62 }); }
   else g.debug.cam(null);
@@ -69,6 +70,18 @@ const SCENES = [
   { name: 'workshop', poi: 'garage', hour: 12, workshop: true },
   { name: 'night-paradise', poi: 'paradise', hour: 22, cam: true, dist: 38, h: 4, aim: 6 },
   { name: 'rain-night-charminar', poi: 'charminar', hour: 21, weather: 1, cam: true, dist: 48, h: 4.5, aim: 12 },
+  // only with --only <name> (looks, not counters)
+  { name: 'x-bawarchi', extra: true, poi: 'bawarchi_secbad', hour: 12, cam: true, dist: 36, h: 4, aim: 6 },
+  { name: 'x-delhi', extra: true, poi: 'delhi_banjara', hour: 12, cam: true, dist: 30, h: 4, aim: 5 },
+  { name: 'x-oyo', extra: true, poi: 'oyo_mehdi', hour: 17.5, cam: true, dist: 34, h: 4, aim: 6 },
+  { name: 'x-delhi-night', extra: true, poi: 'delhi_banjara', hour: 22, cam: true, dist: 30, h: 4, aim: 5 },
+  { name: 'x-garage-landmark', extra: true, poi: 'garage', hour: 19.5, cam: true, dist: 50, h: 5, aim: 6 },
+  { name: 'x-stadium', extra: true, poi: 'stadium', hour: 21, cam: true, dist: 90, h: 8, aim: 14 },
+  { name: 'x-sign-irani', extra: true, poi: 'irani', hour: 20, xyz: [72, 7, 262], yaw: Math.PI, pitch: 0.02 },
+  { name: 'x-sign-cng', extra: true, poi: 'cng_old', hour: 20, xyz: [277, 7, 232], yaw: Math.PI, pitch: 0.05 },
+  { name: 'x-sign-garage', extra: true, poi: 'garage', hour: 20, xyz: [194, 8, 356], yaw: Math.PI, pitch: 0.05 },
+  { name: 'x-sign-station', extra: true, poi: 'station', hour: 20, xyz: [40, 22, -400], yaw: Math.PI, pitch: 0.18 },
+  { name: 'x-junction', extra: true, poi: 'mecca', hour: 15, cam: true, dist: 30, h: 22, aim: -2 },
 ];
 
 /** Camera / shadow draws attributed to top-level scene objects, switches, materials; GL calls per frame; memory. All in one wrapped run of `n` frames. */
@@ -80,7 +93,8 @@ const MEASURE = (n) => `(async () => {
   sm.render = (...a) => { inShadow = true; try { sr(...a); } finally { inShadow = false; } };
   const orig = R.renderBufferDirect.bind(R);
   let glN = 0; let seg = null; const segs = new Map();
-  const closeSeg = () => { if (!seg) return; let t = segs.get(seg.k); if (!t) segs.set(seg.k, (t = { n: 0, calls: 0 })); t.n++; t.calls += glN - seg.at; seg = null; };
+  const byLab = new Map();
+  const closeSeg = () => { if (!seg) return; let t = segs.get(seg.k); if (!t) segs.set(seg.k, (t = { n: 0, calls: 0 })); t.n++; t.calls += glN - seg.at; let b = byLab.get(seg.lab); if (!b) byLab.set(seg.lab, (b = { n: 0, calls: 0 })); b.n++; b.calls += glN - seg.at; seg = null; };
   const labelOf = new Map();
   const label = (r) => { let l = labelOf.get(r); if (l) return l; const i = scene.children.indexOf(r); let s = r.name || r.type; let m = r.isMesh ? r : null; if (!m) r.traverse((o) => { if (!m && o.isMesh) m = o; });
     if (!r.name && m) s += ':' + (m.isInstancedMesh ? 'inst' : m.isSkinnedMesh ? 'skin' : 'mesh') + ':' + (Array.isArray(m.material) ? m.material[0].type : m.material.type).replace('Material', '');
@@ -89,7 +103,7 @@ const MEASURE = (n) => `(async () => {
     let r = object; while (r.parent && r.parent !== scene) r = r.parent;
     closeSeg(); let cat = 'same';
     if (material !== lastMat) { cat = 'mat'; lastMat = material; inShadow ? sw.sMat++ : sw.vMat++; const p = R.properties.get(material).currentProgram; if (p !== lastProg) { cat = 'prog'; lastProg = p; inShadow ? sw.sProg++ : sw.vProg++; } }
-    seg = { k: (inShadow ? 'S:' : 'V:') + cat + (object.isInstancedMesh ? ':inst' : ''), at: glN };
+    seg = { k: (inShadow ? 'S:' : 'V:') + cat + (object.isInstancedMesh ? ':inst' : ''), at: glN, lab: (inShadow ? 'S ' : 'V ') + label(r) };
     if (!inShadow) { matSet.add(material.uuid); geoSet.add(geometry.uuid); const p = R.properties.get(material).currentProgram; if (p) { progSet.add(p.id); let e = progTally.get(p.id); if (!e) progTally.set(p.id, (e = { id: p.id, calls: 0, mat: material.type.replace('Material', ''), key: String(p.cacheKey).split(',').slice(-1)[0].slice(0, 22), inst: !!object.isInstancedMesh, vc: !!material.vertexColors, map: !!material.map, mats: new Set(), who: new Set() })); e.calls++; e.mats.add(material.uuid); e.who.add(label(r).split(':').slice(0, 2).join(':')); } }
     const key = (inShadow ? 'S ' : 'V ') + label(r);
     let t = tally.get(key); if (!t) tally.set(key, (t = { calls: 0, tris: 0, mats: new Set() }));
@@ -111,14 +125,14 @@ const MEASURE = (n) => `(async () => {
   const glRows = [...counts.entries()].map(([k, c]) => [k, +(c / frames).toFixed(1)]).sort((a, b) => b[1] - a[1]);
   const mem = R.info.memory;
   const objs = { meshes: 0, inst: 0, frozen: 0, objects: 0 }; scene.traverse((o) => { objs.objects++; if (o.isMesh) { objs.meshes++; if (o.isInstancedMesh) objs.inst++; } if (!o.matrixAutoUpdate) objs.frozen++; });
-  return { camera: +v.calls.toFixed(1), shadow: +s.calls.toFixed(1), camTris: Math.round(v.tris), shTris: Math.round(s.tris), gl: Math.round(glRows.reduce((a, r) => a + r[1], 0)), glTop: glRows.slice(0, 9), glCat,
+  return { camera: +v.calls.toFixed(1), shadow: +s.calls.toFixed(1), camTris: Math.round(v.tris), shTris: Math.round(s.tris), gl: Math.round(glRows.reduce((a, r) => a + r[1], 0)), glTop: glRows.slice(0, 9), glCat, glLab: [...byLab.entries()].map(([k, v]) => [k, +(v.n / frames).toFixed(1), +(v.calls / frames).toFixed(0)]).sort((a, b) => b[2] - a[2]).slice(0, 14),
     sw: { vMat: +(sw.vMat / frames).toFixed(1), vProg: +(sw.vProg / frames).toFixed(1), sMat: +(sw.sMat / frames).toFixed(1), sProg: +(sw.sProg / frames).toFixed(1) },
     progs: [...progTally.values()].map((e) => ({ id: e.id, calls: +(e.calls / frames).toFixed(1), mat: e.mat + (e.inst ? '/inst' : '') + (e.vc ? '/vc' : '') + (e.map ? '/map' : ''), key: e.key, mats: e.mats.size, who: [...e.who].join(' ') })).sort((a, b) => b.calls - a.calls), distinct: { materials: matSet.size, programs: progSet.size, geometries: geoSet.size }, mem: { geometries: mem.geometries, textures: mem.textures, programs: R.info.programs.length }, objs, rows: rows.slice(0, ${+(args.top || 16)}) };
 })()`;
 
 async function scenes(c) {
   const out = [];
-  for (const s of SCENES.filter((x) => !args.only || String(args.only).split(',').includes(x.name))) {
+  for (const s of SCENES.filter((x) => (args.only ? String(args.only).split(',').includes(x.name) : !x.extra))) {
     await c.ev(PIN(s));
     await c.sleep(SETTLE * 1000);
     const m = await c.ev(MEASURE(FRAMES));
@@ -228,7 +242,7 @@ if (cmd === 'scenes') {
   for (const s of row.result) console.log(s.name.padEnd(22), String(s.camera).padStart(6), String(s.shadow).padStart(6), String(s.gl).padStart(6), String(s.distinct.materials).padStart(5), String(s.distinct.programs).padStart(5), String(s.distinct.geometries).padStart(5), String(s.sw.vMat).padStart(7), String(s.sw.vProg).padStart(8), String(s.mem.geometries).padStart(5), String(s.mem.textures).padStart(5), String(s.mem.programs).padStart(5), String(s.objs.objects).padStart(8));
   if (args.progs) for (const s of row.result) { console.log(`
 -- programs in the camera pass: ${s.name} (${s.progs.length})`); for (const p of s.progs) console.log('  ', String(p.calls).padStart(5), String(p.mats).padStart(3), p.mat.padEnd(26), p.key.padEnd(22), p.who); }
-  if (args.rows) for (const s of row.result) { console.log(`\n-- ${s.name}  gl: ${s.glTop.map((r) => r.join('=')).join(' ')}`); console.log('   per-draw GL [category draws/frame calls/draw]: ' + s.glCat.map((r) => r.join(' ')).join(' | ')); for (const r of s.rows) console.log('  ', String(r.calls).padStart(6), String(r.tris).padStart(8), String(r.mats).padStart(4), r.k); }
+  if (args.rows) for (const s of row.result) { console.log(`\n-- ${s.name}  gl: ${s.glTop.map((r) => r.join('=')).join(' ')}`); console.log('   GL calls by object [draws/frame, calls/frame]: ' + s.glLab.map((r) => r.join(' ')).join(' | ')); console.log('   per-draw GL [category draws/frame calls/draw]: ' + s.glCat.map((r) => r.join(' ')).join(' | ')); for (const r of s.rows) console.log('  ', String(r.calls).padStart(6), String(r.tris).padStart(8), String(r.mats).padStart(4), r.k); }
 } else if (cmd === 'tour' && !args.json) {
   console.log(`label=${row.label} tier=${row.tier} gpu=${row.gpu}`);
   console.log('sum', JSON.stringify(row.result.sum));
