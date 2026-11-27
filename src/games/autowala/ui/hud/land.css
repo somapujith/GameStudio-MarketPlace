@@ -12,19 +12,27 @@
   --hud-strip-h: 44px;
   --hud-lane-top: calc(var(--hud-y-t) + var(--hud-strip-h) + 6px);
   --hud-mm: clamp(92px, 30dvh, 128px);
-  --hud-pod-h: 60px;
+  --hud-pod-h: 66px;
   --hud-pod-b: calc(var(--hud-sa-b) + 10px);
   --hud-above-pod: calc(var(--hud-pod-b) + var(--hud-pod-h) + 10px);
   --hud-gap-l: calc(var(--hud-ctl-l) + 10px);
   --hud-gap-r: calc(var(--hud-ctl-r) + 10px);
   --hud-zone-l: var(--hud-gap-l);
   --hud-alerts-h: 0px;
+  /* the middle lanes (alerts, tutorial card, captions) sit between the minimap column and the toast column, so a toast never meets them */
+  --hud-toast-w: clamp(170px, calc(var(--hud-ctl-r) - var(--hud-x-r)), 230px);
+  --hud-lane-l: calc(var(--hud-x-l) + var(--hud-mm) + 10px);
+  --hud-lane-r: calc(var(--hud-x-r) + var(--hud-toast-w) + 10px);
+  --hud-lane-w: calc(100% - var(--hud-lane-l) - var(--hud-lane-r));
+  /* the text lanes (tutorial card, captions) start right of the route pill too, which sticks out ~150 px from the minimap's corner */
+  --hud-lane-l2: calc(var(--hud-x-l) + max(var(--hud-mm), 150px) + 10px);
+  --hud-lane-w2: calc(100% - var(--hud-lane-l2) - var(--hud-lane-r));
   --hud-lane2-top: calc(var(--hud-lane-top) + var(--hud-alerts-h));
 }
 .aw[data-aw-layout='tablet-land'] {
   --hud-strip-h: 52px;
   --hud-mm: clamp(130px, 21dvh, 176px);
-  --hud-pod-h: 72px;
+  --hud-pod-h: 76px;
 }
 /* (phone.css sets --hud-lane2-top per alert count with the same specificity: set it again here, this file loads later) */
 .aw[data-aw-layout$='-land'][data-aw-alerts='1'] { --hud-alerts-h: 34px; --hud-lane2-top: calc(var(--hud-lane-top) + 34px); }
@@ -75,12 +83,11 @@
 
 /* ---- alerts (signal / camera / police / road rage / mission) and the tutorial card: a lane under the strip, in the middle ---------- */
 .aw[data-aw-layout$='-land'] .aw-alerts {
-  left: 50%;
-  right: auto;
-  width: max-content;
-  max-width: min(300px, 44%);
+  left: var(--hud-lane-l);
+  right: var(--hud-lane-r);
+  width: auto;
+  max-width: none;
   min-width: 0;
-  transform: translateX(-50%);
   align-items: center;
   flex-direction: column;
   flex-wrap: nowrap;
@@ -97,9 +104,9 @@
 .aw[data-aw-compact='1'][data-aw-layout$='-land'] .aw-quest-coach {
   top: var(--hud-lane2-top);
   bottom: auto;
-  left: 0;
-  right: 0;
-  width: min(380px, 46%);
+  left: var(--hud-lane-l2);
+  right: var(--hud-lane-r);
+  width: min(380px, var(--hud-lane-w2));
   max-width: none;
   margin-inline: auto; /* centred without a transform: its entrance animation owns `transform` */
 }
@@ -126,8 +133,7 @@
   top: var(--hud-lane-top);
   right: var(--hud-x-r);
   left: auto;
-  width: min(230px, calc(var(--hud-ctl-r) - var(--hud-x-r)));
-  min-width: 170px;
+  width: var(--hud-toast-w);
   gap: 4px;
   align-items: flex-end;
 }
@@ -211,11 +217,11 @@
   /* captions live in the lane under the alerts (top-centre), not over the car and the prompt at the bottom; a running tutorial card pushes them down */
   top: var(--hud-lane2-top);
   bottom: auto;
-  left: 0;
-  right: 0;
+  left: var(--hud-lane-l2);
+  right: var(--hud-lane-r);
   margin-inline: auto;
   width: fit-content;
-  max-width: min(460px, 46%);
+  max-width: min(460px, var(--hud-lane-w2));
   max-height: none;
   overflow: visible;
 }

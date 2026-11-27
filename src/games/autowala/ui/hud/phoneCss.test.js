@@ -217,7 +217,9 @@ describe('the landscape HUD (hud/land.css)', () => {
     expect(mm).toContain('top: var(--hud-lane-top)');
     expect(mm).toContain('left: var(--hud-x-l)');
     expect(bodyOf(land, ".aw[data-aw-layout$='-land'] .aw-toasts")).toContain('right: var(--hud-x-r)');
-    expect(bodyOf(land, ".aw[data-aw-layout$='-land'] .aw-alerts")).toContain('left: 50%');
+    const alerts = bodyOf(land, ".aw[data-aw-layout$='-land'] .aw-alerts");
+    expect(alerts).toContain('left: var(--hud-lane-l)'); // between the minimap column and the toast column
+    expect(alerts).toContain('right: var(--hud-lane-r)');
   });
   it('captions and the tutorial card never use a transform to centre (their entrance animations own it)', () => {
     expect(bodyOf(land, ".aw[data-aw-compact='1'][data-aw-layout$='-land'] .aw-sub")).not.toContain('transform');
