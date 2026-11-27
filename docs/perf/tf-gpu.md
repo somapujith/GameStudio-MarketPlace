@@ -30,13 +30,20 @@ on what the CPU is doing). Where something is a single noisy sample it says so. 
 
 ## 2. What changed
 
-Five commits on the branch (each body carries its own numbers):
+Seven commits on the branch (each body carries its own numbers):
 
 1. `skip dark point lights, program-sorted opaque pass, stable scaler, no shader warnings`
 2. `scaler that works under vsync, tier budget, DoF taps by radius, compile against the real target`
 3. `sky drawn last with the depth test, merged statics on high, resolution floor 0.7, integrated-GPU high`
 4. `shadow refresh throttling only below ~36 fps`
 5. `docs and proof screenshots` (this file)
+6. `do not judge frame times while shader programs are still appearing`
+7. `skip only the stall frames of a compile storm, not the normal frames in between`
+
+**Compile stalls are not slowness** (`quality.js createCompileHold`, `renderer.js`): after the scene reports ready the loader's warm-up keeps compiling programs for about 16 s and
+every first use of a program that is still linking blocks the main thread for 100 to 1000 ms. The scaler and the draw-call guard used to read those frames as a slow device (the
+baseline walked the picture down to 0.5 in 11 s, and Auto ended on `low`). A frame longer than 3 budgets that comes within 0.6 s of a new program appearing is now not judged;
+the normal frames in between still are. Pure helper, tested.
 
 **Lights and ordering** (`scene/gfx-tweaks.js`, new)
 * three's `lights_fragment_begin` is patched (idempotent, reference counted, restored on dispose): a point light whose colour uniform is zero is skipped before its
@@ -100,7 +107,22 @@ High (forced, integrated GPU, after the tweaks): scene 26.6, depth of field 3.5 
 
 ### 4a. Same session, forced scale (GPU timer queries; the cleanest numbers, toggles in one page load)
 
-[[RUN13]]
+One page load per build, adaptation held, scale forced with `gfx.setScale`, 3 repeats of 5 s per row, medium, 1920x1080 at scale 1.0, shadow map drawn every frame, final build
+(commit `c88d4c3`) against the baseline build, the two sessions run back to back (so each row compares the same measurement taken a few minutes apart: the machine was not
+idle during either, and row 1 shows it):
+
+| case | GPU median ms: baseline (best / mean of 3) | final | change | JS render ms: baseline | final | fps: baseline | final |
+|---|---|---|---|---|---|---|---|
+| 9:00, scale 1.0 | 23.5 / 28.2 | 24.9 / 29.3 | +4% (noise) | 29.6 | 30.0 | 31.4 | 28.6 |
+| 9:00, scale 0.85 | 29.4 / 29.7 | 20.1 / 21.0 | -29% | 30.1 | 21.9 | 28.0 | 38.2 |
+| 9:00, scale 0.7 | 23.0 / 24.0 | 16.5 / 17.1 | -29% | 27.2 | 17.5 | 29.5 | 46.8 |
+| 9:00, scale 0.5 | 13.0 / 15.7 | 13.7 / 13.7 | -12% | 21.4 | 14.8 | 34.9 | 55.3 |
+| 21:00, scale 1.0 | 27.3 / 28.6 | 19.3 / 21.1 | -26% | 27.2 | 21.4 | 29.3 | 41.3 |
+| 21:00, scale 0.85 | 25.1 / 26.7 | 20.1 / 22.0 | -18% | 27.7 | 23.9 | 30.8 | 37.8 |
+
+Reading: at the scales the new scaler holds (0.7 to 0.85) the same frame is 18 to 29 percent cheaper on the GPU, the JS render time falls from 27 to 30 ms to 17 to 22 ms, and the
+frame rate goes from 28 to 31 fps to 38 to 47 fps (55 fps at 0.5). The one row without a gain (day, scale 1.0) is within the noise of that session (its three final samples were
+24.9, 29.6 and 33.3 ms). Medium at full resolution is still about 25 ms of GPU, i.e. 40 fps at best.
 
 Earlier same-session samples of the same kind, for the trail (medium, 1080p, 9:00, GPU median ms, scale 1.0 / 0.7 / 0.5):
 
@@ -121,12 +143,21 @@ small station flames are not the cost (hiding them: no change), the two bulbs, t
 | medium final | 30.8 | 32.4 | 28.0 | 148 | 32 (2.7 s) | 0.7 (pr 0.875) | 284 | 29.3 s | 61 tasks / 11.7 s |
 | high baseline (forced) | 36.0 | 27.8 | 24.5 | 68 | 25 | 0.6 (pr 0.75) | 330 | 56.8 s | 65 / 13.8 s |
 | high final (forced) | 39.5 | 25.3 | 23.1 | 96 | 33 | 0.7 (pr 0.77) | 297 | 63.9 s | 67 / 16.9 s |
-[[AUTO]]
+| **Auto** baseline | 25.3 (ended on **low**) | 39.6 | 14.2 | 658 | 33 | 1.0 (pr 1.0) | 424 | 46.2 s | 69 / 13.4 s |
+| **Auto** final, before the stall skip | 29.4 (ended on **low**) | 34.0 | 16.2 | 584 | 34 | 1.0 (pr 1.0) | 283 | 35.9 s | 39 / 8.3 s |
+| **Auto** final (`c88d4c3`) | 6.6 by mean (one 20 s harness stall in the window), **p50 24.8 ms = 40 fps**; stayed on **medium** | 151.8 | 24.8 | 643 | 15 | 0.9 (pr 1.125) | 328 | 33.2 s | 38 / 14.9 s |
 
-Another pair, earlier build, medium: baseline 37.9 fps (p50 24.6, scale 0.5, 311 programs) vs 54.9 fps (p50 13.7, scale 0.5, 284 programs). The spread between samples of the SAME
-build (30.8 to 37.9 fps for the baseline) is as large as most of the differences, so **what is robust is this: the final build holds a sharper picture for the same frame
-rate (scale 0.7 / pixel ratio 0.875 instead of the scaler sinking to 0.5 / 0.625), starts about 13 s sooner, compiles 27 fewer programs, and the timer queries say the GPU does
-25 to 30 percent less work per frame at the same resolution. The 60 fps target was not reached in any end-to-end run.**
+Auto is the headline: **the baseline's default experience ends on the `low` tier on this machine** (the scaler and the draw-call guard read the warm-up's compile stalls as a slow
+device, 2 of 2 runs, plus the 40.6 fps `low` run of the very first baseline), **the final build keeps the `medium` picture at scale 0.9** (2 of 3 runs; the third, before the stall skip,
+fell to low like the baseline). A tier drop is also what made the baseline compile 424 programs (the medium set, then the low set).
+
+Two more medium pairs. Earlier build: baseline 37.9 fps (p50 24.6, scale 0.5, 311 programs) vs 54.9 fps (p50 13.7, scale 0.5, 284 programs). Latest build, 30 s warm-up, run
+adjacent: final 29.2 fps (p50 29.1, p99 126, **57 frames over 50 ms**, scale 0.7 = pixel ratio 0.875, 284 programs) vs baseline 35.1 fps (p50 23.1, p99 62, 12 frames over 50 ms,
+scale 0.5 = pixel ratio 0.625, 311 programs): **that pair went against the final build** (it renders 1.96x the pixels, but it also had the long frames; I cannot tell contention
+from a real regression with one pair, and I ran out of time on the shared GPU to repeat it). The spread between samples of the SAME build (30.8 to 37.9 fps for the baseline) is as
+large as most of the differences. **What I am confident of:** the timer-query A/B above (the GPU does 18 to 29 percent less work per frame at 0.7 to 0.85 and the JS render time drops
+by a third), Auto no longer ends on `low`, the final build holds a sharper picture (scale 0.7, pixel ratio 0.875, instead of the scaler sinking to 0.5 / 0.625), 27 fewer programs, and
+the shader warnings are gone. **The 60 fps target was not reached in any end-to-end run, and I would not claim a frame-rate win from the bench pairs.**
 
 lite and low were not re-measured on the final build (the queue for the shared GPU was too long): their pipeline is unchanged apart from the program-sorted opaque pass
 and the scaler; the baselines from the first run were low 61 fps at scale 0.6 and lite 245 fps (the playbook's low = 113 fps was measured on an idle machine).
@@ -170,12 +201,14 @@ Also captured and compared but not committed (size limit): 9:30, 15:30, 17:20, 1
 
 `viewFov(aspect)` keeps the **vertical** FOV at 74 degrees for every landscape aspect (1.33 to 2.4; it only widens on portrait): at 844x390 (2.16) the horizontal FOV is
 117 degrees, at 21:9 (2.37) 121 degrees, so the stall is framed the same from 16:9 to 21:9 and nothing needed changing (the horizontal FOV does get very wide, the edges
-stretch). The screenshot at 844x390 shows the kadai, the counter, the menu board and the street framed as on desktop. Fill cost at that size is small: 844x390 at pixel
+stretch). The screenshot at 844x390 shows the kadai, the counter, the menu board and the street framed as on desktop (the 21:9 and 640x360 captures did not get a GPU slot in time:
+for those only the FOV arithmetic above was checked, `node` over `viewFov` for ten sizes from 640x360 to 3440x1440). Fill cost at that size is small: 844x390 at pixel
 ratio 1.25 is 0.5 Mpx (a quarter of the laptop test), and phones start on `low` (no post, pixel ratio 1) anyway.
 
 ## 7. Status, what is not done, risks
 
-* **Target status:** the default (Auto) tier on the integrated GPU is still not 60 fps at scale >= 0.85, and a forced high is about 40 fps at its 0.7 floor, not at 0.85. The
+* **Target status:** the default (Auto) tier on the integrated GPU now stays on medium (it used to end on low) but is not 60 fps at scale >= 0.85 (about 40 fps median at 0.9),
+  and a forced high is about 40 fps at its 0.7 floor, not at 0.85. The
   remaining frame is a draw-call and fragment cost I could not remove from my files: 322 + 142 draw calls (about 13 ms of GPU even with a trivial fragment shader) over 222
   materials, and about 14 ms of PBR fragment shading at 1080p. The levers left are outside this stream: tf-cpu merging / instancing (fewer draws and materials), the loader's
   compile throttling above, and for the fragment cost a cheaper lit shader for the far street.
@@ -201,6 +234,7 @@ ratio 1.25 is 0.5 Mpx (a quarter of the laptop test), and phones start on `low` 
 
 ## 9. Tests
 
-`npx vitest run src/games/tiffin-centre shared/tiffin-centre` (PowerShell): 78 files, 1798 tests passed (run before the last small commits; the scene directory was rerun after
-them). New: `scene/gfx-tweaks.test.js`, `scene/sky.test.js`, and about 30 new cases in `scene/quality.test.js` (scaler: CPU-bound revert, vsync, hitch clamp, tier budget, probe
-window; shadow interval; device tweaks).
+`npx vitest run src/games/tiffin-centre shared/tiffin-centre` (PowerShell): 78 files, 1798 tests passed (run on the third commit; one timing test in `scene/loader.test.js` failed
+once under load on an earlier full run and passed on the next). After the last commits `npx vitest run src/games/tiffin-centre/scene src/games/tiffin-centre/models` was rerun: all
+pass (the scene directory: 10 files, 247 tests). New: `scene/gfx-tweaks.test.js`, `scene/sky.test.js`, and about 35 new cases in `scene/quality.test.js` (scaler: CPU-bound revert,
+vsync, hitch clamp, tier budget, probe window; shadow interval; device tweaks; compile hold). `npx vite build` passes.
