@@ -1,8 +1,14 @@
 // The right-hand content of the pause menu: the wallet / time / day card, BRIEF, STATS and the controls reference.
+// Key caps are <span class="aw-key">, never <kbd>: the hub's touch stylesheet hides every <kbd> on a coarse pointer, which emptied
+// the controls reference on phones.
 import { GAMEPAD, KEYBOARD, TOUCH } from './controls.js';
+import { bootQuality, qualityIsLive, runningQuality } from './settings.js';
+import { describeQuality } from './quality.js';
 import { StarShape } from '../hud/icons.jsx';
 import { formatClock, formatDistance, groupIndian, normalizeTrip } from '../hud/hudLogic.js';
 import { summaryDistance, summaryTime } from './sitting.js';
+import { useTouchMode } from '../hud/touchMode.js';
+import { coachStepText } from '../quests/coachText.js';
 
 export function SideCard({ snap }) {
   const c = formatClock(snap.hour);
@@ -41,8 +47,9 @@ function Stars({ value, id }) {
 
 /** The mission block of the BRIEF panel (the quests agent's): the live mission or tutorial, else a pointer to the job board; plus the rank. */
 function MissionBrief({ q }) {
+  const touch = useTouchMode();
   const m = q?.active || q?.tutorial;
-  const cur = m ? m.steps[Math.min(m.stepIndex, m.steps.length - 1)] : null;
+  const cur = m ? coachStepText(m.steps[Math.min(m.stepIndex, m.steps.length - 1)], touch) : null;
   return (
     <div className="aw-quest-brief">
       {m ? (
@@ -57,7 +64,11 @@ function MissionBrief({ q }) {
           <p className="aw-quest-brief__rank">Pays <b>Rs {groupIndian(m.reward.cash)}</b> <span>+{m.reward.rep} rep</span></p>
         </>
       ) : (
-        <p className="aw-panel__empty">No mission running. Pull up at the JOB BOARD beside Mama&apos;s Garage and press E, or press Q for the quest log.</p>
+        <p className="aw-panel__empty">
+          {touch
+            ? 'No mission running. Pull up at the JOB BOARD beside Mama’s Garage and tap E, or open Quests from the More menu.'
+            : 'No mission running. Pull up at the JOB BOARD beside Mama’s Garage and press E, or press Q for the quest log.'}
+        </p>
       )}
       {q?.rank && (
         <p className="aw-quest-brief__rank">
@@ -124,8 +135,10 @@ function Stat({ label, te, value, sub }) {
       <small>
         {label} <span className="aw-te">{te}</span>
       </small>
-      <b>{value}</b>
-      {sub && <em>{sub}</em>}
+      <div className="aw-stat__row">
+        <b>{value}</b>
+        {sub && <em>{sub}</em>}
+      </div>
     </div>
   );
 }
@@ -163,7 +176,7 @@ function Legend({ title, rows }) {
             {r.keys.map((k, i) => (
               <span key={k}>
                 {i > 0 && <i> / </i>}
-                <kbd className="aw-key">{k}</kbd>
+                <span className="aw-key">{k}</span>
               </span>
             ))}
           </span>
@@ -190,6 +203,29 @@ export function ControlsPanel({ touch = false }) {
         {!touch && <Legend title="TOUCH" rows={TOUCH} />}
       </div>
     </div>
+  );
+}
+
+/** What the quality choice means right now: the tier it runs at, what Auto does, and whether a reload is needed. */
+export function qualityInfo(game, snap, setting) {
+  return describeQuality({ setting, running: runningQuality(game, snap), live: qualityIsLive(game), booted: bootQuality(game) });
+}
+
+export function DisplayPanel({ info }) {
+  return (
+    <NotePanel title="DISPLAY" te="డిస్‌ప్లే">
+      <p>
+        Quality <b>{info.headline}</b>
+        {info.running ? (
+          <>
+            {' '}&middot; running at <b>{info.running}</b>
+          </>
+        ) : null}
+      </p>
+      {info.lines.map((l) => (
+        <p key={l}>{l}</p>
+      ))}
+    </NotePanel>
   );
 }
 

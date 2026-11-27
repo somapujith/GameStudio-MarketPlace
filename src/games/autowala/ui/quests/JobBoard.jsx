@@ -157,7 +157,7 @@ export default function JobBoard({ game, snap }) {
         </div>
         {offer && <Actions className="aw-quest-actions aw-quest-actions--bar aw-sheet-bar" blocked={blocked} take={take} close={close} />}
         <p className="aw-quest-footnote">
-          <kbd className="aw-key">Enter</kbd> take the job &nbsp; <kbd className="aw-key">Esc</kbd> close
+          <span className="aw-key">Enter</span> take the job &nbsp; <span className="aw-key">Esc</span> close
         </p>
       </div>
     </div>

@@ -28,6 +28,9 @@ export function PlateCard({ plate, style }) {
   );
 }
 
+// the long labels do not fit three columns on a phone held sideways, so the compact card shows these instead (see workshop.css)
+const SHORT_LABEL = { top: 'Top speed', accel: 'Accel.', braking: 'Brakes' };
+
 export function StatsCard({ bars, title }) {
   return (
     <div className="aw-ws-card-body">
@@ -37,7 +40,10 @@ export function StatsCard({ bars, title }) {
           const up = b.nextFrac != null && b.nextFrac > b.frac + 1e-6;
           return (
             <li key={b.id} className="aw-ws-stat">
-              <span className="aw-ws-stat-label">{b.label}</span>
+              <span className="aw-ws-stat-label" aria-hidden="true">
+                <span className="aw-ws-long">{b.label}</span>
+                <span className="aw-ws-short">{SHORT_LABEL[b.id] || b.label}</span>
+              </span>
               <span className="aw-ws-stat-track" aria-hidden="true">
                 <span className="aw-ws-stat-fill" style={{ width: `${b.frac * 100}%` }} />
                 {up && <span className="aw-ws-stat-gain" style={{ left: `${b.frac * 100}%`, width: `${(b.nextFrac - b.frac) * 100}%` }} />}

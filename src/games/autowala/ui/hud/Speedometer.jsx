@@ -1,4 +1,5 @@
-// Bottom-right gauge cluster: an arc speedometer (big italic km/h), the CNG fuel gauge and the drift / boost charge bar.
+// Gauge cluster: an arc speedometer (big italic km/h), the CNG fuel gauge and the drift / boost charge bar. `pod` (landscape phones and
+// tablets) is the slim bottom-centre version: a small dial with the speed inside, the fuel cells and the charge bar beside it.
 import { memo } from 'react';
 import { BoltIcon, FuelIcon } from './icons.jsx';
 import { GAUGE_MAX_KMH, fuelSegments, fuelTone, speedFraction } from './hudLogic.js';
@@ -68,12 +69,12 @@ function FuelBar({ fuel, litres }) {
   );
 }
 
-function Speedometer({ snap, compact, sign }) {
+function Speedometer({ snap, compact, pod, sign }) {
   const kmh = Math.max(0, Math.round(snap.kmh || 0));
   const charge = Math.max(0, Math.min(1, snap.driftCharge || 0));
   const f = fuelTone(snap.fuel);
   return (
-    <div className={`aw-sp ${compact ? 'aw-sp--compact' : ''} ${snap.boosting ? 'is-boosting' : ''} ${snap.drifting ? 'is-drifting' : ''}`} data-max={GAUGE_MAX_KMH}>
+    <div className={`aw-sp ${compact ? 'aw-sp--compact' : ''} ${pod ? 'aw-sp--pod' : ''} ${snap.boosting ? 'is-boosting' : ''} ${snap.drifting ? 'is-drifting' : ''}`} data-max={GAUGE_MAX_KMH}>
       {f.pulse && <div className="aw-sp-warn" role="alert">{f.label}</div>}
       <LimitSign sign={sign} />
       <div className="aw-sp-wrap">
