@@ -43,6 +43,7 @@ const START = async (c) => {
   await c.waitFor('!!window.__autowala', 60000);
   const startMs = Date.now() - t0;
   await c.ev("window.__gfxForBench = () => window.__autowala.gfx.renderer; true");
+  if (!args['keep-sampler']) await c.ev('window.__autowala.gfx.autoTier = false; true'); // builds with the frame-time sampler: hold the tier asked for
   await c.ev('window.__autowala.debug.drive({ throttle: 1 }); true');
   return startMs;
 };
@@ -166,6 +167,44 @@ async function drawsplit(c) {
   })()`);
 }
 
+/** GPU time per pass from EXT_disjoint_timer_query_webgl2 timestamps: shadow pass, scene pass, each post pass (average ms over `--seconds`). */
+async function gpuTimes(c) {
+  if (args.poi) await pin(c, String(args.poi), +(args.hour || 18), +(args.weather || 0));
+  return c.ev(`(async () => {
+    const g = window.__autowala.gfx; const R = g.renderer; const gl = R.getContext();
+    const ext = gl.getExtension('EXT_disjoint_timer_query_webgl2');
+    if (!ext) return { error: 'no timer query' };
+    const frames = []; let cur = null; let n = 0;
+    const stamp = (label) => { const q = gl.createQuery(); ext.queryCounterEXT(q, ext.TIMESTAMP_EXT); cur.push({ label, q }); };
+    const sm = R.shadowMap; const sr = sm.render.bind(sm);
+    sm.render = (...a) => { const nb = R.info.render.calls; stamp('pre-shadow'); sr(...a); stamp('shadow'); };
+    const r0 = R.render.bind(R);
+    R.render = (s, cam) => { stamp('pre-pass' + n); r0(s, cam); stamp('pass' + n); n++; };
+    const gr = g.render.bind(g);
+    g.render = (dt) => { cur = []; n = 0; stamp('frame-start'); gr(dt); stamp('frame-end'); frames.push(cur); };
+    await new Promise((res) => setTimeout(res, ${SEC} * 1000));
+    g.render = gr; R.render = r0; sm.render = sr;
+    await new Promise((res) => setTimeout(res, 600));
+    const sums = new Map(); let counted = 0; let disjoint = gl.getParameter(ext.GPU_DISJOINT_EXT);
+    for (const f of frames) {
+      if (!f.every((s) => gl.getQueryParameter(s.q, gl.QUERY_RESULT_AVAILABLE))) continue;
+      counted++;
+      let prev = null; let shadowStart = null;
+      for (const s of f) {
+        const t = Number(gl.getQueryParameter(s.q, gl.QUERY_RESULT)) / 1e6;
+        if (s.label === 'pre-shadow') shadowStart = t;
+        else if (s.label === 'shadow' && shadowStart !== null) sums.set('shadow', (sums.get('shadow') || 0) + (t - shadowStart));
+        else if (s.label.startsWith('pass') && prev && prev.label === 'pre-pass' + s.label.slice(4)) sums.set(s.label, (sums.get(s.label) || 0) + (t - prev.t));
+        else if (s.label === 'frame-end') sums.set('total', (sums.get('total') || 0) + (t - f.start));
+        if (s.label === 'frame-start') f.start = t;
+        prev = { label: s.label, t };
+      }
+    }
+    const out = {}; for (const [k, v] of sums) out[k] = +(v / Math.max(1, counted)).toFixed(2);
+    return { frames: frames.length, counted, disjoint: !!disjoint, ms: out };
+  })()`);
+}
+
 /** The scene graph at a glance: every top-level child with its mesh / instanced / triangle counts and who owns it (by userData / name). */
 async function sceneMap(c) {
   return c.ev(`(() => {
@@ -179,6 +218,28 @@ async function sceneMap(c) {
   })()`);
 }
 
+/** Same numbers as bench.mjs (uncapped rAF frame times, long tasks, counters) plus the gfx.cost of the last frame, a CPU profile and a screenshot. */
+async function bench(c) {
+  await c.ev(`window.__bootLongs = []; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__bootLongs.push(e.duration); }).observe({ entryTypes: ['longtask'] }); } catch {} true`);
+  await c.sleep(WARM * 1000);
+  const profile = args.profile ? await c.cpuProfile(Math.min(6000, SEC * 1000), 14) : null;
+  const m = await c.ev(`(async () => {
+    const g = window.__autowala.gfx; const R = g.renderer;
+    const dts = []; const longs = [];
+    try { new PerformanceObserver((l) => { for (const e of l.getEntries()) longs.push(e.duration); }).observe({ entryTypes: ['longtask'] }); } catch {}
+    let last = performance.now(); const end = last + ${SEC} * 1000;
+    await new Promise((res) => { const f = (n) => { dts.push(n - last); last = n; if (n < end) requestAnimationFrame(f); else res(); }; requestAnimationFrame(f); });
+    dts.shift(); const s = dts.slice().sort((a, b) => a - b); const q = (p) => +s[Math.min(s.length - 1, Math.floor(s.length * p))].toFixed(2);
+    const mean = dts.reduce((a, b) => a + b, 0) / Math.max(1, dts.length);
+    return { tier: g.quality, scale: g.scale, pr: R.getPixelRatio(), canvas: [R.domElement.width, R.domElement.height], fps: +(1000 / mean).toFixed(1), meanMs: +mean.toFixed(2), p50: q(0.5), p95: q(0.95), p99: q(0.99), maxMs: +s[s.length - 1].toFixed(1), frames: dts.length,
+      hitches50: dts.filter((d) => d > 50).length, hitchMs: Math.round(dts.filter((d) => d > 50).reduce((a, b) => a + b, 0)), longTasks: longs.length,
+      cost: g.cost ? { ...g.cost } : { calls: R.info.render.calls, triangles: R.info.render.triangles, programs: R.info.programs.length }, geometries: R.info.memory.geometries, textures: R.info.memory.textures,
+      heapMB: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : null };
+  })()`);
+  const boot = await c.ev('({ n: window.__bootLongs.length, ms: Math.round(window.__bootLongs.reduce((a, b) => a + b, 0)), worst: Math.round(Math.max(0, ...window.__bootLongs)) })');
+  if (args.shot && args.shot !== true) await c.shot(String(args.shot));
+  return { ...m, boot, profile };
+}
 const LEGS = [
   ['charminar', 12, 0], ['charminar', 19.2, 0], ['cyber', 22.5, 0], ['cyber', 12, 1], ['birla', 19, 0], ['golconda', 23, 0], ['airport', 8, 0], ['paradise', 21, 0],
   ['stadium', 22, 1], ['station', 17.6, 0], ['mecca', 12, 0], ['garage', 5, 0], ['cng_north', 15, 0.6], ['hospital', 0.5, 0],
@@ -202,25 +263,33 @@ async function tour(c) {
   return { sum, rows };
 }
 
+/**
+ * Fixed pictures for before / after comparisons (same camera, hour, weather). The camera stands on the road in front of a landmark
+ * (`dist` m from its centre, `h` m up) and looks at a point `aim` m above its centre; `cam: null` = the game's own chase camera.
+ */
 const SHOTS = [
-  { name: 'day-street', cam: { x: 150, y: 3.2, z: 255, yaw: Math.PI, pitch: -0.05, fov: 62 }, hour: 12, weather: 0 },
-  { name: 'day-charminar', cam: { x: 150, y: 9, z: 300, yaw: Math.PI, pitch: 0.05, fov: 62 }, hour: 10, weather: 0, poi: 'charminar', dist: 62, up: 10 },
-  { name: 'dusk-city', cam: { x: 0, y: 30, z: 0, yaw: 0.6, pitch: -0.22, fov: 62 }, hour: 18.6, weather: 0, poi: 'cyber', dist: 95, up: 22 },
-  { name: 'night-street', cam: { x: 0, y: 4, z: 0, yaw: 0, pitch: -0.05, fov: 62 }, hour: 22.2, weather: 0, poi: 'paradise', dist: 30, up: 5 },
-  { name: 'night-lake', cam: { x: 0, y: 6, z: 0, yaw: 0, pitch: -0.08, fov: 62 }, hour: 21.5, weather: 0, poi: 'birla', dist: 70, up: 9 },
-  { name: 'rain-night', cam: { x: 0, y: 4, z: 0, yaw: 0, pitch: -0.05, fov: 62 }, hour: 21, weather: 1, poi: 'charminar', dist: 40, up: 6 },
-  { name: 'rain-day', cam: { x: 0, y: 4, z: 0, yaw: 0, pitch: -0.05, fov: 62 }, hour: 14, weather: 1, poi: 'station', dist: 45, up: 6 },
-  { name: 'auto-close', cam: null, hour: 17.8, weather: 0, poi: 'garage' },
+  { name: 'day-street', poi: 'garage', hour: 12, weather: 0, cam: null },
+  { name: 'day-charminar', poi: 'charminar', hour: 10, weather: 0, dist: 70, h: 6, aim: 14 },
+  { name: 'dusk-cyber', poi: 'cyber', hour: 18.6, weather: 0, dist: 120, h: 14, aim: 40 },
+  { name: 'night-paradise', poi: 'paradise', hour: 22.2, weather: 0, dist: 40, h: 4.5, aim: 6 },
+  { name: 'night-birla', poi: 'birla', hour: 21.5, weather: 0, dist: 85, h: 9, aim: 16 },
+  { name: 'rain-night', poi: 'charminar', hour: 21, weather: 1, dist: 48, h: 4.5, aim: 12 },
+  { name: 'rain-day', poi: 'station', hour: 14, weather: 1, dist: 55, h: 5, aim: 10 },
+  { name: 'auto-close', poi: 'garage', hour: 17.8, weather: 0, cam: null },
 ];
+const HIDE_HUD = "(() => { const s = document.createElement('style'); s.textContent = '.aw > *:not(.aw-canvas) { display: none !important; }'; document.head.appendChild(s); return true; })()";
 
 async function shots(c) {
   fs.mkdirSync(dir, { recursive: true });
+  await c.ev(HIDE_HUD);
   const out = [];
   for (const s of SHOTS) {
-    await c.ev(`(() => { const g = window.__autowala; g.debug.drive(null); const p = g.world.city.poiById[${JSON.stringify(s.poi || 'charminar')}]; const f = p.front || p;
+    await c.ev(`(() => { const g = window.__autowala; g.debug.drive(null); const p = g.world.city.poiById[${JSON.stringify(s.poi)}]; const f = p.front || p;
       g.debug.teleport(f.x, f.z, 0);
       g.debug.hour(${s.hour}); g.debug.weather(${s.weather});
-      ${s.cam ? `const cx = p.x, cz = p.z + ${s.dist || 0}; g.debug.cam({ x: cx + ${s.cam.x && !s.poi ? s.cam.x : 0}, y: ${s.up ? s.up : s.cam.y}, z: ${s.poi ? 'cz' : s.cam.z}, yaw: ${s.cam.yaw}, pitch: ${s.cam.pitch}, fov: ${s.cam.fov} });` : 'g.debug.cam(null);'} return true; })()`);
+      ${s.cam === null ? 'g.debug.cam(null);' : `{ let dx = f.x - p.x, dz = f.z - p.z; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+        const cx = p.x + dx * ${s.dist}, cz = p.z + dz * ${s.dist}; const hd = Math.hypot(p.x - cx, p.z - cz);
+        g.debug.cam({ x: cx, y: ${s.h}, z: cz, yaw: Math.atan2(p.x - cx, p.z - cz), pitch: Math.atan2(${s.aim} - ${s.h}, hd), fov: 62 }); }`} return true; })()`);
     await c.sleep(2500);
     const file = path.join(dir, `${label}-${s.name}.jpg`);
     await c.shot(file);
@@ -228,7 +297,6 @@ async function shots(c) {
   }
   return out;
 }
-
 async function run() {
   const c = await launch({ port, w: W, h: H, gl: args.soft ? SOFT_FLAGS : GPU_FLAGS });
   try {
@@ -247,6 +315,9 @@ async function run() {
     else if (cmd === 'exp') result = await exp(c);
     else if (cmd === 'draws') result = await drawsplit(c);
     else if (cmd === 'scene') result = await sceneMap(c);
+    else if (cmd === 'gpu') result = await gpuTimes(c);
+    else if (cmd === 'bench') result = await bench(c);
+    else if (cmd === 'eval') result = await c.ev(String(args.js)); // --js "<expression>": anything in the page (may be async)
     else if (cmd === 'boot') result = await c.ev('({ boot: window.__autowalaBoot && window.__autowalaBoot.ms, longs: window.__bootLongs, programs: window.__autowala.gfx.renderer.info.programs.length, world: window.__autowala.world.timings, sys: window.__autowala.boot && window.__autowala.boot.systems, compile: window.__autowala.boot && window.__autowala.boot.compile })');
     const info = await c.ev('({ tier: window.__autowala.gfx.quality, gpu: (() => { const gl = window.__autowala.gfx.renderer.getContext(); const e = gl.getExtension("WEBGL_debug_renderer_info"); return e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : "?"; })(), timer: !!window.__autowala.gfx.renderer.getContext().getExtension("EXT_disjoint_timer_query_webgl2") })');
     return { label, cmd, tierAsked: tier || 'auto', viewport: `${W}x${H}@${DPR}`, startMs, ...info, errors: c.logs.filter((l) => !/GL Driver|GPU stall|ReadPixels|AudioContext|api\/(config|me)|Failed to load resource/.test(l)).slice(0, 8), result };
