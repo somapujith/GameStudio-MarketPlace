@@ -2,6 +2,7 @@
 // plain traffic auto. A node canvas stub stands in for the DOM.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DEFAULT_LOADOUT } from '../gameplay/catalog.js';
+import { UBER_GROUPS } from './auto-uber.js';
 
 function ctx2d() {
   let font = '12px x';
@@ -101,6 +102,17 @@ describe('auto model budget', () => {
     p.traverse((o) => {
       if (o.isMesh) expect(o.geometry.attributes.position.count, o.name).toBeGreaterThan(0);
     });
+    // the player's merged meshes hold every part of their group: the vertex count is the sum of the slots (flat and canopy bakes)
+    for (const canopy of [false, true]) {
+      const s = build.autoGeometries(true, canopy);
+      const sum = (names, suffix = '') => names.reduce((n, k) => n + (s[k + suffix] ? s[k + suffix].attributes.position.count : 0), 0);
+      expect(s.uber.attributes.position.count).toBe(sum(UBER_GROUPS.body));
+      expect(s.wheel.attributes.position.count).toBe(sum(UBER_GROUPS.wheel));
+      expect(s.wheelR.attributes.position.count).toBe(sum(UBER_GROUPS.wheel, 'R'));
+      expect(s.decal.attributes.position.count).toBe(sum(UBER_GROUPS.decal));
+      for (const k of ['uber', 'wheel', 'wheelR', 'decal']) expect(s[k].attributes.aSlot, k).toBeTruthy();
+      for (const k of [...UBER_GROUPS.body, ...UBER_GROUPS.decal]) expect(s[k], k).toBeTruthy();
+    }
   });
 
   it('reports and bounds the triangles and draw calls', () => {
@@ -114,8 +126,10 @@ describe('auto model budget', () => {
     expect(player.tris).toBeLessThanOrEqual(9000);
     expect(loaded.tris).toBeLessThanOrEqual(9000);
     expect(traffic.calls).toBeLessThanOrEqual(14);
-    expect(player.calls).toBeLessThanOrEqual(27);
-    expect(loaded.calls).toBeLessThanOrEqual(64);
+    // the player's rig: paint, the merged body (sim/auto-uber.js), the decals, two wheel sets, the windscreen, the driver, the stock bumper
+    expect(player.calls).toBeLessThanOrEqual(8);
+    // fully loaded: the same + the patterned seat stand-in, the LED cover, the stripes, the apron and the bolt-on props (their own materials)
+    expect(loaded.calls).toBeLessThanOrEqual(47);
     // only the big shell parts (tub, roof) and the driver cast shadows, however the auto is dressed
     expect(player.casters).toBeLessThanOrEqual(3);
     expect(loaded.casters).toBeLessThanOrEqual(3);
