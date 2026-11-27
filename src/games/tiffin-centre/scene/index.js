@@ -662,7 +662,8 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     stop() {
       loop.stop();
     },
-    dispose() {
+    /** `loseContext: false` when the SAME canvas is about to host the next scene (Apply now, a new session): a force-lost context cannot be drawn with again. */
+    dispose({ loseContext = !import.meta.env?.DEV } = {}) {
       if (disposed) return;
       disposed = true;
       api.stop();
@@ -694,7 +695,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
       lightApply.dispose();
       gfx.dispose();
       // hand the GPU memory back now, not whenever the canvas happens to be collected (not in dev: StrictMode re-mounts onto the very same canvas)
-      if (!import.meta.env?.DEV) {
+      if (loseContext) {
         try {
           gfx.renderer.forceContextLoss?.();
         } catch {

@@ -92,6 +92,16 @@ export default function AutowalaGame() {
     return () => ro.disconnect();
   }, [touch]);
 
+  // True only once this component is really leaving (declared before the game effect, so its cleanup runs first on unmount but never on a rebuild): the game
+  // hands its GPU context back then. A rebuild (the player signs in, userId changes) reuses the same <canvas>, and a force-lost context cannot be drawn with again.
+  const unmounting = useRef(false);
+  useEffect(() => {
+    unmounting.current = false;
+    return () => {
+      unmounting.current = true;
+    };
+  }, []);
+
   useEffect(() => {
     let g = null;
     let ro = null;
@@ -112,7 +122,7 @@ export default function AutowalaGame() {
         );
         await fonts;
         if (dead) {
-          g.dispose(); // the player left while it was loading
+          g.dispose({ loseContext: unmounting.current }); // the player left (or the game is being rebuilt) while it was loading
           return;
         }
       } catch (err) {
@@ -136,7 +146,7 @@ export default function AutowalaGame() {
     return () => {
       dead = true;
       ro?.disconnect();
-      g?.dispose();
+      g?.dispose({ loseContext: unmounting.current });
       if (window.__autowala === g) delete window.__autowala;
     };
   }, [userId, store]);

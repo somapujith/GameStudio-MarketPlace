@@ -107,7 +107,8 @@ the line. The head can also be turned freely (drag on empty space, or Q/E and ar
 - **Co-op win credit:** `result()`: everyone on the team gets rank 1 when stars >= 1 (rank = player count when 0 stars); `winnerId` = top earner (most
   collected money) on success, `null` on failure (the headline and the match row's `winner_id`); `score` of each player = money they collected.
   **`winners` = EVERY seat that did real work on a cleared shift** (`scoring.js` `winnersOf`): `workOf(stats) = served + collected + cooked + prepped + tended +
-  gasSwaps + bought > 0` and at least one customer paid. `match.js` credits each of them with the win (+60 XP, +140 coins, `wins + 1`), so a cook who never collected a rupee
+  gasSwaps + bought` is at least `WIN_MIN_WORK` (3) and at least a tenth of the team's total work (so a second account that buys one ingredient and idles
+  is not paid as a winner), and at least one customer paid. `match.js` credits each of them with the win (+60 XP, +140 coins, `wins + 1`), so a cook who never collected a rupee
   or a prep hand wins with the team; a seat that stood by wins nothing and is paid nothing (`stats.idle`). `cooked` counts a dish when it reaches somebody's hands (`take`
   credits the player who started it, `slot.by`); a burnt dish, or one cleared off the counter, never counts, so cooking food nobody takes is not a way to be paid.
 
