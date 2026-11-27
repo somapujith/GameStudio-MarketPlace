@@ -601,7 +601,7 @@ export function createStall({ scene, art, tr, quality, onPropCreated }) {
     used.forEach((gp, i) => {
       const m = T(new ShaderMaterial({
         uniforms: { ...shaftU, uSeed: { value: i * 1.7 }, uStrength: shaftU.uStrength, uColor: shaftU.uColor, uTime: shaftU.uTime },
-        vertexShader: SHAFT_VERT, fragmentShader: SHAFT_FRAG, transparent: true, depthWrite: false, blending: AdditiveBlending, side: DoubleSide, fog: false,
+        vertexShader: SHAFT_VERT, fragmentShader: SHAFT_FRAG, transparent: true, forceSinglePass: true, depthWrite: false, blending: AdditiveBlending, side: DoubleSide, fog: false,
       }));
       const mesh = new Mesh(shaftGeo, m);
       const zRoof = 0.3 + (i - 2) * 0.55;

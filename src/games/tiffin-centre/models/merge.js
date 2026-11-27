@@ -54,7 +54,7 @@ const noMergeAbove = (o) => {
 };
 
 const isCandidate = (o) => {
-  if (!o.isMesh || o.isSkinnedMesh || o.isInstancedMesh) return false;
+  if (!o.isMesh || o.isSkinnedMesh || o.isInstancedMesh || o.isBatchedMesh) return false;
   if (Array.isArray(o.material) || !o.material || noMergeAbove(o)) return false;
   const g = o.geometry;
   if (!g || !g.attributes?.position) return false;
@@ -490,7 +490,7 @@ export function createShadowProxy(roots, { isStatic = () => false, layer = SHADO
   for (const root of Array.isArray(roots) ? roots : [roots]) {
     root.updateMatrixWorld(true);
     root.traverse((o) => {
-      if (!o.isMesh || !o.castShadow || o.isSkinnedMesh || o.isInstancedMesh || !isStatic(o) || !worldVisible(o)) return;
+      if (!o.isMesh || !o.castShadow || o.isSkinnedMesh || o.isInstancedMesh || o.isBatchedMesh || !isStatic(o) || !worldVisible(o)) return;
       const m = o.material;
       const g = o.geometry;
       if (!m || Array.isArray(m) || !g?.attributes?.position || m.isShaderMaterial || m.alphaTest > 0 || m.alphaMap || m.displacementMap) return;

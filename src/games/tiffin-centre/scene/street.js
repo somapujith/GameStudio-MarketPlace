@@ -11,6 +11,7 @@ import {
 import * as models from '../models/index.js';
 import { createKit, shade } from './kit.js';
 import { createVehicleKit } from './street-vehicles.js';
+import { createInstanceBatch } from './street-batch.js';
 import { mulberry } from './textures.js';
 import { smoothstep, clamp } from './interp.js';
 
@@ -425,29 +426,31 @@ export function createStreet({ scene, art, tr, quality }) {
   };
   bodyMat.customProgramCacheKey = () => 'tc-tintmask';
   const lightMat = T(new MeshBasicMaterial({ vertexColors: true, color: 0x333333 }));
-  const mk = (g, n) => {
-    const out = [];
-    if (g.body) {
-      const m = new InstancedMesh(g.body, bodyMat, n);
-      m.instanceMatrix.setUsage(DynamicDrawUsage);
-      m.frustumCulled = false;
-      m.castShadow = false;
-      root.add(m);
-      out.push(m);
-    } else out.push(null);
-    if (g.lights) {
-      const m = new InstancedMesh(g.lights, lightMat, n);
-      m.instanceMatrix.setUsage(DynamicDrawUsage);
-      m.frustumCulled = false;
-      root.add(m);
-      out.push(m);
-    } else out.push(null);
-    return out;
-  };
   const nv = quality.vehicles;
   const counts = { auto: Math.max(2, Math.round(nv * 0.3)), bike: Math.max(2, Math.round(nv * 0.35)), car: Math.max(1, Math.round(nv * 0.2)), bus: nv >= 12 ? 2 : 1, bicycle: nv >= 8 ? 2 : 1 };
+  const parkedList = [[2.3, -4.7, 1.25], [3.0, -4.5, 1.9], [-3.9, -4.9, 0.4], [-11.2, -4.6, 1.3], [8.8, -5.0, 1.6], [14, -4.9, 0.9]];
+  const nWalk = Math.max(2, quality.walkers);
+  // Every vehicle kind, the parked scooters and the pedestrians' torsos and legs share ONE body material (and every lamp part one lamp material): a BatchedMesh draws
+  // all the bodies in one multi-draw call and all the lamps in another, instead of a body and a lamp InstancedMesh per kind in view (18 draws at medium).
+  // `inst[kind]` / `parked` / `torso` ... are slots with the InstancedMesh calls this file makes (setMatrixAt, setColorAt, instanceMatrix.needsUpdate).
+  const bodyParts = [];
+  const lightParts = [];
+  const where = {};
+  const addKind = (key, g, n) => {
+    where[key] = [g.body ? bodyParts.push({ geometry: g.body, count: n }) - 1 : -1, g.lights ? lightParts.push({ geometry: g.lights, count: n }) - 1 : -1];
+  };
+  for (const t of Object.keys(counts)) addKind(t, geos[t], counts[t]);
+  addKind('parked', geos.bikeParked, parkedList.length);
+  const torsoAt = bodyParts.push({ geometry: geos.torso.body, count: nWalk }) - 1;
+  const legLAt = bodyParts.push({ geometry: geos.leg.body, count: nWalk }) - 1;
+  const legRAt = bodyParts.push({ geometry: geos.leg.body, count: nWalk }) - 1;
+  const bodyBatch = createInstanceBatch(bodyMat, bodyParts);
+  const lightBatch = lightParts.length ? createInstanceBatch(lightMat, lightParts) : null;
+  root.add(bodyBatch.mesh);
+  if (lightBatch) root.add(lightBatch.mesh);
+  const slotsOf = (key) => [where[key][0] >= 0 ? bodyBatch.slots[where[key][0]] : null, where[key][1] >= 0 ? lightBatch.slots[where[key][1]] : null];
   const inst = {};
-  for (const t of Object.keys(counts)) inst[t] = mk(geos[t], counts[t]);
+  for (const t of Object.keys(counts)) inst[t] = slotsOf(t);
   const vcol = { auto: ['#f2c21a', '#2f8a4a', '#f2c21a', '#e8e0d0'], bike: ['#c4402a', '#2a62c4', '#e8e0d0', '#444a52', '#2f8a4a'], car: ['#e8e8e8', '#9aa0a4', '#8a2a2a', '#2a3a5a', '#d8d4c8'], bus: ['#c8402a', '#e8e4d8', '#2a6a9a'], bicycle: ['#e8e0d0', '#c4402a'] };
   const vehicles = [];
   const speedMul = { auto: 1, bike: 1.2, car: 1.05, bus: 0.8, bicycle: 0.45 };
@@ -473,8 +476,7 @@ export function createStreet({ scene, art, tr, quality }) {
     mesh.setMatrixAt(i, dummy.matrix);
   };
   // parked scooters on the near footpath (static) and along the far kerb
-  const parkedList = [[2.3, -4.7, 1.25], [3.0, -4.5, 1.9], [-3.9, -4.9, 0.4], [-11.2, -4.6, 1.3], [8.8, -5.0, 1.6], [14, -4.9, 0.9]];
-  const parked = mk(geos.bikeParked, parkedList.length);
+  const parked = slotsOf('parked');
   parkedList.forEach(([x, z, ry], i) => {
     setInst(parked[0], i, x, FP, z, ry, 0, 1.0);
     parked[0].setColorAt(i, tmp.set(['#c4402a', '#2a62c4', '#e8e0d0', '#2f8a4a', '#444a52', '#e8c040'][i % 6]));
@@ -483,10 +485,9 @@ export function createStreet({ scene, art, tr, quality }) {
   for (const m of parked) if (m) { m.instanceMatrix.needsUpdate = true; m.frustumCulled = false; }
   if (parked[0].instanceColor) parked[0].instanceColor.needsUpdate = true;
   // pedestrians
-  const nWalk = Math.max(2, quality.walkers);
-  const torso = new InstancedMesh(geos.torso.body, bodyMat, nWalk);
-  const legL = new InstancedMesh(geos.leg.body, bodyMat, nWalk);
-  const legR = new InstancedMesh(geos.leg.body, bodyMat, nWalk);
+  const torso = bodyBatch.slots[torsoAt];
+  const legL = bodyBatch.slots[legLAt];
+  const legR = bodyBatch.slots[legRAt];
   const shirt = ['#9a4a3a', '#3a5a82', '#d8d2c0', '#4a6a4a', '#c0a050', '#6a4a7a', '#b86a3a', '#4a4a52', '#b8848c', '#bdb8a8'];
   const pants = ['#2a2a34', '#3a3a52', '#4a3a2a', '#cfc8b8', '#2a3a2a', '#1c1c1e'];
   const walkers = [];
@@ -496,11 +497,6 @@ export function createStreet({ scene, art, tr, quality }) {
     torso.setColorAt(i, tmp.set(shirt[i % shirt.length]));
     legL.setColorAt(i, tmp.set(pants[i % pants.length]));
     legR.setColorAt(i, tmp.set(pants[i % pants.length]));
-  }
-  for (const m of [torso, legL, legR]) {
-    m.instanceMatrix.setUsage(DynamicDrawUsage);
-    m.frustumCulled = false;
-    root.add(m);
   }
   // umbrellas over the pedestrians when it rains (L.rain): a dome of bright cloth on a stick, tilted a little, one per walker, opened in turn
   const umbGeo = T(new ConeGeometry(0.5, 0.24, 14, 1, true).translate(0, 0.12, 0));
@@ -741,7 +737,7 @@ export function createStreet({ scene, art, tr, quality }) {
   function dispose() {
     scene.remove(root);
     for (const p of props) p.dispose?.();
-    for (const m of [city, torso, legL, legR, umbrellas, umbSticks, birds, shadows, parked[0], parked[1], ...Object.values(inst).flat()]) m?.dispose?.();
+    for (const m of [city, umbrellas, umbSticks, birds, shadows, bodyBatch.mesh, lightBatch?.mesh]) m?.dispose?.();
   }
 
   return { root, update, setLight, dispose, STREET };

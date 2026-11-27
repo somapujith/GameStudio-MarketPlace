@@ -530,9 +530,10 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
   // "no shader program is compiled in play": the programs the renderer holds when the loading screen goes are the whole set (scene.debug.reveal lists any that appear later)
   const revealWatch = createRevealWatch(() => gfx.renderer.info.programs);
   let settledAtLoad = false; // the scene itself was compiled behind the loading screen (settleFirstFrame): only the extras (one of each dish) are left
+  let preloadedAtLoad = false; // medium / high: the load also built and drew one of everything (sync.preload, withEverythingDrawn): nothing is left to warm in play
   const warmShaders = () => {
     // the load built, compiled and DREW everything behind the loading screen (settleFirstFrame, sync.preload): nothing is left to warm in play
-    if (!stateSeen || (batcher && !batcher.done) || disposed || settledAtLoad) return;
+    if (!stateSeen || (batcher && !batcher.done) || disposed || (settledAtLoad && preloadedAtLoad)) return;
     if (!warmer) {
       if (++warmFrames < 30) return;
       warmStartedAt = performance.now();
@@ -827,7 +828,10 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     mark('tc:state-applied');
     // one of everything the game builds lazily (the weather, the events' props, the inspector, the rider and his scooter, a parcel bag, a regular's star, a plate of
     // every dish, every tool of the cook's hands) is built now, hidden: a model build mid-shift is a 10 to 25 ms hitch and its programs a 25 to 120 ms compile (sync.preload)
-    if (sync.preload) {
+    // Only the tiers with heavy programs (medium, high: shadows, lights, 85 KB fragment shaders, 25 to 120 ms a compile in play): lite and low link 14 small programs and
+    // upload 800 geometries for nothing they ever stutter on (measured: lite warm load 2.1 -> 3.3 s, one 1.4 to 1.9 s task), so they keep the old flow and its post-reveal warm-up.
+    preloadedAtLoad = (gfx.cfg.shadow || 0) > 0;
+    if (preloadedAtLoad && sync.preload) {
       for (const label of sync.preload()) {
         void label;
         yield step('shaders', 0.9);
@@ -895,11 +899,16 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     } catch {
       /* no shadow map on this tier */
     }
-    withEverythingDrawn(scene, () => gfx.render(0.016));
-    mark('tc:first-render');
-    // and a normal one: the picture the player sees first
-    gfx.render(0.016);
-    mark('tc:first-render-2');
+    if (preloadedAtLoad) {
+      withEverythingDrawn(scene, () => gfx.render(0.016));
+      mark('tc:first-render');
+      // and a normal one: the picture the player sees first
+      gfx.render(0.016);
+      mark('tc:first-render-2');
+    } else {
+      gfx.render(0.016); // uploads, the shadow-pass and post programs: behind the loading screen, not in the first frame
+      mark('tc:first-render');
+    }
     // what the first real frame still had to build (should be the shadow-pass and post programs only): kept for scene.debug.settle
     const added = gfx.renderer.info.programs.filter((x) => !known.has(x.id));
     settleInfo = { linked: progs.length, builtByFirstRender: added.length, names: added.map((x) => x.name || x.cacheKey?.slice(0, 40) || '?') };
