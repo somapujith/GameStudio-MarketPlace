@@ -111,10 +111,12 @@ export function buildMetro(scene, city, colliders, shared, sky) {
       const mesh = new InstancedMesh(geo, mat, tile.length);
       tile.forEach((it, i) => {
         fill(mesh.instanceMatrix.array, i * 16, it);
-        if (tinted) mesh.setColorAt(i, col.set(it.color));
+        // every set carries an instance colour (white where it is not tinted: aTint is 0 there): whether an object has one is part of the program key,
+        // and the deck, the caps, the pillars and the beams are then ONE program instead of two
+        mesh.setColorAt(i, col.set(tinted ? it.color : 0xffffff));
       });
       mesh.instanceMatrix.needsUpdate = true;
-      if (tinted && mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       mesh.castShadow = shadow;
       mesh.receiveShadow = true;
       mesh.frustumCulled = true;

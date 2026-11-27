@@ -769,7 +769,7 @@ export function installFares(ctx) {
           bestPick = d;
           pickCand = c;
         }
-        const show = d < 520;
+        const show = d < 300; // (was 520: a customer is ~5 px tall at 300 m and every visible one is a skinned draw of ~15 GL calls; their markers are separate)
         c.rig.visible = show;
         if (show) poseWave(c.rig, clockT, clamp(1 - d / 70, 0, 1), c.patience < 0.25 ? 1 - c.patience / 0.25 : 0);
       }
