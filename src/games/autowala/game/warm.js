@@ -257,7 +257,7 @@ export function createWarmer({ renderer, scene, camera, getTarget = () => null, 
    * still linking (keeps the driver from flooding in the middle of a game). `pause`: how a break is taken.
    * Resolves 'done' | 'cached' | 'cancelled'.
    */
-  async function warm(recipe = null, { budgetMs = 8, maxPending = Infinity, batch = 1e9, pause = frameBreak, ready = () => true } = {}) {
+  async function warm(recipe = null, { budgetMs = 8, maxPending = Infinity, batch = 1e9, pause = frameBreak, ready = () => true, depth = true } = {}) {
     const r = recipe || recipeOf(scene);
     const key = recipeKey(r);
     // incremental: what this light set has compiled already is remembered, so a second call (objects were added to the scene meanwhile)
@@ -266,7 +266,7 @@ export function createWarmer({ renderer, scene, camera, getTarget = () => null, 
     variants.set(key, variant);
     // the camera pass's programs, then (where the sun casts shadows) the shadow pass's: `compile` object = the part itself, or a depth stand-in
     const jobs = compileParts(scene).filter((p) => !variant.parts.has(partKey(p))).map((p) => ({ id: partKey(p), object: p }));
-    if (r.shadow && shadowPass) for (const d of depthParts(scene)) if (!variant.parts.has(`D:${d.key}`)) jobs.push({ id: `D:${d.key}`, object: depthCaster(d), depth: true });
+    if (r.shadow && shadowPass && depth) for (const d of depthParts(scene)) if (!variant.parts.has(`D:${d.key}`)) jobs.push({ id: `D:${d.key}`, object: depthCaster(d), depth: true });
     if (!jobs.length && variant.complete) return 'cached';
     const mine = token;
     const warmScene = buildWarmScene(scene, r);

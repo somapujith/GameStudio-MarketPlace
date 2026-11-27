@@ -457,6 +457,22 @@ describe('createWarmer: the shadow pass', () => {
     w.dispose();
   });
 
+  it('can leave the shadow pass out of one call (`depth: false`, the set the boot frame draws for real) and add it with a later call', async () => {
+    const { scene } = casters();
+    const r = fakeRenderer();
+    const w = createWarmer({ renderer: r, scene, camera: {} });
+    const set = { points: 0, spots: 1, shadow: true };
+    expect(await w.warm(set, { budgetMs: 1e9, pause: async () => {}, depth: false })).toBe('done');
+    expect(r.calls.some(isDepth)).toBe(false);
+    expect(w.has(set)).toBe(true); // the camera pass's programs are all there
+    const before = r.calls.length;
+    expect(await w.warm(set, { budgetMs: 1e9, pause: async () => {} })).toBe('done'); // nothing was claimed for the depth programs: this call builds them
+    expect(r.calls.slice(before).filter(isDepth)).toHaveLength(7);
+    expect(r.calls.length - before).toBe(7);
+    expect(await w.warm(set)).toBe('cached');
+    w.dispose();
+  });
+
   it('builds no depth programs for a set without sun shadows (the low tier has no shadow pass)', async () => {
     const { scene } = casters();
     const r = fakeRenderer();

@@ -262,7 +262,7 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {}, claim = null
     if (Math.abs(night - sunNight) > 0.01) {
       sunNight = night;
       gfx.setBloomThreshold(bloomThreshold(night));
-      gfx.setBloomEnabled(bloomWanted(night, gfx.bloomEnabled)); // by day nothing reaches the threshold: the seven bloom passes are skipped (post.bloomWanted)
+      if (!(globalThis.__awTune && globalThis.__awTune.noBloomSkip)) gfx.setBloomEnabled(bloomWanted(night, gfx.bloomEnabled)); // by day nothing reaches the threshold: the seven bloom passes are skipped (post.bloomWanted)
     }
     const tRender = performance.now();
     gfx.render(rawDt);
@@ -458,7 +458,11 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {}, claim = null
   const phases = (q, { night = nightNow(), ...rest } = {}) => [lightSet(q, { night, baseSpots, ...rest }), lightSet(q, { night: !night, baseSpots, ...rest })];
   // Both times of day are built while loading, overlapped with the systems installing: dusk comes 48 s into a game, and building a light set
   // during play costs frames (each program has to be finished by the GPU process in between them), while behind the loading bar it is free.
-  const warmBothPhases = (q) => Promise.all(phases(q).map((set) => warmer.warm(set, { budgetMs: 8 }))).catch(warnWarm);
+  // The NIGHT set's shadow-pass programs are built here (depth stand-ins, game/warm.js); the set the game starts in (the day's) is not: its depth programs
+  // are drawn for real by the boot frame (`gfx.render(0)`, renderer.prewarm). Building those ahead as well made the boot 0.6 s shorter and the first seconds
+  // of play 0.5 s worse (measured: aw-probe --cmd boot, interleaved: 400 frames after START, sum of frames > 40 ms 2.4 s against 1.5 s; night-only: 1.6 s):
+  // the GPU process then still owes the first-draw work of ~7 programs while the player already plays, instead of the loading bar paying for it.
+  const warmBothPhases = (q) => Promise.all(phases(q).map((set) => warmer.warm(set, { budgetMs: 8, depth: set.points > 0 }))).catch(warnWarm);
   const earlyWarm = warmBothPhases(gfx.quality);
 
   // gameplay systems: a broken one is logged and skipped, it never takes the whole game down. Install times are kept in game.boot.

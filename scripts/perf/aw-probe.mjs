@@ -39,6 +39,7 @@ const START = async (c) => {
   if (tier) await c.send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { const v = g.call(this, k); if (String(k).startsWith('jalebi.autowala.v')) { try { const d = JSON.parse(v || '{}'); d.settings = { ...(d.settings || {}), quality: '${tier}' }; return JSON.stringify(d); } catch { return v; } } return v; }; })();` });
   await c.goto(`${base}/play/autowala`);
   await c.waitFor("!!document.querySelector('.aw-go')", 180000);
+  if (args['menu-wait']) await c.sleep(+args['menu-wait'] * 1000); // linger on the start screen (a player does; the game's background work gets that time)
   const t0 = Date.now();
   await c.ev("document.querySelector('.aw-go').click()");
   await c.waitFor('!!window.__autowala', 60000);
