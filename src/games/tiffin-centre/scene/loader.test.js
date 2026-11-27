@@ -162,8 +162,8 @@ describe('prefetchChunks', () => {
     await new Promise((r) => setTimeout(r, 400));
     expect(order).toEqual([]);
     const cancel = prefetchChunks(loaders);
-    await new Promise((r) => setTimeout(r, 1200));
-    expect(order).toEqual(['a', 'b', 'd']); // a failing chunk does not stop the rest
+    // poll instead of sleeping a fixed 1.2 s: the chunks load on idle callbacks, which a busy CI machine or laptop can delay
+    await vi.waitFor(() => expect(order).toEqual(['a', 'b', 'd']), { timeout: 10000, interval: 50 }); // a failing chunk does not stop the rest
     cancel();
   });
 });
