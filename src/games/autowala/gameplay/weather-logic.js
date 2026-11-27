@@ -92,9 +92,13 @@ export function stateAt(schedule, hour) {
   return 'clear';
 }
 
+// weather.js asks every frame: the day's schedule (96 slots, an rng, closures) is built once per (day, seed), not once per frame
+let memo = { day: NaN, seed: NaN, schedule: null };
+
 /** Weather scheduled for a game time: { state, target (sev) }. */
 export function scheduledWeather(day, hour, seed = 1) {
-  const state = stateAt(daySchedule(day, seed), hour);
+  if (memo.day !== day || memo.seed !== seed || !memo.schedule) memo = { day, seed, schedule: daySchedule(day, seed) };
+  const state = stateAt(memo.schedule, hour);
   return { state, target: SEV[state] };
 }
 
