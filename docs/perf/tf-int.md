@@ -1,6 +1,6 @@
 # tf-int: Tiffin Centre on the shared engine layer (wave 2)
 
-Branch `perf/tf-int`, cut from main `0a90f3b`. Machine: the dev laptop's integrated AMD Radeon (`ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11)`), Chrome headless on
+Branch `perf/tf-int`, cut from main `0a90f3b`; main at `f0f0529` (Autowala work only: nothing of Tiffin changed) was merged in at `7e0ef4a`. Machine: the dev laptop's integrated AMD Radeon (`ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11)`), Chrome headless on
 the real GPU, production build, 1536x864 @ 1.25 (a 1920x1080 drawing buffer), vsync and the frame cap off in the bench, level 0 ("Training morning", 7:00 to 9:00) unless a row says
 otherwise.
 
@@ -234,12 +234,15 @@ render upsampled by the final pass (as it was on main, whose scaler also drew at
 
 ## 5. Tests
 
-`npx vitest run src/games/tiffin-centre shared/tiffin-centre src/platform/gfx` (PowerShell): **TBD-COUNT**. `npx vite build` passes. New and changed, each pure piece with its test next to it:
+`npx vitest run src/games/tiffin-centre shared/tiffin-centre src/platform/gfx` (PowerShell): **98 files, 2357 tests, all passing** on the final state (130 s). An earlier run of the same command on the machine at its busiest failed two tests by TIMEOUT, not by assertion:
+`shared/tiffin-centre/tutorial.test.js` "chaos: 40 seeds ..." (49 s under a 100 % busy CPU; 7 s alone) and `shared/tiffin-centre/fuzz.test.js` "many seeds ..." (424 s); `shared/` has no diff against main. `npx vite build` passes. New and changed, each pure piece with its test next to it:
 
 * `scene/post.dyn.test.js` (new): every fetch from a render target in every post fragment goes through `dynUv` (regex over the shipped GLSL); targets allocated once, an identical `build()`
   skipped, a changed size or pipeline rebuilt; at scales 1 / 0.85 / 0.5 the scene, bloom, composite and FXAA passes get the right viewport / scissor and the used sizes, nothing is
   re-created by a step; texel uniforms follow the used size; all eight materials share ONE set of dynUv uniforms; `prelink` compiles exactly the passes of the tier, each against its
-  own target (the canvas for FXAA) and restores the bound target; `applyPointScale` (scale, original kept, no compounding, shared materials, late Points, shader points untouched).
+  own target (the canvas for FXAA) and restores the bound target; the R11G11B10F scene target only with `EXT_color_buffer_float` (RGBA16F without); `applyPointScale` (scale, original kept, no compounding, shared materials, late Points, shader points untouched).
+* `scene/webgl2.probe.test.js` (new) and the two menu tests (`menuModels.test.js`, `menus.render.test.js`): the WebGL 2 probe, the shell showing the card without loading the 3D screen, the
+  Android wording. `adapt.test.js` also holds `memoryResponse` (the `jalebi:memory` policy: scale first, then tier, `critical` to the lowest tier, unknown levels ignored).
 * `scene/adapt.test.js` (new): `combineFpsCap`, `startTier`, `usableCalibration` (the dev laptop's saturated run is rejected), `createGovernorFeed` (a compile stall is kept from the governor, normal
   frames are not, a slow device is still seen, paused frames are not shown) and the real governor with Tiffin's tables (scale before tier, a fitting load changes nothing for a minute, a
   locked tier never changes, `hold()`).
@@ -294,7 +297,7 @@ frame times after it. Snapshots of the build at different commits were run one a
 | v7 | 174 / 10 of 2034 | 1206 fps | 67 to 580 ms |
 | v8 (three times) | 224 / 23 of 1065, 649 / 18 of 705, 408 / 11 of 1325 | 720, 377, 300 fps | 608 to 968 ms |
 | **v9 (merge of main), first three runs** | **5297, 8884 and 3885 ms** / 27 of 51, 15 of 32, 30 of 96 | **2.7, 11.5 and 34 fps** (frames of 374 ms, 87 ms and 29 ms mean) | 0.8 to 4.2 s, frames of 0.3 to 0.7 s |
-| v9, fourth run | 202 / 11 of 1798 | 365 fps | 685 to 938 ms |
+| v9, fourth and fifth runs | 202 / 11 of 1798 and 384 / 10 of 1631 | 365 and 226 fps | 685 to 938 ms |
 | v10 (HEAD, v9's source rebuilt) | 820 / 15 of 1580 | 366 fps | 614 to 806 ms |
 
 The three bad `v9` runs are real and I could not reproduce them: the same source built again (v10) and the same snapshot (v9) run again behave like v8. `src/` outside Autowala has no
