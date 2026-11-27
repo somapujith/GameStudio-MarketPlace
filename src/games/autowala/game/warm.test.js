@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { BoxGeometry, DirectionalLight, Group, HemisphereLight, InstancedMesh, Mesh, MeshStandardMaterial, PointLight, Scene, SpotLight, Texture } from 'three';
-import { buildWarmScene, compileParts, createWarmer, passMaterials, recipeKey, recipeOf } from './warm.js';
+import { BackSide, BoxGeometry, DirectionalLight, DoubleSide, FogExp2, FrontSide, Group, HemisphereLight, InstancedMesh, Mesh, MeshBasicMaterial, MeshDepthMaterial, MeshStandardMaterial, PointLight, RGBADepthPacking, Scene, SkinnedMesh, SpotLight, Texture } from 'three';
+import { buildWarmScene, compileParts, createWarmer, depthParts, depthStandIn, passMaterials, recipeKey, recipeOf, shadowSideOf } from './warm.js';
 import { lightSet } from './light-sets.js';
 
 const geo = new BoxGeometry(1, 1, 1);
@@ -116,7 +116,7 @@ function fakeRenderer({ linkFrames = 0 } = {}) {
     getRenderTarget: () => target,
     setRenderTarget: (t) => { target = t; },
     compile(part, camera, warmScene) {
-      calls.push({ part, target, lights: recipeOf(warmScene) });
+      calls.push({ part, target, lights: recipeOf(warmScene), fog: warmScene.fog });
       const set = new Set();
       part.traverse((o) => {
         if (!o.isMesh) return;
@@ -318,5 +318,145 @@ describe('passMaterials', () => {
     const found = passMaterials(composer);
     expect(new Set(found)).toEqual(new Set([a, b, c]));
     expect(passMaterials(null)).toEqual([]);
+  });
+});
+
+/** A scene with sun-casting meshes of every kind the shadow pass tells apart. */
+function casters() {
+  const scene = new Scene();
+  const m = new MeshStandardMaterial();
+  const wall = new Mesh(geo, m);
+  wall.castShadow = true;
+  const wall2 = new Mesh(geo, m);
+  wall2.castShadow = true; // same kind as the first: one program
+  const inst = new InstancedMesh(geo, m, 4);
+  inst.castShadow = true;
+  const tinted = new InstancedMesh(geo, m, 4);
+  tinted.setColorAt(0, { r: 1, g: 1, b: 1, toArray: (a, o) => { a[o] = a[o + 1] = a[o + 2] = 1; } });
+  tinted.castShadow = true;
+  const person = new SkinnedMesh(geo, m);
+  person.castShadow = true;
+  const double = new Mesh(geo, new MeshStandardMaterial({ side: DoubleSide }));
+  double.castShadow = true;
+  const custom = new Mesh(geo, m);
+  custom.castShadow = true;
+  custom.customDepthMaterial = new MeshDepthMaterial({ depthPacking: RGBADepthPacking });
+  const hiddenCaster = new Mesh(geo, new MeshStandardMaterial({ side: BackSide }));
+  hiddenCaster.castShadow = true;
+  hiddenCaster.visible = false;
+  const receiver = new Mesh(geo, m); // receives, does not cast: no shadow program
+  receiver.receiveShadow = true;
+  scene.add(wall, wall2, inst, tinted, person, double, custom, hiddenCaster, receiver);
+  return { scene, wall, inst, tinted, person, double, custom, hiddenCaster };
+}
+
+describe('shadowSideOf', () => {
+  it('draws a caster with the opposite face, a double-sided one on both, and obeys an explicit shadowSide', () => {
+    expect(shadowSideOf(new MeshBasicMaterial({ side: FrontSide }))).toBe(BackSide);
+    expect(shadowSideOf(new MeshBasicMaterial({ side: BackSide }))).toBe(FrontSide);
+    expect(shadowSideOf(new MeshBasicMaterial({ side: DoubleSide }))).toBe(DoubleSide);
+    const m = new MeshBasicMaterial({ side: FrontSide });
+    m.shadowSide = FrontSide;
+    expect(shadowSideOf(m)).toBe(FrontSide);
+  });
+});
+
+describe('depthParts', () => {
+  it('returns one caster per distinct shadow program: kind of object x side x custom depth material; receivers and non-casters never', () => {
+    const { scene, wall, inst, tinted, person, double, custom, hiddenCaster } = casters();
+    const parts = depthParts(scene);
+    const objects = parts.map((p) => p.object);
+    // plain, instanced, instanced + colour, skinned, double sided, custom depth, hidden back-sided: 7 kinds (wall2 shares wall's)
+    expect(parts).toHaveLength(7);
+    for (const o of [wall, inst, tinted, person, double, custom, hiddenCaster]) expect(objects).toContain(o);
+    expect(new Set(parts.map((p) => p.key)).size).toBe(7);
+    expect(parts.find((p) => p.object === custom).custom).toBe(custom.customDepthMaterial);
+  });
+  it('is empty when nothing casts, and a changed custom depth material is a new entry', () => {
+    const scene = new Scene();
+    scene.add(new Mesh(geo, new MeshStandardMaterial()));
+    expect(depthParts(scene)).toHaveLength(0);
+    const { scene: s2, custom } = casters();
+    const before = depthParts(s2).find((p) => p.object === custom).key;
+    custom.customDepthMaterial.version++;
+    expect(depthParts(s2).find((p) => p.object === custom).key).not.toBe(before);
+  });
+  it('tells a caster with an alpha-tested map from one without (three builds another program for it)', () => {
+    const scene = new Scene();
+    const plain = new Mesh(geo, new MeshStandardMaterial());
+    const cut = new Mesh(geo, new MeshStandardMaterial({ map: new Texture({ width: 1, height: 1 }), alphaTest: 0.5 }));
+    plain.castShadow = cut.castShadow = true;
+    scene.add(plain, cut);
+    expect(depthParts(scene)).toHaveLength(2);
+  });
+});
+
+describe('depthStandIn', () => {
+  it("is three's shared depth material configured for the caster: the same packing as `new MeshDepthMaterial()`, the opposite side, the alpha test and its map", () => {
+    const map = new Texture({ width: 1, height: 1 });
+    const d = depthStandIn(new MeshStandardMaterial({ side: FrontSide, map, alphaTest: 0.4 }));
+    expect(d.isMeshDepthMaterial).toBe(true);
+    expect(d.depthPacking).toBe(new MeshDepthMaterial().depthPacking); // (r187's WebGLShadowMap uses the default: a depth texture, not packed RGBA)
+    expect(d.side).toBe(BackSide);
+    expect(d.map).toBe(map);
+    expect(d.alphaTest).toBe(0.4);
+  });
+});
+
+describe('createWarmer: the shadow pass', () => {
+  const isDepth = (c) => c.part.material && c.part.material.isMeshDepthMaterial;
+
+  it("compiles a depth stand-in for every caster kind with the recipe's lights, and leaves the real casters alone", async () => {
+    const { scene, wall, person, double } = casters();
+    const sun = new DirectionalLight();
+    sun.castShadow = true;
+    scene.add(sun);
+    scene.fog = new FogExp2(0xaaaaaa, 0.001);
+    const r = fakeRenderer();
+    const w = createWarmer({ renderer: r, scene, camera: {}, getTarget: () => ({ id: 'composer' }) });
+    const realMaterials = new Map(scene.children.filter((o) => o.isMesh).map((o) => [o, o.material]));
+    expect(await w.warm({ points: 3, spots: 1, shadow: true }, { budgetMs: 1e9, pause: async () => {} })).toBe('done');
+    const depthCalls = r.calls.filter(isDepth);
+    expect(depthCalls).toHaveLength(7);
+    expect(depthCalls.every((c) => c.lights.points === 3 && c.target.id === 'composer')).toBe(true);
+    // three's shadow pass draws against an empty scene: no fog (it is a bit of every program key, depth materials included); the camera pass has it
+    expect(depthCalls.every((c) => c.fog === null)).toBe(true);
+    expect(r.calls.filter((c) => !isDepth(c)).every((c) => c.fog === scene.fog)).toBe(true);
+    // the stand-ins read the real objects' kind: a skinned one is skinned, a double-sided one draws both faces
+    expect(depthCalls.some((c) => c.part.isSkinnedMesh && c.part.geometry === person.geometry)).toBe(true);
+    expect(depthCalls.some((c) => c.part.material.side === DoubleSide)).toBe(true);
+    // the real scene is untouched
+    for (const [o, m] of realMaterials) expect(o.material).toBe(m);
+    expect(wall.customDepthMaterial).toBeUndefined();
+    expect(double.material.side).toBe(DoubleSide);
+    expect(w.has({ points: 3, spots: 1, shadow: true })).toBe(true);
+    // a second call: nothing left; another light set builds its own depth programs
+    const n = r.calls.length;
+    expect(await w.warm({ points: 3, spots: 1, shadow: true })).toBe('cached');
+    expect(r.calls.length).toBe(n);
+    await w.warm({ points: 0, spots: 1, shadow: true }, { budgetMs: 1e9, pause: async () => {} });
+    expect(r.calls.filter((c) => isDepth(c) && c.lights.points === 0)).toHaveLength(7);
+    w.dispose();
+  });
+
+  it('builds no depth programs for a set without sun shadows (the low tier has no shadow pass)', async () => {
+    const { scene } = casters();
+    const r = fakeRenderer();
+    const w = createWarmer({ renderer: r, scene, camera: {} });
+    await w.warm({ points: 2, spots: 1, shadow: false }, { budgetMs: 1e9, pause: async () => {} });
+    expect(r.calls.some(isDepth)).toBe(false);
+    w.dispose();
+  });
+
+  it('shares the stand-ins between sets: one depth material per kind of caster material, not one per caster or per set', async () => {
+    const { scene } = casters();
+    const r = fakeRenderer();
+    const w = createWarmer({ renderer: r, scene, camera: {} });
+    await w.warm({ points: 0, spots: 1, shadow: true }, { budgetMs: 1e9, pause: async () => {} });
+    await w.warm({ points: 3, spots: 1, shadow: true }, { budgetMs: 1e9, pause: async () => {} });
+    const standIns = new Set(r.calls.filter((c) => isDepth(c) && !c.part.customDepthMaterial).map((c) => c.part.material));
+    expect(standIns.size).toBeLessThanOrEqual(3); // front-sided, double-sided, back-sided
+    expect(w.stats.programsRead).toBeGreaterThan(0);
+    w.dispose();
   });
 });
