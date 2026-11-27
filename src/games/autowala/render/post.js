@@ -243,9 +243,15 @@ const triangle = () => {
   return g;
 };
 
+/** Dispose the materials a renderer kept in its shared map (see createPost). */
+export function disposeShared(shared) {
+  for (const S of shared.values()) for (const m of Object.values(S.mats)) m.dispose();
+  shared.clear();
+}
+
 /**
  * @param renderer  THREE.WebGLRenderer (toneMappingExposure is read from it, as OutputPass does; ACES is fixed here)
- * @param opts      { hdr: 'r11g11b10' | 'half' | null, bloomLevels: 0..5, fxaa: boolean, msaa: number, bloomStrength, threshold, radius }
+ * @param opts      { hdr: 'r11g11b10' | 'half' | null, bloomLevels: 0..5, fxaa: boolean, msaa: number, bloomStrength, threshold, radius, shared: Map }
  */
 export function createPost(renderer, opts = {}) {
   const hdr = opts.hdr ?? null;
@@ -265,22 +271,31 @@ export function createPost(renderer, opts = {}) {
   const raw = (name, fragmentShader, uniforms, defines = {}) =>
     new RawShaderMaterial({ name, glslVersion: GLSL3, vertexShader: VERT, fragmentShader, uniforms, defines, depthTest: false, depthWrite: false, blending: NoBlending });
 
-  const U = {
-    prefilter: { tSrc: { value: null }, uTexel: { value: new Vector2() }, uScale: { value: new Vector2(1, 1) }, uThreshold: { value: opts.threshold ?? 1.05 } },
-    down: { tSrc: { value: null }, uTexel: { value: new Vector2() } },
-    up: { tSrc: { value: null }, uTexel: { value: new Vector2() }, uWeight: { value: 1 } },
-    comp: {
-      tScene: { value: null }, tBloom: { value: null }, uBloom: { value: 0 }, uTexel: { value: new Vector2() }, uScale: { value: new Vector2(1, 1) },
-      toneMappingExposure: { value: 1 },
-    },
-  };
-  const mats = {
-    prefilter: raw('aw-bloom-prefilter', FRAG_PREFILTER, U.prefilter),
-    down: raw('aw-bloom-down', FRAG_DOWN, U.down),
-    up: raw('aw-bloom-up', FRAG_UP, U.up),
-    comp: raw('aw-composite', FRAG_COMPOSITE, U.comp, { ...(fxaa ? { FXAA: '' } : {}), ...(levels ? { BLOOM: '' } : {}) }),
-  };
-  Object.assign(mats.up, { blending: CustomBlending, blendEquation: AddEquation, blendSrc: OneFactor, blendDst: OneFactor, blendSrcAlpha: OneFactor, blendDstAlpha: OneFactor });
+  // the materials (and so the compiled programs) outlive a resize: opts.shared (a Map owned by the renderer) keeps one set per configuration,
+  // otherwise every window-resize event would drop the four programs and compile them again
+  const sharedKey = `${levels ? 'b' : 'n'}${fxaa ? 'f' : 'n'}`;
+  let S = opts.shared && opts.shared.get(sharedKey);
+  if (!S) {
+    const U = {
+      prefilter: { tSrc: { value: null }, uTexel: { value: new Vector2() }, uScale: { value: new Vector2(1, 1) }, uThreshold: { value: opts.threshold ?? 1.05 } },
+      down: { tSrc: { value: null }, uTexel: { value: new Vector2() } },
+      up: { tSrc: { value: null }, uTexel: { value: new Vector2() }, uWeight: { value: 1 } },
+      comp: {
+        tScene: { value: null }, tBloom: { value: null }, uBloom: { value: 0 }, uTexel: { value: new Vector2() }, uScale: { value: new Vector2(1, 1) },
+        toneMappingExposure: { value: 1 },
+      },
+    };
+    const mats = {
+      prefilter: raw('aw-bloom-prefilter', FRAG_PREFILTER, U.prefilter),
+      down: raw('aw-bloom-down', FRAG_DOWN, U.down),
+      up: raw('aw-bloom-up', FRAG_UP, U.up),
+      comp: raw('aw-composite', FRAG_COMPOSITE, U.comp, { ...(fxaa ? { FXAA: '' } : {}), ...(levels ? { BLOOM: '' } : {}) }),
+    };
+    Object.assign(mats.up, { blending: CustomBlending, blendEquation: AddEquation, blendSrc: OneFactor, blendDst: OneFactor, blendSrcAlpha: OneFactor, blendDstAlpha: OneFactor });
+    S = { U, mats };
+    opts.shared?.set(sharedKey, S);
+  }
+  const { U, mats } = S;
 
   let sceneRT = null;
   let mips = [];
@@ -373,8 +388,7 @@ export function createPost(renderer, opts = {}) {
     const camera3 = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
     for (const m of Object.values(mats)) {
       try {
-        const p = renderer.compileAsync?.(new Mesh(geometry, m), camera3);
-        p?.catch?.(() => {});
+        renderer.compile(new Mesh(geometry, m), camera3);
       } catch {
         /* compiled lazily on first use instead */
       }
@@ -383,7 +397,7 @@ export function createPost(renderer, opts = {}) {
 
   function dispose() {
     freeTargets();
-    for (const m of Object.values(mats)) m.dispose();
+    if (!opts.shared) for (const m of Object.values(mats)) m.dispose();
     geometry.dispose();
   }
 

@@ -45,6 +45,7 @@ const START = async (c) => {
   const startMs = Date.now() - t0;
   await c.ev("window.__gfxForBench = () => window.__autowala.gfx.renderer; true");
   if (!args['keep-sampler']) await c.ev('window.__autowala.gfx.autoTier = false; true'); // builds with the frame-time sampler: hold the tier asked for
+  if (args.scale !== undefined) await c.ev('window.__autowala.gfx.setScale(' + (+args.scale) + '); true'); // experiment: render resolution
   if (args.lights !== undefined) await c.ev('window.__autowala.world.props.setLightCount(' + (+args.lights) + '); true'); // experiment: point lights in every lit shader
   await c.ev('window.__autowala.debug.drive({ throttle: 1 }); true');
   return startMs;
@@ -327,6 +328,7 @@ async function run() {
     if (cmd === 'boot') {
       await c.ev(`window.__bootLongs = []; try { new PerformanceObserver((l) => { for (const e of l.getEntries()) window.__bootLongs.push(e.duration); }).observe({ entryTypes: ['longtask'] }); } catch {} true`);
     }
+    if (cmd === 'boot') await c.ev(`window.__first = []; (() => { let last = performance.now(); const f = (n) => { window.__first.push(+(n - last).toFixed(1)); last = n; if (window.__first.length < 400) requestAnimationFrame(f); }; requestAnimationFrame(f); })(); true`);
     await c.sleep(WARM * 1000);
     let result;
     if (cmd === 'programs') result = await programs(c);
@@ -348,7 +350,7 @@ async function run() {
     }
     else if (cmd === 'glcalls') result = await glCalls(c);
     else if (cmd === 'eval') result = await c.ev(String(args.js)); // --js "<expression>": anything in the page (may be async)
-    else if (cmd === 'boot') result = await c.ev('({ boot: window.__autowalaBoot && window.__autowalaBoot.ms, longs: window.__bootLongs, programs: window.__autowala.gfx.renderer.info.programs.length, world: window.__autowala.world.timings, sys: window.__autowala.boot && window.__autowala.boot.systems, compile: window.__autowala.boot && window.__autowala.boot.compile })');
+    else if (cmd === 'boot') result = await c.ev('({ boot: window.__autowalaBoot && window.__autowalaBoot.ms, longs: window.__bootLongs, firstFramesOver40: window.__first.map((d, i) => [i, d]).filter((x) => x[1] > 40).slice(0, 25), framesSeen: window.__first.length, programs: window.__autowala.gfx.renderer.info.programs.length, world: window.__autowala.world.timings, sys: window.__autowala.boot && window.__autowala.boot.systems, compile: window.__autowala.boot && window.__autowala.boot.compile })');
     const info = await c.ev('({ tier: window.__autowala.gfx.quality, gpu: (() => { const gl = window.__autowala.gfx.renderer.getContext(); const e = gl.getExtension("WEBGL_debug_renderer_info"); return e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : "?"; })(), timer: !!window.__autowala.gfx.renderer.getContext().getExtension("EXT_disjoint_timer_query_webgl2") })');
     return { label, cmd, tierAsked: tier || 'auto', viewport: `${W}x${H}@${DPR}`, startMs, ...info, errors: c.logs.filter((l) => !/GL Driver|GPU stall|ReadPixels|AudioContext|api\/(config|me)|Failed to load resource/.test(l)).slice(0, 8), result };
   } finally {

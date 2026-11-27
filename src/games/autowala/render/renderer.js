@@ -14,7 +14,7 @@
 import { ACESFilmicToneMapping, PCFShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, UnsignedByteType, WebGLRenderer, WebGLRenderTarget } from 'three';
 import { QUALITY } from '../game/config.js';
 import { setChunkSize } from './chunks.js';
-import { clampScale, createPost, pickHdrFormat } from './post.js';
+import { clampScale, createPost, disposeShared, pickHdrFormat } from './post.js';
 import { setAnisotropyCap } from './textures.js';
 
 const ORDER = ['low', 'medium', 'high'];
@@ -107,6 +107,7 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
   let q = software && !explicit ? 'low' : quality;
   setChunkSize(tier(q).chunk ?? 256); // the world is built right after this, in tiles of that size
   let post = null;
+  const postShared = new Map(); // the post chain's materials survive a resize (their programs stay compiled)
   let scale = 1;
   let width = 1;
   let height = 1;
@@ -185,6 +186,7 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
         fxaa: cfg.fxaa !== false,
         msaa: full ? Math.min(cfg.msaa || 0, maxSamples) : 0,
         bloomStrength: 0.3,
+        shared: postShared,
       });
       post.setSize(width * pr, height * pr);
       post.setScale(scale);
@@ -342,6 +344,7 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
     canvas.removeEventListener('webglcontextlost', onLost, false);
     canvas.removeEventListener('webglcontextrestored', onRestored, false);
     disposePost();
+    disposeShared(postShared);
     renderer.dispose();
     renderer.forceContextLoss?.(); // hand the GPU context back now: browsers allow only ~16 live ones
   };
