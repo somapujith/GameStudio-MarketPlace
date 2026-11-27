@@ -49,17 +49,39 @@ export const ECON = {
 
 /**
  * Quality tiers, monotone: every number that costs more or looks better only goes up from low to high.
- *  pixelRatio      cap on the drawing-buffer density (the device ratio may be lower)
+ *  pixelRatio      cap on the drawing-buffer density (the device ratio may be lower); pixelBudget  megapixels the scene pass may shade at render
+ *                  scale 1 (a 4K window gets a lower ratio instead of an 8 MP frame); the pipeline is allocated for the highest tier a session may reach
  *  shadow          shadow-map size; shadows are OFF on low (Game.applyQuality)
  *  shadowInterval  seconds between shadow-map re-renders (0 = every frame): the sun's box follows the player on a texel grid, so a stale map
  *                  only lags moving casters by a frame or two
  *  chunk          map-tile size (m) of the culled instance sets: bigger = fewer draw calls, more off-screen triangles (render/chunks.js)
  *  bloom / bloomLevels  the neon glow: levels of the dual-Kawase pyramid (1/4 resolution and below)
  *  fxaa            edge anti-aliasing in the composite; msaa  samples on the scene target (0: off, the composite's FXAA does the work)
- *  traffic / peds  live vehicles / pedestrians;  drawDist  view distance in metres
+ *  traffic / peds  live vehicles / pedestrians;  far  the camera's far plane in metres (the fog hides it: sky.setFogFloor)
  */
 export const QUALITY = {
-  low: { pixelRatio: 1, shadow: 1024, shadowInterval: 0.05, chunk: 512, bloom: false, bloomLevels: 0, fxaa: true, msaa: 0, traffic: 22, peds: 90, drawDist: 300 },
-  medium: { pixelRatio: 1.25, shadow: 2048, shadowInterval: 0.024, chunk: 1024, bloom: true, bloomLevels: 4, fxaa: true, msaa: 0, traffic: 36, peds: 170, drawDist: 420 },
-  high: { pixelRatio: 1.75, shadow: 2048, shadowInterval: 0, chunk: 1024, bloom: true, bloomLevels: 5, fxaa: true, msaa: 0, traffic: 52, peds: 260, drawDist: 560 },
+  low: { pixelRatio: 1, pixelBudget: 1.6, shadow: 1024, shadowInterval: 0.05, chunk: 512, bloom: false, bloomLevels: 0, fxaa: true, msaa: 0, traffic: 22, peds: 90, far: 1000 },
+  medium: { pixelRatio: 1.25, pixelBudget: 2.6, shadow: 2048, shadowInterval: 0.024, chunk: 1024, bloom: true, bloomLevels: 4, fxaa: true, msaa: 0, traffic: 36, peds: 170, far: 1300 },
+  high: { pixelRatio: 1.75, pixelBudget: 5, shadow: 2048, shadowInterval: 0, chunk: 1024, bloom: true, bloomLevels: 5, fxaa: true, msaa: 0, traffic: 52, peds: 260, far: 1600 },
+};
+
+/**
+ * What the shared governor (platform/gfx) is told about this game. Filled from measurements on the integrated-GPU dev laptop
+ * (docs/perf/aw-int.md): `models` are the calibration's cost model per tier, validated against measured frame times.
+ *  scaleMin   the lowest render scale per tier (below ~0.6 the picture is visibly soft: the tier drops instead)
+ *  tierCost   relative frame cost per tier (the tier-up prediction)
+ *  callBudget draw calls a frame (camera + shadow pass) a tier is designed for; over it while missing the frame budget = a tier down
+ */
+export const GFX = {
+  startHoldMs: 4000, // the governor ignores the first seconds of play (first uploads, background compiles)
+  teleportHoldMs: 1500,
+  memoryHoldMs: 6000,
+  scaleMin: { low: 0.6, medium: 0.6, high: 0.7 },
+  tierCost: { low: 1, medium: 1.8, high: 2.6 },
+  callBudget: { low: 160, medium: 300, high: 420 },
+  models: {
+    low: { pixelRatio: 1, layers: 2.5, calls: 450, mtris: 0.25, post: 0.4, scaleMin: 0.6 },
+    medium: { pixelRatio: 1.25, layers: 3.5, calls: 800, mtris: 0.35, post: 1.4, scaleMin: 0.6 },
+    high: { pixelRatio: 1.75, layers: 4.5, calls: 1000, mtris: 0.45, post: 2.2, scaleMin: 0.7 },
+  },
 };

@@ -1,7 +1,10 @@
 // The game object: owns the renderer, the world, the player's auto and every system, runs the loop, and publishes a small
 // snapshot for the React HUD ~10 times a second. Systems are plain modules with `install(ctx)`; see ../ARCHITECTURE.md for the
 // ctx contract, the event bus and the snapshot shape.
-import { createRenderer, pickQuality } from '../render/renderer.js';
+import { createLoop, runStandaloneCalibration, watchDeviceHints } from '@/platform/gfx';
+import { createRenderer } from '../render/renderer.js';
+import { bloomThreshold } from '../render/post.js';
+import { TIERS, fogFloorFor, prefOf } from '../render/quality.js';
 import { worldSteps } from '../world/world.js';
 import { drain, drainAsync } from './steps.js';
 import { createSnapshotPublisher } from './snapshot.js';
@@ -9,7 +12,12 @@ import { buildAuto, randomLook } from '../sim/autoModel.js';
 import { createVehicle } from '../sim/vehicle.js';
 import { createInput } from './input.js';
 import { createChaseCamera } from './camera.js';
-import { DAY, QUALITY } from './config.js';
+import { DAY, GFX, QUALITY } from './config.js';
+import { autoStartTier, createSwitchableTimer, memoryPlan, setupQuality, viewOf } from './gfx-control.js';
+import { createTierSwitch } from './tier-switch.js';
+import { abandonable, claimCanvas } from './claim.js';
+
+const ORDER_IDX = (q) => TIERS.indexOf(q);
 import { clamp, makeRng } from './rng.js';
 import { advanceClock } from './clock.js';
 import { createRig } from '../gameplay/customers.js';
@@ -35,25 +43,30 @@ import { installSound } from '../audio/sound.js';
 import { installWeather } from '../gameplay/weather.js';
 
 /** The whole game setup as a staged generator: yields the name of each stage it is about to run. */
-export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
+export function* gameSteps({ canvas, seed = 1, quality, hooks = {}, claim = null }) {
   yield 'start';
   const profile = createProfile(hooks.userId);
   let applyQuality = () => {};
-  let requestQuality = () => {};
   let contextRestored = () => {};
+  // the start tier and render scale: the player's choice, else what this machine did last time, else a ~250 ms calibration (behind the loading
+  // bar), else the GPU class; the shared governor (platform/gfx) keeps the frame rate from there. Its decisions reach the game through
+  // `handlers`, which is filled in once the renderer and the warm-up exist.
+  const chosen = quality ?? profile.data.settings.quality ?? null;
+  const handlers = {};
+  const { aq, gpu, calibration } = yield* setupQuality({ pref: prefOf(chosen), view: viewOf(canvas), handlers });
+  const gov = aq.governor;
   const gfx = createRenderer(canvas, {
-    quality: pickQuality(quality ?? profile.data.settings.quality),
-    explicit: !!(quality ?? profile.data.settings.quality), // a quality the player chose beats the software-renderer guess
+    quality: aq.initial.tier,
+    maxQuality: aq.initial.maxTier,
+    scale: aq.initial.scale,
+    explicit: aq.initial.source === 'pref', // a quality the player chose beats the software-renderer guess
     onContext: (s) => {
       state.contextLost = s === 'lost';
       if (s === 'restored') contextRestored();
       hooks.onContext?.(s);
     },
-    onQuality: (q) => {
-      requestQuality(q);
-      hooks.onQuality?.(q);
-    },
   });
+  if (claim) claim.cleanup = () => gfx.dispose({ loseContext: false }); // a stale build that is dropped at a stage boundary hands the canvas on as it is
   const { scene, camera } = gfx;
   // three.js reads a program's compile / link log with synchronous calls the first time it is drawn: each is a round trip to the GPU process
   // behind the frames already queued. Production builds skip them (a shader error then just draws nothing instead of logging).
@@ -66,8 +79,9 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
     const cfg = QUALITY[q];
     world.sky.setShadows(cfg.shadow, q !== 'low');
     world.props.setLightCount(POOL_LIGHTS[q]);
-    camera.far = cfg.drawDist * 1.4;
+    camera.far = cfg.far;
     camera.updateProjectionMatrix();
+    world.sky.setFogFloor(fogFloorFor(cfg.far)); // the fog hides the far plane: towers fade out instead of being cut
   };
   applyQuality(gfx.quality);
   const input = createInput();
@@ -206,24 +220,20 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
     syncAuto();
   };
 
-  let raf = 0;
-  let last = 0;
   let snapAcc = 1; // publish the first snapshot on the very first frame (the UI mounts on it)
   let running = false;
   let disposed = false;
   let bgTimer = 0;
-  let qualityToken = 0;
-  let programsSeen = 0;
-  let compiledLast = false; // the previous frame built shader programs (or uploaded) and was slow because of it
   const MAXDT = 1 / 20;
 
-  const frame = (now) => {
-    raf = requestAnimationFrame(frame);
-    const rawDt = Math.max(0, Math.min((now - last) / 1000, 0.25));
-    last = now;
+  // The frame body, called by the shared loop (platform/gfx/loop.js: rAF, tab-hidden pause, no giant dt after it, and it feeds the governor
+  // this frame's time, the CPU time of the body, the draw calls and the GPU time of the frame).
+  let sunNight = -1;
+  const frame = (rawDt) => {
     const dt = Math.min(rawDt, MAXDT);
 
     perf.begin();
+    switcher.frame(); // a finished tier swap lands on a frame boundary, before anything of this frame is drawn
     if (!state.paused) simulate(dt);
     perf.lap(PHASE.sim);
 
@@ -242,9 +252,15 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
       rig.update(dt, v, { cameraMode: state.cameraMode });
     }
     perf.lap(PHASE.camera);
-    // the quality sampler reads this: a frame that was slow only because it linked shader programs must not make it drop a tier
-    gfx.render(compiledLast ? Math.min(rawDt, 1 / 30) : rawDt);
+    // the bloom's threshold follows the time of day: neon and lamps glow at night, sunlit paint and chrome must not at noon
+    const night = world.sky.state.night;
+    if (Math.abs(night - sunNight) > 0.01) {
+      sunNight = night;
+      gfx.setBloomThreshold(bloomThreshold(night));
+    }
+    gfx.render(rawDt);
     perf.lap(PHASE.render);
+    if (gov.fpsCap !== loop.maxFps) loop.setMaxFps(gov.fpsCap); // battery / data saver: 30 fps
 
     snapAcc += dt;
     if (snapAcc > 0.1) {
@@ -254,8 +270,6 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
     perf.lap(PHASE.snap);
     const info = gfx.renderer.info;
     const programs = info.programs ? info.programs.length : 0;
-    compiledLast = programs !== programsSeen;
-    programsSeen = programs;
     perf.end({ programs, textures: info.memory.textures, geometries: info.memory.geometries });
   };
 
@@ -303,19 +317,38 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
   const start = () => {
     if (running) return;
     running = true;
-    last = performance.now();
-    programsSeen = gfx.renderer.info.programs ? gfx.renderer.info.programs.length : 0;
-    raf = requestAnimationFrame(frame);
+    gov.hold(GFX.startHoldMs); // the first seconds are first uploads and background compiles, not evidence about the load
+    loop.start();
     game.startBackground?.();
   };
   const stop = () => {
     running = false;
-    cancelAnimationFrame(raf);
+    loop.stop();
   };
-  const resize = (w, h) => gfx.resize(w, h);
+  // a window drag fires dozens of resizes: the pipeline is re-allocated once, when it settles (the canvas is stretched by CSS meanwhile)
+  let resizeTimer = 0;
+  let sized = false;
+  const resize = (w, h) => {
+    if (!sized) {
+      sized = true;
+      gfx.resize(w, h);
+      return;
+    }
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      gov.discontinuity(800); // the renderer reallocates: that frame says nothing about the load
+      gfx.resize(w, h);
+    }, 120);
+  };
   const dispose = () => {
     disposed = true;
     clearInterval(bgTimer);
+    clearTimeout(resizeTimer);
+    switcher.cancel();
+    loop.dispose();
+    stopHints();
+    removeMemoryListener();
+    gpuTimer.dispose();
     game.warm?.dispose();
     stop();
     for (const s of systems) {
@@ -339,7 +372,7 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
   const debug = {
     cam: (c) => { state.debugCam = c ? { x: 0, y: 30, z: 0, yaw: 0, pitch: -0.3, ...c } : null; },
     hour: (h) => { clock.hour = h; },
-    teleport: (x, z, heading) => vehicle.teleport(x, z, heading),
+    teleport: (x, z, heading) => vehicle.teleport(x, z, heading), // (vehicle.teleport is wrapped below: it holds the governor and refreshes the shadows)
     weather: (w) => { state.weather = w; },
     /** Force the driving input (e.g. { steer: 0, throttle: 1 }); pass null to give control back. */
     drive: (d) => { state.forceDrive = d ? { steer: 0, throttle: 0, brake: 0, handbrake: false, boost: false, ...d } : null; },
@@ -347,7 +380,26 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
     step: (seconds) => { for (let t = 0; t < seconds; t += 1 / 60) simulate(1 / 60); },
   };
 
-  const game = { ctx, systems, vehicle, input, world, state, clock, profile, start, stop, resize, dispose, snapshot, on, emit, debug, gfx, rig, perf };
+  const gpuTimer = createSwitchableTimer(gfx.renderer.getContext());
+  const loop = createLoop({ render: (alpha, dt) => frame(dt), governor: gov, info: gfx.renderer.info, gpuTimer, maxDelta: 0.25 });
+  const stopHints = watchDeviceHints(gov);
+  // a teleport (the workshop, a fast travel, the probes): new surroundings, a new shadow box, a frame that is not evidence about the load
+  const teleport0 = vehicle.teleport.bind(vehicle);
+  vehicle.teleport = (...a) => {
+    teleport0(...a);
+    gfx.invalidateShadows();
+    gov.hold(GFX.teleportHoldMs);
+  };
+
+  const game = {
+    ctx, systems, vehicle, input, world, state, clock, profile, start, stop, resize, dispose, snapshot, on, emit, debug, gfx, rig, perf,
+    // the governor, its start decision and the tier-swap controller (read by probes and the settings menu): game.adaptive.describe() is one line
+    adaptive: {
+      aq, gpu, calibration, governor: gov, loop, timer: gpuTimer, switcher, describe: () => aq.describe(),
+      /** Run the start-up calibration again on a throw-away context (probes: validate the tier cost models against measured frame times). */
+      recalibrate: (models = GFX.models) => runStandaloneCalibration({ width: canvas.clientWidth, height: canvas.clientHeight, dpr: window.devicePixelRatio || 1, gpu, tiers: models }),
+    },
+  };
   ctx.game = game;
 
   // ---- shader warm-up (game/warm.js). A shader program is linked the first time it is drawn, and that draw blocks until the driver is done:
@@ -483,6 +535,19 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
     bgTimer = setInterval(background, 1000);
   };
 
+  // The tier below this one, built while the start menu is up (nobody is playing: the compile is free), so that a step down finds its programs
+  // ready and swaps on the next frame instead of waiting for them while the game is slow. Both times of day; once.
+  let belowWarmed = false;
+  ctx.addSystem({
+    update() {
+      if (belowWarmed || !warmer.parallel || !running || state.menu !== 'start' || performance.now() - bootEnd < 2500) return;
+      belowWarmed = true;
+      const below = TIERS[Math.max(0, TIERS.indexOf(gfx.quality) - 1)];
+      if (below === gfx.quality) return;
+      Promise.all(phases(below).map((set) => warmer.warm(set, idleOrTrickle))).catch(warnWarm);
+    },
+  });
+
   // the workshop adds a spot light and two point lights to the scene: another light set. It is built when the player is about to use it: while
   // the start menu is up (the auto starts parked at the garage, nobody is playing), or when they stop at the garage for 3 s (not in the first
   // 20 s of a session, and never while driving past), for the time of day they are in.
@@ -512,27 +577,86 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
     },
   });
 
-  // the sampler stepped the quality down: the new tier's light count and shadow state are new programs, so build the set the game is in
-  // first and switch when it is ready (the other time of day follows once the tier has settled)
-  requestQuality = (q) => {
-    const mine = ++qualityToken;
+  // ---- tier steps. The governor decides; a step never stalls: the new tier's light set (lamp count, shadows: a whole set of programs) is
+  // built in the background first and the swap (renderer tier, world quality, draw distance) happens on a frame boundary, all at once.
+  const warmTier = (q) => {
     stableSince = performance.now();
     warmer.cancel();
     const workshop = state.menu === 'workshop';
     const [first] = phases(q, { night: recipeOf(scene).points > (workshop ? 2 : 0), workshop });
-    warmer
-      .warm(first, { budgetMs: 6, batch: 8 })
-      .catch(warnWarm)
-      .then((r) => {
-        if (mine !== qualityToken || disposed || r === 'cancelled') return;
-        applyQuality(q);
-        stableSince = performance.now();
-      });
+    return warmer.warm(first, { budgetMs: 6, batch: 8 }).catch((err) => {
+      warnWarm(err);
+      return 'failed';
+    });
   };
+  const switcher = createTierSwitch({
+    warm: warmTier,
+    getTier: () => gfx.quality,
+    hold: (ms) => gov.hold(ms),
+    apply: (q, scale) => {
+      if (disposed) return;
+      const grew = ORDER_IDX(q) > ORDER_IDX(gfx.maxQuality);
+      applyQuality(q);
+      gfx.setTier(q);
+      gfx.setScale(scale);
+      stableSince = performance.now();
+      if (grew) gfx.invalidateShadows();
+      if (releasePending) release();
+      hooks.onQuality?.(q);
+    },
+  });
+  // critical memory pressure: hand back the shadow map and every target allocated for the tiers above this one
+  let releasePending = false;
+  const release = () => {
+    releasePending = false;
+    if (gfx.quality === 'low') world.sky.setShadows(QUALITY.low.shadow, false);
+    gfx.shrinkTo(gfx.quality);
+  };
+  // the governor's decisions. `gfx.autoTier = false` (probes, tests) means: ignore them.
+  handlers.onScale = (s) => {
+    if (gfx.autoTier && !disposed) gfx.setScale(s);
+  };
+  handlers.onTier = (t, info) => {
+    if (gfx.autoTier && !disposed) switcher.request(t, info.scale);
+  };
+  handlers.onTierFailed = (t) => console.info('[autowala] tier', t, 'did not hold the frame rate here; it will not be tried again for a while');
+
+  /**
+   * The Graphics setting, live (ui/menus/settings.js calls this): a tier pins the game there (only the render scale adapts), null / 'auto'
+   * goes back to the governor, starting from what this GPU allows. A tier above the allocation reallocates once (a player asked for it).
+   */
+  gfx.setQuality = (choice) => {
+    const pin = ['low', 'medium', 'high'].includes(choice) ? choice : null;
+    aq.forget();
+    const target = pin || autoStartTier(gpu);
+    gov.setTier(target, { scale: 1, lock: !!pin });
+    gov.setMaxTier(pin || gpu.tierCap); // (gpu.tierCap is already a tier of this game: quality.js gpuForTiers)
+    gfx.autoTier = true;
+    switcher.request(target, 1);
+    return target;
+  };
+  /** Memory pressure (the Android bridge fires 'jalebi:memory' { level: 'low' | 'critical' }): a step down and a hold, or the floor and the optional GPU memory released. */
+  const onMemory = (e) => {
+    const plan = memoryPlan(e?.detail?.level, { tier: gfx.quality, scale: gfx.scale, ladder: gov.ladder, floor: GFX.scaleMin[gfx.quality] ?? 0.6 });
+    if (!plan || disposed) return;
+    gov.setTier(plan.tier, { scale: plan.scale, lock: gov.locked });
+    gov.hold(GFX.memoryHoldMs);
+    releasePending = plan.release;
+    if (plan.tier !== gfx.quality) switcher.request(plan.tier, plan.scale);
+    else {
+      gfx.setScale(plan.scale);
+      if (releasePending) release();
+    }
+  };
+  const memoryTarget = typeof window !== 'undefined' ? window : null;
+  memoryTarget?.addEventListener('jalebi:memory', onMemory);
+  const removeMemoryListener = () => memoryTarget?.removeEventListener('jalebi:memory', onMemory);
   // the GPU context came back: every program and texture is gone, so build the first frame's again (the renderer re-creates them on first use
   // otherwise, which is the long freeze this module exists to avoid), then the rest
   contextRestored = () => {
     if (disposed) return;
+    gpuTimer.rebuild(gfx.renderer.getContext());
+    gov.hold(3000);
     warmer.reset();
     otherDone.clear();
     texturesDone = false;
@@ -550,5 +674,8 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
 export const createGame = (opts) => drain(gameSteps(opts));
 
 /** Setup that gives the browser a frame between stages. `onStep(stage, doneCount)` drives a loading bar; TOTAL_STEPS is its length. */
-export const createGameAsync = (opts, onStep) => drainAsync(gameSteps(opts), onStep);
+export function createGameAsync(opts, onStep) {
+  const claim = claimCanvas(opts.canvas); // (an older build on the same canvas, StrictMode's first, stops at its next stage: game/claim.js)
+  return drainAsync(abandonable(gameSteps({ ...opts, claim }), claim), onStep);
+}
 export const TOTAL_STEPS = 1 + 8 + 12 + 1;

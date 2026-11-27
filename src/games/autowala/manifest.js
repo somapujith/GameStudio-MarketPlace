@@ -19,7 +19,8 @@ export default {
   theme: { accent: '#ff3d9a', accent2: '#37e6ff', bg: '#120824' },
   art: { cover: AutowalaCover, icon: AutowalaIcon },
   modes: { friends: false, open: false },
-  loaders: { soloGame: () => import('./AutowalaGame.jsx') },
+  // WebGL 2 is asked for BEFORE the 3D chunks load: a device without it gets the message at once, not after 5-9 s of download
+  loaders: { soloGame: async () => ((await import('@/platform/gfx/webgl.js')).probeWebgl2().ok ? import('./AutowalaGame.jsx') : import('./NoWebgl.jsx')) },
   features: ['Open-world city', 'Real traffic and road rage', 'Metro rail', 'Customise your auto', 'Day and night', 'Plays in the browser'],
   publisher: 'Jalebi Games',
   languages: ['English', 'Telugu'],

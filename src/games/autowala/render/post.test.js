@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bloomGain, bloomSizes, bloomWeights, clampScale, scaleRect } from './post.js';
+import { bloomGain, bloomSizes, bloomThreshold, bloomWeights, brightPass, clampScale, scaleRect } from './post.js';
 import { opaqueByProgram, shadowDue } from './renderer.js';
 import { QUALITY } from '../game/config.js';
 
@@ -77,7 +77,7 @@ describe('quality tiers are monotone', () => {
   const t = ['low', 'medium', 'high'].map((k) => QUALITY[k]);
   const up = (key) => t.every((q, i) => i === 0 || q[key] >= t[i - 1][key]);
   it('never gets cheaper or uglier going up', () => {
-    for (const k of ['pixelRatio', 'shadow', 'bloomLevels', 'msaa', 'traffic', 'peds', 'drawDist']) expect(up(k)).toBe(true);
+    for (const k of ['pixelRatio', 'shadow', 'bloomLevels', 'msaa', 'pixelBudget', 'traffic', 'peds', 'far']) expect(up(k)).toBe(true);
     // a SMALLER interval is better quality
     expect(t[1].shadowInterval).toBeLessThanOrEqual(t[0].shadowInterval);
     expect(t[2].shadowInterval).toBeLessThanOrEqual(t[1].shadowInterval);
@@ -108,5 +108,39 @@ describe('opaque draw order', () => {
     expect(list[list.length - 1].id).toBe(3);
     const a = list.filter((i) => i.material === mats.a1).map((i) => i.z);
     expect(a).toEqual([10, 50]);
+  });
+});
+describe('bloom bright pass', () => {
+  it('keeps nothing well under the threshold and the excess above it', () => {
+    expect(brightPass(0.5, 1.05, 0.3)).toBe(0);
+    expect(brightPass(0.7, 1.05, 0.3)).toBe(0);
+    // a pixel 0.15 over the threshold feeds the bloom 0.15 of its 1.2, not all of it (the old hard edge bloomed every sunlit white line)
+    const k = brightPass(1.2, 1.05, 0.3);
+    expect(k * 1.2).toBeLessThan(0.4);
+    expect(brightPass(8, 1.05, 0.3) * 8).toBeCloseTo(8 - 1.05, 0);
+  });
+
+  it('is continuous and rises with brightness (no edge to pop over)', () => {
+    let prev = 0;
+    let maxStep = 0;
+    for (let l = 0.5; l < 4; l += 0.01) {
+      const out = brightPass(l, 1.05, 0.3) * l;
+      expect(out).toBeGreaterThanOrEqual(prev - 1e-9);
+      maxStep = Math.max(maxStep, out - prev);
+      prev = out;
+    }
+    expect(maxStep).toBeLessThan(0.05);
+  });
+
+  it('neon keeps its glow at night while the day threshold removes the paint and chrome bleed', () => {
+    expect(bloomThreshold(1)).toBeCloseTo(1.05, 6);
+    expect(bloomThreshold(0)).toBeGreaterThan(2);
+    expect(bloomThreshold(0.5)).toBeGreaterThan(bloomThreshold(1));
+    expect(bloomThreshold(7)).toBeCloseTo(1.05, 6);
+    // white paint in full sun (about 1.3): no glow by day, still some at night
+    expect(brightPass(1.3, bloomThreshold(0), 0.3) * 1.3).toBe(0);
+    expect(brightPass(1.3, bloomThreshold(1), 0.3) * 1.3).toBeGreaterThan(0.1);
+    // a neon tube at 6: glows in both
+    expect(brightPass(6, bloomThreshold(0), 0.3) * 6).toBeGreaterThan(3);
   });
 });
