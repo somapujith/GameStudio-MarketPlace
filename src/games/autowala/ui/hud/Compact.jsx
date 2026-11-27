@@ -2,14 +2,16 @@
 // the clock, a "More" button, pause) and the "More" sheet that holds every secondary panel (rating, job chip, mission, weather, road
 // rules, radio). Live road alerts (signal, camera, police, road rage, mission timer) get their own small lane.
 // Positions come from hud/phone.css; nothing here knows a pixel. Every snapshot key is optional.
-import { memo, useEffect, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import { RadioControls } from '../Radio.jsx';
 import JobChip from './JobChip.jsx';
 import RulesStrip from './RulesStrip.jsx';
 import RageMeter from './RageMeter.jsx';
 import { CloseIcon, DuskIcon, FlagIcon, KindIcon, MoonIcon, MoreIcon, PauseIcon, PinIcon, RainIcon, StarShape, SunIcon, ClockIcon } from './icons.jsx';
-import { dayPhase, formatClock, formatCountdown, formatDistance, formatEta, groupIndian, moodColor, normalizeTrip, timerTone } from './hudLogic.js';
+import { dayPhase, formatClock, formatCountdown, formatDistance, formatEta, groupIndian, moodColor, timerTone } from './hudLogic.js';
 import { filterRules } from './layoutLogic.js';
+import { shallowEqual, useView } from './snapStore.js';
+import { EMPTY_MORE, alertsSelector, selCareer, selClock, selMore, selTrip, selWallet, selWaiting, selWeather } from './views.js';
 import { useChangeFlash, useCountUp } from './useCountUp.js';
 import { GearIcon, MapIcon, PhoneIcon, QuestIcon, RadioIcon } from '../touch/icons.jsx';
 
@@ -59,7 +61,7 @@ function TripChip({ t, reduced }) {
   const fare = useCountUp(t.fare, reduced);
   const flash = useChangeFlash(t.fare);
   const tone = timerTone(t.timeLeft);
-  const nav = [t.distance != null ? formatDistance(t.distance) : '', t.eta != null ? formatEta(t.eta) : ''].filter(Boolean).join(' · ');
+  const nav = [t.distance != null ? formatDistance(t.distance) : '', t.eta != null ? formatEta(t.eta) : ''].filter(Boolean).join(' Ã‚Â· ');
   return (
     <div className={`aw-ctrip ${t.arrived ? 'is-arrived' : ''}`} role="status">
       <span className="aw-ctrip__badge" title={t.kind.label}>
@@ -109,13 +111,28 @@ function FindChip({ waiting }) {
   );
 }
 
-export const Strip = memo(function Strip({ snap, trip, route, reduced, weather, onPause, onMore, moreOpen, badge }) {
-  const t = normalizeTrip(trip, route);
+// Each chip of the strip reads its own view of the snapshot (hud/views.js), so a ticking fare does not re-render the wallet or the clock.
+function WalletSlot({ reduced }) {
+  const w = useView(selWallet, shallowEqual);
+  return w ? <WalletChip wallet={w.wallet} rating={w.rating} rides={w.rides} reduced={reduced} /> : null;
+}
+function ClockSlot() {
+  const c = useView(selClock, shallowEqual);
+  const weather = useView(selWeather);
+  return c ? <ClockChip hour={c.hour} day={c.day} weather={weather} /> : null;
+}
+function TripSlot({ reduced }) {
+  const t = useView(selTrip);
+  const waiting = useView(selWaiting, Object.is);
+  return t ? <TripChip t={t} reduced={reduced} /> : <FindChip waiting={waiting} />;
+}
+
+export const Strip = memo(function Strip({ reduced, onPause, onMore, moreOpen, badge }) {
   return (
     <header className="aw-strip" aria-label="Status">
-      <WalletChip wallet={snap.wallet} rating={snap.rating} rides={snap.rides} reduced={reduced} />
-      <div className="aw-strip__trip">{t ? <TripChip t={t} reduced={reduced} /> : <FindChip waiting={snap.waitingCount} />}</div>
-      <ClockChip hour={snap.hour} day={snap.day} weather={weather} />
+      <WalletSlot reduced={reduced} />
+      <div className="aw-strip__trip"><TripSlot reduced={reduced} /></div>
+      <ClockSlot />
       <button
         type="button"
         className={`aw-more-btn${moreOpen ? ' is-open' : ''}`}
@@ -156,6 +173,13 @@ export function AlertsLane({ rules, kinds, rage, mission, missionTime }) {
   );
 }
 
+/** The alert lane fed from the store: the chips the layout allows (`cap`), with the distances and the mission clock rounded to what they print. */
+export function AlertsLaneSlot({ cap }) {
+  const select = useMemo(() => alertsSelector(cap), [cap]);
+  const v = useView(select);
+  if (!v) return null;
+  return <AlertsLane rules={v.rules} kinds={v.kinds} rage={v.rage} mission={v.mission ? v.mission.title : ''} missionTime={v.mission && v.mission.left != null ? formatCountdown(v.mission.left) : ''} />;
+}
 function QuestSummary({ a }) {
   if (!a) return null;
   const idx = Math.min(a.stepIndex || 0, Math.max(0, (a.steps?.length || 1) - 1));
@@ -285,4 +309,14 @@ export function MoreSheet({ open, onClose, game, snap, careerV, rulesV, weather,
       </aside>
     </>
   );
+}
+
+const selMoreClosed = (s) => ({ ...EMPTY_MORE, career: selCareer(s) }); // closed: only the job chip stays mounted (its gamepad poll keeps running)
+
+/** The More sheet fed from the store: while it is closed it holds nothing but the job chip, so ticking numbers cost it nothing. */
+export function MoreSheetSlot({ open, onClose, game, onShortcut }) {
+  const v = useView(open ? selMore : selMoreClosed);
+  if (!v) return null;
+  const snap = { rating: v.rating, rides: v.rides, quest: { active: v.quest }, radio: v.radio };
+  return <MoreSheet open={open} onClose={onClose} game={game} snap={snap} careerV={v.career} rulesV={v.rules} weather={v.weather} onShortcut={onShortcut} />;
 }

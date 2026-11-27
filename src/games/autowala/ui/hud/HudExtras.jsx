@@ -1,6 +1,8 @@
 // The interaction prompt chip, the drift flair and the full-screen effects (speed vignette + lines, crash flash, low-fuel edge).
 import { useState } from 'react';
-import { crashFlash, driftTier, fuelTone, promptAction, rageView, speedFx, touchPromptText } from './hudLogic.js';
+import { crashFlash, driftTier, promptAction, touchPromptText } from './hudLogic.js';
+import { shallowEqual, useView } from './snapStore.js';
+import { selDrift, selFx, selPrompt } from './views.js';
 import { useGameEvent } from './useGameMenu.js';
 
 export function Prompt({ prompt, touch, onTap }) {
@@ -42,23 +44,36 @@ export function DriftFlair({ drifting, charge }) {
   );
 }
 
-export function Effects({ game, snap }) {
+/** The screen-edge effects. Reads the store's effects view (selFx: opacities in percents), so it renders when a percent moves, not on every km/h. */
+export function Effects({ game }) {
   const [crash, setCrash] = useState({ n: 0, s: 0, soft: false });
   // kerb / lake scrapes are a faint amber spark; real crashes (buildings, landmarks, traffic) flash red
   useGameEvent(game, 'crash', (e) => {
     const f = crashFlash(e);
     setCrash((c) => ({ n: c.n + 1, s: f.strength, soft: f.soft }));
   });
-  const fx = speedFx(snap.kmh, snap.boosting);
-  const fuel = fuelTone(snap.fuel);
-  const rage = rageView(snap.rage);
+  const fx = useView(selFx, shallowEqual);
+  if (!fx) return null;
   return (
     <div className="aw-fx" aria-hidden="true">
-      <div className={`aw-fx-vig ${snap.boosting ? 'is-boost' : ''}`} style={{ opacity: fx.vignette.toFixed(3) }} />
-      {fx.lines > 0.03 && <div className={`aw-fx-lines ${snap.boosting ? 'is-boost' : ''}`} style={{ opacity: (fx.lines * 0.55).toFixed(3) }} />}
-      {fuel.pulse && <div className="aw-fx-fuel" />}
-      {rage && <div className="aw-fx-rage" style={{ '--h': (0.35 + 0.65 * rage.heat).toFixed(2) }} />}
+      <div className={`aw-fx-vig ${fx.boosting ? 'is-boost' : ''}`} style={{ opacity: fx.vignette.toFixed(3) }} />
+      {fx.lines > 0.03 && <div className={`aw-fx-lines ${fx.boosting ? 'is-boost' : ''}`} style={{ opacity: (fx.lines * 0.55).toFixed(3) }} />}
+      {fx.fuelPulse && <div className="aw-fx-fuel" />}
+      {fx.rage && <div className="aw-fx-rage" style={{ '--h': (0.35 + 0.65 * fx.rageHeat).toFixed(2) }} />}
       {crash.n > 0 && <div key={crash.n} className={`aw-fx-crash ${crash.soft ? 'is-soft' : ''}`} style={{ '--s': crash.soft ? Math.min(crash.s, 0.35) : crash.s }} />}
     </div>
   );
+}
+
+/** The interaction prompt, fed from the store (it changes when the game sets or clears one). */
+export function PromptSlot({ touch, onTap }) {
+  const prompt = useView(selPrompt);
+  return <Prompt prompt={prompt} touch={touch} onTap={onTap} />;
+}
+
+/** The drift flair, fed from the store (it changes at the 2 % steps of the charge, and only while drifting). */
+export function DriftSlot() {
+  const d = useView(selDrift, shallowEqual);
+  if (!d) return null;
+  return <DriftFlair drifting={d.drifting} charge={d.charge} />;
 }
