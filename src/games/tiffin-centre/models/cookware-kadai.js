@@ -265,9 +265,10 @@ export function buildKadaiSet() {
   frontGlow.position.set(0, COUNTER_TOP + 0.002, CHULHA.z + CHULHA.d / 2 + 0.006);
   frontGlow.renderOrder = 6;
   g.add(frontGlow);
+  // the light stays in the scene and is dimmed to zero when the burner is off: a changing number of lights recompiles every shader (see cookware-tawa.js)
   let light = null;
   if (quality().lights) {
-    light = new PointLight('#ff8a3a', 1.1, 1.8, 2);
+    light = new PointLight('#ff8a3a', 0, 1.8, 2);
     light.position.set(0, COUNTER_TOP + 0.16, KADAI_Z + 0.05);
     g.add(light);
   }
@@ -298,7 +299,6 @@ export function buildKadaiSet() {
       flamePower = on ? Math.max(0.05, Math.min(1, power)) : 0;
       rings.forEach((m) => (m.visible = burnerOn));
       frontGlow.visible = burnerOn;
-      if (light) light.visible = burnerOn;
       for (const m of fm) m.uniforms.uPower.value = flamePower;
       for (const s of slots) {
         s.steam.points.visible = burnerOn;

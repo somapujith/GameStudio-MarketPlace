@@ -203,8 +203,10 @@ describe('createProgramWarmer', () => {
       info: { programs: [] },
       getRenderTarget: () => target,
       setRenderTarget(t) { target = t; },
-      compile(root, cam, scene) {
+      compile(root, cam, scene = root) {
+        // like three.js: with no target scene the object is the scene; the lights are gathered from the scene AND the object (so twice for an object inside it)
         const lights = [];
+        if (scene !== root) root.traverseVisible((o) => { if (o.isLight) lights.push(o.name); });
         scene.traverseVisible((o) => { if (o.isLight) lights.push(o.name); });
         const meshes = [];
         root.traverse((o) => { if (o.isMesh) meshes.push([o.name, o.visible]); });
@@ -264,6 +266,23 @@ describe('createProgramWarmer', () => {
     expect(prep.visible).toBe(false);
     expect(stall.visible).toBe(true);
     expect(events.children[0].visible).toBe(true);
+  });
+
+  it('compiles a unit that holds lights through the whole scene, never as an object of it (three.js would count its lights twice: a different shader)', () => {
+    const { scene, camera, stall } = build();
+    scene.name = 'the-scene';
+    const { r, calls } = fake();
+    drain(createProgramWarmer({ renderer: r, scene, camera }));
+    // the stall holds a bulb: its compile is the whole scene, with every light counted once
+    const viaScene = calls.filter((c) => c.root === 'the-scene');
+    expect(viaScene.length).toBeGreaterThan(0);
+    for (const c of viaScene) expect(new Set(c.lights).size).toBe(c.lights.length); // every light once, never twice
+    expect(viaScene[0].lights).toEqual(expect.arrayContaining(['bulb', 'lamp']));
+    expect(calls.some((c) => c.root === stall.name)).toBe(false);
+    // a unit without lights keeps the cheap path (the unit only), and still sees each light of the scene once
+    const evCalls = calls.filter((c) => c.root === 'events');
+    expect(evCalls.length).toBeGreaterThan(0);
+    expect(evCalls[0].lights.sort()).toEqual(['bulb', 'lamp']);
   });
 
   it('skips the all-lights pass when no light is hidden or the tier has no lights', () => {

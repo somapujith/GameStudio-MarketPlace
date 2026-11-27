@@ -85,7 +85,7 @@ describe('the back counter behind the cook', () => {
     expect(out.z).toBeCloseTo(STATIONS.tawa1.z + 0.1, 6);
   });
 
-  it('has its own light, which is on only when the counter is there', () => {
+  it('has its own light, which shines only when the counter is there (and is never taken out of the scene: three.js would recompile every shader)', () => {
     const { stall, scene } = make('high');
     const near = () => {
       const out = [];
@@ -94,15 +94,19 @@ describe('the back counter behind the cook', () => {
       });
       return out;
     };
-    expect(near()).toHaveLength(1);
-    expect(near()[0].visible).toBe(false);
-    stall.setStations(['tawa1', 'prep1']);
-    expect(near()[0].visible).toBe(true);
     const L = lightingAt(21);
+    expect(near()).toHaveLength(1);
     stall.setLight(L, 1);
+    expect(near()[0].visible).toBe(true);
+    expect(near()[0].intensity).toBe(0);
+    stall.setStations(['tawa1', 'prep1']);
+    stall.setLight(L, 1);
+    expect(near()[0].visible).toBe(true);
     expect(near()[0].intensity).toBeGreaterThan(1);
     stall.setStations(['tawa1']);
-    expect(near()[0].visible).toBe(false);
+    stall.setLight(L, 1);
+    expect(near()[0].visible).toBe(true);
+    expect(near()[0].intensity).toBe(0);
   });
 });
 
@@ -247,13 +251,15 @@ describe('gas stand, burners and power', () => {
 
   it('the back counter has its own candle for a power cut, there only with the counter', () => {
     const { stall } = make('high');
-    const candle = stall.root.children.find((g) => g.isGroup && g.children.some((c) => c.isPoints) && g.children.some((c) => c.isLight || c instanceof PointLight));
+    // the candle's body is a group that hides with the counter; its light stays in the scene (root child) and is dimmed to zero: the number of lights must never change
+    const candle = stall.root.children.find((g) => g.isGroup && g.children.some((c) => c.isPoints) && g.children.some((c) => c.isMesh && c.geometry?.type === 'SphereGeometry'));
     expect(candle).toBeTruthy();
     expect(candle.visible).toBe(false);
     stall.setStations(['tawa1', 'prep1']);
     expect(candle.visible).toBe(true);
     const flame = candle.children.find((c) => c.isMesh && c.geometry?.type === 'SphereGeometry');
-    const light = candle.children.find((c) => c instanceof PointLight);
+    const light = stall.root.children.find((c) => c instanceof PointLight && c.color.getHex() === 0xff9a3a && Math.abs(c.position.x - STATIONS.prep1.x) < 1 && c.position.z > 0.9);
+    expect(light).toBeTruthy();
     const L = makeLighting();
     lightingAt(21, L, { rain: 0, power: 0 });
     stall.setLight(L, 1);
@@ -268,6 +274,9 @@ describe('gas stand, burners and power', () => {
     expect(light.position.z).toBeGreaterThan(0.9);
     stall.setStations(['tawa1']);
     expect(candle.visible).toBe(false);
+    stall.setLight(L, 3);
+    expect(light.visible).toBe(true);
+    expect(light.intensity).toBe(0);
   });
 
   it('the fan winds down in a cut and picks up when the power returns (inertia, not a switch)', () => {

@@ -5,9 +5,14 @@
 // Re-renders on EVERY notification of the session (a tick, an action, a link change) and, while the game is playing, ~10 times
 // a second more so that rings and bars follow the clock: `now` (performance.now() at render) minus `tickAt`, over TICK_MS,
 // is how far into the current tick we are. The in-between renders are pure clock pulses and are throttled to PULSE_HZ.
+// A screen that animates through requestAnimationFrame (the HUD's frame bus, the 3D scene) does not need the pulses: `useSession(session, { hz: 0 })`
+// re-renders on notifications only (about 2 a second instead of 12), and `now` is still stamped on every render.
 import { useEffect, useReducer } from 'react';
 
 export const PULSE_HZ = 10;
+
+/** The pulse interval in ms for `hz`, or 0 for "no pulses" (hz <= 0 or not a number). */
+export const pulseMs = (hz) => (Number.isFinite(hz) && hz > 0 ? Math.round(1000 / Math.max(1, hz)) : 0);
 
 const defaultNow = () => (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
 
@@ -43,11 +48,12 @@ export function useSession(session, { hz = PULSE_HZ } = {}) {
   }, [session]);
 
   const playing = !!session && session.status === 'playing';
+  const ms = pulseMs(hz);
   useEffect(() => {
-    if (!playing) return undefined;
-    const id = setInterval(bump, Math.round(1000 / Math.max(1, hz)));
+    if (!playing || !ms) return undefined;
+    const id = setInterval(bump, ms);
     return () => clearInterval(id);
-  }, [session, playing, hz]);
+  }, [session, playing, ms]);
 
   return sessionSnapshot(session);
 }

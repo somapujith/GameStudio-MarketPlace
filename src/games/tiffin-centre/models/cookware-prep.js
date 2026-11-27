@@ -253,11 +253,13 @@ export function buildPrepSet() {
   const stand = new Mesh(sharedGeo('prep:stand', () => merge([place(boxUV(0.3, 0.075, 0.3, 0.3, 0.3), { p: [0, 0.0375, 0] })])), plainMaterial('prepstand', { color: '#7a5a3a', roughness: 0.8, metalness: 0 }));
   stand.position.set(0.0, COUNTER_TOP, -0.3);
   g.add(stand);
+  // the light stays in the scene and is dimmed to zero when nothing boils: a changing number of lights recompiles every shader (see cookware-tawa.js)
   let light = null;
+  let boilingNow = false;
   if (quality().lights) {
     light = new PointLight('#7aa8ff', 0.4, 1.0, 2);
     light.position.set(VX, COUNTER_TOP + 0.1, -0.05);
-    light.visible = false;
+    light.intensity = 0;
     g.add(light);
   }
 
@@ -293,7 +295,7 @@ export function buildPrepSet() {
     const ve = ctl.vessel;
     const boiling = !!ve && flags.burner;
     flame.visible = boiling;
-    if (light) light.visible = boiling;
+    boilingNow = boiling;
     fm.uniforms.uPower.value = flags.flame;
     for (const s of slots) {
       const own = s.device === 'vessel' && s.cur.st !== 'empty' && flags.burner;
@@ -334,7 +336,7 @@ export function buildPrepSet() {
       const boil = !!ve && ve.cur.st === 'cooking' && flags.burner;
       lidPivot.position.y = COUNTER_TOP + 0.034 + (boil ? Math.max(0, Math.sin(tt * 22)) * 0.003 : 0);
       lidPivot.rotation.z = boil ? Math.sin(tt * 21) * 0.01 : 0;
-      if (light) light.intensity = flags.burner ? (0.35 + 0.1 * Math.sin(tt * 15)) * (0.4 + 0.6 * flags.flame) : 0;
+      if (light) light.intensity = boilingNow && flags.burner ? (0.35 + 0.1 * Math.sin(tt * 15)) * (0.4 + 0.6 * flags.flame) : 0;
       const tr = ctl.tray;
       pin.position.z = -0.3 + (tr && tr.cur.st === 'cooking' ? Math.sin(tt * 4) * 0.045 : 0);
     },

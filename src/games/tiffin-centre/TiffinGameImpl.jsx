@@ -37,6 +37,15 @@ function LoadBar({ progress }) {
   );
 }
 
+/** User Timing mark for the load timeline (docs/perf/tf-cpu.md, scripts/perf/tf-load.mjs). */
+const mark = (name) => {
+  try {
+    performance.mark(name);
+  } catch {
+    /* no User Timing */
+  }
+};
+
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' &&
   (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || document.documentElement.dataset.motion === 'reduced');
@@ -45,7 +54,8 @@ const prefersReducedMotion = () =>
 const tutorialResult = (state) => ({ reason: 'tutorial', stars: 3, money: state?.money ?? 0, level: 0, standings: [] });
 
 export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext }) {
-  const view = useSession(session);
+  // notifications only (no 10 Hz clock pulse): this component and the layers under it animate on requestAnimationFrame, not on re-renders
+  const view = useSession(session, { hz: 0 });
   const { state, status, mode, tutorial } = view;
   const result = view.result ?? null;
 
@@ -122,16 +132,25 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
     (async () => {
       // the audio code is its own chunk (the context itself only starts on the first gesture)
       // the web fonts load WHILE the scene builds (the painted banner and menu board repaint when they arrive); a device without WebGL 2 is told at once
+      mark('tc:impl-start');
       const fontsReady = loadFonts();
       const { createTiffinAudio } = await import('./audio/index.js');
+      mark('tc:audio-chunk');
       if (dead || !canvasRef.current || !wrapRef.current) return;
       audio = createTiffinAudio({ meId: session.meId });
       audioRef.current = audio;
       setAudio(audio);
       try {
+        const box = wrapRef.current.getBoundingClientRect();
         s = await createTiffinSceneAsync(canvasRef.current, {
           quality: 'auto',
           reducedMotion: prefersReducedMotion(),
+          // the session's first state and the real canvas size: the build settles the scene the way it will be drawn (stations, lights, env map, batched
+          // scenery, every shader linked) BEFORE it is shown, so the first frame never waits for a compile. Online tables without a state yet build the old way.
+          initialState: session.state ?? null,
+          initialTickAt: session.tickAt,
+          meId: session.meId,
+          size: box.width > 0 && box.height > 0 ? { w: box.width, h: box.height } : null,
           onContextLost: () => !dead && setGl('lost'),
           onContextRestored: () => !dead && setGl(null),
           onProgress: (p, label) => !dead && setProgress({ p, label }),
@@ -148,6 +167,7 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
         return;
       }
       if (!s) return; // disposed while loading
+      mark('tc:scene-built');
       await fontsReady;
       if (dead) {
         s.dispose();
@@ -182,8 +202,15 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
       if (session.state) push({ state: session.state, events: [], tickAt: session.tickAt });
       s.start();
       setScene(s);
+      mark('tc:scene-started');
       // a console/screenshot handle: only in dev builds or with ?tcdebug=1 in the URL (a solo shift is client-side anyway, but there is no reason to hand it out)
-      if (import.meta.env?.DEV || /[?&]tcdebug=1\b/.test(window.location.search)) window.__tiffin = { session, scene: s, audio };
+      if (import.meta.env?.DEV || /[?&]tcdebug=1\b/.test(window.location.search)) {
+        window.__tiffin = { session, scene: s, audio };
+        // the engine's bot, for the soak / leak scripts (scripts/perf/tf-leak.mjs): the same chunk the session already loaded
+        import('@shared/tiffin-centre/index.js').then((m) => {
+          if (window.__tiffin?.session === session) window.__tiffin.bot = m.chooseAutoAction;
+        }).catch(() => {});
+      }
     })().catch((err) => {
       if (!dead) {
         console.error('[tiffin] start-up failed', err);
