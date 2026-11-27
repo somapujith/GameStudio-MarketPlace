@@ -157,9 +157,11 @@ export const SCALE_LADDER = [1, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.6, 0.5];
 
 /**
  * The lowest scale each tier may be pushed to before the tier itself is asked to drop: a lower tier is a much bigger loss of picture (no bloom, no shadows) and a
- * full rebuild, so the post tiers go further down the ladder than the old 0.7.
+ * full rebuild, so the post tiers go further down the ladder than the old 0.7. The DIRECT tiers (lite / low: no post pipeline, they draw straight to the canvas) have no
+ * dynamic resolution: every step re-sizes the canvas, which was measured at 100 to 700 ms of blank frames on a busy machine, so they hold their pixel ratio and only the
+ * tier moves (lite, the last resort, is also the 30 fps one).
  */
-export const SCALE_MIN = { lite: 0.6, low: 0.5, medium: 0.6, high: 0.6 };
+export const SCALE_MIN = { lite: 1, low: 1, medium: 0.6, high: 0.6 };
 
 /** Relative cost of a tier for the governor's tier-up prediction and for the scale a tier change resumes at (measured: see docs/perf/tf-int.md). */
 export const TIER_COST = { lite: 1, low: 1.6, medium: 3.3, high: 3.9 };

@@ -109,6 +109,10 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
       yield runStandaloneCalibration({ width: vw, height: vh, dpr: vdpr, gpu: gpu0, tiers: TIFFIN_TIER_MODELS }).then((r) => {
         calibration = r;
       });
+      // an INCOMPLETE benchmark (a test never got a slice: the machine was too busy, or no timer queries) fills the missing units with pessimistic sentinels (25 ns / pixel,
+      // 60 us / call): reading those as a verdict put a perfectly good laptop on `low` for weeks through tier memory. Its verdict is not used at all: the class decides the
+      // start and the governor corrects it from real frames. Only a COMPLETE, confident run may move the start tier.
+      if (calibration && (!calibration.ok || calibration.partial || calibration.missing?.length || calibration.recommended?.confident === false)) calibration = null;
       // the shared estimate is max(cpu, gpu) of generic tier models; Tiffin's frames are a fixed draw cost PLUS a pixel cost (quality.js TIER_REF): the measured
       // units (fill ns / pixel, call us) go through Tiffin's own table, and a post tier at a modest scale beats the plain tier at full resolution
       if (calibration?.ok && calibration.units && calibration.recommended) {
