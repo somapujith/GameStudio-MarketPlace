@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { BoxGeometry, Box3, Vector3, Group, InstancedMesh, Mesh, MeshBasicMaterial, MeshLambertMaterial, MeshStandardMaterial, CylinderGeometry } from 'three';
-import { bakedCopy, createBakeRegistry, freezeMatrices, mergeStaticMeshes } from './merge-static.js';
+﻿import { describe, expect, it } from 'vitest';
+import { BoxGeometry, Box3, Float32BufferAttribute, Vector3, Group, InstancedMesh, Mesh, MeshBasicMaterial, MeshLambertMaterial, MeshStandardMaterial, CylinderGeometry } from 'three';
+import { bakedCopy, createBakeRegistry, freezeMatrices, mergeStaticMeshes, mergeStaticTiles, SHADOW_LAYER } from './merge-static.js';
 
 const mat = (c) => new MeshStandardMaterial({ color: c });
 
@@ -159,5 +159,150 @@ describe('colour baking', () => {
     expect(bake.materialFor(glow).emissiveIntensity).toBe(0);
     expect(bake.materialFor(new MeshStandardMaterial())).toBeNull();
     expect(bake.materialFor(lam('#ffffff', { transparent: true }))).toBeNull();
+  });
+});
+describe('mergeStaticTiles', () => {
+  const lambert = (c) => new MeshLambertMaterial({ color: c });
+  const place = (parent, geo, m, [x, y, z], cast = true) => {
+    const mesh = new Mesh(geo, m);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = cast;
+    mesh.receiveShadow = true;
+    parent.add(mesh);
+    return mesh;
+  };
+
+  it('merges the same material across models of one tile and bakes world space (identity matrices)', () => {
+    const root = new Group();
+    const m = lambert('#ffffff');
+    const a = new Group();
+    a.position.set(100, 0, 100);
+    a.rotation.y = 0.4;
+    const b = new Group();
+    b.position.set(300, 0, 50);
+    root.add(a, b);
+    place(a, new BoxGeometry(2, 2, 2), m, [1, 1, 0]);
+    place(b, new BoxGeometry(2, 2, 2), m, [-1, 1, 3]);
+    const before = worldBox(root);
+    const r = mergeStaticTiles(root, { tile: 640 });
+    expect(r.before).toBe(2);
+    expect(r.meshes).toHaveLength(1);
+    expect(r.after).toBe(1);
+    const meshes = [];
+    root.traverse((o) => o.isMesh && meshes.push(o));
+    expect(meshes).toHaveLength(1);
+    expect(meshes[0].parent).toBe(root);
+    expect(meshes[0].matrixAutoUpdate).toBe(false);
+    const after = worldBox(root);
+    for (const k of ['x', 'y', 'z']) {
+      expect(after.min[k]).toBeCloseTo(before.min[k], 4);
+      expect(after.max[k]).toBeCloseTo(before.max[k], 4);
+    }
+    expect(root.children.filter((c) => c.isGroup)).toHaveLength(0); // the emptied model groups are gone
+  });
+
+  it('keeps tiles, materials and shadow flags apart', () => {
+    const root = new Group();
+    const m1 = lambert('#ff0000');
+    const m2 = lambert('#00ff00');
+    const near = new Group();
+    const far = new Group();
+    far.position.set(2000, 0, 0);
+    root.add(near, far);
+    place(near, new BoxGeometry(1, 1, 1), m1, [0, 0, 0]);
+    place(near, new BoxGeometry(1, 1, 1), m1, [3, 0, 0]);
+    place(near, new BoxGeometry(1, 1, 1), m1, [6, 0, 0], false); // other shadow flag
+    place(near, new BoxGeometry(1, 1, 1), m2, [9, 0, 0]);
+    place(far, new BoxGeometry(1, 1, 1), m1, [0, 0, 0]); // other tile
+    const r = mergeStaticTiles(root, { tile: 640 });
+    expect(r.before).toBe(5);
+    expect(r.meshes).toHaveLength(4);
+    const merged = r.meshes.find((o) => o.material === m1 && o.castShadow && o.position.x === 0 && o.geometry.attributes.position.count === 72);
+    expect(merged).toBeTruthy(); // two boxes (36 vertices each, non-indexed)
+  });
+
+  it('keeps vertex colours, leaves instanced and kept meshes alone, and flips mirrored winding', () => {
+    const root = new Group();
+    const vc = new MeshLambertMaterial({ vertexColors: true });
+    const g = new Group();
+    g.scale.x = -1; // a mirror
+    root.add(g);
+    for (const [x, c] of [[2, [1, 0, 0]], [5, [0, 1, 0]]]) {
+      const geo = new BoxGeometry(1, 1, 1);
+      geo.setAttribute('color', new Float32BufferAttribute(new Float32Array(geo.attributes.position.count * 3).map((_, i) => c[i % 3]), 3));
+      place(g, geo, vc, [x, 0, 0]);
+    }
+    const inst = new InstancedMesh(new BoxGeometry(1, 1, 1), new MeshBasicMaterial(), 2);
+    g.add(inst);
+    const keep = new Mesh(new BoxGeometry(1, 1, 1), vc);
+    keep.userData.keep = true;
+    g.add(keep);
+    const r = mergeStaticTiles(root);
+    expect(r.meshes).toHaveLength(1);
+    const col = r.meshes[0].geometry.attributes.color;
+    expect(col).toBeTruthy();
+    expect(col.count).toBe(72);
+    expect(col.getX(0)).toBe(1);
+    expect(col.getY(40)).toBe(1);
+    expect(inst.parent).toBe(g); // the instanced mesh keeps its model (and the model keeps its transform)
+    expect(keep.parent).toBe(g);
+    // outward-facing after the mirror: the first triangle's geometric normal agrees with the stored vertex normal
+    const p = r.meshes[0].geometry.attributes.position;
+    const n = r.meshes[0].geometry.attributes.normal;
+    const a = new Vector3().fromBufferAttribute(p, 0);
+    const b = new Vector3().fromBufferAttribute(p, 1);
+    const c = new Vector3().fromBufferAttribute(p, 2);
+    const face = b.sub(a).cross(c.sub(a));
+    expect(face.dot(new Vector3().fromBufferAttribute(n, 0))).toBeGreaterThan(0);
+  });
+});
+
+describe('mergeStaticTiles shadowProxy', () => {
+  const lam = (c) => new MeshLambertMaterial({ color: c });
+  const part = (parent, m, x, cast) => {
+    const mesh = new Mesh(new BoxGeometry(1, 1, 1), m);
+    mesh.position.set(x, 0, 0);
+    mesh.castShadow = cast;
+    mesh.receiveShadow = true;
+    parent.add(mesh);
+  };
+
+  it('merges casters and non-casters of one material into one visible mesh and puts every caster in one shadow-only proxy per tile', () => {
+    const root = new Group();
+    const g = new Group();
+    root.add(g);
+    const a = lam('#ff0000');
+    const b = lam('#0000ff');
+    part(g, a, 0, true);
+    part(g, a, 3, false);
+    part(g, b, 6, true);
+    part(g, b, 9, true);
+    const r = mergeStaticTiles(root, { tile: 640, shadowProxy: true });
+    expect(r.meshes).toHaveLength(2); // one per material, the cast flag no longer splits them
+    expect(r.meshes.every((m) => m.castShadow === false)).toBe(true);
+    expect(r.proxies).toHaveLength(1);
+    const proxy = r.proxies[0];
+    expect(proxy.castShadow).toBe(true);
+    expect(Object.keys(proxy.geometry.attributes)).toEqual(['position']);
+    expect(proxy.geometry.attributes.position.count).toBe(36 * 3); // the three casters, non-indexed
+    // layer 1 only: the camera (layer 0) never draws it, the shadow camera with layer 1 enabled does
+    expect(proxy.layers.isEnabled(SHADOW_LAYER)).toBe(true);
+    expect(proxy.layers.isEnabled(0)).toBe(false);
+    expect(r.after).toBe(3);
+  });
+
+  it('makes a proxy per tile and none when nothing casts', () => {
+    const root = new Group();
+    const far = new Group();
+    far.position.set(5000, 0, 0);
+    root.add(far);
+    const m = lam('#00ff00');
+    part(root, m, 0, true);
+    part(far, m, 0, true);
+    expect(mergeStaticTiles(root, { tile: 640, shadowProxy: true }).proxies).toHaveLength(2);
+    const root2 = new Group();
+    part(root2, m, 0, false);
+    part(root2, m, 2, false);
+    expect(mergeStaticTiles(root2, { tile: 640, shadowProxy: true }).proxies).toHaveLength(0);
   });
 });

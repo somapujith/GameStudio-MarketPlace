@@ -113,6 +113,7 @@ export function createSky(scene) {
   key.shadow.camera.bottom = -85;
   key.shadow.camera.near = 10;
   key.shadow.camera.far = 520;
+  key.shadow.camera.layers.enable(1); // layer 1 = shadow-only proxies (render/merge-static.js SHADOW_LAYER): drawn by this camera, never by the view
   key.shadow.bias = -0.0004;
   key.shadow.normalBias = 0.6;
   scene.add(key, key.target);

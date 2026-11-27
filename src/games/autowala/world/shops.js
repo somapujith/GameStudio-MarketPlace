@@ -10,6 +10,7 @@ import { buildBawarchi } from './shop-bawarchi.js';
 import { buildDelhi } from './shop-delhi.js';
 import { buildOyo } from './shop-oyo.js';
 import { SLICE, drain } from '../game/steps.js';
+import { freezeMatrices, mergeStaticTiles } from '../render/merge-static.js';
 
 const BUILDERS = { paradise: buildParadise, bawarchi: buildBawarchi, delhi: buildDelhi, oyo: buildOyo };
 
@@ -42,6 +43,12 @@ export function* shopSteps(scene, city, colliders, shared, sky) {
       shops.push({ id: st.id, brand: 'stall', name: st.name, te: st.te, kind: 'stall', x: st.x, z: st.z, front: r ? { x: r.x, z: r.z, edge: r.edge.id, t: r.t } : { x: st.x, z: st.z }, hail: st.hail });
     }
   }
+  yield SLICE;
+  // Everything is static from here on: bake each shopfront and the stalls into world space and merge what shares a material, one mesh per
+  // tile (the branches of a brand share their materials, and so do the batches of solid / metal / lamp / glass parts of every shop).
+  const merged = mergeStaticTiles(kit.root, { tile: 512, shadowProxy: true });
+  for (const m of [...merged.meshes, ...merged.proxies]) kit.track.geos.push(m.geometry);
+  freezeMatrices(kit.root);
   yield SLICE;
   kit.loadFonts();
   kit.update(0, 0);

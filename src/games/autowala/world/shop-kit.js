@@ -335,7 +335,9 @@ export function shapeBoard(kit, shape, w, h, depth, faceMat, sideMat) {
   for (let i = 0; i < pos.count; i++) uv.setXY(i, (pos.getX(i) + w / 2) / w, pos.getY(i) / h);
   kit.track.geos.push(g);
   const m = new Mesh(g, [faceMat, sideMat]);
-  m.castShadow = true;
+  // (a caster with a textured material gets its own shadow-pass program, built the first time the board is in the sun's box: a hitch of
+  // ~250 ms on an integrated GPU, for a shadow on its own wall that nobody can see)
+  m.castShadow = false;
   m.receiveShadow = true;
   return m;
 }
@@ -399,7 +401,13 @@ export function createKit(scene) {
   /**
    * A textured surface material. `glow` (emissiveMap: a texture, or true to reuse the map) is scaled by k * night.
    */
+  // Textured materials are shared: the branches of one brand draw the same textures (setScope), so their planes ask for the same material
+  // and merge into one draw call per tile (mergeStaticTiles in shops.js). A material without a map is never shared (callers recolour it).
+  const texMats = new Map();
   function texMat({ map, glow = null, k = 0.9, base = 0, tint = 1.22, rough = 0.7, metal = 0.02, offset = 0, transparent = false, alphaTest = 0, side }) {
+    const shareKey = map ? [map.uuid, glow === true ? 'self' : glow ? glow.uuid : '-', k, base, tint, rough, metal, offset, transparent, alphaTest, side].join('|') : null;
+    const had = shareKey && texMats.get(shareKey);
+    if (had) return had;
     const m = new MeshStandardMaterial({ map, roughness: rough, metalness: metal, transparent, alphaTest, polygonOffset: offset !== 0, polygonOffsetFactor: -offset, polygonOffsetUnits: -offset });
     if (side !== undefined) m.side = side;
     m.color.setScalar(tint); // the scene's key light is soft: lift the paint a little so it reads true by day
@@ -411,6 +419,7 @@ export function createKit(scene) {
       m.emissiveIntensity = base;
     }
     own(m);
+    if (shareKey) texMats.set(shareKey, m);
     return m;
   }
   /** A plane of w x h metres, bottom-centre at (x,y,z), facing +z rotated by ry; optional uv repeat. */

@@ -1,11 +1,13 @@
 // The auto-rickshaw (and the little people who ride and drive it). Smooth low-poly, lacquered paint, glowing lamps.
 // Faces +z. Returns a group with handles in userData so the simulation can animate wheels, steering and lights, and so the
 // customisation system (sim/customize.js, which OWNS the look of every catalogue item) can reach every part by name.
-// PERFORMANCE: every static part of the auto is baked into ONE mesh per material (the merged geometry is built once per level of
-// detail and shared by every auto); parts that need their own colour but not their own material (dark trim, the roof pinstripe, the
-// banner board, the garland beads) share one vertex-coloured "matte" mesh. The windscreen posts, header and rear panel that the
-// "high canopy" option stretches are baked in two variants (normal / canopy, sim/auto-canopy.js) and customize.js swaps the geometry.
-// Budget: player rig with the default look <= 26 draw calls and <= 3 shadow casters, however it is customised (see auto-budget.test.js).
+// PERFORMANCE: every static part of the auto is baked into ONE geometry per slot (built once per level of detail and shared by every
+// auto). The traffic auto draws one mesh per material. The player's rig draws far fewer: every opaque static part in ONE mesh, the
+// transparent decals in one, one mesh per wheel set (sim/auto-uber.js: a per-vertex slot picks each part's look from uniform arrays fed
+// by the per-part materials, which stay the handles customize.js writes; the decals' pictures live in one atlas, sim/auto-atlas.js),
+// plus the paint, the windscreen and the driver. The windscreen posts, header and rear panel that the "high canopy" option stretches are
+// baked in two variants (normal / canopy, sim/auto-canopy.js) and customize.js swaps the geometry.
+// Budget: player rig with the default look <= 8 draw calls and <= 3 shadow casters, however it is customised (see auto-budget.test.js).
 // OWNER: customisation agent.
 import {
   AdditiveBlending,
@@ -35,6 +37,8 @@ import { DEFAULT_LOADOUT } from '../gameplay/catalog.js';
 import { applyLoadout } from './customize.js';
 import { CANOPY_LIFT, canopyFrames } from './auto-canopy.js';
 import { buildStaticPerson } from './person-mesh.js';
+import { UBER_GROUPS, bindSlot, createUberDepthMaterial, createUberMaterial, createUberState, mergeSlots, syncUber } from './auto-uber.js';
+import { createAtlas } from './auto-atlas.js';
 
 const mat = (color, o = {}) => new MeshStandardMaterial({ color, roughness: 0.4, metalness: 0.2, ...o });
 
@@ -213,7 +217,9 @@ const GEO = {};
  * with trim, plate mounts, rimmed wheels); otherwise the cheap traffic auto. `canopy` bakes the parts the high-canopy roof moves
  * (roof, rear panel, window, posts, header, banner) in their lifted place. Cached per variant.
  * Slots: paint chrome matte (vertex colours) seat tailLens tailRef brake hlLamp roof curtains paneSides flapDecal,
- *        tyre rim spokes whites (the front wheel, centred) and the same + 'R' (both rear wheels, centred between them).
+ *        tyre rim spokes whites (the front wheel, centred) and the same + 'R' (both rear wheels, centred between them);
+ *        player only: emblem plates banner paneCenter face badge, and the merged meshes it draws: uber (the opaque body parts),
+ *        wheel, wheelR, decal (sim/auto-uber.js UBER_GROUPS; they carry `aSlot`, colours and atlas uvs).
  */
 function geometries(hi, canopy = false) {
   const key = (hi ? 'hi' : 'lo') + (canopy ? 'C' : '');
@@ -320,10 +326,26 @@ function geometries(hi, canopy = false) {
     for (let i = -3; i <= 3; i++) add('matte', new SphereGeometry(0.06, 5, 4), i * 0.1, 1.5 - Math.abs(i) * 0.02, 0.84, 0, 0, 0, null, [['#ff8a2d', '#ffc400', '#ff4d6d'][Math.abs(i) % 3], gain(0)]); // the dash beads
     add('flapDecal', new PlaneGeometry(0.27, 0.32), 0.78, 0.3, -1.2745, 0, Math.PI, 0);
     add('flapDecal', new PlaneGeometry(0.27, 0.32), -0.78, 0.3, -1.2745, 0, Math.PI, 0);
+    // the emblem on the engine cover (hidden under the LED / royal covers), both number plates (one texture), the banner face on its
+    // board, the rear-window sticker pane, the engine-cover art and the roof badge: textured through the decal atlas (sim/auto-atlas.js)
+    add('emblem', new CylinderGeometry(0.03, 0.03, 0.012, 10), 0, 0.875, -1.4945, Math.PI / 2, 0, 0);
+    add('plates', new PlaneGeometry(0.5, 0.125), 0, 0.735, -1.498, 0, Math.PI, 0);
+    add('plates', new PlaneGeometry(0.34, 0.085), 0, 0.62, 1.7);
+    add('banner', new PlaneGeometry(1.3, 0.28), 0, 2.4, -1.516, 0, Math.PI, 0, 'roof');
+    add('paneCenter', new PlaneGeometry(0.8, 0.48), 0, 1.58, -1.4965, 0, Math.PI, 0, 'window');
+    add('face', new PlaneGeometry(0.94, 0.46), 0, 0.81, -1.4925, 0, Math.PI, 0);
+    add('badge', new PlaneGeometry(0.22, 0.092), 0, 1.985, -1.6255, 0, Math.PI, 0, 'roof');
   }
 
   const merged = {};
   for (const [slot, g] of B.merge()) merged[slot] = g;
+  if (hi) {
+    // the player's rig draws these: every opaque static part, each wheel set, the transparent decals (one mesh each, sim/auto-uber.js)
+    merged.uber = mergeSlots(merged, UBER_GROUPS.body);
+    merged.wheel = mergeSlots(merged, UBER_GROUPS.wheel);
+    merged.wheelR = mergeSlots(merged, UBER_GROUPS.wheel, 'R');
+    merged.decal = mergeSlots(merged, UBER_GROUPS.decal);
+  }
   GEO[key] = merged;
   return merged;
 }
@@ -367,6 +389,9 @@ function sharedMaterials() {
  *   roofGroup (decals and roof props that ride the roof) upperGroup (rear-panel decals) windowGroup (rear-window decal) glass glassM
  *   canopyGeometry(on) roofM curtainM curtains[] seatM rimM spokeM tyreM whiteM wheelParts[] tailLampM tailRefM hlLamp chrome
  *   (wheels[] and wheelParts[] hold TWO entries: the front wheel and both rear wheels as one pair, which turn together)
+ *   On the player's rig most of these part handles are DATA: their materials (and `visible`, for the emblem, plates, badge, banner,
+ *   rear-window centre, whitewalls) feed the merged meshes every frame instead of drawing themselves; syncParts() shows the textured
+ *   stand-ins a patterned seat / curtain or an LED cover needs; envBag lists the data materials (customize.js gives them the env strength).
  *   and for the player rig: roofMount rearMount bumperMount plates plateRearM plateFrontM (one material) banner bannerM bannerBoard
  *   badge badgeM cover{door,face,faceM,emblem} rearWin{group,center,centerM,sides[],sideM} flaps{left,right,decalL,decalR,decalM}
  *   mudguard (centre apron: {group,flap,text,textM}) stripes{left,right,material} swish{left,right,material} (left and right are one
@@ -395,23 +420,14 @@ export function buildAuto({ color = '#ffc400', player = false, driver = true, rn
   const glassM = M('glass', () => new MeshStandardMaterial({ color: 0xbfe6f4, transparent: true, opacity: 0.38, roughness: 0.05, metalness: 0.6, side: 2, forceSinglePass: true }));
   // the dark / trim parts: the player's rig colours them per vertex (dark chassis, pinstripe, banner board, beads); traffic autos keep the shared dark
   const matteM = hi ? mat('#ffffff', { roughness: 0.65, metalness: 0.25, vertexColors: true }) : M('dark', () => mat('#14181f', { roughness: 0.65, metalness: 0.25 }));
-  const rect = (w, h, m) => new Mesh(new PlaneGeometry(w, h), m);
 
-  // ---- body: one mesh per material. Only the big shell parts (tub, roof) and the driver cast shadows.
   mesh(body, geo.paint, paint, { cast: true, receive: true });
-  const chromeMesh = mesh(body, geo.chrome, chrome, { cast: false });
-  const matteMesh = mesh(body, geo.matte, matteM, { cast: false });
-  mesh(body, geo.seat, seatM, { cast: false });
   const tailLampM = new MeshBasicMaterial({ color: new Color('#ff2a3a').multiplyScalar(0.9) });
   const tailRefM = hi ? new MeshBasicMaterial({ color: new Color('#ffb4b8').multiplyScalar(0.9) }) : null;
-  mesh(body, geo.tailLens, tailLampM, { cast: false });
-  if (geo.tailRef) mesh(body, geo.tailRef, tailRefM, { cast: false });
   // `tailM` is what Game.syncAuto writes every frame (red, brighter on the brake). Traffic autos light their lamps with it directly;
   // the player's lamps use tailLampM (tinted by the loadout and driven in customize.js), so tailM is a free-standing dummy there.
   const tailM = hi ? new MeshBasicMaterial({ color: new Color('#ff2a3a').multiplyScalar(0.9) }) : tailLampM;
   const brakeM = new MeshBasicMaterial({ color: new Color('#ff1f2f').multiplyScalar(0.0) });
-  mesh(body, geo.brake, brakeM, { cast: false });
-  const hlLamp = mesh(body, geo.hlLamp, hlM, { cast: false });
 
   // windscreen glass (its own mesh: the canopy stretches it)
   const glass = new Mesh(new PlaneGeometry(1.2, 0.58), glassM);
@@ -419,11 +435,6 @@ export function buildAuto({ color = '#ffc400', player = false, driver = true, rn
   glass.rotation.x = -0.18;
   body.add(glass);
 
-  // roof shell + rear panel (roof colour), the canvas curtains, the rear-window panes
-  const roofMesh = mesh(body, geo.roof, roofM, { cast: true, receive: true });
-  const curtainMesh = mesh(body, geo.curtains, curtainM, { cast: false });
-  const curtains = [curtainMesh];
-  const paneSidesMesh = geo.paneSides ? mesh(body, geo.paneSides, paneM, { cast: false }) : null;
   // the groups that carry the decals and mounted props which ride the roof / rear panel / window (the canopy moves these nodes)
   const upperGroup = new Group();
   body.add(upperGroup);
@@ -432,77 +443,68 @@ export function buildAuto({ color = '#ffc400', player = false, driver = true, rn
   const roofGroup = new Group();
   body.add(roofGroup);
   const paneCenterM = hi ? new MeshStandardMaterial({ color: 0xffffff, roughness: 0.14, metalness: 0.4 }) : null;
-  let paneCenter = null;
-  if (hi) {
-    paneCenter = rect(0.8, 0.48, paneCenterM);
-    paneCenter.position.set(0, 1.58, -1.4965);
-    paneCenter.rotation.y = Math.PI;
-    windowGroup.add(paneCenter);
-  }
   const paneSides = [];
 
-  // the canopy option swaps these meshes' geometry for the lifted bake (built the first time it is asked for)
-  const canopyGeometry = (on) => {
-    const gset = geometries(hi, !!on);
-    chromeMesh.geometry = gset.chrome;
-    matteMesh.geometry = gset.matte;
-    roofMesh.geometry = gset.roof;
-    curtainMesh.geometry = gset.curtains;
-    if (paneSidesMesh) paneSidesMesh.geometry = gset.paneSides;
-  };
-
   const ud = {};
+  let canopyGeometry;
+  let hlLamp;
+  let curtains;
+  // the player's rig: the uniform arrays every merged mesh reads (sim/auto-uber.js), its two materials, and the per-frame sync
+  const uber = hi ? createUberState() : null;
+  let uberM = null;
+  let syncLook = null;
+  // a "data bag": a handle that keeps its material and `visible` (customize.js and Game.js write them) but is never drawn itself
+  const bag = (m) => new Mesh(undefined, m);
+
+  if (!hi) {
+    // ---- traffic: one mesh per material. Only the big shell parts (tub, roof) and the driver cast shadows.
+    const chromeMesh = mesh(body, geo.chrome, chrome, { cast: false });
+    const matteMesh = mesh(body, geo.matte, matteM, { cast: false });
+    mesh(body, geo.seat, seatM, { cast: false });
+    mesh(body, geo.tailLens, tailLampM, { cast: false });
+    mesh(body, geo.brake, brakeM, { cast: false });
+    hlLamp = mesh(body, geo.hlLamp, hlM, { cast: false });
+    const roofMesh = mesh(body, geo.roof, roofM, { cast: true, receive: true });
+    const curtainMesh = mesh(body, geo.curtains, curtainM, { cast: false });
+    curtains = [curtainMesh];
+    // the canopy option swaps these meshes' geometry for the lifted bake (built the first time it is asked for)
+    canopyGeometry = (on) => {
+      const gset = geometries(false, !!on);
+      chromeMesh.geometry = gset.chrome;
+      matteMesh.geometry = gset.matte;
+      roofMesh.geometry = gset.roof;
+      curtainMesh.geometry = gset.curtains;
+    };
+  }
+
   const flat = (w, h, m) => new Mesh(new PlaneGeometry(w, h), m);
   const decalM = (o = {}) => new MeshStandardMaterial({ roughness: 0.55, metalness: 0, transparent: true, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, depthWrite: false, ...o });
 
   if (hi) {
-    // engine-cover face (louvres / grille / LED panel art), plates, emblem
+    // engine-cover face (louvres / grille / LED panel art): drawn by the decal mesh through the atlas; this real mesh only shows when
+    // customize.js puts the glowing LED material on it (syncParts)
     const faceM = decalM();
     const face = flat(0.94, 0.46, faceM);
     face.position.set(0, 0.81, -1.4925);
     face.rotation.y = Math.PI;
+    face.castShadow = false;
+    face.visible = false;
     body.add(face);
-    // both number plates: ONE mesh and ONE material (they always carry the same texture)
+    // both number plates: ONE material (they always carry the same texture)
     const plateM = new MeshStandardMaterial({ roughness: 0.6, color: 0xffffff });
-    const plates = new Mesh(
-      mergeGeometries(
-        [
-          new PlaneGeometry(0.5, 0.125).toNonIndexed().rotateY(Math.PI).translate(0, 0.735, -1.498),
-          new PlaneGeometry(0.34, 0.085).toNonIndexed().translate(0, 0.62, 1.7),
-        ],
-        false,
-      ),
-      plateM,
-    );
-    plates.castShadow = false;
-    body.add(plates);
-
-    const emblem = new Mesh(new CylinderGeometry(0.03, 0.03, 0.012, 10), chrome); // (its own mesh: hidden under LED / royal covers)
-    emblem.position.set(0, 0.875, -1.4945);
-    emblem.rotation.x = Math.PI / 2;
-    emblem.castShadow = false;
-    body.add(emblem);
-
-    // the oval roof badge
+    const plates = bag(plateM);
+    const emblem = bag(chrome); // (hidden under LED / royal covers)
+    // the oval roof badge, the banner face (the board and its posts are baked into the merged body)
     const badgeM = new MeshStandardMaterial({ roughness: 0.5, color: 0xffffff, transparent: true, alphaTest: 0.05 });
-    const badge = flat(0.22, 0.092, badgeM);
-    badge.position.set(0, 1.985, -1.6255);
-    badge.rotation.y = Math.PI;
-    roofGroup.add(badge);
-
-    // the board face (the board and its posts are baked into the roof meshes)
+    const badge = bag(badgeM);
     const bannerM = new MeshStandardMaterial({ roughness: 0.6, color: 0xffffff });
+    const bannerFace = bag(bannerM);
     const bannerBoard = new Group();
-    const bannerFace = flat(1.3, 0.28, bannerM);
-    bannerFace.rotation.y = Math.PI;
-    bannerFace.position.z = -0.016;
-    bannerBoard.add(bannerFace);
-    bannerBoard.position.set(0, 2.4, -1.5);
-    roofGroup.add(bannerBoard);
+    const paneCenter = bag(paneCenterM);
+    hlLamp = bag(hlM);
 
     // mud-flap art behind the wheels, the centre apron with a message (hidden until one is picked)
     const flapDecalM = decalM({ roughness: 0.7 });
-    mesh(body, geo.flapDecal, flapDecalM, { cast: false });
     const mud = new Group();
     const apron = mesh(mud, new BoxGeometry(1.1, 0.34, 0.03), mat('#17141b', { roughness: 0.95, metalness: 0 }), { cast: false });
     const mudTextM = new MeshStandardMaterial({ roughness: 0.7, metalness: 0, color: 0xffffff });
@@ -557,6 +559,60 @@ export function buildAuto({ color = '#ffc400', player = false, driver = true, rn
     const bumperMount = new Group();
     body.add(bumperMount);
 
+    // ---- the merged meshes (sim/auto-uber.js): every opaque static part in ONE mesh (the only shadow caster among them is its roof slot),
+    // the always-visible transparent decals in one more, both textured through the decal atlas; plus textured stand-ins for a patterned
+    // seat / curtain, shown only while customize.js has put a pattern texture on seatM / curtainM (syncParts)
+    const atlas = createAtlas([
+      { cell: 'plate', material: plateM }, { cell: 'banner', material: bannerM }, { cell: 'rearWindow', material: paneCenterM },
+      { cell: 'cover', material: faceM }, { cell: 'flap', material: flapDecalM }, { cell: 'badge', material: badgeM },
+    ]);
+    uberM = createUberMaterial(uber, { map: atlas.texture });
+    const decalUberM = createUberMaterial(uber, { map: atlas.texture, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, alphaTest: 0.05 });
+    syncLook = () => {
+      atlas.sync();
+      syncUber(uber);
+    };
+    const uberMesh = mesh(body, geo.uber, uberM, { cast: true, receive: true });
+    uberMesh.customDepthMaterial = createUberDepthMaterial();
+    uberMesh.onBeforeRender = syncLook;
+    const decalMesh = mesh(body, geo.decal, decalUberM, { cast: false });
+    decalMesh.onBeforeRender = syncLook;
+    const seatTex = mesh(body, geo.seat, seatM, { cast: false });
+    seatTex.visible = false;
+    const curtainTex = mesh(body, geo.curtains, curtainM, { cast: false });
+    curtainTex.visible = false;
+    curtains = [curtainTex];
+    canopyGeometry = (on) => {
+      const gset = geometries(true, !!on);
+      uberMesh.geometry = gset.uber;
+      decalMesh.geometry = gset.decal;
+      curtainTex.geometry = gset.curtains;
+    };
+    /** Show the stand-in meshes a texture needs (patterned seat / curtains, the LED cover material). customize.js calls it after every change. */
+    ud.merged = { body: uberMesh, decals: decalMesh, seat: seatTex, curtains: curtainTex };
+    ud.syncParts = () => {
+      seatTex.visible = !!seatM.map;
+      curtainTex.visible = !!curtainM.map;
+      face.visible = face.material !== faceM;
+    };
+    bindSlot(uber, 'chrome', chrome);
+    bindSlot(uber, 'matte', matteM);
+    bindSlot(uber, 'seat', seatM, seatTex, true);
+    bindSlot(uber, 'roof', roofM);
+    bindSlot(uber, 'curtains', curtainM, curtainTex, true);
+    bindSlot(uber, 'paneSides', paneM);
+    bindSlot(uber, 'tailLens', tailLampM);
+    bindSlot(uber, 'tailRef', tailRefM);
+    bindSlot(uber, 'brake', brakeM);
+    bindSlot(uber, 'hlLamp', hlM, hlLamp);
+    bindSlot(uber, 'emblem', chrome, emblem);
+    bindSlot(uber, 'plates', plateM, plates);
+    bindSlot(uber, 'banner', bannerM, bannerFace);
+    bindSlot(uber, 'paneCenter', paneCenterM, paneCenter);
+    bindSlot(uber, 'face', faceM, face, true);
+    bindSlot(uber, 'flapDecal', flapDecalM);
+    bindSlot(uber, 'badge', badgeM, badge);
+
     Object.assign(ud, {
       roofMount, rearMount, bumperMount, plateRearM: plateM, plateFrontM: plateM, plates, banner: bannerFace, bannerM, bannerBoard,
       badge, badgeM,
@@ -580,13 +636,15 @@ export function buildAuto({ color = '#ffc400', player = false, driver = true, rn
     const holder = new Group();
     holder.position.set(x, 0.34, z);
     const spin = new Group();
-    const tyre = mesh(spin, geo['tyre' + suffix], tyreM, { cast: false });
     if (hi) {
-      const rim = mesh(spin, geo['rim' + suffix], rimM, { cast: false });
-      const spokes = mesh(spin, geo['spokes' + suffix], spokeM, { cast: false });
-      const whites = mesh(spin, geo['whites' + suffix], whiteM, { cast: false });
+      // tyre, rim, spokes and (hidden) whitewalls in ONE mesh of the uber material; the part handles are data bags
+      const wheel = mesh(spin, geo[suffix ? 'wheelR' : 'wheel'], uberM, { cast: false, receive: true });
+      wheel.onBeforeRender = syncLook;
+      const whites = bag(whiteM);
       whites.visible = false;
-      wheelParts.push({ tyre, rim, cap: null, spokes: [spokes], whites: [whites] });
+      wheelParts.push({ tyre: bag(tyreM), rim: bag(rimM), cap: null, spokes: [bag(spokeM)], whites: [whites], mesh: wheel });
+    } else {
+      mesh(spin, geo['tyre' + suffix], tyreM, { cast: false });
     }
     holder.add(spin);
     g.add(holder);
@@ -595,6 +653,15 @@ export function buildAuto({ color = '#ffc400', player = false, driver = true, rn
   };
   const front = mkWheel(0, 1.28, '');
   mkWheel(0, -0.82, 'R');
+  if (hi) {
+    bindSlot(uber, 'tyre', tyreM);
+    bindSlot(uber, 'rim', rimM);
+    bindSlot(uber, 'spokes', spokeM);
+    bindSlot(uber, 'whites', whiteM, wheelParts[0].whites[0]); // (customize.js shows / hides both wheel sets' whitewalls together)
+    // the materials that are only data now: customize.js gives them the environment map and strength like the drawn ones
+    ud.envBag = [...new Set(uber.bindings.map((b) => b.m))].filter((m) => m.isMeshStandardMaterial);
+    ud.uber = uber;
+  }
 
   // ---- driver (always) and up to two passengers (player only: shown when a fare boards)
   let driverRig = null;

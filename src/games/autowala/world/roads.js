@@ -12,7 +12,7 @@ import {
   MeshStandardMaterial,
   Object3D,
 } from 'three';
-import { asphaltTexture } from '../render/textures.js';
+import { asphaltPlainTexture, asphaltTexture } from '../render/textures.js';
 import { LATE } from './terrain.js';
 
 export function buildRoads(scene, city, shared) {
@@ -21,6 +21,7 @@ export function buildRoads(scene, city, shared) {
   const idx = [];
   const patchPos = [];
   const patchIdx = [];
+  const patchUv = [];
 
   const Y = 0.03;
   for (const e of city.edges) {
@@ -53,6 +54,9 @@ export function buildRoads(scene, city, shared) {
     }
   }
 
+  // the patch texture is mapped by world position (one texture repeat per 8 m), so neighbouring junctions and the road ends line up
+  for (let i = 0; i < patchPos.length; i += 3) patchUv.push(patchPos[i] / 8, patchPos[i + 2] / 8);
+
   const geo = new BufferGeometry();
   geo.setAttribute('position', new BufferAttribute(new Float32Array(pos), 3));
   geo.setAttribute('uv', new BufferAttribute(new Float32Array(uv), 2));
@@ -73,6 +77,7 @@ export function buildRoads(scene, city, shared) {
   };
   roadMat.customProgramCacheKey = () => 'road';
   const road = new Mesh(geo, roadMat);
+  road.name = 'roads';
   road.receiveShadow = true;
   road.renderOrder = LATE; // after the buildings: the depth test rejects the road pixels behind them (see terrain.js)
   scene.add(road);
@@ -83,10 +88,13 @@ export function buildRoads(scene, city, shared) {
   pg.computeVertexNormals();
   const pn = pg.getAttribute('normal');
   for (let i = 0; i < pn.count; i++) pn.setXYZ(i, 0, 1, 0);
-  const patchMat = new MeshStandardMaterial({ color: 0x38333f, roughness: 0.92, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  pg.setAttribute('uv', new BufferAttribute(new Float32Array(patchUv), 2));
+  // the same asphalt as the road (speckle, no lane markings) and the same program: it used to be a flat 0x38333f with a hard edge
+  const patchMat = new MeshStandardMaterial({ map: asphaltPlainTexture(), color: 0xffffff, roughness: 0.92, metalness: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   patchMat.onBeforeCompile = roadMat.onBeforeCompile;
-  patchMat.customProgramCacheKey = () => 'roadpatch';
+  patchMat.customProgramCacheKey = roadMat.customProgramCacheKey;
   const patches = new Mesh(pg, patchMat);
+  patches.name = 'road-patches';
   patches.receiveShadow = true;
   patches.renderOrder = LATE;
   scene.add(patches);
@@ -94,6 +102,7 @@ export function buildRoads(scene, city, shared) {
   // ---- sidewalk slabs
   const slabBlocks = city.blocks.filter((b) => b.type !== 'water' && b.type !== 'park'); // park blocks spread over Necklace Road
   const slabs = new InstancedMesh(new BoxGeometry(1, 1, 1), new MeshLambertMaterial({ color: 0xffffff }), slabBlocks.length);
+  slabs.name = 'slabs';
   slabs.receiveShadow = true;
   slabs.renderOrder = LATE;
   const o = new Object3D();

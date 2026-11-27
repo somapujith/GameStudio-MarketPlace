@@ -2,6 +2,7 @@
 // Stone materials glow warmly after dark (floodlit), signs and domes feed the bloom pass.
 import {
   BoxGeometry,
+  BufferAttribute,
   Color,
   ConeGeometry,
   CylinderGeometry,
@@ -19,8 +20,9 @@ import {
   SphereGeometry,
 } from 'three';
 import { BUILDING_LOOKS, buildingMaterial, glowMaterial, setLookAttribute } from '../render/materials.js';
-import { signTexture } from '../render/textures.js';
-import { createBakeRegistry, freezeMatrices, mergeStaticMeshes } from '../render/merge-static.js';
+import { canvasTexture, signTexture } from '../render/textures.js';
+import { createBakeRegistry, freezeMatrices, mergeStaticMeshes, mergeStaticTiles } from '../render/merge-static.js';
+import { ceilPow2, drawCell, shelfPack, uvRect } from '../render/atlas-pack.js';
 
 // one material per distinct look: the hand-built models ask for the same few colours hundreds of times, and parts only merge
 // (render/merge-static.js) when they share a material
@@ -43,6 +45,7 @@ const std = (color, o = {}) => {
 
 export function buildLandmarks(scene, city, colliders, shared) {
   const root = new Group();
+  root.name = 'landmarks';
   scene.add(root);
   const lit = []; // materials that glow at night: [material, strength]
   const stone = (c) => {
@@ -62,9 +65,40 @@ export function buildLandmarks(scene, city, colliders, shared) {
     glassTint: std('#6ec4ee', { roughness: 0.15, metalness: 0.6 }),
     red: std('#e03a4a'),
   };
-  const glowSign = (key, w, h, bg, bd, lines) => {
-    const tex = signTexture(key, { w: 512, h: Math.round(512 * (h / w)), bg, border: bd, lines });
-    return new Mesh(new PlaneGeometry(w, h), glowMaterial(0xffffff, 1.35, tex));
+  // unlit glowing boxes of the same colour share ONE material (and so one draw per tile after merging)
+  const glowCache = new Map();
+  const glow = (color, boost) => {
+    const k = `${color}|${boost}`;
+    let m = glowCache.get(k);
+    if (!m) glowCache.set(k, (m = glowMaterial(color, boost)));
+    return m;
+  };
+  // every sign board of the city's landmarks (neon signs, the station clock, the hospital cross) is one plane of ONE atlas texture and ONE
+  // material: the planes merge with everything else of their tile. The atlas is packed and drawn once all of them are known (finishSigns).
+  const signMat = new MeshBasicMaterial({ color: 0xffffff, vertexColors: true, toneMapped: true });
+  const signPlanes = [];
+  const signPlane = (w, h, tex, boost) => {
+    const geo = new PlaneGeometry(w, h);
+    geo.setAttribute('color', new BufferAttribute(new Float32Array(12).fill(boost), 3));
+    signPlanes.push({ geo, tex });
+    return new Mesh(geo, signMat);
+  };
+  const glowSign = (key, w, h, bg, bd, lines) => signPlane(w, h, signTexture(key, { w: 512, h: Math.round(512 * (h / w)), bg, border: bd, lines }), 1.35);
+  const finishSigns = () => {
+    if (!signPlanes.length) return;
+    const unique = [...new Set(signPlanes.map((p) => p.tex))];
+    const PAD = 8;
+    const { cells, height } = shelfPack(unique.map((t) => ({ w: t.image.width, h: t.image.height })), 1024, PAD);
+    const H = ceilPow2(height);
+    const atlas = canvasTexture(1024, H, (g) => unique.forEach((t, i) => drawCell(g, t.image, cells[i], PAD)), { anisotropy: 8 });
+    signMat.map = atlas;
+    signMat.needsUpdate = true;
+    for (const p of signPlanes) {
+      const [u0, v0, u1, v1] = uvRect(cells[unique.indexOf(p.tex)], 1024, H);
+      const uv = p.geo.attributes.uv;
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, u0 + uv.getX(i) * (u1 - u0), v0 + uv.getY(i) * (v1 - v0));
+      uv.needsUpdate = true;
+    }
   };
 
   const put = (parent, mesh, x, y, z, { cast = true, receive = true } = {}) => {
@@ -199,7 +233,7 @@ export function buildLandmarks(scene, city, colliders, shared) {
       cone(g, 4.6, 7, MAT.red, 0, 34.2, 0, 4);
       const clockTex = signTexture('clock', { w: 256, h: 256, bg: '#fff6d8', border: '#c2563e', glow: false, lines: [{ text: '12', font: '800 70px sans-serif', color: '#2a1030', dy: -60 }, { text: '6', font: '800 70px sans-serif', color: '#2a1030', dy: 60 }, { text: '|', font: '800 90px sans-serif', color: '#c2563e', dy: -4 }] });
       for (const [rx, rz, ry] of [[0, 3.6, 0], [0, -3.6, Math.PI], [3.6, 0, Math.PI / 2], [-3.6, 0, -Math.PI / 2]]) {
-        const c = new Mesh(new PlaneGeometry(4.6, 4.6), glowMaterial(0xffffff, 1.2, clockTex));
+        const c = signPlane(4.6, 4.6, clockTex, 1.2);
         c.position.set(rx, 27.5, rz);
         c.rotation.y = ry;
         g.add(c);
@@ -372,7 +406,7 @@ export function buildLandmarks(scene, city, colliders, shared) {
         const x = Math.cos(a) * (R + 3);
         const z = Math.sin(a) * (R + 3);
         cyl(g, 0.5, 0.8, 32, MAT.dark, x, 0, z, 6);
-        const lamp = new Mesh(new BoxGeometry(6, 3, 1), glowMaterial(0xfff4d0, 1.6));
+        const lamp = new Mesh(new BoxGeometry(6, 3, 1), glow(0xfff4d0, 1.6));
         lamp.position.set(x, 33, z);
         lamp.lookAt(0, 20, 0);
         g.add(lamp);
@@ -392,7 +426,7 @@ export function buildLandmarks(scene, city, colliders, shared) {
       const W = Math.min(34, p.w - 8);
       const D = Math.min(20, p.d - 8);
       tower(g, W, 20, D, 0, 0, '#f4f0ff', 'hosp');
-      const cross = new Mesh(new PlaneGeometry(6, 6), glowMaterial(0xffffff, 1.3, signTexture('redcross', { w: 128, h: 128, bg: '#ffffff', border: '#ff2a3a', glow: false, lines: [{ text: '+', font: '800 120px sans-serif', color: '#ff2a3a', dy: 4 }] })));
+      const cross = signPlane(6, 6, signTexture('redcross', { w: 128, h: 128, bg: '#ffffff', border: '#ff2a3a', glow: false, lines: [{ text: '+', font: '800 120px sans-serif', color: '#ff2a3a', dy: 4 }] }), 1.3);
       put(g, cross, 0, 15, D / 2 + 0.2, { cast: false, receive: false });
       const sg = glowSign('hospital', 14, 3, '#071a2a', '#3dd68c', [{ text: 'CARE HOSPITAL', font: '800 54px "Bricolage Grotesque Variable", Impact, sans-serif', color: '#c8ffe8' }, { text: '24×7 EMERGENCY', font: '700 26px "Bricolage Grotesque Variable", sans-serif', color: '#ff5d6a' }]);
       put(g, sg, 0, 22, D / 2 + 0.4, { cast: false, receive: false });
@@ -435,7 +469,7 @@ export function buildLandmarks(scene, city, colliders, shared) {
     box(g, W + 1.5, 0.7, D + 1.5, std('#0e8a5a'), 0, 6.1, 0);
     for (const sx of [-1, 1]) {
       box(g, 1.1, 2.1, 0.8, std('#0e8a5a'), sx * 3.2, 0.5, 0);
-      box(g, 0.8, 0.7, 0.2, glowMaterial(0x7dffb0, 1.4), sx * 3.2, 2.0, 0.5);
+      box(g, 0.8, 0.7, 0.2, glow(0x7dffb0, 1.4), sx * 3.2, 2.0, 0.5);
     }
     const sg = glowSign('cng', 7, 3, '#04201a', '#3dffb0', [{ text: 'CNG', font: '800 120px "Bricolage Grotesque Variable", Impact, sans-serif', color: '#c8ffe8' }, { text: 'GAS · 24 HRS', font: '700 28px "Bricolage Grotesque Variable", sans-serif', color: '#3dffb0' }]);
     put(g, sg, 0, 8.2, D / 2 + 0.4, { cast: false, receive: false });
@@ -447,6 +481,10 @@ export function buildLandmarks(scene, city, colliders, shared) {
   // ~57 calls a frame with Charminar in view). Bake every landmark into one mesh per material; parts too small to show in the shadow
   // map stop casting.
   // plain Lambert parts merge across colours into a handful of vertex-coloured materials (stone, flat-shaded rock, double-sided...)
+  finishSigns();
+  // every part receives shadows: a flag per part would split the draws (and the shader program: it is part of the key) for nothing, the few
+  // parts that were left out (dark arch recesses, lamp boxes, sign boards) are unlit or too dark to show a shadow
+  root.traverse((o) => { if (o.isMesh) o.receiveShadow = true; });
   const bake = createBakeRegistry();
   let merged = { before: 0, after: 0 };
   for (const g of root.children) {
@@ -454,6 +492,10 @@ export function buildLandmarks(scene, city, colliders, shared) {
     merged = { before: merged.before + r.before, after: merged.after + r.after };
     freezeMatrices(g);
   }
+  // then across the models: one mesh per material per 1024 m of map (the centre of the city in ONE tile: the landmarks are 12k triangles in all), baked into world space (an identity matrix is nearly free to draw)
+  const tiles = mergeStaticTiles(root, { tile: 1024, offset: 512, shadowProxy: true });
+  merged.after = merged.after - tiles.before + tiles.after;
+  freezeMatrices(root);
   stdCache.clear(); // the materials live on in the meshes; the cache must not keep them (or a disposed one) across rebuilds
 
   // the stone glow: the original materials (parts that stayed alone) and the shared baked ones (every stone has the same glow strength)

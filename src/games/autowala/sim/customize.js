@@ -39,6 +39,7 @@ export { diffLoadout, FIELDS };
 
 const _rgb = [0, 0, 0]; // scratch for the per-frame rainbow (no allocation)
 const GLOW_BASE = 1.2; // underglow tube brightness (<= GLOW_MAX)
+export const GLASS_LIT = 0.25; // the windscreen's lit colour = tint colour x this (see the tint step)
 
 // ------------------------------------------------------------------------------------------------------------ bookkeeping
 
@@ -192,8 +193,11 @@ export function applyLoadout(auto, loadout, opts = {}) {
     });
   }
   if (detail && has('tint')) {
+    // The glass is blended over what is behind it, but it is LIT like a painted surface: a pale tint colour at full strength turned the
+    // windscreen into a milky white sheet wherever it faced the light (the front / workshop views). A tint darkens, it does not glow:
+    // the lit colour is scaled down, the opacity (how much of the view it darkens) is the tint level's.
     const t = tintSpec(look.tint.id);
-    ud.glassM.color.set(t.color);
+    ud.glassM.color.set(t.color).multiplyScalar(GLASS_LIT);
     ud.glassM.opacity = t.opacity;
   }
   if (detail && has('wheels')) {
@@ -372,6 +376,7 @@ export function applyLoadout(auto, loadout, opts = {}) {
   }
 
   st.applied = JSON.parse(JSON.stringify(L));
+  ud.syncParts?.(); // (the player's rig: show the textured stand-ins a pattern / LED cover needs, see autoModel.js)
   if (st.dirtyEnv) refreshEnv(auto);
   return changed;
 }
@@ -413,17 +418,20 @@ function refreshEnv(auto) {
   const st = stateOf(auto);
   st.dirtyEnv = false;
   st.envMats.clear();
+  const take = (m) => {
+    if (!m.isMeshStandardMaterial) return;
+    st.envMats.add(m);
+    if (m.envMap !== st.envMap) {
+      m.envMap = st.envMap;
+      m.needsUpdate = true;
+    }
+  };
   auto.traverse((o) => {
     if (!o.isMesh || !o.material) return;
-    for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
-      if (!m.isMeshStandardMaterial) continue;
-      st.envMats.add(m);
-      if (m.envMap !== st.envMap) {
-        m.envMap = st.envMap;
-        m.needsUpdate = true;
-      }
-    }
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) take(m);
   });
+  // the player's part materials that are data for the merged meshes (not on a mesh): their per-part env strength is still read
+  for (const m of auto.userData.envBag || []) take(m);
   st.envScale = -1; // force the per-material intensities to refresh on the next update
   setEnvIntensity(auto, st.envLevel ?? 1);
 }
@@ -499,6 +507,7 @@ export function updateCustomization(auto, env) {
   if (!st) return;
   st.live = true;
   st.night = env.night;
+  ud.syncParts?.();
   const anims = st.animList;
   for (let i = 0; i < anims.length; i++) anims[i](env);
 
