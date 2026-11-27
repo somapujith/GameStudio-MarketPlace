@@ -84,9 +84,9 @@ const INSPECT = `(() => {
 })()`;
 
 async function run() {
-  const c = await launch({ port, w: 1536, h: 864, gl: args.soft ? SOFT_FLAGS : GPU_FLAGS });
+  const c = await launch({ port, w: +(args.w || 1536), h: +(args.h || 864), gl: args.soft ? SOFT_FLAGS : GPU_FLAGS });
   try {
-    await c.viewport(1536, 864, 1.25, false);
+    await c.viewport(+(args.w || 1536), +(args.h || 864), +(args.dpr || 1.25), false);
     await c.goto(`${base}/play/tiffin-centre?tcdebug=1`);
     await c.waitFor("[...document.querySelectorAll('button')].some((b) => /Start tutorial/.test(b.textContent))", 90000);
     if (tier) {

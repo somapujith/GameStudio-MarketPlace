@@ -313,7 +313,7 @@ describe('merged and baked people', () => {
   });
 
   it('draw mode is off by default so a bare build is what it always was', () => {
-    expect(getCharacterDrawMode()).toEqual({ merge: false, limitShadows: false, baked: false });
+    expect(getCharacterDrawMode()).toEqual({ merge: false, limitShadows: false, baked: false, pack: false });
   });
 });
 

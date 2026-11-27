@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { BoxGeometry, Group, Mesh, MeshStandardMaterial, PointLight, Scene, PerspectiveCamera } from 'three';
-import { runSync, runAsync, applyModelTier, createBatcher, createProgramWarmer, prefetchChunks, idle, whenIdle, yieldToBrowser, LOAD_STEPS } from './loader.js';
+import { runSync, runAsync, applyModelTier, createBatcher, createProgramWarmer, createRevealWatch, withEverythingDrawn, prefetchChunks, idle, whenIdle, yieldToBrowser, LOAD_STEPS } from './loader.js';
 import { QUALITY } from './quality.js';
 import { getCharacterQuality, getCharacterDrawMode, setCharacterQuality, setCharacterDrawMode } from '../models/charquality.js';
 import { getTextureQuality, setTextureQuality } from '../models/util.js';
@@ -349,5 +349,93 @@ describe('createProgramWarmer', () => {
     expect(w3.done).toBe(true);
     expect(w3.step(100)).toBe(true);
     expect(createProgramWarmer({ renderer: {}, scene, camera }).step(5)).toBe(true); // no compile(): nothing to do
+  });
+});
+
+describe('createRevealWatch (no shader program is compiled in play)', () => {
+  it('lists nothing before the reveal, then exactly the programs created after it', () => {
+    const programs = [{ id: 1, name: 'a', cacheKey: 'k1' }, { id: 2, name: 'b', cacheKey: 'k2' }];
+    const w = createRevealWatch(() => programs);
+    expect(w.revealed).toBe(false);
+    expect(w.late()).toEqual([]);
+    expect(w.count).toBe(0);
+    programs.push({ id: 3, name: 'early', cacheKey: 'k3' }); // still loading: part of the set
+    expect(w.reveal()).toBe(3);
+    expect(w.revealed).toBe(true);
+    expect(w.atReveal).toBe(3);
+    expect(w.count).toBe(0);
+    programs.push({ id: 4, name: 'dish', cacheKey: 'x'.repeat(200) }, { id: 5, name: '', cacheKey: 'k5' });
+    expect(w.count).toBe(2);
+    const late = w.late();
+    expect(late.map((p) => p.id)).toEqual([4, 5]);
+    expect(late[0].key.length).toBe(80); // a long cache key is cut to its tail
+  });
+
+  it('a program that is released (a tier switch) does not make the count negative, and a missing list is empty', () => {
+    const programs = [{ id: 1 }, { id: 2 }];
+    const w = createRevealWatch(() => programs);
+    w.reveal();
+    programs.length = 0;
+    expect(w.count).toBe(0);
+    expect(createRevealWatch(null).reveal()).toBe(0);
+    expect(createRevealWatch(() => undefined).late()).toEqual([]);
+  });
+});
+
+describe('withEverythingDrawn', () => {
+  it('makes hidden and culled objects drawable for the call, then puts every flag back (lights and skip() untouched)', () => {
+    const scene = new Scene();
+    const hiddenGroup = new Group();
+    hiddenGroup.visible = false;
+    const inHidden = new Mesh(new BoxGeometry(), new MeshStandardMaterial());
+    hiddenGroup.add(inHidden);
+    const culled = new Mesh(new BoxGeometry(), new MeshStandardMaterial());
+    culled.frustumCulled = true;
+    const keep = new Mesh(new BoxGeometry(), new MeshStandardMaterial());
+    keep.visible = false;
+    const lamp = new PointLight();
+    lamp.visible = false;
+    scene.add(hiddenGroup, culled, keep, lamp);
+    let seen = null;
+    const r = withEverythingDrawn(
+      scene,
+      () => {
+        seen = { group: hiddenGroup.visible, inHidden: inHidden.visible, culled: culled.frustumCulled, keep: keep.visible, lamp: lamp.visible, inHiddenCull: inHidden.frustumCulled };
+        return 42;
+      },
+      { skip: (o) => o === keep },
+    );
+    expect(r).toBe(42);
+    expect(seen).toEqual({ group: true, inHidden: true, culled: false, keep: false, lamp: false, inHiddenCull: false });
+    expect(hiddenGroup.visible).toBe(false);
+    expect(inHidden.visible).toBe(true);
+    expect(inHidden.frustumCulled).toBe(true);
+    expect(culled.frustumCulled).toBe(true);
+    expect(keep.visible).toBe(false);
+    expect(lamp.visible).toBe(false);
+  });
+
+  it('restores everything when fn throws', () => {
+    const scene = new Scene();
+    const m = new Mesh(new BoxGeometry(), new MeshStandardMaterial());
+    m.visible = false;
+    scene.add(m);
+    expect(() => withEverythingDrawn(scene, () => { throw new Error('draw'); })).toThrow('draw');
+    expect(m.visible).toBe(false);
+    expect(m.frustumCulled).toBe(true);
+  });
+});
+
+describe('applyModelTier people', () => {
+  it('packs the people of medium and high (a handful of draws per customer), never of the baked tiers', () => {
+    for (const q of ['medium', 'high']) {
+      applyModelTier(q);
+      expect(getCharacterDrawMode().pack).toBe(true);
+    }
+    for (const q of ['lite', 'low']) {
+      applyModelTier(q);
+      expect(getCharacterDrawMode().pack).toBe(false);
+      expect(getCharacterDrawMode().baked).toBe(true);
+    }
   });
 });

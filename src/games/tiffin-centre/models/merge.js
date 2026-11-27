@@ -226,11 +226,11 @@ export function isUberable(m, liveMaterials) {
   return true;
 }
 
-export function uberMaterialFor(m) {
-  const key = `${m.side}|${m.fog ? 1 : 0}|${m.toneMapped ? 1 : 0}|${m.dithering ? 1 : 0}|${m.envMapIntensity}`;
+export function uberMaterialFor(m, side = m.side) {
+  const key = `${side}|${m.fog ? 1 : 0}|${m.toneMapped ? 1 : 0}|${m.dithering ? 1 : 0}|${m.envMapIntensity}`;
   let u = uberCache.get(key);
   if (!u) {
-    u = new MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 1, side: m.side, fog: m.fog, toneMapped: m.toneMapped, dithering: m.dithering, envMapIntensity: m.envMapIntensity });
+    u = new MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 1, side, fog: m.fog, toneMapped: m.toneMapped, dithering: m.dithering, envMapIntensity: m.envMapIntensity });
     u.name = 'uber';
     u.userData.shared = true;
     u.userData.uber = true;

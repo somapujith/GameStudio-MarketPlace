@@ -3,7 +3,7 @@
 // on the line, station slots + emitters, the local cook's own walker (the camera follows it) and viewmodel, and the one-shot animations
 // that events trigger. Thin: the maths lives in interp.js / camera.js. Objects and animation outside the view are skipped.
 import { Group, Mesh, MeshBasicMaterial, PlaneGeometry, Vector3, Frustum, Matrix4, Sphere } from 'three';
-import { LAYOUT, STATIONS } from '../../../../shared/tiffin-centre/catalog.js';
+import { DISH_IDS, LAYOUT, STATIONS } from '../../../../shared/tiffin-centre/catalog.js';
 import { WORK_MS, standX } from '../../../../shared/tiffin-centre/movement.js';
 import { buildDish, buildCustomer, buildAvatar } from '../models/index.js';
 import { buildInspector, buildDeliveryBoy } from '../models/inspector.js';
@@ -56,9 +56,11 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
   const cueFns = new Set();
   let ev = null;
   let weather = null;
-  let hasWorldFx = false;
+  let hasWorldFx = false; // the modules exist
+  let worldFxLive = false; // ... and run every frame: from the first event on (the load builds them early, hidden, so nothing compiles mid-shift: preload())
   const nightL = { night: 0 }; // an L-like snapshot for the events (they only read .night)
-  function ensureWorldFx() {
+  function ensureWorldFx(live = true) {
+    if (live) worldFxLive = true;
     if (hasWorldFx) return;
     hasWorldFx = true;
     try {
@@ -395,6 +397,10 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
       },
       get verdict() {
         return verdict;
+      },
+      /** Builds the model now and keeps him out of sight (the load does this so his visit compiles nothing). */
+      prepare() {
+        if (make()) holder.visible = false;
       },
       /** The event is running: arrive (walk in, or stand there at once when `snap` = we joined late). */
       arrive(spots, snap) {
@@ -835,7 +841,7 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
       }
       if (t01 >= 1) o.on = false;
     }
-    if (hasWorldFx) {
+    if (worldFxLive) {
       nightL.night = nightOf(hourAt(st, frac));
       weather?.update(dt, t, world.rain);
       if (ev) {
@@ -1160,8 +1166,51 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
     return out;
   }
 
+  // --- preloading -----------------------------------------------------------------------------------------------------------------------------------
+  // Everything the game builds lazily is a CPU hitch (a model build: 10 to 25 ms) and a compile hitch (its shader programs: 25 to 120 ms each on the first draw)
+  // in the middle of a shift: the first event (the rain, the cricket TV, the festival lights, the generator), the inspector's visit, the delivery rider and
+  // his scooter, a parcel bag, a regular's star, a dish nobody had ordered yet, a tool in the cook's hand. `preload()` builds one of each, hidden, while the
+  // loading screen is up (the scene's warm frame then draws them once: loader.js withEverythingDrawn).
+  const warmPark = new Group();
+  warmPark.name = 'warm-actors';
+  warmPark.position.set(0, -55, 0);
+  warmPark.visible = false;
+  root.add(warmPark);
+  const warmParked = [];
+  /** A generator of build steps (one per yield, with a label): run it through the loader's slicing driver. */
+  function* preload() {
+    ensureWorldFx(false);
+    yield 'weather and events';
+    inspector.prepare();
+    bike.set(true);
+    bike.set(false);
+    yield 'inspector';
+    for (const [name, make] of [['rider', () => buildDeliveryBoy(11)], ['bag', () => buildParcelBag(1)], ['star', () => buildRegularStar()]]) {
+      try {
+        const o = make();
+        warmPark.add(o.group);
+        warmParked.push(o);
+      } catch (err) {
+        console.error(`[tiffin] preload ${name} failed`, err);
+      }
+      yield name;
+    }
+    for (const id of DISH_IDS) {
+      try {
+        warmPark.add(dishClone(id, 'good')); // the prototype stays in the cache: the first plate of it is a clone
+      } catch (err) {
+        console.error('[tiffin] preload dish failed', id, err);
+      }
+      yield `dish ${id}`;
+    }
+    vm?.warmTools?.();
+    yield 'tools';
+  }
+
   function dispose() {
     scene.remove(root);
+    for (const o of warmParked) o.dispose?.();
+    warmParked.length = 0;
     if (vm) {
       camera.remove(vm.group);
       vm.dispose?.();
@@ -1196,6 +1245,7 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
     aimPointFor,
     buildProxies,
     dispose,
+    preload,
     setSun,
     setMe(id) {
       meId = id || null;

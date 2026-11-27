@@ -82,12 +82,13 @@ export function setCharacterQuality(q) {
 export const getCharacterQuality = () => current;
 
 // Draw-call merging of people (merge.js): off by default so a bare buildCustomer() is exactly what it always was; the scene turns it on per tier.
-const draw = { merge: false, limitShadows: false, baked: false };
+const draw = { merge: false, limitShadows: false, baked: false, pack: false };
 /** setCharacterDrawMode({ merge, limitShadows }): merge static sub-meshes of newly built people; keep tiny parts (eyes, lids, fingers) out of the shadow pass. */
 export function setCharacterDrawMode(o = {}) {
   if (typeof o.merge === 'boolean') draw.merge = o.merge;
   if (typeof o.limitShadows === 'boolean') draw.limitShadows = o.limitShadows;
   if (typeof o.baked === 'boolean') draw.baked = o.baked;
+  if (typeof o.pack === 'boolean') draw.pack = o.pack; // models/pack.js: a person is a few dynamic meshes (medium / high)
   return { ...draw };
 }
 export const getCharacterDrawMode = () => ({ ...draw });

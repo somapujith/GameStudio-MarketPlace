@@ -24,7 +24,7 @@ import { whenFontsReady } from './textures.js';
 import { DRAW_CALL_BUDGET, GFX_GAME_KEY, GOVERNOR_OPTIONS, QUALITY, QUALITY_ORDER, SCALE_LADDER, SCALE_MIN, TIER_COST, TIFFIN_TIER_MODELS, minTier, pickQuality, recommendStart } from './quality.js';
 import { MEMORY_EVENT, combineFpsCap, createGovernorFeed, memoryResponse, startTier, usableCalibration } from './adapt.js';
 import { describeCaps, getGfxPref, probeBrowser, resolveTier, setGfxPref } from './capabilities.js';
-import { LOAD_STEPS, applyModelTier, createBatcher, createProgramWarmer, programsStatus, runAsync, runSync, sleep } from './loader.js';
+import { LOAD_STEPS, applyModelTier, createBatcher, createProgramWarmer, createRevealWatch, programsStatus, runAsync, runSync, sleep, withEverythingDrawn } from './loader.js';
 import { DISH_IDS } from '../../../../shared/tiffin-centre/catalog.js';
 import { WebglUnavailableError } from './renderer.js';
 import { cameraProjector, pickFromProxies, pickBoxes, onScreen } from './picking.js';
@@ -527,9 +527,12 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
   let warmStartedAt = 0;
   let warmFrames = 0;
   let settleInfo = null; // { linked, builtByFirstRender, names }: what settleFirstFrame left for the first real frame
+  // "no shader program is compiled in play": the programs the renderer holds when the loading screen goes are the whole set (scene.debug.reveal lists any that appear later)
+  const revealWatch = createRevealWatch(() => gfx.renderer.info.programs);
   let settledAtLoad = false; // the scene itself was compiled behind the loading screen (settleFirstFrame): only the extras (one of each dish) are left
   const warmShaders = () => {
-    if (!stateSeen || (batcher && !batcher.done) || disposed) return;
+    // the load built, compiled and DREW everything behind the loading screen (settleFirstFrame, sync.preload): nothing is left to warm in play
+    if (!stateSeen || (batcher && !batcher.done) || disposed || settledAtLoad) return;
     if (!warmer) {
       if (++warmFrames < 30) return;
       warmStartedAt = performance.now();
@@ -775,6 +778,8 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
       switchTier: (tier, scale = 1) => switchTier(tier, 'debug', scale),
       /** What the load linked and what the first real frame still had to build (programs): see settleFirstFrame. */
       get settle() { return settleInfo; },
+      /** The "no program after the reveal" contract: { atReveal, count, late: [{ id, name, key }] } (a tier switch builds a new set on purpose: it is listed too). */
+      get reveal() { return { atReveal: revealWatch.atReveal, count: revealWatch.count, late: revealWatch.late() }; },
       stall,
       street,
       sync,
@@ -819,6 +824,14 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     api.setMe(meId);
     api.setState(initialState, initialTickAt ?? performance.now());
     mark('tc:state-applied');
+    // one of everything the game builds lazily (the weather, the events' props, the inspector, the rider and his scooter, a parcel bag, a regular's star, a plate of
+    // every dish, every tool of the cook's hands) is built now, hidden: a model build mid-shift is a 10 to 25 ms hitch and its programs a 25 to 120 ms compile (sync.preload)
+    if (sync.preload) {
+      for (const label of sync.preload()) {
+        void label;
+        yield step('shaders', 0.9);
+      }
+    }
     tick(0.016, false); // clock light, env map (PMREM), the stall's lights, the actors: everything but the draw
     yield step('batch', 0.9);
     // the static scenery is merged now, so the merged meshes (not the originals they replace) are what gets compiled
@@ -873,8 +886,19 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     mark('tc:programs-primed');
     settledAtLoad = true;
     const known = new Set(progs.map((x) => x.id));
-    gfx.render(0.016); // uploads, the shadow-pass and post programs: behind the loading screen, not in the first frame
+    // ONE frame with everything visible and nothing culled (the parked customers, the weather, the events' props, the plates, the tools, the far street): pays the
+    // first draw of every object the game keeps hidden or off screen until it needs it (uploads, the shadow-depth programs of every caster, the driver's per-program
+    // first-use cost) behind the loading screen instead of as a hitch in the first minute of play (loader.js withEverythingDrawn)
+    try {
+      gfx.renderer.shadowMap.needsUpdate = true;
+    } catch {
+      /* no shadow map on this tier */
+    }
+    withEverythingDrawn(scene, () => gfx.render(0.016));
     mark('tc:first-render');
+    // and a normal one: the picture the player sees first
+    gfx.render(0.016);
+    mark('tc:first-render-2');
     // what the first real frame still had to build (should be the shadow-pass and post programs only): kept for scene.debug.settle
     const added = gfx.renderer.info.programs.filter((x) => !known.has(x.id));
     settleInfo = { linked: progs.length, builtByFirstRender: added.length, names: added.map((x) => x.name || x.cacheKey?.slice(0, 40) || '?') };
@@ -907,6 +931,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     console.warn('[tiffin] shader pre-compile skipped', err);
   }
   yield step('ready', 1);
+  revealWatch.reveal();
   gov.hold(GOVERNOR_OPTIONS.loadHoldMs ?? 3000); // the first seconds after the load (uploads, the last compiles) are not evidence about the device
   built = true;
   return api;

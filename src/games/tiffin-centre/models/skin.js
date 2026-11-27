@@ -159,17 +159,20 @@ function makeSkinUniforms(o) {
 // three's Vector4 is not needed: the uniforms above use plain {x,y,z,w} objects, which three uploads as vec4 (it checks .x/.y/.z/.w).
 
 let skinCount = 0;
-function attachSkinShader(mat, u, tier) {
+// The PACKED variant (models/pack.js): a whole person's skin parts are one mesh, so what a part carried in uniforms (the local frame offset `uRestOff` and the
+// shading mode `uMode`: 0 face, 1 body) rides in two vertex attributes instead (`aRest`: the rest position of the vertex in head space, `aMode`).
+const SKIN_PARS_PACKED = SKIN_PARS.replace('uniform float uMode;', 'varying float vMode;');
+function attachSkinShader(mat, u, tier, packed = false) {
   mat.userData.skin = u;
-  mat.customProgramCacheKey = () => `tc-skin-v2:${tier.normalMaps ? 1 : 0}`;
+  mat.customProgramCacheKey = () => `tc-skin-v2:${tier.normalMaps ? 1 : 0}${packed ? ':p' : ''}`;
   mat.onBeforeCompile = (shader) => {
     for (const k of Object.keys(u)) shader.uniforms[k] = u[k];
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vRest; varying float vEdge; attribute float aEdge; uniform vec3 uRestOff;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRest = position + uRestOff; vEdge = aEdge;');
+      .replace('#include <common>', packed ? '#include <common>\nvarying vec3 vRest; varying float vEdge; attribute float aEdge; attribute vec3 aRest; attribute float aMode; varying float vMode;' : '#include <common>\nvarying vec3 vRest; varying float vEdge; attribute float aEdge; uniform vec3 uRestOff;')
+      .replace('#include <begin_vertex>', packed ? '#include <begin_vertex>\nvRest = aRest; vEdge = aEdge; vMode = aMode;' : '#include <begin_vertex>\nvRest = position + uRestOff; vEdge = aEdge;');
     let fs = shader.fragmentShader;
     fs = fs.replace('#include <common>', `#include <common>
-${SKIN_PARS}`);
+${packed ? SKIN_PARS_PACKED : SKIN_PARS}`);
     fs = fs.replace('#include <lights_physical_pars_fragment>', sssChunk());
     fs = fs.replace('#include <color_fragment>', `#include <color_fragment>
 diffuseColor.rgb = skinAlbedo(diffuseColor.rgb, vRest);
@@ -215,9 +218,23 @@ diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.012,0.008,0.007), smoothstep(1.1
 }
 #include <opaque_fragment>`
     );
-    shader.fragmentShader = fs;
+    shader.fragmentShader = packed ? fs.replaceAll('uMode', 'vMode') : fs;
   };
   mat.needsUpdate = true;
+}
+
+/**
+ * The skin material of a whole PACKED person (models/pack.js): same look, same live uniforms as `base` (a person's skin material: the flush, the wrinkles, the
+ * mouth shape are shared objects), but the per-part frame offset and mode come from vertex attributes (`aRest`, `aMode`, `aEdge`). Double sided, like every body part.
+ */
+export function createPackedSkinMaterial(base) {
+  const u = { ...base.userData.skin };
+  delete u.uRestOff;
+  delete u.uMode;
+  const m = new MeshStandardMaterial({ color: base.color.clone(), roughness: base.roughness, metalness: 0, side: 2 });
+  m.userData.tier = base.userData.tier;
+  attachSkinShader(m, u, base.userData.tier, true);
+  return m;
 }
 
 /**
@@ -259,9 +276,18 @@ export const IRIS_COLORS = [
   { a: '#14110e', b: '#2e241c' }, // near black
 ];
 
+const eyeBase = () => new MeshPhysicalMaterial({ color: '#ffffff', roughness: 0.18, metalness: 0, clearcoat: 0.9, clearcoatRoughness: 0.04, ior: 1.38, specularIntensity: 0.9 });
+
+/** The eye material of a PACKED person (models/pack.js): both eyeballs are one mesh and the local gaze-frame position comes from `aRest` (the live uniforms are shared with `base`). */
+export function createPackedEyeMaterial(base) {
+  const mat = eyeBase();
+  attachEyeShader(mat, base.userData.eye, true);
+  return mat;
+}
+
 export function createEyeMaterial(o = {}) {
   const ic = o.iris || IRIS_COLORS[0];
-  const mat = new MeshPhysicalMaterial({ color: '#ffffff', roughness: 0.18, metalness: 0, clearcoat: 0.9, clearcoatRoughness: 0.04, ior: 1.38, specularIntensity: 0.9 });
+  const mat = eyeBase();
   const u = {
     uIrisA: { value: new Color(ic.a) },
     uIrisB: { value: new Color(ic.b) },
@@ -270,11 +296,18 @@ export function createEyeMaterial(o = {}) {
     uWet: { value: 1 },
     uShine: { value: o.shine ?? 1 },
   };
+  attachEyeShader(mat, u, false);
+  return mat;
+}
+
+function attachEyeShader(mat, u, packed) {
   mat.userData.eye = u;
-  mat.customProgramCacheKey = () => 'tc-eye-v1';
+  mat.customProgramCacheKey = () => (packed ? 'tc-eye-v1:p' : 'tc-eye-v1');
   mat.onBeforeCompile = (shader) => {
     for (const k of Object.keys(u)) shader.uniforms[k] = u[k];
-    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vEye;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvEye = position;');
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', packed ? '#include <common>\nvarying vec3 vEye; attribute vec3 aRest;' : '#include <common>\nvarying vec3 vEye;')
+      .replace('#include <begin_vertex>', packed ? '#include <begin_vertex>\nvEye = aRest;' : '#include <begin_vertex>\nvEye = position;');
     let fs = shader.fragmentShader.replace('#include <common>', `#include <common>\n${EYE_PARS}`);
     fs = fs.replace(
       '#include <color_fragment>',
@@ -318,17 +351,18 @@ export function createEyeMaterial(o = {}) {
 
 // --------------------------------------------------------------------------------------------------------------------------------
 /** Hair: cap and cards share this. Anisotropic-looking highlight bands come from the strand noise along `vRest.y`-ish flow in the shader. */
-export function createHairMaterial({ color = '#1a120d', grey = 0, shine = 0.35, alphaCards = false, doubleSide = false, quality } = {}) {
+export function createHairMaterial({ color = '#1a120d', grey = 0, shine = 0.35, alphaCards = false, doubleSide = false, quality, packed = false } = {}) {
   const tier = tierOf(quality);
   const c = new Color(color).lerp(new Color('#cfcfcf'), Math.max(0, Math.min(1, grey)));
-  const mat = new MeshStandardMaterial({ color: c, roughness: 0.55 - 0.3 * shine, metalness: 0.05, side: alphaCards || doubleSide ? 2 : 0 });
+  // packed (models/pack.js): every hair part of a person in one mesh: the colour rides in the vertex colours, the strand-noise position in `aRest`
+  const mat = new MeshStandardMaterial({ color: packed ? '#ffffff' : c, roughness: 0.55 - 0.3 * shine, metalness: 0.05, side: alphaCards || doubleSide ? 2 : 0, vertexColors: packed });
   const u = { uGrey: { value: grey } };
   mat.userData.hair = u;
-  mat.customProgramCacheKey = () => `tc-hair-v1:${alphaCards ? 1 : 0}`;
+  mat.customProgramCacheKey = () => `tc-hair-v1:${alphaCards ? 1 : 0}${packed ? ':p' : ''}`;
   mat.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vHairP; varying float vHairE; varying vec2 vHairUv; attribute float aEdge;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvHairP = position; vHairE = aEdge; vHairUv = uv;');
+      .replace('#include <common>', packed ? '#include <common>\nvarying vec3 vHairP; varying float vHairE; varying vec2 vHairUv; attribute float aEdge; attribute vec3 aRest;' : '#include <common>\nvarying vec3 vHairP; varying float vHairE; varying vec2 vHairUv; attribute float aEdge;')
+      .replace('#include <begin_vertex>', packed ? '#include <begin_vertex>\nvHairP = aRest; vHairE = aEdge; vHairUv = uv;' : '#include <begin_vertex>\nvHairP = position; vHairE = aEdge; vHairUv = uv;');
     let fs = shader.fragmentShader.replace('#include <common>', `#include <common>\nvarying vec3 vHairP; varying float vHairE; varying vec2 vHairUv;\n${GLSL_NOISE}`);
     fs = fs.replace(
       '#include <color_fragment>',
@@ -347,3 +381,6 @@ export function createHairMaterial({ color = '#1a120d', grey = 0, shine = 0.35, 
   void tier;
   return mat;
 }
+
+/** The hair material of a PACKED person (models/pack.js): one mesh for the scalp, cards, brows and facial hair; colours in the vertex colours. Always double sided, like the rig's own. */
+export const createPackedHairMaterial = (o = {}) => createHairMaterial({ ...o, doubleSide: true, packed: true });
