@@ -33,6 +33,8 @@
   --hud-strip-h: 52px;
   --hud-mm: clamp(130px, 21dvh, 176px);
   --hud-pod-h: 76px;
+  /* the street name under the minimap (tablets only) sticks out 40 px past the disc: the text lanes start right of it, not just right of the route pill */
+  --hud-lane-l2: calc(var(--hud-x-l) + max(var(--hud-mm) + 40px, 150px) + 10px);
 }
 /* (phone.css sets --hud-lane2-top per alert count with the same specificity: set it again here, this file loads later) */
 .aw[data-aw-layout$='-land'][data-aw-alerts='1'] { --hud-alerts-h: 34px; --hud-lane2-top: calc(var(--hud-lane-top) + 34px); }
@@ -113,7 +115,29 @@
 .aw[data-aw-layout$='-land'] .aw-quest-result,
 .aw[data-aw-compact='1'][data-aw-layout$='-land'] .aw-quest-result { top: var(--hud-lane-top); }
 
-/* the tutorial card is one short row here (text + a Skip chip); the step dots are hidden, so the step counter shows */
+/* the tutorial card is one compact block in EVERY landscape layout (text + a Skip chip, a tablet adds the Telugu line); the step dots are hidden, so
+   the step counter shows. quests.css only shrinks it under 760 px wide / 520 px tall, so a tablet (842x618 .. 1366x1024) used to get the desktop card:
+   header, step bar, two paragraphs, a progress line and a tall Skip button, 200 px in the middle of the road, with the caption bar sliding under it. */
+.aw[data-aw-layout$='-land'] .aw-quest-coach {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'text skip' 'te skip';
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 2px;
+  padding: 8px 10px 8px 12px;
+}
+.aw[data-aw-layout$='-land'] .aw-quest-coach header,
+.aw[data-aw-layout$='-land'] .aw-quest-dots,
+.aw[data-aw-layout$='-land'] .aw-quest-coach .aw-quest-progress,
+.aw[data-aw-layout$='-land'] .aw-quest-coach__te { display: none; }
+.aw[data-aw-layout='tablet-land'] .aw-quest-coach__te { display: block; grid-area: te; margin: 0; font-size: 12.5px; }
+.aw[data-aw-layout$='-land'] .aw-quest-coach__text { grid-area: text; min-width: 0; }
+.aw[data-aw-layout$='-land'] .aw-quest-skip { grid-area: skip; margin: 0; align-self: center; }
+.aw[data-aw-layout='tablet-land'] .aw-quest-coach,
+.aw[data-aw-compact='1'][data-aw-layout='tablet-land'] .aw-quest-coach { width: min(440px, var(--hud-lane-w2)); }
+/* a fare question is open: the card steps aside (phone.css hides it for every compact layout; the grid above would show it again) */
+.aw[data-aw-fare='1'][data-aw-layout$='-land'] .aw-quest-coach { display: none; }
 .aw-quest-coach__n { display: none; }
 .aw[data-aw-layout$='-land'] .aw-quest-coach__n {
   display: inline-block;
@@ -212,6 +236,18 @@
   width: auto;
   max-width: 480px;
 }
+/* the fare question: three compact answers side by side in EVERY landscape layout. fares.css only does that under 520 px tall (phones) or 700 px
+   wide (portrait), so a tablet got the tall one-column card: ~300 px between the wheel and the pedals, right over the car. */
+.aw[data-aw-layout$='-land'] .aw-fare-opts { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.aw[data-aw-layout='tablet-land'] .aw-fare { padding: 8px 8px 10px; }
+.aw[data-aw-layout='tablet-land'] .aw-fare-opt { flex-direction: column; justify-content: center; gap: 3px; min-height: 58px; padding: 5px 4px; text-align: center; }
+.aw[data-aw-layout='tablet-land'] .aw-fare-head { margin-bottom: 4px; }
+.aw[data-aw-layout='tablet-land'] .aw-fare-te,
+.aw[data-aw-layout='tablet-land'] .aw-fare-note,
+.aw[data-aw-layout='tablet-land'] .aw-fare-lbl small { display: none; }
+.aw[data-aw-layout='tablet-land'] .aw-fare-time { margin-top: 6px; }
+.aw[data-aw-layout='tablet-land'] .aw-fare-lbl { align-items: center; }
+
 .aw[data-aw-layout$='-land'] .aw-sub,
 .aw[data-aw-compact='1'][data-aw-layout$='-land'] .aw-sub {
   /* captions live in the lane under the alerts (top-centre), not over the car and the prompt at the bottom; a running tutorial card pushes them down */
@@ -227,7 +263,7 @@
 }
 .aw[data-aw-layout$='-land'] .aw-sub .aw-sub-te { font-size: 17px; line-height: 1.35; }
 .aw[data-aw-layout$='-land'] .aw-sub .aw-sub-en { font-size: 13px; }
-.aw[data-aw-layout$='-land']:has(.aw-quest-coach) .aw-sub { top: calc(var(--hud-lane2-top) + 64px); }
+.aw[data-aw-layout$='-land']:has(.aw-quest-coach) .aw-sub { top: calc(var(--hud-lane2-top) + var(--aw-coach-h, 60px) + 4px); } /* the card measures itself: ui/quests/Coach.jsx */
 /* the drift banner is the lowest priority of the things that share that lane */
 .aw[data-aw-layout$='-land']:has(.aw-sub, .aw-quest-coach) .aw-drift { display: none; }
 .aw[data-aw-layout$='-land'] .aw-drift,
