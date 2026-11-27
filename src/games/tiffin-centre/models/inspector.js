@@ -12,7 +12,8 @@ import { makeFaceParams } from './facegen.js';
 import { CH } from './bodies.js';
 import { expressionForMood, EXPRESSION_NAMES } from './expressions.js';
 import { clamp01, countTriangles, damp, disposeObject, num, rng, sharedGeo, sharedMat } from './util.js';
-import { getCharacterQuality } from './charquality.js';
+import { getCharacterQuality, getCharacterDrawMode } from './charquality.js';
+import { packPerson } from './pack.js';
 
 export const OFFICIAL_MOODS = ['waiting', 'eating', 'paying', 'happy', 'angry', 'walkaway'];
 export const OFFICIAL_ROLES = ['inspector', 'delivery'];
@@ -292,6 +293,7 @@ function buildOfficial(role, seed = 0, opts = {}) {
       if (lookOverride) person.lookAt(lookOverride);
       else person.lookAt(_tgt.set(_wp.x * 0.6, 1.5, _wp.z + 2.6));
       person.update(d, tt);
+      api.pack?.update(); // the packed meshes follow the rig (models/pack.js)
     },
     get triangles() {
       return countTriangles(group);
@@ -299,6 +301,7 @@ function buildOfficial(role, seed = 0, opts = {}) {
     dispose() {
       if (disposed) return;
       disposed = true;
+      api.pack?.dispose();
       person.dispose();
       if (prop?.userData.own) for (const m of prop.userData.own) m.dispose();
       disposeObject(group);
@@ -310,6 +313,7 @@ function buildOfficial(role, seed = 0, opts = {}) {
   person.update(0.016, 0);
   api.setMood('waiting');
   api.update(0.016, 0);
+  if (getCharacterDrawMode().pack) api.pack = packPerson(person.group);
   return api;
 }
 

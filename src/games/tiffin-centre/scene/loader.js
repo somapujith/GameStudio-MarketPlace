@@ -97,7 +97,9 @@ export function applyModelTier(q) {
   // Merging static sub-meshes of a customer (merge: true) works (models/merge.js) but costs 70-370 ms per build (it probes 45 poses), a visible hitch when
   // somebody walks up, for a 10-25 % saving: off. Re-measured for the draw-call policy: medium 977 -> 898 calls (-8 %), high 1103 -> 1024 (-7 %), nowhere near the
   // medium budget (700), and customers are built mid-shift, not only inside the staged loader: still off (the run-time draw-call guard handles heavy tiers instead).
-  setCharacterDrawMode({ merge: false, baked: !!cfg.bakedCustomers, limitShadows: cfg.shadow > 0 });
+  // medium / high: PACKED people (models/pack.js): the rig is untouched, but a customer is drawn as ~10 dynamic meshes (skin, eyes, hair, clothes) instead of 62
+  // (and ~7 shadow draws instead of 26), measured at 5 k vertices a person: the CPU copy is far cheaper than the draw calls it replaces.
+  setCharacterDrawMode({ merge: false, baked: !!cfg.bakedCustomers, limitShadows: cfg.shadow > 0, pack: !cfg.bakedCustomers });
   setTextureQuality(TEX_TIER[q] || 'medium');
   setFoodQuality(FOOD_TIER[q] || 'medium');
 }
@@ -252,8 +254,74 @@ export function programsStatus(renderer) {
   return { ready, total: progs.length };
 }
 
+/**
+ * The "no shader program is compiled in play" contract, as a counter. `reveal()` (called when the loading screen goes) remembers every program the renderer holds
+ * now; `late()` lists the programs created since (each one is a 25 to 120 ms hitch on the frame that first drew it), `count` is how many. `getPrograms()` returns
+ * the renderer's `info.programs` (objects with an `id`, a `name` and a `cacheKey`). Tooling reads it through `scene.debug.reveal`.
+ */
+export function createRevealWatch(getPrograms) {
+  let known = null;
+  let atReveal = 0;
+  const list = () => {
+    const all = (typeof getPrograms === 'function' ? getPrograms() : null) || [];
+    return Array.prototype.slice.call(all);
+  };
+  return {
+    reveal() {
+      const all = list();
+      known = new Set(all.map((p) => p.id));
+      atReveal = all.length;
+      return atReveal;
+    },
+    get revealed() {
+      return known !== null;
+    },
+    /** Programs held at the reveal (0 before it). */
+    get atReveal() {
+      return atReveal;
+    },
+    /** The programs created after the reveal: [{ id, name, key }]. */
+    late() {
+      if (!known) return [];
+      return list().filter((p) => !known.has(p.id)).map((p) => ({ id: p.id, name: p.name || '', key: String(p.cacheKey || '').slice(-80) }));
+    },
+    get count() {
+      return this.late().length;
+    },
+  };
+}
+
 /** A promise that resolves after `ms` (a yield that lets the browser link shaders on its worker threads and paint the loading screen). */
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Runs `fn()` with every object of `scene` visible and exempt from frustum culling, then puts every flag back. One frame drawn like this (behind the loading
+ * screen) pays the FIRST DRAW of everything the game keeps hidden or off-screen until it needs it (a customer parked below the street, the rain, the cricket TV,
+ * the inspector's clipboard, the viewmodel's tools): the driver's per-program first-use cost (25 to 120 ms each on D3D11), the geometry and texture uploads and the
+ * shadow-depth programs, all of which would otherwise land in the middle of a shift as a hitch. Lights and cameras are left alone (the light count is part of every
+ * lit shader), and `skip(o)` keeps an object as it is.
+ */
+export function withEverythingDrawn(scene, fn, { skip } = {}) {
+  const saved = [];
+  scene.traverse((o) => {
+    if (o.isLight || o.isCamera || skip?.(o)) return;
+    const drawable = o.isMesh || o.isPoints || o.isLine || o.isSprite;
+    const hide = !o.visible;
+    const cull = drawable && o.frustumCulled;
+    if (!hide && !cull) return;
+    saved.push(o, o.visible, o.frustumCulled);
+    o.visible = true;
+    if (drawable) o.frustumCulled = false;
+  });
+  try {
+    return fn();
+  } finally {
+    for (let i = 0; i < saved.length; i += 3) {
+      saved[i].visible = saved[i + 1];
+      saved[i].frustumCulled = saved[i + 2];
+    }
+  }
+}
 
 // ---------------------------------------------------------------------------------------------------------------------------------
 // shader warm-up

@@ -56,6 +56,7 @@ export function createFlameMaterial({ orange = 0, jets = 24, seed = 0, alpha = 1
       uTip: { value: new Color(1.0, 0.45, 0.08) },
     },
     transparent: true,
+    forceSinglePass: true, // additive: the back-face and front-face passes add up to the same picture, in half the draws (and one program less)
     depthWrite: false,
     blending: AdditiveBlending,
     side: DoubleSide,
@@ -104,6 +105,7 @@ export function createGlowMaterial(color = '#ff8a2a', intensity = 1) {
       void main(){ vec2 d = (vUv - 0.5) * 2.0; float g = exp(-dot(d, d) * 3.2) * uI * (0.85 + 0.15 * sin(uTime * 13.0 + uSeed) + 0.08 * sin(uTime * 29.0)); gl_FragColor = vec4(uC * g, g); }`,
     uniforms: { uC: { value: new Color(color) }, uI: { value: intensity }, uTime: clock.uTime, uSeed: { value: 0 } },
     transparent: true,
+    forceSinglePass: true, // additive: one pass is the same picture
     depthWrite: false,
     blending: AdditiveBlending,
     toneMapped: false,

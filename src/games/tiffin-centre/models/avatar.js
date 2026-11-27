@@ -14,6 +14,7 @@ import { holdTool, makeFarTool } from './toolhost.js';
 import { getCharacterQuality, getCharacterDrawMode } from './charquality.js';
 import { mergeModel, limitShadowCasters } from './merge.js';
 import { bakeRig } from './baked.js';
+import { packPerson } from './pack.js';
 
 export const POSES = ['idle', 'walk', 'carry', 'cheer', 'work-tawa', 'work-steamer', 'work-kadai', 'work-chai', 'work-serve', 'work-collect', 'work-discard'];
 
@@ -365,6 +366,7 @@ export function buildAvatar({ color = '#ff8a1f', name = '', quality } = {}) {
         person.lookAt(_v);
       }
       person.update(d, tt);
+      api.pack?.update(); // the packed meshes follow the rig (models/pack.js)
     },
     get triangles() {
       return countTriangles(group);
@@ -372,6 +374,7 @@ export function buildAvatar({ color = '#ff8a1f', name = '', quality } = {}) {
     dispose() {
       if (disposed) return;
       disposed = true;
+      api.pack?.dispose();
       for (const h of holders) while (h.children.length) disposeObject(h.children[0]);
       for (const m of tools) for (const t2 of m.values()) t2.dispose?.();
       person.dispose();
@@ -386,6 +389,8 @@ export function buildAvatar({ color = '#ff8a1f', name = '', quality } = {}) {
   const mode = getCharacterDrawMode();
   if (mode.baked) {
     api.baked = bakeRig(api, { roots: [person.group], rate: () => 15 }); // cooks walk and work: always the fast rate
+  } else if (mode.pack) {
+    api.pack = packPerson(person.group);
   } else if (mode.merge) {
     api.merge = mergeModel(group, (sample) => {
       let t = 0.2;

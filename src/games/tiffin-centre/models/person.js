@@ -23,10 +23,26 @@ const _t = new Vector3();
  *         hair: { style, headwear, color, grey, clothColor, clothColor2, pattern, gajra }, outfit, quality }
  */
 export function buildPerson(spec) {
+  return runSteps(buildPersonSteps(spec));
+}
+
+/** Drives a generator of build steps to the end and returns its value (the synchronous way to use a `*...Steps` builder). */
+export function runSteps(gen) {
+  let r = gen.next();
+  while (!r.done) r = gen.next();
+  return r.value;
+}
+
+/**
+ * The same build as buildPerson, as a generator that yields between its stages (head, body, hair, clothes): a caller that must not drop a frame (a customer
+ * walking up mid-shift) runs one stage per frame; `yield*` it from a bigger builder, or use buildPerson / runSteps for the one-shot build.
+ */
+export function* buildPersonSteps(spec) {
   const tier = tierOf(spec.quality);
   const group = new Group();
   group.name = `person-${spec.kind || 'x'}`;
   const head = buildHead({ kind: spec.kind, seed: spec.seed, face: spec.face, params: spec.params, quality: tier.id });
+  yield;
   const P = head.params;
   const child = P.child;
   const body = buildBody({
@@ -41,9 +57,11 @@ export function buildPerson(spec) {
   });
   group.add(body.group);
   body.attachHead(head, body.S * (1 + child * 0.32));
+  yield;
   const h = spec.hair || {};
   const hair = buildHair({ shape: head.shape, quality: tier.id, ...h, style: h.style ?? 'short' });
   head.group.add(hair.group);
+  yield;
   const clothes = dress(body, spec.outfit || {});
   const pose = body.pose;
   const api = {

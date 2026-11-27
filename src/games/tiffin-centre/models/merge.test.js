@@ -313,7 +313,7 @@ describe('merged and baked people', () => {
   });
 
   it('draw mode is off by default so a bare build is what it always was', () => {
-    expect(getCharacterDrawMode()).toEqual({ merge: false, limitShadows: false, baked: false });
+    expect(getCharacterDrawMode()).toEqual({ merge: false, limitShadows: false, baked: false, pack: false });
   });
 });
 
@@ -535,6 +535,75 @@ describe('uber material', () => {
     expect(shader.fragmentShader).toContain('roughnessFactor *= vRM.x;');
     expect(shader.fragmentShader).toContain('metalnessFactor *= vRM.y;');
     expect(u.customProgramCacheKey()).toBe('tc-uber');
+    disposeUberMaterials();
+  });
+});
+
+describe('tint merge (textured materials that differ only in colour)', () => {
+  const tex = () => {
+    const t = new DataTexture(new Uint8Array([200, 200, 200, 255]), 1, 1, RGBAFormat, UnsignedByteType);
+    t.needsUpdate = true;
+    return t;
+  };
+  const textured = (color, map, o = {}) => new MeshStandardMaterial({ color, map, roughness: 1, ...o });
+
+  it('folds the same texture in six paints into ONE mesh, each box keeping its own colour in the vertex colours, the triangles and the bounds', () => {
+    const root = new Group();
+    const map = tex();
+    const paints = ['#6a5646', '#8e8c86', '#b9c9bd', '#c8c8c0', '#d6b4a4', '#d9c7a4'];
+    const mats = paints.map((c) => textured(c, map));
+    mats.forEach((m, i) => box(m, i * 0.3, 0, 0, root));
+    const bb = worldBox(root);
+    const before = sum(root);
+    const probe = createStaticProbe(root);
+    probe.sample();
+    const res = mergeStatic(root, { only: probe.finish(), uber: true });
+    const meshes = visibleMeshes(root);
+    expect(res.before).toBe(6);
+    expect(meshes).toHaveLength(1);
+    expect(sum(root)).toBe(before);
+    expect(worldBox(root).min.distanceTo(bb.min)).toBeLessThan(1e-5);
+    expect(worldBox(root).max.distanceTo(bb.max)).toBeLessThan(1e-5);
+    const m = meshes[0].material;
+    expect(m.userData.tint).toBe(true);
+    expect(m.vertexColors).toBe(true);
+    expect(m.map).toBe(map);
+    expect(m.color.getHex()).toBe(0xffffff);
+    const col = meshes[0].geometry.attributes.color;
+    mats.forEach((src, i) => {
+      expect(col.getX(i * 24)).toBeCloseTo(src.color.r, 6);
+      expect(col.getY(i * 24 + 5)).toBeCloseTo(src.color.g, 6);
+      expect(col.getZ(i * 24 + 23)).toBeCloseTo(src.color.b, 6);
+    });
+    disposeUberMaterials();
+  });
+
+  it('keeps materials apart when anything but the colour differs (another texture, roughness, side, transparency, a painted canvas)', () => {
+    const root = new Group();
+    const map = tex();
+    const other = tex();
+    const canvas = { width: 2, height: 2 };
+    const mats = [textured('#aaaaaa', map), textured('#bbbbbb', other), textured('#cccccc', map, { roughness: 0.5 }), textured('#dddddd', map, { side: DoubleSide }), textured('#eeeeee', map, { transparent: true, opacity: 0.5 }), textured('#999999', new CanvasTexture(canvas))];
+    mats.forEach((m, i) => box(m, i * 0.3, 0, 0, root));
+    const probe = createStaticProbe(root);
+    probe.sample();
+    mergeStatic(root, { only: probe.finish(), uber: true });
+    // nothing pairs up: six single meshes stay as they were
+    const meshes = visibleMeshes(root);
+    expect(meshes).toHaveLength(6);
+    expect(meshes.some((m) => m.material.userData?.tint)).toBe(false);
+    disposeUberMaterials();
+  });
+
+  it('is off without the uber option (the lite tier flattens, the others keep their materials)', () => {
+    const root = new Group();
+    const map = tex();
+    box(textured('#aa0000', map), 0, 0, 0, root);
+    box(textured('#00aa00', map), 0.3, 0, 0, root);
+    const probe = createStaticProbe(root);
+    probe.sample();
+    mergeStatic(root, { only: probe.finish() });
+    expect(visibleMeshes(root)).toHaveLength(2);
     disposeUberMaterials();
   });
 });

@@ -6,7 +6,7 @@
 import { AdditiveBlending, CircleGeometry, Color, DoubleSide, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry, RingGeometry, Vector3 } from 'three';
 import { CUSTOMER_KINDS } from '../../../../shared/tiffin-centre/catalog.js';
 import { clamp01, countTriangles, damp, disposeObject, materials, num, rng, sharedGeo, sharedMat } from './util.js';
-import { buildPerson } from './person.js';
+import { buildPersonSteps, runSteps } from './person.js';
 import { makeFaceParams } from './facegen.js';
 import { CH } from './bodies.js';
 import { expressionForMood, EXPRESSION_NAMES } from './expressions.js';
@@ -18,6 +18,7 @@ import { buildDish } from './dishes.js';
 import { getCharacterQuality, getCharacterDrawMode } from './charquality.js';
 import { mergeModel, limitShadowCasters } from './merge.js';
 import { bakeRig } from './baked.js';
+import { packPerson } from './pack.js';
 
 export const MOODS = ['waiting', 'eating', 'paying', 'happy', 'angry', 'walkaway'];
 export const CUSTOMER_KIND_IDS = Object.keys(CUSTOMER_KINDS);
@@ -178,6 +179,14 @@ const sm = (a, b, x) => {
 
 /** buildCustomer(kindId, seed, { quality }) */
 export function buildCustomer(kindId, seed = 0, opts = {}) {
+  return runSteps(buildCustomerSteps(kindId, seed, opts));
+}
+
+/**
+ * buildCustomer as a generator that yields between its stages (each person's head, body, hair and clothes, the props, the first pose, the packing): the scene runs
+ * ONE stage per frame when somebody walks up mid-shift, so no frame pays the ~27 ms of a whole build. Returns the same api as buildCustomer.
+ */
+export function* buildCustomerSteps(kindId, seed = 0, opts = {}) {
   const kind = SPEC_KINDS.has(kindId) ? kindId : 'office';
   const quality = opts.quality || getCharacterQuality();
   const r = rng(`${kind}:${seed}`);
@@ -190,13 +199,13 @@ export function buildCustomer(kindId, seed = 0, opts = {}) {
   const people = [];
   const mainSpec = specFor(kind, seed, r, 'main');
   mainSpec.quality = quality;
-  const main = buildPerson(mainSpec);
+  const main = yield* buildPersonSteps(mainSpec);
   rig.add(main.group);
   people.push({ p: main, spec: mainSpec, ph: r() * 6.28, kid: false });
   if (kind === 'family') {
     const kidSpec = specFor(kind, `${seed}:kid`, r, 'child');
     kidSpec.quality = quality === 'high' ? 'medium' : quality;
-    const kid = buildPerson(kidSpec);
+    const kid = yield* buildPersonSteps(kidSpec);
     kid.group.position.set(0.5, 0, 0.04);
     main.group.position.x = -0.16;
     rig.add(kid.group);
@@ -204,6 +213,7 @@ export function buildCustomer(kindId, seed = 0, opts = {}) {
   }
   group.userData.height = main.height + 0.04;
 
+  yield;
   // ---- props
   const M = people[0];
   const mp = main;
@@ -571,6 +581,8 @@ export function buildCustomer(kindId, seed = 0, opts = {}) {
         note.scale.set(s, s, s);
         halo.scale.setScalar(0.6 + 0.4 * f);
       }
+      // everything has moved: the packed meshes follow the rig (models/pack.js)
+      if (api.packs) for (let i = 0; i < api.packs.length; i++) api.packs[i].update();
       void shown;
       void hop;
     },
@@ -580,10 +592,12 @@ export function buildCustomer(kindId, seed = 0, opts = {}) {
     dispose() {
       if (disposed) return;
       disposed = true;
+      if (api.packs) for (const pk of api.packs) pk.dispose();
       for (const q of people) q.p.dispose();
       disposeObject(group);
     },
   };
+  yield;
   for (const q of people) {
     q.p.body.pose.snap();
     poseFor(q, 0);
@@ -592,10 +606,19 @@ export function buildCustomer(kindId, seed = 0, opts = {}) {
   }
   api.setMood('waiting');
   api.update(0.016, 0);
+  yield;
   const mode = opts.draw || getCharacterDrawMode();
   if (mode.baked) {
     // lite: a hidden rig drives 1-3 shared dynamic meshes (baked.js)
     api.baked = bakeRig(api, { roots: people.map((q) => q.p.group) });
+  } else if (mode.pack) {
+    // medium / high: a person is a handful of dynamic meshes (skin, eyes, hair, clothes) instead of ~60 draw calls (models/pack.js)
+    api.packs = [];
+    for (const q of people) {
+      const pk = packPerson(q.p.group);
+      if (pk) api.packs.push(pk);
+      yield;
+    }
   } else if (mode.merge) {
     // measure what never moves relative to its rigid frame across every mood, patience band, expression and a spoken line, then merge it per material
     const states = [['waiting', 1], ['waiting', 0.55], ['waiting', 0.3], ['waiting', 0.1], ['eating', 0.8], ['paying', 0.8], ['paying', 0.1], ['happy', 1], ['angry', 0.05], ['walkaway', 0.5]];

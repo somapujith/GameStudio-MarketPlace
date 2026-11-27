@@ -22,7 +22,9 @@ import { fabricMat } from './fabric.js';
 import { disposeObject } from './util.js';
 import { buildDish } from './dishes.js';
 import { makeTool } from './toolhost.js';
-import { getCharacterQuality, tierOf } from './charquality.js';
+import { TOOL_IDS } from './tools.js';
+import { getCharacterDrawMode, getCharacterQuality, tierOf } from './charquality.js';
+import { packPerson } from './pack.js';
 
 export const VIEW_ACTIONS = ['tawa-oil', 'tawa-pour', 'tawa-spread', 'tawa-flip', 'tawa-fill', 'tawa-take', 'steamer', 'kadai', 'chai-pour', 'serve', 'collect', 'discard'];
 export const ACTION_MS = 650;
@@ -380,6 +382,16 @@ export function buildViewmodel(opts = {}) {
     get action() {
       return kind;
     },
+    /** Builds every tool once, hidden in the right hand: their materials and shader programs exist before the first action (no compile mid-shift). */
+    warmTools(ids = TOOL_IDS) {
+      for (const id of ids) {
+        try {
+          getTool(arms[0], id);
+        } catch {
+          /* a tool that cannot be built is not worth a failed load */
+        }
+      }
+    },
     /** kind: one of VIEW_ACTIONS or null (hands return to rest); phase01 drives the animation (undefined: it runs on its own for 0.65 s). */
     setAction(k, p) {
       const next = VIEW_ACTIONS.includes(k) ? k : null;
@@ -504,6 +516,7 @@ export function buildViewmodel(opts = {}) {
       cloth.position.y += 0.02;
       cloth.position.z += 0.035;
       cloth.position.x += 0.045;
+      api.pack?.update(); // the packed arms follow the IK (models/pack.js)
     },
     /** Triangles of the cook's own arms, hands and cloth (tools and carried dishes excluded). */
     get triangles() {
@@ -518,6 +531,7 @@ export function buildViewmodel(opts = {}) {
     dispose() {
       if (disposed) return;
       disposed = true;
+      api.pack?.dispose();
       for (const A of arms) for (const e of A.toolList) e.t.dispose?.();
       disposeObject(group);
     },
@@ -528,5 +542,7 @@ export function buildViewmodel(opts = {}) {
   // settle into the rest pose
   actW = 0;
   api.update(0.016, 0);
+  // the arms, hands, sleeves and jewellery are a handful of dynamic meshes (models/pack.js); the camera-space group is always in front of the eye: never culled
+  if (getCharacterDrawMode().pack) api.pack = packPerson(group, { noCull: true });
   return api;
 }

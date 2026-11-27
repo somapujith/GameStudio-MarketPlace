@@ -104,3 +104,8 @@ node scripts/perf/ui-touch.mjs --game tiffin   --worst --level 5 --base http://1
 ```powershell
 node scripts/perf/aw-hud.mjs --base http://127.0.0.1:5871 --port 9944 --tier low --cmd ab --rounds 5 --seconds 5 --variants "hud|frozen|nohud"
 ```
+
+## Tiffin Centre programs, draws and hitches (tf-prog2)
+All of these are `tf-probe.mjs --js <file>` bodies unless noted (they run inside the live page: `scene`, `gfx`, `args`, `h` in scope; `--level 1` plays a practice shift):
+`tf-draws.probe.js` (draw calls of a frame with customers, per customer), `tf-who.probe.js` (EVERY drawn object and its material, from an `onBeforeRender` counter: what the draw calls are), `tf-hitch.probe.js` (a minute of play at a fixed render scale: every frame over 33 ms with its cause: a new program, geometry, texture or customer; long tasks; programs created after the reveal), `tf-events.probe.js` (forces rain / power cut / cricket / festival / inspector on, one after the other: frames, programs, geometries per event), `tf-cpu.probe.js` (main-thread ms per section + GPU median at a fixed scale), `tf-nodes.probe.js`, `tf-dead.probe.js`, `tf-progsize.probe.js` (programs by fragment-shader size and owner).
+`tf-census.mjs --strict` exits 1 when any shader program is created after the reveal (`scene.debug.reveal` is the game's own counter). `tf-people-qa.mjs` photographs the same people unpacked and packed (needs a Vite dev server as `--base`); `tf-build-times.mjs` times every stage of a customer build in the browser (dev server too).

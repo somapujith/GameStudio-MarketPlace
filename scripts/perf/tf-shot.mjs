@@ -29,6 +29,7 @@ const tier = args.tier && args.tier !== true ? String(args.tier) : 'medium';
 const hours = String(args.hours || '9,13,19.5').split(',').map(Number);
 const level = +(args.level || 0);
 const wait = +(args.wait || 3) * 1000;
+const delay = +(args.delay || 0) * 1000; // wait this long after the scene is ready (customers walk up by themselves in a practice level)
 const look = args.look && args.look !== true ? String(args.look).split(',').map(Number) : null;
 
 async function run() {
@@ -47,7 +48,7 @@ async function run() {
     await c.ev("[...document.querySelectorAll('button')].find((b) => /Open the stall/.test(b.textContent)).click(); true");
     } else await c.ev("[...document.querySelectorAll('button')].filter((b) => /Start tutorial/.test(b.textContent)).pop().click(); true");
     await c.waitFor('!!(window.__tiffin && window.__tiffin.scene && window.__tiffin.scene.debug)', 240000);
-    await c.sleep(2500);
+    await c.sleep(2500 + delay);
     // a fixed look: full resolution, no adaptation, the camera where the cook stands
     await c.ev('(() => { const g = window.__tiffin.scene.debug.gfx; g.holdAdaptation(1e6); g.setScale(1); return true; })()');
     // the HUD and the tutorial card cover half of the picture: hide everything but the canvas (--hud keeps them)
