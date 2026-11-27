@@ -1,4 +1,4 @@
-﻿import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { stickValue, knobOffset, rawPosition, STICK_DEAD } from './touchMath.js';
 
 const rect = { left: 100, width: 200 }; // centre at x = 200

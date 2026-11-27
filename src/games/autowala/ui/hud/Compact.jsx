@@ -61,7 +61,7 @@ function TripChip({ t, reduced }) {
   const fare = useCountUp(t.fare, reduced);
   const flash = useChangeFlash(t.fare);
   const tone = timerTone(t.timeLeft);
-  const nav = [t.distance != null ? formatDistance(t.distance) : '', t.eta != null ? formatEta(t.eta) : ''].filter(Boolean).join(' Ã‚Â· ');
+  const nav = [t.distance != null ? formatDistance(t.distance) : '', t.eta != null ? formatEta(t.eta) : ''].filter(Boolean).join(' · ');
   return (
     <div className={`aw-ctrip ${t.arrived ? 'is-arrived' : ''}`} role="status">
       <span className="aw-ctrip__badge" title={t.kind.label}>

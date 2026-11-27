@@ -10,14 +10,14 @@ import { pushToast } from './toastQueue.js';
 const html = (el) => renderToStaticMarkup(el);
 const snap = {
   kmh: 30, fuel: 0.7, hour: 17.4, day: 3, wallet: 1240, rating: 4.4, rides: 12, menu: null,
-  trip: { name: 'Salma Aapa', kind: 'foodie', pax: 1, status: 'riding', fareNow: 148, distanceLeft: 2300, timeLeft: 42, mood: 0.7, dest: { name: 'Charminar', te: 'à°šà°¾à°°à±à°®à°¿à°¨à°¾à°°à±' } },
+  trip: { name: 'Salma Aapa', kind: 'foodie', pax: 1, status: 'riding', fareNow: 148, distanceLeft: 2300, timeLeft: 42, mood: 0.7, dest: { name: 'Charminar', te: 'చార్మినార్' } },
   route: { length: 2300, eta: 190 },
-  quest: { active: { title: 'Biryani run', te: 'à°¬à°¿à°°à±à°¯à°¾à°¨à±€', reward: { cash: 300 }, steps: [{ label: 'Pick up the biryani' }, { label: 'Deliver it' }], stepIndex: 0, progress: '1 of 2', timeLeft: 95 } },
-  radio: { on: true, name: 'Radio Mirchi', te: 'à°°à±‡à°¡à°¿à°¯à±‹', track: 'Charminar Nights', color: '#ffc857' },
+  quest: { active: { title: 'Biryani run', te: 'బిర్యానీ', reward: { cash: 300 }, steps: [{ label: 'Pick up the biryani' }, { label: 'Deliver it' }], stepIndex: 0, progress: '1 of 2', timeLeft: 95 } },
+  radio: { on: true, name: 'Radio Mirchi', te: 'రేడియో', track: 'Charminar Nights', color: '#ffc857' },
 };
 const career = {
-  damage: 0.3, repairCost: 200, fatigue: 0.8, fatigueName: { en: 'Tired', te: 'à°…à°²à°¸à°Ÿ' }, chai: { price: 15, cooldown: 0, canBuy: true },
-  demand: { mult: 1.6, label: 'Office rush', te: 'à°°à°¦à±à°¦à±€', peak: true }, today: { earned: 640 }, rent: { due: 400, owned: false, debt: 0 },
+  damage: 0.3, repairCost: 200, fatigue: 0.8, fatigueName: { en: 'Tired', te: 'అలసట' }, chai: { price: 15, cooldown: 0, canBuy: true },
+  demand: { mult: 1.6, label: 'Office rush', te: 'రద్దీ', peak: true }, today: { earned: 640 }, rent: { due: 400, owned: false, debt: 0 },
 };
 const rules = rulesView({ limit: 40, zone: 'city', signalAhead: { state: 'red', dist: 60, left: 9 }, cameraAhead: { dist: 90, limit: 40 } }, 20);
 const game = { ctx: { career: { drinkChai: vi.fn() }, sound: { radio: { toggle() {}, prev() {}, next() {} } } }, on: () => () => {}, input: { setTouch() {} } };

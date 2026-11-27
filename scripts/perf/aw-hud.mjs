@@ -1,12 +1,16 @@
 // What does the Autowala HUD cost the main thread while the player drives? (ui-touch)
 //
-//   node scripts/perf/aw-hud.mjs --base http://127.0.0.1:5871 --port 9944 --tier low --cmd ab [--rounds 4] [--seconds 6] [--w 1536 --h 864 --dpr 1.25] [--touch 844x390@2]
-//   node scripts/perf/aw-hud.mjs ... --cmd profile    # V8 CPU profile with the HUD on, heaviest self-time functions
+//   node scripts/perf/aw-hud.mjs --base http://127.0.0.1:5871 --port 9944 --tier low --cmd ab --variants "hud|frozen|nohud" [--rounds 4] [--seconds 6] [--w 1536 --h 864 --dpr 1.25] [--touch 844x390@2]
+//   node scripts/perf/aw-hud.mjs ... --cmd micro      # the cost of ONE snapshot push, game stopped (script / style / layout per push)
+//   node scripts/perf/aw-hud.mjs ... --cmd profile    # V8 CPU profile per script file with the HUD on / hidden
+//   node scripts/perf/aw-hud.mjs ... --cmd all        # ab + profile + micro in one page session (one lock hold)
 //
-// The game is started like bench.mjs does and the tier is held (the shared governor is switched off) so only the HUD changes between windows. The car
-// keeps changing speed (throttle alternates), so the HUD gets its ~10 Hz of changing snapshots, like a player's. Variants are applied round-robin in ONE page
-// session (the machine drifts 20-40 % over a minute): `hud` (the page as it is) and `nohud` (everything over the canvas is display:none, the lower bound).
-// Per window: frame times (rAF deltas: mean, p50, p95, p99, max, frames > 33 / 50 ms) and the long-animation-frame entries (count, summed duration, the slowest).
+// The game is started like bench.mjs does and the tier is held (the shared governor is switched off) so only the HUD changes between windows. In `ab` the car keeps
+// changing speed (throttle alternates), so the HUD gets its ~10 Hz of changing snapshots like a player's. Variants run round-robin in ONE page session (the machine
+// drifts 20-40 % over a minute): `hud` (the page as it is), `nohud` (everything over the canvas is display:none, the lower bound), `frozen` (the HUD stays on screen
+// but stops receiving snapshots: needs the snapshot store of this branch), `name=<css selector>` (only that hidden), `name~<css rules>` (extra CSS applied).
+// Per window: frame times (rAF deltas: mean, p50, p95, p99, max, frames > 33 / 50 ms), long-animation-frame entries, and from Performance.getMetrics the main-thread
+// ms per second of task / script / layout / style recalc (and their counts), plus the CPU of the GPU process and the renderer (SystemInfo.getProcessInfo).
 import fs from 'node:fs';
 import { GPU_FLAGS, SOFT_FLAGS, launch } from './cdp.mjs';
 import { withBenchLock } from './lock.mjs';
@@ -40,7 +44,7 @@ if (args.touch && args.touch !== true) {
 
 const START = async (c) => {
   await c.send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { const v = g.call(this, k); if (String(k).startsWith('jalebi.autowala.v')) { try { const d = JSON.parse(v || '{}'); d.settings = { ...(d.settings || {}), quality: '${tier}' }; return JSON.stringify(d); } catch { return v; } } return v; }; })();` });
-  await c.goto(`${base}/play/autowala |  `);
+  await c.goto(`${base}/play/autowala`);
   await c.waitFor("!!document.querySelector('.aw-go')", 240000);
   await c.ev("document.querySelector('.aw-go').click()");
   await c.waitFor('!!window.__autowala', 120000);
@@ -53,13 +57,15 @@ const START = async (c) => {
     let k = 0; clearInterval(window.__throttleT);
     window.__throttleT = setInterval(() => { k++; g.debug.drive({ throttle: k % 6 < 3 ? 1 : 0.15, steer: 0 }); }, 700);
     return true;
-  })() |  `);
+  })()`);
 };
 
 const setCss = (css) => `(() => { let st = document.getElementById('aw-nohud'); if (!st) { st = document.createElement('style'); st.id = 'aw-nohud'; document.head.appendChild(st); } st.textContent = ${JSON.stringify(css)}; return true; })()`;
 const hideCss = (sel) => setCss(sel + ' { display: none !important; }');
 const HIDE = hideCss('.aw > *:not(.aw-canvas)');
 const SHOW = "(() => { document.getElementById('aw-nohud')?.remove(); return true; })()";
+const FREEZE = "(() => { const s = window.__autowalaStore; if (s) { s.__set = s.__set || s.set; s.set = () => {}; } return true; })()";
+const THAW = "(() => { const s = window.__autowalaStore; if (s && s.__set) s.set = s.__set; return true; })()";
 
 /** Frame times + long animation frames over `seconds`; the car starts from the same spot. */
 const MEASURE = (seconds) => `(async () => {
@@ -97,19 +103,30 @@ const metricsNow = async (c) => {
   const m = Object.fromEntries((await c.send('Performance.getMetrics')).metrics.filter((x) => METRIC_KEYS.includes(x.name)).map((x) => [x.name, x.value]));
   // CPU seconds so far of every Chrome process by type: the GPU process (raster + compositing + the game's GL) and the renderer (main + compositor + raster threads)
   try {
-    for (const p of (await c.send('SystemInfo.getProcessInfo')).processInfo) m['cpu_' + p.type] = (m['cpu_' + p.type] || 0) + p.cpuTime;
+    for (const p of (await c.send('SystemInfo.getProcessInfo')).processInfo) {
+      const k = 'cpu_' + String(p.type).toLowerCase();
+      m[k] = (m[k] || 0) + p.cpuTime;
+    }
   } catch {
     /* an older Chrome without the SystemInfo domain */
   }
   return m;
 };
 
+/** Put the page in the state a variant names (see the header). */
+async function applyVariant(c, v) {
+  await c.ev(THAW);
+  if (v === 'frozen') {
+    await c.ev(SHOW);
+    await c.ev(FREEZE);
+  } else await c.ev(v === 'nohud' ? HIDE : v.includes('~') ? setCss(v.slice(v.indexOf('~') + 1)) : v.includes('=') ? hideCss(v.slice(v.indexOf('=') + 1)) : SHOW);
+}
 async function ab(c) {
   await c.send('Performance.enable');
   await c.sleep(+(args.warm || 6) * 1000);
   const variants = String(args.variants || 'hud|nohud').split('|');
-  // a variant is hud (the page as it is), nohud (everything over the canvas hidden), name=<css selector> (only that hidden) or name~<css rules> (extra CSS applied)
-  const apply = (v) => c.ev(v === 'nohud' ? HIDE : v.includes('~') ? setCss(v.slice(v.indexOf('~') + 1)) : v.includes('=') ? hideCss(v.slice(v.indexOf('=') + 1)) : SHOW);
+  const apply = (v) => applyVariant(c, v);
+
   for (const v of variants) {
     await apply(v);
     await c.sleep(1500);
@@ -198,13 +215,78 @@ async function profile(c) {
   return out;
 }
 
+/**
+ * The cost of ONE snapshot, measured with the game stopped (no game script, no game frames): the same synthetic stream in any build (a trip whose meter, distance,
+ * countdown and mood tick, a signal coming up, a mission clock, the speed), pushed the way the game pushes it (this branch: store.set; older builds: the React
+ * setState of AutowalaGame, found through its fiber), one push per animation frame. Per push we report the main-thread SCRIPT time (store, selectors, React render
+ * and commit, the DOM writes), the style recalc and layout time of the frames that follow, and their counts; an idle window of the same length is subtracted (the
+ * minimap keeps drawing, a few timers keep firing).
+ */
+const MICRO_LOOP = (n, pushes) => `(async () => {
+  let base = null; let push = null;
+  if (window.__autowalaStore) { const st = window.__autowalaStore; base = st.get(); push = (s) => st.set(s); }
+  else {
+    const el = document.querySelector('.aw'); const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$')); let f = el[key];
+    while (f && !push) { for (let h = f.memoizedState; h && !push; h = h.next) { const v = h.memoizedState; if (h.queue && h.queue.dispatch && v && typeof v === 'object' && 'kmh' in v && 'wallet' in v) { base = v; push = h.queue.dispatch; } } f = f.return; }
+  }
+  if (!push) return { error: 'no way to push a snapshot' };
+  const flush = () => new Promise((res) => { const ch = new MessageChannel(); ch.port1.onmessage = () => res(); ch.port2.postMessage(0); });
+  const frame = () => new Promise((res) => requestAnimationFrame(() => res()));
+  const t00 = performance.now();
+  for (let i = 0; i < ${n}; i++) {
+    if (${pushes}) {
+      const t = i / 10;
+      push({ ...base, kmh: 20 + (i % 37), hour: Math.floor((17.4 + t / 240) * 60) / 60,
+        trip: { name: 'Salma Aapa', kind: 'foodie', pax: 1, status: 'riding', fareNow: 120 + Math.floor(i / 6), distanceLeft: 2300 - i * 9, timeLeft: 90 - t, mood: 0.9 - t * 0.002, dest: { name: 'Charminar', te: 'చార్మినార్' } },
+        route: { length: 2300 - i * 9, eta: (2300 - i * 9) / 8, nextTurn: 'left', turnDistance: Math.max(0, 140 - i * 9) },
+        rules: { limit: 40, zone: 'city', speeding: false, heat: 0, wanted: false, fines: 0, signalAhead: { state: 'red', dist: Math.max(1, 220 - i * 9), left: Math.max(0, 14 - t), watched: false }, cameraAhead: null, checkpoint: null },
+        quest: { active: { title: 'Biryani run', timeLeft: 120 - t, steps: [{ label: 'Pick up' }], stepIndex: 0, reward: { cash: 300 } } } });
+      await flush();
+    }
+    await frame();
+  }
+  return { ms: performance.now() - t00, via: window.__autowalaStore ? 'store.set' : 'React setState' };
+})()`;
+
+async function micro(c) {
+  await c.send('Performance.enable');
+  await c.sleep(+(args.warm || 6) * 1000);
+  await c.ev('window.__autowala.debug.drive(null); window.__autowala.stop(); true'); // no game frames: only the HUD (and the minimap loop) remains
+  const N = +(args.pushes || 180);
+  const variants = String(args.variants || 'hud|nohud').split('|');
+  const rows = [];
+  for (let r = 0; r < ROUNDS; r++) {
+    for (const v of variants) {
+      await applyVariant(c, v);
+      await c.sleep(600);
+      const res = {};
+      for (const phase of ['idle', 'push']) {
+        const m0 = await metricsNow(c);
+        res[phase] = await c.ev(MICRO_LOOP(N, phase === 'push'));
+        const m1 = await metricsNow(c);
+        res[phase].d = Object.fromEntries(METRIC_KEYS.map((k) => [k, m1[k] - m0[k]]));
+      }
+      const scale = res.push.ms / res.idle.ms; // the idle window, stretched to the push window's wall time
+      const per = (k) => ((res.push.d[k] - res.idle.d[k] * scale) / N) * 1000; // ms per push
+      rows.push({ variant: v, via: res.push.via, scriptMs: per('ScriptDuration'), layoutMs: per('LayoutDuration'), styleMs: per('RecalcStyleDuration'), taskMs: per('TaskDuration'), layoutsPer: (res.push.d.LayoutCount - res.idle.d.LayoutCount * scale) / N, stylesPer: (res.push.d.RecalcStyleCount - res.idle.d.RecalcStyleCount * scale) / N });
+    }
+  }
+  await c.ev(SHOW);
+  return variants.map((v) => {
+    const m = rows.filter((x) => x.variant === v);
+    const k = (key) => +med(m.map((x) => x[key])).toFixed(3);
+    return { variant: v, rounds: m.length, via: m[0].via, scriptMs: k('scriptMs'), styleMs: k('styleMs'), layoutMs: k('layoutMs'), taskMs: k('taskMs'), stylesPer: k('stylesPer'), layoutsPer: k('layoutsPer'), per: m.map((x) => +x.scriptMs.toFixed(3)) };
+  });
+}
+
 async function run() {
   const c = await launch({ port, w: W, h: H, gl: args.soft ? SOFT_FLAGS : GPU_FLAGS });
   try {
     await c.viewport(W, H, DPR, touch);
     await START(c);
     const info = { cmd, tier, viewport: `${W}x${H}@${DPR}${touch ? ' touch' : ''}`, gpu: await c.ev("(() => { const gl = window.__autowala.gfx.renderer.getContext(); const e = gl.getExtension('WEBGL_debug_renderer_info'); return e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : '?'; })()"), layout: await c.ev("document.querySelector('.aw').dataset.awLayout || 'desktop'") };
-    const result = cmd === 'profile' ? await profile(c) : await ab(c);
+    // `all`: the A/B, the profile, then the micro push cost last (it stops the game)
+    const result = cmd === 'profile' ? await profile(c) : cmd === 'micro' ? await micro(c) : cmd === 'all' ? { ab: await ab(c), profile: await profile(c), micro: await micro(c) } : await ab(c);
     return { ...info, result, errors: c.logs.filter((l) => !/GL Driver|GPU stall|ReadPixels|AudioContext|api\/(config|me)|Failed to load resource/.test(l)).slice(0, 6) };
   } finally {
     c.close();
@@ -212,13 +294,20 @@ async function run() {
 }
 
 const res = args['no-lock'] ? await run() : await withBenchLock(run, { maxWaitMs: 60 * 60 * 1000 });
-if (cmd === 'ab') {
+if (args.out && args.out !== true) fs.writeFileSync(String(args.out), JSON.stringify(res, null, 1));
+const microRows = cmd === 'micro' ? res.result : cmd === 'all' ? res.result.micro : null;
+const abRows = cmd === 'ab' ? res.result : cmd === 'all' ? res.result.ab : null;
+if (microRows) {
+  console.log('micro: main-thread cost of ONE snapshot push, game stopped (ms per push)   variant   script   style  layout  | styles/push layouts/push  task | via | per-round script');
+  for (const r of microRows) console.log(`micro ${String(r.variant).padEnd(8)} ${String(r.scriptMs).padStart(7)} ${String(r.styleMs).padStart(7)} ${String(r.layoutMs).padStart(7)}  | ${String(r.stylesPer).padStart(9)} ${String(r.layoutsPer).padStart(11)} ${String(r.taskMs).padStart(6)} | ${r.via} | ${r.per.join(' ')}`);
+}
+if (abRows) {
   console.log(JSON.stringify({ ...res, result: undefined }));
   console.log('variant   fps    mean    p50    p95    p99    max  >33ms >50ms  LoAF/s  LoAF ms/s  longtasks  per-round p95');
-  for (const r of res.result) console.log(`${r.variant.padEnd(8)} ${String(r.fps).padStart(5)} ${String(r.mean).padStart(7)} ${String(r.p50).padStart(6)} ${String(r.p95).padStart(6)} ${String(r.p99).padStart(6)} ${String(r.maxMs).padStart(6)} ${String(r.over33).padStart(5)} ${String(r.over50).padStart(5)} ${String(r.loafPerS).padStart(7)} ${String(r.loafMsPerS).padStart(10)} ${String(r.longTasks).padStart(9)}  ${r.per.join(' ')}`);
+  for (const r of abRows) console.log(`${r.variant.padEnd(8)} ${String(r.fps).padStart(5)} ${String(r.mean).padStart(7)} ${String(r.p50).padStart(6)} ${String(r.p95).padStart(6)} ${String(r.p99).padStart(6)} ${String(r.maxMs).padStart(6)} ${String(r.over33).padStart(5)} ${String(r.over50).padStart(5)} ${String(r.loafPerS).padStart(7)} ${String(r.loafMsPerS).padStart(10)} ${String(r.longTasks).padStart(9)}  ${r.per.join(' ')}`);
   console.log('variant   main-thread ms per second: task  script  layout  style   | layouts/s styles/s  snapshots/s | CPU ms/s: gpu-process  renderer(all threads)');
-  for (const r of res.result) console.log(`${r.variant.padEnd(8)} ${String(r.taskMsPerS).padStart(30)} ${String(r.scriptMsPerS).padStart(7)} ${String(r.layoutMsPerS).padStart(7)} ${String(r.styleMsPerS).padStart(6)}   | ${String(r.layoutsPerS).padStart(8)} ${String(r.stylesPerS).padStart(8)} ${String(r.snapsPerS).padStart(11)} | ${String(r.gpuCpuMsPerS).padStart(21)} ${String(r.rendererCpuMsPerS).padStart(14)}`);
-  for (const r of res.result) if (r.slowest) console.log(`slowest LoAF (${r.variant}): ${JSON.stringify(r.slowest)}`);
-} else console.log(JSON.stringify(res, null, 1));
-if (args.out && args.out !== true) fs.writeFileSync(String(args.out), JSON.stringify(res, null, 1));
+  for (const r of abRows) console.log(`${r.variant.padEnd(8)} ${String(r.taskMsPerS).padStart(30)} ${String(r.scriptMsPerS).padStart(7)} ${String(r.layoutMsPerS).padStart(7)} ${String(r.styleMsPerS).padStart(6)}   | ${String(r.layoutsPerS).padStart(8)} ${String(r.stylesPerS).padStart(8)} ${String(r.snapsPerS).padStart(11)} | ${String(r.gpuCpuMsPerS).padStart(21)} ${String(r.rendererCpuMsPerS).padStart(14)}`);
+  for (const r of abRows) if (r.slowest) console.log(`slowest LoAF (${r.variant}): ${JSON.stringify(r.slowest)}`);
+}
+if (!microRows && !abRows) console.log(JSON.stringify(res, null, 1));
 process.exit(0);

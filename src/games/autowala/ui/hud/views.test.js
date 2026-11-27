@@ -39,7 +39,7 @@ describe('the roundings leave every printed text exactly as it was', () => {
 });
 
 describe('a ride that ticks produces the same trip view until the printed text changes', () => {
-  const trip = (o = {}) => ({ name: 'Salma', kind: 'foodie', pax: 1, status: 'riding', fareNow: 148, distanceLeft: 2310, timeLeft: 42.4, mood: 0.7012, dest: { name: 'Charminar', te: 'à°šà°¾à°°à±à°®à°¿à°¨à°¾à°°à±' }, ...o });
+  const trip = (o = {}) => ({ name: 'Salma', kind: 'foodie', pax: 1, status: 'riding', fareNow: 148, distanceLeft: 2310, timeLeft: 42.4, mood: 0.7012, dest: { name: 'Charminar', te: 'చార్మినార్' }, ...o });
   const route = (o = {}) => ({ length: 2310, eta: 190, nextTurn: 'left', turnDistance: 83, ...o });
   it('10 m of road, a tenth of a second and a hair of mood are the same view', () => {
     const a = tripViewOf(trip(), route());

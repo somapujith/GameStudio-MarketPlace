@@ -41,7 +41,7 @@ const STAGE_TEXT = {
   props: 'Planting palms and lamps',
   landmarks: 'Building Charminar',
   metro: 'Running the Metro',
-  'systems:customization': 'Visiting MamaÃ¢â‚¬â„¢s Garage',
+  'systems:customization': 'Visiting Mama’s Garage',
   'systems:fares': 'Calling the customers',
   'systems:routeGuide': 'Drawing the map',
   'systems:workshop': 'Opening the workshop',
@@ -59,7 +59,7 @@ const STAGE_TEXT = {
 async function loadFonts() {
   if (!document.fonts?.load) return;
   const wanted = ['800 40px "Bricolage Grotesque Variable"', '700 24px "Bricolage Grotesque Variable"', '800 30px "Noto Sans Telugu Variable"'];
-  await Promise.race([Promise.all(wanted.map((f) => document.fonts.load(f, 'AaBbÃ Â°â€ Ã Â°Å¸'))).catch(() => {}), new Promise((r) => setTimeout(r, 2500))]);
+  await Promise.race([Promise.all(wanted.map((f) => document.fonts.load(f, 'AaBbఆట'))).catch(() => {}), new Promise((r) => setTimeout(r, 2500))]);
 }
 
 export default function AutowalaGame() {

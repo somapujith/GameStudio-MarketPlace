@@ -39,7 +39,7 @@ function Trip({ t, reduced }) {
           <b className="aw-trip__name">{t.name}</b>
           <span className="aw-trip__sub">
             {t.te && <span className="aw-te">{t.te}</span>}
-            <em>{t.kind.label}{t.pax > 1 ? ' Â· 2 riding' : ''}</em>
+            <em>{t.kind.label}{t.pax > 1 ? ' · 2 riding' : ''}</em>
           </span>
         </div>
         <FareMeter fare={t.fare} reduced={reduced} />

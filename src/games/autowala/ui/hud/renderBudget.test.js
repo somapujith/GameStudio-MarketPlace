@@ -16,11 +16,11 @@ function snapshotAt(i) {
   return {
     kmh, fuel: Math.round((0.8 - t * 0.0004) * 500) / 500, fuelLitres: Math.round((12 - t * 0.01) * 20) / 20, hour: Math.floor((17.4 + t / 240) * 60) / 60, day: 1,
     drifting: false, boosting: false, driftCharge: 0, airborne: false, menu: null, wallet: 600, rating: 4.4, rides: 3, prompt: null,
-    trip: { name: 'Salma Aapa', kind: 'foodie', pax: 1, status: 'riding', fareNow: 120 + Math.floor(metres / 20), distanceLeft: 2300 - metres, timeLeft: 90 - t, mood: 0.9 - t * 0.002, dest: { name: 'Charminar', te: 'ÃƒÂ Ã‚Â°Ã…Â¡ÃƒÂ Ã‚Â°Ã‚Â¾ÃƒÂ Ã‚Â°Ã‚Â°ÃƒÂ Ã‚Â±Ã‚ÂÃƒÂ Ã‚Â°Ã‚Â®ÃƒÂ Ã‚Â°Ã‚Â¿ÃƒÂ Ã‚Â°Ã‚Â¨ÃƒÂ Ã‚Â°Ã‚Â¾ÃƒÂ Ã‚Â°Ã‚Â°ÃƒÂ Ã‚Â±Ã‚Â' } },
+    trip: { name: 'Salma Aapa', kind: 'foodie', pax: 1, status: 'riding', fareNow: 120 + Math.floor(metres / 20), distanceLeft: 2300 - metres, timeLeft: 90 - t, mood: 0.9 - t * 0.002, dest: { name: 'Charminar', te: 'చార్మినార్' } },
     route: { length: 2300 - metres, eta: (2300 - metres) / 8, nextTurn: 'left', turnDistance: Math.max(0, 140 - metres) },
     rules: { limit: 40, zone: 'city', speeding: kmh > 45, heat: 0, wanted: false, fines: 0, signalAhead: { state: 'red', dist: Math.max(1, 220 - metres), left: Math.max(0, 14 - t), watched: false }, cameraAhead: null, checkpoint: null },
     rage: { active: false }, quest: { active: { title: 'Biryani run', timeLeft: 120 - t, steps: [{ label: 'Pick up' }], stepIndex: 0, reward: { cash: 300 } } },
-    career: { damage: 0.1, repairCost: 80, fatigue: 0.3, fatigueName: { en: 'Fresh', te: 'ÃƒÂ Ã‚Â°Ã‚Â¤ÃƒÂ Ã‚Â°Ã‚Â¾ÃƒÂ Ã‚Â°Ã…â€œÃƒÂ Ã‚Â°Ã‚Â¾' }, chai: { price: 15, cooldown: 0, canBuy: true }, demand: { mult: 1.2, label: 'Rush', peak: true }, today: { earned: 200 }, rent: { due: 400, owned: false, debt: 0 } },
+    career: { damage: 0.1, repairCost: 80, fatigue: 0.3, fatigueName: { en: 'Fresh', te: 'తాజా' }, chai: { price: 15, cooldown: 0, canBuy: true }, demand: { mult: 1.2, label: 'Rush', peak: true }, today: { earned: 200 }, rent: { due: 400, owned: false, debt: 0 } },
     weather: { state: 'clear', rain: 0, wet: 0 }, radio: null, waitingCount: 12, fareChoice: null, workshopPhase: 'closed',
   };
 }

@@ -1,4 +1,4 @@
-﻿// Maths for the on-screen steering slider (pure, unit-tested in touchMath.test.js).
+// Maths for the on-screen steering slider (pure, unit-tested in touchMath.test.js).
 export const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 /** Fraction of the slider's travel that counts as "straight ahead" (centre dead zone), and the curve exponent (1 = linear). */
