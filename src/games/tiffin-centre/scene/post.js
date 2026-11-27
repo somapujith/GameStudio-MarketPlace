@@ -372,7 +372,10 @@ export function createPost(renderer, scene, camera, { dyn = createDynamicRes() }
   function build(nextCfg, w, h, pixelRatio) {
     const nW = Math.max(2, Math.floor(w * pixelRatio));
     const nH = Math.max(2, Math.floor(h * pixelRatio));
-    const key = `${nW}x${nH}|${nextCfg.msaa || 0}|${nextCfg.dof ? 1 : 0}${nextCfg.ao ? 1 : 0}${nextCfg.fxaa ? 1 : 0}${nextCfg.bloom ? 1 : 0}|${nextCfg.bloomScale || 0}|${nextCfg.hdr || 'half'}`;
+    // R11G11B10F is colour-renderable only with EXT_color_buffer_float (a device with just the half-float extension renders RGBA16F but not this): ask the renderer, keep RGBA16F without it
+    // (an unknown renderer, as in a test with a fake one, is taken to have it)
+    const r11 = nextCfg.hdr === 'r11' && renderer.extensions?.has?.('EXT_color_buffer_float') !== false;
+    const key = `${nW}x${nH}|${nextCfg.msaa || 0}|${nextCfg.dof ? 1 : 0}${nextCfg.ao ? 1 : 0}${nextCfg.fxaa ? 1 : 0}${nextCfg.bloom ? 1 : 0}|${nextCfg.bloomScale || 0}|${r11 ? 'r11' : 'half'}`;
     cfg = nextCfg;
     if (key === builtKey && sceneRT) return false;
     disposeTargets();
@@ -384,7 +387,7 @@ export function createPost(renderer, scene, camera, { dyn = createDynamicRes() }
     if (depthTexture) depthTexture.format = DepthFormat;
     // the scene's HDR colour: RGBA16F (8 bytes a pixel) or, with cfg.hdr 'r11', R11G11B10F (4 bytes: half the memory traffic of every full-size pass that writes or
     // reads it; no alpha, 6-bit mantissa, which the film grain hides)
-    const hdr = cfg.hdr === 'r11' ? { type: UnsignedInt101111Type, format: RGBFormat } : {};
+    const hdr = r11 ? { type: UnsignedInt101111Type, format: RGBFormat } : {};
     sceneRT = new WebGLRenderTarget(W, H, rtOpts({ depthBuffer: true, samples: cfg.msaa || 0, ...hdr, ...(depthTexture ? { depthTexture } : {}) }));
     if (cfg.dof) rtA = new WebGLRenderTarget(W, H, rtOpts(hdr));
     if (cfg.ao) {

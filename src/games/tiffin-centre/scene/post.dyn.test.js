@@ -1,7 +1,7 @@
 // Dynamic resolution without re-allocation in the post pipeline (post.js): the render targets are allocated once, a scale step only moves viewports and uniforms,
 // every fetch from a dynamic target goes through dynUv(), texel sizes follow the USED size. A fake renderer records what the pipeline asks of it (no WebGL).
 import { describe, it, expect } from 'vitest';
-import { PerspectiveCamera, Scene } from 'three';
+import { HalfFloatType, PerspectiveCamera, Scene, UnsignedInt101111Type } from 'three';
 import { QUALITY } from './quality.js';
 import { POST_FRAGMENTS, createPost } from './post.js';
 import { applyPointScale } from './renderer.js';
@@ -85,6 +85,28 @@ describe('post pipeline: a scale step re-allocates nothing', () => {
     expect(post.build(cfgOf('high'), W + 40, H, PR)).toBe(true);
     expect(post.targets.dof).toBeTruthy();
     post.dispose();
+  });
+
+  it('the packed R11G11B10F scene target needs EXT_color_buffer_float: without it the scene stays RGBA16F', () => {
+    const asked = QUALITY.medium.hdr; // 'r11'
+    expect(asked).toBe('r11');
+    const withExt = fakeRenderer();
+    withExt.extensions = { has: (n) => n === 'EXT_color_buffer_float' };
+    const a = createPost(withExt, new Scene(), makeCamera());
+    a.build(cfgOf('medium'), W, H, PR);
+    expect(a.targets.scene.texture.type).toBe(UnsignedInt101111Type);
+    a.dispose();
+    const without = fakeRenderer();
+    without.extensions = { has: () => false };
+    const b = createPost(without, new Scene(), makeCamera());
+    b.build(cfgOf('medium'), W, H, PR);
+    expect(b.targets.scene.texture.type).toBe(HalfFloatType);
+    b.dispose();
+    const unknown = fakeRenderer(); // a renderer that cannot say (a test double) is taken to have it
+    const c = createPost(unknown, new Scene(), makeCamera());
+    c.build(cfgOf('medium'), W, H, PR);
+    expect(c.targets.scene.texture.type).toBe(UnsignedInt101111Type);
+    c.dispose();
   });
 
   it('moves viewports and scissors to the used sub-rect, and the used size follows the scale', () => {
