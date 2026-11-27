@@ -1,16 +1,38 @@
 // OWNER: quests agent. "Mama's First Day": the tutorial card. Step dots, the instruction (English + Telugu) with the key to press,
 // and a SKIP button (also the N key). Reads snap.quest.tutorial.
+import { useEffect, useRef } from 'react';
 import { useTouchMode } from '../hud/touchMode.js';
 import { coachStepText } from './coachText.js';
 
+/**
+ * Tell the stylesheets how tall the card is: `--aw-coach-h` on the `.aw` root. The caption bar (a separate component) hangs under the card in the
+ * same lane, and the card's height depends on the wording (two lines of English, a Telugu line), the language and the zoom, so it is measured, not guessed.
+ * Returns the cleanup that removes the variable.
+ */
+export function publishCoachHeight(el) {
+  const root = el && el.closest ? el.closest('.aw') : null;
+  if (!root || !root.style) return () => {};
+  const write = () => root.style.setProperty('--aw-coach-h', `${Math.ceil(el.offsetHeight)}px`);
+  write();
+  const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(write) : null;
+  if (ro) ro.observe(el);
+  return () => {
+    if (ro) ro.disconnect();
+    root.style.removeProperty('--aw-coach-h');
+  };
+}
+
 export default function Coach({ q, onSkip }) {
   const touch = useTouchMode();
+  const card = useRef(null);
   const t = q.tutorial;
+  const present = !!t;
+  useEffect(() => (card.current ? publishCoachHeight(card.current) : undefined), [present]);
   if (!t) return null;
   const idx = Math.min(t.stepIndex, t.steps.length - 1);
   const cur = coachStepText({ ...t.steps[idx], key: t.key }, touch);
   return (
-    <aside className="aw-quest-coach" aria-label="Tutorial">
+    <aside ref={card} className="aw-quest-coach" aria-label="Tutorial">
       <header>
         <span className="aw-quest-tag is-gold">MAMA&apos;S FIRST DAY</span>
         <span className="aw-te">మామా మొదటి రోజు</span>

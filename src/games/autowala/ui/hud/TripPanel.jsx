@@ -2,7 +2,7 @@
 // or the soft "find a customer" hint when there is no trip. Every field except the snapshot's `trip` is optional.
 import { memo } from 'react';
 import { ArrowIcon, ClockIcon, FlagIcon, KindIcon, PinIcon, UTurnIcon } from './icons.jsx';
-import { formatCountdown, formatDistance, formatEta, groupIndian, moodColor, normalizeTrip, timerTone } from './hudLogic.js';
+import { formatCountdown, formatDistance, formatEta, groupIndian, moodColor, timerTone } from './hudLogic.js';
 import { useChangeFlash, useCountUp } from './useCountUp.js';
 
 function TurnArrow({ dir }) {
@@ -104,8 +104,8 @@ function FindHint({ waiting }) {
   );
 }
 
-function TripPanel({ trip, route, waitingCount, reduced, children }) {
-  const t = normalizeTrip(trip, route);
+/** `t` is the trip view (hud/views.js tripViewOf: normalizeTrip with the ticking numbers rounded to what they print), or null for the find-a-customer hint. */
+function TripPanel({ t, waitingCount, reduced, children }) {
   return (
     <div className="aw-hud-tc">
       {t ? <Trip t={t} reduced={reduced} /> : <FindHint waiting={waitingCount} />}

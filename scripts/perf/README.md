@@ -91,3 +91,16 @@ node scripts/perf/aw-shots.mjs --base http://127.0.0.1:5881 --port 9965 --soft -
 ```
 `aw-ab.mjs` presets added: `bloom3`, `bloomon` (force the bloom back on by day), `shadow33`.
 `aw-probe.mjs --cmd boot --menu-wait 2` lingers 2 s on the start screen before pressing START (a player does; the game's background work gets that time): the first seconds of play are sensitive to it. `--cmd boot` prints the frames over 40 ms among the first 400 after START; compare builds interleaved (`matrix.mjs`) and sum them.
+
+
+## Touch layouts and the Autowala HUD cost (ui-touch)
+`ui-touch.mjs` measures the HUD of either game on touch tablets / phones: every visible HUD box by `getBoundingClientRect`, the pairs that overlap, boxes off-screen, clipped text (Tiffin), and a screenshot per size. Software GL by default (layout only):
+
+```powershell
+node scripts/perf/ui-touch.mjs --game autowala --worst [--fare] --base http://127.0.0.1:5871 --port 9940 --sizes 842x618,1024x768,1366x1024 --shots docs/perf/ui-touch --name aw
+node scripts/perf/ui-touch.mjs --game tiffin   --worst --level 5 --base http://127.0.0.1:5871 --port 9943 --sizes 842x618,1024x768   # no --level: the tutorial with its coach card
+```
+`aw-hud.mjs` is the HUD A/B for Autowala on the real GPU (takes the bench lock): the car keeps changing speed, and variants run round-robin in ONE page session: `hud`, `nohud` (everything over the canvas hidden), `frozen` (HUD visible but no snapshots reach it), `name=<css selector>` (that part hidden), `name~<css rules>` (extra CSS). Per variant: frame time (mean / p50 / p95 / p99, frames over 33 / 50 ms), long animation frames, and main-thread ms per second from `Performance.getMetrics` (task, script, layout, style recalc and their counts), plus the CPU of the GPU process and the renderer (`SystemInfo.getProcessInfo`). `--cmd profile` is a V8 profile per script file with the HUD on / hidden.
+```powershell
+node scripts/perf/aw-hud.mjs --base http://127.0.0.1:5871 --port 9944 --tier low --cmd ab --rounds 5 --seconds 5 --variants "hud|frozen|nohud"
+```

@@ -681,6 +681,8 @@
   .tc-hud-board:not([data-slim='1']) .tc-hud-chips { grid-template-columns: repeat(2, calc(92 * var(--ub))); }
   .tc-hud-board:not([data-slim='1']) .tc-hud-chip { grid-template-columns: auto 1fr; grid-template-areas: 'ico ready' 'name name' 'meta meta'; padding: calc(3 * var(--ub)) calc(5 * var(--ub)) calc(4 * var(--ub)); }
   .tc-hud-board:not([data-slim='1']) .tc-hud-chip-name { display: flex; }
+  /* a long dish name ("Set Dosa (3 pc)") wraps to a second line instead of ending in an ellipsis: the board is a menu, the names are the point */
+  .tc-hud-board:not([data-slim='1']) .tc-hud-chip-name .tc-hud-en { white-space: normal; text-overflow: clip; overflow-wrap: anywhere; line-height: 1.1; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
   .tc-hud-chip-name .tc-hud-te { display: none; }
   .tc-hud-board:not([data-slim='1']) .tc-hud-chip-meta { display: flex; }
   .tc-hud-board:not([data-slim='1']) .tc-hud-ready small { display: inline; }
@@ -755,6 +757,11 @@
   .tc-hud-heart svg { --ico: calc(15 * var(--u)); }
   .tc-hud-hearts { padding: calc(2 * var(--u)) calc(4 * var(--u)); }
   .tc-hud-chit-look { top: calc(4 * var(--u)); }
+}
+/* a small tablet (842x618, 800x600 ...): 31 vw of the banner is too narrow for "LUNCH BREAK" + its Telugu name + the Shift chip, and the top row has room (the
+   free column in the middle is ~100 px wide), so the banner takes a little more of it. Wider windows keep the rule above. */
+@media (min-height: 481px) and (min-width: 761px) and (max-width: 900px) {
+  .tc-hud-banner { width: clamp(calc(224 * var(--u)), 37vw, calc(360 * var(--u))); }
 }
 @media (max-width: 760px) {
   .tc-hud-banner { width: clamp(calc(160 * var(--u)), 30vw, calc(360 * var(--u))); }
