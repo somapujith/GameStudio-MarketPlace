@@ -4,11 +4,12 @@
 // `renderer.compile` only starts the first part, and only for the state it is called in, so a warm-up must be told what the game will draw with:
 //   - the OUTPUT TARGET: the game draws into the composer's render target (linear, no tone mapping); the canvas is a different program variant
 //   - the LIGHT SET: the number of point / spot lights and whether the sun casts shadows are part of every lit program (a lamp pool that goes
-//     on at dusk, the workshop's spotlights, the low tier without shadows are all different variants)
+//     on at dusk, the low tier without shadows are different variants; the workshop is NOT one: it borrows the street's lights) AND of every depth
+//     program of the sun's shadow pass, which `renderer.compile` never builds: depthParts / depthStandIn below do
 // This module compiles a given light set against a throw-away "warm scene" that holds clones of the lights (the real scene is never touched,
 // so it can run while the game is playing), in small slices, waits for the driver (KHR_parallel_shader_compile) without blocking, and then
 // reads every program's locations a few at a time, so the first draw finds everything ready.
-import { BufferGeometry, Mesh, PointLight, Scene, SpotLight, WebGLRenderTarget } from 'three';
+import { BackSide, BufferGeometry, DoubleSide, FrontSide, Mesh, MeshDepthMaterial, PointLight, Scene, SpotLight, WebGLRenderTarget } from 'three';
 
 const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
@@ -55,6 +56,60 @@ export function compileParts(root) {
   return out;
 }
 
+// ---- the shadow pass. `renderer.compile` only builds the programs of the CAMERA pass; the sun's shadow pass draws every caster with a depth material
+// (three's shared MeshDepthMaterial, or the object's `customDepthMaterial`) whose program key carries the SAME light counts as everything else, so a
+// light set (the lamp pool at dusk) is also a set of depth programs: 5-7 of them, ~750 ms in one frame on an integrated GPU, at the first night frame.
+// They are built here from stand-ins: a MeshDepthMaterial with what three's `getDepthMaterial` copies from the caster's material (side, map, alpha),
+// drawn as "the caster" (a prototype-linked copy of the real object: same instancing / skinning / geometry, another material).
+
+/** The side three.js draws a caster's depth with (WebGLShadowMap's `shadowSide`: the opposite face, against shadow acne). */
+export function shadowSideOf(material) {
+  if (material.shadowSide !== null && material.shadowSide !== undefined) return material.shadowSide;
+  if (material.side === FrontSide) return BackSide;
+  if (material.side === BackSide) return FrontSide;
+  return DoubleSide;
+}
+
+/** The object's own part of a shadow program key: what `WebGLPrograms.getParameters` reads from the object (instancing, skinning, morphs). */
+const objectSig = (o) => `${o.isInstancedMesh ? 1 : 0}${o.instanceColor ? 1 : 0}${o.isSkinnedMesh ? 1 : 0}${o.isBatchedMesh ? 1 : 0}${o.morphTexture ? 1 : 0}${o.geometry && o.geometry.morphAttributes && o.geometry.morphAttributes.position ? 1 : 0}`;
+
+/** The material's part: what `getDepthMaterial` copies onto the shared depth material (side, alpha test and the maps it needs). */
+const materialSig = (m) => `${shadowSideOf(m)}${m.alphaMap ? 1 : 0}${m.alphaTest > 0 || m.alphaToCoverage ? 1 : 0}${m.map ? 1 + ((m.map.channel | 0) || 0) : 0}${m.displacementMap && m.displacementScale !== 0 ? 1 : 0}`;
+
+/**
+ * One entry per distinct shadow-pass program in `root`: the casting meshes, by (depth material kind x instancing / skinning). Invisible casters count
+ * (they are drawn later). `key` is stable across calls; a changed custom depth material (its version) is a new entry.
+ */
+export function depthParts(root) {
+  const seen = new Set();
+  const out = [];
+  root.traverse((o) => {
+    if (!o.isMesh || !o.castShadow || !o.material) return;
+    const custom = o.customDepthMaterial;
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+      if (!m) continue;
+      const key = custom ? `c${custom.id}.${custom.version}|${objectSig(o)}` : `d${materialSig(m)}|${objectSig(o)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ key, object: o, material: m, custom: custom || null });
+    }
+  });
+  return out;
+}
+
+/** A depth material equal to what three's shared one (`new MeshDepthMaterial()` in r187: no packing, the shadow map is a depth texture) is set to for a caster with `material`. */
+export function depthStandIn(material) {
+  const d = new MeshDepthMaterial();
+  d.side = shadowSideOf(material);
+  d.map = material.map;
+  d.alphaMap = material.alphaMap;
+  d.alphaTest = material.alphaToCoverage === true ? 0.5 : material.alphaTest;
+  d.displacementMap = material.displacementMap;
+  d.displacementScale = material.displacementScale;
+  d.displacementBias = material.displacementBias;
+  return d;
+}
+
 /** What decides which programs a lit material needs: point lights, spot lights and whether the sun casts a shadow. */
 export function recipeKey(r) {
   return `p${r.points | 0}s${r.spots | 0}h${r.shadow ? 1 : 0}`;
@@ -74,11 +129,13 @@ export function recipeOf(scene) {
 /**
  * A scene that holds only lights: every visible directional / hemisphere / ambient light of `real` cloned as it is (the sun's shadow flag
  * from the recipe), plus the recipe's point and spot lights (`points`, `spots` are totals; the real scene's own are not copied).
+ * `bare`: no fog and no environment, which is what three's shadow pass draws with (it hands `renderBufferDirect` no scene, so the program key sees
+ * an empty one: `fog` is a bit of every program key, even a depth material's, which ignores fog).
  */
-export function buildWarmScene(real, recipe) {
+export function buildWarmScene(real, recipe, { bare = false } = {}) {
   const warm = new Scene();
-  warm.fog = real.fog;
-  warm.environment = real.environment;
+  warm.fog = bare ? null : real.fog;
+  warm.environment = bare ? null : real.environment;
   let point = null;
   let spot = null;
   real.traverse((o) => {
@@ -116,9 +173,23 @@ export function buildWarmScene(real, recipe) {
  * @param camera    the real camera
  * @param getTarget () => the render target the game draws into (the composer's), or null before it exists (a throw-away one is used)
  */
-export function createWarmer({ renderer, scene, camera, getTarget = () => null, now = nowMs }) {
+export function createWarmer({ renderer, scene, camera, getTarget = () => null, now = nowMs, shadowPass = true }) {
   let token = 0; // bumped by cancel(): every running warm stops at its next slice
   let dummy = null;
+  const standIns = new Map(); // materialSig -> the depth material standing in for three's shared one
+  /** The object `compile` is given for a shadow-pass program: the real caster (same instancing / skinning / geometry) drawn with its depth material. */
+  const depthCaster = ({ object, material, custom }) => {
+    let dm = custom;
+    if (!dm) {
+      const sig = materialSig(material);
+      dm = standIns.get(sig);
+      if (!dm) standIns.set(sig, (dm = depthStandIn(material)));
+    }
+    const shim = Object.create(object); // reads (geometry, instanceColor, skeleton...) fall through to the real object, which is never touched
+    shim.material = dm;
+    shim.children = [];
+    return shim;
+  };
   const variants = new Map(); // recipe key -> { parts: compiled part keys, materials, complete }
   let read = new WeakSet(); // programs whose locations were already read
   const stats = { variants: 0, parts: 0, programsRead: 0, compileMs: 0, readMs: 0, texturesUploaded: 0 };
@@ -186,22 +257,26 @@ export function createWarmer({ renderer, scene, camera, getTarget = () => null, 
    * still linking (keeps the driver from flooding in the middle of a game). `pause`: how a break is taken.
    * Resolves 'done' | 'cached' | 'cancelled'.
    */
-  async function warm(recipe = null, { budgetMs = 8, maxPending = Infinity, batch = 1e9, pause = frameBreak, ready = () => true } = {}) {
+  async function warm(recipe = null, { budgetMs = 8, maxPending = Infinity, batch = 1e9, pause = frameBreak, ready = () => true, depth = true } = {}) {
     const r = recipe || recipeOf(scene);
     const key = recipeKey(r);
     // incremental: what this light set has compiled already is remembered, so a second call (objects were added to the scene meanwhile)
     // compiles only the new parts, and a cancelled one carries on where it stopped
     const variant = variants.get(key) || { parts: new Set(), materials: new Set(), complete: false };
     variants.set(key, variant);
-    const parts = compileParts(scene).filter((p) => !variant.parts.has(partKey(p)));
-    if (!parts.length && variant.complete) return 'cached';
+    // the camera pass's programs, then (where the sun casts shadows) the shadow pass's: `compile` object = the part itself, or a depth stand-in
+    const jobs = compileParts(scene).filter((p) => !variant.parts.has(partKey(p))).map((p) => ({ id: partKey(p), object: p }));
+    if (r.shadow && shadowPass && depth) for (const d of depthParts(scene)) if (!variant.parts.has(`D:${d.key}`)) jobs.push({ id: `D:${d.key}`, object: depthCaster(d), depth: true });
+    if (!jobs.length && variant.complete) return 'cached';
     const mine = token;
     const warmScene = buildWarmScene(scene, r);
+    let depthScene = null; // the shadow pass's programs are keyed on an EMPTY scene (no fog): their own light-only scene
     const sets = [];
     const all = variant.materials;
     const t0 = now();
     let slice = t0;
-    for (const part of parts) {
+    for (const job of jobs) {
+      const part = job.object;
       if (mine !== token) return 'cancelled';
       // `ready()`: the game says whether now is a good moment (the last frame was not slow); `maxPending`: how many programs may be linking
       while (!ready() || (maxPending < Infinity && pending(sets) >= maxPending)) {
@@ -212,10 +287,11 @@ export function createWarmer({ renderer, scene, camera, getTarget = () => null, 
       const prev = renderer.getRenderTarget();
       renderer.setRenderTarget(target());
       try {
-        const set = renderer.compile(part, camera, warmScene);
+        if (job.depth && !depthScene) depthScene = buildWarmScene(scene, r, { bare: true });
+        const set = renderer.compile(part, camera, job.depth ? depthScene : warmScene);
         for (const m of set) all.add(m);
         sets.push(set);
-        variant.parts.add(partKey(part)); // after the compile: it may bump a material's version
+        variant.parts.add(job.id); // after the compile: it may bump a material's version
         stats.parts++;
       } finally {
         renderer.setRenderTarget(prev);
@@ -233,6 +309,7 @@ export function createWarmer({ renderer, scene, camera, getTarget = () => null, 
     stats.compileMs += now() - t0;
     if (!(await readLocations(all, { budgetMs, batch, pause, ready, mine }))) return 'cancelled';
     warmScene.traverse((o) => o.dispose?.());
+    depthScene?.traverse((o) => o.dispose?.());
     if (!variant.complete) stats.variants++;
     variant.complete = true;
     return 'done';
@@ -307,12 +384,16 @@ export function createWarmer({ renderer, scene, camera, getTarget = () => null, 
     reset() {
       token++;
       variants.clear();
+      for (const d of standIns.values()) d.dispose();
+      standIns.clear();
       read = new WeakSet();
       uploaded = new WeakSet();
     },
     dispose() {
       token++;
       variants.clear();
+      for (const d of standIns.values()) d.dispose();
+      standIns.clear();
       if (dummy) dummy.dispose();
       dummy = null;
     },

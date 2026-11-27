@@ -37,6 +37,10 @@ const PRESETS = {
   'scale.5': ['gfx.setScale(0.5)', 'gfx.setScale(1)'],
   bloom0: ['gfx.post.setLevels(0)', `gfx.post.setLevels(${tier === 'high' ? 5 : 4})`],
   bloom2: ['gfx.post.setLevels(2)', `gfx.post.setLevels(${tier === 'high' ? 5 : 4})`],
+  bloom3: ['gfx.post.setLevels(3)', `gfx.post.setLevels(${tier === 'high' ? 5 : 4})`],
+  // by day the game skips the bloom (post.bloomWanted); `bloomon` forces the tier's levels back for the comparison (and `bloomday` hands control back to the game)
+  bloomon: [`gfx.setBloomEnabled(true); gfx.post.setLevels(${tier === 'high' ? 5 : 4})`, 'gfx.setBloomEnabled(false)'],
+  shadow33: [T('shadowInterval: 0.033'), T('shadowInterval: 0.024')],
   shadow50: [T('shadowInterval: 0.05'), T('shadowInterval: 0.024')],
   shadow100: [T('shadowInterval: 0.1'), T('shadowInterval: 0.024')],
   shadow1024: ['g.world.sky.setShadows(1024, true)', 'g.world.sky.setShadows(gfx.cfg.shadow, true)'],

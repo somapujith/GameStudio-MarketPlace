@@ -21,6 +21,7 @@ import {
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { makeRng } from '../game/rng.js';
+import { visibleLights } from '../game/light-sets.js';
 import { foliageMaterial, glowMaterial } from '../render/materials.js';
 import { chunkedInstances } from '../render/chunks.js';
 import { canvasTexture } from '../render/textures.js';
@@ -272,11 +273,18 @@ export function buildProps(scene, city, colliders, shared, seed) {
   let lastX = 1e9;
   let lastZ = 1e9;
   let lastNight = -1;
+  // The workshop's three lights are BORROWED from the pool (and the auto's headlight) instead of being added: a light is part of every lit
+  // shader program, so two more point lights and a spot meant a second complete set of programs (75 + 75, ~2 s each to build): `lend(n)` hands
+  // out the first n lights of the pool, and while any is lent the day shows as many lights as the night does, so a lit workshop is always one of the
+  // two light sets the warm-up built (day: none, night: `active`).
+  let lent = 0;
   function update(focus, night) {
     poolMat.opacity = night * 0.6;
     const on = night > 0.18;
-    for (let i = 0; i < POOL; i++) lights[i].visible = on && i < active;
+    const total = visibleLights(on, active, lent); // how many lights are visible (the light SET: see game/light-sets.js)
+    for (let i = 0; i < POOL; i++) lights[i].visible = i < total;
     if (!on) {
+      for (let i = lent; i < total; i++) lights[i].intensity = 0; // visible only to keep the light count: they give no light by day
       lastX = 1e9;
       return;
     }
@@ -298,8 +306,8 @@ export function buildProps(scene, city, colliders, shared, seed) {
       }
     }
     best.sort((a, b) => a.d - b.d);
-    for (let i = 0; i < active; i++) {
-      const b = best[i];
+    for (let i = lent; i < total; i++) {
+      const b = best[i - lent];
       const pl = lights[i];
       if (!b) {
         pl.intensity = 0;
@@ -316,5 +324,27 @@ export function buildProps(scene, city, colliders, shared, seed) {
   const setLightCount = (n) => {
     active = Math.max(0, Math.min(POOL, n | 0));
     lastX = 1e9; // re-pick on the next update
-  };  return { group, meshes, update, setLightCount, lampSpots, treeSpots, palmSpots, counts: { trees: treeSpots.length, palms: palmSpots.length, lamps: lampSpots.length, bunting: bunting.length } };
+  };
+
+  /** Lend the first `n` lights of the pool (visible, left exactly as the borrower sets them) until `unlend()`. Returns them. */
+  const lend = (n) => {
+    lent = Math.max(0, Math.min(POOL, n | 0));
+    lastX = 1e9;
+    for (let i = 0; i < lent; i++) lights[i].visible = true;
+    return lights.slice(0, lent);
+  };
+  /** Take them back: the lamps' own colour, reach and (at night) position come back on the next update. */
+  const unlend = () => {
+    for (let i = 0; i < lent; i++) {
+      const pl = lights[i];
+      pl.color.setHex(0xffb35c);
+      pl.distance = 30;
+      pl.decay = 2;
+      pl.intensity = 0;
+    }
+    lent = 0;
+    lastX = 1e9;
+  };
+
+  return { group, meshes, update, setLightCount, lend, unlend, lampSpots, treeSpots, palmSpots, counts: { trees: treeSpots.length, palms: palmSpots.length, lamps: lampSpots.length, bunting: bunting.length } };
 }

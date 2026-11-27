@@ -77,6 +77,21 @@ Presets (see `PRESETS` in the script): `base`, `scale.8/.6/.5`, `bloom0/bloom2`,
 
 `bench.mjs` / `aw-hitch.mjs` print the shared governor's state for Autowala (tier and scale at the end, its decisions, the calibration's units and per-tier estimates when it ran, and the game's own hitch counter `perf.report().hitches`: frames over 33 / 50 / 100 ms since 3 s after START).
 
+## "No program is compiled in play" and picture A/B (aw-final)
+`aw-warm.mjs` runs a fixed life cycle in ONE page (noon, a dusk sweep, night, dawn, a second dusk, rain by day and night, the workshop by day / night / rain, optionally a teleport tour) and lists every shader program built after the loading bar: phase, pass (shadow / camera), what it is, the object that triggered it (`--triggers`), the length of the frame that built it. `--strict` exits 1 when any was built. `--soft --no-lock` gives the same list on SwiftShader (give the game's background warm-up time: `--warm 20`).
+
+```powershell
+node scripts/perf/aw-warm.mjs --base http://127.0.0.1:5881 --port 9961 --soft --no-lock --warm 20 --triggers --strict
+```
+
+`aw-shots.mjs` takes fixed-camera pictures (HUD hidden, `--pause` stops the city so a diff is the variant and not traffic) of several VARIANTS of the same page and diffs them against the first (mean absolute error, share of pixels over 2 / 8 / 24 levels, the worst pixel; `--diffs` writes an amplified diff PNG you can look at). `--list` prints the scenes (day / sunset / dusk / night / rain, the garage showroom from fixed cameras). `--compose "a.jpg|b.jpg" --out pair.jpg` puts two pictures side by side (q72). Two builds are compared by running it once per build with a `--label`.
+
+```powershell
+node scripts/perf/aw-shots.mjs --base http://127.0.0.1:5881 --port 9965 --soft --no-lock --pause --diffs --scenes charminar-day,night-paradise --variants "base|nobloom=window.__autowala.gfx.post.setLevels(0)" --reset "window.__autowala.gfx.post.setLevels(4)"
+```
+`aw-ab.mjs` presets added: `bloom3`, `bloomon` (force the bloom back on by day), `shadow33`.
+`aw-probe.mjs --cmd boot --menu-wait 2` lingers 2 s on the start screen before pressing START (a player does; the game's background work gets that time): the first seconds of play are sensitive to it. `--cmd boot` prints the frames over 40 ms among the first 400 after START; compare builds interleaved (`matrix.mjs`) and sum them.
+
 
 ## Touch layouts and the Autowala HUD cost (ui-touch)
 `ui-touch.mjs` measures the HUD of either game on touch tablets / phones: every visible HUD box by `getBoundingClientRect`, the pairs that overlap, boxes off-screen, clipped text (Tiffin), and a screenshot per size. Software GL by default (layout only):
