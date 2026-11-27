@@ -11,7 +11,7 @@
 // What the game reads: gfx.renderer / scene / camera / render(dt) / resize(w, h) / quality / cfg / caps / lost / dispose();
 // gfx.setScale(s) (render resolution 0.5..1, free: no reallocation), gfx.scale, gfx.cost (whole-frame draw calls, triangles, programs...),
 // gfx.invalidateShadows() (the shadow map is re-rendered on a schedule, not every frame; call it after a teleport).
-import { ACESFilmicToneMapping, PCFShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, WebGLRenderer } from 'three';
+import { ACESFilmicToneMapping, PCFShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, UnsignedByteType, WebGLRenderer, WebGLRenderTarget } from 'three';
 import { QUALITY } from '../game/config.js';
 import { setChunkSize } from './chunks.js';
 import { clampScale, createPost, pickHdrFormat } from './post.js';
@@ -25,6 +25,9 @@ export class WebglUnsupported extends Error {
     this.name = 'WebglUnsupported';
   }
 }
+
+/** A tier's settings, with the optional experiment overrides of the perf probe (globalThis.__awTune = { medium: { chunk: 1024 } }). */
+const tier = (q) => (globalThis.__awTune && globalThis.__awTune[q] ? { ...QUALITY[q], ...globalThis.__awTune[q] } : QUALITY[q]);
 
 export function pickQuality(saved) {
   if (ORDER.includes(saved)) return saved;
@@ -52,6 +55,26 @@ export function isSoftwareRenderer(gl) {
  */
 export function shadowDue(since, interval, dirty = false) {
   return dirty || interval <= 0 || since >= interval - 1e-4;
+}
+
+/**
+ * A comparator for WebGLRenderer.setOpaqueSort: group order, render order, then the shader PROGRAM (so draws that share one run back to
+ * back), then the material, then front to back. `programOf(material)` -> a number.
+ */
+export function opaqueByProgram(programOf) {
+  return (a, b) => {
+    if (a.groupOrder !== b.groupOrder) return a.groupOrder - b.groupOrder;
+    if (a.renderOrder !== b.renderOrder) return a.renderOrder - b.renderOrder;
+    if (a.material !== b.material) {
+      const pa = programOf(a.material);
+      const pb = programOf(b.material);
+      if (pa !== pb) return pa - pb;
+      if (a.material.id !== b.material.id) return a.material.id - b.material.id;
+    }
+    if (a.materialVariant !== b.materialVariant) return a.materialVariant - b.materialVariant;
+    if (a.z !== b.z) return a.z - b.z;
+    return a.id - b.id;
+  };
 }
 
 export function createRenderer(canvas, { quality = 'medium', explicit = false, onQuality, onContext } = {}) {
@@ -82,7 +105,7 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
   const camera = new PerspectiveCamera(62, 1, 0.3, 1000);
 
   let q = software && !explicit ? 'low' : quality;
-  setChunkSize(QUALITY[q].chunk ?? 256); // the world is built right after this, in tiles of that size
+  setChunkSize(tier(q).chunk ?? 256); // the world is built right after this, in tiles of that size
   let post = null;
   let scale = 1;
   let width = 1;
@@ -97,8 +120,18 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
   let shadowDirty = true;
 
   // a post shader that does not compile must not leave a black canvas: fall back on the next frame
-  renderer.debug.onShaderError = (_gl, _program, _vs, _fs) => {
-    shaderFailed = true;
+  // (setting onShaderError replaces three's own error report, so log here too, and only blame the post chain for ITS shaders)
+  renderer.debug.onShaderError = (g, program, vs, fs) => {
+    let src = '';
+    let log = '';
+    try {
+      src = g.getShaderSource(fs) || '';
+      log = `${g.getShaderInfoLog(vs) || ''}\n${g.getShaderInfoLog(fs) || ''}\n${g.getProgramInfoLog(program) || ''}`.trim();
+    } catch {
+      /* context gone */
+    }
+    console.error('[autowala] shader failed to compile or link', log.slice(0, 600));
+    if (/\btSrc\b|\btScene\b/.test(src)) shaderFailed = true;
   };
 
   // ---- whole-frame cost, filled at the end of every frame (read it through gfx.cost)
@@ -115,6 +148,15 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
     }
   };
 
+  // Opaque draw order: three sorts by material id, which interleaves the PROGRAMS (a program switch re-uploads the whole light state and
+  // the camera uniforms: ~100 GL calls; 71 switches a frame with ~100 material switches). Sort by program first, then material, then
+  // front to back. (Sky dome: renderOrder 10000, still last.)
+  const programOf = (m) => {
+    const p = renderer.properties.get(m);
+    return p && p.currentProgram ? p.currentProgram.id : 0;
+  };
+  renderer.setOpaqueSort(opaqueByProgram(programOf));
+
   const disposePost = () => {
     try {
       post?.dispose();
@@ -125,7 +167,7 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
   };
 
   const build = () => {
-    const cfg = QUALITY[q];
+    const cfg = tier(q);
     setAnisotropyCap(q === 'low' ? 2 : Math.min(maxAniso, q === 'medium' ? 4 : 8));
     renderer.setPixelRatio(Math.min(cfg.pixelRatio, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1.5));
     renderer.setSize(width, height, false);
@@ -159,6 +201,48 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
     }
   };
 
+  build(); // a 2 x 2 pipeline right now: its shaders compile during loading (resize() re-allocates the targets, the programs stay cached)
+
+  // The loading step compiles every program with compileAsync. Three derives a program's colour space and tone mapping from the render
+  // target that is bound AT THAT MOMENT: with the screen bound (null) the compile built ~80 programs for "sRGB + ACES", the first real frame
+  // (drawing into the HDR target: linear, no tone mapping) then compiled ~80 MORE, synchronously, and the old per-light-count variants
+  // came on top (162 programs, 4-5 s of boot compile, a stall on the first frames). So compile with a render target bound, as the frame
+  // will have. compileAsync also uploads nothing and never builds the shadow-depth programs: after it we draw the whole scene ONCE into
+  // a 16 x 9 target with culling off, so every vertex / instance buffer and canvas texture (every tile and shop sign) is uploaded and the
+  // depth programs are compiled while the loading screen is still up, not when the player first drives past them.
+  const compileAsync0 = renderer.compileAsync?.bind(renderer);
+  const prewarm = (sc, cam, tiny) => {
+    const culled = [];
+    try {
+      sc.traverse((o) => {
+        if (o.frustumCulled) {
+          culled.push(o);
+          o.frustumCulled = false;
+        }
+      });
+      sm.needsUpdate = true;
+      renderer.setRenderTarget(tiny);
+      renderer.render(sc, cam);
+    } catch (err) {
+      console.warn('[autowala] warm-up render failed', err);
+    } finally {
+      renderer.setRenderTarget(null);
+      for (const o of culled) o.frustumCulled = true;
+      tiny.dispose();
+      shadowDirty = true;
+    }
+  };
+  renderer.compileAsync = (sc, cam, target) => {
+    const tiny = new WebGLRenderTarget(16, 9, { type: UnsignedByteType, depthBuffer: true });
+    let compiled;
+    try {
+      if (!direct) renderer.setRenderTarget(tiny); // the frame draws into a target, so compile for one
+      compiled = compileAsync0 ? compileAsync0(sc, cam, target) : Promise.resolve();
+    } finally {
+      renderer.setRenderTarget(null);
+    }
+    return compiled.then(() => prewarm(sc, cam, tiny));
+  };
   const resize = (w, h) => {
     width = Math.max(2, Math.floor(w));
     height = Math.max(2, Math.floor(h));
@@ -209,7 +293,7 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
   // shadow map schedule: the sun's shadow box follows the player and is re-rendered every `shadowInterval` seconds (0 = every frame)
   const scheduleShadows = (dt) => {
     shadowSince += dt;
-    if (shadowDue(shadowSince, QUALITY[q].shadowInterval ?? 0, shadowDirty)) {
+    if (shadowDue(shadowSince, tier(q).shadowInterval ?? 0, shadowDirty)) {
       sm.needsUpdate = true;
       shadowSince = 0;
       shadowDirty = false;
@@ -279,7 +363,7 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
       return q;
     },
     get cfg() {
-      return QUALITY[q];
+      return tier(q);
     },
     get lost() {
       return lost;

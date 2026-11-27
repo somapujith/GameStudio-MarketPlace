@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { bloomGain, bloomSizes, bloomWeights, clampScale, scaleRect } from './post.js';
-import { shadowDue } from './renderer.js';
+import { opaqueByProgram, shadowDue } from './renderer.js';
 import { QUALITY } from '../game/config.js';
 
 describe('render scale', () => {
@@ -83,5 +83,30 @@ describe('quality tiers are monotone', () => {
     expect(t[2].shadowInterval).toBeLessThanOrEqual(t[1].shadowInterval);
     expect(t[0].bloom).toBe(false);
     expect(t[1].bloom && t[2].bloom).toBe(true);
+  });
+});
+
+describe('opaque draw order', () => {
+  const mats = { a1: { id: 1, p: 7 }, a2: { id: 4, p: 7 }, b1: { id: 2, p: 3 }, b2: { id: 5, p: 3 }, c1: { id: 3, p: 9 } };
+  const item = (id, m, z = 0, extra = {}) => ({ id, material: mats[m], materialVariant: 0, groupOrder: 0, renderOrder: 0, z, ...extra });
+  const programOf = (m) => m.p;
+
+  it('puts every draw of one program next to each other, even when material ids interleave them', () => {
+    const list = [item(1, 'a1'), item(2, 'b1'), item(3, 'c1'), item(4, 'a2'), item(5, 'b2')];
+    list.sort(opaqueByProgram(programOf));
+    const programs = list.map((i) => i.material.p);
+    expect(programs).toEqual([3, 3, 7, 7, 9]);
+    // the stock sort (material id only) would give 7,3,9,7,3: five program switches instead of three
+    const stock = [...list].sort((x, y) => x.material.id - y.material.id).map((i) => i.material.p);
+    const switches = (a) => a.filter((p, i) => i && p !== a[i - 1]).length;
+    expect(switches(programs)).toBeLessThan(switches(stock));
+  });
+
+  it('keeps render order first (the sky stays last) and front-to-back inside one material', () => {
+    const list = [item(1, 'a1', 50), item(2, 'a1', 10), item(3, 'b1', 5, { renderOrder: 10000 }), item(4, 'c1', 1, { groupOrder: 0 })];
+    list.sort(opaqueByProgram(programOf));
+    expect(list[list.length - 1].id).toBe(3);
+    const a = list.filter((i) => i.material === mats.a1).map((i) => i.z);
+    expect(a).toEqual([10, 50]);
   });
 });

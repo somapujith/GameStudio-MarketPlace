@@ -35,6 +35,7 @@ const dir = args.dir && args.dir !== true ? String(args.dir) : path.join(os.tmpd
 const DECODE_NAMES = ['precision', 'outputColorSpace', 'envMapMode', 'envMapPMREM', 'envMapMaxLod', 'envMapSize', 'mapUv', 'alphaMapUv', 'lightMapUv', 'aoMapUv', 'bumpMapUv', 'normalMapUv', 'displacementMapUv', 'emissiveMapUv', 'metalnessMapUv', 'roughnessMapUv', 'anisotropyMapUv', 'clearcoatMapUv', 'clearcoatNormalMapUv', 'clearcoatRoughnessMapUv', 'diffuseRoughnessMapUv', 'iridescenceMapUv', 'iridescenceThicknessMapUv', 'sheenColorMapUv', 'sheenRoughnessMapUv', 'specularMapUv', 'specularColorMapUv', 'specularIntensityMapUv', 'transmissionMapUv', 'thicknessMapUv', 'combine', 'fogExp2', 'sizeAttenuation', 'morphTargetsCount', 'numSunLights', 'numDirLights', 'numPointLights', 'numSpotLights', 'numSpotLightMaps', 'numHemiLights', 'numRectAreaLights', 'numSunLightShadows', 'numDirLightShadows', 'numPointLightShadows', 'numSpotLightShadows', 'numSpotLightShadowsWithMaps', 'numLightProbes', 'numLightProbeGrids', 'shadowMapType', 'toneMapping', 'numClippingPlanes', 'numClipIntersection', 'depthPacking'];
 
 const START = async (c) => {
+  if (args.tune && args.tune !== true) await c.send('Page.addScriptToEvaluateOnNewDocument', { source: `globalThis.__awTune = ${args.tune};` }); // e.g. --tune '{"medium":{"chunk":1024}}' (builds with the tier() hook)
   if (tier) await c.send('Page.addScriptToEvaluateOnNewDocument', { source: `(() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { const v = g.call(this, k); if (String(k).startsWith('jalebi.autowala.v')) { try { const d = JSON.parse(v || '{}'); d.settings = { ...(d.settings || {}), quality: '${tier}' }; return JSON.stringify(d); } catch { return v; } } return v; }; })();` });
   await c.goto(`${base}/play/autowala`);
   await c.waitFor("!!document.querySelector('.aw-go')", 180000);
@@ -44,6 +45,7 @@ const START = async (c) => {
   const startMs = Date.now() - t0;
   await c.ev("window.__gfxForBench = () => window.__autowala.gfx.renderer; true");
   if (!args['keep-sampler']) await c.ev('window.__autowala.gfx.autoTier = false; true'); // builds with the frame-time sampler: hold the tier asked for
+  if (args.lights !== undefined) await c.ev('window.__autowala.world.props.setLightCount(' + (+args.lights) + '); true'); // experiment: point lights in every lit shader
   await c.ev('window.__autowala.debug.drive({ throttle: 1 }); true');
   return startMs;
 };
@@ -101,58 +103,65 @@ async function cost(c) {
   };
 }
 
-/** Experiments on a build that reads globalThis.__awx (pr / msaa / bloom / hf) in render/renderer.js: toggles one cost at a time and re-measures. */
-const EXP_DEFAULT = [
-  { name: 'as-is' },
-  { name: 'no-msaa', x: { msaa: 0 } },
-  { name: 'no-bloom', x: { bloom: false } },
-  { name: 'no-msaa-no-bloom', x: { msaa: 0, bloom: false } },
-  { name: 'rgba8', x: { hf: false } },
-  { name: 'no-shadow', shadow: 0 },
-  { name: 'shadow-1024', shadow: 1024 },
-  { name: 'quarter-area', x: { pr: 0.625 } },
-  { name: 'quarter-area-nothing', x: { pr: 0.625, msaa: 0, bloom: false }, shadow: 0 },
-  { name: 'everything-off', x: { msaa: 0, bloom: false, hf: false }, shadow: 0 },
-];
 /** Park the player at a landmark with the clock pinned, so every config is measured on the same picture. */
 async function pin(c, poi = 'charminar', hour = 18, weather = 0, heading = 0) {
   await c.ev(`(() => { const g = window.__autowala; g.debug.drive(null); const p = g.world.city.poiById[${JSON.stringify(poi)}]; const f = p.front || p; g.debug.teleport(f.x, f.z, ${heading}); g.debug.weather(${weather}); g.debug.hour(${hour}); clearInterval(window.__pinT); window.__pinT = setInterval(() => g.debug.hour(${hour}), 100); return true; })()`);
 }
+/**
+ * One-page experiment matrix on the CURRENT build (needs the tier() hook for tuning): each variant switches ONE cost at run time, waits for
+ * recompiles, then measures frame time and the CPU time of gfx.render. A frame that is as slow as its render() call but does not get
+ * faster when pixels or shadows go away is bound by draw / uniform work; one that does is bound by the GPU.
+ */
+const EXP_VARIANTS = [
+  { name: 'as-is' },
+  { name: 'scale-0.5', set: 'g.gfx.setScale(0.5)', reset: 'g.gfx.setScale(1)' },
+  { name: 'shadows-off', set: 'g.world.sky.setShadows(2048, false)', reset: 'g.world.sky.setShadows(g.gfx.cfg.shadow, true)' },
+  { name: 'shadows-1024', set: 'g.world.sky.setShadows(1024, true)', reset: 'g.world.sky.setShadows(g.gfx.cfg.shadow, true)' },
+  { name: 'no-bloom', tune: { bloom: false, bloomLevels: 0 } },
+  { name: 'no-fxaa', tune: { fxaa: false } },
+  { name: 'msaa-4', tune: { msaa: 4 } },
+  { name: 'lights-0', set: 'g.world.props.setLightCount(0)', reset: 'g.world.props.setLightCount(5)' },
+  { name: 'lights-2', set: 'g.world.props.setLightCount(2)', reset: 'g.world.props.setLightCount(5)' },
+  { name: 'no-traffic-peds', set: 'g.ctx.gfx.cfg.traffic = 0; g.ctx.gfx.cfg.peds = 0', reset: '' },
+  { name: 'as-is-again' },
+];
 async function exp(c) {
-  await pin(c, args.poi || 'charminar', +(args.hour || 18), +(args.weather || 0));
-  const list =args.configs && args.configs !== true ? JSON.parse(args.configs) : EXP_DEFAULT;
+  await pin(c, args.poi || 'charminar', +(args.hour || 19), +(args.weather || 0));
   await c.ev(`(() => { const g = window.__autowala.gfx; const P = window.__expP = { cpu: 0, n: 0 }; const r = g.render.bind(g); g.render = (dt) => { const t = performance.now(); r(dt); P.cpu += performance.now() - t; P.n++; }; return true; })()`);
   const rows = [];
-  for (const cfg of list) {
-    await c.ev(`(() => { const g = window.__autowala; globalThis.__awx = ${JSON.stringify(cfg.x || {})}; const sh = ${JSON.stringify(cfg.shadow ?? null)}; if (sh !== null) g.world.sky.setShadows(sh || 2048, sh !== 0); else g.world.sky.setShadows(g.gfx.cfg.shadow, g.gfx.quality !== 'low'); g.gfx.resize(window.innerWidth, window.innerHeight); return true; })()`);
-    await c.sleep(1500);
+  for (const v of EXP_VARIANTS) {
+    await c.ev(`(() => { const g = window.__autowala; globalThis.__awTune = { ${tier || 'medium'}: ${JSON.stringify(v.tune || {})} }; ${v.set || ''}; g.gfx.resize(window.innerWidth, window.innerHeight); return true; })()`);
+    await c.sleep(2500);
     const r = await c.ev(`(async () => {
       const g = window.__autowala.gfx; const R = g.renderer; const P = window.__expP; P.cpu = 0; P.n = 0;
       const dts = []; let last = performance.now(); const end = last + ${SEC} * 1000;
       await new Promise((res) => { const f = (n) => { dts.push(n - last); last = n; if (n < end) requestAnimationFrame(f); else res(); }; requestAnimationFrame(f); });
       dts.shift(); const s = dts.slice().sort((a, b) => a - b); const mean = dts.reduce((a, b) => a + b, 0) / dts.length;
-      return { fps: +(1000 / mean).toFixed(1), mean: +mean.toFixed(2), p99: +s[Math.floor(s.length * 0.99)].toFixed(1), cpuRenderMs: +(P.cpu / Math.max(1, P.n)).toFixed(2), q: g.quality, size: [R.domElement.width, R.domElement.height] };
+      return { fps: +(1000 / mean).toFixed(1), mean: +mean.toFixed(2), p99: +s[Math.min(s.length - 1, Math.floor(s.length * 0.99))].toFixed(1), cpuRenderMs: +(P.cpu / Math.max(1, P.n)).toFixed(2), calls: g.cost.calls, q: g.quality };
     })()`);
-    rows.push({ name: cfg.name, ...r });
+    rows.push({ name: v.name, ...r });
+    await c.ev(`(() => { const g = window.__autowala; ${v.reset || ''}; return true; })()`);
   }
   return rows;
 }
-
 /** Which scene objects the draw calls come from: per top-level scene child, in the camera pass (V) and the shadow pass (S), averaged per frame. */
 async function drawsplit(c) {
   if (args.poi) await pin(c, String(args.poi), +(args.hour || 18), +(args.weather || 0));
   const frames = +(args.frames || 90);
   return c.ev(`(async () => {
     const g = window.__autowala.gfx; const R = g.renderer; const scene = g.scene;
-    const tally = new Map(); let inShadow = false; let nFrames = 0;
+    const tally = new Map(); let inShadow = false; let nFrames = 0; let lastMat = null; let lastProg = null; const sw = { vMat: 0, vProg: 0, sMat: 0, sProg: 0 }; const matSet = new Set(); const progTally = new Map();
     const sm = R.shadowMap; const sr = sm.render.bind(sm);
     sm.render = (...a) => { inShadow = true; try { sr(...a); } finally { inShadow = false; } };
     const orig = R.renderBufferDirect.bind(R);
     const label = (r) => { const i = scene.children.indexOf(r); let s = i + ':' + r.type + (r.name ? ':' + r.name : ''); if (!r.name) { let m = r.isMesh ? r : null; if (!m) r.traverse((o) => { if (!m && o.isMesh) m = o; }); if (m) s += ':' + (m.isInstancedMesh ? 'inst' : 'mesh') + ':' + (Array.isArray(m.material) ? m.material[0].type : m.material.type); } return s; };
     R.renderBufferDirect = function (camera, sc, geometry, material, object, group) {
       let r = object; while (r.parent && r.parent !== scene) r = r.parent;
+      if (material !== lastMat) { lastMat = material; inShadow ? sw.sMat++ : sw.vMat++; if (!inShadow) matSet.add(material.uuid); const p = R.properties.get(material).currentProgram; if (p !== lastProg) { lastProg = p; inShadow ? sw.sProg++ : sw.vProg++; } }
+      if (!inShadow) { const pr = R.properties.get(material).currentProgram; if (pr) { let e = progTally.get(pr.id); if (!e) progTally.set(pr.id, (e = { id: pr.id, calls: 0, mat: material.type, key: String(pr.cacheKey).split(',').slice(-1)[0].slice(0, 24), inst: !!object.isInstancedMesh, mats: new Set() })); e.calls++; e.mats.add(material.uuid); } }
       const key = (inShadow ? 'S ' : 'V ') + label(r);
-      let t = tally.get(key); if (!t) tally.set(key, (t = { calls: 0, tris: 0, inst: 0 }));
+      let t = tally.get(key); if (!t) tally.set(key, (t = { calls: 0, tris: 0, inst: 0, ms: 0 }));
+      if (material !== t.lastM) { t.lastM = material; t.ms++; }
       t.calls++;
       const idx = geometry.index; const cnt = idx ? idx.count : geometry.attributes.position.count;
       const n = object.isInstancedMesh ? object.count : 1;
@@ -161,50 +170,50 @@ async function drawsplit(c) {
     };
     await new Promise((res) => { let k = 0; const f = () => { if (++k < ${frames}) requestAnimationFrame(f); else res(); }; requestAnimationFrame(f); });
     R.renderBufferDirect = orig; sm.render = sr;
-    const rows = [...tally.entries()].map(([k, v]) => ({ k, calls: +(v.calls / ${frames}).toFixed(1), tris: Math.round(v.tris / ${frames}) })).sort((a, b) => b.calls - a.calls);
+    const rows = [...tally.entries()].map(([k, v]) => ({ k, calls: +(v.calls / ${frames}).toFixed(1), tris: Math.round(v.tris / ${frames}), mats: +(v.ms / ${frames}).toFixed(1) })).sort((a, b) => b.calls - a.calls);
     const sum = (p) => rows.filter((r) => r.k.startsWith(p)).reduce((a, r) => ({ calls: a.calls + r.calls, tris: a.tris + r.tris }), { calls: 0, tris: 0 });
-    return { view: sum('V '), shadow: sum('S '), rows: rows.slice(0, ${+(args.top || 40)}) };
+    const programs = [...progTally.values()].map((e) => ({ id: e.id, calls: +(e.calls / ${frames}).toFixed(1), mat: e.mat, key: e.key, inst: e.inst, mats: e.mats.size })).sort((a, b) => b.calls - a.calls);
+    return { view: sum('V '), shadow: sum('S '), programs, switches: { viewMaterials: +(sw.vMat / ${frames}).toFixed(1), viewPrograms: +(sw.vProg / ${frames}).toFixed(1), shadowMaterials: +(sw.sMat / ${frames}).toFixed(1), shadowPrograms: +(sw.sProg / ${frames}).toFixed(1), distinctViewMaterials: matSet.size }, rows: rows.slice(0, ${+(args.top || 40)}) };
   })()`);
 }
 
-/** GPU time per pass from EXT_disjoint_timer_query_webgl2 timestamps: shadow pass, scene pass, each post pass (average ms over `--seconds`). */
+/**
+ * GPU time (EXT_disjoint_timer_query_webgl2, TIME_ELAPSED: one query at a time, so frames take turns): whole frame, scene pass (incl. the
+ * shadow pass inside it), shadow pass alone, post chain (bloom + composite). Averages in ms over `--seconds`. Frames alternate between the
+ * four measurements, so the picture is the same for all of them.
+ */
 async function gpuTimes(c) {
   if (args.poi) await pin(c, String(args.poi), +(args.hour || 18), +(args.weather || 0));
   return c.ev(`(async () => {
     const g = window.__autowala.gfx; const R = g.renderer; const gl = R.getContext();
     const ext = gl.getExtension('EXT_disjoint_timer_query_webgl2');
     if (!ext) return { error: 'no timer query' };
-    const frames = []; let cur = null; let n = 0;
-    const stamp = (label) => { const q = gl.createQuery(); ext.queryCounterEXT(q, ext.TIMESTAMP_EXT); cur.push({ label, q }); };
+    const NAMES = ['frame', 'scenePass', 'shadow', 'post'];
+    const pending = []; let k = 0; let variant = 0; let q = null; let passN = 0;
+    const begin = () => { q = gl.createQuery(); gl.beginQuery(ext.TIME_ELAPSED_EXT, q); };
+    const end = () => { gl.endQuery(ext.TIME_ELAPSED_EXT); pending.push({ q, variant }); q = null; };
     const sm = R.shadowMap; const sr = sm.render.bind(sm);
-    sm.render = (...a) => { const nb = R.info.render.calls; stamp('pre-shadow'); sr(...a); stamp('shadow'); };
+    sm.render = (...a) => { if (variant === 2) begin(); sr(...a); if (variant === 2) end(); };
     const r0 = R.render.bind(R);
-    R.render = (s, cam) => { stamp('pre-pass' + n); r0(s, cam); stamp('pass' + n); n++; };
+    R.render = (s, cam) => {
+      if (passN === 0 && variant === 1) begin();
+      r0(s, cam);
+      if (passN === 0 && variant === 1) end();
+      if (passN === 0 && variant === 3) begin();
+      passN++;
+    };
     const gr = g.render.bind(g);
-    g.render = (dt) => { cur = []; n = 0; stamp('frame-start'); gr(dt); stamp('frame-end'); frames.push(cur); };
+    g.render = (dt) => { variant = k++ % 4; passN = 0; if (variant === 0) begin(); gr(dt); if (variant === 0) end(); if (variant === 3 && q) end(); };
     await new Promise((res) => setTimeout(res, ${SEC} * 1000));
     g.render = gr; R.render = r0; sm.render = sr;
-    await new Promise((res) => setTimeout(res, 600));
-    const sums = new Map(); let counted = 0; let disjoint = gl.getParameter(ext.GPU_DISJOINT_EXT);
-    for (const f of frames) {
-      if (!f.every((s) => gl.getQueryParameter(s.q, gl.QUERY_RESULT_AVAILABLE))) continue;
-      counted++;
-      let prev = null; let shadowStart = null;
-      for (const s of f) {
-        const t = Number(gl.getQueryParameter(s.q, gl.QUERY_RESULT)) / 1e6;
-        if (s.label === 'pre-shadow') shadowStart = t;
-        else if (s.label === 'shadow' && shadowStart !== null) sums.set('shadow', (sums.get('shadow') || 0) + (t - shadowStart));
-        else if (s.label.startsWith('pass') && prev && prev.label === 'pre-pass' + s.label.slice(4)) sums.set(s.label, (sums.get(s.label) || 0) + (t - prev.t));
-        else if (s.label === 'frame-end') sums.set('total', (sums.get('total') || 0) + (t - f.start));
-        if (s.label === 'frame-start') f.start = t;
-        prev = { label: s.label, t };
-      }
-    }
-    const out = {}; for (const [k, v] of sums) out[k] = +(v / Math.max(1, counted)).toFixed(2);
-    return { frames: frames.length, counted, disjoint: !!disjoint, ms: out };
+    await new Promise((res) => setTimeout(res, 800));
+    const sums = [0, 0, 0, 0]; const cnt = [0, 0, 0, 0]; let lost = 0;
+    const disjoint = gl.getParameter(ext.GPU_DISJOINT_EXT);
+    for (const p of pending) { if (!gl.getQueryParameter(p.q, gl.QUERY_RESULT_AVAILABLE)) { lost++; continue; } sums[p.variant] += Number(gl.getQueryParameter(p.q, gl.QUERY_RESULT)) / 1e6; cnt[p.variant]++; }
+    const ms = {}; NAMES.forEach((n, i) => { ms[n] = cnt[i] ? +(sums[i] / cnt[i]).toFixed(2) : null; });
+    return { frames: k, samples: cnt, unavailable: lost, disjoint: !!disjoint, ms };
   })()`);
 }
-
 /** The scene graph at a glance: every top-level child with its mesh / instanced / triangle counts and who owns it (by userData / name). */
 async function sceneMap(c) {
   return c.ev(`(() => {
@@ -317,6 +326,14 @@ async function run() {
     else if (cmd === 'scene') result = await sceneMap(c);
     else if (cmd === 'gpu') result = await gpuTimes(c);
     else if (cmd === 'bench') result = await bench(c);
+    else if (cmd === 'suite') {
+      // one lock hold, one page: frame times -> draw-call attribution -> GPU time per pass -> teleport tour (hitches)
+      const b = await bench(c);
+      const d = await drawsplit(c);
+      const g = await gpuTimes(c);
+      const tr = args['no-tour'] ? null : await tour(c);
+      result = { bench: b, draws: d, gpu: g, tour: tr };
+    }
     else if (cmd === 'eval') result = await c.ev(String(args.js)); // --js "<expression>": anything in the page (may be async)
     else if (cmd === 'boot') result = await c.ev('({ boot: window.__autowalaBoot && window.__autowalaBoot.ms, longs: window.__bootLongs, programs: window.__autowala.gfx.renderer.info.programs.length, world: window.__autowala.world.timings, sys: window.__autowala.boot && window.__autowala.boot.systems, compile: window.__autowala.boot && window.__autowala.boot.compile })');
     const info = await c.ev('({ tier: window.__autowala.gfx.quality, gpu: (() => { const gl = window.__autowala.gfx.renderer.getContext(); const e = gl.getExtension("WEBGL_debug_renderer_info"); return e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : "?"; })(), timer: !!window.__autowala.gfx.renderer.getContext().getExtension("EXT_disjoint_timer_query_webgl2") })');
