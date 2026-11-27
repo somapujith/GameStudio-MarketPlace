@@ -65,14 +65,22 @@ export const workOf = (stats) => {
   return n;
 };
 
+/** A seat shares the win only with real work: at least this many units, and at least this share of the team's work (one bought ingredient is not a shift). */
+export const WIN_MIN_WORK = 3;
+export const WIN_MIN_SHARE = 0.1;
+
 /**
  * CO-OP WIN CREDIT. A cleared shift (at least one star) is a win for the WHOLE team, not only for whoever happened to collect the most:
- * every seat that did real work (`workOf` > 0) wins, as long as at least one customer paid. A seat that stood by wins nothing (the idle
+ * every seat that did real work wins (`workOf` of at least WIN_MIN_WORK and WIN_MIN_SHARE of the team's total, so a second account that buys one
+ * ingredient and idles does not collect a winner's reward), as long as at least one customer paid. A seat that stood by wins nothing (the idle
  * guard of the server adapter pays it nothing either). `winnerId` stays the top earner, for the headline and the match row's `winner_id`.
  */
 export function winnersOf(standings, stars, paid) {
   if (!(stars >= 1) || !(paid > 0)) return [];
-  return standings.filter((row) => workOf(row.stats) > 0).map((row) => row.id);
+  const work = standings.map((row) => workOf(row.stats));
+  const team = work.reduce((a, b) => a + b, 0);
+  const need = Math.max(WIN_MIN_WORK, Math.ceil(WIN_MIN_SHARE * team));
+  return standings.filter((_, i) => work[i] >= need).map((row) => row.id);
 }
 
 /**

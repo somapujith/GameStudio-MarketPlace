@@ -1061,9 +1061,9 @@ describe('result(): the idle guard (stats.idle) and what match.js pays for it', 
 
   it('the work that counts is served + collected + cooked + prepped + tended + gasSwaps + bought; moving, emoting and a cooked dish nobody took are not work', () => {
     let s = fresh({ level: 1 }, 2, 3);
-    s = { ...s, status: 'done', stars: 1, paid: 5, money: 100, players: { ...s.players, p1: { ...s.players.p1, earned: 100, collected: 1 }, p2: { ...s.players.p2, ops: [0, 0, 0, 1] } } };
+    s = { ...s, status: 'done', stars: 1, paid: 5, money: 100, players: { ...s.players, p1: { ...s.players.p1, earned: 100, collected: 3 }, p2: { ...s.players.p2, ops: [0, 0, 0, 1] } } };
     const rows = tiffin.result(s).standings;
-    expect(rows.find((r) => r.id === 'p1').stats.idle).toBeUndefined(); // collected 1
+    expect(rows.find((r) => r.id === 'p1').stats.idle).toBeUndefined(); // collected 3
     expect(rows.find((r) => r.id === 'p2').stats.idle).toBeUndefined(); // bought 1
     s = { ...s, players: { ...s.players, p2: { ...s.players.p2, ops: [0, 0, 0, 0] } } };
     expect(tiffin.result(s).standings.find((r) => r.id === 'p2').stats.idle).toBe(true);

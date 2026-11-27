@@ -362,7 +362,8 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {}, claim = null
       gfx.resize(w, h);
     }, 120);
   };
-  const dispose = () => {
+  /** `loseContext: false` when the same canvas hosts the next game (a rebuild on a new userId): a force-lost context cannot be drawn with again. */
+  const dispose = ({ loseContext } = {}) => {
     disposed = true;
     clearInterval(bgTimer);
     clearTimeout(resizeTimer);
@@ -386,7 +387,7 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {}, claim = null
     input.dispose();
     world.dispose();
     disposeTree(scene);
-    gfx.dispose();
+    gfx.dispose({ loseContext });
   };
   const on = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
 

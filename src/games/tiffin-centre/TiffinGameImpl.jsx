@@ -121,6 +121,16 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
     };
   }, [gated, scene, gl, session, upright]);
 
+  // True only once this component is really leaving (declared before the scene effect, so its cleanup runs first on unmount but never on a rebuild): the
+  // scene hands its GPU context back then. A rebuild (Apply now, a new session) reuses the same <canvas>, and a force-lost context cannot be drawn with again.
+  const unmounting = useRef(false);
+  useEffect(() => {
+    unmounting.current = false;
+    return () => {
+      unmounting.current = true;
+    };
+  }, []);
+
   // The scene + audio live exactly as long as the session. Every session notification feeds both.
   useEffect(() => {
     let dead = false;
@@ -170,7 +180,7 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
       mark('tc:scene-built');
       await fontsReady;
       if (dead) {
-        s.dispose();
+        s.dispose({ loseContext: unmounting.current });
         s = null;
         return;
       }
@@ -221,7 +231,7 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
       dead = true;
       off?.();
       ro?.disconnect();
-      s?.dispose();
+      s?.dispose({ loseContext: unmounting.current });
       audio?.dispose();
       audioRef.current = null;
       setAudio(null);

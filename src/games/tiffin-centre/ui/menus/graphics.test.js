@@ -115,4 +115,11 @@ describe('the Graphics setting says honestly what is running and when a pick tak
     expect(impl).toContain('onApplyGraphics={applyGraphics}');
     expect(impl).toMatch(/const paused = status === 'paused' && !tutorialFinished && !gated && !!scene;/);
   });
+  it('a rebuild reuses the canvas, so only a real unmount hands the GPU context back (a force-lost context cannot be drawn with again)', () => {
+    const impl = src('../../TiffinGameImpl.jsx');
+    expect(impl).toContain('const unmounting = useRef(false);');
+    expect(impl).not.toMatch(/\bs\??\.dispose\(\)/); // every scene disposal says whether the context goes with it
+    expect(impl.match(/dispose\(\{ loseContext: unmounting\.current \}\)/g)).toHaveLength(2);
+    expect(src('../../scene/index.js')).toMatch(/dispose\(\{ loseContext = !import\.meta\.env\?\.DEV \} = \{\}\)/);
+  });
 });

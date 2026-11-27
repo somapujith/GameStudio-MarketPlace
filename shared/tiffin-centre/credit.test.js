@@ -2,7 +2,7 @@
 // earner) and the `cooked` counter that makes a dedicated cook a contributor even if they never collect a rupee. Rule: docs/TIFFIN_CENTRE_PLAN.md section 3.
 import { describe, expect, it } from 'vitest';
 import { applyAction, createGame, result } from './index.js';
-import { WORK_KEYS, winnersOf, workOf } from './scoring.js';
+import { WIN_MIN_WORK, WORK_KEYS, winnersOf, workOf } from './scoring.js';
 
 const team = (n = 3, level = 1, seed = 5) => createGame({ players: Array.from({ length: n }, (_, i) => ({ id: `p${i + 1}`, name: `P${i + 1}` })), settings: { level }, seed });
 const act = (s, a) => {
@@ -27,11 +27,24 @@ describe('workOf / winnersOf (pure)', () => {
   });
 
   it('a cleared shift is won by every seat that worked, never by one that stood by, and only when a customer paid', () => {
-    const rows = [{ id: 'a', stats: { collected: 3 } }, { id: 'b', stats: { cooked: 4 } }, { id: 'c', stats: {} }, { id: 'd', stats: { tended: 1 } }];
+    const rows = [{ id: 'a', stats: { collected: 3 } }, { id: 'b', stats: { cooked: 4 } }, { id: 'c', stats: {} }, { id: 'd', stats: { tended: 3 } }];
     expect(winnersOf(rows, 2, 6)).toEqual(['a', 'b', 'd']);
     expect(winnersOf(rows, 0, 6)).toEqual([]); // a failed shift has no winners
     expect(winnersOf(rows, 3, 0)).toEqual([]); // nobody paid: nothing was earned
     expect(winnersOf([], 3, 3)).toEqual([]);
+  });
+
+  it('one bought ingredient is not a shift: a seat needs WIN_MIN_WORK units and a tenth of the team\'s work to share the win', () => {
+    expect(WIN_MIN_WORK).toBe(3);
+    // a second account that buys once and idles while the first plays the whole shift
+    const farm = [{ id: 'a', stats: { served: 40, collected: 40, bought: 12 } }, { id: 'b', stats: { bought: 1 } }];
+    expect(winnersOf(farm, 3, 40)).toEqual(['a']);
+    // two units are still below the floor, three is a real (if small) contribution on a small team
+    expect(winnersOf([{ id: 'a', stats: { served: 6 } }, { id: 'b', stats: { bought: 2 } }], 1, 6)).toEqual(['a']);
+    expect(winnersOf([{ id: 'a', stats: { served: 6 } }, { id: 'b', stats: { bought: 3 } }], 1, 6)).toEqual(['a', 'b']);
+    // a big team: the share rule (a tenth of 130 = 13) beats the floor
+    const big = [{ id: 'a', stats: { served: 100 } }, { id: 'b', stats: { served: 20 } }, { id: 'c', stats: { bought: 10 } }];
+    expect(winnersOf(big, 2, 50)).toEqual(['a', 'b']);
   });
 });
 

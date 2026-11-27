@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { BoxGeometry, Box3, Float32BufferAttribute, Vector3, Group, InstancedMesh, Mesh, MeshBasicMaterial, MeshLambertMaterial, MeshStandardMaterial, CylinderGeometry } from 'three';
 import { bakedCopy, createBakeRegistry, freezeMatrices, mergeStaticMeshes, mergeStaticTiles, SHADOW_LAYER } from './merge-static.js';
 
