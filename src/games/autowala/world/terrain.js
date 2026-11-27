@@ -82,6 +82,13 @@ export function buildTerrain(scene, city, sky) {
     uTop: { value: sky.palette.top }, uMid: { value: sky.palette.mid }, uHor: { value: sky.palette.hor }, uDeep: { value: new Color('#0a6b86') },
     uSunDir: { value: sky.state.sunDir }, uSunCol: { value: sky.palette.sun }, uTime: { value: 0 }, uNight: { value: 0 },
   }]);
+  // UniformsUtils.merge clones every value, so the four sky colours and the sun direction above were frozen copies of the palette's
+  // initial white / zero (the water stayed pale as snow at night and never caught the sun): bind the live objects the sky updates in place
+  uniforms.uTop.value = sky.palette.top;
+  uniforms.uMid.value = sky.palette.mid;
+  uniforms.uHor.value = sky.palette.hor;
+  uniforms.uSunCol.value = sky.palette.sun;
+  uniforms.uSunDir.value = sky.state.sunDir;
   const waterMat = new ShaderMaterial({ uniforms, vertexShader: WATER_VERT, fragmentShader: WATER_FRAG, transparent: true, fog: true, side: DoubleSide });
   const ellipse = makeEllipse(L.rx + 4, L.rz + 4, 72);
   const lake = new Mesh(ellipse, waterMat);
