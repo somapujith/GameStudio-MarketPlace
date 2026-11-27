@@ -13,7 +13,7 @@ import { createVehicle } from '../sim/vehicle.js';
 import { createInput } from './input.js';
 import { createChaseCamera } from './camera.js';
 import { DAY, GFX, QUALITY } from './config.js';
-import { autoStartTier, createSwitchableTimer, guardMemoryWrites, memoryPlan, setupQuality, viewOf } from './gfx-control.js';
+import { autoStartTier, createSwitchableTimer, guardMemoryWrites, memoryPlan, resolutionUseless, setupQuality, viewOf } from './gfx-control.js';
 import { createTierSwitch } from './tier-switch.js';
 import { abandonable, claimCanvas } from './claim.js';
 
@@ -53,7 +53,7 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {}, claim = null
   // `handlers`, which is filled in once the renderer and the warm-up exist.
   const chosen = quality ?? profile.data.settings.quality ?? null;
   const handlers = {};
-  const { aq, gpu, calibration } = yield* setupQuality({ pref: prefOf(chosen), view: viewOf(canvas), handlers });
+  const { aq, gpu, calibration, floors } = yield* setupQuality({ pref: prefOf(chosen), view: viewOf(canvas), handlers });
   const gov = aq.governor;
   guardMemoryWrites(aq, () => !state.menu); // (not from the start screen: see gfx-control.js)
   const gfx = createRenderer(canvas, {
@@ -268,6 +268,10 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {}, claim = null
     renderMs = performance.now() - tRender;
     perf.lap(PHASE.render);
     if (gov.fpsCap !== loop.maxFps) loop.setMaxFps(gov.fpsCap); // battery / data saver: 30 fps
+    if (tierFailedAt && performance.now() - tierFailedAt > GFX.tierRetryMs) {
+      tierFailedAt = 0;
+      gov.notifyLoadChange(); // the scene (and the machine) may be different now: a tier that failed may be tried again
+    }
 
     snapAcc += dt;
     if (snapAcc > 0.1) {
@@ -602,7 +606,9 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {}, claim = null
     warmer.cancel();
     const workshop = state.menu === 'workshop';
     const [first] = phases(q, { night: recipeOf(scene).points > (workshop ? 2 : 0), workshop });
-    return warmer.warm(first, { budgetMs: 6, batch: 8 }).catch((err) => {
+    // a trickle, like the other in-play warm-ups (a few programs at a time, only while frames are healthy): the swap waits a little longer and
+    // no frame takes the compile storm of building ~90 programs at once (frames of 250-520 ms when that was done in a burst)
+    return warmer.warm(first, { ...idleOrTrickle, maxPending: 10 }).catch((err) => {
       warnWarm(err);
       return 'failed';
     });
@@ -631,10 +637,20 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {}, claim = null
     gfx.shrinkTo(gfx.quality);
   };
   // the governor's decisions. `gfx.autoTier = false` (probes, tests) means: ignore them.
-  handlers.onScale = (s) => {
+  handlers.onScale = (s, info) => {
+    if (resolutionUseless(info.reason)) floors.pin(gov.tier); // this machine is bound by draw calls: no more soft / sharp cycling at this tier or below
     if (gfx.autoTier && !disposed) gfx.setScale(s);
   };
+  // A tier the governor LEFT because it could not hold the frame budget (draw calls, the resolution did not help, the scale floor was not enough)
+  // is not tried again for GFX.tierRetryMs: its tier-up prediction reads the GPU timer, which cannot see a draw-call-bound frame, and would
+  // otherwise climb back every 25 s, miss the budget and step down again.
+  let tierFailedAt = 0;
   handlers.onTier = (t, info) => {
+    if (resolutionUseless(info.reason)) floors.pin(info.from);
+    if (info.kind === 'down') {
+      gov.markTierFailed(info.from);
+      tierFailedAt = performance.now();
+    }
     if (gfx.autoTier && !disposed) switcher.request(t, info.scale);
   };
   handlers.onTierFailed = (t) => console.info('[autowala] tier', t, 'did not hold the frame rate here; it will not be tried again for a while');

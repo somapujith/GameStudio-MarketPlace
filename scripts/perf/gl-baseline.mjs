@@ -2,7 +2,10 @@
 // size of the game's drawing buffer, for `--seconds`. If THIS page shows frames over 50 ms, the stalls the games report are the driver / GPU process /
 // other programs on the shared GPU and not the game; if it is clean, they are the game's own. Same launch, flags and lock as the other perf scripts.
 //
-//   node scripts/perf/gl-baseline.mjs [--port 9919] [--seconds 30] [--draws 220] [--w 1536 --h 864 --dpr 1.25] [--soft] [--no-lock]
+//   node scripts/perf/gl-baseline.mjs [--port 9919] [--seconds 30] [--draws 220] [--fill 0] [--fps 60] [--w 1536 --h 864 --dpr 1.25] [--soft] [--no-lock]
+// --fill N adds N full-screen ALU-heavy layers a frame: GPU time without extra draws (is the GPU itself shared with someone who preempts it?)
+// --fps N paces the work like a game (one frame of work every 1000/N ms, the other rAF callbacks do nothing): with the frame cap off (the perf
+// scripts' flags) an un-paced loop floods the GPU queue at ~1000 fps and the stalls it shows are back-pressure from its own flood.
 import { GPU_FLAGS, SOFT_FLAGS, launch } from './cdp.mjs';
 import { withBenchLock } from './lock.mjs';
 
@@ -17,6 +20,8 @@ const H = +(args.h || 864);
 const DPR = +(args.dpr || 1.25);
 const SEC = +(args.seconds || 30);
 const DRAWS = +(args.draws || 220);
+const FPS = +(args.fps || 0);
+const FILL = +(args.fill || 0);
 const port = +(args.port || 9919);
 
 const PAGE = `(async () => {
@@ -35,14 +40,22 @@ const PAGE = `(async () => {
   const m = new Float32Array(16); const v = new Float32Array(16); for (let i = 0; i < 4; i++) { m[i * 5] = 0.2; v[i * 5] = 1; }
   gl.enable(gl.DEPTH_TEST); gl.viewport(0, 0, c.width, c.height);
   const dts = []; let last = performance.now(); const end = last + ${SEC} * 1000; let frame = 0;
+  const gap = ${FPS} > 0 ? 1000 / ${FPS} - 0.5 : 0;
   await new Promise((res) => { const f = (now) => {
+    if (gap && now - last < gap && now < end) { requestAnimationFrame(f); return; }
     dts.push(now - last); last = now; frame++;
     gl.clearColor(0.1, 0.1, 0.2, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     let cur = -1;
     for (let i = 0; i < ${DRAWS}; i++) {
-      const P = progs[(i / 70) | 0 % 3]; if (P !== cur) { gl.useProgram(P.p); cur = P; gl.uniformMatrix4fv(P.v, false, v); gl.uniform3f(P.c0, 0.4, 0.5, 0.6); gl.uniform3f(P.c1, 0.2, 0.1, 0.3); gl.uniform1f(P.k, 0.5); }
+      const P = progs[Math.min(2, Math.floor(i / (${DRAWS} / 3)))]; if (P !== cur) { gl.useProgram(P.p); cur = P; gl.uniformMatrix4fv(P.v, false, v); gl.uniform3f(P.c0, 0.4, 0.5, 0.6); gl.uniform3f(P.c1, 0.2, 0.1, 0.3); gl.uniform1f(P.k, 0.5); }
       m[12] = ((i * 37) % 100) / 100 - 0.5; m[13] = ((i * 53) % 100) / 100 - 0.5; gl.uniformMatrix4fv(P.m, false, m); gl.uniform3f(P.t, 0, 0, i * 0.001);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+    if (${FILL} > 0) {
+      const P = progs[0]; gl.useProgram(P.p); gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      const big = new Float32Array(16); for (let i = 0; i < 4; i++) big[i * 5] = i < 2 ? 4 : 1; gl.uniformMatrix4fv(P.m, false, big); gl.uniformMatrix4fv(P.v, false, v); gl.uniform3f(P.t, 0, 0, 0);
+      for (let k = 0; k < ${FILL}; k++) gl.drawArrays(gl.TRIANGLES, 0, 6);
+      gl.disable(gl.BLEND); gl.enable(gl.DEPTH_TEST);
     }
     if (now < end) requestAnimationFrame(f); else res(); }; requestAnimationFrame(f); });
   dts.shift(); const s = dts.slice().sort((a, b) => a - b); const q = (p) => +s[Math.min(s.length - 1, Math.floor(s.length * p))].toFixed(2);
@@ -63,5 +76,5 @@ async function run() {
 }
 
 const res = args['no-lock'] ? await run() : await withBenchLock(run, { maxWaitMs: 240 * 60 * 1000 });
-console.log(JSON.stringify({ label: 'gl-baseline', viewport: `${W}x${H}@${DPR}`, draws: DRAWS, seconds: SEC, ...res }));
+console.log(JSON.stringify({ label: 'gl-baseline', viewport: `${W}x${H}@${DPR}`, draws: DRAWS, fill: FILL, paced: FPS || 'uncapped', seconds: SEC, ...res }));
 process.exit(0);

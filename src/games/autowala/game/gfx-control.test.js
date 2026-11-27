@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { classifyGpu, createTierMemory, viewportClass } from '@/platform/gfx';
 import { GFX } from './config.js';
-import { autoStartTier, createSwitchableTimer, guardMemoryWrites, memoryPlan, probeGameGpu, setupQuality, sharpenStart, viewOf } from './gfx-control.js';
+import { autoStartTier, createScaleFloors, createSwitchableTimer, guardMemoryWrites, memoryPlan, probeGameGpu, resolutionUseless, setupQuality, sharpenStart, viewOf } from './gfx-control.js';
 
 const fakeStorage = () => {
   const m = new Map();
@@ -195,6 +195,13 @@ describe('sharpenStart', () => {
     expect(out.recommended.reasons.at(-1)).toContain('raised from 0.6 to 0.85');
     expect(cal.recommended.scale).toBe(0.6); // the input is not touched
   });
+  it('starts at full scale when the estimate says draw calls, not pixels, are the limit', () => {
+    const cal = { recommended: { tier: 'low', scale: 0.6, estimates: { low: { ms: 16, cpu: 14.5, gpu: 6 } }, reasons: [] } };
+    expect(sharpenStart(cal, 0.85).recommended.scale).toBe(1);
+    expect(sharpenStart(cal, 0.85).recommended.reasons.at(-1)).toContain('draw calls');
+    const pixelBound = { recommended: { tier: 'medium', scale: 0.7, estimates: { medium: { ms: 20, cpu: 4, gpu: 18 } }, reasons: [] } };
+    expect(sharpenStart(pixelBound, 0.85).recommended.scale).toBe(0.85);
+  });
   it('leaves a sharp start and a missing result alone', () => {
     const cal = { recommended: { tier: 'medium', scale: 0.9, reasons: [] } };
     expect(sharpenStart(cal, 0.85)).toBe(cal);
@@ -206,5 +213,49 @@ describe('sharpenStart', () => {
     const out = await drive(setupQuality({ pref: 'auto', view, gpu: integrated(), storage: fakeStorage(), calibrate }));
     expect(out.aq.initial).toMatchObject({ tier: 'low', source: 'calibration' });
     expect(out.aq.initial.scale).toBeGreaterThanOrEqual(GFX.startScaleMin - 0.06); // the governor snaps it to its ladder
+  });
+});
+
+describe('scale floors', () => {
+  it('start at the game table and a pin lifts a tier and every tier below it to 1', () => {
+    const f = createScaleFloors({ low: 0.6, medium: 0.6, high: 0.7 });
+    expect(f.get('medium')).toBe(0.6);
+    f.pin('medium');
+    expect(f.snapshot()).toEqual({ low: 1, medium: 1, high: 0.7 });
+    f.reset();
+    expect(f.snapshot()).toEqual({ low: 0.6, medium: 0.6, high: 0.7 });
+    expect(f.get('nope')).toBe(0.6);
+  });
+
+  it('are seeded from a benchmark estimate: a tier bound by the main thread gets floor 1', () => {
+    const f = createScaleFloors({ low: 0.6, medium: 0.6, high: 0.7 });
+    f.seed({ recommended: { estimates: { low: { cpu: 15, gpu: 9 }, medium: { cpu: 18, gpu: 25 }, high: { cpu: 20, gpu: 30 } } } });
+    expect(f.snapshot()).toEqual({ low: 1, medium: 0.6, high: 0.7 });
+    expect(() => f.seed(null)).not.toThrow();
+    expect(() => f.seed({ recommended: { estimates: {} } })).not.toThrow();
+  });
+
+  it('recognise the "resolution did not help" verdicts of the governor', () => {
+    expect(resolutionUseless('scale restored: lowering it bought nothing and no lower tier exists')).toBe(true);
+    expect(resolutionUseless('resolution did not help (21.0 -> 20.9 ms): cpu / draw-call bound')).toBe(true);
+    expect(resolutionUseless('mean 21.1 ms vs budget 16.7 ms')).toBe(false);
+    expect(resolutionUseless(undefined)).toBe(false);
+  });
+
+  it('a tier the player chose is softened only down to pinnedScaleMin, a pin to 1 is never lowered', async () => {
+    const out = await drive(setupQuality({ pref: 'medium', view, gpu: integrated(), storage: fakeStorage(), calibrate: async () => null }));
+    expect(out.floors.get('medium')).toBe(GFX.pinnedScaleMin);
+    expect(out.floors.get('low')).toBe(GFX.scaleMin.low);
+    const f = createScaleFloors({ low: 0.6, medium: 0.6, high: 0.7 });
+    f.pin('medium');
+    f.setMin('medium', 0.8);
+    expect(f.get('medium')).toBe(1);
+  });
+
+  it('the start-up path hands the governor the floors, seeded by the benchmark', async () => {
+    const calibrate = async () => ({ recommended: { tier: 'low', scale: 1, confident: true, estimates: { low: { cpu: 14, gpu: 8 }, medium: { cpu: 20, gpu: 28 }, high: { cpu: 22, gpu: 34 } }, reasons: [] } });
+    const out = await drive(setupQuality({ pref: 'auto', view, gpu: integrated(), storage: fakeStorage(), calibrate }));
+    expect(out.floors.get('low')).toBe(1);
+    expect(out.floors.get('medium')).toBe(GFX.scaleMin.medium);
   });
 });

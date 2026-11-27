@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { classifyGpu } from '@/platform/gfx';
 import { createTierSwitch } from './tier-switch.js';
-import { setupQuality } from './gfx-control.js';
+import { resolutionUseless, setupQuality } from './gfx-control.js';
 
 const fakeStorage = () => {
   const m = new Map();
@@ -31,7 +31,7 @@ async function boot(startTier, storage = fakeStorage()) {
 let seed = 12345;
 const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
 
-async function simulate({ aq, handlers }, { start, seconds, cost, calls = () => 200 }) {
+async function simulate({ aq, handlers, floors }, { start, seconds, cost, calls = () => 200 }) {
   const gov = aq.governor;
   let tier = start;
   let scale = aq.initial.scale;
@@ -49,8 +49,17 @@ async function simulate({ aq, handlers }, { start, seconds, cost, calls = () => 
     },
     now: () => now,
   });
-  handlers.onScale = (s) => scales.push({ at: Math.round(now), scale: s }) && (scale = s);
-  handlers.onTier = (t, info) => sw.request(t, info.scale);
+  // the same reactions as Game.js: a "resolution did not help" verdict pins the scale floor of the tier and the ones below it to 1
+  handlers.onScale = (s, info) => {
+    if (resolutionUseless(info.reason)) floors.pin(gov.tier);
+    scales.push({ at: Math.round(now), scale: s });
+    scale = s;
+  };
+  handlers.onTier = (t, info) => {
+    if (resolutionUseless(info.reason)) floors.pin(info.from);
+    if (info.kind === 'down') gov.markTierFailed(info.from);
+    sw.request(t, info.scale);
+  };
   gov.hold(4000);
   while (now < seconds * 1000) {
     sw.frame();
@@ -84,9 +93,33 @@ describe('governor + tier switch, closed loop', () => {
     expect(r.swaps[0].at).toBeLessThan(12000); // 4 s start-up hold + two no-gain steps
     expect(r.scales.length).toBeGreaterThan(0);
     expect(r.scales.length).toBeLessThanOrEqual(3);
-    expect(r.swaps).toHaveLength(1); // no climbing back up: low at 11 ms predicts 21+ ms on medium
+    expect(r.swaps).toHaveLength(1); // no climbing back up: medium is marked as one that cannot hold the budget here (the timer-based prediction would say it fits)
     expect(r.tier).toBe('low');
     expect(r.scale).toBeGreaterThanOrEqual(0.9); // the sharpness the no-gain steps took is given back
+  });
+
+  it('on the lowest tier a draw-call-bound frame is NOT answered with a soft / sharp cycle: one no-gain verdict and the resolution is left alone', async () => {
+    const b = await boot('low');
+    const r = await simulate(b, { start: 'low', seconds: 180, cost: () => ({ cpu: 21, gpu: 12 }) }); // 48 fps, nothing lower to go to
+    expect(r.swaps).toHaveLength(0);
+    expect(r.scales.length).toBeLessThanOrEqual(3); // down, down, restored: once
+    expect(r.scale).toBe(1);
+    expect(b.floors.get('low')).toBe(1);
+  });
+
+  it('a benchmark that already said "draw-call bound" keeps the resolution at 1 from the first frame', async () => {
+    const calibrate = async () => ({ recommended: { tier: 'low', scale: 1, confident: true, estimates: { low: { cpu: 15, gpu: 9 }, medium: { cpu: 21, gpu: 19 }, high: { cpu: 22, gpu: 21 } }, reasons: [] } });
+    const handlers = {};
+    const gen = setupQuality({ pref: 'auto', view, gpu: integrated(), storage: fakeStorage(), calibrate, handlers });
+    let r = gen.next();
+    while (!r.done) {
+      if (r.value && r.value.then) await r.value;
+      r = gen.next();
+    }
+    const out = { ...r.value, handlers };
+    const res = await simulate(out, { start: 'low', seconds: 120, cost: () => ({ cpu: 21, gpu: 12 }) });
+    expect(res.scales).toHaveLength(0);
+    expect(res.scale).toBe(1);
   });
 
   it('a medium that fits the frame budget is left alone for two minutes', async () => {

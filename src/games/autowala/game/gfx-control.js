@@ -38,15 +38,56 @@ export function viewOf(canvas, win = typeof window !== 'undefined' ? window : nu
 }
 
 /**
- * The benchmark's verdict is a prediction from a ~250 ms micro-benchmark on a busy machine; a start scale far below 1 (a blurry picture for the
- * whole first seconds) is the costly way to be wrong. Keep the tier it chose but start no softer than `minScale`; the governor takes over after its
- * start-up hold and lowers the scale in a second if the frame rate really needs it. Returns a copy; null stays null.
+ * The benchmark's verdict is a prediction from a ~250 ms micro-benchmark on a busy machine, and a start scale below 1 (a soft picture for the
+ * whole first seconds) is the costly way to be wrong. Two rules, applied to the tier it chose:
+ *  - the estimate says the main thread / driver is the limit (cpu >= gpu): the resolution cannot buy anything, so start at 1;
+ *  - otherwise start no softer than `minScale`; the governor takes over after its start-up hold and lowers the scale if it must.
+ * Returns a copy; null stays null.
  */
 export function sharpenStart(calibration, minScale = GFX.startScaleMin) {
   const rec = calibration && calibration.recommended;
-  if (!rec || !(rec.scale < minScale)) return calibration || null;
-  return { ...calibration, recommended: { ...rec, scale: minScale, reasons: [...(rec.reasons || []), `start scale raised from ${rec.scale} to ${minScale}: the governor lowers it if it must`] } };
+  if (!rec || !(rec.scale < 1)) return calibration || null;
+  const est = rec.estimates && rec.estimates[rec.tier];
+  const callBound = !!est && est.cpu >= est.gpu;
+  const scale = callBound ? 1 : Math.max(rec.scale, minScale);
+  if (scale === rec.scale) return calibration;
+  const why = callBound ? 'its frame is bound by draw calls, not pixels: resolution cannot help' : `the governor lowers it if it must`;
+  return { ...calibration, recommended: { ...rec, scale, reasons: [...(rec.reasons || []), `start scale raised from ${rec.scale} to ${scale}: ${why}`] } };
 }
+
+/**
+ * The lowest render scale per tier, as a live table the governor asks (createGovernor takes `scaleMin` as a function). Autowala is bound by
+ * draw calls and driver work on most machines, where a lower resolution buys nothing and only makes the picture soft: once the benchmark's
+ * estimate (cpu >= gpu) or the governor's own "resolution did not help" verdict says so for a tier, its floor becomes 1 (and so do the floors of the
+ * tiers below it: the same machine, fewer pixels) and the governor goes straight to the tier instead of cycling soft -> sharp -> soft.
+ */
+export function createScaleFloors(table = GFX.scaleMin, tiers = TIERS) {
+  const floors = { ...table };
+  const pin = (tier) => {
+    for (let i = 0; i <= Math.max(0, tiers.indexOf(tier)); i++) floors[tiers[i]] = 1;
+  };
+  return {
+    get: (tier) => floors[tier] ?? 0.6,
+    pin,
+    /** Seed from a calibration result: a tier whose estimate is bound by the main thread (cpu >= gpu) gets floor 1. */
+    seed(calibration) {
+      const est = calibration && calibration.recommended && calibration.recommended.estimates;
+      if (!est) return;
+      for (const t of tiers) if (est[t] && est[t].cpu >= est[t].gpu) floors[t] = 1;
+    },
+    /** Raise one tier's floor (never lowers it: a pin to 1 stays). */
+    setMin(tier, v) {
+      floors[tier] = Math.max(floors[tier] ?? 0, v);
+    },
+    reset() {
+      Object.assign(floors, table);
+    },
+    snapshot: () => ({ ...floors }),
+  };
+}
+
+/** Is this governor reason the verdict "lowering the resolution did not speed the frame up" (see platform/gfx/governor.js)? */
+export const resolutionUseless = (reason) => /bought nothing|did not help/i.test(String(reason || ''));
 
 /**
  * What the governor is told. `handlers` is an object the caller fills in later (the governor exists before the renderer does):
@@ -73,6 +114,8 @@ export function* setupQuality({ pref = 'auto', view, handlers = {}, storage, gpu
     ]).then(() => clearTimeout(timer));
     calibration = sharpenStart(res);
   }
+  const floors = createScaleFloors();
+  floors.seed(calibration);
   const aq = createAdaptiveQuality({
     game: 'autowala',
     tiers: TIERS,
@@ -87,7 +130,7 @@ export function* setupQuality({ pref = 'auto', view, handlers = {}, storage, gpu
     // busy page) can look like a 50 Hz display when its frames happen to take a steady 20 ms, and the budget would relax to 20 ms: 50 fps would
     // pass as "fine". Nobody plays on a 50 Hz panel; 55 is the floor of what it may call a refresh rate.
     governor: { minRefreshHz: 55 },
-    scaleMin: GFX.scaleMin,
+    scaleMin: (tier) => floors.get(tier),
     tierCost: GFX.tierCost,
     callBudgets: GFX.callBudget,
     onScale: (s, info) => handlers.onScale?.(s, info),
@@ -95,7 +138,9 @@ export function* setupQuality({ pref = 'auto', view, handlers = {}, storage, gpu
     onStable: (info) => handlers.onStable?.(info),
     onTierFailed: (t) => handlers.onTierFailed?.(t),
   });
-  return { aq, gpu, calibration, decision };
+  // a tier the player CHOSE keeps its look: the governor may soften the picture only a little (only the resolution adapts on a pinned tier)
+  if (aq.initial.lock) floors.setMin(aq.initial.tier, GFX.pinnedScaleMin);
+  return { aq, gpu, calibration, decision, floors };
 }
 
 /**

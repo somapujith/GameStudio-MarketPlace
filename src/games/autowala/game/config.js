@@ -66,23 +66,31 @@ export const QUALITY = {
 };
 
 /**
- * What the shared governor (platform/gfx) is told about this game. Filled from measurements on the integrated-GPU dev laptop
- * (docs/perf/aw-int.md): `models` are the calibration's cost model per tier, validated against measured frame times.
- *  scaleMin   the lowest render scale per tier (below ~0.6 the picture is visibly soft: the tier drops instead)
- *  tierCost   relative frame cost per tier (the tier-up prediction)
- *  callBudget draw calls a frame (camera + shadow pass) a tier is designed for; over it while missing the frame budget = a tier down
+ * What the shared governor (platform/gfx) is told about this game.
+ *  scaleMin   the lowest render scale per tier (below ~0.6 the picture is visibly soft: the tier drops instead). A LIVE floor of 1 replaces it for
+ *             a tier that is bound by draw calls (game/gfx-control.js createScaleFloors): resolution buys nothing there
+ *  tierCost   relative frame cost per tier, for the tier-up prediction: measured on the dev laptop's integrated GPU, charminar at dusk, 1536x864 @ 1.25:
+ *             low 16.2-18.0 ms, medium 22.9, high 22.0-25.6 (at that device ratio high draws the same pixels as medium)
+ *  callBudget draw calls a frame (camera + shadow + post) a tier is designed for; over it while missing the frame budget = a tier down
+ *  models     the start-up calibration's cost model per tier (platform/gfx/calibrate.js: ms = max(cpu, gpu) * 1.1, cpu = calls * callUs, gpu = layers *
+ *             Mpix * fillNs + mtris * mtriMs + post * Mpix * postNs). FITTED to measured frame times (docs/perf/aw-int.md, "Validating the tier models"):
+ *             `calls` is in the benchmark's simple-draw equivalents, so a real Autowala draw (program switches, ~30 uniform uploads, lights, fog) counts
+ *             for ~5-6 of them: low ~190 draws a frame = 1100, medium ~230 = 1500, high ~240 = 1560. `layers` is small because the game is call-bound:
+ *             the frame time of every tier moved by 4 % when the resolution went 1 -> 0.7.
  */
 export const GFX = {
-  startScaleMin: 0.85, // a calibration may not start the game softer than this (the governor lowers it later if it must)
+  startScaleMin: 0.85, // a calibration may not start the game softer than this unless the estimate is pixel-bound (the governor lowers it later if it must)
   startHoldMs: 4000, // the governor ignores the first seconds of play (first uploads, background compiles)
   teleportHoldMs: 1500,
   memoryHoldMs: 6000,
+  tierRetryMs: 300000, // a tier the governor left because it could not hold the frame budget is not tried again for this long
+  pinnedScaleMin: 0.8, // a tier the player chose may be softened only down to this render scale (the tier itself never changes)
   scaleMin: { low: 0.6, medium: 0.6, high: 0.7 },
-  tierCost: { low: 1, medium: 1.8, high: 2.6 },
+  tierCost: { low: 1, medium: 1.35, high: 1.45 },
   callBudget: { low: 150, medium: 250, high: 300 },
   models: {
-    low: { pixelRatio: 1, layers: 2.5, calls: 450, mtris: 0.25, post: 0.4, scaleMin: 0.6 },
-    medium: { pixelRatio: 1.25, layers: 3.5, calls: 800, mtris: 0.35, post: 1.4, scaleMin: 0.6 },
-    high: { pixelRatio: 1.75, layers: 4.5, calls: 1000, mtris: 0.45, post: 2.2, scaleMin: 0.7 },
+    low: { pixelRatio: 1, layers: 1.6, calls: 1100, mtris: 0.25, post: 1.0, scaleMin: 0.6 },
+    medium: { pixelRatio: 1.25, layers: 1.6, calls: 1500, mtris: 0.35, post: 1.4, scaleMin: 0.6 },
+    high: { pixelRatio: 1.75, layers: 1.8, calls: 1560, mtris: 0.45, post: 1.45, scaleMin: 0.7 },
   },
 };
