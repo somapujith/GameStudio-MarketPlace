@@ -1,4 +1,4 @@
-// Maths for the on-screen steering slider (pure, unit-tested in touchMath.test.js).
+﻿// Maths for the on-screen steering slider (pure, unit-tested in touchMath.test.js).
 export const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 /** Fraction of the slider's travel that counts as "straight ahead" (centre dead zone), and the curve exponent (1 = linear). */
@@ -34,11 +34,3 @@ export function rawPosition(x, rect) {
   return clamp((x - (rect.left + half)) / half, -1, 1);
 }
 
-/** Is this a phone / tablet style device? (Used once at mount; a touch on screen also switches the controls on.) */
-export function detectCoarse(matchMediaFn) {
-  try {
-    return !!(typeof matchMediaFn === 'function' && matchMediaFn('(pointer: coarse)').matches);
-  } catch {
-    return false;
-  }
-}
