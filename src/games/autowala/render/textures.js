@@ -65,6 +65,15 @@ export const asphaltTexture = () =>
       g.fillRect(w - 9, 0, 4, h);
     }, { repeat: [1, 1] }));
 
+/** The same asphalt without the lane markings (junction patches): tiles in both directions, 8 px per metre when mapped at 8 m. */
+export const asphaltPlainTexture = () =>
+  cached('asphalt-plain', () =>
+    canvasTexture(64, 64, (g, w, h) => {
+      g.fillStyle = '#413c4e';
+      g.fillRect(0, 0, w, h);
+      noise(g, w, h, 450, () => `rgba(${70 + Math.random() * 40 | 0},${66 + Math.random() * 36 | 0},${84 + Math.random() * 40 | 0},${0.1 + Math.random() * 0.3})`, [1, 2.5]);
+    }, { repeat: [1, 1] }));
+
 export const sidewalkTexture = () =>
   cached('sidewalk', () =>
     canvasTexture(128, 128, (g, w, h) => {

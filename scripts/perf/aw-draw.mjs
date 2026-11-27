@@ -33,6 +33,7 @@ const label = args.label && args.label !== true ? String(args.label) : 'run';
 const dir = args.dir && args.dir !== true ? String(args.dir) : path.join(os.tmpdir(), 'aw-draw-shots');
 
 const START = async (c) => {
+  if (args.tune && args.tune !== true) await c.send('Page.addScriptToEvaluateOnNewDocument', { source: `globalThis.__awTune = ${args.tune};` }); // e.g. --tune '{"medium":{"chunk":2048}}'
   await c.send('Page.addScriptToEvaluateOnNewDocument', {
     source: `(() => { const g = Storage.prototype.getItem; Storage.prototype.getItem = function (k) { const v = g.call(this, k); if (String(k).startsWith('jalebi.autowala.v')) { try { const d = JSON.parse(v || '{}'); d.settings = { ...(d.settings || {}), quality: '${tier}' }; return JSON.stringify(d); } catch { return v; } } return v; }; })();`,
   });
@@ -74,7 +75,7 @@ const SCENES = [
 const MEASURE = (n) => `(async () => {
   const g = window.__autowala.gfx; const R = g.renderer; const scene = g.scene; const gl = R.getContext();
   const tally = new Map(); let inShadow = false; let lastMat = null; let lastProg = null;
-  const sw = { vMat: 0, vProg: 0, sMat: 0, sProg: 0 }; const matSet = new Set(); const progSet = new Set(); const geoSet = new Set();
+  const progTally = new Map(); const sw = { vMat: 0, vProg: 0, sMat: 0, sProg: 0 }; const matSet = new Set(); const progSet = new Set(); const geoSet = new Set();
   const sm = R.shadowMap; const sr = sm.render.bind(sm);
   sm.render = (...a) => { inShadow = true; try { sr(...a); } finally { inShadow = false; } };
   const orig = R.renderBufferDirect.bind(R);
@@ -89,7 +90,7 @@ const MEASURE = (n) => `(async () => {
     closeSeg(); let cat = 'same';
     if (material !== lastMat) { cat = 'mat'; lastMat = material; inShadow ? sw.sMat++ : sw.vMat++; const p = R.properties.get(material).currentProgram; if (p !== lastProg) { cat = 'prog'; lastProg = p; inShadow ? sw.sProg++ : sw.vProg++; } }
     seg = { k: (inShadow ? 'S:' : 'V:') + cat + (object.isInstancedMesh ? ':inst' : ''), at: glN };
-    if (!inShadow) { matSet.add(material.uuid); geoSet.add(geometry.uuid); const p = R.properties.get(material).currentProgram; if (p) progSet.add(p.id); }
+    if (!inShadow) { matSet.add(material.uuid); geoSet.add(geometry.uuid); const p = R.properties.get(material).currentProgram; if (p) { progSet.add(p.id); let e = progTally.get(p.id); if (!e) progTally.set(p.id, (e = { id: p.id, calls: 0, mat: material.type.replace('Material', ''), key: String(p.cacheKey).split(',').slice(-1)[0].slice(0, 22), inst: !!object.isInstancedMesh, vc: !!material.vertexColors, map: !!material.map, mats: new Set(), who: new Set() })); e.calls++; e.mats.add(material.uuid); e.who.add(label(r).split(':').slice(0, 2).join(':')); } }
     const key = (inShadow ? 'S ' : 'V ') + label(r);
     let t = tally.get(key); if (!t) tally.set(key, (t = { calls: 0, tris: 0, mats: new Set() }));
     t.calls++; t.mats.add(material.uuid);
@@ -112,7 +113,7 @@ const MEASURE = (n) => `(async () => {
   const objs = { meshes: 0, inst: 0, frozen: 0, objects: 0 }; scene.traverse((o) => { objs.objects++; if (o.isMesh) { objs.meshes++; if (o.isInstancedMesh) objs.inst++; } if (!o.matrixAutoUpdate) objs.frozen++; });
   return { camera: +v.calls.toFixed(1), shadow: +s.calls.toFixed(1), camTris: Math.round(v.tris), shTris: Math.round(s.tris), gl: Math.round(glRows.reduce((a, r) => a + r[1], 0)), glTop: glRows.slice(0, 9), glCat,
     sw: { vMat: +(sw.vMat / frames).toFixed(1), vProg: +(sw.vProg / frames).toFixed(1), sMat: +(sw.sMat / frames).toFixed(1), sProg: +(sw.sProg / frames).toFixed(1) },
-    distinct: { materials: matSet.size, programs: progSet.size, geometries: geoSet.size }, mem: { geometries: mem.geometries, textures: mem.textures, programs: R.info.programs.length }, objs, rows: rows.slice(0, ${+(args.top || 16)}) };
+    progs: [...progTally.values()].map((e) => ({ id: e.id, calls: +(e.calls / frames).toFixed(1), mat: e.mat + (e.inst ? '/inst' : '') + (e.vc ? '/vc' : '') + (e.map ? '/map' : ''), key: e.key, mats: e.mats.size, who: [...e.who].join(' ') })).sort((a, b) => b.calls - a.calls), distinct: { materials: matSet.size, programs: progSet.size, geometries: geoSet.size }, mem: { geometries: mem.geometries, textures: mem.textures, programs: R.info.programs.length }, objs, rows: rows.slice(0, ${+(args.top || 16)}) };
 })()`;
 
 async function scenes(c) {
@@ -225,6 +226,8 @@ if (cmd === 'scenes') {
   console.log(`label=${row.label} tier=${row.tier} gpu=${row.gpu} errors=${row.errors.length}`);
   console.log('scene'.padEnd(22), 'cam'.padStart(6), 'shad'.padStart(6), 'GL'.padStart(6), 'mat'.padStart(5), 'prog'.padStart(5), 'geo'.padStart(5), 'vMatSw'.padStart(7), 'vProgSw'.padStart(8), 'rGeo'.padStart(5), 'rTex'.padStart(5), 'rPrg'.padStart(5), 'objects'.padStart(8));
   for (const s of row.result) console.log(s.name.padEnd(22), String(s.camera).padStart(6), String(s.shadow).padStart(6), String(s.gl).padStart(6), String(s.distinct.materials).padStart(5), String(s.distinct.programs).padStart(5), String(s.distinct.geometries).padStart(5), String(s.sw.vMat).padStart(7), String(s.sw.vProg).padStart(8), String(s.mem.geometries).padStart(5), String(s.mem.textures).padStart(5), String(s.mem.programs).padStart(5), String(s.objs.objects).padStart(8));
+  if (args.progs) for (const s of row.result) { console.log(`
+-- programs in the camera pass: ${s.name} (${s.progs.length})`); for (const p of s.progs) console.log('  ', String(p.calls).padStart(5), String(p.mats).padStart(3), p.mat.padEnd(26), p.key.padEnd(22), p.who); }
   if (args.rows) for (const s of row.result) { console.log(`\n-- ${s.name}  gl: ${s.glTop.map((r) => r.join('=')).join(' ')}`); console.log('   per-draw GL [category draws/frame calls/draw]: ' + s.glCat.map((r) => r.join(' ')).join(' | ')); for (const r of s.rows) console.log('  ', String(r.calls).padStart(6), String(r.tris).padStart(8), String(r.mats).padStart(4), r.k); }
 } else console.log(JSON.stringify(row.result, null, 1));
 process.exit(0);

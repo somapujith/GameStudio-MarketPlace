@@ -76,7 +76,9 @@ export function buildMetro(scene, city, colliders, shared, sky) {
   const { bents, pillars } = planBents(city, plan.graph, lines, isBlocked);
 
   // ---------------------------------------------------------------- deck (tiled by map region so culling bites)
-  const deckMat = metroMaterial(glowU, { key: 'deck', roughness: 0.9 });
+  // The matte concrete / steel parts (deck, pillars, cross-beams, stations) share ONE material: Lambert ignores roughness, so they only ever
+  // differed by object, and one material is one set of uniforms instead of four. headFix is a no-op for the parts that do not stretch.
+  const deckMat = metroMaterial(glowU, { key: 'deck', roughness: 0.9, headFix: true });
   const deckGeo = deckGeometry();
   const segs = [];
   const ends = [];
@@ -127,8 +129,8 @@ export function buildMetro(scene, city, colliders, shared, sky) {
   deckMeshes.forEach((m) => (m.name = 'metro-deck'));
 
   // ---------------------------------------------------------------- pillars (shaft + flared head in one mesh) and cross-beams
-  const concMat = metroMaterial(glowU, { key: 'pillar', roughness: 0.92, headFix: true });
-  const beamMat = metroMaterial(glowU, { key: 'beam', roughness: 0.92 });
+  const concMat = deckMat;
+  const beamMat = deckMat;
   const pillarGeo = pillarGeometry();
   const beamGeo = beamGeometry();
   for (const p of pillars) colliders.addCentered(p.x, p.z, BENT.radius * 2 + 0.2, BENT.radius * 2 + 0.2, 'pillar', 12);
@@ -194,7 +196,7 @@ export function buildMetro(scene, city, colliders, shared, sky) {
   const glassGeo = sm.glass.build();
   const signGeo = sm.signs.build({ withUv: true });
   const poolGeo = sm.pools.build({ withUv: true });
-  const solidMesh = new Mesh(solidGeo, metroMaterial(glowU, { key: 'station', roughness: 0.8, metalness: 0.1 }));
+  const solidMesh = new Mesh(solidGeo, deckMat);
   solidMesh.castShadow = false;
   solidMesh.receiveShadow = true;
   solidMesh.name = 'metro-stations';
