@@ -58,7 +58,19 @@ describe('registry and interface', () => {
     expect(tiffin.defaultSettings).not.toBe(DEFAULT_SETTINGS); // a copy: nobody can mutate the catalogue through the adapter
     expect(typeof tiffin.canHost).toBe('function');
     expect(tiffin.pieces).toBeUndefined();
-    expect(tiffin.resignAction).toBeUndefined();
+    expect(tiffin.pauseWhenEmpty).toBe(true);
+  });
+
+  it('resignAction: a seat that leaves releases what it holds (engine leave); unknown, prototype and already-gone seats have nothing to resign', () => {
+    const s = fresh();
+    expect(tiffin.resignAction(s, 'p1')).toEqual({ type: 'leave', playerId: 'p1' });
+    for (const id of ['zed', '__proto__', 'constructor', '', undefined, null, 7]) expect(tiffin.resignAction(s, id)).toBeNull();
+    expect(tiffin.resignAction(null, 'p1')).toBeNull();
+    const gone = tiffin.applyAction(s, tiffin.resignAction(s, 'p1')).state;
+    expect(gone.players.p1.left).toBe(true);
+    expect(tiffin.resignAction(gone, 'p1')).toBeNull();
+    // a client can never send it
+    expect(sanitizeAction({ type: 'leave', playerId: 'p1' }, 'p1')).toBeNull();
   });
 
   it('nobody is on turn: no turn player, nothing pending, no idle move', () => {
@@ -448,6 +460,7 @@ describe('fuzz of the operations actions through the adapter (real engine)', () 
           } else if (['prep', 'collectPrep', 'tend', 'swapGas', 'board', 'buy'].includes(clean.type)) opsApplied += 1;
           s = res.state;
         }
+        if (tiffin.isOver(s)) break; // a collect on the last customer can end the shift before the tick
         s = tiffin.applyAction(s, tiffin.deadlines(s)[0].action).state;
         expect(() => JSON.stringify(s)).not.toThrow();
         for (const v of Object.values(s.stock || {})) expect(v).toBeGreaterThanOrEqual(0);
@@ -967,8 +980,11 @@ describe('result()', () => {
     expect(rec).toMatchObject({ gameId: 'tiffin-centre', winnerId: res.winnerId, winReason: 'cleared', playerCount: 2 });
     expect(rec.players.map((p) => p.rank)).toEqual([1, 1]);
     expect(rec.players.map((p) => p.final_worth).sort()).toEqual(res.standings.map((r) => r.score).sort());
-    expect(rec.users.filter((u) => u.won === 1)).toHaveLength(1);
-    expect(rec.users.find((u) => u.won === 1).user_id).toBe(res.winnerId);
+    // CO-OP WIN CREDIT: the win belongs to the whole team that worked, not only to the top earner (the match row still names that one)
+    expect(res.winners.length).toBeGreaterThan(0);
+    expect(res.winners).toContain(res.winnerId);
+    expect(rec.users.filter((u) => u.won === 1).map((u) => u.user_id).sort()).toEqual([...res.winners].sort());
+    for (const u of rec.users) expect(u.won === 1 ? [u.xp, u.coins] : [0, 0]).toEqual(res.winners.includes(u.user_id) ? [100, 200] : [0, 0]); // a winner is paid as one, a seat that stood by nothing
     expect(rec.facts).toEqual({}); // no Tycoon-only achievement facts
   });
 
@@ -1035,15 +1051,15 @@ describe('result(): the idle guard (stats.idle) and what match.js pays for it', 
     expect(rec.seats.filter((x) => x.idle).map((x) => x.id).sort()).toEqual(['p2', 'p3']);
     // the winner stays the top earner (never changed by the guard)
     expect(rec.winnerId).toBe(res.winnerId);
-    // everyone acting: a seat is idle exactly when it did none of the counted work (a seat that only cooks and moves counts as idle)
+    // everyone acting: a seat is idle exactly when it did none of the counted work
     const all = playSome(['p1', 'p2', 'p3']);
     for (const r of tiffin.result(all).standings) {
-      const work = ['served', 'collected', 'prepped', 'tended', 'gasSwaps', 'bought'].reduce((n, k) => n + r.stats[k], 0);
+      const work = ['served', 'collected', 'cooked', 'prepped', 'tended', 'gasSwaps', 'bought'].reduce((n, k) => n + r.stats[k], 0);
       expect(r.stats.idle === true).toBe(work === 0);
     }
   });
 
-  it('the work that counts is served + collected + prepped + tended + gasSwaps + bought; moving and cooking alone is not work', () => {
+  it('the work that counts is served + collected + cooked + prepped + tended + gasSwaps + bought; moving, emoting and a cooked dish nobody took are not work', () => {
     let s = fresh({ level: 1 }, 2, 3);
     s = { ...s, status: 'done', stars: 1, paid: 5, money: 100, players: { ...s.players, p1: { ...s.players.p1, earned: 100, collected: 1 }, p2: { ...s.players.p2, ops: [0, 0, 0, 1] } } };
     const rows = tiffin.result(s).standings;
@@ -1051,6 +1067,11 @@ describe('result(): the idle guard (stats.idle) and what match.js pays for it', 
     expect(rows.find((r) => r.id === 'p2').stats.idle).toBeUndefined(); // bought 1
     s = { ...s, players: { ...s.players, p2: { ...s.players.p2, ops: [0, 0, 0, 0] } } };
     expect(tiffin.result(s).standings.find((r) => r.id === 'p2').stats.idle).toBe(true);
+    // a dedicated cook: a dish of theirs that reached somebody's hands is real work, even if they never served or collected
+    s = { ...s, players: { ...s.players, p2: { ...s.players.p2, cooked: 4 } } };
+    expect(tiffin.result(s).standings.find((r) => r.id === 'p2').stats.idle).toBeUndefined();
+    expect(tiffin.result(s).winners.sort()).toEqual(['p1', 'p2']);
+    s = { ...s, players: { ...s.players, p2: { ...s.players.p2, cooked: 0 } } };
     // a team whose customers never paid: everybody is idle however busy they were
     s = { ...s, paid: 0 };
     expect(tiffin.result(s).standings.every((r) => r.stats.idle === true)).toBe(true);

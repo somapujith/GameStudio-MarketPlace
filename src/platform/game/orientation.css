@@ -1,0 +1,254 @@
+/* The orientation gate (OrientationGate.jsx). `--g-*` come from the game's manifest theme (color.js themeVars). Nothing here touches a game's own CSS. */
+
+/* The wrapper has no box: a game root that is `position: fixed; inset: 0` lays out exactly as it did without it.
+   It hands the safe-area insets to the game as plain custom properties (--og-safe-*), next to the 100dvh rule below. */
+.og-game {
+  display: contents;
+  --og-safe-top: env(safe-area-inset-top, 0px);
+  --og-safe-right: env(safe-area-inset-right, 0px);
+  --og-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --og-safe-left: env(safe-area-inset-left, 0px);
+}
+/* paused: nothing is painted or hit-tested (the element is also `inert`), the children stay mounted */
+.og-game[data-og='paused'] {
+  visibility: hidden;
+}
+/* and every CSS animation in it stands still (a hidden HUD's glow and pulse loops would otherwise keep the main thread ticking behind the screen) */
+.og-game[data-og='paused'] *,
+.og-game[data-og='paused'] *::before,
+.og-game[data-og='paused'] *::after {
+  animation-play-state: paused !important;
+}
+
+.og-gate {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  height: 100dvh; /* the visible height on a phone with a collapsing toolbar */
+  z-index: 2147483000;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  overflow-x: hidden;
+  overflow-y: auto; /* a small split-screen window still reaches the buttons */
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  background: radial-gradient(120% 65% at 50% 0%, var(--g-soft, rgba(123, 109, 255, 0.16)), transparent 70%), radial-gradient(90% 50% at 50% 110%, var(--g-glow, rgba(123, 109, 255, 0.3)), transparent 70%), var(--g-bg, #141c38);
+  color: #fff;
+  font-family: 'Bricolage Grotesque Variable', 'Noto Sans Telugu Variable', system-ui, sans-serif;
+  text-align: center;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.og-gate [lang='te'] {
+  font-family: 'Noto Sans Telugu Variable', 'Bricolage Grotesque Variable', system-ui, sans-serif;
+}
+
+.og-card {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  width: min(440px, 100%);
+  margin: auto;
+}
+
+.og-title {
+  margin: 4px 0 0;
+  display: grid;
+  gap: 4px;
+  font-size: clamp(24px, 7.2vw, 34px);
+  line-height: 1.12;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.og-title .og-te {
+  font-size: 0.72em;
+  font-weight: 700;
+  color: var(--g-accent-2, #4cc9f0);
+  letter-spacing: 0;
+  line-height: 1.35;
+}
+.og-body {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+  max-width: 34ch;
+  font-size: 15px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.86);
+  text-wrap: pretty;
+}
+.og-body .og-te {
+  font-size: 14px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.66);
+}
+
+.og-actions {
+  display: grid;
+  gap: 10px;
+  width: min(360px, 100%);
+  margin-top: 6px;
+}
+.og-btn {
+  box-sizing: border-box;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 1px;
+  min-height: 56px; /* a 44px target with room to spare, for a thumb on a phone held upright */
+  padding: 8px 18px;
+  border-radius: 16px;
+  border: 1.5px solid transparent;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.og-btn small {
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.4;
+  opacity: 0.85;
+}
+.og-btn--primary {
+  background: var(--g-accent, #7b6dff);
+  color: var(--g-on, #fff);
+  box-shadow: 0 8px 24px -8px var(--g-glow-strong, rgba(123, 109, 255, 0.6));
+}
+.og-btn--ghost {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--g-line, rgba(255, 255, 255, 0.3));
+  color: #fff;
+  font-size: 15px;
+  min-height: 52px;
+}
+.og-btn:active {
+  transform: scale(0.98);
+}
+.og-btn:focus-visible {
+  outline: 3px solid var(--g-accent-2, #4cc9f0);
+  outline-offset: 3px;
+}
+
+.og-hint {
+  margin: 6px 0 0;
+  display: grid;
+  gap: 2px;
+  max-width: 36ch;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* ---- the turning phone ----
+   An HTML box (not SVG) so the turn runs on the compositor: no paint, no main-thread work per frame. It turns four times (about 14 s),
+   then rests on its side, so a phone left upright on this screen does not animate for ever. The arrow is static. */
+.og-icon {
+  position: relative;
+  display: block;
+  flex: none;
+  width: var(--og-icon, 112px);
+  height: var(--og-icon, 112px);
+}
+.og-icon__phone {
+  position: absolute;
+  left: 30.8%;
+  top: 11.7%;
+  width: 38.4%;
+  height: 76.6%;
+  box-sizing: border-box;
+  border: 4.5px solid var(--g-accent, #7b6dff);
+  border-radius: 22%/11%;
+  background: rgba(0, 0, 0, 0.35);
+  transform: rotate(-90deg); /* resting pose: on its side */
+  animation: og-turn 3.4s cubic-bezier(0.6, 0, 0.3, 1) 4;
+  will-change: transform;
+}
+.og-icon__phone::before {
+  content: '';
+  position: absolute;
+  inset: 8% 9% 12%; /* the screen */
+  border-radius: 4px;
+  background: var(--g-soft, rgba(123, 109, 255, 0.2));
+}
+.og-icon__phone::after {
+  content: '';
+  position: absolute;
+  left: 32%;
+  right: 32%;
+  top: 3%;
+  height: 3px; /* the speaker */
+  border-radius: 2px;
+  background: var(--g-accent-2, #4cc9f0);
+}
+.og-icon--reverse .og-icon__phone {
+  transform: none;
+  animation-name: og-turn-back;
+}
+.og-icon__arrow {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  stroke: var(--g-accent-2, #4cc9f0);
+}
+@keyframes og-turn {
+  0%,
+  16% {
+    transform: rotate(0deg);
+  }
+  46%,
+  100% {
+    transform: rotate(-90deg);
+  }
+}
+@keyframes og-turn-back {
+  0%,
+  16% {
+    transform: rotate(-90deg);
+  }
+  46%,
+  100% {
+    transform: rotate(0deg);
+  }
+}
+/* reduced motion (the OS setting or the hub's own switch): no movement; the phone stays in its resting pose, on its side */
+@media (prefers-reduced-motion: reduce) {
+  .og-icon__phone {
+    animation: none;
+    will-change: auto;
+  }
+  .og-btn:active {
+    transform: none;
+  }
+}
+:root[data-motion='reduced'] .og-icon__phone {
+  animation: none;
+  will-change: auto;
+}
+:root[data-motion='reduced'] .og-btn:active {
+  transform: none;
+}
+
+/* a short window (split screen, a landscape tablet asked for portrait): tighter */
+@media (max-height: 520px) {
+  .og-card {
+    gap: 8px;
+  }
+  .og-icon {
+    --og-icon: 72px;
+  }
+  .og-btn {
+    min-height: 48px;
+  }
+}

@@ -43,6 +43,19 @@ describe('SoloHome resume card', () => {
     expect(s).toContain('Start fresh');
     expect((s.match(/ autofocus=/g) || []).length).toBe(1); // only the Resume button takes the focus
   });
+  it('a tutorial save is measured in STEPS, not in the minutes of its frozen clock ("5% done, 57:07 left" was nonsense)', () => {
+    const vm = resumeViewModel({ level: 0, mode: 'tutorial', tick: 173, shiftTicks: 3600, step: 38, steps: 128, savedAt: NOW }, NOW);
+    expect(vm).toMatchObject({ tutorial: true, pct: 29, detail: 'step 38 of 128', left: '' });
+    expect(vm.label).toContain('29 percent done');
+    const s = home({ tutorialDone: false, saved: { level: 0, mode: 'tutorial', tick: 173, shiftTicks: 3600, step: 38, steps: 128, savedAt: NOW - 60_000 } });
+    expect(s).toContain('29% done');
+    expect(s).toContain('step 38 of 128');
+    expect(s).not.toContain('left</p>');
+    // a practice shift still counts its own clock
+    expect(resumeViewModel(saved, NOW)).toMatchObject({ detail: '2:15 left' });
+    // an older tutorial save (no step count) keeps the old numbers rather than inventing steps
+    expect(resumeViewModel({ level: 0, tick: 1800, shiftTicks: 3600, savedAt: NOW }, NOW)).toMatchObject({ pct: 50 });
+  });
   it('a tutorial save says Continue tutorial and sits above Start tutorial', () => {
     const s = home({ tutorialDone: false, saved: { level: 0, tick: 600, shiftTicks: 3600, savedAt: NOW - 60_000 } });
     expect(s).toContain('Continue tutorial');

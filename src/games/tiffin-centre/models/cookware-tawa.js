@@ -322,9 +322,12 @@ export function buildTawaSet() {
   frontGlow.position.set(0, COUNTER_TOP + 0.002, CHULHA.z + CHULHA.d / 2 + 0.006);
   frontGlow.renderOrder = 6;
   g.add(frontGlow);
+  // The flame's light stays in the scene for good and is dimmed to zero (`lightOn`): three.js bakes the NUMBER of visible lights into every lit shader, so a
+  // light that came and went with the burner made the whole scene compile again (a multi-second freeze) each time a burner was lit or put out.
   let light = null;
+  let lightOn = true;
   if (quality().lights) {
-    light = new PointLight('#ff9a4a', 1.2, 1.9, 2);
+    light = new PointLight('#ff9a4a', 0, 1.9, 2);
     light.position.set(0, COUNTER_TOP + 0.14, TAWA_Z + 0.05);
     g.add(light);
   }
@@ -380,14 +383,15 @@ export function buildTawaSet() {
     update(dt, t) {
       for (const s of slots) s.update(dt, t);
       lightT = t;
-      if (light) light.intensity = burnerOn ? (1.1 + 0.25 * Math.sin(t * 13) + 0.15 * Math.sin(t * 29) + 0.1 * Math.sin(t * 7.3)) * (0.35 + 0.65 * flamePower) : 0;
+      if (light) light.intensity = burnerOn && lightOn ? (1.1 + 0.25 * Math.sin(t * 13) + 0.15 * Math.sin(t * 29) + 0.1 * Math.sin(t * 7.3)) * (0.35 + 0.65 * flamePower) : 0;
     },
     setFlame(on) {
       rings.forEach((m) => (m.visible = on));
       archFlame.visible = on;
       glow.visible = on;
       frontGlow.visible = on;
-      if (light) light.visible = on;
+      lightOn = !!on;
+      if (light && !lightOn) light.intensity = 0;
     },
     /** The gas burner: flame, glow and the steam / smoke of the dishes on or off; `power` 0..1 shortens the flame (a low cylinder). */
     setBurner(on, power = 1) {

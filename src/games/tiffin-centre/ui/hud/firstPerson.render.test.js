@@ -104,14 +104,13 @@ describe('off-screen indicators', () => {
 
 describe('quick buttons and help', () => {
   const q = (o = {}) => renderToStaticMarkup(createElement(QuickBar, { prefs: DEFAULT_PREFS, onPrefs() {}, turned: false, onRecentre() {}, onHelp() {}, ...o }));
-  it('voices toggle, subtitle cycle, recentre and help are all labelled 44px buttons', () => {
+  it('subtitle cycle, recentre and help are labelled buttons (the voices switch lives in the pause menu)', () => {
     const h = q();
-    expect(h).toContain('aria-label="Customer voices: on"');
-    expect(h).toContain('aria-pressed="true"');
+    expect(h).not.toContain('Customer voices');
     expect(h).toContain('aria-label="Subtitles: Native + English. Press to change"');
     expect(h).toContain('aria-label="Look straight ahead (V)"');
     expect(h).toContain('aria-label="Controls help (?)"');
-    expect(q({ prefs: { ...DEFAULT_PREFS, voices: false } })).toContain('Customer voices: off');
+    expect(h).toContain('data-show="0"'); // the recentre button is only drawn while the head is turned (CSS hides data-show=0)
     expect(q({ turned: true })).toContain('data-show="1"');
   });
   it('the help card prints the scheme that is implemented, keyboard or touch', () => {

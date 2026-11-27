@@ -5,6 +5,8 @@ import HubIcon from './HubIcon.jsx';
 import { CategoryIcon, FallbackCover } from './hubArt.jsx';
 import { themeVars } from './color.js';
 import { playersLabel } from './detailModel.js';
+import OrientationIcon from './OrientationIcon.jsx';
+import { orientationLabel } from './orientationPolicy.js';
 
 export { playersLabel };
 
@@ -64,6 +66,11 @@ export function GameHead({ game, soon = false, tables }) {
         {game.duration && (
           <li className="st-chip gd-chip">
             <HubIcon name="clock" size={14} /> {game.duration}
+          </li>
+        )}
+        {!soon && orientationLabel(game) && (
+          <li className="st-chip gd-chip" data-orientation={game.orientation}>
+            <OrientationIcon size={14} upright={game.orientation === 'portrait'} /> {orientationLabel(game)}
           </li>
         )}
         {game.ageRating && (

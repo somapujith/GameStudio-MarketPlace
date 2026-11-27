@@ -167,3 +167,28 @@ describe('lightning', () => {
     }
   });
 });
+
+describe('scheduledWeather is memoised per day (it is asked every frame)', () => {
+  it('gives exactly what building the day gives, across days, seeds and hours', () => {
+    for (const seed of [1, 7]) {
+      for (let day = 1; day <= 9; day++) {
+        for (let h = 0; h < 24; h += 0.7) {
+          const sched = daySchedule(day, seed);
+          expect(scheduledWeather(day, h, seed).state, `${seed}/${day}/${h}`).toBe(stateAt(sched, h));
+        }
+      }
+    }
+  });
+  it('does not rebuild the schedule for the same day (no allocation per frame)', () => {
+    scheduledWeather(3, 1, 1);
+    let rebuilt = 0;
+    const real = Array.prototype.fill;
+    Array.prototype.fill = function (...a) { rebuilt++; return real.apply(this, a); };
+    try {
+      for (let i = 0; i < 200; i++) scheduledWeather(3, (i * 0.1) % 24, 1);
+    } finally {
+      Array.prototype.fill = real;
+    }
+    expect(rebuilt).toBe(0);
+  });
+});

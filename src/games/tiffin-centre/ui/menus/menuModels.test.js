@@ -173,7 +173,9 @@ describe('coachViewModel', () => {
 
 describe('statusCopy', () => {
   it('has friendly copy for each kind and falls back to error', () => {
-    expect(STATUS_KINDS).toEqual(['loading', 'error', 'disconnected', 'webgl']);
+    expect(STATUS_KINDS).toEqual(['loading', 'error', 'disconnected', 'lost', 'webgl']);
+    expect(statusCopy('lost').body).toMatch(/comes back by itself/);
+    expect(statusCopy('lost').retry).toBe('Try again');
     expect(statusCopy('loading').title).toMatch(/Lighting the stove/);
     expect(statusCopy('webgl').body).toMatch(/WebGL/);
     expect(statusCopy('disconnected').retry).toBe('Reconnect');

@@ -19,6 +19,7 @@ import Subtitles from './ui/Subtitles.jsx';
 import QuestLog from './ui/QuestLog.jsx';
 import Hisaab from './ui/Hisaab.jsx';
 import Radio from './ui/Radio.jsx';
+import useOrientationHold from './ui/useOrientationHold.js';
 import './ui/autowala.css';
 
 // What the loading bar says while each stage of the build runs.
@@ -63,6 +64,7 @@ export default function AutowalaGame() {
   const [failure, setFailure] = useState(null); // 'webgl' | 'error' when the game could not start
   const [gpuLost, setGpuLost] = useState(false);
   const [loading, setLoading] = useState({ text: STAGE_TEXT.start, pct: 0 });
+  useOrientationHold(game); // a phone held upright (the hub's orientation gate covers the screen): no loop, no sound, back at once in landscape
 
   useEffect(() => {
     let g = null;

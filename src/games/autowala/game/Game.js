@@ -9,8 +9,9 @@ import { buildAuto, randomLook } from '../sim/autoModel.js';
 import { createVehicle } from '../sim/vehicle.js';
 import { createInput } from './input.js';
 import { createChaseCamera } from './camera.js';
-import { DAY, CAR, QUALITY } from './config.js';
+import { DAY, QUALITY } from './config.js';
 import { clamp, makeRng } from './rng.js';
+import { advanceClock } from './clock.js';
 import { createRig } from '../gameplay/customers.js';
 import { PHASE, createFramePerf } from './perf.js';
 import { createWarmer, idleBreak, passMaterials, recipeOf } from './warm.js';
@@ -81,9 +82,8 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
   const edge = garage ? world.city.edges[garage.front.edge] : null;
   const vehicle = createVehicle({ x: spawn.x, z: spawn.z, heading: edge ? Math.atan2(edge.dx, edge.dz) : 0 });
   const v = vehicle.state;
-  v.fuel = CAR.fuelTank;
 
-  const clock = { hour: DAY.startHour, time: 0, day: 1 };
+  const clock = { hour: DAY.startHour, time: 0, sim: 0, day: 1 };
   const state = {
     paused: false, gameOver: false, weather: 0, speedMul: 1, gripMul: 1,
     upgrades: profile.data.upgrades, // the SAME object: buying an upgrade changes the physics at once
@@ -91,6 +91,7 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
     menu: 'start', // the game begins on the start screen (the auto is held from frame 1). 'workshop' | 'pause' | 'start' | 'summary' | null: while set, the auto is held still and driving keys are ignored
     cameraOverride: null, // (camera, dt) => void: a system that owns the camera right now (the workshop's orbit)
   };
+  v.fuel = vehicle.params({ upgrades: state.upgrades }).tank; // a full tank, whatever size the tank upgrade made it
   const systems = [];
   const listeners = new Set();
   const snapshotParts = [];
@@ -155,9 +156,7 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
 
   /** Advance the game by dt seconds (physics, systems, clock). No drawing. */
   const simulate = (dt) => {
-    clock.time += dt;
-    clock.hour += dt / DAY.secondsPerHour;
-    if (clock.hour >= 24) { clock.hour -= 24; clock.day++; }
+    advanceClock(clock, dt, !!state.menu, DAY.secondsPerHour);
 
     // pressed one-shots the core handles
     if (!state.menu && input.pressed('horn')) { vehicle.honk(); emit('honk'); }
@@ -177,6 +176,7 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
     // fixed sub-steps keep the physics stable on slow frames
     const steps = Math.max(1, Math.ceil(dt / (1 / 90)));
     const before = v.distance;
+    const fuelBefore = v.fuel;
     for (let i = 0; i < steps; i++) {
       const evs = vehicle.update(dt / steps, drive, env);
       for (const e of evs) {
@@ -184,7 +184,10 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
         emit(e.type, e);
       }
     }
-    if (state.menu) vehicle.hold(dt); // never creeps (or reverses) while a menu is open
+    if (state.menu) {
+      vehicle.hold(dt); // never creeps (or reverses) while a menu is open
+      v.fuel = fuelBefore; // ...and the engine idling behind a menu burns no CNG
+    }
     profile.data.distance += Math.max(0, v.distance - before);
     for (const s of systems) {
       if (s.broken) continue;
@@ -225,7 +228,7 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
     perf.lap(PHASE.sim);
 
     const focus = { x: v.x, y: 0, z: v.z };
-    world.update(dt, clock.time, clock.hour, state.debugCam ? { x: state.debugCam.x, y: 0, z: state.debugCam.z } : focus, state.weather);
+    world.update(dt, clock.sim, clock.hour, state.debugCam ? { x: state.debugCam.x, y: 0, z: state.debugCam.z } : focus, state.weather);
     perf.lap(PHASE.world);
 
     if (state.debugCam) {
@@ -365,7 +368,7 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {} }) {
   const baseSpots = recipeOf(scene).spots; // the auto's headlight
   const warmer = createWarmer({ renderer: gfx.renderer, scene, camera, getTarget: () => gfx.target });
   const prepareFirstFrame = () => {
-    world.update(0, clock.time, clock.hour, { x: v.x, y: 0, z: v.z }, state.weather);
+    world.update(0, clock.sim, clock.hour, { x: v.x, y: 0, z: v.z }, state.weather);
     rig.update(1 / 60, v, { cameraMode: state.cameraMode });
     syncAuto();
   };

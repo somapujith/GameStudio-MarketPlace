@@ -56,5 +56,5 @@ Playwright's WebKit on Windows is not iOS Safari: it covers the engine's JavaScr
 
 ## Known costs and next steps
 - Startup is dominated by shader compilation (about 140 programs, ~3 s on a modest machine, hidden behind the loading bar). Reducing the number of distinct material variants (the window shader's four looks, the shop kit's materials, per-light-count variants) would cut it.
-- Per-category volumes (effects / voices / music) are saved and announced (`audio:volume`) but only the master volume is applied live.
+- Volumes: master, effects, voices and music are all applied live (`audio/sound-bus.js`: engine, tyres, ambience, horns, traffic horns and the menu clicks go through the effects bus, spoken lines through the voices bus, the radio through the music bus; the browser-speech fallback follows voices x master). Covered by `audio/volume.test.js`.
 - Real GPU frame times on low-end phones are unmeasured: run `?`-less play on a mid-range Android phone and watch `__autowala.gfx.quality` (the sampler's choice) before release.

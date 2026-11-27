@@ -14,6 +14,8 @@ import { DEFAULT_MAP } from '@/components/online/mapModel.js';
 import { AboutSection, DetailsTable, GallerySection, HowToPlay, LeaderboardSection, OpenTables, RelatedGames, openTableList, useOpenRooms } from '@/platform/game/DetailSections.jsx';
 import { categoryHref, playersLabel } from '@/platform/game/GameHero.jsx';
 import HubIcon from '@/platform/game/HubIcon.jsx';
+import OrientationIcon from '@/platform/game/OrientationIcon.jsx';
+import { orientationLabel } from '@/platform/game/orientationPolicy.js';
 import Unavailable from '@/platform/game/Unavailable.jsx';
 import { themeVars } from '@/platform/game/color.js';
 import { gameJsonLd, hasMaps, howToPlaySteps, metaDescription, sectionList } from '@/platform/game/detailModel.js';
@@ -211,6 +213,11 @@ function TitleHero({ game, soon = false, tables, actions, notes, children }) {
             {maps > 0 && (
               <li>
                 <HubIcon name="map" size={15} /> {maps} maps
+              </li>
+            )}
+            {!soon && orientationLabel(game) && (
+              <li data-orientation={game.orientation}>
+                <OrientationIcon size={15} upright={game.orientation === 'portrait'} /> {orientationLabel(game)}
               </li>
             )}
             {game.ageRating && <li title="Age rating">{game.ageRating}</li>}

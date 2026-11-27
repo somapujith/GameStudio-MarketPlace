@@ -35,7 +35,7 @@ function invariants(s, label) {
   ok(Number.isInteger(s.lives) && s.lives >= 0 && s.lives <= LIVES, label, `lives ${s.lives}`);
   ok(text.length < 8000, label, `state is ${text.length} bytes`);
   ok(s.schedule.length <= 2 && s.emotes.length <= 4, label, 'schedule or emotes grew');
-  ok(s.events.length <= 4 && s.off.length <= 13 && s.regs.length <= 3, label, 'events, board or regulars grew');
+  ok(s.events.length <= EVENT_IDS.length && s.off.length <= 13 && s.regs.length <= 3, label, 'events, board or regulars grew'); // the festival day can run all six events at once (rain + cricket + power + festival + delivery)
   ok(s.status !== 'closed' || s.stars === 0, label, 'closed with stars');
   let earned = 0;
   for (const id of s.order) {

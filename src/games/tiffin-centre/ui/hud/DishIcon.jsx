@@ -102,9 +102,15 @@ const ART = {
   ),
 };
 
+/**
+ * `size` is in design pixels: inside the HUD an icon scales with --tc-hud-u (the viewport-height scale, hud.css) and a stylesheet rule can pin its
+ * own size with `--ico`; anywhere else (menus, tests) it is plain `size` px.
+ */
+export const scaled = (size) => ({ width: `var(--ico, calc(${size} * var(--tc-hud-u, 1px)))`, height: `var(--ico, calc(${size} * var(--tc-hud-u, 1px)))` });
+
 export default function DishIcon({ dish, size = 36, className = '' }) {
   return (
-    <svg className={`tc-hud-dish ${className}`.trim()} width={size} height={size} viewBox="0 0 40 40" aria-hidden="true" focusable="false">
+    <svg className={`tc-hud-dish ${className}`.trim()} width={size} height={size} style={scaled(size)} viewBox="0 0 40 40" aria-hidden="true" focusable="false">
       {ART[dish] || PLATE}
     </svg>
   );

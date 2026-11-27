@@ -11,7 +11,7 @@
 // rewritten per frame (frustumCulled === false: the IK limbs), anything with userData.noMerge, anything the probe saw move. `flatten` additionally
 // replaces PBR-textured opaque materials by one shared vertex-coloured material per (side, roughness, metalness) class (the lite tier).
 // Node-safe (three only); tests run it on plain boxes.
-import { BufferAttribute, BufferGeometry, Color, Float32BufferAttribute, Matrix4, Mesh, MeshStandardMaterial, SRGBColorSpace } from 'three';
+import { BufferAttribute, BufferGeometry, Color, Float32BufferAttribute, Matrix4, Mesh, MeshBasicMaterial, MeshStandardMaterial, SRGBColorSpace } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 const KEEP_ATTRS = ['position', 'normal', 'uv', 'uv1', 'color'];
@@ -205,7 +205,56 @@ const flatColor = (m, out) => {
 };
 
 // ---------------------------------------------------------------------------------------------------------------------------------
-function prepared(mesh, frameInv, colour) {
+// uber material: every untextured opaque MeshStandardMaterial of one side mode in ONE draw call, losslessly
+//
+// A plain standard material is its colour, roughness and metalness. Colour rides along as the vertex colour (the material colour is baked in: three.js
+// reads vertex colours as linear, exactly what `material.color` holds), roughness and metalness as a per-vertex attribute `aRM` that scales the
+// shader's roughness / metalness (the shared material sets both to 1). The picture is identical, a stall's 25-odd plain materials become one mesh and one
+// shader program.
+const uberCache = new Map();
+const UBER_MAPS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap', 'alphaMap', 'envMap', 'bumpMap', 'displacementMap', 'lightMap'];
+
+/** Can this material be folded into the uber material without changing a pixel? */
+export function isUberable(m, liveMaterials) {
+  if (!m || !m.isMeshStandardMaterial || m.isMeshPhysicalMaterial || m.isShaderMaterial) return false;
+  if (m.transparent || m.opacity < 1 || m.alphaTest > 0 || m.polygonOffset || m.wireframe || m.flatShading) return false;
+  if (!m.visible || m.userData?.noUber || m.userData?.shared) return false;
+  for (const k of UBER_MAPS) if (m[k]) return false;
+  if (m.emissive && m.emissive.getHex() !== 0 && (m.emissiveIntensity ?? 1) > 0) return false;
+  if (m.onBeforeCompile && String(m.onBeforeCompile).length > 60) return false; // patched shaders keep their own program
+  if (liveMaterials?.has(m)) return false;
+  return true;
+}
+
+export function uberMaterialFor(m) {
+  const key = `${m.side}|${m.fog ? 1 : 0}|${m.toneMapped ? 1 : 0}|${m.dithering ? 1 : 0}|${m.envMapIntensity}`;
+  let u = uberCache.get(key);
+  if (!u) {
+    u = new MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 1, side: m.side, fog: m.fog, toneMapped: m.toneMapped, dithering: m.dithering, envMapIntensity: m.envMapIntensity });
+    u.name = 'uber';
+    u.userData.shared = true;
+    u.userData.uber = true;
+    u.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nattribute vec2 aRM;\nvarying vec2 vRM;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvRM = aRM;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying vec2 vRM;')
+        .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n\troughnessFactor *= vRM.x;')
+        .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\n\tmetalnessFactor *= vRM.y;');
+    };
+    u.customProgramCacheKey = () => 'tc-uber';
+    uberCache.set(key, u);
+  }
+  return u;
+}
+export const disposeUberMaterials = () => {
+  for (const u of uberCache.values()) u.dispose();
+  uberCache.clear();
+};
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+function prepared(mesh, frameInv, colour, rm) {
   const src = mesh.geometry;
   let g = new BufferGeometry();
   for (const k of KEEP_ATTRS) {
@@ -235,19 +284,29 @@ function prepared(mesh, frameInv, colour) {
   if (colour) {
     const n = g.attributes.position.count;
     const arr = new Float32Array(n * 3);
+    const own = rm && g.attributes.color && g.attributes.color.itemSize === 3 ? g.attributes.color : null; // uber: the mesh's own vertex colours multiply the material colour
     for (let i = 0; i < n; i++) {
-      arr[i * 3] = colour.r;
-      arr[i * 3 + 1] = colour.g;
-      arr[i * 3 + 2] = colour.b;
+      arr[i * 3] = colour.r * (own ? own.getX(i) : 1);
+      arr[i * 3 + 1] = colour.g * (own ? own.getY(i) : 1);
+      arr[i * 3 + 2] = colour.b * (own ? own.getZ(i) : 1);
     }
     g.setAttribute('color', new Float32BufferAttribute(arr, 3));
   } else if (g.attributes.color && g.attributes.color.itemSize !== 3) g.deleteAttribute('color');
+  if (rm) {
+    const n = g.attributes.position.count;
+    const arr = new Float32Array(n * 2);
+    for (let i = 0; i < n; i++) {
+      arr[i * 2] = rm[0];
+      arr[i * 2 + 1] = rm[1];
+    }
+    g.setAttribute('aRM', new Float32BufferAttribute(arr, 2));
+  }
   return g;
 }
 
 /** Makes every geometry in the list carry the same attribute set (the intersection), which mergeGeometries requires. */
 function conform(list) {
-  const names = KEEP_ATTRS.filter((k) => list.every((g) => g.attributes[k]));
+  const names = [...KEEP_ATTRS, 'aRM'].filter((k) => list.every((g) => g.attributes[k]));
   const all = new Set(list.flatMap((g) => Object.keys(g.attributes)));
   for (const g of list) {
     for (const k of all) if (!names.includes(k) || g.attributes[k]?.itemSize === undefined) g.deleteAttribute(k);
@@ -256,7 +315,7 @@ function conform(list) {
 
 /**
  * Merges the static candidates under `root`.
- * opts: { only: Set<Mesh> (from the probe; required), flatten, minGroup (default 2), shared (geometry cache check) }
+ * opts: { only: Set<Mesh> (from the probe; required), flatten, uber (fold untextured standard materials into one: see uberMaterialFor), minGroup (default 2) }
  * Returns { before, after, groups, dispose }.
  */
 export function* mergeStaticSteps(root, opts = {}) {
@@ -276,12 +335,13 @@ export function* mergeStaticSteps(root, opts = {}) {
     before++;
     const m = o.material;
     const flat = flatten && isFlattenable(m, live);
+    const uber = !flat && !!opts.uber && isUberable(m, live);
     // equivalent-but-distinct materials are merged only when none of them is live; otherwise the exact material object keeps its identity
-    const matKey = flat ? `flat:${flatMaterialFor(m).uuid}` : live.has(m) || m.isShaderMaterial || m.onBeforeCompile?.toString().length > 60 ? `obj:${m.uuid}` : `sig:${materialSignature(m)}`;
+    const matKey = flat ? `flat:${flatMaterialFor(m).uuid}` : uber ? `uber:${uberMaterialFor(m).uuid}` : live.has(m) || m.isShaderMaterial || m.onBeforeCompile?.toString().length > 60 ? `obj:${m.uuid}` : `sig:${materialSignature(m)}`;
     const frame = frames.get(o) || root;
     const key = `${frame.uuid}|${matKey}|${o.castShadow ? 1 : 0}${o.receiveShadow ? 1 : 0}|${o.renderOrder}|${o.layers.mask}|${m.transparent ? 1 : 0}`;
     let b = buckets.get(key);
-    if (!b) buckets.set(key, (b = { meshes: [], flat, frame, material: flat ? flatMaterialFor(m) : m }));
+    if (!b) buckets.set(key, (b = { meshes: [], flat, uber, frame, material: flat ? flatMaterialFor(m) : uber ? uberMaterialFor(m) : m }));
     b.meshes.push(o);
   });
 
@@ -295,7 +355,7 @@ export function* mergeStaticSteps(root, opts = {}) {
     b.frame.updateWorldMatrix(true, false);
     const frameInv = _inv.copy(b.frame.matrixWorld).invert().clone();
     for (const mesh of b.meshes) {
-      const g = prepared(mesh, frameInv, b.flat ? flatColor(mesh.material, c) : null);
+      const g = prepared(mesh, frameInv, b.flat ? flatColor(mesh.material, c) : b.uber ? mesh.material.color : null, b.uber ? [mesh.material.roughness, mesh.material.metalness] : null);
       if (g) geos.push(g);
       else b.meshes = b.meshes.filter((x) => x !== mesh);
     }
@@ -304,7 +364,7 @@ export function* mergeStaticSteps(root, opts = {}) {
       continue;
     }
     // vertex colours only on materials that use them: a mixed bucket (some meshes with, some without) drops the attribute
-    if (!b.flat && !geos.every((g) => g.attributes.color) ) for (const g of geos) g.deleteAttribute('color');
+    if (!b.flat && !b.uber && !geos.every((g) => g.attributes.color)) for (const g of geos) g.deleteAttribute('color');
     conform(geos);
     const merged = mergeGeometries(geos, false);
     for (const g of geos) g.dispose();
@@ -367,6 +427,127 @@ export function* mergeStaticSteps(root, opts = {}) {
       parents.clear();
     },
   };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// shadow proxies
+/** The layer that only the shadow pass draws (the sun's shadow camera enables it next to layer 0; the main camera never sees it). */
+export const SHADOW_LAYER = 1;
+
+/**
+ * The shadow pass draws every caster as its own draw call (a medium frame had 144 of them next to 169 for the picture). The static casters (the stall
+ * shell, the street, after batching) never move, so ONE position-only mesh per side mode can cast their shadow instead: same triangles, same depth, a
+ * handful of draw calls. The proxy lives on SHADOW_LAYER, which only the sun's shadow camera draws (three.js takes the shadow pass's layers from the
+ * shadow camera when it has any beyond layer 0), so the main pass never sees it; the meshes it swallowed stop casting (castShadow = false) and
+ * restore() / dispose() put everything back.
+ *
+ *   createShadowProxy([stall.root, street.root], { isStatic: (mesh) => staticSet.has(mesh) }) -> { meshes, swallowed, triangles, dispose, restore }
+ *
+ * Never swallowed: skinned / instanced / morphed meshes, shader materials, alpha-tested or alpha-mapped materials (their depth needs the texture),
+ * hidden meshes, anything `isStatic` refuses (the default accepts nothing: the caller must say what never moves).
+ */
+export function createShadowProxy(roots, { isStatic = () => false, layer = SHADOW_LAYER, maxTriangles = 400000 } = {}) {
+  const buckets = new Map(); // `${side}|${shadowSide}` -> { side, shadowSide, list: [{ mesh }] }
+  const swallowed = [];
+  const frame = new Matrix4();
+  let triangles = 0;
+  for (const root of Array.isArray(roots) ? roots : [roots]) {
+    root.updateMatrixWorld(true);
+    root.traverse((o) => {
+      if (!o.isMesh || !o.castShadow || o.isSkinnedMesh || o.isInstancedMesh || !isStatic(o) || !worldVisible(o)) return;
+      const m = o.material;
+      const g = o.geometry;
+      if (!m || Array.isArray(m) || !g?.attributes?.position || m.isShaderMaterial || m.alphaTest > 0 || m.alphaMap || m.displacementMap) return;
+      if (g.morphAttributes && Object.keys(g.morphAttributes).length) return;
+      if (g.attributes.position.isInterleavedBufferAttribute) return;
+      const key = `${m.side}|${m.shadowSide ?? 'x'}`;
+      let b = buckets.get(key);
+      if (!b) buckets.set(key, (b = { side: m.side, shadowSide: m.shadowSide ?? null, list: [] }));
+      b.list.push(o);
+    });
+  }
+  const meshes = [];
+  const owned = [];
+  for (const b of buckets.values()) {
+    let verts = 0;
+    let idx = 0;
+    for (const o of b.list) {
+      verts += o.geometry.attributes.position.count;
+      idx += o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count;
+    }
+    if (!b.list.length || triangles + idx / 3 > maxTriangles) continue;
+    const pos = new Float32Array(verts * 3);
+    const ix = new Uint32Array(idx);
+    let vo = 0;
+    let io = 0;
+    for (const o of b.list) {
+      const g = o.geometry;
+      const a = g.attributes.position;
+      frame.copy(o.matrixWorld);
+      const e = frame.elements;
+      const flip = frame.determinant() < 0;
+      for (let i = 0; i < a.count; i++) {
+        const x = a.getX(i);
+        const y = a.getY(i);
+        const z = a.getZ(i);
+        const w = 1 / (e[3] * x + e[7] * y + e[11] * z + e[15]);
+        pos[(vo + i) * 3] = (e[0] * x + e[4] * y + e[8] * z + e[12]) * w;
+        pos[(vo + i) * 3 + 1] = (e[1] * x + e[5] * y + e[9] * z + e[13]) * w;
+        pos[(vo + i) * 3 + 2] = (e[2] * x + e[6] * y + e[10] * z + e[14]) * w;
+      }
+      const n = g.index ? g.index.count : a.count;
+      for (let t = 0; t < n; t += 3) {
+        const i0 = g.index ? g.index.getX(t) : t;
+        const i1 = g.index ? g.index.getX(t + 1) : t + 1;
+        const i2 = g.index ? g.index.getX(t + 2) : t + 2;
+        ix[io++] = vo + i0;
+        ix[io++] = vo + (flip ? i2 : i1);
+        ix[io++] = vo + (flip ? i1 : i2);
+      }
+      vo += a.count;
+      swallowed.push(o);
+    }
+    const geo = new BufferGeometry();
+    geo.setAttribute('position', new BufferAttribute(pos, 3));
+    geo.setIndex(new BufferAttribute(ix, 1));
+    geo.computeBoundingSphere();
+    geo.computeBoundingBox();
+    const mat = new MeshBasicMaterial({ side: b.side, colorWrite: false, depthWrite: false });
+    if (b.shadowSide !== null) mat.shadowSide = b.shadowSide;
+    const mesh = new Mesh(geo, mat);
+    mesh.name = 'shadow-proxy';
+    mesh.castShadow = true;
+    mesh.receiveShadow = false;
+    mesh.matrixAutoUpdate = false;
+    mesh.layers.set(layer);
+    mesh.userData.noMerge = true;
+    mesh.userData.proxyOf = b.list.length;
+    meshes.push(mesh);
+    owned.push(geo, mat);
+    triangles += idx / 3;
+  }
+  // the swallowed meshes stop casting; the proxies join the scene (the first root's parent chain is irrelevant: they are in world space)
+  const host = (Array.isArray(roots) ? roots[0] : roots)?.parent || null;
+  for (const o of swallowed) o.castShadow = false;
+  for (const m of meshes) host?.add(m);
+  const api = {
+    meshes,
+    swallowed,
+    triangles,
+    /** Puts the swallowed casters back and removes the proxies (the originals came back, e.g. after batcher.restore()). */
+    restore() {
+      for (const o of swallowed) o.castShadow = true;
+      swallowed.length = 0;
+      for (const m of meshes) m.removeFromParent();
+    },
+    dispose() {
+      api.restore();
+      for (const o of owned) o.dispose();
+      owned.length = 0;
+      meshes.length = 0;
+    },
+  };
+  return api;
 }
 
 /** Stops the nearest-to-nothing meshes of a model from casting shadows (eyes, lids, brows, glasses, fingers...): `size` is the bounding radius in metres. */

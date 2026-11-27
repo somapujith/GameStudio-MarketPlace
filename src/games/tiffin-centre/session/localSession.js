@@ -202,7 +202,7 @@ export function createLocalSession(options = {}) {
     const snap = { v: SAVE_VERSION, savedAt: wallNow(), mode, level: state.level, pace: state.pace, seed, state, driver: null };
     if (mode === 'tutorial') {
       if (!driver || driver.done || driver.skipped || journalFull) return null;
-      snap.driver = { journal, restarts: tutorialRestarts, index: driver.index };
+      snap.driver = { journal, restarts: tutorialRestarts, index: driver.index, steps: driver.steps.length };
     }
     return snap;
   }

@@ -25,6 +25,15 @@ export function expenseRows(h) {
   return rows.filter((r) => r.always || r.amount > 0);
 }
 
+/**
+ * The parts of the Hisaab that change while it is open (buying the auto, a quick fix) must come from the live career snapshot: the
+ * Hisaab itself is a frozen record of the day, so its own ladder / repair bill goes stale after the first button press.
+ */
+export function liveView(h, career) {
+  const repair = Number.isFinite(Number(career?.repairCost)) ? Number(career.repairCost) : N(h?.repairCost);
+  return { ladder: career?.ladder || h?.ladder || null, repairCost: Math.max(0, N(repair)) };
+}
+
 /** One line for the bottom of the day. */
 export function verdict(h) {
   const net = N(h?.net);

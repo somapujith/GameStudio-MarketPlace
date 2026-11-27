@@ -147,7 +147,7 @@ export function StatsPanel({ game, sitting, log }) {
         <Stat label="Time played" te="ఆడిన సమయం" value={summaryTime(game.ctx.clock.time)} sub="this visit" />
         <Stat label="Customers missed" te="మిస్ అయిన" value={log.missed} sub="this visit" />
         <Stat label="Challans / fines" te="చలానాలు" value={`Rs ${groupIndian(log.finesTotal)}`} sub={`${log.fines} caught`} />
-        <Stat label="Workshop spend" te="వర్క్‌షాప్" value={`Rs ${groupIndian(game.ctx.economy.session.spent)}`} sub="this visit" />
+        <Stat label="Workshop spend" te="వర్క్‌షాప్" value={`Rs ${groupIndian(game.ctx.economy.session.workshop)}`} sub="this visit" />
       </div>
     </div>
   );

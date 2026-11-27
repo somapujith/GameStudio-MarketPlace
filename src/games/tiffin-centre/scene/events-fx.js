@@ -36,9 +36,11 @@ export const GENERATOR_DELAY = 2.2;
 /** The shared levels object (0..1 each): { rain, power (how far the mains are CUT), cricket, festival }. */
 export const makeLevels = () => ({ rain: 0, power: 0, cricket: 0, festival: 0 });
 
+const FADE_IDS = Object.keys(FADE); // once: stepLevels runs every frame
 /** One step of every level towards its flag (pure; `out` is written and returned). */
 export function stepLevels(levels, flags, dt, out = levels) {
-  for (const id of Object.keys(FADE)) {
+  for (let i = 0; i < FADE_IDS.length; i++) {
+    const id = FADE_IDS[i];
     const target = flags && flags[id] ? 1 : 0;
     out[id] = approach(levels[id], target, dt, FADE[id][0], FADE[id][1]);
   }

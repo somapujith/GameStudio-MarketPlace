@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MOD, URGENT, applyMods, computeModifiers, describeMods, isNight, isRaining, normalizeDemand, readDemand, urgentFor, urgentSettle } from './fare-modifiers.js';
+import { MOD, URGENT, applyMods, computeModifiers, describeMods, isNight, isRaining, normalizeDemand, readDemand, urgentFor, urgentSettle, isMetroId } from './fare-modifiers.js';
 
 describe('night, rain, luggage', () => {
   it('night is after 22:00 and before 05:00', () => {
@@ -96,5 +96,21 @@ describe('urgent rides', () => {
     const late = urgentSettle({ fare: 130, timeLeft: -5, timeLimit: 100 });
     expect(late).toEqual({ fare: 130, bonus: 0, late: true });
     expect(urgentSettle({ fare: 100, timeLeft: NaN, timeLimit: null })).toEqual({ fare: 100, bonus: 0, late: false });
+  });
+});
+
+describe('metro riders and non-peak bands', () => {
+  it('a rusher going to a real station id is catching a train', () => {
+    for (const id of ['red-miyapur', 'blue-ameerpet', 'green-mgbs', 'metro_x']) expect(urgentFor('rusher', id, 0.99), id).toBe(URGENT.train);
+    expect(urgentFor('rusher', 'cyber', 0.99)).toBe(URGENT.meeting);
+    expect(isMetroId('redwood-park')).toBe(false);
+    expect(isMetroId(undefined)).toBe(false);
+  });
+
+  it('a band the career does not call a peak gives no surcharge, a real peak still does', () => {
+    expect(normalizeDemand({ mult: 1.4, label: 'Early morning', te: 'x', peak: false })).toBeNull();
+    expect(normalizeDemand({ mult: 1.4, label: 'Office rush', te: 'x', peak: true })).toMatchObject({ label: 'Office rush' });
+    expect(normalizeDemand({ mult: 1.4, label: 'Office rush', te: 'x' })).toMatchObject({ label: 'Office rush' }); // no flag: unchanged
+    expect(normalizeDemand(1.5)).not.toBeNull(); // a bare number is unchanged
   });
 });

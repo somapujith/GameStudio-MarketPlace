@@ -27,14 +27,15 @@ solo.post('/:gameId/start', requireUser, limit('solo-start', 20, 60), async (c) 
 
 // POST /api/solo/:gameId/finish { token, earned, seconds, distance, quests, fares, style } (whole numbers >= 0)
 //   -> { ok, duplicate, earned, newBest, bestScore, games, wins, xp, coins, level }   (xp / coins = what THIS run paid)
-// 400 malformed numbers, 401 bad / expired token, 403 token of another player, 422 implausible run. A token finishes once:
+// 400 malformed numbers, 401 bad / expired token (code 'run-expired'), 403 token of another player, 422 implausible run. A token finishes once:
 // a replay is a no-op answering with the stored outcome and duplicate:true. Scores are client-reported (see worker/solo.js).
 solo.post('/:gameId/finish', requireUser, limit('solo-finish', 20, 60), async (c) => {
   const game = gameOr404(c);
   const user = c.get('user');
   const { token, run } = parseFinishBody(await readJson(c));
   const claims = await verifySoloToken(c.env, token);
-  if (!claims) throw new HttpError(401, 'This run has expired or is not valid. Start a new one.');
+  // `code` tells the client this is the RUN token (it lives 3 hours), not the player's session: nothing to sign in to
+  if (!claims) return c.json({ error: 'This run has expired or is not valid. Start a new one.', code: 'run-expired' }, 401);
   if (claims.sub !== user.id) throw new HttpError(403, 'This run belongs to another player.');
   if (claims.gid !== game.id) throw new HttpError(400, 'This run is for a different game.');
   assertPlausible(game, claims, run);

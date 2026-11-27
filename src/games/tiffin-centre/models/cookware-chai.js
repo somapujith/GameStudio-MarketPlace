@@ -211,9 +211,10 @@ export function buildChaiSet() {
   glow.position.set(STOVE.x, COUNTER_TOP + STOVE.h + 0.016, STOVE.z);
   glow.renderOrder = 3;
   g.add(glow);
+  // the light stays in the scene and is dimmed to zero when the burner is off: a changing number of lights recompiles every shader (see cookware-tawa.js)
   let light = null;
   if (quality().lights) {
-    light = new PointLight('#7aa8ff', 0.5, 1.2, 2);
+    light = new PointLight('#7aa8ff', 0, 1.2, 2);
     light.position.set(STOVE.x, COUNTER_TOP + STOVE.h + 0.07, STOVE.z + 0.05);
     g.add(light);
   }
@@ -268,7 +269,6 @@ export function buildChaiSet() {
       flamePower = on ? Math.max(0.05, Math.min(1, power)) : 0;
       flame.visible = burnerOn;
       glow.visible = burnerOn;
-      if (light) light.visible = burnerOn;
       fm.uniforms.uPower.value = flamePower;
       for (const s of slots) {
         s.steam.points.visible = burnerOn;

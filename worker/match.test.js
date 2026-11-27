@@ -200,6 +200,28 @@ describe('idle seats (standings[i].stats.idle === true, opt-in for any game)', (
     expect(rec.winnerId).toBe(U1); // the match row still names the top earner
   });
 
+  it('a game may name SEVERAL winners (`result.winners`, a co-op team): each is credited the win unless idle; the match row names `winnerId` only', () => {
+    const team = (winners, idleIds = []) => ({
+      id: 'tiffin-centre',
+      result: () => ({
+        winnerId: U1, winners, reason: 'cleared', rounds: 100,
+        standings: [
+          { id: U1, rank: 1, score: 900, stats: idleIds.includes(U1) ? { idle: true } : { served: 4 } },
+          { id: U2, rank: 1, score: 0, stats: idleIds.includes(U2) ? { idle: true } : { cooked: 6 } },
+        ],
+      }),
+    });
+    const both = buildMatchRecord(room, team([U1, U2]));
+    expect(both.users.map((u) => [u.user_id, u.won, u.xp, u.coins])).toEqual([[U1, 1, 100, 200], [U2, 1, 100, 200]]);
+    expect(both.winnerId).toBe(U1);
+    // only the listed seats win; an idle one never does, even when listed
+    expect(buildMatchRecord(room, team([U1])).users.map((u) => u.won)).toEqual([1, 0]);
+    expect(buildMatchRecord(room, team([U1, U2], [U2])).users.map((u) => [u.won, u.xp])).toEqual([[1, 100], [0, 0]]);
+    // a malformed list is ignored, and a game without `winners` keeps the single-winner rule
+    expect(buildMatchRecord(room, team('everyone')).users.map((u) => u.won)).toEqual([1, 0]);
+    expect(buildMatchRecord(room, coop([])).users.map((u) => u.won)).toEqual([1, 0]);
+  });
+
   it('an idle top earner gets no win bonus, an all-idle table pays nobody, and nobody idle pays everybody', () => {
     const top = buildMatchRecord(room, coop([U1]));
     expect(top.users.find((u) => u.user_id === U1)).toMatchObject({ xp: 0, coins: 0, won: 0 });
