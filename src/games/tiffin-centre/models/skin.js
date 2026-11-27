@@ -41,7 +41,9 @@ uniform float uMode; uniform float uBrowShade; uniform float uBindi; uniform vec
 ${GLSL_NOISE}
 float skinH(vec3 p, float fw){
   float h = 0.0;
-  if (uMode > 0.5) { return (tcN3(p*700.0) - 0.5) * 0.25 * uPores + (tcN3(p*180.0) - 0.5) * 0.3 * uPores; }
+  // one return at the end (an early return left the HLSL result "potentially uninitialized" on D3D drivers)
+  if (uMode > 0.5) { h = (tcN3(p*700.0) - 0.5) * 0.25 * uPores + (tcN3(p*180.0) - 0.5) * 0.3 * uPores; }
+  else {
   float ax = abs(p.x);
   float poreAmp = uPores * smoothstep(0.0016, 0.0005, fw);
   h += (tcN3(p*1500.0) - 0.5) * 0.22 * poreAmp + (tcN3(p*420.0) - 0.5) * 0.22 * uPores;
@@ -67,12 +69,14 @@ float skinH(vec3 p, float fw){
   h -= tcG(nd, 0.0042) * nz * max(age*0.9, uWr.z*0.85) * 1.4;
   // marionette lines at the mouth corners
   h -= tcG(ax-0.027, 0.0035) * smoothstep(-0.08,-0.09,p.y)*smoothstep(-0.115,-0.098,p.y) * age * 0.8;
+  }
   return h;
 }
 vec3 skinAlbedo(vec3 base, vec3 p){
-  if (uMode > 0.5) { return base * (0.93 + 0.12*tcN3(p*55.0) + 0.04*tcN3(p*240.0)); }
-  float ax = abs(p.x);
   vec3 c = base;
+  if (uMode > 0.5) { c = base * (0.93 + 0.12*tcN3(p*55.0) + 0.04*tcN3(p*240.0)); }
+  else {
+  float ax = abs(p.x);
   c *= 0.93 + 0.14*tcN3(p*48.0) + 0.04*tcN3(p*210.0);
   // under-eye shadow and inner-corner darkness
   float ue = tcG(ax-0.032, 0.017)*tcG(p.y+0.015, 0.0075);
@@ -106,6 +110,7 @@ vec3 skinAlbedo(vec3 base, vec3 p){
   c = mix(c, uStubbleCol, clamp(sm*dots*uStubble*1.15, 0.0, 0.88));
   // bindi / tilak dot on the forehead
   c = mix(c, uBindiCol, uBindi*(1.0 - smoothstep(0.0028,0.0038, length(vec2(p.x, p.y-0.0155))))*1.0);
+  }
   return c;
 }
 `;

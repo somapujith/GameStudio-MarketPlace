@@ -30,7 +30,7 @@ export async function launch({ port = 9700, w = 1280, h = 800, gl = GPU_FLAGS, h
     { stdio: 'ignore' },
   );
   let ws;
-  for (let i = 0; i < 80 && !ws; i++) {
+  for (let i = 0; i < 240 && !ws; i++) { // up to 60 s: on a machine shared with other builds Chrome can take a while to come up
     try {
       const list = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
       ws = list.find((t) => t.type === 'page')?.webSocketDebuggerUrl;

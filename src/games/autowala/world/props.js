@@ -25,6 +25,7 @@ import { foliageMaterial, glowMaterial } from '../render/materials.js';
 import { chunkedInstances } from '../render/chunks.js';
 import { canvasTexture } from '../render/textures.js';
 import { freezeMatrices } from '../render/merge-static.js';
+import { createRoadProbe, dropSpotsOnRoads } from './prop-spots.js';
 
 function frondGeometry() {
   // one palm frond: an arched, drooping leaf strip along +x
@@ -137,6 +138,12 @@ export function buildProps(scene, city, colliders, shared, seed) {
     palmSpots.push({ x: L.cx + Math.cos(t) * rx, z: L.cz + Math.sin(t) * rz, h: rng.range(0.9, 1.3), r: rng.range(0, 6.28) });
   }
 
+  // nothing solid in a lane: the park fill and the lamp / palm / tree offsets of one road can land on ANOTHER carriageway (Necklace Road)
+  const roadProbe = createRoadProbe(city);
+  dropSpotsOnRoads(roadProbe, treeSpots, 1.2);
+  dropSpotsOnRoads(roadProbe, palmSpots, 1.2);
+  dropSpotsOnRoads(roadProbe, lampSpots, 0.6);
+
   // trunks and posts are solid now that the auto may use the pavement (the same soft guardrail contact as a wall)
   for (const t of treeSpots) colliders.addCentered(t.x, t.z, 0.8, 0.8, 'prop', 5);
   for (const p of palmSpots) colliders.addCentered(p.x, p.z, 0.7, 0.7, 'prop', 9);
@@ -242,14 +249,12 @@ export function buildProps(scene, city, colliders, shared, seed) {
     }, { receiveShadow: false }),
   );
 
-  // ---- real lights near the player: a pool that jumps to the closest lamps.
-  // The number of VISIBLE point lights is part of every lit material's shader (three compiles a program per light count), so it must
-  // never change while playing: they stay on all day with intensity 0 and only the quality tier (setLightCount) changes the count.
-  // (Switching them on at dusk used to recompile ~90 programs mid-game, and the boot compile built 88 programs for 8 lights that
-  // were then thrown away on the first frame.)
+  // ---- real lights near the player: a pool that jumps to the closest lamps. They are on at night only: the number of VISIBLE point lights is
+  // part of every lit material's shader, and game/warm.js builds both light sets (day, night) behind the loading screen, so the dusk switch
+  // compiles nothing. Every light is ~4 GL uniform calls on each program switch and ~70 ALU ops per lit pixel, which is why the tiers ask
+  // for few of them (game/light-sets.js POOL_LIGHTS) and why they are off by day.
   const POOL = 8;
-  const LIGHT_SHARE = 0.6;
-  let active = POOL; // how many of them exist for the shaders (quality)
+  let active = POOL; // how many of them are on at night (quality)
   const lights = [];
   for (let i = 0; i < POOL; i++) {
     const pl = new PointLight(0xffb35c, 0, 30, 2);
@@ -269,14 +274,13 @@ export function buildProps(scene, city, colliders, shared, seed) {
   function update(focus, night) {
     poolMat.opacity = night * 0.6;
     const on = night > 0.18;
-    // re-pick the closest lamps only after the player moved a few metres (it is a sort of ~60 lamps), and when the dusk level changed
-    const moved = (focus.x - lastX) ** 2 + (focus.z - lastZ) ** 2 > 4;
+    for (let i = 0; i < POOL; i++) lights[i].visible = on && i < active;
     if (!on) {
-      if (lastNight !== 0) for (let i = 0; i < POOL; i++) lights[i].intensity = 0;
-      lastNight = 0;
       lastX = 1e9;
       return;
     }
+    // re-pick the closest lamps only after the player moved a few metres (it is a sort of ~60 lamps), and when the dusk level changed
+    const moved = (focus.x - lastX) ** 2 + (focus.z - lastZ) ** 2 > 4;
     if (!moved && Math.abs(night - lastNight) < 0.004) return;
     lastNight = night;
     lastX = focus.x;
@@ -308,13 +312,8 @@ export function buildProps(scene, city, colliders, shared, seed) {
 
   freezeMatrices(group); // the trees, lamps and bunting never move: no per-frame matrix work
 
-  // Game.applyQuality asks for 2 / 5 / 8; every point light costs ~4 GL uniform calls on EVERY program switch (~60 a frame) and ~70 ALU ops on
-  // every lit pixel, so the shaders get 60% of that (2 / 3 / 5): the nearest lamps keep their light, the farther ones keep their glow pool.
   const setLightCount = (n) => {
-    active = Math.max(0, Math.min(POOL, Math.ceil((n | 0) * LIGHT_SHARE)));
-    for (let i = 0; i < POOL; i++) lights[i].visible = i < active;
+    active = Math.max(0, Math.min(POOL, n | 0));
     lastX = 1e9; // re-pick on the next update
-  };
-  setLightCount(POOL);
-  return { group, meshes, update, setLightCount, lampSpots, treeSpots, palmSpots, counts: { trees: treeSpots.length, palms: palmSpots.length, lamps: lampSpots.length, bunting: bunting.length } };
+  };  return { group, meshes, update, setLightCount, lampSpots, treeSpots, palmSpots, counts: { trees: treeSpots.length, palms: palmSpots.length, lamps: lampSpots.length, bunting: bunting.length } };
 }

@@ -2,7 +2,7 @@
 //   buildParcelBag(seed)   a packed takeaway bag: a white carry bag with red handles and the tiffin boxes bulging in it (customers with `parcel`)
 //   buildRegularStar()     a small gold five-pointed star that floats and turns above a regular's head
 // Both are shared-geometry groups: { group, update(dt, t), dispose() }. The bag's origin is the grip (hangs along -y), the star's the point above the head.
-import { AdditiveBlending, BoxGeometry, CylinderGeometry, DoubleSide, ExtrudeGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry, Shape, TorusGeometry } from 'three';
+import { AdditiveBlending, BoxGeometry, CircleGeometry, CylinderGeometry, DoubleSide, ExtrudeGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry, Shape, TorusGeometry } from 'three';
 import { disposeObject, num, sharedGeo, sharedMat } from './util.js';
 
 const mat = (key, color, rough = 0.7, extra = {}) => sharedMat(`marks:${key}`, () => new MeshStandardMaterial({ color, roughness: rough, metalness: 0, ...extra }));
@@ -63,7 +63,8 @@ export function buildRegularStar() {
   const star = new Mesh(starGeo(), starM);
   inner.add(star);
   const glowM = new MeshBasicMaterial({ color: '#ffd35a', transparent: true, opacity: 0.22, depthWrite: false, blending: AdditiveBlending, toneMapped: false, side: DoubleSide });
-  const glow = new Mesh(sharedGeo('marks:glow', () => new PlaneGeometry(0.26, 0.26)), glowM);
+  // a round halo: the old 26 cm square plane showed as a translucent rectangle behind the star (tf-ui QA, docs/perf/tf-ui.md)
+  const glow = new Mesh(sharedGeo('marks:glowDisc', () => new CircleGeometry(0.13, 24)), glowM);
   glow.position.z = -0.03;
   inner.add(glow);
   return {

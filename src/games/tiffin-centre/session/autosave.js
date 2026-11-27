@@ -99,6 +99,7 @@ export function validateSnapshot(snap, { stateVersion } = {}) {
     if (!isObj(d)) return { ok: false, reason: 'driver' };
     if (!isInt(d.restarts) || d.restarts < 0 || d.restarts > MAX_TUTORIAL_RESTARTS) return { ok: false, reason: 'driver' };
     if (!isInt(d.index) || d.index < 0 || d.index > 500) return { ok: false, reason: 'driver' };
+    if (d.steps !== undefined && !(isInt(d.steps) && d.steps >= 1 && d.steps <= 500)) return { ok: false, reason: 'driver' }; // how many steps the lesson had (optional: older saves lack it)
     const j = validateJournal(d.journal);
     if (!j.ok) return { ok: false, reason: j.reason };
   } else if (snap.driver !== null && snap.driver !== undefined) return { ok: false, reason: 'driver' };
@@ -153,7 +154,7 @@ export function describeSavedShift(snapshot) {
   } catch {
     /* keep the generic title */
   }
-  return {
+  const out = {
     title,
     level: snapshot.level,
     pace: snapshot.pace,
@@ -163,6 +164,12 @@ export function describeSavedShift(snapshot) {
     money: isFiniteNum(s.money) ? s.money : 0,
     savedAt: snapshot.savedAt,
   };
+  // the training clock is frozen (3600 ticks that never run out): how far a tutorial got is its STEP, not its game time
+  if (snapshot.mode === 'tutorial' && snapshot.driver && isInt(snapshot.driver.steps) && isInt(snapshot.driver.index)) {
+    out.step = Math.min(snapshot.driver.steps, snapshot.driver.index + 1);
+    out.steps = snapshot.driver.steps;
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

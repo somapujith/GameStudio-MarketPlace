@@ -1,6 +1,7 @@
 // Pure helpers behind the game listing page: what to show, in which order. No React, no network, so every
 // rule is unit-tested (platformGame.test.js). Every manifest field read here is optional.
 import { getCategory } from '@/games/registry.js';
+import { orientationDetail } from './orientationPolicy.js';
 
 const str = (v) => (typeof v === 'string' ? v.trim() : '');
 const strList = (v) => (Array.isArray(v) ? v.map(str).filter(Boolean) : []);
@@ -84,6 +85,7 @@ export function detailRows(game) {
     ['Age rating', str(game.ageRating)],
     ['Languages', strList(game.languages).join(', ')],
     ['Platforms', strList(game.platforms).join(', ')],
+    ['Orientation', orientationDetail(game)], // manifest `orientation: 'landscape'`: the generic "Best played in landscape" fact
     ['Players', playersLabel(game.players)],
     ['Duration', str(game.duration)],
     ['Category', cat ? cat.label : ''],

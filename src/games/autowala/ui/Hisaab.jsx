@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import { groupIndian } from './hud/hudLogic.js';
 import { StarShape } from './hud/icons.jsx';
 import { focusFirst, useMenuInput } from './menus/useMenuInput.js';
-import { expenseRows, incomeRows, sparkBars, verdict } from './career/hisaabModel.js';
+import { expenseRows, incomeRows, liveView, sparkBars, verdict } from './career/hisaabModel.js';
 import { CloseGlyph } from './menus/glyphs.jsx';
 import { useMenuLayout } from './menus/menuLayout.js';
 import './menus/sheet.css';
@@ -46,7 +46,7 @@ function HisaabPanel({ game, snap }) {
   const net = Math.round(h.net);
   const v = verdict(h);
   const bars = sparkBars(h.history);
-  const lad = h.ladder || snap.career?.ladder;
+  const { ladder: lad, repairCost } = liveView(h, snap.career); // live: the record `h` is frozen at the end of the day
   const owedRent = h.rent?.owed || 0;
   const buy = () => career?.buyAuto?.();
   const repair = () => career?.repair?.({ partial: true });
@@ -125,9 +125,9 @@ function HisaabPanel({ game, snap }) {
               {h.emi.cleared && <strong className="is-ok"> Loan cleared: the auto is all yours!</strong>}
             </p>
           )}
-          {h.repairCost > 0 && (
+          {repairCost > 0 && (
             <p>
-              The auto needs {rs(h.repairCost)} of work at Mama’s Garage.{' '}
+              The auto needs {rs(repairCost)} of work at Mama’s Garage.{' '}
               <button type="button" data-nav className="aw-career-btn is-small" onClick={repair} disabled={snap.wallet < 50}>Quick fix</button>
             </p>
           )}

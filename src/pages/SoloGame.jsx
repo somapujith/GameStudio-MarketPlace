@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { getGame } from '@/games/registry.js';
+import { ManifestOrientationGate } from '@/platform/game/OrientationGate.jsx';
 import PageLoading from '@/platform/game/PageLoading.jsx';
+import { paths } from '@/platform/paths.js';
 import Unavailable from '@/platform/game/Unavailable.jsx';
 
 /**
@@ -30,6 +32,11 @@ export default function SoloGame() {
 
   if (!game || typeof loader !== 'function') return <Unavailable reason="unknown" query={gameId} />;
   if (failed) return <Unavailable reason="unknown" query={gameId} />;
-  if (!Screen) return <PageLoading fullscreen />;
-  return <Screen game={game} />;
+  // `orientation: 'landscape'` in the manifest: on a phone or tablet held upright the screen (loading or playing) is covered by "turn your phone"
+  // and paused through the OrientationGate context; desktop is never gated (src/platform/game/OrientationGate.jsx)
+  return (
+    <ManifestOrientationGate game={game} backTo={paths.game(game.id)}>
+      {Screen ? <Screen game={game} /> : <PageLoading fullscreen />}
+    </ManifestOrientationGate>
+  );
 }

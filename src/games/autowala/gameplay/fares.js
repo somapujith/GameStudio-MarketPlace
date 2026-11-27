@@ -31,7 +31,7 @@ import { randomLook } from '../sim/autoModel.js';
 import { DISTRICTS, districtAt } from '../world/layout.js';
 import { findRoute, routeLength } from '../world/routing.js';
 import { FAMOUS_SPOTS, FARE, KINDS, PLACE_KINDS, PLACE_PAIR, makeIdentity, pickKind, pickWeighted } from './fare-kinds.js';
-import { HARD_BRAKE, brakeHit, complaintReason, crashHit, estimateFare, meterNow, moodStep, patienceStep, rushTimeLimit, settleRide } from './fare-math.js';
+import { brakeHit, complaintReason, crashHit, estimateFare, hardStopStep, meterNow, moodStep, newHardStop, patienceStep, rushTimeLimit, settleRide } from './fare-math.js';
 import { nearestRoadInfo, pickDestination, pickHailSpot, pickPoiHailSpot, spotFromPlace } from './fare-spots.js';
 import { createMarkerKit } from './fare-markers.js';
 import { GROUND_Y, clearPassengers, clearSeat, createRig, createWalkers, disposeRig, poseWalk, poseWave, seatPassengers, seatRider } from './customers.js';
@@ -290,9 +290,12 @@ export function installFares(ctx) {
     return false;
   }
 
+  /** Where a customer's feet are: the pavement slab, or the bare ground in a park block (there is no slab there, they used to float 20 cm). */
+  const groundAt = (x, z) => (typeof ctx.world?.heightAt === 'function' ? ctx.world.heightAt(x, z) : GROUND_Y);
+
   function attach(c) {
     c.rig = createRig(c);
-    c.rig.position.set(c.x, GROUND_Y, c.z);
+    c.rig.position.set(c.x, groundAt(c.x, c.z), c.z);
     c.rig.rotation.y = c.face;
     scene.add(c.rig);
     c.near = true;
@@ -350,7 +353,7 @@ export function installFares(ctx) {
     boarding = null;
     c.x = c.rig.position.x;
     c.z = c.rig.position.z;
-    c.rig.position.y = GROUND_Y;
+    c.rig.position.y = groundAt(c.x, c.z);
     waiting.push(c);
   }
 
@@ -393,7 +396,7 @@ export function installFares(ctx) {
     boarding = null;
     if (share && riders.length) return completeShare(c);
     ride = {
-      driven: 0, waited: 0, elapsed: 0, lastDist: v.distance, prevFwd: v.fwd,
+      driven: 0, waited: 0, elapsed: 0, lastDist: v.distance, stop: newHardStop(v.fwd),
       scenic: false, scenicT: 0, complainT: 4, routeT: ROUTE.checkEvery, routeI: 0, shareOk: false, sharerId: null, shareHinted: false,
     };
     const rider = buildRider(c, 0);
@@ -546,13 +549,8 @@ export function installFares(ctx) {
       r.scenicT = 0.6;
       r.scenic = sceneryNear();
     }
-    // a hard stop from speed
-    let hardStop = false;
-    if (dt > 0) {
-      const decel = (r.prevFwd - v.fwd) / dt;
-      hardStop = r.prevFwd > 7 && decel > HARD_BRAKE;
-    }
-    r.prevFwd = v.fwd;
+    // a hard stop from speed: once per stop, not once per frame of braking
+    const hardStop = hardStopStep(r.stop, v.fwd, dt);
     const shared = riders.length > 1;
     dropQueue.length = 0;
     for (let i = 0; i < riders.length; i++) {
@@ -649,6 +647,7 @@ export function installFares(ctx) {
       trip = riders[0].t;
       trip.shared = null;
       riders[0].rd.host = false;
+      ride.shareOk = false; // the second seat was used: no third rider (it would be built on the same seat slot and be invisible)
       fares.trip = trip;
     } else {
       choices.cancel();
@@ -701,7 +700,7 @@ export function installFares(ctx) {
     ctx.emit('fare:review', { stars: review.stars, text: review.text, te: review.te, customer: { id: t.id, name: t.name, te: t.te, kind: t.kind }, fare, tip });
     const stars = '★'.repeat(res.stars);
     const cut = rd.fareMul < 0.99 ? ' (cut)' : '';
-    const extra = bonus > 0 ? ` +Rs ${bonus} urgent` : '';
+    const extra = bonus > 0 ? ` (incl. Rs ${bonus} urgent bonus)` : ''; // the bonus is already inside `fare`
     const text = res.late ? `${t.name} arrived late: Rs ${fare} ${stars}` : tip > 0 ? `Rs ${fare}${extra} + Rs ${tip} tip ${stars}${cut}` : `Fare Rs ${fare}${extra} ${stars}${cut}`;
     ctx.toast(text, { tone: res.late || res.stars <= 2 || rd.fareMul < 0.99 ? 'bad' : tip > 0 || bonus > 0 ? 'gold' : 'good', ms: 3200 });
     sayLine(ctx, { id: 'fare:review', speaker: t.name, kind: t.kind, line: { en: `${stars}  "${review.text}"`, te: `${stars}  ${review.te}` } });
@@ -879,7 +878,9 @@ export function installFares(ctx) {
 
   const system = {
     update(dt) {
-      if (!ctx.state.menu) {
+      if (ctx.state.menu) {
+        if (ride) ride.stop.fwd = v.fwd; // the menu holds the auto: closing it at speed must not read as a crash stop
+      } else {
         clockT += dt;
         if (riders.length) updateRide(dt);
         updateWaiting(dt);

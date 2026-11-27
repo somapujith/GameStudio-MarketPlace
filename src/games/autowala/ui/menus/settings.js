@@ -1,6 +1,7 @@
 // Player settings (saved in profile.data.settings) and their live effects: sound on/off, the four volume levels, the Telugu labels
 // switch, and the little menu click sound. Quality is saved too, but only takes effect on the next load (the renderer is built once).
-import { getAudio, isMuted, setMuted } from '../../audio/ctx.js';
+import { getAudio, isMuted, setMasterLevel, setMuted } from '../../audio/ctx.js';
+import { getBuses } from '../../audio/sound-bus.js';
 import { cycleQuality, masterGain, normalizeAudio } from './menuNav.js';
 
 export function readSettings(game) {
@@ -16,6 +17,7 @@ export function readSettings(game) {
 /** Push the saved sound settings into the shared audio graph (call after a user gesture so the context may start). */
 export function applyAudio(game) {
   const s = readSettings(game);
+  setMasterLevel(s.audio.master); // remembered too, for a context that starts after this
   setMuted(!s.sound);
   const a = getAudio();
   if (a && a.master) a.master.gain.value = masterGain(s.audio.master, !s.sound);
@@ -53,7 +55,8 @@ export function blip(kind = 'move') {
     if (isMuted()) return;
     const a = getAudio();
     if (!a) return;
-    const { ac, master } = a;
+    const { ac } = a;
+    const master = getBuses()?.fx ?? a.master; // the menu clicks are effects
     if (ac.state === 'suspended') ac.resume();
     const t = ac.currentTime;
     const freq = kind === 'ok' ? [660, 990] : kind === 'back' ? [440, 330] : [520, 560];

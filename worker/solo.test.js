@@ -412,7 +412,9 @@ describe('POST /api/solo/:gameId/finish: rejections', () => {
 
   it('expired, tampered and missing tokens are 401 / 400', async () => {
     const old = await tokenFor(ME, { now: nowSec() - SOLO_TOKEN_SECONDS - 100 });
-    expect((await finish(old.token)).status).toBe(401);
+    const expired = await finish(old.token);
+    expect(expired.status).toBe(401);
+    expect(expired.json.code).toBe('run-expired'); // so the client does not tell a signed-in player to sign in
     const t = await tokenFor();
     const [h, p, s] = t.token.split('.');
     const forged = Buffer.from(JSON.stringify({ ...JSON.parse(Buffer.from(p, 'base64url').toString()), iat: nowSec() - 7000 })).toString('base64url');

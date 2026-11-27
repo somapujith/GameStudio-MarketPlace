@@ -15,7 +15,7 @@ import {
   ARRIVAL_RETRY, REQUEST, STATIONS, STATION_KINDS, TICK_MS, daypartOf, levelDef, levelOps,
 } from './catalog.js';
 import { seedToUint32 } from '../rng.js';
-import { billOf, comboBonus, flawedQuality, priceOf, qualityOf, standingsOf, starsFor, tipFor } from './scoring.js';
+import { billOf, comboBonus, flawedQuality, priceOf, qualityOf, standingsOf, starsFor, tipFor, winnersOf } from './scoring.js';
 import { fillSchedule, isWeekend, menuFor, patienceFor, seedRegulars } from './schedule.js';
 import { validTarget } from './movement.js';
 import { carryOver, earn, profitOf, summary } from './economy.js';
@@ -183,8 +183,9 @@ export function result(s) {
     const p = s.players[id];
     if (p.ops) { team.prepped += p.ops[0]; team.tended += p.ops[1]; team.gasSwaps += p.ops[2]; team.bought += p.ops[3]; }
   }
+  const winners = s.cfg.tutorial ? (standings.length ? [standings[0].id] : []) : winnersOf(standings, stars, s.paid);
   return {
-    winnerId: stars >= 1 && standings.length ? standings[0].id : null, reason, standings, stars, money: s.money, level: s.level,
+    winnerId: stars >= 1 && standings.length ? standings[0].id : null, winners, reason, standings, stars, money: s.money, level: s.level,
     ...sum, served: s.served, lost: s.lost, unpaid: s.unpaid, bestCombo: s.bestCombo, combo: s.bestCombo, stats: team, team,
   };
 }
@@ -451,6 +452,8 @@ const H = {
     if (p.hands.length >= HANDS_MAX) return 'Your hands are full';
     const q = flawedQuality(qualityOf(s.tick - sl.readyAt, sl.dish), sl.fl);
     const dish = sl.dish;
+    const cook = sl.by && hasOwn(s.players, sl.by) ? s.players[sl.by] : null;
+    if (cook) cook.cooked = (cook.cooked || 0) + 1; // the dish reached a pair of hands: the cook did real work (a burnt one never counts)
     p.hands.push({ dish, q });
     clearSlot(sl);
     ev.push({ type: 'take', station: station.id, slot: a.slot, dish, q, by: p.id });
@@ -528,6 +531,25 @@ const H = {
     s.emotes.push({ by: p.id, e: a.e, tick: s.tick });
     if (s.emotes.length > EMOTE_KEEP) s.emotes.splice(0, s.emotes.length - EMOTE_KEEP);
     ev.push({ type: 'emote', by: p.id, e: a.e });
+    return undefined;
+  },
+
+  /**
+   * A seat leaves the running shift (the room server's `resignAction`; the adapter's allow-list keeps clients from sending it). What they
+   * hold must not be stranded in hands that will never act again: each dish goes to the waiting customer (most urgent first) who still needs
+   * it, else into the bin. They stay in `players` (their counters still count for the result) flagged `left`; the flag clears when they act again.
+   */
+  leave(s, a, ev, p) {
+    if (p.left) return NOOP;
+    for (let i = p.hands.length - 1; i >= 0; i--) {
+      const dish = p.hands[i].dish;
+      let who = null;
+      for (const c of s.customers) if (c.st === 'waiting' && needsOf(c).includes(dish) && (!who || c.patience < who.patience)) who = c;
+      if (who) H.serve(s, { customer: who.id, hand: i }, ev, p);
+      else H.discard(s, { hand: i }, ev, p);
+    }
+    p.left = true; p.at = null;
+    ev.push({ type: 'player-left', by: p.id });
     return undefined;
   },
 
@@ -645,6 +667,7 @@ export function applyAction(state, action) {
     p = s.players[action.playerId];
   }
   const ev = [];
+  if (p && p.left && action.type !== 'leave') delete p.left; // a seat that acts again has come back (the copy is only kept when the action applies)
   const err = H[action.type](s, action, ev, p);
   if (err === NOOP) return { state, events: [] };
   if (err) return fail(err);

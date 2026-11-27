@@ -2,6 +2,7 @@
 // against the camera, never loud: a small pool of voices (polyphony cap), a global cooldown, and nothing at all while the
 // browser has not unlocked audio yet.
 import { getAudio } from '../audio/ctx.js';
+import { getBuses } from '../audio/sound-bus.js';
 
 const MAX_VOICES = 4;
 const COOLDOWN = 0.07; // s between two horns
@@ -50,7 +51,8 @@ export function createTrafficAudio(camera) {
   function honk(x, z, kind = 'car', beeps = 1) {
     const a = getAudio();
     if (!a || a.ac.state !== 'running') return false;
-    const { ac, master } = a;
+    const { ac } = a;
+    const master = getBuses()?.fx ?? a.master; // the effects slider
     if (ac0 !== ac) {
       ac0 = ac;
       voices.length = 0;
@@ -113,7 +115,8 @@ export function createTrafficAudio(camera) {
   function thud(x, z, strength = 0.5) {
     const a = getAudio();
     if (!a || a.ac.state !== 'running') return;
-    const { ac, master } = a;
+    const { ac } = a;
+    const master = getBuses()?.fx ?? a.master; // the effects slider
     const { d, pan } = listen(x, z);
     if (d > REACH) return;
     const vol = Math.min(0.28, 0.07 + 0.22 * strength) / (1 + (d / 25) ** 2);

@@ -728,6 +728,13 @@ export class GameRoom extends DurableObject {
       member.left = false;
       if (r.status === 'lobby' && !member.piece) member.piece = this.freePieces(userId)[0] ?? null;
     }
+    // The first player back at a PAUSED stall (adapter.pauseWhenEmpty): its timers start again from now, so the next tick is a full
+    // second away instead of overdue (the clock stood still while nobody was here).
+    if (r.status === 'playing' && r.state && this.adapter.pauseWhenEmpty === true && this.isEmpty()) {
+      r.lastApplyAt = now;
+      r.deadlines = {};
+      this.syncDeadlines();
+    }
     this.hubSent.delete(userId); // (re)connecting: make sure their hub hears where they are
     delete r.disc[userId];
     delete r.afk[userId];
@@ -1176,7 +1183,8 @@ export class GameRoom extends DurableObject {
     };
     const candidates = [];
 
-    const deadlines = typeof a.deadlines === 'function' ? a.deadlines(r.state) || [] : [];
+    // A real-time game that opts in (`pauseWhenEmpty`) stands still while no seat has a live socket: no timer, no wake-up per tick.
+    const deadlines = typeof a.deadlines === 'function' && !(a.pauseWhenEmpty === true && this.isEmpty()) ? a.deadlines(r.state) || [] : [];
     for (const d of deadlines) {
       const startedAt = this.deadlineStart(d);
       candidates.push({ at: startedAt + d.afterMs, id: d.playerId, action: d.action, timeout: false });
@@ -1210,6 +1218,14 @@ export class GameRoom extends DurableObject {
     let best = null;
     for (const c of candidates) if (!best || c.at < best.at) best = c;
     return best;
+  }
+
+  /** True when no seat that has not left holds a live socket (nobody is at the table). */
+  isEmpty() {
+    const r = this.room;
+    if (!r) return true;
+    const connected = this.connectedIds();
+    return !r.players.some((p) => !p.left && connected.has(p.id));
   }
 
   /** Reconcile `disc` with the live sockets (covers restarts that dropped sockets silently). */

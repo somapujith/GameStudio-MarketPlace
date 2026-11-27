@@ -10,7 +10,7 @@ import { CHIP_H, CHIP_W, layoutEdgeChips } from './offscreen.js';
 
 const SIDE_WORD = { left: 'on your left', right: 'on your right', behind: 'behind you' };
 
-/** The free rectangle between the HUD panels, in the HUD's own coordinates (edge chips and head bubbles must not sit on the banner, the dock, the chit rail or the chalk board). */
+/** The free rectangle between the HUD panels, in the HUD's own coordinates (edge chips and head bubbles must not sit on the banner, the dock, the chit rail, the chalk board or the tutorial's coach bar). */
 export function freeBounds(root, w, h) {
   const out = { top: 0, bottom: h, left: 0, right: w };
   if (!root) return out;
@@ -35,6 +35,9 @@ export function freeBounds(root, w, h) {
   // the subtitle bar (an empty one is display: none, so it measures zero and is skipped) sits at the foot of the scene: bubbles stay above it
   const subs = rect('.tc-hud-subs');
   if (subs && subs.top > out.top) out.bottom = Math.min(out.bottom, subs.top);
+  // the tutorial's coach bar (ui/menus: a sibling layer of the HUD) hangs at the top of the middle: bubbles and arrows stay below it
+  const cr = root.parentElement?.querySelector?.('.tc-menu-coachbar')?.getBoundingClientRect?.();
+  if (cr && cr.height > 0 && cr.top - box.top < h / 2) out.top = Math.max(out.top, cr.bottom - box.top + 4);
   if (out.bottom - out.top < CHIP_H * 2) {
     out.top = 0;
     out.bottom = h;

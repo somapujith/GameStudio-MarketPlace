@@ -4,7 +4,7 @@
 // and disposed when replaced, so flicking through the garage never leaks.
 //
 // Events consumed (ctx.game.on):  loadout { loadout, preview }  -> re-apply;  honk -> play the saved horn.
-import { Color, MeshBasicMaterial, PMREMGenerator } from 'three';
+import { Color, HalfFloatType, MeshBasicMaterial, PMREMGenerator, PerspectiveCamera, WebGLRenderTarget } from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { playHorn, stopHorn } from '../audio/horns.js';
 import {
@@ -439,13 +439,37 @@ function setEnvIntensity(auto, level) {
   }
 }
 
-/** Give the auto a subtle image-based reflection (PMREM of a neutral room). Returns a disposer. */
-export function attachEnvironment(auto, renderer) {
+/**
+ * Start building the environment map's room shaders now, in the background: rendering the room is the first draw of its three or four
+ * materials, and each first draw waits for the driver to compile and link (~100-300 ms apiece). Started at the beginning of the game's
+ * boot, the driver has finished by the time `attachEnvironment` runs. Returns what to hand to it, or null (then it just does it all itself).
+ */
+export function prepareEnvironment(renderer) {
+  try {
+    const pm = new PMREMGenerator(renderer);
+    const room = new RoomEnvironment();
+    // the room is drawn into a render target (PMREM's cube): a different program variant from drawing to the canvas
+    const target = new WebGLRenderTarget(2, 2, { type: HalfFloatType });
+    const prev = renderer.getRenderTarget();
+    renderer.setRenderTarget(target);
+    try {
+      renderer.compile(room, new PerspectiveCamera(90, 1, 0.1, 100));
+    } finally {
+      renderer.setRenderTarget(prev);
+    }
+    return { pm, room, target };
+  } catch {
+    return null;
+  }
+}
+
+/** Give the auto a subtle image-based reflection (PMREM of a neutral room). `prepared` comes from `prepareEnvironment`. Returns a disposer. */
+export function attachEnvironment(auto, renderer, prepared = null) {
   const st = stateOf(auto);
   let pm = null;
   try {
-    pm = new PMREMGenerator(renderer);
-    const room = new RoomEnvironment();
+    pm = prepared?.pm || new PMREMGenerator(renderer);
+    const room = prepared?.room || new RoomEnvironment();
     st.envMap = pm.fromScene(room, 0.04).texture;
     room.traverse((o) => {
       o.geometry?.dispose?.();
@@ -456,6 +480,7 @@ export function attachEnvironment(auto, renderer) {
     st.envMap = null;
   } finally {
     pm?.dispose();
+    prepared?.target?.dispose();
   }
   refreshEnv(auto);
   return () => {
@@ -526,7 +551,7 @@ export function installCustomization(ctx) {
   installPersonWarmup(ctx); // (the customers' shader is compiled with everything else at boot)
   let disposeEnv = () => {};
   try {
-    disposeEnv = attachEnvironment(auto, ctx.gfx.renderer);
+    disposeEnv = attachEnvironment(auto, ctx.gfx.renderer, ctx.envPrep);
   } catch (err) {
     console.warn('[autowala] customisation environment failed', err);
   }

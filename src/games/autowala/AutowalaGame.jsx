@@ -19,6 +19,7 @@ import Subtitles from './ui/Subtitles.jsx';
 import QuestLog from './ui/QuestLog.jsx';
 import Hisaab from './ui/Hisaab.jsx';
 import Radio from './ui/Radio.jsx';
+import useOrientationHold from './ui/useOrientationHold.js';
 import './ui/autowala.css';
 
 // What the loading bar says while each stage of the build runs.
@@ -63,13 +64,14 @@ export default function AutowalaGame() {
   const [failure, setFailure] = useState(null); // 'webgl' | 'error' when the game could not start
   const [gpuLost, setGpuLost] = useState(false);
   const [loading, setLoading] = useState({ text: STAGE_TEXT.start, pct: 0 });
+  useOrientationHold(game); // a phone held upright (the hub's orientation gate covers the screen): no loop, no sound, back at once in landscape
 
   useEffect(() => {
     let g = null;
     let ro = null;
     let dead = false;
     (async () => {
-      await loadFonts();
+      const fonts = loadFonts(); // the fonts download while the city builds (only the UI needs them, and it mounts after the build)
       if (dead || !canvas.current) return;
       const t0 = performance.now();
       try {
@@ -77,6 +79,7 @@ export default function AutowalaGame() {
           { canvas: canvas.current, seed: CITY_SEED, hooks: { onSnapshot: setSnap, userId, onContext: (st) => setGpuLost(st === 'lost') } },
           (stage, n) => !dead && setLoading({ text: STAGE_TEXT[stage] || 'Loading', pct: Math.min(99, Math.round((n / TOTAL_STEPS) * 100)) }),
         );
+        await fonts;
         if (dead) {
           g.dispose(); // the player left while it was loading
           return;

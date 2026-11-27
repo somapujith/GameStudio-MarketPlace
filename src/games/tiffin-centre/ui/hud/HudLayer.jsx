@@ -18,7 +18,6 @@ import EdgeIndicators from './EdgeIndicators.jsx';
 import HandsTray from './HandsTray.jsx';
 import HudIcon from './HudIcon.jsx';
 import OrderRail from './OrderRail.jsx';
-import OrientationHint from './OrientationHint.jsx';
 import PrepSheet from './PrepSheet.jsx';
 import { HelpCard, QuickBar } from './QuickBar.jsx';
 import StallStatus from './StallStatus.jsx';
@@ -38,9 +37,9 @@ import { boardMap, boardView, dishShort, gasView, opsOn, prepView, tendHotkeyTar
 import { LOOK, createGesture, isTurned, lookKeyIntent, stepInertia } from './look.js';
 import { pickBubbles, pickSubtitle } from './dialogue.js';
 import { createProjector } from './projector.js';
-import { usePrefs, voiceAvailable } from './prefs.js';
+import { usePrefs } from './prefs.js';
 import { useDialogue } from './useDialogue.js';
-import { createPointerGuard, hintSeen, markHintSeen, shouldShowLandscapeHint, useFullscreen, useViewport } from './mobileUi.js';
+import { createPointerGuard, useFullscreen } from './mobileUi.js';
 import './hud.css';
 
 const EMPTY = new Set();
@@ -90,22 +89,7 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
   const projector = useMemo(() => createProjector(), []);
   const dlg = useDialogue(session, audio, { scene });
   const touch = useCoarse();
-  const viewport = useViewport();
   const fullscreen = useFullscreen();
-  const [tipSeen, setTipSeen] = useState(() => hintSeen());
-  const showTip = shouldShowLandscapeHint({ viewport, playing: status === 'playing', seen: tipSeen, touch });
-  const dismissTip = () => {
-    markHintSeen();
-    setTipSeen(true);
-  };
-  useEffect(() => {
-    if (!showTip) return undefined;
-    const t = setTimeout(dismissTip, 14000);
-    return () => clearTimeout(t);
-  }, [showTip]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (!tipSeen && viewport.landscape && viewport.phone && touch) dismissTip(); // they found it themselves
-  }, [tipSeen, viewport.landscape, viewport.phone, touch]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     session?.tutorial?.setPointer?.(touch ? 'touch' : 'keyboard');
   }, [touch, session]);
@@ -753,9 +737,9 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
     return () => host.removeAttribute('data-hud-sheet');
   }, [sheetOpen]);
 
-  // Publish where the HUD's bands end on the game root: `--tc-hud-top` (the bottom edge of the banner, takings plate and chalk board) and
-  // `--tc-hud-bottom` (the top of the chit strip and dock, as a distance from the bottom), so the coach bar (a sibling layer in
-  // ui/menus) sits clear of the stall and of the HUD. The projector also learns the HUD's size here.
+  // Publish where the HUD's bands end on the game root: `--tc-hud-top` (the bottom edge of the banner and takings plate), `--tc-hud-bottom` (the top
+  // of the hands and dock, as a distance from the bottom), `--tc-hud-left` / `--tc-hud-right` (the order rail and the dish board), so the coach bar (a
+  // sibling layer in ui/menus) sits in the free middle of the stall and clear of the HUD. The projector also learns the HUD's size here.
   const hasState = !!state;
   useEffect(() => {
     const root = rootRef.current;
@@ -781,6 +765,13 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
         if (r.height > 0 && r.width >= w * 0.6) lowest = Math.min(lowest, r.top - hostBox.top);
       }
       host.style.setProperty('--tc-hud-bottom', `${Math.ceil(hostBox.height - lowest + 8)}px`);
+      // the free middle between the order rail (left) and the dish board (right): the coach bar is centred in it
+      const rr = root.querySelector('.tc-hud-railbox')?.getBoundingClientRect();
+      const bb = root.querySelector('.tc-hud-board')?.getBoundingClientRect();
+      const left = rr && rr.height > 0 && rr.width < w * 0.6 ? Math.max(0, rr.right - hostBox.left) + 8 : 0;
+      const right = bb && bb.height > 0 && bb.width < w * 0.6 ? Math.max(0, hostBox.right - bb.left) + 8 : 0;
+      host.style.setProperty('--tc-hud-left', `${Math.ceil(left)}px`);
+      host.style.setProperty('--tc-hud-right', `${Math.ceil(right)}px`);
       projector.size.w = root.clientWidth;
       projector.size.h = root.clientHeight;
     };
@@ -797,6 +788,8 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
       window.removeEventListener('resize', measure);
       host.style.removeProperty('--tc-hud-top');
       host.style.removeProperty('--tc-hud-bottom');
+      host.style.removeProperty('--tc-hud-left');
+      host.style.removeProperty('--tc-hud-right');
     };
   }, [hasState, session?.mode, avail.length, projector]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -812,7 +805,6 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
   const inView = projector.inView.size ? projector.inView : null;
   const bubbleIds = new Set(pickBubbles(dlg.active, { inView }));
   const subEntry = pickSubtitle(dlg.active, state, inView, 0);
-  const voiceMissing = prefs.voices && voiceAvailable(audio, prefs.lang === 'hi' || prefs.lang === 'dk' ? 'hi' : 'te') === false;
 
   return (
     <HudContext.Provider value={{ bus, live }}>
@@ -890,7 +882,6 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
               onRecentre={() => manualLook('recentre')}
               helpOpen={helpOpen}
               onHelp={() => setHelpOpen((o) => !o)}
-              voiceMissing={voiceMissing}
             />
           </div>
           <StationsDock
@@ -907,7 +898,7 @@ export default function HudLayer({ session, scene, audio = null, state, tickAt, 
             onPrep={({ slot, ready }) => (ready ? doCollect(slot) : openPrep())}
           />
         </div>
-        <Toasts toasts={toasts} live={liveMsgs} hint={showTip ? <OrientationHint onDismiss={dismissTip} /> : null} />
+        <Toasts toasts={toasts} live={liveMsgs} />
         <GlossLive items={dlg.gloss} />
         {helpOpen && <HelpCard touch={touch} onClose={() => setHelpOpen(false)} />}
         {sheet && <ActionSheet sheet={sheet} state={state} avail={avail} onPick={pickSheetDish} onClose={() => setSheet(null)} onTend={doTend} />}

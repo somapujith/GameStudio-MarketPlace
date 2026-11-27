@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   BoxGeometry, Color, DataTexture, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, RGBAFormat, SRGBColorSpace, UnsignedByteType, Box3, CanvasTexture,
+  DoubleSide, InstancedMesh, ShaderMaterial, Vector3, Scene,
 } from 'three';
-import { createStaticProbe, mergeStatic, mergeModel, materialSignature, isFlattenable, limitShadowCasters, disposeFlatMaterials } from './merge.js';
+import { createStaticProbe, mergeStatic, mergeModel, materialSignature, isFlattenable, limitShadowCasters, disposeFlatMaterials, createShadowProxy, SHADOW_LAYER, isUberable, uberMaterialFor, disposeUberMaterials } from './merge.js';
 import { buildCustomer, CUSTOMER_KIND_IDS } from './customers.js';
 import { buildAvatar } from './avatar.js';
 import { setCharacterQuality, setCharacterDrawMode, getCharacterDrawMode } from './charquality.js';
@@ -313,5 +314,227 @@ describe('merged and baked people', () => {
 
   it('draw mode is off by default so a bare build is what it always was', () => {
     expect(getCharacterDrawMode()).toEqual({ merge: false, limitShadows: false, baked: false });
+  });
+});
+
+
+describe('createShadowProxy', () => {
+  const caster = (mat, x, parent) => {
+    const m = box(mat, x, 0.5, 0, parent);
+    m.castShadow = true;
+    return m;
+  };
+  const volume = (g) => {
+    // signed volume of an indexed triangle mesh: positive when the faces point outwards
+    const p = g.attributes.position;
+    const ix = g.index;
+    const a = new Vector3();
+    const b = new Vector3();
+    const c = new Vector3();
+    let v = 0;
+    for (let i = 0; i < ix.count; i += 3) {
+      a.fromBufferAttribute(p, ix.getX(i));
+      b.fromBufferAttribute(p, ix.getX(i + 1));
+      c.fromBufferAttribute(p, ix.getX(i + 2));
+      v += a.dot(b.cross(c)) / 6;
+    }
+    return v;
+  };
+
+  it('casts the shadow of many static meshes from one mesh per side mode, on the shadow layer only, and swallows the originals', () => {
+    const scene = new Scene();
+    const root = new Group();
+    scene.add(root);
+    const front = new MeshStandardMaterial({ color: '#c0392b' });
+    const front2 = new MeshStandardMaterial({ color: '#27ae60', roughness: 0.2 });
+    const dbl = new MeshStandardMaterial({ side: DoubleSide });
+    const meshes = [];
+    for (let i = 0; i < 4; i++) meshes.push(caster(i % 2 ? front : front2, i * 0.5, root));
+    meshes.push(caster(dbl, 3, root));
+    const trisBefore = meshes.reduce((n, m) => n + tris(m.geometry), 0);
+    const proxy = createShadowProxy(root, { isStatic: () => true });
+    expect(proxy.meshes).toHaveLength(2); // FrontSide (two materials share one proxy) + DoubleSide
+    expect(proxy.swallowed).toHaveLength(5);
+    expect(proxy.triangles).toBe(trisBefore);
+    expect(meshes.every((m) => m.castShadow === false)).toBe(true);
+    for (const p of proxy.meshes) {
+      expect(p.castShadow).toBe(true);
+      expect(p.layers.mask).toBe(1 << SHADOW_LAYER);
+      expect(p.layers.test(new Group().layers)).toBe(false); // the main camera (layer 0) never draws it
+      expect(p.parent).toBe(scene);
+    }
+    expect(proxy.meshes.map((p) => p.material.side).sort()).toEqual([0, 2]);
+    // the world bounds of the proxies are the bounds of what they replace
+    const bb = new Box3();
+    for (const m of meshes) bb.union(new Box3().setFromObject(m));
+    const pb = new Box3();
+    for (const p of proxy.meshes) pb.union(p.geometry.boundingBox);
+    expect(pb.min.distanceTo(bb.min)).toBeLessThan(1e-5);
+    expect(pb.max.distanceTo(bb.max)).toBeLessThan(1e-5);
+  });
+
+  it('swallows only what the caller calls static, and never skinned / instanced / shader / alpha-tested / hidden / non-casting meshes', () => {
+    const root = new Group();
+    new Group().add(root);
+    const plain = new MeshStandardMaterial();
+    const ok = caster(plain, 0, root);
+    const moving = caster(plain, 1, root);
+    const hiddenOne = caster(plain, 2, root);
+    hiddenOne.visible = false;
+    const noCast = box(plain, 3, 0, 0, root);
+    const alpha = caster(new MeshStandardMaterial({ alphaTest: 0.5 }), 4, root);
+    const shader = caster(new ShaderMaterial(), 5, root);
+    const inst = new InstancedMesh(new BoxGeometry(0.1, 0.1, 0.1), plain, 2);
+    inst.castShadow = true;
+    root.add(inst);
+    const proxy = createShadowProxy(root, { isStatic: (m) => m !== moving });
+    expect(proxy.swallowed).toEqual([ok]);
+    expect(ok.castShadow).toBe(false);
+    for (const m of [moving, hiddenOne, alpha, shader, inst]) expect(m.castShadow).toBe(true);
+    expect(noCast.castShadow).toBe(false);
+    expect(createShadowProxy(root, {}).meshes).toHaveLength(0); // nothing is static unless the caller says so
+  });
+
+  it('keeps outward-facing triangles for mirrored meshes and bakes the parent transform', () => {
+    const root = new Group();
+    new Group().add(root);
+    const mat = new MeshStandardMaterial();
+    const arm = new Group();
+    arm.position.set(2, 0, 0);
+    arm.scale.set(-1, 1, 1);
+    root.add(arm);
+    const m = caster(mat, 0.5, arm);
+    const v0 = volume(m.geometry);
+    const proxy = createShadowProxy(root, { isStatic: () => true });
+    const g = proxy.meshes[0].geometry;
+    expect(v0).toBeGreaterThan(0);
+    expect(volume(g)).toBeCloseTo(v0, 6);
+    const c = new Box3().setFromBufferAttribute(g.attributes.position).getCenter(new Vector3());
+    expect(c.x).toBeCloseTo(2 - 0.5, 5); // mirrored about the arm, moved by the arm
+  });
+
+  it('restore() hands the shadow back to the originals and dispose() frees the proxies', () => {
+    const root = new Group();
+    const host = new Scene();
+    host.add(root);
+    const a = caster(new MeshStandardMaterial(), 0, root);
+    const b = caster(new MeshStandardMaterial(), 1, root);
+    const proxy = createShadowProxy(root, { isStatic: () => true });
+    const geo = proxy.meshes[0].geometry;
+    let disposed = 0;
+    geo.addEventListener('dispose', () => disposed++);
+    expect(host.children).toHaveLength(2);
+    proxy.restore();
+    expect(a.castShadow && b.castShadow).toBe(true);
+    expect(host.children).toHaveLength(1);
+    proxy.dispose();
+    expect(disposed).toBe(1);
+  });
+});
+
+
+describe('uber material', () => {
+  const std = (color, o = {}) => new MeshStandardMaterial({ color, ...o });
+  const mk = (mat, x, root) => box(mat, x, 0, 0, root);
+
+  it('folds untextured opaque standard materials into ONE mesh and keeps colour, roughness and metalness per vertex', () => {
+    const root = new Group();
+    const a = std('#c0392b', { roughness: 0.4, metalness: 0 });
+    const b = std('#c9ced2', { roughness: 0.34, metalness: 1 });
+    const c = std('#17140f', { roughness: 0.85, metalness: 0 });
+    mk(a, 0, root);
+    mk(a, 0.3, root);
+    mk(b, 0.6, root);
+    mk(c, 0.9, root);
+    const bb = worldBox(root);
+    const before = sum(root);
+    const probe = createStaticProbe(root);
+    probe.sample();
+    const res = mergeStatic(root, { only: probe.finish(), uber: true });
+    const meshes = visibleMeshes(root);
+    expect(meshes).toHaveLength(1);
+    expect(res.before).toBe(4);
+    expect(res.after).toBe(1);
+    expect(sum(root)).toBe(before);
+    const g = meshes[0].geometry;
+    expect(g.attributes.color.itemSize).toBe(3);
+    expect(g.attributes.aRM.itemSize).toBe(2);
+    const m = meshes[0].material;
+    expect(m.userData.uber).toBe(true);
+    expect(m.vertexColors).toBe(true);
+    expect(m.roughness).toBe(1);
+    expect(m.metalness).toBe(1);
+    // the first box (24 vertices) carries material a's linear colour and its roughness / metalness; the third carries b's
+    const col = g.attributes.color;
+    const rm = g.attributes.aRM;
+    expect(col.getX(0)).toBeCloseTo(a.color.r, 6);
+    expect(col.getY(0)).toBeCloseTo(a.color.g, 6);
+    expect(rm.getX(0)).toBeCloseTo(0.4, 6);
+    expect(rm.getY(0)).toBeCloseTo(0, 6);
+    expect(col.getX(48)).toBeCloseTo(b.color.r, 6);
+    expect(rm.getX(48)).toBeCloseTo(0.34, 6);
+    expect(rm.getY(48)).toBeCloseTo(1, 6);
+    expect(rm.getX(72)).toBeCloseTo(0.85, 6);
+    const ab = worldBox(root);
+    expect(ab.min.distanceTo(bb.min)).toBeLessThan(1e-5);
+    expect(ab.max.distanceTo(bb.max)).toBeLessThan(1e-5);
+    disposeUberMaterials();
+  });
+
+  it('leaves alone anything that is not a plain standard material: textures, transparency, emissive, physical, patched shaders, shared / live ones', () => {
+    const tex = new DataTexture(new Uint8Array([200, 200, 200, 255]), 1, 1, RGBAFormat, UnsignedByteType);
+    expect(isUberable(std('#fff'))).toBe(true);
+    expect(isUberable(std('#fff', { map: tex }))).toBe(false);
+    expect(isUberable(std('#fff', { normalMap: tex }))).toBe(false);
+    expect(isUberable(std('#fff', { transparent: true, opacity: 0.5 }))).toBe(false);
+    expect(isUberable(std('#fff', { opacity: 0.9 }))).toBe(false);
+    expect(isUberable(std('#fff', { emissive: '#ff0000', emissiveIntensity: 1 }))).toBe(false);
+    expect(isUberable(std('#fff', { emissive: '#ff0000', emissiveIntensity: 0 }))).toBe(true);
+    expect(isUberable(std('#fff', { polygonOffset: true }))).toBe(false);
+    expect(isUberable(std('#fff', { flatShading: true }))).toBe(false);
+    expect(isUberable(new MeshBasicMaterial())).toBe(false);
+    const patched = std('#fff');
+    patched.onBeforeCompile = function patchTheShaderWithSomethingLongEnough(shader) { shader.fragmentShader += '// a custom chunk that makes this a different program'; };
+    expect(isUberable(patched)).toBe(false);
+    const live = std('#fff');
+    expect(isUberable(live, new Set([live]))).toBe(false);
+    const shared = std('#fff');
+    shared.userData.shared = true;
+    expect(isUberable(shared)).toBe(false);
+  });
+
+  it('keeps one uber material per side mode, and a textured material still gets its own mesh', () => {
+    const root = new Group();
+    const tex = new DataTexture(new Uint8Array([200, 200, 200, 255]), 1, 1, RGBAFormat, UnsignedByteType);
+    tex.colorSpace = SRGBColorSpace;
+    mk(std('#aa3322'), 0, root);
+    mk(std('#2233aa', { roughness: 0.2 }), 0.3, root);
+    mk(std('#33aa22', { side: DoubleSide }), 0.6, root);
+    mk(std('#33aa11', { side: DoubleSide, roughness: 0.3 }), 0.9, root);
+    mk(std('#ffffff', { map: tex }), 1.2, root);
+    mk(std('#ffffff', { map: tex }), 1.5, root);
+    const probe = createStaticProbe(root);
+    probe.sample();
+    mergeStatic(root, { only: probe.finish(), uber: true });
+    const meshes = visibleMeshes(root);
+    expect(meshes).toHaveLength(3); // uber front, uber double sided, the textured pair (same material signature)
+    expect(meshes.filter((m) => m.material.userData.uber)).toHaveLength(2);
+    expect(uberMaterialFor(std('#fff'))).toBe(uberMaterialFor(std('#000', { roughness: 0.1 })));
+    disposeUberMaterials();
+  });
+
+  it('patches roughness and metalness from the vertex attribute and nothing else', () => {
+    const u = uberMaterialFor(std('#fff'));
+    const shader = {
+      vertexShader: '#include <common>\nvoid main() {\n#include <begin_vertex>\n}',
+      fragmentShader: '#include <common>\nvoid main() {\n#include <roughnessmap_fragment>\n#include <metalnessmap_fragment>\n}',
+    };
+    u.onBeforeCompile(shader);
+    expect(shader.vertexShader).toContain('attribute vec2 aRM;');
+    expect(shader.vertexShader).toContain('vRM = aRM;');
+    expect(shader.fragmentShader).toContain('roughnessFactor *= vRM.x;');
+    expect(shader.fragmentShader).toContain('metalnessFactor *= vRM.y;');
+    expect(u.customProgramCacheKey()).toBe('tc-uber');
+    disposeUberMaterials();
   });
 });

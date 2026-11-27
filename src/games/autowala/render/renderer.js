@@ -11,7 +11,7 @@
 // What the game reads: gfx.renderer / scene / camera / render(dt) / resize(w, h) / quality / cfg / caps / lost / dispose();
 // gfx.setScale(s) (render resolution 0.5..1, free: no reallocation), gfx.scale, gfx.cost (whole-frame draw calls, triangles, programs...),
 // gfx.invalidateShadows() (the shadow map is re-rendered on a schedule, not every frame; call it after a teleport).
-import { ACESFilmicToneMapping, PCFShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, UnsignedByteType, WebGLRenderer, WebGLRenderTarget } from 'three';
+import { ACESFilmicToneMapping, PCFShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, UnsignedByteType, Vector2, WebGLRenderer, WebGLRenderTarget } from 'three';
 import { QUALITY } from '../game/config.js';
 import { setChunkSize } from './chunks.js';
 import { clampScale, createPost, disposeShared, pickHdrFormat } from './post.js';
@@ -111,6 +111,7 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
   let scale = 1;
   let width = 1;
   let height = 1;
+  const canvasSize = new Vector2();
   let lost = false;
   let simple = false; // set when the post pipeline failed once: 8-bit, no bloom
   let direct = false; // set when even that failed: plain renderer.render
@@ -170,14 +171,17 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
   const build = () => {
     const cfg = tier(q);
     setAnisotropyCap(q === 'low' ? 2 : Math.min(maxAniso, q === 'medium' ? 4 : 8));
-    renderer.setPixelRatio(Math.min(cfg.pixelRatio, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1.5));
-    renderer.setSize(width, height, false);
+    // assigning canvas.width / height reallocates the drawing buffer even when the value is the same (hundreds of ms on some drivers):
+    // only touch the canvas when its size or pixel ratio really changes (a tier step with the same ratio, a rebuild after a context loss)
+    const ratio = Math.min(cfg.pixelRatio, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1.5);
+    if (ratio !== renderer.getPixelRatio()) renderer.setPixelRatio(ratio);
+    renderer.getSize(canvasSize);
+    if (canvasSize.x !== width || canvasSize.y !== height) renderer.setSize(width, height, false);
     disposePost();
     shaderFailed = false;
     warm = 4;
     shadowDirty = true; // the tier may have changed the shadow-map size
-    if (direct || cfg.post === false) return; // (cfg.post === false: experiment / test of the direct fallback)
-    const full = !simple;
+    if (direct || cfg.post === false) return; // (cfg.post === false: experiment / test of the direct fallback)    const full = !simple;
     try {
       const pr = renderer.getPixelRatio();
       post = createPost(renderer, {
@@ -205,18 +209,17 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
 
   build(); // a 2 x 2 pipeline right now: its shaders compile during loading (resize() re-allocates the targets, the programs stay cached)
 
-  // The loading step compiles every program with compileAsync. Three derives a program's colour space and tone mapping from the render
-  // target that is bound AT THAT MOMENT: with the screen bound (null) the compile built ~80 programs for "sRGB + ACES", the first real frame
-  // (drawing into the HDR target: linear, no tone mapping) then compiled ~80 MORE, synchronously, and the old per-light-count variants
-  // came on top (162 programs, 4-5 s of boot compile, a stall on the first frames). So compile with a render target bound, as the frame
-  // will have. compileAsync also uploads nothing and never builds the shadow-depth programs: after it we draw the whole scene ONCE into
-  // a 16 x 9 target with culling off, so every vertex / instance buffer and canvas texture (every tile and shop sign) is uploaded and the
-  // depth programs are compiled while the loading screen is still up, not when the player first drives past them.
-  const compileAsync0 = renderer.compileAsync?.bind(renderer);
-  const prewarm = (sc, cam, tiny) => {
+  // The first real frame (game/Game.js draws one while the loading screen is still up, after game/warm.js built the programs for the
+  // render target the game draws into) is preceded by ONE draw of the whole scene into a 16 x 9 target with culling off: every vertex /
+  // instance buffer and canvas texture (every map tile, every shop sign) is uploaded and the shadow-depth programs are compiled NOW, not
+  // when the player first drives past them. (The warm-up draws only the first view.)
+  let prewarmed = false;
+  const prewarm = () => {
+    prewarmed = true;
     const culled = [];
+    const tiny = new WebGLRenderTarget(16, 9, { type: UnsignedByteType, depthBuffer: true });
     try {
-      sc.traverse((o) => {
+      scene.traverse((o) => {
         if (o.frustumCulled) {
           culled.push(o);
           o.frustumCulled = false;
@@ -224,7 +227,7 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
       });
       sm.needsUpdate = true;
       renderer.setRenderTarget(tiny);
-      renderer.render(sc, cam);
+      renderer.render(scene, camera);
     } catch (err) {
       console.warn('[autowala] warm-up render failed', err);
     } finally {
@@ -234,20 +237,12 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
       shadowDirty = true;
     }
   };
-  renderer.compileAsync = (sc, cam, target) => {
-    const tiny = new WebGLRenderTarget(16, 9, { type: UnsignedByteType, depthBuffer: true });
-    let compiled;
-    try {
-      if (!direct) renderer.setRenderTarget(tiny); // the frame draws into a target, so compile for one
-      compiled = compileAsync0 ? compileAsync0(sc, cam, target) : Promise.resolve();
-    } finally {
-      renderer.setRenderTarget(null);
-    }
-    return compiled.then(() => prewarm(sc, cam, tiny));
-  };
   const resize = (w, h) => {
-    width = Math.max(2, Math.floor(w));
-    height = Math.max(2, Math.floor(h));
+    const nw = Math.max(2, Math.floor(w));
+    const nh = Math.max(2, Math.floor(h));
+    if (nw === width && nh === height && post && !lost) return; // the game sizes the pipeline during boot (shader warm-up): the screen's first resize is a no-op
+    width = nw;
+    height = nh;
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
     if (!lost) build();
@@ -261,6 +256,7 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
   };
   const onRestored = () => {
     lost = false;
+    prewarmed = false; // every buffer and texture is gone: upload them again before the next real frame
     shadowDirty = true;
     build();
     onContext?.('restored');
@@ -304,6 +300,7 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
 
   const render = (dt) => {
     if (lost) return;
+    if (!prewarmed && !lost) prewarm();
     sample(dt);
     info.reset();
     scheduleShadows(dt);
@@ -387,5 +384,12 @@ export function createRenderer(canvas, { quality = 'medium', explicit = false, o
     set autoTier(v) {
       autoTier = !!v;
     },
+    /** Kept for game/warm.js (passMaterials): this pipeline has no EffectComposer passes; its own materials are built by post.warm(). */
+    get composer() {
+      return null;
+    },
+    /** The render target the scene is drawn into (null before the first resize / when drawing directly): game/warm.js compiles against it. */
+    get target() {
+      return post ? post.targets.scene : null;    },
   };
 }

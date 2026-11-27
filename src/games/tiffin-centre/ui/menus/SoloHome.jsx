@@ -87,11 +87,11 @@ export function ResumeCard({ saved, now, onResume, onDiscard }) {
           {!vm.tutorial && <span lang="te" className="tc-menu-te"> {vm.te}</span>}
           <small>{vm.tutorial ? ' ' : ` · ${vm.paceLabel} · `}saved {vm.ago}</small>
         </p>
-        <div className="tc-menu-resume__bar" role="progressbar" aria-label="How far the shift got" aria-valuemin={0} aria-valuemax={100} aria-valuenow={vm.pct} aria-valuetext={`${vm.pct} percent, ${vm.left} left`}>
+        <div className="tc-menu-resume__bar" role="progressbar" aria-label="How far the shift got" aria-valuemin={0} aria-valuemax={100} aria-valuenow={vm.pct} aria-valuetext={`${vm.pct} percent, ${vm.detail}`}>
           <i style={{ width: `${vm.pct}%` }} />
         </div>
         <p className="tc-menu-resume__meta">
-          {vm.pct}% done · {vm.left} left{!vm.tutorial && vm.money > 0 ? ` · ${'₹'}${vm.money.toLocaleString('en-IN')} so far` : ''}
+          {vm.pct}% done · {vm.detail}{!vm.tutorial && vm.money > 0 ? ` · ${'₹'}${vm.money.toLocaleString('en-IN')} so far` : ''}
         </p>
       </div>
       {ask ? (
