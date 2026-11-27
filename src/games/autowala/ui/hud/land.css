@@ -97,15 +97,29 @@
 .aw[data-aw-compact='1'][data-aw-layout$='-land'] .aw-quest-coach {
   top: var(--hud-lane2-top);
   bottom: auto;
-  left: 50%;
-  right: auto;
+  left: 0;
+  right: 0;
   width: min(380px, 46%);
   max-width: none;
-  margin-inline: 0;
-  transform: translateX(-50%);
+  margin-inline: auto; /* centred without a transform: its entrance animation owns `transform` */
 }
 .aw[data-aw-layout$='-land'] .aw-quest-result,
 .aw[data-aw-compact='1'][data-aw-layout$='-land'] .aw-quest-result { top: var(--hud-lane-top); }
+
+/* the tutorial card is one short row here (text + a Skip chip); the step dots are hidden, so the step counter shows */
+.aw-quest-coach__n { display: none; }
+.aw[data-aw-layout$='-land'] .aw-quest-coach__n {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 0 7px;
+  border-radius: 6px;
+  background: rgba(255, 200, 87, 0.18);
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--aw-gold);
+}
+.aw[data-aw-layout$='-land'] .aw-quest-skip { width: auto; min-width: 56px; padding: 0 12px; font-size: 13px; font-weight: 800; }
+.aw[data-aw-layout$='-land'] .aw-quest-coach__text { font-size: 14px; }
 
 /* ---- toasts: the column under the strip on the right, two at most, two lines each -------------------------------------------------- */
 .aw[data-aw-layout$='-land'] .aw-toasts {

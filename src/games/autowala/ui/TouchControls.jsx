@@ -11,14 +11,14 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { buzz } from '@/lib/haptics.js';
 import { enterFullscreen, exitFullscreen, fullscreenSupported, isFullscreen, keepAwake, lockGestures, lockOrientation, unlockOrientation, useTouchDevice, useViewport } from '@/lib/mobile.js';
-import { useTouchMode } from './hud/touchMode.js';
+import { enableTouchMode, useTouchMode } from './hud/touchMode.js';
+import { useHudLayout } from './hud/useHudLayout.js';
 import { useGameMenu } from './hud/useGameMenu.js';
 import { ArrowPad, Wheel } from './touch/Wheel.jsx';
 import { Pedal } from './touch/Pedals.jsx';
 import { MainActions, MinorActions } from './touch/Actions.jsx';
 import SettingsSheet from './touch/SettingsSheet.jsx';
 import { computeLayout, regionsFromRects, sideFor } from './touch/layout.js';
-import { hudLayout } from './hud/layoutLogic.js';
 import { createTouchBus } from './touch/touchBus.js';
 import { DEFAULTS, forcedByUrl, loadTouchSettings, saveTouchSettings } from './touch/touchSettings.js';
 import { useTilt } from './touch/useTilt.js';
@@ -37,6 +37,9 @@ export default function TouchControls({ game }) {
 
   const forced = settings.force || forcedByUrl();
   const shown = !!game && !menu && (touchDevice || touchMode || forced);
+  useEffect(() => {
+    if (forced) enableTouchMode(); // a mouse machine with the controls switched on: the HUD lays itself out around them too
+  }, [forced]);
   const live = shown && !sheet; // the sheet covers the controls: nothing may stay pressed under it
 
   const bus = useMemo(() => (game?.input ? createTouchBus(game.input) : null), [game]);
@@ -89,7 +92,7 @@ export default function TouchControls({ game }) {
   }, [bus]);
 
   // on a compact HUD layout (phones and tablets) the More sheet carries the map / quests / phone / controls shortcuts: no "..." tray here
-  const hudCompact = useMemo(() => hudLayout(vp, true).compact, [vp]);
+  const hudCompact = useHudLayout().compact;
   const layout = useMemo(() => computeLayout({ w: vp.w || 844, h: vp.h || 390 }, { size: settings.size, tray: !hudCompact }), [vp.w, vp.h, settings.size, hudCompact]);
   // the More sheet's "Controls" shortcut
   useEffect(() => {

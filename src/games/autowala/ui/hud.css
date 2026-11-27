@@ -226,12 +226,20 @@
   border-radius: 16px;
 }
 .aw-trip {
+  /* three rows (was five): who + fare / destination + distance / mood + timer + the next turn. The road ahead stays visible. */
   display: grid;
-  gap: 7px;
-  padding: 10px 14px 11px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 12px;
+  align-items: center;
+  padding: 9px 14px 10px;
   border-top: 2px solid var(--aw-pink);
   animation: aw-trip-in 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.1);
 }
+.aw-trip__head { grid-column: 1 / -1; }
+.aw-trip__dest,
+.aw-trip__state { grid-column: 1; min-width: 0; }
+.aw-trip__nav,
+.aw-turn { grid-column: 2; }
 .aw-trip.is-arrived {
   border-top-color: var(--aw-lime);
 }

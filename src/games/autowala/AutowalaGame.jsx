@@ -20,6 +20,9 @@ import Hisaab from './ui/Hisaab.jsx';
 import Radio from './ui/Radio.jsx';
 import { FailureScreen, GpuLostScreen, LoadingScreen } from './ui/menus/BootScreens.jsx';
 import { applyUiScale } from './ui/scale.js';
+import { hudLayout } from './ui/hud/layoutLogic.js';
+import { useTouchMode } from './ui/hud/touchMode.js';
+import { viewportInfo } from '@/lib/mobile.js';
 import useOrientationHold from './ui/useOrientationHold.js';
 import './ui/autowala.css';
 import './ui/hud/land.css'; // the landscape HUD layout: last, so it wins over the shared looks
@@ -66,6 +69,7 @@ export default function AutowalaGame() {
   const [failure, setFailure] = useState(null); // 'webgl' | 'error' when the game could not start
   const [gpuLost, setGpuLost] = useState(false);
   const [loading, setLoading] = useState({ text: STAGE_TEXT.start, pct: 0 });
+  const touch = useTouchMode(); // the compact (touch) HUD needs less width, so it may scale up further
   useOrientationHold(game); // a phone held upright (the hub's orientation gate covers the screen): no loop, no sound, back at once in landscape
 
   // the HUD scale follows the viewport HEIGHT (--aw-ui-scale on the root); it also covers the loading and failure screens
@@ -74,13 +78,13 @@ export default function AutowalaGame() {
     if (!el) return undefined;
     const apply = () => {
       const r = el.getBoundingClientRect();
-      applyUiScale(el, r.width, r.height);
+      applyUiScale(el, r.width, r.height, hudLayout(viewportInfo(), touch).compact);
     };
     apply();
     const ro = new ResizeObserver(apply);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [touch]);
 
   useEffect(() => {
     let g = null;
