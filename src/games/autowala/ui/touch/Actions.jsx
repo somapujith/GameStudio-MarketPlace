@@ -104,6 +104,8 @@ export function MainActions({ layout, side, wheelSide, bus, fx }) {
 /** The small row (inline) or the "..." tray with map / radio / phone / quests / pause and the settings gear. */
 export function MinorActions({ layout, bus, fx, wheelSide, pedalSide, onSettings }) {
   const [open, setOpen] = useState(false);
+  // the HUD's More sheet has these shortcuts on compact layouts: one "More" button on the screen, not a second "..." one
+  if (layout.hasTray === false) return null;
   const slot = useRef(createPointerSlot());
   useEffect(() => {
     if (!open) return undefined;

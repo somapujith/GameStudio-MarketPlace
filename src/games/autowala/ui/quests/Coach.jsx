@@ -1,10 +1,14 @@
 // OWNER: quests agent. "Mama's First Day": the tutorial card. Step dots, the instruction (English + Telugu) with the key to press,
 // and a SKIP button (also the N key). Reads snap.quest.tutorial.
+import { useTouchMode } from '../hud/touchMode.js';
+import { coachStepText } from './coachText.js';
+
 export default function Coach({ q, onSkip }) {
+  const touch = useTouchMode();
   const t = q.tutorial;
   if (!t) return null;
   const idx = Math.min(t.stepIndex, t.steps.length - 1);
-  const cur = t.steps[idx];
+  const cur = coachStepText({ ...t.steps[idx], key: t.key }, touch);
   return (
     <aside className="aw-quest-coach" aria-label="Tutorial">
       <header>
@@ -17,13 +21,14 @@ export default function Coach({ q, onSkip }) {
         ))}
       </ol>
       <p className="aw-quest-coach__text" aria-live="polite">
-        {t.key && <kbd className="aw-key">{t.key}</kbd>}
-        {cur?.label}
+        <span className="aw-quest-coach__n" aria-hidden="true">{idx + 1}/{t.steps.length}</span>
+        {cur.key && <kbd className="aw-key">{cur.key}</kbd>}
+        {cur.label}
       </p>
-      {cur?.te && <p className="aw-te aw-quest-coach__te">{cur.te}</p>}
+      {cur.te && <p className="aw-te aw-quest-coach__te">{cur.te}</p>}
       {t.progress && <p className="aw-quest-progress">{t.progress}</p>}
       <button type="button" className="aw-quest-skip" onClick={onSkip}>
-        Skip tutorial <kbd className="aw-key">N</kbd>
+        {touch ? 'Skip' : 'Skip tutorial'} {!touch && <kbd className="aw-key">N</kbd>}
       </button>
     </aside>
   );

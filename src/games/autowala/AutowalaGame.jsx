@@ -2,7 +2,6 @@
 // it publishes a snapshot ~10x a second (and events on game.on) and React renders from that. Each UI piece below is owned
 // by a different part of the codebase (see ARCHITECTURE.md): Hud, Minimap, Workshop, Toasts, TouchControls, Menus.
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
 import '@fontsource-variable/bricolage-grotesque';
 import '@fontsource-variable/noto-sans-telugu';
 import { useAuth } from '@/lib/auth.jsx';
@@ -19,8 +18,14 @@ import Subtitles from './ui/Subtitles.jsx';
 import QuestLog from './ui/QuestLog.jsx';
 import Hisaab from './ui/Hisaab.jsx';
 import Radio from './ui/Radio.jsx';
+import { FailureScreen, GpuLostScreen, LoadingScreen } from './ui/menus/BootScreens.jsx';
+import { applyUiScale } from './ui/scale.js';
+import { hudLayout } from './ui/hud/layoutLogic.js';
+import { useTouchMode } from './ui/hud/touchMode.js';
+import { viewportInfo } from '@/lib/mobile.js';
 import useOrientationHold from './ui/useOrientationHold.js';
 import './ui/autowala.css';
+import './ui/hud/land.css'; // the landscape HUD layout: last, so it wins over the shared looks
 
 // What the loading bar says while each stage of the build runs.
 const STAGE_TEXT = {
@@ -64,14 +69,29 @@ export default function AutowalaGame() {
   const [failure, setFailure] = useState(null); // 'webgl' | 'error' when the game could not start
   const [gpuLost, setGpuLost] = useState(false);
   const [loading, setLoading] = useState({ text: STAGE_TEXT.start, pct: 0 });
+  const touch = useTouchMode(); // the compact (touch) HUD needs less width, so it may scale up further
   useOrientationHold(game); // a phone held upright (the hub's orientation gate covers the screen): no loop, no sound, back at once in landscape
+
+  // the HUD scale follows the viewport HEIGHT (--aw-ui-scale on the root); it also covers the loading and failure screens
+  useEffect(() => {
+    const el = wrap.current;
+    if (!el) return undefined;
+    const apply = () => {
+      const r = el.getBoundingClientRect();
+      applyUiScale(el, r.width, r.height, hudLayout(viewportInfo(), touch).compact);
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [touch]);
 
   useEffect(() => {
     let g = null;
     let ro = null;
     let dead = false;
     (async () => {
-      await loadFonts();
+      const fonts = loadFonts(); // the fonts download while the city builds (only the UI needs them, and it mounts after the build)
       if (dead || !canvas.current) return;
       const t0 = performance.now();
       try {
@@ -79,6 +99,7 @@ export default function AutowalaGame() {
           { canvas: canvas.current, seed: CITY_SEED, hooks: { onSnapshot: setSnap, userId, onContext: (st) => setGpuLost(st === 'lost') } },
           (stage, n) => !dead && setLoading({ text: STAGE_TEXT[stage] || 'Loading', pct: Math.min(99, Math.round((n / TOTAL_STEPS) * 100)) }),
         );
+        await fonts;
         if (dead) {
           g.dispose(); // the player left while it was loading
           return;
@@ -111,36 +132,9 @@ export default function AutowalaGame() {
   return (
     <div className="aw" ref={wrap}>
       <canvas ref={canvas} className="aw-canvas" />
-      {!game && !failure && (
-        <div className="aw-loading" role="status" aria-live="polite">
-          <div className="aw-loadbox">
-            <span>AUTOWALA <i lang="te">ఆటోవాలా</i></span>
-            <div className="aw-loadbar" aria-hidden="true"><b style={{ width: `${loading.pct}%` }} /></div>
-            <small>{loading.text}…</small>
-          </div>
-        </div>
-      )}
-      {failure && (
-        <div className="aw-loading aw-failure" role="alert">
-          <div>
-            <b>{failure === 'webgl' ? 'This browser can’t run the 3D city' : 'Autowala couldn’t start'}</b>
-            <p>
-              {failure === 'webgl'
-                ? 'Autowala needs WebGL 2 with hardware acceleration. Turn on hardware acceleration in your browser settings, or try an up-to-date Chrome, Edge, Firefox or Safari 16.4+.'
-                : 'Something went wrong while building the city. Reload the page; if it keeps happening, try another browser.'}
-            </p>
-            <Link to="/games/autowala" className="aw-failure-btn">Back to the game page</Link>
-          </div>
-        </div>
-      )}
-      {gpuLost && (
-        <div className="aw-loading" role="alert">
-          <div>
-            <b>The graphics card paused the game</b>
-            <p>Waiting for it to come back… (Switching tabs or low memory can cause this.)</p>
-          </div>
-        </div>
-      )}
+      {!game && !failure && <LoadingScreen text={loading.text} pct={loading.pct} />}
+      {failure && <FailureScreen kind={failure} />}
+      {gpuLost && <GpuLostScreen />}
       {game && snap && (
         <>
           <Hud game={game} snap={snap} />

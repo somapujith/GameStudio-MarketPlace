@@ -1,8 +1,24 @@
 // Player settings (saved in profile.data.settings) and their live effects: sound on/off, the four volume levels, the Telugu labels
-// switch, and the little menu click sound. Quality is saved too, but only takes effect on the next load (the renderer is built once).
+// switch, and the little menu click sound. Quality is saved too; it applies live when the renderer offers `gfx.setQuality(tier|null)`
+// and otherwise on the next load (the renderer builds its tier once), which the menus say honestly (quality.js).
 import { getAudio, isMuted, setMasterLevel, setMuted } from '../../audio/ctx.js';
 import { getBuses } from '../../audio/sound-bus.js';
 import { cycleQuality, masterGain, normalizeAudio } from './menuNav.js';
+
+// the quality choice the game was STARTED with, remembered the first time a menu mounts (before any change)
+const BOOT_QUALITY = new WeakMap();
+const savedQuality = (game) => {
+  const q = game?.ctx?.profile?.data?.settings?.quality;
+  return q === 'low' || q === 'medium' || q === 'high' ? q : null;
+};
+export const rememberBootQuality = (game) => {
+  if (game && !BOOT_QUALITY.has(game)) BOOT_QUALITY.set(game, savedQuality(game));
+};
+export const bootQuality = (game) => (BOOT_QUALITY.has(game) ? BOOT_QUALITY.get(game) : savedQuality(game));
+/** Can the renderer switch tier without a reload? */
+export const qualityIsLive = (game) => typeof game?.ctx?.gfx?.setQuality === 'function';
+/** The tier the renderer runs on right now (read live, not from the 10 Hz snapshot). */
+export const runningQuality = (game, snap) => game?.ctx?.gfx?.quality || snap?.quality || null;
 
 export function readSettings(game) {
   const s = game.ctx.profile.data.settings || {};
@@ -39,6 +55,13 @@ export function saveSettings(game, patch) {
   if ('quality' in patch) cur.quality = patch.quality ?? null;
   if (patch.audio) cur.audio = normalizeAudio({ ...normalizeAudio(cur.audio), ...patch.audio });
   p.save();
+  if ('quality' in patch && qualityIsLive(game)) {
+    try {
+      game.ctx.gfx.setQuality(cur.quality);
+    } catch (err) {
+      console.warn('[autowala] quality switch failed', err);
+    }
+  }
   if ('sound' in patch || patch.audio) applyAudio(game);
   if ('teluguLabels' in patch) applyLanguage(game);
 }

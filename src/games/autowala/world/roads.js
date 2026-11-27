@@ -8,10 +8,12 @@ import {
   InstancedMesh,
   Matrix4,
   Mesh,
+  MeshLambertMaterial,
   MeshStandardMaterial,
   Object3D,
 } from 'three';
 import { asphaltTexture } from '../render/textures.js';
+import { LATE } from './terrain.js';
 
 export function buildRoads(scene, city, shared) {
   const pos = [];
@@ -72,6 +74,7 @@ export function buildRoads(scene, city, shared) {
   roadMat.customProgramCacheKey = () => 'road';
   const road = new Mesh(geo, roadMat);
   road.receiveShadow = true;
+  road.renderOrder = LATE; // after the buildings: the depth test rejects the road pixels behind them (see terrain.js)
   scene.add(road);
 
   const pg = new BufferGeometry();
@@ -85,12 +88,14 @@ export function buildRoads(scene, city, shared) {
   patchMat.customProgramCacheKey = () => 'roadpatch';
   const patches = new Mesh(pg, patchMat);
   patches.receiveShadow = true;
+  patches.renderOrder = LATE;
   scene.add(patches);
 
   // ---- sidewalk slabs
   const slabBlocks = city.blocks.filter((b) => b.type !== 'water' && b.type !== 'park'); // park blocks spread over Necklace Road
-  const slabs = new InstancedMesh(new BoxGeometry(1, 1, 1), new MeshStandardMaterial({ color: 0xffffff, roughness: 0.95 }), slabBlocks.length);
+  const slabs = new InstancedMesh(new BoxGeometry(1, 1, 1), new MeshLambertMaterial({ color: 0xffffff }), slabBlocks.length);
   slabs.receiveShadow = true;
+  slabs.renderOrder = LATE;
   const o = new Object3D();
   const col = new Color();
   slabBlocks.forEach((b, i) => {

@@ -2,7 +2,7 @@
 // the clock, a "More" button, pause) and the "More" sheet that holds every secondary panel (rating, job chip, mission, weather, road
 // rules, radio). Live road alerts (signal, camera, police, road rage, mission timer) get their own small lane.
 // Positions come from hud/phone.css; nothing here knows a pixel. Every snapshot key is optional.
-import { memo } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { RadioControls } from '../Radio.jsx';
 import JobChip from './JobChip.jsx';
 import RulesStrip from './RulesStrip.jsx';
@@ -11,6 +11,7 @@ import { CloseIcon, DuskIcon, FlagIcon, KindIcon, MoonIcon, MoreIcon, PauseIcon,
 import { dayPhase, formatClock, formatCountdown, formatDistance, formatEta, groupIndian, moodColor, normalizeTrip, timerTone } from './hudLogic.js';
 import { filterRules } from './layoutLogic.js';
 import { useChangeFlash, useCountUp } from './useCountUp.js';
+import { GearIcon, MapIcon, PhoneIcon, QuestIcon, RadioIcon } from '../touch/icons.jsx';
 
 const PHASE_ICON = { night: MoonIcon, dawn: SunIcon, day: SunIcon, dusk: DuskIcon };
 
@@ -180,22 +181,49 @@ function QuestSummary({ a }) {
   );
 }
 
-export function MoreSheet({ open, onClose, game, snap, careerV, rulesV, weather }) {
+// The shortcuts the touch layer used to keep in its own "..." tray (one "More" button on the screen, not two). `onShortcut(input)` taps the
+// game input ('map' | 'phone' | 'quests'); 'controls' opens the touch-control settings (TouchControls listens for aw-touch-settings).
+export const SHORTCUTS = [
+  { id: 'map', label: 'Map', Icon: MapIcon },
+  { id: 'quests', label: 'Quests', Icon: QuestIcon },
+  { id: 'phone', label: 'Phone', Icon: PhoneIcon },
+  { id: 'radio', label: 'Radio', Icon: RadioIcon, needs: 'radio' }, // only when the game has a radio
+  { id: 'controls', label: 'Controls', Icon: GearIcon },
+];
+
+export function MoreSheet({ open, onClose, game, snap, careerV, rulesV, weather, onShortcut }) {
   const r = Number.isFinite(snap.rating) ? Math.max(0, Math.min(5, snap.rating)) : 0;
   const rides = Math.max(0, Math.round(snap.rides || 0));
   const quest = snap.quest?.active || null;
   const hasRules = !!(rulesV && (rulesV.sign || rulesV.signal || rulesV.camera || rulesV.checkpoint || rulesV.wanted));
   const hasRadio = !!(game?.ctx?.sound?.radio && snap.radio);
+  const sheetRef = useRef(null);
+  // opening the sheet moves the keyboard focus into it (the first shortcut, else the close button)
+  useEffect(() => {
+    if (!open) return;
+    const el = sheetRef.current;
+    (el?.querySelector('.aw-sheet__key') || el?.querySelector('.aw-sheet__close'))?.focus({ preventScroll: true });
+  }, [open]);
   return (
     <>
       {open && <button type="button" className="aw-sheet-scrim" aria-label="Close more" onClick={onClose} tabIndex={-1} />}
-      <aside className="aw-sheet" id="aw-more-sheet" role="dialog" aria-label="More" hidden={!open}>
+      <aside className="aw-sheet" id="aw-more-sheet" ref={sheetRef} role="dialog" aria-label="More" hidden={!open}>
         <header className="aw-sheet__head">
           <b>More</b>
           <button type="button" className="aw-sheet__close" onClick={onClose} aria-label="Close more">
             <CloseIcon size={22} />
           </button>
         </header>
+        {onShortcut && (
+          <div className="aw-sheet__keys" role="group" aria-label="Shortcuts">
+            {SHORTCUTS.filter((k) => !k.needs || hasRadio).map(({ id, label, Icon }) => (
+              <button key={id} type="button" className="aw-sheet__key" onClick={() => onShortcut(id)}>
+                <Icon size={20} />
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="aw-sheet__grid">
           <section className="aw-sheet__sec" data-k="rating" aria-label="Rating">
             <h3>Rating</h3>

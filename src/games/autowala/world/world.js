@@ -10,11 +10,12 @@ import { buildTerrain } from './terrain.js';
 import { buildBuildings } from './buildings.js';
 import { buildProps } from './props.js';
 import { buildLandmarks } from './landmarks.js';
-import { buildShops } from './shops.js';
+import { shopSteps } from './shops.js';
 import { buildMetro } from './metro.js';
 import { createShared } from '../render/materials.js';
 import { createSky } from '../render/sky.js';
 import { WORLD } from '../game/config.js';
+import { drain, drainAsync, nextFrame, timedSteps } from '../game/steps.js';
 
 /** The stages in order (what the loading bar shows). */
 export const WORLD_STAGES = ['layout', 'roads', 'terrain', 'buildings', 'shops', 'props', 'landmarks', 'metro'];
@@ -50,7 +51,11 @@ export function* worldSteps(scene, seed) {
   yield 'buildings';
   const buildings = timed('buildings', () => buildBuildings(scene, city, colliders, shared, seed));
   yield 'shops';
-  const shops = timed('shops', () => buildShops(scene, city, colliders, shared, sky)); // before props and the metro: they avoid its colliders
+  // before props and the metro: they avoid its colliders. Built in slices (one shopfront at a time) so no single piece of work stalls the page.
+  const shopTimes = {};
+  const shops = yield* timedSteps(shopSteps(scene, city, colliders, shared, sky), shopTimes);
+  timings.shops = Math.round(shopTimes.total);
+  timings.shopsLongest = Math.round(shopTimes.longest);
   yield 'props';
   const props = timed('props', () => buildProps(scene, city, colliders, shared, seed));
   yield 'landmarks';
@@ -80,35 +85,8 @@ export function* worldSteps(scene, seed) {
   return { timings, city, colliders, shared, sky, roads, terrain, buildings, props, landmarks, shops, metro, update, dispose, half: H, heightAt };
 }
 
-/** Run a staged generator to the end, synchronously. */
-export function drain(gen) {
-  let r = gen.next();
-  while (!r.done) r = gen.next();
-  return r.value;
-}
-
-/** Run a staged generator giving the browser a frame between stages: onStep(stageName, doneCount) is called before each stage. */
-export async function drainAsync(gen, onStep, pause = nextFrame) {
-  let n = 0;
-  let r = gen.next();
-  while (!r.done) {
-    if (r.value && typeof r.value.then === 'function') {
-      await r.value; // a long async job (the shader compile): the page stays responsive meanwhile
-    } else {
-      onStep?.(r.value, n++);
-      await pause();
-    }
-    r = gen.next();
-  }
-  return r.value;
-}
-
-/** A paint-then-continue pause: lets the browser draw the progress bar between heavy stages. */
-export const nextFrame = () =>
-  new Promise((resolve) => {
-    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => setTimeout(resolve, 0));
-    else setTimeout(resolve, 0);
-  });
+// the staging helpers live in game/steps.js (they are shared with the game's own setup); re-exported for the existing callers
+export { drain, drainAsync, nextFrame };
 
 export const buildWorld = (scene, seed) => drain(worldSteps(scene, seed));
 export const buildWorldAsync = (scene, seed, onStep) => drainAsync(worldSteps(scene, seed), onStep);

@@ -3,13 +3,14 @@
 import {
   AdditiveBlending,
   BackSide,
+  BufferAttribute,
   Color,
   DirectionalLight,
   FogExp2,
   HemisphereLight,
+  InstancedBufferAttribute,
+  InstancedBufferGeometry,
   Mesh,
-  MeshBasicMaterial,
-  PlaneGeometry,
   ShaderMaterial,
   SphereGeometry,
   Sprite,
@@ -18,6 +19,7 @@ import {
 } from 'three';
 import { clamp, lerp } from '../game/rng.js';
 import { canvasTexture } from './textures.js';
+import { snapToShadowGrid } from './shadow-grid.js';
 
 const C = (hex) => new Color(hex);
 
@@ -92,7 +94,9 @@ export function createSky(scene) {
     new SphereGeometry(1000, 32, 20),
     new ShaderMaterial({ uniforms, vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, side: BackSide, depthWrite: false, fog: false }),
   );
-  dome.renderOrder = -10;
+  // drawn LAST among the opaque objects (it sits at the far plane, depth-tested): the sky shader then only runs on the pixels nothing else
+  // covers, instead of on every pixel of the screen before the city paints over most of them
+  dome.renderOrder = 10000;
   dome.frustumCulled = false;
   scene.add(dome);
 
@@ -115,27 +119,69 @@ export function createSky(scene) {
 
   // soft puffy clouds: a few additive sprites that catch the sunset colour
   const cloudTex = canvasTexture(128, 64, (g, w, h) => {
-    const gr = g.createRadialGradient(w / 2, h / 2, 2, w / 2, h / 2, w / 2);
+    // an ellipse that fades to nothing exactly at the canvas edge: a circle of radius w/2 on a canvas only h high is cut off at the top
+    // and bottom while it is still 30% opaque, which drew every cloud as a hard-edged rectangle
+    g.translate(w / 2, h / 2);
+    g.scale(1, h / w);
+    const gr = g.createRadialGradient(0, 0, 2, 0, 0, w / 2);
     gr.addColorStop(0, 'rgba(255,255,255,0.95)');
     gr.addColorStop(0.5, 'rgba(255,255,255,0.35)');
     gr.addColorStop(1, 'rgba(255,255,255,0)');
     g.fillStyle = gr;
-    g.fillRect(0, 0, w, h);
+    g.fillRect(-w / 2, -w / 2, w, w);
   });
-  const clouds = [];
-  for (let i = 0; i < 26; i++) {
-    const m = new SpriteMaterial({ map: cloudTex, transparent: true, depthWrite: false, fog: false, opacity: 0.55, color: 0xffffff });
-    const s = new Sprite(m);
-    const a = (i / 26) * Math.PI * 2 + Math.sin(i * 7.1) * 0.3;
-    const r = 520 + (i % 5) * 70;
-    s.position.set(Math.cos(a) * r, 120 + (i % 7) * 26, Math.sin(a) * r);
-    s.scale.set(320 + (i % 4) * 90, 70 + (i % 3) * 26, 1);
-    s.userData.a = a;
-    s.userData.r = r;
-    s.renderOrder = -9;
-    scene.add(s);
-    clouds.push(s);
+  // 26 clouds in ONE draw call: an instanced billboard whose position (angle, radius, height around the player) and size live in
+  // per-instance attributes and whose drift is a single uniform. (They were 26 Sprites with 26 materials: ~13 draw calls in view.)
+  const CLOUDS = 26;
+  const cloudGeo = new InstancedBufferGeometry();
+  cloudGeo.setAttribute('position', new BufferAttribute(new Float32Array([-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0]), 3));
+  cloudGeo.setAttribute('uv', new BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), 2));
+  cloudGeo.setIndex([0, 1, 2, 0, 2, 3]);
+  const cloudData = new Float32Array(CLOUDS * 4); // angle, radius, height, width
+  const cloudSize = new Float32Array(CLOUDS); // height of the quad
+  for (let i = 0; i < CLOUDS; i++) {
+    cloudData[i * 4] = (i / CLOUDS) * Math.PI * 2 + Math.sin(i * 7.1) * 0.3;
+    cloudData[i * 4 + 1] = 520 + (i % 5) * 70;
+    cloudData[i * 4 + 2] = 120 + (i % 7) * 26;
+    cloudData[i * 4 + 3] = 320 + (i % 4) * 90;
+    cloudSize[i] = 70 + (i % 3) * 26;
   }
+  cloudGeo.setAttribute('aCloud', new InstancedBufferAttribute(cloudData, 4));
+  cloudGeo.setAttribute('aHeight', new InstancedBufferAttribute(cloudSize, 1));
+  cloudGeo.instanceCount = CLOUDS;
+  const cloudUniforms = { map: { value: cloudTex }, uColor: { value: new Color(1, 1, 1) }, uOpacity: { value: 0.55 }, uDrift: { value: 0 }, uFocus: { value: new Vector3() } };
+  const cloudMat = new ShaderMaterial({
+    uniforms: cloudUniforms,
+    transparent: true,
+    depthWrite: false,
+    fog: false,
+    vertexShader: /* glsl */ `
+      attribute vec4 aCloud; attribute float aHeight;
+      uniform float uDrift; uniform vec3 uFocus;
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        float a = aCloud.x + uDrift;
+        vec3 c = vec3(uFocus.x + cos(a) * aCloud.y, aCloud.z, uFocus.z + sin(a) * aCloud.y);
+        vec4 mv = viewMatrix * vec4(c, 1.0);
+        mv.xy += position.xy * vec2(aCloud.w, aHeight);
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform sampler2D map; uniform vec3 uColor; uniform float uOpacity;
+      varying vec2 vUv;
+      void main() {
+        vec4 t = texture2D(map, vUv);
+        gl_FragColor = vec4(uColor * t.rgb, t.a * uOpacity);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+  });
+  const cloudMesh = new Mesh(cloudGeo, cloudMat);
+  cloudMesh.frustumCulled = false;
+  cloudMesh.renderOrder = -9;
+  scene.add(cloudMesh);
+  let cloudAngle = 0;
 
   // sun/moon glow sprite (bloom feeds on it)
   const glowTex = canvasTexture(128, 128, (g, w, h) => {
@@ -204,7 +250,9 @@ export function createSky(scene) {
     hemi.color.copy(palette.hs);
     hemi.groundColor.copy(palette.hg);
     hemi.intensity = s.hi * (1 - weather * 0.25);
-    shadowFocus.copy(focus);
+    // the shadow box is centred on the player, snapped to the shadow map's texel grid so a static edge keeps the same texels from one
+    // re-render to the next (no crawling), which is what lets the renderer refresh the map on a schedule instead of every frame
+    snapToShadowGrid(focus, sunDir, (key.shadow.camera.right - key.shadow.camera.left) / key.shadow.mapSize.x, shadowFocus);
     key.position.copy(shadowFocus).addScaledVector(sunDir, 260);
     key.target.position.copy(shadowFocus);
     key.target.updateMatrixWorld();
@@ -219,14 +267,12 @@ export function createSky(scene) {
     sunGlow.material.opacity = sunUp ? clamp(1.1 - Math.abs(sunDir.y) * 0.9, 0.2, 0.6) * (1 - weather * 0.7) : 0.1;
     sunGlow.material.color.copy(palette.sun);
 
-    for (const c of clouds) {
-      c.userData.a += dt * 0.004;
-      const a = c.userData.a;
-      c.position.set(focus.x + Math.cos(a) * c.userData.r, c.position.y, focus.z + Math.sin(a) * c.userData.r);
-      // clouds pick up the horizon colour (sunset-lit undersides)
-      c.material.color.copy(palette.hor).lerp(palette.hs, 0.35).multiplyScalar(0.5 + (1 - s.night) * 0.7);
-      c.material.opacity = (0.4 + weather * 0.4) * (1 - s.night * 0.6);
-    }
+    cloudAngle += dt * 0.004;
+    cloudUniforms.uDrift.value = cloudAngle;
+    cloudUniforms.uFocus.value.copy(focus);
+    // clouds pick up the horizon colour (sunset-lit undersides)
+    cloudUniforms.uColor.value.copy(palette.hor).lerp(palette.hs, 0.35).multiplyScalar(0.5 + (1 - s.night) * 0.7);
+    cloudUniforms.uOpacity.value = (0.4 + weather * 0.4) * (1 - s.night * 0.6);
     return state;
   }
 

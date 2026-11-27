@@ -11,12 +11,14 @@ import { spatial, estimateMs } from './voice-math.js';
 export const VOICE_BASE = '/audio/autowala/voices/';
 
 const hasSpeech = () => typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined';
+const pickTe = (synth) => synth.getVoices().find((v) => /^te([-_]|$)/i.test(v.lang)) || null;
 
 export function createVoicePlayer({ base = VOICE_BASE, fetchFn = typeof fetch === 'function' ? fetch.bind(globalThis) : null, settings = () => ({}) } = {}) {
   let index = null; // { version, generated, lines: { id: { file, ms, persona } } }
   const buffers = new Map(); // id -> AudioBuffer | null (null = known missing / undecodable) | Promise
   const live = new Set();
   let teVoice;
+  let onVoices = null; // the pending 'voiceschanged' listener on the global speechSynthesis (see speak)
   let disposed = false;
 
   const player = {
@@ -190,9 +192,17 @@ export function createVoicePlayer({ base = VOICE_BASE, fetchFn = typeof fetch ==
       const synth = hasSpeech() ? window.speechSynthesis : null;
       if (synth) {
         if (teVoice === undefined) {
-          const pick = () => synth.getVoices().find((v) => /^te([-_]|$)/i.test(v.lang)) || null;
-          teVoice = pick();
-          if (!teVoice) synth.addEventListener?.('voiceschanged', () => { teVoice = pick() || null; }, { once: true });
+          teVoice = pickTe(synth);
+          // `speechSynthesis` is a global that outlives the game, and a browser that never loads a voice list (headless, no speech service)
+          // never fires this: the listener is the player's own, removed in dispose(), and built outside `speak` so that it does not keep
+          // that call's scope (and with it the whole game) alive
+          if (!teVoice && synth.addEventListener) {
+            onVoices = () => {
+              onVoices = null;
+              teVoice = pickTe(synth) || null;
+            };
+            synth.addEventListener('voiceschanged', onVoices, { once: true });
+          }
         }
         if (teVoice) {
           const u = new SpeechSynthesisUtterance(line.te);
@@ -269,6 +279,14 @@ export function createVoicePlayer({ base = VOICE_BASE, fetchFn = typeof fetch ==
     dispose() {
       disposed = true;
       player.stopAll();
+      if (onVoices && hasSpeech()) {
+        try {
+          window.speechSynthesis.removeEventListener('voiceschanged', onVoices);
+        } catch {
+          /* ignore */
+        }
+        onVoices = null;
+      }
       if (hasSpeech()) {
         try {
           window.speechSynthesis.cancel();

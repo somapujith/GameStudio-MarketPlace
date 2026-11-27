@@ -2,18 +2,22 @@
 // calls for thousands of buildings), with a per-instance colour. Also awnings, rooftop water tanks and neon shop signs.
 import {
   BoxGeometry,
+  BufferAttribute,
   Color,
   CylinderGeometry,
-  InstancedMesh,
-  MeshStandardMaterial,
-  Object3D,
+  InstancedBufferAttribute,
+  Matrix4,
+  Mesh,
+  MeshLambertMaterial,
   PlaneGeometry,
   Group,
 } from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { makeRng } from '../game/rng.js';
-import { buildingMaterial, glowMaterial } from '../render/materials.js';
-import { signTexture } from '../render/textures.js';
-import { chunkedInstances } from '../render/chunks.js';
+import { BUILDING_LOOKS, buildingMaterial, setLookAttribute, signAtlasMaterial } from '../render/materials.js';
+import { canvasTexture, signTexture } from '../render/textures.js';
+import { chunkedInstances, groupByChunk } from '../render/chunks.js';
+import { bakedCopy, freezeMatrices } from '../render/merge-static.js';
 
 const PASTELS = ['#ff9fc2', '#ffc8a0', '#fff0a8', '#9ee8d0', '#8fd4f0', '#c9b0ff', '#ffb0a0', '#f6e0c8', '#ff7fa8', '#7fe0c4', '#ffd98a', '#f4a6d7'];
 const WARM = ['#e8b48a', '#f0c9a0', '#d99a84', '#f2d9b4', '#e6a79a', '#f5cf9a', '#dba9a0'];
@@ -37,14 +41,6 @@ const SIGNS = [
 ];
 
 const unitBox = () => new BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
-
-const LOOKS = {
-  bazaar: { cell: [3.0, 3.4], ground: 3.8, glass: '#2d3b5c', key: 'bazaar', litBias: 0.1 },
-  town: { cell: [3.4, 3.6], ground: 4.0, glass: '#2a3a58', key: 'town', litBias: 0.08 },
-  villa: { cell: [4.2, 3.4], ground: 3.2, glass: '#33425e', key: 'villa', litBias: 0.1 },
-  glass: { cell: [2.2, 3.9], ground: 7.0, glass: '#3a6a98', key: 'glass', litBias: 0.12, roughness: 0.35 },
-  hangar: { cell: [9, 5], ground: 5.5, glass: '#2a3a58', key: 'hangar', litBias: 0.02 },
-};
 
 export function buildBuildings(scene, city, colliders, shared, seed) {
   const rng = makeRng(seed ^ 0xb17d);
@@ -179,67 +175,106 @@ export function buildBuildings(scene, city, colliders, shared, seed) {
     else airportBlock(b);
   }
 
-  // ---- instanced meshes, one per map tile (render/chunks.js) so far tiles are culled in the view and in the shadow pass
+  // ---- ONE instanced mesh per map tile for all the lots (render/chunks.js culls far tiles in the view and in the shadow pass); the facade
+  // look is a per-instance attribute of the single building material, so a tile costs one draw call however many looks it holds.
   const group = new Group();
   scene.add(group);
   const geo = unitBox();
   const meshes = [];
   const at = (it) => [it.x ?? it.cx, it.z ?? it.cz];
-  const tile = (geometry, material, list, place, opts = {}) => {
-    const made = chunkedInstances(group, geometry, material, list, at, place, opts);
-    meshes.push(...made);
-    return made;
-  };
 
-  for (const [look, list] of Object.entries(lots)) {
-    if (!list.length) continue;
-    const mat = buildingMaterial(shared, LOOKS[look]);
-    tile(geo, mat, list, (l, o, c) => {
-      o.position.set(l.cx, 0, l.cz);
-      o.scale.set(l.w, l.h, l.d);
-      return c.set(l.color).offsetHSL(rng.range(-0.012, 0.012), rng.range(-0.05, 0.03), rng.range(-0.035, 0.03));
-    }, { castShadow: true });
+  // per-instance tint, drawn in the order the old per-look 256 m meshes used so the colours of the city are unchanged
+  const tintC = new Color();
+  for (const list of Object.values(lots)) {
+    for (const tileItems of groupByChunk(list, at, 256).values()) {
+      for (const l of tileItems) l.tint = tintC.set(l.color).offsetHSL(rng.range(-0.012, 0.012), rng.range(-0.05, 0.03), rng.range(-0.035, 0.03)).clone();
+    }
+  }
+  const allLots = [];
+  for (const [look, list] of Object.entries(lots)) for (const l of list) allLots.push({ ...l, look });
+  // matte walls (Lambert) and glass towers (Standard, for the sheen) are two materials: a tile draws its lots in at most 2 calls
+  for (const glassy of [false, true]) {
+    meshes.push(
+      ...chunkedInstances(group, geo, buildingMaterial(shared, glassy), allLots.filter((l) => !!BUILDING_LOOKS[l.look].glassy === glassy), at, (l, o) => {
+        o.position.set(l.cx, 0, l.cz);
+        o.scale.set(l.w, l.h, l.d);
+        return l.tint;
+      }, { castShadow: true, onMesh: (mesh, items) => setLookAttribute(mesh, items.map((l) => l.look)) }),
+    );
   }
 
-  const flat = (hex, r = 0.8) => new MeshStandardMaterial({ color: hex, roughness: r, metalness: 0.05 });
-  // small rooftop and street-edge detail: no shadows (they would only cost), culled by tile like everything else
-  tile(new CylinderGeometry(1, 1, 1.6, 8).translate(0, 0.8, 0), flat('#3a8fd0', 0.5), extras.tanks, (t, o) => {
-    o.position.set(t.x, t.y, t.z);
-    o.scale.set(t.s, t.s, t.s);
-  });
-  // the small unit-box details (roof boxes, villa roof slabs, compound walls, awnings) are ONE tinted set per tile: fewer draw calls
+  // Small rooftop and street-edge details (tanks, roof boxes, villa roof slabs, compound walls, awnings): baked per tile into ONE static
+  // vertex-coloured mesh, no shadows (they would only cost).
   const details = [];
-  for (const t of extras.roofBoxes) details.push({ x: t.x, z: t.z, y: t.y, sx: t.sx, sy: t.sy, sz: t.sz, c: '#d6d0d8' });
-  for (const t of extras.roofCaps) details.push({ x: t.x, z: t.z, y: t.h, sx: t.w, sy: 0.55, sz: t.d, c: '#c4604a' });
+  const tankGeo = new CylinderGeometry(1, 1, 1.6, 8).translate(0, 0.8, 0);
+  const box = unitBox();
+  const TANK = new Color('#3a8fd0');
+  for (const t of extras.tanks) details.push({ x: t.x, z: t.z, geo: tankGeo, y: t.y, sx: t.s, sy: t.s, sz: t.s, c: TANK });
+  const BOX = (t, c) => ({ x: t.x, z: t.z, geo: box, y: t.y, sx: t.sx, sy: t.sy, sz: t.sz, c: new Color(c) });
+  for (const t of extras.roofBoxes) details.push(BOX(t, '#d6d0d8'));
+  for (const t of extras.roofCaps) details.push(BOX({ x: t.x, z: t.z, y: t.h, sx: t.w, sy: 0.55, sz: t.d }, '#c4604a'));
   // compound walls: four thin slabs per plot
-  const wallParts = [];
   for (const w of extras.walls) {
-    wallParts.push({ x: w.x, z: w.z - w.d / 2, sx: w.w, sz: 0.5, c: w.color }, { x: w.x, z: w.z + w.d / 2, sx: w.w, sz: 0.5, c: w.color }, { x: w.x - w.w / 2, z: w.z, sx: 0.5, sz: w.d, c: w.color }, { x: w.x + w.w / 2, z: w.z, sx: 0.5, sz: w.d, c: w.color });
+    for (const t of [{ x: w.x, z: w.z - w.d / 2, sx: w.w, sz: 0.5 }, { x: w.x, z: w.z + w.d / 2, sx: w.w, sz: 0.5 }, { x: w.x - w.w / 2, z: w.z, sx: 0.5, sz: w.d }, { x: w.x + w.w / 2, z: w.z, sx: 0.5, sz: w.d }]) {
+      details.push(BOX({ ...t, y: 0, sy: 1.5 }, w.color));
+    }
   }
-  for (const t of wallParts) details.push({ x: t.x, z: t.z, y: 0, sx: t.sx, sy: 1.5, sz: t.sz, c: t.c });
   // awnings: striped slabs over shopfronts
   for (const a of extras.awnings) {
     const horizontal = a.facing === 'N' || a.facing === 'S';
-    details.push({ x: a.x, z: a.z, y: 3.2, sx: horizontal ? a.span : 1.5, sy: 0.22, sz: horizontal ? 1.5 : a.span, c: a.color });
+    details.push(BOX({ x: a.x, z: a.z, y: 3.2, sx: horizontal ? a.span : 1.5, sy: 0.22, sz: horizontal ? 1.5 : a.span }, a.color));
   }
-  tile(unitBox(), flat('#ffffff', 0.8), details, (t, o, c) => {
-    o.position.set(t.x, t.y, t.z);
-    o.scale.set(t.sx, t.sy, t.sz);
-    return c.set(t.c);
-  });
+  const detailMat = new MeshLambertMaterial({ color: 0xffffff, vertexColors: true });
+  const dm = new Matrix4();
+  for (const tileItems of groupByChunk(details, at).values()) {
+    const parts = tileItems.map((d) => {
+      dm.makeScale(d.sx, d.sy, d.sz).setPosition(d.x, d.y, d.z);
+      const g = bakedCopy(d.geo, dm);
+      g.deleteAttribute('uv');
+      const n = g.attributes.position.count;
+      const col = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) col.set([d.c.r, d.c.g, d.c.b], i * 3);
+      g.setAttribute('color', new BufferAttribute(col, 3));
+      return g;
+    });
+    const merged = mergeGeometries(parts, false);
+    parts.forEach((p) => p.dispose());
+    if (!merged) continue;
+    merged.computeBoundingSphere();
+    const mesh = new Mesh(merged, detailMat);
+    mesh.receiveShadow = true;
+    mesh.matrixAutoUpdate = false;
+    group.add(mesh);
+    meshes.push(mesh);
+  }
 
-  // neon shop signs: one set per sign texture (and per tile) so they stay cheap
+  // Neon shop signs: all nine designs live in one atlas (2 columns x 5 rows of 512 x 160), each instance names its cell, so a tile draws
+  // its signs in ONE call.
+  const SW = 512;
+  const SH = 160;
+  const designs = SIGNS.map((s) => signTexture(s.k, { bg: s.bg, border: s.bd, lines: s.l }));
+  const atlas = canvasTexture(SW * 2, SH * 5, (g) => {
+    designs.forEach((t, k) => g.drawImage(t.image, (k % 2) * SW, Math.floor(k / 2) * SH));
+  }, { anisotropy: 8 });
   const planeGeo = new PlaneGeometry(4.2, 1.3);
-  SIGNS.forEach((s, k) => {
-    const list = extras.signs.filter((x) => x.k === k);
-    if (!list.length) return;
-    const tex = signTexture(s.k, { bg: s.bg, border: s.bd, lines: s.l });
-    tile(planeGeo, glowMaterial(0xffffff, 1.35, tex), list, (sg, o) => {
+  const signMat = signAtlasMaterial(atlas, 1.35);
+  meshes.push(
+    ...chunkedInstances(group, planeGeo, signMat, extras.signs, at, (sg, o) => {
       o.position.set(sg.x, sg.y, sg.z);
       o.rotation.set(0, FACING_ROT[sg.facing], 0);
       o.scale.set(sg.s, sg.s, 1);
-    }, { receiveShadow: false });
-  });
+    }, {
+      receiveShadow: false,
+      onMesh: (mesh, items) => {
+        const g = mesh.geometry.clone();
+        const rect = new Float32Array(items.length * 4);
+        items.forEach((sg, i) => rect.set([(sg.k % 2) * 0.5, 1 - (Math.floor(sg.k / 2) + 1) / 5, 0.5, 1 / 5], i * 4));
+        g.setAttribute('aUvRect', new InstancedBufferAttribute(rect, 4));
+        mesh.geometry = g;
+      },
+    }),
+  );
 
+  freezeMatrices(group); // nothing here ever moves: no per-frame matrix work
   return { group, meshes, buildingList, counts: Object.fromEntries(Object.entries(lots).map(([k, v]) => [k, v.length])) };
 }

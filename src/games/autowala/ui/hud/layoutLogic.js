@@ -28,7 +28,10 @@ export function hudLayout(vp, touch = false) {
   const v = vp || {};
   const w = Number(v.w) || 0;
   const h = Number(v.h) || 0;
-  const cls = v.class === 'phone' || v.class === 'tablet' ? v.class : 'desktop';
+  // a touch screen of any size gets the compact HUD: it is the one laid out around the on-screen controls (a 1366x1024 iPad Pro is
+  // 'desktop' by size, but its wheel and pedals would sit on top of the desktop HUD's minimap and speedometer)
+  const touchy = !!touch || !!v.coarse;
+  const cls = v.class === 'phone' || v.class === 'tablet' ? v.class : touchy ? 'tablet' : 'desktop';
   const land = v.landscape != null ? !!v.landscape : w > h;
   const compact = cls !== 'desktop';
   const kind = compact ? `${cls}-${land ? 'land' : 'port'}` : 'desktop';
@@ -57,9 +60,10 @@ export function controlFallback(layout) {
   return layout.land ? CONTROL_FALLBACK.land : CONTROL_FALLBACK.port;
 }
 
-/** Toast stack depth: 4 on desktop (unchanged), 3 on phones and tablets, 1 on a short portrait phone (under 700 px tall) where there is no room for a stack. */
+/** Toast stack depth: 4 on desktop (unchanged), 3 on tablets, 2 on a phone held sideways (its toast column is ~120 px tall), 1 on a short portrait phone (under 700 px tall). */
 export function toastCap(layout) {
   if (!layout || !layout.compact) return DESKTOP_TOASTS;
+  if (layout.phone && layout.land) return 2;
   if (layout.port && layout.h > 0 && layout.h < 700) return 1;
   return 3;
 }

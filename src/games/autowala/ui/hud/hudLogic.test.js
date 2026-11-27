@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   formatClock, dayPhase, fuelTone, fuelSegments, speedFraction, speedFx, groupIndian, formatRupees, formatDistance, formatEta,
   formatCountdown, easeCount, kindInfo, turnDirection, normalizeTrip, moodColor, timerTone, promptAction, driftTier, rageView, crashFlash,
-  rulesView, careerView, fareMultiplier, weatherView, SIGNAL_SHOW_M,
+  rulesView, careerView, fareMultiplier, weatherView, SIGNAL_SHOW_M, touchPromptText,
 } from './hudLogic.js';
 
 describe('formatClock (12-hour, AM/PM)', () => {
@@ -332,5 +332,15 @@ describe('weatherView (snap.weather)', () => {
   it('after the rain you are still wet for a while', () => {
     const v = weatherView({ state: 'clear', wet: 0.3, rain: 0 });
     expect(v).toMatchObject({ state: 'clear', en: 'Drying off', showName: false, wetPct: 30 });
+  });
+});
+
+describe('touchPromptText', () => {
+  it('turns "Press E to ..." into "Tap to ..." and leaves other prompts alone', () => {
+    expect(touchPromptText("Press E to enter Mama's Garage")).toBe("Tap to enter Mama's Garage");
+    expect(touchPromptText('press e to talk')).toBe('Tap to talk');
+    expect(touchPromptText('Hold Space to drift')).toBe('Tap to drift');
+    expect(touchPromptText('Pick up Salma Aapa')).toBe('Pick up Salma Aapa');
+    expect(touchPromptText(null)).toBe('');
   });
 });

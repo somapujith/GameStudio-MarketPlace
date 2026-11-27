@@ -13,7 +13,7 @@ const HEAD_Y = 4.25;
 const LAMP_DY = [0.42, 0, -0.42]; // red, yellow, green from the top
 const LAMP_Z = 0.19;
 const LAMP_RGB = [[1, 0.1, 0.08], [1, 0.62, 0.05], [0.1, 1, 0.38]];
-const TILE = 512; // m: signals are few and small, so big tiles keep the draw calls down while still being culled
+const TILE = 1024; // m: signals are few and small, and a draw call costs far more than culling saves
 const OFF = 0.1; // brightness of an unlit lamp
 const BASE_Y = 0.2; // the pavement slab
 

@@ -202,10 +202,6 @@
   border-color: rgba(255, 255, 255, 0.4);
   outline: none;
 }
-.aw-hud--touch .aw-pausebtn {
-  width: 44px;
-  min-height: 44px;
-}
 
 /* ---- top-centre: trip panel / hint ----------------------------------------------------------------------------------------- */
 .aw-hud-tc {
@@ -226,12 +222,20 @@
   border-radius: 16px;
 }
 .aw-trip {
+  /* three rows (was five): who + fare / destination + distance / mood + timer + the next turn. The road ahead stays visible. */
   display: grid;
-  gap: 7px;
-  padding: 10px 14px 11px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 12px;
+  align-items: center;
+  padding: 9px 14px 10px;
   border-top: 2px solid var(--aw-pink);
   animation: aw-trip-in 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.1);
 }
+.aw-trip__head { grid-column: 1 / -1; }
+.aw-trip__dest,
+.aw-trip__state { grid-column: 1; min-width: 0; }
+.aw-trip__nav,
+.aw-turn { grid-column: 2; }
 .aw-trip.is-arrived {
   border-top-color: var(--aw-lime);
 }
@@ -463,8 +467,15 @@
   width: 9px;
   height: 9px;
   border-radius: 50%;
+  position: relative;
   background: var(--aw-pink);
-  box-shadow: 0 0 0 0 rgba(255, 61, 154, 0.6);
+}
+.aw-find__dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(255, 61, 154, 0.55);
   animation: aw-ping 1.8s ease-out infinite;
 }
 .aw-find__count {
@@ -477,8 +488,8 @@
   color: #fff;
 }
 @keyframes aw-ping {
-  0% { box-shadow: 0 0 0 0 rgba(255, 61, 154, 0.55); }
-  100% { box-shadow: 0 0 0 11px rgba(255, 61, 154, 0); }
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(2.8); }
 }
 @keyframes aw-pulse {
   0%, 100% { opacity: 1; }
@@ -892,101 +903,15 @@
     padding: 4px 9px;
   }
 }
-/* the speedometer on touch screens: smaller, and out of the way of the pedals */
-.aw-hud--touch .aw-corner {
-  right: 10px;
-  bottom: 252px;
-}
-.aw-hud--touch .aw-sp {
-  --sp-size: 118px;
-  padding: 2px 8px 8px;
-  border-radius: 18px;
-  gap: 5px;
-}
-.aw-hud--touch .aw-sp-lbl,
-.aw-hud--touch .aw-sp-tick {
-  display: none;
-}
-.aw-hud--touch .aw-sp-read small {
-  font-size: 9px;
-  margin-top: 2px;
-}
-.aw-hud--touch .aw-fuel__txt,
-.aw-hud--touch .aw-charge > span {
-  font-size: 9px;
-}
-.aw-hud--touch .aw-fuel__cells,
-.aw-hud--touch .aw-charge__bar {
-  height: 7px;
-}
-.aw-hud--touch .aw-prompt {
-  /* portrait phones: left of the compact speedometer, above the steering slider */
-  left: 12px;
-  right: auto;
-  transform: none;
-  bottom: 296px;
-  max-width: calc(100vw - 150px);
-  animation-name: aw-prompt-in-l;
-}
+/* (touch screens of any size and every window under 600 px tall get the compact HUD: hud/phone.css + hud/land.css. The rules for those
+   cases that used to live here were dead and are gone. What remains below is the desktop HUD in a NARROW window.) */
 @keyframes aw-prompt-in-l {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
 }
-.aw-hud--touch .aw-drift {
-  bottom: 352px;
-  left: 50%;
-}
-.aw-hud--touch .aw-drift svg {
-  width: 48px;
-  height: 48px;
-}
-.aw-hud--touch .aw-drift__txt b {
-  font-size: 20px;
-}
-@media (max-height: 520px) {
-  /* landscape phones: gauges between the steering slider and the right-hand buttons, trip panel stays top-centre */
-  .aw-hud--touch .aw-corner {
-    right: 218px;
-    bottom: 10px;
-  }
-  .aw-hud--touch .aw-sp {
-    --sp-size: 104px;
-  }
-  .aw-hud--touch .aw-charge {
-    display: none;
-  }
-  .aw-hud--touch .aw-prompt {
-    left: 176px;
-    transform: none;
-    max-width: 320px;
-    bottom: 92px;
-    animation-name: aw-prompt-in-l;
-  }
-  .aw-hud--touch .aw-drift {
-    bottom: 150px;
-    left: 300px;
-  }
-  .aw-hud-tc {
-    top: 10px;
-  }
-  .aw-hud-tl,
-  .aw-hud-tr {
-    top: 10px;
-  }
-  .aw-trip {
-    gap: 5px;
-    padding: 8px 12px 9px;
-  }
-}
 @media (max-width: 700px) and (min-height: 521px) {
   .aw-hud-tc {
     top: 76px;
-  }
-}
-@media (max-width: 900px) and (max-height: 520px) {
-  .aw-hud-tc {
-    width: min(430px, calc(100vw - 380px));
-    min-width: 0;
   }
 }
 
@@ -1130,22 +1055,8 @@
   letter-spacing: 0.12em;
   color: var(--aw-lime);
 }
-.aw-hud--touch .aw-rage__head em {
-  display: none;
-}
 .aw-rage__head b {
   white-space: nowrap;
-}
-.aw-hud--touch .aw-rage {
-  width: 150px;
-  padding: 5px 9px 6px 6px;
-  gap: 7px;
-  grid-template-columns: 36px 1fr;
-}
-.aw-hud--touch .aw-rage__ring,
-.aw-hud--touch .aw-rage__ring svg {
-  width: 36px;
-  height: 36px;
 }
 
 /* ---- wave 3 layout pass: nothing overlaps at 1280x720, 800x400 (landscape phone) and 390x844 (portrait phone) ------------------- */
@@ -1180,67 +1091,5 @@
   }
   .aw-turn {
     display: none; /* the minimap's route pill already says "turn left in 30 m" */
-  }
-  .aw-hud--touch .aw-prompt {
-    bottom: 318px;
-  }
-  .aw-hud--touch .aw-corner {
-    gap: 6px;
-  }
-}
-/* landscape phones: a narrower, flatter trip panel so the clock and the speedometer keep their room */
-@media (max-height: 520px) {
-  .aw-hud-tc {
-    width: min(330px, calc(100vw - 480px));
-    min-width: 0;
-  }
-  .aw-trip {
-    grid-template-columns: 1fr 1fr;
-    gap: 4px 8px;
-    padding: 6px 10px 7px;
-  }
-  .aw-trip__head {
-    grid-template-columns: 34px 1fr auto;
-    gap: 8px;
-  }
-  .aw-trip__badge {
-    width: 34px;
-    height: 34px;
-  }
-  .aw-trip__head,
-  .aw-trip__dest,
-  .aw-turn {
-    grid-column: 1 / -1;
-  }
-  .aw-trip__nav {
-    grid-column: 1;
-  }
-  .aw-trip__state {
-    grid-column: 2;
-  }
-  .aw-trip__nav .aw-chip {
-    padding: 1px 6px;
-  }
-  .aw-mood > span {
-    display: none;
-  }
-  .aw-turn {
-    display: none;
-  }
-  .aw-hud--touch .aw-prompt {
-    bottom: 150px;
-  }
-  .aw-hud-tl {
-    gap: 4px;
-  }
-  .aw-wallet {
-    padding: 4px 12px 4px 10px;
-  }
-  .aw-wallet__num {
-    font-size: 24px;
-  }
-  .aw-meta {
-    padding: 3px 9px;
-    white-space: nowrap;
   }
 }

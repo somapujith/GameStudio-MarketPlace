@@ -92,6 +92,33 @@ describe('landscape layout (the road stays visible)', () => {
   });
 });
 
+describe('landscape budget: the controls leave the rest of the screen to the HUD', () => {
+  for (const [w, h] of PHONES_LAND) {
+    it(`${w}x${h}: the controls take at most ~half the height, the wheel at most 42% of it, buttons 48 px`, () => {
+      const L = computeLayout({ w, h }, { size: 'M', tray: false });
+      expect(L.h).toBeLessThanOrEqual(h * 0.56);
+      expect(L.wheel.size).toBeLessThanOrEqual(h * 0.42);
+      expect(L.btn).toBe(48);
+      expect(L.hasTray).toBe(false);
+      expect(L.minor).toBeNull();
+    });
+  }
+  it('the right-hand column (horn, interact, camera) sits beside the pedals, not above them', () => {
+    const L = computeLayout({ w: 640, h: 360 }, { tray: false });
+    const by = Object.fromEntries(L.actions.map((a) => [a.id, a]));
+    expect(by.horn.x).toBe(by.interact.x);
+    expect(by.horn.x).toBe(by.camera.x);
+    expect(by.horn.x).toBeGreaterThan(L.brake.x + L.brake.w - 1);
+    expect(by.boost.y).toBeGreaterThan(L.gas.y + L.gas.h - 1);
+  });
+  it('with the tray (a desktop-width touch screen without the More sheet) the wheel side is taller by the tray row', () => {
+    const a = computeLayout({ w: 844, h: 390 }, { tray: true });
+    const b = computeLayout({ w: 844, h: 390 }, { tray: false });
+    expect(a.h).toBeGreaterThan(b.h);
+    expect(a.hasTray).toBe(true);
+  });
+});
+
 describe('portrait layout (reflowed)', () => {
   for (const [w, h] of PHONES_PORT) {
     it(`${w}x${h}: smaller wheel left, pedals right, one row of actions above, all inside the width`, () => {
