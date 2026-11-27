@@ -23,6 +23,13 @@ export const SOFT_FLAGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshad
 export async function launch({ port = 9700, w = 1280, h = 800, gl = GPU_FLAGS, headless = true } = {}) {
   const chrome = CANDIDATES.find((p) => fs.existsSync(p));
   if (!chrome) throw new Error('Chrome not found: set CHROME_PATH');
+  // never attach to somebody else's debugging endpoint: an adb-forwarded emulator WebView, another run's Chrome, a leftover
+  try {
+    await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(1500) });
+    throw new Error(`debug port ${port} already answers (another browser, an adb-forwarded WebView or a leftover run): pick another --port`);
+  } catch (e) {
+    if (/already answers/.test(String(e && e.message))) throw e;
+  }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `jalebi-cdp-${port}-`));
   const proc = spawn(
     chrome,
