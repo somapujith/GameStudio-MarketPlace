@@ -12,9 +12,11 @@
 import {
   AgXToneMapping, NoToneMapping, PCFShadowMap, PerspectiveCamera, Scene, SRGBColorSpace, WebGLRenderer,
 } from 'three';
-import { QUALITY, createScaler, createDrawCallGuard, frameBudgetFor, lowerQuality, tierIndex } from './quality.js';
+import { probeBrowser } from './capabilities.js';
+import { QUALITY, applyDeviceTweaks, createCompileHold, createScaler, createDrawCallGuard, frameBudgetFor, lowerQuality, shadowEveryFor, tierBudgetFor, tierIndex } from './quality.js';
 import { createSky } from './sky.js';
 import { createPost } from './post.js';
+import { programSort, skipDarkLights } from './gfx-tweaks.js';
 
 // the applier (light-apply.js) is built from the bare WebGLRenderer, so it finds the sky and the post pipeline through this registry
 const registry = new WeakMap();
@@ -58,7 +60,22 @@ function makeRenderer(canvas, q) {
 }
 
 export function createRenderer(canvas, { quality = 'medium', auto = true, onQuality, onScale, onContextLost, onContextRestored } = {}) {
-  const renderer = makeRenderer(canvas, quality);
+  let undoTweaks = () => {};
+  try {
+    undoTweaks = applyDeviceTweaks(probeBrowser()); // forced 'high' on an integrated GPU: FXAA instead of 4x MSAA (see quality.js deviceTweaks)
+  } catch {
+    /* no probe: the table stays as designed */
+  }
+  const releaseLightSkip = skipDarkLights(); // before the first program compiles: a dark point light costs a distance test, not a PBR evaluation
+  let renderer;
+  try {
+    renderer = makeRenderer(canvas, quality);
+  } catch (err) {
+    releaseLightSkip();
+    undoTweaks();
+    throw err;
+  }
+  const sorter = programSort(renderer); // opaque draws grouped by shader program: far fewer program switches (and lighting uniform uploads) per frame
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = AgXToneMapping;
   renderer.toneMappingExposure = 1;
@@ -77,13 +94,31 @@ export function createRenderer(canvas, { quality = 'medium', auto = true, onQual
   let scale = 1; // dynamic resolution factor on top of the tier's pixel ratio
   const makeScaler = () => {
     const c = QUALITY[q];
-    const s = createScaler({ budget: frameBudgetFor(c), min: c.scaleMin ?? 0.5 });
+    const s = createScaler({ budget: frameBudgetFor(c), tierBudget: tierBudgetFor(c), min: c.scaleMin ?? 0.5 });
     s.restart(1);
     return s;
   };
   let scaler = makeScaler();
+  const compileHold = createCompileHold(); // frames right after a new shader program appeared are compile stalls, not what the device can render
   const drawGuard = createDrawCallGuard(); // a tier that stays over its draw-call budget while missing the frame budget steps down (auto only)
   renderer.info.autoReset = false; // the post passes render several times a frame: count the whole frame, reset it ourselves in render()
+  // compile() / compileAsync() bind the HDR scene target when the tier has post: the output colour space is part of the program key, so programs
+  // compiled against the canvas (as the loader does) are never used by the frame and the real ones would compile mid-shift
+  for (const name of ['compile', 'compileAsync']) {
+    const orig = renderer[name]?.bind(renderer);
+    if (!orig) continue;
+    renderer[name] = (...args) => {
+      const rt = QUALITY[q]?.post ? post.sceneTarget : null;
+      if (!rt) return orig(...args);
+      const prev = renderer.getRenderTarget();
+      renderer.setRenderTarget(rt);
+      try {
+        return orig(...args);
+      } finally {
+        renderer.setRenderTarget(prev);
+      }
+    };
+  }
   const listeners = new Set();
   const scaleListeners = new Set();
   const lastTier = { from: null, reason: '' };
@@ -96,12 +131,26 @@ export function createRenderer(canvas, { quality = 'medium', auto = true, onQual
 
   const dpr = () => (typeof devicePixelRatio === 'number' && devicePixelRatio > 0 && devicePixelRatio) || 1;
   let pr = 1;
+  let builtPr = 0;
+  let builtW = 0;
+  let builtH = 0;
+  let shadowDirty = true; // the shadow map is (re)drawn on the next frame
+  let shadowTick = 0;
+  let shadowInterval = 1;
+  let dtAvg = 1 / 60; // smoothed frame time: decides how often the shadow map is redrawn (see render())
 
   const build = () => {
     const cfg = QUALITY[q];
     pr = Math.max(0.25, Math.min(cfg.pixelRatio, dpr()) * scale);
-    renderer.setPixelRatio(pr);
-    renderer.setSize(width, height, false);
+    // only touch the canvas when its size really changes (a resize of the drawing buffer reallocates the swap chain)
+    if (pr !== builtPr || width !== builtW || height !== builtH) {
+      renderer.setPixelRatio(pr);
+      renderer.setSize(width, height, false);
+      builtPr = pr;
+      builtW = width;
+      builtH = height;
+    }
+    shadowDirty = true;
     renderer.shadowMap.enabled = cfg.shadow > 0;
     renderer.toneMapping = cfg.post ? NoToneMapping : AgXToneMapping; // with post the pipeline tone-maps; without it the materials do
     sky.setTier(cfg.clouds, cfg.stars);
@@ -156,18 +205,38 @@ export function createRenderer(canvas, { quality = 'medium', auto = true, onQual
   const render = (dt) => {
     if (lost) return;
     clock += dt;
+    sorter.tick();
     renderer.info.reset();
+    // a long frame right after a new program appeared is a compile stall (the first use of a program that is still linking blocks the main thread), not what the
+    // device can render; the normal frames in between still count, so a really slow GPU is still noticed during the warm-up
+    const stall = compileHold.push(renderer.info.programs ? renderer.info.programs.length : 0, dt) && dt > 3 * frameBudgetFor(QUALITY[q]);
     if (warmUp > 0) warmUp -= Math.min(dt, 1);
-    else if (dt > 0 && dt < 1) {
+    else if (stall) {
+      /* not judged */
+    } else if (dt > 0 && dt < 1) {
       const verdict = scaler.push(dt);
+      if (verdict?.revertTo != null && Math.abs(verdict.revertTo - scale) > 1e-4) setScale(verdict.revertTo); // the steps that bought nothing are undone
       if (verdict?.scale) setScale(verdict.scale);
       else if (verdict?.tier && auto && q !== 'lite') setQuality(lowerQuality(q), `frame time ${(dt * 1000).toFixed(0)} ms at scale ${scale.toFixed(2)}`);
       else if (verdict?.tier && q === 'lite') scaler.restart(scale); // nothing lower than lite: keep the floor scale and stop asking
     }
     sky.follow(camera);
+    // the shadow map of the static stall does not need redrawing at the full frame rate: when frames are already late it is refreshed every 2nd / 3rd frame
+    // (the sun moves in hours, the casters that move are a few people; one frame of lag is a centimetre)
+    const sm = QUALITY[q];
+    if (sm.shadow > 0) {
+      if (dt > 0 && dt < 0.5 && !stall) dtAvg += (dt - dtAvg) * 0.05;
+      renderer.shadowMap.autoUpdate = false;
+      shadowInterval = shadowEveryFor(sm, dtAvg, shadowInterval);
+      if (shadowDirty || ++shadowTick >= shadowInterval) {
+        renderer.shadowMap.needsUpdate = true;
+        shadowDirty = false;
+        shadowTick = 0;
+      }
+    }
     if (QUALITY[q].post) post.render(dt);
     else renderer.render(scene, camera);
-    if (warmUp <= 0 && auto && dt > 0 && drawGuard.push(dt, renderer.info.render.calls, q, frameBudgetFor(QUALITY[q]))) {
+    if (warmUp <= 0 && !stall && auto && dt > 0 && drawGuard.push(dt, renderer.info.render.calls, q, tierBudgetFor(QUALITY[q]))) {
       setQuality(lowerQuality(q), `${renderer.info.render.calls} draw calls per frame over the ${q} budget with frame time ${(dt * 1000).toFixed(0)} ms`);
     }
   };
@@ -180,6 +249,8 @@ export function createRenderer(canvas, { quality = 'medium', auto = true, onQual
   const onRestored = () => {
     lost = false;
     warmUp = 2.5;
+    shadowDirty = true;
+    builtPr = 0; // the drawing buffer is new
     sky.markEnvDirty();
     build();
     onContextRestored?.();
@@ -194,6 +265,9 @@ export function createRenderer(canvas, { quality = 'medium', auto = true, onQual
     post.dispose();
     sky.dispose();
     registry.delete(renderer);
+    sorter.dispose();
+    releaseLightSkip();
+    undoTweaks();
     renderer.dispose();
     listeners.clear();
     scaleListeners.clear();

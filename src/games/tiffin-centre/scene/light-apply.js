@@ -4,6 +4,7 @@
 import { Color, DirectionalLight, FogExp2, HemisphereLight, PCFShadowMap, SRGBColorSpace, Vector3 } from 'three';
 import { QUALITY } from './quality.js';
 import { attachmentsOf } from './renderer.js';
+import { lightingAt, makeLighting } from './lighting.js';
 
 const srgb = (c, rgb, k = 1) => c.setRGB(rgb[0] * k, rgb[1] * k, rgb[2] * k, SRGBColorSpace);
 const fogColor = new Color();
@@ -49,7 +50,7 @@ export function createLightApplier({ scene, renderer, quality }) {
   };
   applyQuality(quality);
 
-  return {
+  const api = {
     sun,
     hemi,
     applyQuality,
@@ -82,4 +83,8 @@ export function createLightApplier({ scene, renderer, quality }) {
       scene.fog = null;
     },
   };
+  // a first look at once (the morning hour), so the fog, the sun and the sky-driven environment light exist before anything compiles: the shaders the
+  // loader compiles then match the ones the game draws with (they used to be compiled without an environment map and compiled again at the first frame)
+  api.apply(lightingAt(8, makeLighting()));
+  return api;
 }

@@ -8,11 +8,62 @@ import {
   Vector2, WebGLRenderTarget, DataTexture, UnsignedIntType, DepthFormat,
 } from 'three';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
-import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 
 const VERT = /* glsl */ `
   varying vec2 vUv;
   void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
+`;
+
+// FXAA (the edge-search variant of three's FXAAShader, rewritten): every fetch is an explicit-LOD `textureLod`, so the search loops do not need screen-space
+// derivatives (the D3D compiler warned "gradient instruction used in a loop with varying iteration" and took a slow path for three's version), and the four
+// corner taps are only fetched for the pixels that sit on an edge (most of the picture returns after five taps).
+const FXAA_FRAG = /* glsl */ `
+  uniform sampler2D tDiffuse; uniform vec2 resolution;
+  varying vec2 vUv;
+  const float EDGE_STEPS[6] = float[6](1.0, 1.5, 2.0, 2.0, 2.0, 4.0);
+  const float EDGE_GUESS = 8.0;
+  float lumaAt(vec2 uv) { return dot(textureLod(tDiffuse, uv, 0.0).rgb, vec3(0.3, 0.59, 0.11)); }
+  void main() {
+    vec2 uv = vUv; vec2 t = resolution;
+    vec4 c0 = textureLod(tDiffuse, uv, 0.0);
+    float m = dot(c0.rgb, vec3(0.3, 0.59, 0.11));
+    float n = lumaAt(uv + vec2(0.0, t.y)); float e = lumaAt(uv + vec2(t.x, 0.0));
+    float s = lumaAt(uv - vec2(0.0, t.y)); float w = lumaAt(uv - vec2(t.x, 0.0));
+    float hi = max(max(max(max(n, e), s), w), m); float lo = min(min(min(min(n, e), s), w), m);
+    float contrast = hi - lo;
+    if (contrast < max(0.0312, 0.063 * hi)) { gl_FragColor = c0; return; }
+    float ne = lumaAt(uv + t); float nw = lumaAt(uv + vec2(-t.x, t.y)); float se = lumaAt(uv + vec2(t.x, -t.y)); float sw = lumaAt(uv - t);
+    float f = (2.0 * (n + e + s + w) + ne + nw + se + sw) * (1.0 / 12.0);
+    f = clamp(abs(f - m) / contrast, 0.0, 1.0);
+    float pixelBlend = smoothstep(0.0, 1.0, f); pixelBlend *= pixelBlend;
+    float horizontal = abs(n + s - 2.0 * m) * 2.0 + abs(ne + se - 2.0 * e) + abs(nw + sw - 2.0 * w);
+    float vertical = abs(e + w - 2.0 * m) * 2.0 + abs(ne + nw - 2.0 * n) + abs(se + sw - 2.0 * s);
+    bool isH = horizontal >= vertical;
+    float pL = isH ? n : e; float nL = isH ? s : w;
+    float pG = abs(pL - m); float nG = abs(nL - m);
+    float pixelStep = isH ? t.y : t.x;
+    float oppL; float grad;
+    if (pG < nG) { pixelStep = -pixelStep; oppL = nL; grad = nG; } else { oppL = pL; grad = pG; }
+    vec2 uvE = uv; vec2 stepV;
+    if (isH) { uvE.y += pixelStep * 0.5; stepV = vec2(t.x, 0.0); } else { uvE.x += pixelStep * 0.5; stepV = vec2(0.0, t.y); }
+    float edgeL = (m + oppL) * 0.5; float thr = grad * 0.25;
+    vec2 puv = uvE + stepV * EDGE_STEPS[0];
+    float pD = lumaAt(puv) - edgeL; bool pEnd = abs(pD) >= thr;
+    for (int i = 1; i < 6; i++) { if (pEnd) break; puv += stepV * EDGE_STEPS[i]; pD = lumaAt(puv) - edgeL; pEnd = abs(pD) >= thr; }
+    if (!pEnd) puv += stepV * EDGE_GUESS;
+    vec2 nuv = uvE - stepV * EDGE_STEPS[0];
+    float nD = lumaAt(nuv) - edgeL; bool nEnd = abs(nD) >= thr;
+    for (int i = 1; i < 6; i++) { if (nEnd) break; nuv -= stepV * EDGE_STEPS[i]; nD = lumaAt(nuv) - edgeL; nEnd = abs(nD) >= thr; }
+    if (!nEnd) nuv -= stepV * EDGE_GUESS;
+    float pDist = isH ? puv.x - uv.x : puv.y - uv.y;
+    float nDist = isH ? uv.x - nuv.x : uv.y - nuv.y;
+    float shortest; bool dSign;
+    if (pDist <= nDist) { shortest = pDist; dSign = pD >= 0.0; } else { shortest = nDist; dSign = nD >= 0.0; }
+    float edgeBlend = (dSign == (m - edgeL >= 0.0)) ? 0.0 : 0.5 - shortest / (pDist + nDist);
+    float blend = max(pixelBlend, edgeBlend);
+    if (isH) uv.y += pixelStep * blend; else uv.x += pixelStep * blend;
+    gl_FragColor = textureLod(tDiffuse, uv, 0.0);
+  }
 `;
 
 const mat = (fragmentShader, uniforms, extra = {}) =>
@@ -27,9 +78,9 @@ const AO_FRAG = /* glsl */ `
   uniform sampler2D tDepth; uniform vec2 uProj; uniform vec2 uInv; uniform float uRadius; uniform float uTime;
   varying vec2 vUv;
   ${LINEARIZE}
-  vec3 viewPos(vec2 uv) { float z = linZ(texture2D(tDepth, uv).x); return vec3((uv * 2.0 - 1.0) * vec2(1.0 / uProj.x, 1.0 / uProj.y) * z, -z); }
+  vec3 viewPos(vec2 uv) { float z = linZ(textureLod(tDepth, uv, 0.0).x); return vec3((uv * 2.0 - 1.0) * vec2(1.0 / uProj.x, 1.0 / uProj.y) * z, -z); }
   void main() {
-    float d0 = texture2D(tDepth, vUv).x;
+    float d0 = textureLod(tDepth, vUv, 0.0).x;
     if (d0 >= 0.99999) { gl_FragColor = vec4(1.0); return; }
     vec3 p = viewPos(vUv);
     vec3 pl = viewPos(vUv - vec2(uInv.x, 0.0)); vec3 pr = viewPos(vUv + vec2(uInv.x, 0.0));
@@ -63,15 +114,15 @@ const AO_BLUR_FRAG = /* glsl */ `
   varying vec2 vUv;
   ${LINEARIZE}
   void main() {
-    float z0 = linZ(texture2D(tDepth, vUv).x);
-    float sum = texture2D(tAO, vUv).x * 0.2;
+    float z0 = linZ(textureLod(tDepth, vUv, 0.0).x);
+    float sum = textureLod(tAO, vUv, 0.0).x * 0.2;
     float wsum = 0.2;
     for (int i = 1; i <= 3; i++) {
       for (int s = -1; s <= 1; s += 2) {
         vec2 uv = vUv + uDir * float(i * s) * 1.5;
-        float z = linZ(texture2D(tDepth, uv).x);
+        float z = linZ(textureLod(tDepth, uv, 0.0).x);
         float w = (0.2 / (1.0 + float(i))) * (1.0 - smoothstep(0.0, 0.08, abs(z - z0) / max(z0, 0.1)));
-        sum += texture2D(tAO, uv).x * w;
+        sum += textureLod(tAO, uv, 0.0).x * w;
         wsum += w;
       }
     }
@@ -98,17 +149,21 @@ const DOF_FRAG = /* glsl */ `
     vec3 acc = c0.rgb; float wsum = 1.0;
     float rad = max(coc0, 0.0);
     if (rad < 0.4) { gl_FragColor = c0; return; }
+    // the blur is at most a few pixels wide (uMax = H * 0.0036): 24 taps inside a 4 px radius is far more than it can show, so the tap count follows the radius
+    // (6 at the smallest blur, 24 at 13 px and more); the taps are explicit-LOD fetches (no screen-space derivatives in a loop)
+    float nTaps = clamp(rad * 1.8, 6.0, 24.0);
     for (int i = 0; i < 24; i++) {
       float fi = float(i);
+      if (fi >= nTaps) break;
       float a = (fi + ign) * 2.39996323;
-      float r = sqrt((fi + 0.5) / 24.0) * rad;
+      float r = sqrt((fi + 0.5) / nTaps) * rad;
       vec2 uv = vUv + vec2(cos(a), sin(a)) * r * uInv;
-      float ds = texture2D(tDepth, uv).x;
+      float ds = textureLod(tDepth, uv, 0.0).x;
       float zs = ds >= 0.99999 ? 600.0 : linZ(ds);
       float cs = cocOf(zs);
       // a sample in front of this pixel only counts when its own blur reaches this far; samples behind always count
       float w = zs >= z0 - 0.3 ? 1.0 : smoothstep(r - 1.0, r + 1.0, cs);
-      acc += texture2D(tColor, uv).rgb * w;
+      acc += textureLod(tColor, uv, 0.0).rgb * w;
       wsum += w;
     }
     gl_FragColor = vec4(acc / wsum, 1.0);
@@ -257,15 +312,15 @@ export function createPost(renderer, scene, camera) {
       uHeat: { value: 0 }, uHorizon: { value: 0.5 }, uCA: { value: 0 }, uRes: { value: new Vector2(1, 1) }, uAspect: { value: 1 }, uTone: { value: 1 },
     },
   };
-  const mAO = mat(AO_FRAG, U.aoU);
-  const mAOBlur = mat(AO_BLUR_FRAG, U.aoBlur);
-  const mDof = mat(DOF_FRAG, U.dof);
-  const mPre = mat(BLOOM_PRE_FRAG, U.pre);
-  const mDown = mat(BLOOM_DOWN_FRAG, U.down);
-  const mUp = mat(BLOOM_UP_FRAG, U.up, { blending: AdditiveBlending, transparent: true });
-  const mFin = mat(FINAL_FRAG, U.fin);
+  const mAO = mat(AO_FRAG, U.aoU, { name: 'ao' });
+  const mAOBlur = mat(AO_BLUR_FRAG, U.aoBlur, { name: 'aoBlur' });
+  const mDof = mat(DOF_FRAG, U.dof, { name: 'dof' });
+  const mPre = mat(BLOOM_PRE_FRAG, U.pre, { name: 'bloomPre' });
+  const mDown = mat(BLOOM_DOWN_FRAG, U.down, { name: 'bloomDown' });
+  const mUp = mat(BLOOM_UP_FRAG, U.up, { name: 'bloomUp', blending: AdditiveBlending, transparent: true });
+  const mFin = mat(FINAL_FRAG, U.fin, { name: 'final' });
   const fxU = { tDiffuse: { value: null }, resolution: { value: new Vector2(1, 1) } };
-  const mFxaa = new ShaderMaterial({ name: FXAAShader.name, uniforms: fxU, vertexShader: FXAAShader.vertexShader, fragmentShader: FXAAShader.fragmentShader, depthTest: false, depthWrite: false });
+  const mFxaa = mat(FXAA_FRAG, fxU, { name: 'fxaa' });
 
   let cfg = null;
   let W = 2;
@@ -320,12 +375,15 @@ export function createPost(renderer, scene, camera) {
     U.aoU.uInv.value.set(1 / Math.max(2, W >> 1), 1 / Math.max(2, H >> 1));
   }
 
+  let probe = null; // (passName, begin: boolean) => void, for GPU timing (timer queries) in the benchmark tooling; null in play
   const run = (m, target, clear = true) => {
     quad.material = m;
     renderer.setRenderTarget(target);
     const ac = renderer.autoClear;
     renderer.autoClear = clear;
+    if (probe) probe(m.name, true);
     quad.render(renderer);
+    if (probe) probe(m.name, false);
     renderer.autoClear = ac;
   };
 
@@ -334,7 +392,9 @@ export function createPost(renderer, scene, camera) {
     time += dt;
     // 1. the scene
     renderer.setRenderTarget(sceneRT);
+    if (probe) probe('scene', true);
     renderer.render(scene, camera);
+    if (probe) probe('scene', false);
     let cur = sceneRT.texture;
     const depth = sceneRT.depthTexture;
     const near = camera.near;
@@ -431,6 +491,10 @@ export function createPost(renderer, scene, camera) {
       U.pre.uThr.value = L.thr;
       look.aoStrength = 0.35 + 0.35 * (1 - L.night);
     },
+    /** Benchmark hook: fn(passName, begin) around every pass (see scripts/perf). */
+    setProbe(fn) {
+      probe = fn || null;
+    },
     setFocus(d) {
       look.focusTarget = Math.max(0.6, Math.min(40, d));
     },
@@ -439,6 +503,10 @@ export function createPost(renderer, scene, camera) {
     },
     get size() {
       return { w: W, h: H };
+    },
+    /** The HDR scene target (null before build / without post): programs compiled against it are the ones the frame really uses. */
+    get sceneTarget() {
+      return sceneRT;
     },
     dispose() {
       disposeTargets();
