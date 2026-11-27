@@ -2,6 +2,8 @@
 
 What was measured, what the game does to stay light, and what is and is not tested. Numbers are from this repo on the date of writing.
 
+> **Update (perf overhaul, 2026-11):** the GPU side was reworked (lean post pipeline, program / draw-call / light budgets, scheduled shadows, warm-up). The measured findings and the current numbers are in [docs/perf/aw-gpu.md](perf/aw-gpu.md); the figures below are from before that work and the draw-call, program and pipeline numbers no longer hold.
+
 ## Cost of the finished game (measured in the page)
 | | Before optimising | Now |
 |---|---|---|

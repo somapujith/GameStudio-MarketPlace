@@ -37,3 +37,21 @@ node scripts/perf/aw-actors.mjs --base http://127.0.0.1:5724 --port 9771 --cmd s
 node scripts/perf/aw-actors.mjs --base http://127.0.0.1:5724 --port 9771 --cmd shots --dir shots --label before   # fixed-look customers, auto finishes, workshop
 node scripts/perf/aw-actors.mjs --soft --no-lock --w 960 --h 540 --dpr 1 --cmd actors --near cam ...             # draw calls are the same on SwiftShader: no GPU lock needed
 ```
+
+## Autowala GPU side (aw-probe.mjs)
+`aw-probe.mjs` starts Autowala like `bench.mjs` (and takes the same lock) but holds the tier (`gfx.autoTier = false`; `--keep-sampler` for the game's own behaviour) and has one command per question:
+
+```powershell
+node scripts/perf/aw-probe.mjs --base http://127.0.0.1:5720 --port 9760 --tier medium --cmd suite --poi charminar --hour 19 --profile --compact   # bench + draws + gpu + tour in one lock hold
+node scripts/perf/aw-probe.mjs --base ... --cmd bench     # frame times, long tasks, gfx.cost, CPU profile, screenshot (--shot)
+node scripts/perf/aw-probe.mjs --base ... --cmd gpu       # GPU ms per pass from timer queries: frame / scene (incl. shadow) / shadow / post
+node scripts/perf/aw-probe.mjs --base ... --cmd draws     # draw calls and triangles per scene object, camera vs shadow pass, material / program switches
+node scripts/perf/aw-probe.mjs --base ... --cmd glcalls   # GL calls per frame by kind (where the CPU of gfx.render goes)
+node scripts/perf/aw-probe.mjs --base ... --cmd programs  # every shader program: users, light counts, decoded flags (--full for JSON)
+node scripts/perf/aw-probe.mjs --base ... --cmd tour      # teleports to every landmark at several hours / in rain: frames > 50 ms, new programs / textures
+node scripts/perf/aw-probe.mjs --base ... --cmd exp       # one-page matrix: scale 0.5, shadows off / 1024, no bloom / FXAA, MSAA, lights 0 / 2, no traffic
+node scripts/perf/aw-probe.mjs --base ... --cmd shots --label before --dir out   # fixed cameras (day / dusk / night / rain), HUD hidden
+node scripts/perf/aw-probe.mjs --base ... --cmd boot      # long tasks and slow frames right after the game starts
+```
+`--tune '{\"medium\":{\"chunk\":1024}}'` overrides tier settings before the page loads (`tier()` in render/renderer.js); `--scale`, `--lights` set `gfx.setScale` / the lamp light count; `--poi --hour --weather` pin the player and the clock.
+Draw-call counts do not depend on the GPU: `--soft --no-lock` (SwiftShader) gives exact `draws` / `glcalls` / `programs` and screenshots without queueing for the GPU. Frame times only mean something on the real GPU, and on a machine other people are using they wobble by +-30%: compare back to back.
