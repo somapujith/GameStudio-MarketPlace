@@ -240,9 +240,13 @@ export function buildProps(scene, city, colliders, shared, seed) {
     }, { receiveShadow: false }),
   );
 
-  // ---- real lights near the player: a pool that jumps to the closest lamps
+  // ---- real lights near the player: a pool that jumps to the closest lamps.
+  // The number of VISIBLE point lights is part of every lit material's shader (three compiles a program per light count), so it must
+  // never change while playing: they stay on all day with intensity 0 and only the quality tier (setLightCount) changes the count.
+  // (Switching them on at dusk used to recompile ~90 programs mid-game, and the boot compile built 88 programs for 8 lights that
+  // were then thrown away on the first frame.)
   const POOL = 8;
-  let active = POOL; // how many of them are on (quality)
+  let active = POOL; // how many of them exist for the shaders (quality)
   const lights = [];
   for (let i = 0; i < POOL; i++) {
     const pl = new PointLight(0xffb35c, 0, 30, 2);
@@ -256,11 +260,24 @@ export function buildProps(scene, city, colliders, shared, seed) {
     (lampGrid.get(k) || lampGrid.set(k, []).get(k)).push(i);
   });
   const best = [];
+  let lastX = 1e9;
+  let lastZ = 1e9;
+  let lastNight = -1;
   function update(focus, night) {
     poolMat.opacity = night * 0.6;
     const on = night > 0.18;
-    for (let i = 0; i < POOL; i++) lights[i].visible = on && i < active;
-    if (!on) return;
+    // re-pick the closest lamps only after the player moved a few metres (it is a sort of ~60 lamps), and when the dusk level changed
+    const moved = (focus.x - lastX) ** 2 + (focus.z - lastZ) ** 2 > 4;
+    if (!on) {
+      if (lastNight !== 0) for (let i = 0; i < POOL; i++) lights[i].intensity = 0;
+      lastNight = 0;
+      lastX = 1e9;
+      return;
+    }
+    if (!moved && Math.abs(night - lastNight) < 0.004) return;
+    lastNight = night;
+    lastX = focus.x;
+    lastZ = focus.z;
     best.length = 0;
     const cx = Math.floor(focus.x / 64);
     const cz = Math.floor(focus.z / 64);
@@ -286,6 +303,11 @@ export function buildProps(scene, city, colliders, shared, seed) {
     }
   }
 
-  const setLightCount = (n) => { active = Math.max(0, Math.min(POOL, n | 0)); };
+  const setLightCount = (n) => {
+    active = Math.max(0, Math.min(POOL, n | 0));
+    for (let i = 0; i < POOL; i++) lights[i].visible = i < active;
+    lastX = 1e9; // re-pick on the next update
+  };
+  setLightCount(POOL);
   return { group, meshes, update, setLightCount, lampSpots, treeSpots, palmSpots, counts: { trees: treeSpots.length, palms: palmSpots.length, lamps: lampSpots.length, bunting: bunting.length } };
 }
