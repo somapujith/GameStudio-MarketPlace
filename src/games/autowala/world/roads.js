@@ -73,6 +73,7 @@ export function buildRoads(scene, city, shared) {
   };
   roadMat.customProgramCacheKey = () => 'road';
   const road = new Mesh(geo, roadMat);
+  road.name = 'roads';
   road.receiveShadow = true;
   road.renderOrder = LATE; // after the buildings: the depth test rejects the road pixels behind them (see terrain.js)
   scene.add(road);
@@ -87,6 +88,7 @@ export function buildRoads(scene, city, shared) {
   patchMat.onBeforeCompile = roadMat.onBeforeCompile;
   patchMat.customProgramCacheKey = () => 'roadpatch';
   const patches = new Mesh(pg, patchMat);
+  patches.name = 'road-patches';
   patches.receiveShadow = true;
   patches.renderOrder = LATE;
   scene.add(patches);
@@ -94,6 +96,7 @@ export function buildRoads(scene, city, shared) {
   // ---- sidewalk slabs
   const slabBlocks = city.blocks.filter((b) => b.type !== 'water' && b.type !== 'park'); // park blocks spread over Necklace Road
   const slabs = new InstancedMesh(new BoxGeometry(1, 1, 1), new MeshLambertMaterial({ color: 0xffffff }), slabBlocks.length);
+  slabs.name = 'slabs';
   slabs.receiveShadow = true;
   slabs.renderOrder = LATE;
   const o = new Object3D();

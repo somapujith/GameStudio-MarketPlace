@@ -43,6 +43,7 @@ const std = (color, o = {}) => {
 
 export function buildLandmarks(scene, city, colliders, shared) {
   const root = new Group();
+  root.name = 'landmarks';
   scene.add(root);
   const lit = []; // materials that glow at night: [material, strength]
   const stone = (c) => {
