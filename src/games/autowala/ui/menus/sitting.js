@@ -6,6 +6,7 @@ import { MAX_SECONDS, wholeNumber } from '../../gameplay/runApi.js';
 export function createSitting(game, runs, { now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()) } = {}) {
   let base = null;
   let fares = 0;
+  let quests = 0; // missions completed this sitting (the tutorial does not count)
   let bestFare = 0;
   let ratingSum = 0;
   let ratingCount = 0;
@@ -24,6 +25,7 @@ export function createSitting(game, runs, { now = () => (typeof performance !== 
   };
 
   const off = game.on((e) => {
+    if (base && e.type === 'quest:complete' && !e.tutorial) quests += 1;
     if (!base || e.type !== 'fare:dropoff') return;
     fares += 1;
     bestFare = Math.max(bestFare, wholeNumber(e.fare));
@@ -40,6 +42,7 @@ export function createSitting(game, runs, { now = () => (typeof performance !== 
     begin({ signedIn = true } = {}) {
       base = capture();
       fares = 0;
+      quests = 0;
       bestFare = 0;
       ratingSum = 0;
       ratingCount = 0;
@@ -61,6 +64,7 @@ export function createSitting(game, runs, { now = () => (typeof performance !== 
         earned: wholeNumber(cur.earned - b.earned),
         tips: wholeNumber(Math.max(cur.tips - b.tips, tipsSeen)),
         fares,
+        quests,
         distance: wholeNumber(cur.distance - b.distance),
         seconds: wholeNumber(Math.min(simSec, wallSec), MAX_SECONDS),
         bestFare,
@@ -76,8 +80,8 @@ export function createSitting(game, runs, { now = () => (typeof performance !== 
   };
 }
 
-/** The numbers sent to the server from a stats object (quests / style are not used by Autowala yet). */
-export const runStatsFrom = (s) => ({ earned: s.earned, seconds: s.seconds, distance: s.distance, fares: s.fares, quests: 0, style: 0 });
+/** The numbers sent to the server from a stats object (`style` is not used by Autowala). */
+export const runStatsFrom = (s) => ({ earned: s.earned, seconds: s.seconds, distance: s.distance, fares: s.fares, quests: wholeNumber(s.quests), style: 0 });
 
 /** Metres -> '3.4 km' / '420 m' for the summary grid. */
 export function summaryDistance(m) {

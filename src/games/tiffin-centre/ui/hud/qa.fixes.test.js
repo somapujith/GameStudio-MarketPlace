@@ -43,13 +43,8 @@ describe('H3: co-op Leave lives in the top bar, in the pause slot', () => {
   it('TopBar renders Leave next to Mute and the button is 44 px high (the .tc-hud-btn size)', () => {
     const h = renderToStaticMarkup(createElement(TopBar, { state: game(4), reduced: true, canPause: false, onMute() {}, onLeave() {} }));
     expect(h).toMatch(/aria-label="Mute"[\s\S]*aria-label="Leave the table"/);
-    expect(css).toMatch(/\.tc-hud-btn \{[^}]*height: 44px/);
-    expect(css).toMatch(/\.tc-hud-leave \{[^}]*min-width: 44px/);
-  });
-  it('CSS hides the glue .tc-leave once the HUD has its own, and moves the team bar off the status strip on phone landscape', () => {
-    expect(css).toMatch(/\.tc-hud--has-leave ~ \.tc-leave/);
-    expect(css).toMatch(/\.tc:has\(\.tc-hud--has-leave\) \.tc-leave \{ display: none/);
-    expect(css).toMatch(/@media \(max-height: 520px\) and \(min-width: 600px\) \{\s*\.tc-hud-coop \{ position: relative;[^}]*grid-area: mid/);
+    expect(css).toMatch(/\.tc-hud-btn \{[^}]*height: calc\(44 \* var\(--u\)\)/);
+    expect(css).toMatch(/\.tc-hud-leave \{[^}]*min-width: calc\(44 \* var\(--u\)\)/);
   });
 });
 
@@ -64,13 +59,6 @@ describe('H5: the dock never clips a station', () => {
     expect(dock()).toContain('tc-hud-dock-fade is-r');
     const l1 = game(1);
     expect(renderToStaticMarkup(createElement(StationsDock, { state: l1, spot: none, walking: none, onSlot() {}, onFocusTarget() {} }))).not.toContain('data-dense');
-  });
-  it('CSS starts at the left edge (no justify-content: center losing the left half) and centres with auto margins', () => {
-    const tail = css.slice(css.lastIndexOf('H5: the stations dock'));
-    expect(tail).toMatch(/\.tc-hud-dock \{ justify-content: flex-start/);
-    expect(tail).toMatch(/\.tc-hud-dock > :first-child \{ margin-left: auto/);
-    expect(tail).toMatch(/\.tc-hud-dock > :last-child \{ margin-right: auto/);
-    expect(tail).toMatch(/\.tc-hud-dock\[data-dense='1'\] \.tc-hud-slot \{ width: 44px; height: 44px/);
   });
   it('scrollIntoDock brings a cut-off station fully in, either side, and leaves a visible one alone', () => {
     const box = (left, right) => ({ getBoundingClientRect: () => ({ left, right }) });
@@ -119,9 +107,17 @@ describe('H6: bubbles stay clear of the HUD panels', () => {
     const root = { getBoundingClientRect: () => rect(0, 0, 1280, 800), querySelector: (sel) => (parts[sel] ? { getBoundingClientRect: () => parts[sel] } : null) };
     expect(freeBounds(root, 1280, 800)).toEqual({ top: 70, bottom: 720, left: 300, right: 1000 });
   });
-  it('CSS paints the bubbles under every panel', () => {
-    expect(css).toMatch(/\.tc-hud-bubbles, \.tc-hud-edges \{ z-index: 1; \}/);
-    expect(css).toMatch(/\.tc-hud-board, \.tc-hud-railbox, \.tc-hud-bottom, \.tc-hud-coop \{ position: relative; z-index: 2; \}/);
+  it('keeps bubbles and arrows below the tutorial coach bar when it hangs at the top (it is a sibling layer of the HUD), and ignores one in the lower half', () => {
+    const rect = (left, top, right, bottom) => ({ left, top, right, bottom, width: right - left, height: bottom - top });
+    const parts = { '.tc-hud-top': rect(0, 0, 1280, 70), '.tc-hud-bottom': rect(0, 720, 1280, 800) };
+    const withCoach = (coachRect) => ({
+      getBoundingClientRect: () => rect(0, 0, 1280, 800),
+      querySelector: (sel) => (parts[sel] ? { getBoundingClientRect: () => parts[sel] } : null),
+      parentElement: { querySelector: (sel) => (sel === '.tc-menu-coachbar' && coachRect ? { getBoundingClientRect: () => coachRect } : null) },
+    });
+    expect(freeBounds(withCoach(rect(300, 80, 900, 140)), 1280, 800).top).toBe(144); // under the bar, with a 4 px margin
+    expect(freeBounds(withCoach(rect(300, 600, 900, 660)), 1280, 800).top).toBe(70); // a bar in the lower half (a narrow window) does not move the top
+    expect(freeBounds(withCoach(null), 1280, 800).top).toBe(70);
   });
 });
 
@@ -129,8 +125,7 @@ describe('H7: the Board chip', () => {
   it('reads Board in full and is not a fixed 64 px any more', () => {
     const h = renderToStaticMarkup(createElement(StallStatus, { state: game(12), onStock() {}, onSwap() {}, onBoard() {} }));
     expect(h).toMatch(/is-board[^>]*>[\s\S]*?Board<\/span>/);
-    expect(css.lastIndexOf('.tc-hud-stockbar.is-board { width: auto')).toBeGreaterThan(css.indexOf('.tc-hud-stockbar.is-board { --tone: #ffe08a; width: 64px')); // the fix comes after the old fixed width, and wins
-    expect(css).toMatch(/\.tc-hud-stockbar\.is-board \{ width: auto; min-width: 74px; \}/);
+    expect(css).toMatch(/\.tc-hud-stockbar\.is-board \{ width: 100%; min-width: calc\(74 \* var\(--u\)\); \}/); // fills the stock panel; the old fixed 64 px clipped the last letter
   });
 });
 
@@ -162,19 +157,6 @@ describe('H10: compact status strip on short screens', () => {
     expect(statusAlerts({ events: [], groups: [{ ...g[0], tone: 'out' }], gas: gasView(game(3)) })).toEqual({ count: 1, urgent: true });
     expect(statusAlerts({ events: [{ id: 'inspector' }], groups: [], gas: null })).toEqual({ count: 1, urgent: true });
   });
-  it('CSS: folded behind the button only on short screens; the button is hidden elsewhere and is a 44 px target', () => {
-    expect(css).toMatch(/\.tc-hud-status-toggle \{ display: none; \}\s*@media \(max-height: 460px\) and \(min-width: 600px\)/);
-    const compact = css.slice(css.lastIndexOf('@media (max-height: 460px) and (min-width: 600px)'));
-    expect(compact).toMatch(/\.tc-hud-status\[data-open='0'\] \.tc-hud-status-body \{ display: none; \}/);
-    expect(compact).toMatch(/\.tc-hud-status-toggle \{[^}]*min-height: 44px/);
-  });
-  it('CSS: the compact layout keeps 44 px chit and chip targets and a slim 152 px chit rail', () => {
-    const compact = css.slice(css.lastIndexOf('@media (max-height: 460px) and (min-width: 600px)'));
-    expect(compact).toMatch(/grid-template-columns: 152px minmax\(0, 1fr\) 144px/);
-    expect(compact).toMatch(/\.tc-hud-collect \{ min-height: 44px/);
-    expect(compact).toMatch(/\.tc-hud-chip-meta/);
-    expect(compact).not.toMatch(/min-height: [0-3]\dpx/); // nothing below a 40 px box on a control
-  });
 });
 
 describe('the tutorial pulses the ops controls it points at', () => {
@@ -201,33 +183,12 @@ function applyHeat(s) {
 
 // ---- H5 (final): the wide dock wraps, so 5 stations + prep + Tend buttons are all in view at 1280 x 800 ----------------------------------------------
 describe('H5 final: on a wide screen the dock wraps into rows instead of clipping', () => {
-  const wide = css.slice(css.lastIndexOf('H5 (final)'));
-  const block = wide.slice(wide.indexOf('@media (min-width: 900px)'), wide.indexOf('T2: no coach'));
   it('level 12 renders every station group and the prep counter, each with its Tend button room', () => {
     const s = game(12);
     const html = renderToStaticMarkup(createElement(StationsDock, { state: s, spot: none, walking: none, onSlot() {}, onFocusTarget() {}, prep: prepView(s), onPrep() {}, renderExtra: () => createElement('button', { className: 'tc-hud-tendbtn' }, 'Tend') }));
     expect((html.match(/class="tc-hud-station[ "]/g) || []).length).toBeGreaterThanOrEqual(5);
     expect(html).toContain('aria-label="Prep counter"');
     expect(html).toContain('Open the prep counter (P)');
-  });
-  it('the wide layout wraps (never scrolls or fades), centres, and keeps 44 px targets', () => {
-    expect(block).toMatch(/\.tc-hud-dock \{[^}]*flex-wrap: wrap/);
-    expect(block).toMatch(/\.tc-hud-dock \{[^}]*justify-content: center/);
-    expect(block).toMatch(/\.tc-hud-dock \{[^}]*overflow: visible/);
-    expect(block).toMatch(/\.tc-hud-dock > :first-child \{ margin-left: 0/);
-    expect(block).toMatch(/\.tc-hud-dock > :last-child \{ margin-right: 0/);
-    expect(block).toMatch(/\.tc-hud-dock-fade \{ display: none/);
-    expect(css).toMatch(/\.tc-hud-dock\[data-dense='1'\] \.tc-hud-slot \{ width: 44px; height: 44px/);
-    expect(css).toMatch(/\.tc-hud-tendbtn \{[^}]*min-height: 44px/);
-  });
-  it('the layout never exceeds the viewport: every ancestor of the dock can shrink, a group never grows past its row', () => {
-    expect(css).toMatch(/\.tc-hud-bottom \{[^}]*min-width: 0/);
-    expect(css).toMatch(/\.tc-hud-dockwrap \{[^}]*min-width: 0/);
-    expect(block).toMatch(/\.tc-hud-dockwrap \{ max-width: 100%/);
-    expect(css).toMatch(/\.tc-hud-station \{ flex: none;/);
-  });
-  it('the second row gives its height back to the chit rail and the chalk board', () => {
-    expect(block).toMatch(/:has\(\.tc-hud-dock\[data-rows='2'\]\) \.tc-hud-rail \{ max-height: calc\(100vh - 480px\)/);
   });
   it('dockRows counts the distinct tops of the groups', () => {
     expect(dockRows([{ offsetTop: 8 }, { offsetTop: 8 }, { offsetTop: 8.4 }])).toBe(1);
@@ -239,7 +200,6 @@ describe('H5 final: on a wide screen the dock wraps into rows instead of clippin
 
 // ---- T2: no coach element over a sheet ---------------------------------------------------------------------------------------------------------------
 describe('T2: the coach bar never lies over a sheet', () => {
-  const t2 = css.slice(css.lastIndexOf('T2: no coach element'));
   const coachSrc = readFileSync(new URL('../menus/CoachMark.jsx', import.meta.url), 'utf8');
   const hudSrc = readFileSync(new URL('./HudLayer.jsx', import.meta.url), 'utf8');
   it('a bar in the lower half is a bottom inset, a bar in the upper half a top inset, and nothing is nothing', () => {
@@ -250,8 +210,9 @@ describe('T2: the coach bar never lies over a sheet', () => {
     expect(coachInsets({ top: 0, height: 0 }, host)).toMatchObject({ bottomOn: 0, topOn: 0 });
   });
   it('every sheet wrapper (action, cook, prep, board) is inset below a top bar and, on phones, above a bottom bar', () => {
-    expect(t2).toMatch(/\.tc-hud-sheetwrap, \.tc-hud-sheetwrap\.is-prep \{ padding-top: calc\(var\(--tc-coach-top-on, 0\) \* \(var\(--tc-hud-top, 0px\) \+ 2px\) \+ var\(--tc-coach-top-h, 0px\)\)/);
-    expect(t2).toMatch(/@media \(max-width: 899px\) and \(min-height: 521px\), \(max-width: 599px\) \{\s*\.tc-hud-sheetwrap, \.tc-hud-sheetwrap\.is-prep \{ padding-bottom: calc\(var\(--tc-coach-bottom-on, 0\) \* var\(--tc-hud-bottom, 0px\) \+ var\(--tc-coach-bottom-h, 0px\)\)/);
+    // the top inset is part of the wrapper's padding; the coach bar is only at the bottom in a narrow window, where the sheet sits above the dock
+    expect(css).toMatch(/\.tc-hud-sheetwrap \{[^}]*padding: calc\(var\(--tc-coach-top-on, 0\) \* \(var\(--tc-hud-top, 0px\) \+ 2px\) \+ var\(--tc-coach-top-h, 0px\)\) 0 0;/);
+    expect(css).toMatch(/@media \(max-aspect-ratio: 1\/1\) \{[\s\S]*\.tc-hud-sheetwrap \{ align-items: flex-end; padding-bottom: calc\(var\(--tc-hud-bottom, 120px\) \+ 4px\); \}/);
     // the sheet wrapper is the only HUD layer above the coach's reach: board, prep and action sheets share it
     for (const f of ['PrepSheet.jsx', 'BoardSheet.jsx', 'ActionSheet.jsx']) expect(readFileSync(new URL(`./${f}`, import.meta.url), 'utf8')).toContain('tc-hud-sheetwrap');
   });

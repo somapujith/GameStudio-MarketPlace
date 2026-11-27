@@ -38,12 +38,12 @@ export function leaveCopy(mode) {
 }
 
 /**
- * Solo pause: "Chai break". Props: { open, onResume, onRestart, onQuit, muted, onMute(next: boolean), audio? }.
+ * Solo pause: "Chai break". LANDSCAPE: the buttons are the left column, the settings the right one (menus.css), so a 360 px tall phone shows Resume and the switches at once. Props: { open, onResume, onRestart, onQuit, muted, onMute(next: boolean), audio? }.
  * `mode` ('practice' | 'tutorial' | 'online') only words the Leave confirm. Restart asks once more before it throws the shift away; Leave saves it. `audio` (optional) lets the voices switch say when a language has no
  * voice on this device (audio.isSpeechAvailable(lang) / audio.speech.isAvailable(lang)). The Graphics section picks the quality tier (saved on this device, applied the next time the stall opens);
  * `tierInfo` (optional: scene.getTierInfo() or a function returning it) lets it say which tier is running now.
  */
-export default function PauseMenu({ open = false, onResume, onRestart, onQuit, muted = false, onMute, audio = null, mode = 'practice', tierInfo = null }) {
+export default function PauseMenu({ open = false, onResume, onRestart, onQuit, muted = false, onMute, audio = null, mode = 'practice', tierInfo = null, onApplyGraphics = null }) {
   const root = useRef(null);
   const [ask, setAsk] = useState(null); // null | 'restart' | 'quit'
   const [prefs, setPrefs] = usePrefs();
@@ -63,7 +63,7 @@ export default function PauseMenu({ open = false, onResume, onRestart, onQuit, m
 
   return (
     <div className="tc-menu tc-menu-layer tc-menu-pause" ref={root} role="dialog" aria-modal="true" aria-labelledby="tc-pause-h" tabIndex={-1}>
-      <div className="tc-menu-panel tc-menu-panel--tin">
+      <div className="tc-menu-panel tc-menu-panel--tin tc-menu-pause__panel">
         <h2 id="tc-pause-h" className="tc-menu-paint">Chai break</h2>
         <p className="tc-menu-lede">The stall is on hold. Nobody walks away while you sip.</p>
         {confirm ? (
@@ -75,7 +75,7 @@ export default function PauseMenu({ open = false, onResume, onRestart, onQuit, m
             </div>
           </div>
         ) : (
-          <>
+          <div className="tc-menu-pause__cols">
             <div className="tc-menu-stack">
               <button type="button" className="tc-menu-btn tc-menu-btn--steel tc-menu-btn--primary tc-menu-btn--big" data-autofocus onClick={() => onResume?.()}>Resume</button>
               <button type="button" className="tc-menu-btn tc-menu-btn--plank" onClick={() => setAsk('restart')}>Restart shift</button>
@@ -89,6 +89,7 @@ export default function PauseMenu({ open = false, onResume, onRestart, onQuit, m
               )}
               <button type="button" className="tc-menu-btn tc-menu-btn--ghost" onClick={() => setAsk('quit')}>Leave the stall</button>
             </div>
+            <div className="tc-menu-pause__set">
             <details className="tc-menu-set" open>
               <summary>Customers talk</summary>
               <div className="tc-menu-set__body">
@@ -121,13 +122,14 @@ export default function PauseMenu({ open = false, onResume, onRestart, onQuit, m
             </details>
             <details className="tc-menu-set" data-set="graphics">
               <summary>Graphics</summary>
-              <div className="tc-menu-set__body"><GraphicsSetting tierInfo={tierInfo} idPrefix="tc-pause-gfx" /></div>
+              <div className="tc-menu-set__body"><GraphicsSetting tierInfo={tierInfo} idPrefix="tc-pause-gfx" onApply={onApplyGraphics} /></div>
             </details>
             <details className="tc-menu-set">
               <summary>Controls</summary>
               <div className="tc-menu-set__body"><ControlsHelp /></div>
             </details>
-          </>
+            </div>
+          </div>
         )}
         <p className="tc-menu-keys" aria-hidden="true"><kbd>Esc</kbd> {ask ? 'back' : 'resume'}</p>
       </div>

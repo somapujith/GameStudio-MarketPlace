@@ -69,16 +69,16 @@ describe('results: stars compare PROFIT, not money', () => {
 
 describe('results screen', () => {
   const full = {
-    reason: 'cleared', stars: 2, level: 5, money: 1400, revenue: 1250, tips: 150, cost: 330, waste: 40, fines: 68, carry: 20, profit: 1070, served: 40, lost: 1, unpaid: 2, bestCombo: 6,
+    reason: 'cleared', stars: 2, level: 11, money: 1400, revenue: 1250, tips: 150, cost: 330, waste: 40, fines: 68, carry: 20, profit: 1070, served: 40, lost: 1, unpaid: 2, bestCombo: 6,
     winnerId: 'a', standings: [standing('a', 1400)], stats: { tips: 150, served: 40, lost: 1, unpaid: 2, combo: 6, prepped: 5, tended: 7, gasSwaps: 1, bought: 3 },
   };
-  const s = html(h(Results, { result: full, level: 5, pace: 'normal', mode: 'practice', onRetry: noop, onNext: noop, onExit: noop, players: [{ id: 'a', name: 'Asha' }] }));
+  const s = html(h(Results, { result: full, level: 11, pace: 'normal', mode: 'practice', onRetry: noop, onNext: noop, onExit: noop, players: [{ id: 'a', name: 'Asha' }] }));
   it('shows revenue, tips, cost, waste, fines and profit in the galla, with the tape about profit', () => {
     expect(s).toContain('Money earned: ₹1,400');
     expect(s).toContain('Profit: ₹1,070');
     for (const w of ['Takings', 'Tips', 'Cost', 'Wasted', 'Fines', 'Profit', '₹1,250', '₹150', '₹330', '₹40', '₹68', '₹1,070']) expect(s).toContain(w);
     expect(s).toContain('₹1,070 profit. Star targets');
-    expect(s).toMatch(/₹80 more profit for star 2/);
+    expect(s).toMatch(/₹350 more profit for star 3/); // level 11: 510 / 860 / 1420 profit for 1 / 2 / 3 stars
   });
   it('the chit has served, lost, unpaid, best combo and the stall work: prepped, tended, gas swaps, market buys', () => {
     for (const w of ['Plates served', 'Customers lost', 'Walked away unpaid', 'Best combo', 'Batches prepped', 'Pans tended', 'Gas swaps', 'Market buys']) expect(s).toContain(w);

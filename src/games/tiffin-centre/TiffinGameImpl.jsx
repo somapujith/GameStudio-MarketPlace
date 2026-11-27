@@ -10,6 +10,7 @@ import { Hud } from './ui/hud/index.js';
 import { CoachMark, PauseMenu, QuitConfirm, Results, StatusScreen } from './ui/menus/index.js';
 import { paths } from '@/platform/paths.js';
 import { lockGestures } from '@/lib/mobile.js';
+import { useGamePaused } from '@/platform/game/orientationContext.js';
 import { useKeepAwake } from './ui/hud/mobileUi.js';
 import { GAME_ID } from '@shared/tiffin-centre/catalog.js';
 import { clearSavedShift, useSession } from './session/index.js';
@@ -36,6 +37,15 @@ function LoadBar({ progress }) {
   );
 }
 
+/** User Timing mark for the load timeline (docs/perf/tf-cpu.md, scripts/perf/tf-load.mjs). */
+const mark = (name) => {
+  try {
+    performance.mark(name);
+  } catch {
+    /* no User Timing */
+  }
+};
+
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' &&
   (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || document.documentElement.dataset.motion === 'reduced');
@@ -44,7 +54,8 @@ const prefersReducedMotion = () =>
 const tutorialResult = (state) => ({ reason: 'tutorial', stars: 3, money: state?.money ?? 0, level: 0, standings: [] });
 
 export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext }) {
-  const view = useSession(session);
+  // notifications only (no 10 Hz clock pulse): this component and the layers under it animate on requestAnimationFrame, not on re-renders
+  const view = useSession(session, { hz: 0 });
   const { state, status, mode, tutorial } = view;
   const result = view.result ?? null;
 
@@ -56,9 +67,15 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
   const [gl, setGl] = useState(null); // null | 'webgl' | 'lost'
   const [muted, setMuted] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  // "Apply now" in the pause menu's Graphics section: bumping this rebuilds the scene (and the audio) at the picked tier while the session stays paused
+  const [sceneKey, setSceneKey] = useState(0);
+  const applyGraphics = useCallback(() => setSceneKey((k) => k + 1), []);
   const [progress, setProgress] = useState({ p: 0, label: 'Lighting the stove...' });
   const navigate = useNavigate();
   const online = mode === 'online';
+  // The hub's orientation gate (platform/game/OrientationGate.jsx, manifest `orientation: 'landscape'`): true while a phone or tablet is held
+  // upright and the "turn your phone" screen covers this one. Nothing is torn down: the scene stops drawing, the sound stops, a local shift's clock is held.
+  const upright = useGamePaused();
 
   // The shift clock of a LOCAL session is held until the stall is on screen, and again whenever the 3D view is missing: a local
   // session starts ticking the moment it is created, so a slow first load (chunks, fonts, shaders, first frame) or a device without
@@ -79,7 +96,16 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
     if (gl) hold(); // WebGL missing, or the context was lost mid-shift
   }, [gl, hold]);
   useEffect(() => {
-    if (!gated || !scene || gl) return undefined;
+    if (upright) hold(); // a local shift stops ticking behind the "turn your phone" screen (an online table keeps running: the server owns its clock)
+  }, [upright, hold]);
+  // the render loop: stopped while upright, started again the moment the device is landscape (both are idempotent; `start` resets the loop's clock)
+  useEffect(() => {
+    if (!scene) return;
+    if (upright) scene.stop?.();
+    else scene.start?.();
+  }, [scene, upright]);
+  useEffect(() => {
+    if (!gated || !scene || gl || upright) return undefined; // upright: stay held until the device is landscape again
     let r2 = 0;
     const r1 = requestAnimationFrame(() => {
       r2 = requestAnimationFrame(() => {
@@ -93,7 +119,7 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
       cancelAnimationFrame(r1);
       cancelAnimationFrame(r2);
     };
-  }, [gated, scene, gl, session]);
+  }, [gated, scene, gl, session, upright]);
 
   // The scene + audio live exactly as long as the session. Every session notification feeds both.
   useEffect(() => {
@@ -102,19 +128,29 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
     let ro = null;
     let off = null;
     let audio = null;
+    setProgress({ p: 0, label: 'Lighting the stove...' });
     (async () => {
       // the audio code is its own chunk (the context itself only starts on the first gesture)
       // the web fonts load WHILE the scene builds (the painted banner and menu board repaint when they arrive); a device without WebGL 2 is told at once
+      mark('tc:impl-start');
       const fontsReady = loadFonts();
       const { createTiffinAudio } = await import('./audio/index.js');
+      mark('tc:audio-chunk');
       if (dead || !canvasRef.current || !wrapRef.current) return;
       audio = createTiffinAudio({ meId: session.meId });
       audioRef.current = audio;
       setAudio(audio);
       try {
+        const box = wrapRef.current.getBoundingClientRect();
         s = await createTiffinSceneAsync(canvasRef.current, {
           quality: 'auto',
           reducedMotion: prefersReducedMotion(),
+          // the session's first state and the real canvas size: the build settles the scene the way it will be drawn (stations, lights, env map, batched
+          // scenery, every shader linked) BEFORE it is shown, so the first frame never waits for a compile. Online tables without a state yet build the old way.
+          initialState: session.state ?? null,
+          initialTickAt: session.tickAt,
+          meId: session.meId,
+          size: box.width > 0 && box.height > 0 ? { w: box.width, h: box.height } : null,
           onContextLost: () => !dead && setGl('lost'),
           onContextRestored: () => !dead && setGl(null),
           onProgress: (p, label) => !dead && setProgress({ p, label }),
@@ -131,6 +167,7 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
         return;
       }
       if (!s) return; // disposed while loading
+      mark('tc:scene-built');
       await fontsReady;
       if (dead) {
         s.dispose();
@@ -165,8 +202,15 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
       if (session.state) push({ state: session.state, events: [], tickAt: session.tickAt });
       s.start();
       setScene(s);
+      mark('tc:scene-started');
       // a console/screenshot handle: only in dev builds or with ?tcdebug=1 in the URL (a solo shift is client-side anyway, but there is no reason to hand it out)
-      if (import.meta.env?.DEV || /[?&]tcdebug=1\b/.test(window.location.search)) window.__tiffin = { session, scene: s, audio };
+      if (import.meta.env?.DEV || /[?&]tcdebug=1\b/.test(window.location.search)) {
+        window.__tiffin = { session, scene: s, audio };
+        // the engine's bot, for the soak / leak scripts (scripts/perf/tf-leak.mjs): the same chunk the session already loaded
+        import('@shared/tiffin-centre/index.js').then((m) => {
+          if (window.__tiffin?.session === session) window.__tiffin.bot = m.chooseAutoAction;
+        }).catch(() => {});
+      }
     })().catch((err) => {
       if (!dead) {
         console.error('[tiffin] start-up failed', err);
@@ -184,7 +228,7 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
       setScene(null);
       if (window.__tiffin?.session === session) delete window.__tiffin;
     };
-  }, [session]);
+  }, [session, sceneKey]);
 
   // Touch screens: no pinch or double-tap zoom, no pull-to-refresh, no long-press menu on the play surface (the page is a game, not a document),
   // and the screen stays on while a shift is running. Menus inside the root that scroll (results, pause) keep their own scrolling.
@@ -205,10 +249,14 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
   }, []);
 
   useEffect(() => {
-    if (status === 'playing') audioRef.current?.startAmbience();
+    if (status === 'playing' && !upright) audioRef.current?.startAmbience();
     else audioRef.current?.stopAmbience();
-    audioRef.current?.setSpeechPaused?.(status !== 'playing');
-  }, [status, scene, audio]);
+    audioRef.current?.setSpeechPaused?.(status !== 'playing' || upright);
+  }, [status, scene, audio, upright]);
+  // upright: silence the effects too (an online table keeps sending events); the player's own mute choice comes back with landscape
+  useEffect(() => {
+    audioRef.current?.setMuted(muted || upright);
+  }, [muted, upright, audio]);
 
   const onMute = useCallback((next) => {
     setMuted(next);
@@ -223,11 +271,11 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
 
   const shiftOver = status === 'done' || status === 'closed';
   const showResults = shiftOver || tutorialFinished;
-  const paused = status === 'paused' && !tutorialFinished && !gated;
+  const paused = status === 'paused' && !tutorialFinished && !gated && !!scene; // while a rebuilt picture loads (Apply now) the pause card waits
 
   let blocker = null;
   if (gl === 'webgl') blocker = 'webgl';
-  else if (gl === 'lost') blocker = 'error';
+  else if (gl === 'lost') blocker = 'lost';
   else if (status === 'error') blocker = 'error';
   else if (status === 'disconnected' && online) blocker = 'disconnected';
   else if ((!state && !shiftOver) || (!scene && !shiftOver)) blocker = 'loading';
@@ -256,6 +304,7 @@ export default function TiffinGame({ session, onExit, onInvite, onRetry, onNext 
           onMute={onMute}
           audio={audio}
           tierInfo={() => scene?.getTierInfo?.()}
+          onApplyGraphics={applyGraphics}
           onResume={() => session.resume?.()}
           onRestart={() => session.restart?.()}
           onQuit={() => {

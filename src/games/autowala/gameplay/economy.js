@@ -2,7 +2,7 @@
 // Every change is saved to the profile and announced on the event bus as 'wallet' { wallet, delta, reason }.
 export function createEconomy(ctx) {
   const p = ctx.profile;
-  const session = { earned: 0, spent: 0, fares: 0, tips: 0 }; // this sitting only (the run API reports these)
+  const session = { earned: 0, spent: 0, fares: 0, tips: 0, workshop: 0 }; // this sitting only (the run API reports these); workshop = the part of `spent` that was shop purchases
 
   const change = (delta, reason) => {
     p.data.wallet = Math.max(0, Math.round(p.data.wallet + delta));
@@ -25,7 +25,7 @@ export function createEconomy(ctx) {
         session.earned += n;
         if (kind === 'fare') session.fares += n;
         if (kind === 'tip') session.tips += n;
-        p.data.bestFare = Math.max(p.data.bestFare, n);
+        if (kind === 'fare') p.data.bestFare = Math.max(p.data.bestFare, n); // a tip or a quest bonus is not a fare
       }
       change(n, reason);
       return p.data.wallet;
@@ -36,6 +36,7 @@ export function createEconomy(ctx) {
       if (!Number.isFinite(n) || n < 0 || p.data.wallet < n) return false;
       if (n === 0) return true;
       session.spent += n;
+      if (reason === 'workshop') session.workshop += n;
       change(-n, reason);
       return true;
     },

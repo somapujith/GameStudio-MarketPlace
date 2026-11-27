@@ -1,6 +1,6 @@
 // The garage menu as data (categories -> sections -> rows), built from the catalogue so a new catalogue entry shows up by itself.
 // Pure: the React menu renders it, the shop quotes it, the camera reads `view` from it.
-import { ACCESSORIES, BADGE_MAX, BANNER_MAX, OPTIONS, PLATE_MAX, UPGRADES, getPath } from '../catalog.js';
+import { ACCESSORIES, BADGE_MAX, BANNER_MAX, OPTIONS, PLATE_MAX, UPGRADES, getPath, sanitizeBadge } from '../catalog.js';
 import { TEXT_PATHS, TOGGLE_PATHS, quote } from './shop.js';
 
 /** Camera presets, as an angle relative to the auto's nose (0 = looking at the front, PI = rear), pitch, distance (m) and target height. */
@@ -64,6 +64,34 @@ export const CATEGORIES = [
   },
 ];
 
+/**
+ * What the text fields let you type, as you type (the saved value is cleaned again by the shop). Plate letters, digits, space and
+ * hyphen up to PLATE_MAX (the stock plate is 11 characters: a limit of 10 used to cut it on the first edit), badge letters, free text.
+ */
+const freeText = (max) => (s) => String(s).replace(/[\u0000-\u001f<>]/g, '').replace(/ {2,}/g, ' ').slice(0, max);
+export const TYPED_TEXT = {
+  'plate.text': (s) => String(s).toUpperCase().replace(/[^A-Z0-9 -]/g, '').replace(/ {2,}/g, ' ').slice(0, PLATE_MAX),
+  'decals.badge': (s) => sanitizeBadge(s),
+  'decals.banner': freeText(BANNER_MAX),
+  'decals.rearWindow': freeText(BANNER_MAX),
+};
+
+/**
+ * A double click (or a held Enter) must not buy twice: true for the first press of a row, false for a repeat of the same row within
+ * `ms` of the previous press (blocked presses count too, so a key held down stays blocked until it is let go).
+ */
+export function createRepeatGuard(ms = 450, now = () => Date.now()) {
+  let last = -Infinity;
+  let lastKey = '';
+  return (key) => {
+    const t = now();
+    const repeat = key === lastKey && t - last < ms;
+    lastKey = key;
+    last = t;
+    return !repeat;
+  };
+}
+
 export const sectionView = (cat, sec) => sec?.view || cat?.view || 'wide34';
 
 /** The rows of a section. Row types: 'item' (a catalogue entry), 'input' (free text), 'upgrade' (one performance part). */
@@ -93,7 +121,7 @@ export function sectionRows(sec) {
  * How a row reads in the menu: the right-hand label and its tone.
  * -> { label, tone: 'installed'|'owned'|'free'|'price'|'max'|'locked', price, can, q }
  */
-export function rowStatus(profileData, loadout, row, wallet = Infinity) {
+export function rowStatus(profileData, loadout, row, wallet = Infinity, typed) {
   if (row.type === 'upgrade') {
     const lvl = Math.max(0, Math.floor(Number(profileData?.upgrades?.[row.key]) || 0));
     if (lvl >= row.prices.length - 1) return { label: 'MAX', tone: 'max', price: 0, can: false, level: lvl };
@@ -106,7 +134,15 @@ export function rowStatus(profileData, loadout, row, wallet = Infinity) {
     if (q.reason === 'owned') return { label: 'OWNED', tone: 'owned', price: 0, can: true, q };
     return { label: `Rs ${q.price.toLocaleString('en-IN')}`, tone: q.price > wallet ? 'locked' : 'price', price: q.price, can: q.price <= wallet, q };
   }
-  if (row.type === 'input') return { label: `Rs ${row.price} / change`, tone: 'price', price: row.price, can: row.price <= wallet };
+  if (row.type === 'input') {
+    // the label follows what is typed: the stock plate is free, a banner preset has its own price, anything else costs the change fee
+    const q = typeof typed === 'string' && typed ? quote(profileData, loadout, row.path, typed) : null;
+    if (!q || !q.ok) return { label: `Rs ${row.price} / change`, tone: 'price', price: row.price, can: row.price <= wallet };
+    if (q.installed) return { label: 'INSTALLED', tone: 'installed', price: 0, can: true, q };
+    if (q.reason === 'owned') return { label: 'OWNED', tone: 'owned', price: 0, can: true, q };
+    if (q.price === 0) return { label: 'FREE', tone: 'free', price: 0, can: true, q };
+    return { label: `Rs ${q.price.toLocaleString('en-IN')}`, tone: q.price > wallet ? 'locked' : 'price', price: q.price, can: q.price <= wallet, q };
+  }
   const q = quote(profileData, loadout, row.path, row.value);
   if (!q.ok) return { label: '-', tone: 'locked', price: 0, can: false, q };
   if (q.installed) return { label: 'INSTALLED', tone: 'installed', price: 0, can: true, q };

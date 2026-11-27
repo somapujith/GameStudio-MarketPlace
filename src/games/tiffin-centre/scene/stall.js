@@ -563,14 +563,18 @@ export function createStall({ scene, art, tr, quality, onPropCreated }) {
     root.add(tl);
     lights.push({ l: tl, base: 14, kind: 'tube' });
   }
-  // a local light over the back counter (the cook's bulbs are a long way from it); on only when the level has a prep counter
+  // a local light over the back counter (the cook's bulbs are a long way from it); on only when the level has a prep counter. Like every light here it
+  // stays in the scene for good and is dimmed to zero (`off`): three.js bakes the number of visible lights into every lit shader, so a light that came
+  // and went made the whole scene compile again.
   let prepLight = null;
+  let prepEntry = null;
+  let prepOn = false; // the level has the back counter (its two lights are dimmed to zero when it has not)
   if (quality.lights) {
     prepLight = new PointLight(0xffb055, 0, 5.5, 2);
     prepLight.position.set(STATIONS.prep1.x, 2.12, STATIONS.prep1.z - 0.35);
-    prepLight.visible = false;
     root.add(prepLight);
-    lights.push({ l: prepLight, base: 9, kind: 'bulb' });
+    prepEntry = { l: prepLight, base: 9, kind: 'bulb', off: true };
+    lights.push(prepEntry);
   }
   // low tier: baked-looking pools of warm light on the counter instead of real lights
   const pools = [];
@@ -688,7 +692,8 @@ export function createStall({ scene, art, tr, quality, onPropCreated }) {
       }
     }
     const hasPrep = stations.has('prep1');
-    if (prepLight) prepLight.visible = hasPrep;
+    prepOn = hasPrep;
+    if (prepEntry) prepEntry.off = !hasPrep;
     if (pools.prep) pools.prep.visible = hasPrep;
     prepCandle.visible = hasPrep;
     opsDirty = true;
@@ -912,7 +917,7 @@ export function createStall({ scene, art, tr, quality, onPropCreated }) {
   if (quality.lights) {
     prepCandleLight = new PointLight(0xff9a3a, 0, 4, 2);
     prepCandleLight.position.set(pcx - 0.25, S.counterTop + 0.5, pcz - 0.1);
-    prepCandle.add(prepCandleLight);
+    root.add(prepCandleLight); // not a child of prepCandle (which hides with the prep counter): the number of lights must never change
   }
   let grid = 1;
   let fanSpin = 0;
@@ -944,7 +949,7 @@ export function createStall({ scene, art, tr, quality, onPropCreated }) {
     tubeGlowMat.opacity = (post ? 0.35 : 0.7) * flick;
     bannerFront.emissiveIntensity = 0.12 * L.neon;
     menuM.emissiveIntensity = 0.22 * L.neon;
-    for (const lt of lights) lt.l.intensity = lt.kind === 'tube' ? lt.base * flick : lt.base * L.bulb * (0.97 + 0.03 * Math.sin(t * 7.3 + lt.l.position.x));
+    for (const lt of lights) lt.l.intensity = lt.off ? 0 : lt.kind === 'tube' ? lt.base * flick : lt.base * L.bulb * (0.97 + 0.03 * Math.sin(t * 7.3 + lt.l.position.x));
     if (pools.mat) pools.mat.opacity = 0.34 * L.bulb;
     // the mains: a power cut (L.grid < 1) stops the fan and the cooler's light and lights the candle and the diya
     grid = L.grid ?? 1;
@@ -966,7 +971,7 @@ export function createStall({ scene, art, tr, quality, onPropCreated }) {
     if (candleLight) candleLight.intensity = 6.5 * cut * flick2;
     prepFlame.visible = cut > 0.05;
     prepFlame.scale.set(1, 0.85 + 0.3 * Math.sin(t * 12.3 + 1), 1);
-    if (prepCandleLight) prepCandleLight.intensity = 5 * cut * flick2;
+    if (prepCandleLight) prepCandleLight.intensity = prepOn ? 5 * cut * flick2 : 0;
     // shafts follow the key light; only when it is a low warm sun (shaft > 0)
     const s = L.shaft;
     shaftU.uStrength.value = s * 0.28;

@@ -20,6 +20,7 @@ import Hisaab from './ui/Hisaab.jsx';
 import Radio from './ui/Radio.jsx';
 import { FailureScreen, GpuLostScreen, LoadingScreen } from './ui/menus/BootScreens.jsx';
 import { applyUiScale } from './ui/scale.js';
+import useOrientationHold from './ui/useOrientationHold.js';
 import './ui/autowala.css';
 
 // What the loading bar says while each stage of the build runs.
@@ -64,6 +65,7 @@ export default function AutowalaGame() {
   const [failure, setFailure] = useState(null); // 'webgl' | 'error' when the game could not start
   const [gpuLost, setGpuLost] = useState(false);
   const [loading, setLoading] = useState({ text: STAGE_TEXT.start, pct: 0 });
+  useOrientationHold(game); // a phone held upright (the hub's orientation gate covers the screen): no loop, no sound, back at once in landscape
 
   // the HUD scale follows the viewport HEIGHT (--aw-ui-scale on the root); it also covers the loading and failure screens
   useEffect(() => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { QUALITY, QUALITY_ORDER, KNOB_KEYS, pickQuality, lowerQuality, minTier, createQualitySampler, createScaler, createDrawCallGuard, DRAW_CALL_BUDGET, frameBudgetFor } from './quality.js';
+import { QUALITY, QUALITY_ORDER, KNOB_KEYS, pickQuality, lowerQuality, minTier, createQualitySampler, createScaler, createDrawCallGuard, DRAW_CALL_BUDGET, frameBudgetFor, tierBudgetFor, shadowEveryFor, deviceTweaks, applyDeviceTweaks, createCompileHold } from './quality.js';
 
 describe('quality tiers', () => {
   it('has lite <= low <= medium <= high on every numeric knob and a pipeline that grows with the tier', () => {
@@ -117,7 +117,11 @@ describe('dynamic resolution scaler', () => {
     }
     const scales = verdicts.filter((v) => v.scale).map((v) => v.scale);
     expect(scales.length).toBeGreaterThanOrEqual(2);
-    for (let i = 1; i < scales.length; i++) expect(scales[i]).toBeLessThan(scales[i - 1]);
+    // it only goes down while the frame is too slow (a later probe back up is allowed once the frame time recovers, and is judged separately)
+    const firstUp = scales.findIndex((v, i) => i > 0 && v > scales[i - 1]);
+    const downs = firstUp < 0 ? scales : scales.slice(0, firstUp);
+    expect(downs.length).toBeGreaterThanOrEqual(2);
+    for (let i = 1; i < downs.length; i++) expect(downs[i]).toBeLessThan(downs[i - 1]);
     expect(Math.min(...scales)).toBeGreaterThanOrEqual(0.5);
   });
   it('asks for a tier drop quickly when lowering the resolution does not help (CPU bound)', () => {
@@ -129,6 +133,37 @@ describe('dynamic resolution scaler', () => {
     }
     expect(out.some((v) => v.tier === 1)).toBe(true);
     expect(out.filter((v) => v.scale).length).toBeLessThanOrEqual(2);
+  });
+  it('undoes the useless downscales when the frame is CPU bound, freezes there and does not keep asking the pixels to help', () => {
+    const s = createScaler({ budget: 0.03, min: 0.5, step: 0.1 });
+    const seen = [];
+    for (let i = 0; i < 6000; i++) {
+      const r = s.push(0.06); // 60 ms whatever the resolution
+      if (r) seen.push(r);
+    }
+    const tier = seen.find((v) => v.tier);
+    expect(tier).toBeTruthy();
+    expect(tier.revertTo).toBe(1); // the picture goes back to full resolution
+    expect(s.scale).toBe(1);
+    expect(s.cpuBound).toBe(true);
+    // afterwards it never lowers the scale again (a caller that ignores the tier verdict, such as an explicit Graphics choice, keeps a sharp picture)
+    const after = seen.slice(seen.indexOf(tier) + 1);
+    expect(after.every((v) => !v.scale)).toBe(true);
+    expect(s.scale).toBe(1);
+  });
+  it('keeps the steps that did help (GPU bound) and only reverts when a step bought nothing', () => {
+    const s = createScaler({ budget: 0.03, min: 0.5, step: 0.1 });
+    // the first two steps help (0.9 and 0.8), the rest is a CPU floor of 45 ms
+    let last = null;
+    for (let i = 0; i < 8000; i++) {
+      const dt = Math.max(0.045, 0.09 * s.scale * s.scale * s.scale);
+      const r = s.push(dt);
+      if (r?.tier) { last = r; break; }
+    }
+    expect(last).toBeTruthy();
+    expect(last.revertTo).toBeGreaterThan(0.6); // not all the way back to 1, not down to the floor: where the gain stopped
+    expect(last.revertTo).toBeLessThan(1);
+    expect(s.scale).toBe(last.revertTo);
   });
   it('asks for a tier drop when even the floor is too slow', () => {
     const s = createScaler({ budget: 0.03, min: 0.8, step: 0.1 });
@@ -163,6 +198,64 @@ describe('dynamic resolution scaler', () => {
     run(s, 0.012, 40);
     expect(s.scale).toBeGreaterThan(lowest);
   });
+  it('settles on a vsync-locked display: steps down to the biggest scale that holds the budget and then stays put', () => {
+    // a 60 Hz display: a frame is never shorter than 16.7 ms; the pixels cost 6 ms + 20 ms * scale^2 beyond that
+    const ft = (sc) => Math.max(1 / 60, 0.006 + 0.02 * sc * sc);
+    const s = createScaler({ budget: 0.02, upSec: 4, cooldownSec: 0.5, windowSec: 1 });
+    const changes = [];
+    for (let t = 0; t < 120; t += 1 / 60) {
+      const r = s.push(ft(s.scale));
+      if (r?.scale) changes.push(+r.scale.toFixed(2));
+    }
+    expect(s.scale).toBeGreaterThanOrEqual(0.7);
+    expect(s.scale).toBeLessThanOrEqual(0.9);
+    // no thrash: after it settled, at most a couple of probes up (each one reverted), and it ends frozen or steady
+    expect(changes.length).toBeLessThanOrEqual(8);
+    const tail = changes.slice(-3);
+    expect(tail.every((v) => v <= 0.9)).toBe(true);
+  });
+  it('only asks for a tier drop when the frames are slower than the tier budget; a mildly slow CPU-bound frame just keeps its scale', () => {
+    const s = createScaler({ budget: 0.02, tierBudget: 0.03 });
+    const seen = [];
+    for (let i = 0; i < 6000; i++) {
+      const r = s.push(0.024); // 42 fps whatever the resolution: over the scale budget, under the tier budget
+      if (r) seen.push(r);
+    }
+    expect(seen.some((v) => v.tier)).toBe(false);
+    expect(s.scale).toBe(1);
+    expect(s.cpuBound).toBe(true);
+    const slow = createScaler({ budget: 0.02, tierBudget: 0.03 });
+    let tier = null;
+    for (let i = 0; i < 6000 && !tier; i++) tier = slow.push(0.05)?.tier;
+    expect(tier).toBe(1);
+  });
+  it('does not read an isolated hitch (a compile, a GC pause) as a slow device', () => {
+    const s = createScaler({ budget: 0.02, windowSec: 1.2 });
+    let verdicts = 0;
+    for (let i = 0; i < 3000; i++) {
+      const r = s.push(i % 200 === 199 ? 0.7 : 1 / 60); // 60 fps with a 700 ms stall every ~3.3 s
+      if (r) verdicts++;
+    }
+    expect(verdicts).toBe(0);
+    expect(s.scale).toBe(1);
+  });
+  it('goes back to full resolution after a hitch on a vsync-locked display (a flat 16.7 ms frame is headroom)', () => {
+    const s = createScaler({ budget: 0.02, upSec: 3, cooldownSec: 0.5, windowSec: 1 });
+    for (let t = 0; t < 8; t += 1 / 30) s.push(0.04 * s.scale * s.scale + 0.01); // a slow patch: scales down
+    expect(s.scale).toBeLessThan(1);
+    for (let t = 0; t < 90; t += 1 / 60) s.push(1 / 60); // fine again
+    expect(s.scale).toBe(1);
+  });
+  it('does not blame a later slowdown on an upscale that held (no spurious flaps, ceiling or freeze)', () => {
+    const s = createScaler({ budget: 0.03, upSec: 2, cooldownSec: 0.5, windowSec: 1 });
+    for (let t = 0; t < 5; t += 1 / 30) s.push(0.05 * s.scale * s.scale + 0.006);
+    for (let t = 0; t < 30; t += 1 / 60) s.push(0.012); // recovers and holds
+    const before = s.flaps;
+    for (let t = 0; t < 40; t += 1 / 60) s.push(0.012);
+    for (let t = 0; t < 3; t += 1 / 30) s.push(0.05 * s.scale * s.scale + 0.006); // a new slow patch much later
+    expect(s.flaps).toBe(before);
+    expect(s.frozen).toBe(false);
+  });
   it('ignores hidden-tab gaps and garbage samples and can restart for a new tier', () => {
     const s = createScaler({ budget: 0.03 });
     for (let i = 0; i < 100; i++) expect(s.push(i % 2 ? 5 : NaN)).toBeNull();
@@ -184,7 +277,9 @@ describe('draw-call guard', () => {
     const b = QUALITY_ORDER.map((q) => DRAW_CALL_BUDGET[q]);
     expect(b).toEqual([...b].sort((x, y) => x - y));
     expect(frameBudgetFor(QUALITY.lite)).toBeCloseTo(1 / 34, 6);
-    expect(frameBudgetFor(QUALITY.medium)).toBeCloseTo(1 / 38, 6);
+    expect(frameBudgetFor(QUALITY.medium)).toBeCloseTo(1 / 50, 6);
+    expect(tierBudgetFor(QUALITY.medium)).toBeCloseTo(1 / 36, 6);
+    expect(tierBudgetFor(QUALITY.lite)).toBeCloseTo(1 / 34, 6);
   });
 
   it('downgrades after 2 s over budget with frames slower than their budget', () => {
@@ -246,5 +341,81 @@ describe('draw-call guard', () => {
     }
     // low (293 calls) is under its own budget (350): the slow frames there are the resolution scaler's business, so the walk ends at low
     expect(seen).toEqual(['high', 'medium', 'low']);
+  });
+});
+
+describe('shadow refresh interval', () => {
+  it('is 1 on tiers that do not allow skipping, and follows the frame time on medium / high only when frames are late', () => {
+    expect(shadowEveryFor(QUALITY.low, 0.05)).toBe(1);
+    expect(shadowEveryFor(QUALITY.lite, 0.05)).toBe(1);
+    expect(shadowEveryFor(QUALITY.medium, 0.0167)).toBe(1);
+    expect(shadowEveryFor(QUALITY.medium, 0.022)).toBe(1); // 45 fps: no skipping (it would make the frames alternate)
+    expect(shadowEveryFor(QUALITY.medium, 0.03)).toBe(2);
+    expect(shadowEveryFor(QUALITY.medium, 0.05)).toBe(3);
+    expect(shadowEveryFor(QUALITY.high, 0.05)).toBe(2); // high never skips more than every 2nd frame
+    expect(shadowEveryFor(QUALITY.medium, NaN)).toBe(1);
+  });
+  it('has hysteresis: it does not flip back to every frame until the frame time is clearly better', () => {
+    expect(shadowEveryFor(QUALITY.medium, 0.026, 1)).toBe(1);
+    expect(shadowEveryFor(QUALITY.medium, 0.026, 2)).toBe(2);
+    expect(shadowEveryFor(QUALITY.medium, 0.022, 2)).toBe(1);
+    expect(shadowEveryFor(QUALITY.medium, 0.04, 3)).toBe(3);
+  });
+});
+
+describe('device tweaks to the tier table', () => {
+  it('leaves discrete and unidentified GPUs alone and gives an integrated GPU a playable high', () => {
+    expect(deviceTweaks(null)).toEqual({});
+    expect(deviceTweaks({ renderer: '', discreteGpu: false })).toEqual({});
+    expect(deviceTweaks({ renderer: 'NVIDIA GeForce RTX 3060', discreteGpu: true })).toEqual({});
+    const igpu = deviceTweaks({ renderer: 'ANGLE (AMD, AMD Radeon(TM) Graphics)', discreteGpu: false });
+    expect(igpu.high).toEqual({ msaa: 0, fxaa: true, pixelRatio: 1.1, shadow: 1536 });
+    expect(igpu.medium).toBeUndefined();
+  });
+  it('applies to a table and restores it exactly', () => {
+    const table = JSON.parse(JSON.stringify(QUALITY));
+    const undo = applyDeviceTweaks({ renderer: 'Intel(R) UHD Graphics 620', discreteGpu: false }, table);
+    expect([table.high.msaa, table.high.fxaa, table.high.pixelRatio, table.high.shadow]).toEqual([0, true, 1.1, 1536]);
+    expect(table.medium).toEqual(QUALITY.medium);
+    undo();
+    expect(table).toEqual(QUALITY);
+  });
+});
+
+describe('compile hold', () => {
+  it('holds for a moment after a new program appears and is quiet while the count is steady', () => {
+    const h = createCompileHold({ holdSec: 0.5 });
+    expect(h.push(100, 0.016)).toBe(false); // the first reading is only a reference
+    expect(h.push(100, 0.016)).toBe(false);
+    expect(h.push(101, 0.4)).toBe(true); // a program appeared: this frame is a compile stall
+    expect(h.push(101, 0.016)).toBe(true); // still inside the window
+    expect(h.push(101, 0.2)).toBe(true); // the frame that uses up the hold is held too
+    expect(h.holding).toBe(false);
+    expect(h.push(101, 0.016)).toBe(false); // judged again
+  });
+  it('keeps holding while programs keep appearing (the warm-up ramp) and ignores a hidden-tab gap', () => {
+    const h = createCompileHold({ holdSec: 0.6 });
+    h.push(10, 0.016);
+    let held = 0;
+    for (let i = 1; i <= 50; i++) if (h.push(10 + i, 0.3)) held++;
+    expect(held).toBe(50);
+    expect(h.push(60, 60)).toBe(true); // a 60 s gap counts as at most one second
+    expect(h.push(60, 1)).toBe(false);
+  });
+  it('lets a scaler see a device that is slow for real: the hold only covers compile frames', () => {
+    const h = createCompileHold();
+    const s = createScaler({ budget: 0.02, min: 0.5, step: 0.1 });
+    let verdicts = 0;
+    for (let i = 0; i < 400; i++) {
+      // steady program count, every frame 40 ms
+      if (!h.push(250, 0.04)) if (s.push(0.04)) verdicts++;
+    }
+    expect(verdicts).toBeGreaterThan(0);
+    // the same slow frames while programs keep appearing are not judged
+    const h2 = createCompileHold();
+    const s2 = createScaler({ budget: 0.02, min: 0.5, step: 0.1 });
+    let v2 = 0;
+    for (let i = 0; i < 400; i++) if (!h2.push(100 + i, 0.04)) if (s2.push(0.04)) v2++;
+    expect(v2).toBe(0);
   });
 });

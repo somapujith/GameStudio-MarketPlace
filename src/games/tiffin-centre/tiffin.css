@@ -12,6 +12,13 @@
   --tc-night: #141a33;
   --tc-font: 'Bricolage Grotesque Variable', 'Noto Sans Telugu Variable', system-ui, sans-serif;
   --tc-font-paint: 'Bricolage Grotesque Variable', 'Noto Sans Telugu Variable', system-ui, sans-serif;
+  /* LANDSCAPE FIRST. `--tc-u` is one design pixel of the in-game UI, scaled with the viewport HEIGHT (and capped by the width, so a narrow window does
+     not grow it): 1 px up to a 430 px tall phone (a 44 px target stays 44 px), about 1.2 px at 720 tall, 1.55 px at 1080. The HUD writes its sizes
+     as calc(N * var(--tc-u)) (ui/hud/hud.css). `--tc-rail-w` / `--tc-board-w` are the HUD's side columns: the tutorial's coach bar (ui/menus) sits
+     in the middle between them. */
+  --tc-u: clamp(1px, min(calc(0.0972vh + 0.5px), calc(0.0833vw + 0.2px)), 1.7px);
+  --tc-rail-w: calc(150 * var(--tc-u));
+  --tc-board-w: calc(150 * var(--tc-u));
   position: fixed;
   inset: 0;
   overflow: hidden;
@@ -23,6 +30,16 @@
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
+}
+@supports (height: 1dvh) {
+  .tc { --tc-u: clamp(1px, min(calc(0.0972dvh + 0.5px), calc(0.0833vw + 0.2px)), 1.7px); }
+}
+/* tablets, laptops and desktops (480 px tall and up): the roomy HUD has wider side columns (names, who and what) */
+@media (min-height: 481px) {
+  .tc { --tc-rail-w: calc(190 * var(--tc-u)); --tc-board-w: calc(214 * var(--tc-u)); }
+}
+@media (min-height: 481px) and (max-width: 1100px) {
+  .tc { --tc-rail-w: calc(150 * var(--tc-u)); }
 }
 
 .tc-canvas {
@@ -51,19 +68,6 @@
 }
 .tc-leave:hover { background: rgba(224, 57, 43, 0.85); }
 .tc-leave:focus-visible { outline: 3px solid var(--tc-turmeric, #ffc83d); outline-offset: 2px; }
-/* Phone portrait: the bottom-left corner is the first dock slot, so the button takes the free pause slot at the top right instead (a room has no pause). */
-@media (max-width: 600px) and (orientation: portrait) {
-  .tc-leave {
-    left: auto;
-    bottom: auto;
-    right: max(5px, env(safe-area-inset-right));
-    top: max(6px, env(safe-area-inset-top));
-    min-width: 46px;
-    padding: 0 8px;
-    font-size: 12px;
-  }
-}
-
 /* Loading: the progress bar under the status card (TiffinGameImpl LoadBar). */
 .tc-load {
   position: absolute;

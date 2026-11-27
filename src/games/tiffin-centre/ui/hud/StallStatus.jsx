@@ -67,8 +67,8 @@ export function GasGauge({ gas, onSwap, spotOn = false }) {
   );
 }
 
-// Props: { state, onStock(item), onSwap(), onBoard(), forceOpen?, spot? (the tutorial's pulse keys: 'gas', 'board') }. On a short screen (phone landscape, CSS media query) the strip folds behind one button
-// (`.tc-hud-status-toggle`, hidden everywhere else) so the scene stays clear; `forceOpen` (a tutorial spotlight or a walk to the gas stand) unfolds it.
+// Props: { state, onStock(item), onSwap(), onBoard(), forceOpen?, spot? (the tutorial's pulse keys: 'gas', 'board') }. The stock panel (LPG gauge, stock bars, Board tile) folds behind the Stall button on every
+// screen so the picture stays clear and opens as an overlay beside the chalk board; the events stay visible under the button. `forceOpen` (a tutorial spotlight or a walk to the gas stand) unfolds it.
 export default function StallStatus({ state, onStock, onSwap, onBoard, forceOpen = false, spot = null }) {
   const [open, setOpen] = useState(false);
   const events = eventBanner(state);
@@ -96,8 +96,8 @@ export default function StallStatus({ state, onStock, onSwap, onBoard, forceOpen
         <span className="tc-hud-status-toggle-txt">Stall</span>
         {al.count > 0 && <b className="tc-hud-status-toggle-n" aria-hidden="true">{al.count}</b>}
       </button>
-      <div className="tc-hud-status-body" id="tc-hud-status-body">
       <Events events={events} />
+      <div className="tc-hud-status-body" id="tc-hud-status-body">
       {(groups.length > 0 || gas) && (
         <ul className="tc-hud-stock" aria-label="Stock">
           {gas && (

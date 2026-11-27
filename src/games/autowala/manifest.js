@@ -13,6 +13,7 @@ export default {
   category: 'arcade',
   status: 'live',
   solo: true,
+  orientation: 'landscape', // phones and tablets must be sideways to play: the hub covers the game with a "turn your phone" screen (docs/perf/landscape.md)
   players: { min: 1, max: 1 },
   duration: '10-30 min',
   theme: { accent: '#ff3d9a', accent2: '#37e6ff', bg: '#120824' },

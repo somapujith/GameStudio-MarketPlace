@@ -105,7 +105,19 @@ the line. The head can also be turned freely (drag on empty space, or Q/E and ar
   PACE.stars * coopScale` for i = 0,1,2 gives 1-3 stars; 0 stars = failed. Level 0 always completes when the script ends.
 - **Hour:** `hourOf(state) = lerp(level.hour[0], level.hour[1], tick / shiftTicks)`; light and the clock follow it.
 - **Co-op win credit:** `result()`: everyone on the team gets rank 1 when stars >= 1 (rank = player count when 0 stars); `winnerId` = top earner (most
-  collected money) on success, `null` on failure; `score` of each player = money they collected.
+  collected money) on success, `null` on failure (the headline and the match row's `winner_id`); `score` of each player = money they collected.
+  **`winners` = EVERY seat that did real work on a cleared shift** (`scoring.js` `winnersOf`): `workOf(stats) = served + collected + cooked + prepped + tended +
+  gasSwaps + bought > 0` and at least one customer paid. `match.js` credits each of them with the win (+60 XP, +140 coins, `wins + 1`), so a cook who never collected a rupee
+  or a prep hand wins with the team; a seat that stood by wins nothing and is paid nothing (`stats.idle`). `cooked` counts a dish when it reaches somebody's hands (`take`
+  credits the player who started it, `slot.by`); a burnt dish, or one cleared off the counter, never counts, so cooking food nobody takes is not a way to be paid.
+
+- **Difficulty curve (retuned 2026-11-27, `shared/tiffin-centre/balance.test.js`).** Reference players: the bot of `bot.js` is a FAST human (one action per tick, no thinking time);
+  a COMPETENT human takes 1.45x as long per action and loses 8% of free turns; a CASUAL one 1.8x and 15%. The yardstick is the OFFERED LOAD, dishes asked for per tick of the shift
+  (solo, normal pace): level 1..12 = .094 .099 .104 .109 .111 .114 .108 .123 .122 .123 .125 .132 (the table with the star scores per skill is in `docs/perf/tf-logic.md`). It rises with no cliff (Chai Time, level 7, is a
+  deliberate breather) and stays below what the fast bot can serve (about .2), so every shift is clearable solo; a casual player gets through shifts 1-3, a competent one through
+  most of 1-8, and the last four want a team (a team is offered `coopScale(n)` times the crowd and asked for that many times the star targets). Level 4 no longer takes three-dish
+  orders (`orderMax` 2; three come at level 5). Before: level 4 offered .197 (twice level 3) and levels 9-12 offered .23-.27, more than the bot can serve, so a star on level 9
+  was out of reach solo and the practice ladder (a star on n opens n + 1) stopped at level 8. Star targets are about 41% / 70% / 106% of what the fast bot earns solo on the level.
 
 ### Engine API (`shared/tiffin-centre/index.js` re-exports all; pure JS, JSON-serialisable state, no Date/Math.random)
 
@@ -145,6 +157,13 @@ Events (the array returned by every applyAction; scene = animation, audio = soun
 - **Server tick:** the adapter's `deadlines(state)` returns `[{ key:`tick-${state.tick}`, afterMs:TICK_MS, playerId:null, action:{type:'tick'}, anchor:'apply' }]`
   while playing; `turnPlayerId`/`idleAction` return `null`, `pendingPlayerIds` returns `[]` (nobody is "on turn"); `sanitizeAction` is an allow-list that
   REJECTS `tick`, `spawn`, `tutorial-flags` and unknown types. Each tick persists + broadcasts the whole state (small: keep state < 3 KB).
+- **Empty stall = paused stall** (adapter `pauseWhenEmpty: true`, `GameRoom.isEmpty()`): while no seat (that has not left) holds a live socket the room sets no
+  tick timer, so a deserted shift costs the Durable Object nothing (no alarm and no storage write per second) and a dropped connection never costs the team its hearts;
+  the first player back restarts the timers from that moment (a full second before the next tick). A room nobody returns to is abandoned after `ABANDON_MS` (5 min, nothing
+  recorded) as before. One player left alone keeps the clock running. **Cost of a shift** (free plan): one alarm + one storage write per tick (a shift is 150 to 300 ticks),
+  plus a coalesced room write every 5 s: about 180 to 360 request/write units per shift against the 100k/day free allowance, i.e. 270 or more full shifts a day.
+- **A seat that leaves** (`resignAction` -> engine `leave`, server only): the dishes it holds go to the most urgent waiting customer who still needs them, else into the bin;
+  the seat stays in the result with what it did, flagged `players[id].left` until it acts again (then it is back). Dishes of a seat that is only disconnected stay in its hands.
 - **Client:** `useRoomConnection(code, { onState })` from `src/components/online/useRoomConnection.js` (NOT `useOnlineGame`, which is Tycoon-coupled and
   locks input). Send with `send({ t:'action', action }, { queue:false })`. Rate limit is 40 messages / 5 s / user: coalesce, never spam `move`.
 - **Smoothness:** every incoming state records `tickAt = performance.now()`; the scene and HUD interpolate progress with

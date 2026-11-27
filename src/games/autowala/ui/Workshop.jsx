@@ -2,7 +2,7 @@
 // Navigation has three levels like Los Santos Customs: categories -> sections (when a category has several) -> items.
 // Keyboard (arrows, Enter, Esc), mouse, touch (tap to preview, tap again or the big button to buy, drag the 3D view) and gamepad.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CATEGORIES, rowStatus, sectionRows, sectionView } from '../gameplay/workshop/menuModel.js';
+import { CATEGORIES, TYPED_TEXT, createRepeatGuard, rowStatus, sectionRows, sectionView } from '../gameplay/workshop/menuModel.js';
 import { fmtRs, previewLoadout } from '../gameplay/workshop/shop.js';
 import { find, getPath, PLATE_STYLES, sanitizeBadge, sanitizeBanner, sanitizePlate } from '../gameplay/catalog.js';
 import { playHorn, stopHorn } from '../audio/horns.js';
@@ -19,12 +19,7 @@ const COLS = 3;
 /** Where the auto sits on screen (fraction of width right, of height up): beside the desktop panel, above the phone sheet, right of the sideways phone's list. */
 const SHIFT = { desk: [0.1, 0], port: [0, 0.2], land: [0.2, 0] };
 const wrapIndex = (i, n) => (n ? ((i % n) + n) % n : 0);
-const typed = {
-  'plate.text': (s) => String(s).toUpperCase().replace(/[^A-Z0-9 -]/g, '').replace(/ {2,}/g, ' ').slice(0, 10),
-  'decals.badge': (s) => sanitizeBadge(s),
-  'decals.banner': (s) => String(s).replace(/[\u0000-\u001f<>]/g, '').replace(/ {2,}/g, ' ').slice(0, 22),
-  'decals.rearWindow': (s) => String(s).replace(/[\u0000-\u001f<>]/g, '').replace(/ {2,}/g, ' ').slice(0, 22),
-};
+const typed = TYPED_TEXT;
 const cleanText = { 'plate.text': sanitizePlate, 'decals.badge': sanitizeBadge, 'decals.banner': sanitizeBanner, 'decals.rearWindow': sanitizeBanner };
 
 const safe = (fn) => {
@@ -128,10 +123,14 @@ export default function Workshop({ game, snap }) {
   }, [shake]);
 
   // ---- actions
-  const status = (r) => rowStatus(data, data.loadout, r, wallet);
+  const status = (r) => rowStatus(data, data.loadout, r, wallet, r.type === 'input' ? texts[r.path] : undefined);
 
+  const guard = useRef(null);
+  if (!guard.current) guard.current = createRepeatGuard();
   const act = useCallback((r) => {
     if (!r || !ws) return;
+    // a double click / held Enter on one row is one purchase: the second press would buy the next upgrade level or switch a bought toggle off again
+    if (!guard.current(`${r.type}:${r.path}:${r.value ?? r.key ?? ''}`)) return;
     let res;
     const wasOn = r.type === 'toggle' && getPath(profile.data.loadout, r.path) === true;
     if (r.type === 'item') res = ws.buy(r.path, r.value);

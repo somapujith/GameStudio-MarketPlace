@@ -41,6 +41,14 @@ describe('game registry', () => {
     }
   });
 
+  it("the optional `orientation` field is 'landscape' | 'portrait' | 'any'; the two 3D games are landscape games, the others stay free", () => {
+    for (const g of GAMES) if (g.orientation !== undefined) expect(['landscape', 'portrait', 'any'], g.id).toContain(g.orientation);
+    expect(getGame('autowala').orientation).toBe('landscape');
+    expect(getGame('tiffin-centre').orientation).toBe('landscape');
+    expect(getGame('hyderabad-tycoon').orientation).toBeUndefined();
+    for (const g of comingSoonGames()) expect(g.orientation, g.id).toBeUndefined(); // a teaser has nothing to gate
+  });
+
   it('coming-soon teasers carry no loaders', () => {
     for (const g of comingSoonGames()) expect(g.loaders).toBeUndefined();
   });

@@ -53,6 +53,9 @@ export function installWeather(ctx) {
   let flashT0 = -9;
   let flash = 0;
   let lastKind = clock.day;
+  // The weather's own top-speed factor. It must NOT be read back from state.speedMul: career.js hooks that property so a read returns
+  // (weather's value x damage's value), and easing "the previous read" would multiply the damage factor in again on every frame.
+  let speedBase = 1;
 
   const rain = createRain(scene);
   const ground = createRainGround(scene, world.city);
@@ -145,7 +148,8 @@ export function installWeather(ctx) {
       // events run after the weather (a baraat will not start in a storm)
       events.sys.update(dt);
       const drag = events.out.drag;
-      state.speedMul = damp(state.speedMul, (1 - 0.04 * r) * (1 - 0.55 * drag), 6, dt);
+      speedBase = damp(speedBase, (1 - 0.04 * r) * (1 - 0.55 * drag), 6, dt);
+      state.speedMul = speedBase;
       if (drag > 0.05 && !state.menu) {
         // nobody drives through a baraat at speed: the crowd bleeds the auto's speed off (time constant ~0.45 s at full drag)
         const k = Math.exp(-2.2 * drag * dt);

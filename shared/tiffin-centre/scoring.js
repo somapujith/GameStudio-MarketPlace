@@ -55,6 +55,26 @@ export function starsFor(level, pace, players, profit) {
   return starTargets(level, pace, players).reduce((n, t) => n + (profit >= t ? 1 : 0), 0);
 }
 
+/** The counters of a standing's `stats` that are real work at the stall (moving and emoting are not). */
+export const WORK_KEYS = ['served', 'collected', 'cooked', 'prepped', 'tended', 'gasSwaps', 'bought'];
+
+/** How much real work a seat did (the sum of WORK_KEYS). 0 = it stood by: no win, no reward. */
+export const workOf = (stats) => {
+  let n = 0;
+  if (stats && typeof stats === 'object') for (const k of WORK_KEYS) n += Number.isFinite(stats[k]) && stats[k] > 0 ? stats[k] : 0;
+  return n;
+};
+
+/**
+ * CO-OP WIN CREDIT. A cleared shift (at least one star) is a win for the WHOLE team, not only for whoever happened to collect the most:
+ * every seat that did real work (`workOf` > 0) wins, as long as at least one customer paid. A seat that stood by wins nothing (the idle
+ * guard of the server adapter pays it nothing either). `winnerId` stays the top earner, for the headline and the match row's `winner_id`.
+ */
+export function winnersOf(standings, stars, paid) {
+  if (!(stars >= 1) || !(paid > 0)) return [];
+  return standings.filter((row) => workOf(row.stats) > 0).map((row) => row.id);
+}
+
 /**
  * Standings of a team: everyone shares the rank (1 when the shift earned at least one star, the team size otherwise);
  * rows are ordered by money collected, ties by seat order. (Stars come from the team's PROFIT; a player's score is still what they collected.)
@@ -69,7 +89,7 @@ export function standingsOf(players, order, stars) {
       rank,
       score: p.earned,
       stats: {
-        served: p.served, collected: p.collected, earned: p.earned, tips: p.tips,
+        served: p.served, collected: p.collected, earned: p.earned, tips: p.tips, cooked: p.cooked || 0,
         prepped: p.ops ? p.ops[0] : 0, tended: p.ops ? p.ops[1] : 0, gasSwaps: p.ops ? p.ops[2] : 0, bought: p.ops ? p.ops[3] : 0,
       },
     }));

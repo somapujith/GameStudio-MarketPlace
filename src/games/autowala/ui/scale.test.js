@@ -39,6 +39,6 @@ describe('uiScale', () => {
     const el = { style: { v: {}, setProperty(k, v) { this.v[k] = v; } } };
     expect(applyUiScale(el, 1920, 1080)).toBe(1.5);
     expect(el.style.v['--aw-ui-scale']).toBe('1.5');
-    expect(applyUiScale(null, 800, 600)).toBe(1);
+    expect(applyUiScale(null, 1000, 600)).toBe(1);
   });
 });

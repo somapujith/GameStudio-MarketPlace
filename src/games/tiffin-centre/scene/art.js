@@ -6,6 +6,32 @@
 import { canvasTexture, bakePBR, fbmField, worleyField, mulberry, clamp01, mix, sstep } from './textures.js';
 import { makeSigns } from './art-signs.js';
 
+// The PBR surfaces are deterministic (same recipe, same size -> the same pixels) and cost about a second of fbm noise per scene. A second scene in the same
+// page (a practice shift after the tutorial, a restart that rebuilds the scene) re-uses the PIXEL ARRAYS: a fresh set of Texture objects (so each scene
+// disposes its own GPU copies) sharing the cached typed arrays. Capped, so a high tier's 512 px sets cannot pin tens of megabytes for the page's lifetime.
+const pixelCache = new Map();
+let pixelCacheBytes = 0;
+export const PIXEL_CACHE_MAX_BYTES = 24 * 1024 * 1024;
+const bytesOf = (b) => [b.map, b.normalMap, b.ormMap].reduce((n, t) => n + (t?.image?.data?.byteLength || 0), 0);
+const isBundle = (b) => !!b && !!b.map && !!b.map.isDataTexture && !!b.map.image?.data;
+/** A new bundle of Texture objects over the same pixel arrays. */
+const cloneBundle = (b) => {
+  const out = { ...b };
+  for (const k of ['map', 'normalMap', 'ormMap']) {
+    if (b[k]) {
+      out[k] = b[k].clone();
+      out[k].needsUpdate = true;
+    }
+  }
+  return out;
+};
+/** Forgets every cached surface (tests; or when memory must go). */
+export const clearArtPixelCache = () => {
+  pixelCache.clear();
+  pixelCacheBytes = 0;
+};
+export const artPixelCacheBytes = () => pixelCacheBytes;
+
 export function makeArt(tr) {
   const T = (tex) => tr.track(tex);
   const cfg = { size: 512, normals: true };
@@ -22,7 +48,19 @@ export function makeArt(tr) {
   };
   const cache = new Map();
   const once = (key, make) => {
-    if (!cache.has(key)) cache.set(key, make());
+    if (!cache.has(key)) {
+      const ck = `${key}|${cfg.size}|${cfg.normals ? 1 : 0}`;
+      const hit = pixelCache.get(ck);
+      if (hit) cache.set(key, trackAll(cloneBundle(hit)));
+      else {
+        const made = make();
+        cache.set(key, made);
+        if (isBundle(made) && pixelCacheBytes + bytesOf(made) <= PIXEL_CACHE_MAX_BYTES) {
+          pixelCache.set(ck, cloneBundle(made)); // an untracked sibling: it owns no GPU resource until a scene clones it
+          pixelCacheBytes += bytesOf(made);
+        }
+      }
+    }
     return cache.get(key);
   };
 

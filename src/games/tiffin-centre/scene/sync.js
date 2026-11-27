@@ -115,6 +115,24 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
     sphere.radius = r;
     return frustum.intersectsSphere(sphere);
   };
+  // The people's meshes are never frustum-culled by three.js (their geometry is rewritten every frame, so a static bound would be wrong): a customer or cook
+  // outside the view was still ~60 draw calls, twice with the shadow pass. They are hidden as a whole when neither they nor their SHADOW can be seen: the
+  // sun is always on the cook's side, so a shadow falls away from the sun for up to `shReach` metres; the test sphere covers the person and the tip of it.
+  let shX = 0;
+  let shZ = -1;
+  let shReach = 0;
+  /** The key light's direction TO the sun ([x, y, z], as in lighting.js): where a person's shadow falls and how far it reaches. */
+  function setSun(dir) {
+    const hz = Math.hypot(dir[0], dir[2]) || 1;
+    shReach = Math.min(9, (1.9 * hz) / Math.max(0.12, dir[1]));
+    shX = -dir[0] / hz;
+    shZ = -dir[2] / hz;
+  }
+  /** Is the person at (x, z) - or the end of their shadow - inside the view? */
+  const personDrawn = (x, z) => {
+    if (inView(x, 0.95, z, 1.25)) return true;
+    return shReach > 0.05 && inView(x + shX * shReach * 0.5, 0.95, z + shZ * shReach * 0.5, 1.25 + shReach * 0.5);
+  };
 
   // shared blob shadow (a cheap ground contact, so characters never float even with shadow maps off)
   const blobGeo = tr.track(new PlaneGeometry(1, 1));
@@ -614,6 +632,8 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
     const ez = e.z + off.z + laneZ;
     e.holder.position.set(ex, 0, ez);
     const vis = inView(ex, 0.95, ez, 1.25);
+    const drawn = vis || personDrawn(ex, ez);
+    if (e.holder.visible !== drawn) e.holder.visible = drawn;
     if (e.facing !== e.w.dir) {
       e.facing = e.w.dir;
       e.model.setFacing?.(e.w.dir);
@@ -848,6 +868,8 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
     updateOps(dt, t, frac);
     for (const e of customers.values()) {
       const vis = inView(e.x, 0.95, e.z, 1.25);
+      const drawn = vis || personDrawn(e.x, e.z);
+      if (e.holder.visible !== drawn) e.holder.visible = drawn;
       updateCustomer(e, dt, t, frac, vis);
       e.acc += dt;
       if (vis || e.acc > CULL_STEP) {
@@ -1174,6 +1196,7 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
     aimPointFor,
     buildProxies,
     dispose,
+    setSun,
     setMe(id) {
       meId = id || null;
       meE = null;

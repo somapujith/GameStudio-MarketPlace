@@ -5,9 +5,10 @@ import { planMetro } from '../world/metro-routes.js';
 import { CITY_SEED } from '../game/config.js';
 import { makeRng } from '../game/rng.js';
 import { createRouter } from '../world/routing.js';
-import { DAILY_POOL, DEFS, DEF_BY_ID, dailyJob, pickTrainRace, tutorialPlan } from './quest-defs.js';
-import { createRun, feedRun, tickRun } from './quest-engine.js';
-import { dateKey } from './quest-math.js';
+import { DAILY_POOL, DEFS, DEF_BY_ID, dailyJob, pickTrainRace, replayOf, tutorialPlan } from './quest-defs.js';
+import { createRun, feedRun, payout, tickRun } from './quest-engine.js';
+import { STEP_TYPES } from './quest-steps.js';
+import { createTrainTracker, dateKey, shouldRebuildOffers } from './quest-math.js';
 import { rampHeight, prepareRamps } from './quest-ramps.js';
 
 let city;
@@ -292,6 +293,91 @@ describe('the tutorial', () => {
     feedRun(run, { type: 'menu', name: 'pause' });
     feedRun(run, { type: 'workshop:enter' });
     expect(run.status).toBe('done');
+  });
+});
+
+describe('replaying the tutorial', () => {
+  it('pays nothing the second time (it used to pay Rs 150 and 25 reputation every replay)', () => {
+    const first = tutorialPlan(mkEnv(7));
+    expect(payout(first, createRun(first)).cash).toBe(150);
+    const again = replayOf(first);
+    expect(again.replay).toBe(true);
+    expect(again.tutorial).toBe(true);
+    expect(again.steps).toEqual(first.steps);
+    expect(payout(again, createRun(again))).toMatchObject({ cash: 0, rep: 0 });
+    expect(first.reward.cash).toBe(150); // the original plan is untouched
+  });
+});
+
+describe('every step a plan uses is one the engine can finish', () => {
+  it('uses only known step types, in all missions and the tutorial', () => {
+    const plans = [tutorialPlan(mkEnv(7))];
+    for (const def of DEFS) for (let seed = 1; seed <= 6; seed++) {
+      let p = null;
+      try { p = def.plan(mkEnv(seed * 31, { metro })); } catch { /* planners may decline */ }
+      if (p) plans.push(p);
+    }
+    expect(plans.length).toBeGreaterThan(DEFS.length);
+    for (const plan of plans) for (const s of plan.steps) expect(STEP_TYPES, `${plan.defId}: ${s.type}`).toContain(s.type);
+  });
+
+  it('a position that is not a number is not "inside" a reach ring', () => {
+    const plan = { id: 't', defId: 't', title: 't', reward: { cash: 10, rep: 1 }, steps: [{ type: 'reach', x: 10, z: 10, r: 14, label: 'go' }] };
+    const run = createRun(plan);
+    tickRun(run, 0.1, { x: NaN, z: NaN, speed: 0, jolt: 0, distance: 0 });
+    expect(run.status).toBe('active');
+    tickRun(run, 0.1, { x: 10, z: 10, speed: 3, jolt: 0, distance: 0 });
+    expect(run.status).toBe('done');
+  });
+});
+
+describe('the job board is not re-rolled under the player', () => {
+  const base = { force: false, dirty: false, age: 0, stale: 25, empty: false, boardOpen: false };
+  it('re-rolls when stale or dirty away from the board', () => {
+    expect(shouldRebuildOffers({ ...base, age: 30 })).toBe(true);
+    expect(shouldRebuildOffers({ ...base, dirty: true })).toBe(true);
+    expect(shouldRebuildOffers(base)).toBe(false);
+  });
+  it('keeps the offers the player is reading, however long they take', () => {
+    expect(shouldRebuildOffers({ ...base, age: 600, dirty: true, boardOpen: true })).toBe(false);
+  });
+  it('but always builds when asked to (opening the board) or when there is nothing yet', () => {
+    expect(shouldRebuildOffers({ ...base, force: true, boardOpen: true })).toBe(true);
+    expect(shouldRebuildOffers({ ...base, empty: true, boardOpen: true })).toBe(true);
+  });
+});
+
+describe('createTrainTracker (the velocity Metro Rush plans with)', () => {
+  const trains = () => [{ x: 0, z: 0 }, { x: 100, z: 0 }];
+  it('measures speed over world time', () => {
+    const ts = trains();
+    const tr = createTrainTracker(ts);
+    let sim = 0;
+    tr.update(sim);
+    for (let i = 0; i < 90; i++) { // 1.5 s at 60 fps, train 0 moving +x at 14 m/s, train 1 standing
+      sim += 1 / 60;
+      ts[0].x += 14 / 60;
+      tr.update(sim);
+    }
+    expect(Math.hypot(tr.tracks[0].vx, tr.tracks[0].vz)).toBeCloseTo(14, 0);
+    expect(tr.tracks[1].vx).toBe(0);
+  });
+  it('a menu (world clock frozen) leaves the measured velocity alone instead of reading the trains as stopped', () => {
+    const ts = trains();
+    const tr = createTrainTracker(ts);
+    let sim = 0;
+    tr.update(sim);
+    for (let i = 0; i < 60; i++) { sim += 1 / 60; ts[0].x += 14 / 60; tr.update(sim); }
+    const before = tr.tracks[0].vx;
+    expect(before).toBeGreaterThan(10);
+    for (let i = 0; i < 600; i++) tr.update(sim); // ten seconds in the job board: sim time does not advance
+    expect(tr.tracks[0].vx).toBe(before);
+    for (let i = 0; i < 60; i++) { sim += 1 / 60; ts[0].x += 14 / 60; tr.update(sim); }
+    expect(tr.tracks[0].vx).toBeGreaterThan(10);
+  });
+  it('ignores junk times and a clock that goes backwards', () => {
+    const tr = createTrainTracker(trains());
+    expect(() => { tr.update(NaN); tr.update(undefined); tr.update(5); tr.update(2); tr.update(Infinity); }).not.toThrow();
   });
 });
 
