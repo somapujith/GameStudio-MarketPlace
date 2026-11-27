@@ -1,13 +1,21 @@
-// The post-processing pipeline (medium and high tiers). Everything is hand-rolled so each effect costs only what it must:
+﻿// The post-processing pipeline (medium and high tiers). Everything is hand-rolled so each effect costs only what it must:
 //   scene (HDR, MSAA on high, depth texture)  ->  [high] depth-of-field  ->  bloom (dual-Kawase pyramid, thresholded on emissives and sun glints)
 //   -> final: ambient occlusion (high) x scene + bloom, exposure, filmic tone map (AgX), daypart colour grade, heat shimmer, chromatic fringe,
 //      vignette, film grain, sRGB  ->  [medium] FXAA  ->  canvas.
 // GTAO-lite: a 12-tap horizon-ish occlusion from the depth buffer at half resolution with a depth-aware blur; no second geometry pass.
+//
+// DYNAMIC RESOLUTION WITHOUT RE-ALLOCATION (src/platform/gfx/dynamicRes.js, docs/GFX_ENGINE.md section 5): every target is allocated ONCE, at the size the
+// tier asks for (css size x min(tier pixel ratio, device ratio)); a render scale below 1 renders into the lower-left `scale x scale` sub-rect of each
+// (viewport + scissor, free) and every fetch from a target goes through `dynUv()`, which maps the virtual uv of the smaller picture to the allocated texture
+// and keeps taps inside the used area. Texel-size uniforms are computed from the USED size. A scale step is therefore a few uniform writes: no setSize, no
+// target re-creation, no program change. The last pass (FXAA, or the final composite on high) draws on the canvas at full size and upsamples the used
+// sub-rect with the target's linear filter.
 import {
-  AdditiveBlending, DepthTexture, HalfFloatType, LinearFilter, NearestFilter, NoBlending, NoColorSpace, RGBAFormat, ShaderMaterial, UnsignedByteType,
-  Vector2, WebGLRenderTarget, DataTexture, UnsignedIntType, DepthFormat,
+  AdditiveBlending, BufferAttribute, BufferGeometry, DepthTexture, HalfFloatType, LinearFilter, NoBlending, NoColorSpace, OrthographicCamera, RGBAFormat,
+  ShaderMaterial, UnsignedByteType, Vector2, WebGLRenderTarget, DataTexture, UnsignedIntType, DepthFormat, Scene, Mesh,
 } from 'three';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
+import { DYNRES_GLSL, createDynamicRes, rewriteSamples } from '../../../platform/gfx/dynamicRes.js';
 
 const VERT = /* glsl */ `
   varying vec2 vUv;
@@ -22,10 +30,10 @@ const FXAA_FRAG = /* glsl */ `
   varying vec2 vUv;
   const float EDGE_STEPS[6] = float[6](1.0, 1.5, 2.0, 2.0, 2.0, 4.0);
   const float EDGE_GUESS = 8.0;
-  float lumaAt(vec2 uv) { return dot(textureLod(tDiffuse, uv, 0.0).rgb, vec3(0.3, 0.59, 0.11)); }
+  float lumaAt(vec2 uv) { return dot(textureLod(tDiffuse, dynUv(uv), 0.0).rgb, vec3(0.3, 0.59, 0.11)); }
   void main() {
     vec2 uv = vUv; vec2 t = resolution;
-    vec4 c0 = textureLod(tDiffuse, uv, 0.0);
+    vec4 c0 = textureLod(tDiffuse, dynUv(uv), 0.0);
     float m = dot(c0.rgb, vec3(0.3, 0.59, 0.11));
     float n = lumaAt(uv + vec2(0.0, t.y)); float e = lumaAt(uv + vec2(t.x, 0.0));
     float s = lumaAt(uv - vec2(0.0, t.y)); float w = lumaAt(uv - vec2(t.x, 0.0));
@@ -62,12 +70,9 @@ const FXAA_FRAG = /* glsl */ `
     float edgeBlend = (dSign == (m - edgeL >= 0.0)) ? 0.0 : 0.5 - shortest / (pDist + nDist);
     float blend = max(pixelBlend, edgeBlend);
     if (isH) uv.y += pixelStep * blend; else uv.x += pixelStep * blend;
-    gl_FragColor = textureLod(tDiffuse, uv, 0.0);
+    gl_FragColor = textureLod(tDiffuse, dynUv(uv), 0.0);
   }
 `;
-
-const mat = (fragmentShader, uniforms, extra = {}) =>
-  new ShaderMaterial({ vertexShader: VERT, fragmentShader, uniforms, depthTest: false, depthWrite: false, blending: NoBlending, ...extra });
 
 const LINEARIZE = /* glsl */ `
   uniform float uNear; uniform float uFar;
@@ -78,9 +83,9 @@ const AO_FRAG = /* glsl */ `
   uniform sampler2D tDepth; uniform vec2 uProj; uniform vec2 uInv; uniform float uRadius; uniform float uTime;
   varying vec2 vUv;
   ${LINEARIZE}
-  vec3 viewPos(vec2 uv) { float z = linZ(textureLod(tDepth, uv, 0.0).x); return vec3((uv * 2.0 - 1.0) * vec2(1.0 / uProj.x, 1.0 / uProj.y) * z, -z); }
+  vec3 viewPos(vec2 uv) { float z = linZ(textureLod(tDepth, dynUv(uv), 0.0).x); return vec3((uv * 2.0 - 1.0) * vec2(1.0 / uProj.x, 1.0 / uProj.y) * z, -z); }
   void main() {
-    float d0 = textureLod(tDepth, vUv, 0.0).x;
+    float d0 = textureLod(tDepth, dynUv(vUv), 0.0).x;
     if (d0 >= 0.99999) { gl_FragColor = vec4(1.0); return; }
     vec3 p = viewPos(vUv);
     vec3 pl = viewPos(vUv - vec2(uInv.x, 0.0)); vec3 pr = viewPos(vUv + vec2(uInv.x, 0.0));
@@ -114,15 +119,15 @@ const AO_BLUR_FRAG = /* glsl */ `
   varying vec2 vUv;
   ${LINEARIZE}
   void main() {
-    float z0 = linZ(textureLod(tDepth, vUv, 0.0).x);
-    float sum = textureLod(tAO, vUv, 0.0).x * 0.2;
+    float z0 = linZ(textureLod(tDepth, dynUv(vUv), 0.0).x);
+    float sum = textureLod(tAO, dynUv(vUv), 0.0).x * 0.2;
     float wsum = 0.2;
     for (int i = 1; i <= 3; i++) {
       for (int s = -1; s <= 1; s += 2) {
         vec2 uv = vUv + uDir * float(i * s) * 1.5;
-        float z = linZ(textureLod(tDepth, uv, 0.0).x);
+        float z = linZ(textureLod(tDepth, dynUv(uv), 0.0).x);
         float w = (0.2 / (1.0 + float(i))) * (1.0 - smoothstep(0.0, 0.08, abs(z - z0) / max(z0, 0.1)));
-        sum += textureLod(tAO, uv, 0.0).x * w;
+        sum += textureLod(tAO, dynUv(uv), 0.0).x * w;
         wsum += w;
       }
     }
@@ -140,8 +145,8 @@ const DOF_FRAG = /* glsl */ `
     return far;
   }
   void main() {
-    vec4 c0 = texture2D(tColor, vUv);
-    float d0 = texture2D(tDepth, vUv).x;
+    vec4 c0 = texture2D(tColor, dynUv(vUv));
+    float d0 = texture2D(tDepth, dynUv(vUv)).x;
     float z0 = d0 >= 0.99999 ? 600.0 : linZ(d0);
     float coc0 = cocOf(z0);
     float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
@@ -158,12 +163,12 @@ const DOF_FRAG = /* glsl */ `
       float a = (fi + ign) * 2.39996323;
       float r = sqrt((fi + 0.5) / nTaps) * rad;
       vec2 uv = vUv + vec2(cos(a), sin(a)) * r * uInv;
-      float ds = textureLod(tDepth, uv, 0.0).x;
+      float ds = textureLod(tDepth, dynUv(uv), 0.0).x;
       float zs = ds >= 0.99999 ? 600.0 : linZ(ds);
       float cs = cocOf(zs);
       // a sample in front of this pixel only counts when its own blur reaches this far; samples behind always count
       float w = zs >= z0 - 0.3 ? 1.0 : smoothstep(r - 1.0, r + 1.0, cs);
-      acc += textureLod(tColor, uv, 0.0).rgb * w;
+      acc += textureLod(tColor, dynUv(uv), 0.0).rgb * w;
       wsum += w;
     }
     gl_FragColor = vec4(acc / wsum, 1.0);
@@ -290,14 +295,33 @@ const FINAL_FRAG = /* glsl */ `
   }
 `;
 
+
 const rtOpts = (o = {}) => ({ type: HalfFloatType, format: RGBAFormat, minFilter: LinearFilter, magFilter: LinearFilter, depthBuffer: false, colorSpace: NoColorSpace, ...o });
 
-export function createPost(renderer, scene, camera) {
+/** The post-pass fragments with every fetch from a dynamic target routed through dynUv() (the header explains why). Exported for the tests. */
+export const POST_FRAGMENTS = {
+  ao: DYNRES_GLSL + AO_FRAG,
+  aoBlur: DYNRES_GLSL + AO_BLUR_FRAG,
+  dof: DYNRES_GLSL + DOF_FRAG,
+  pre: rewriteSamples(BLOOM_PRE_FRAG, ['tColor']).source,
+  down: rewriteSamples(BLOOM_DOWN_FRAG, ['tColor']).source,
+  up: rewriteSamples(BLOOM_UP_FRAG, ['tColor']).source,
+  fin: rewriteSamples(FINAL_FRAG, ['tColor', 'tBloom', 'tAO']).source,
+  fxaa: DYNRES_GLSL + FXAA_FRAG,
+};
+
+/**
+ * createPost(renderer, scene, camera, { dyn }) -> { build, render, setScale, ... }. `dyn` is the dynamic-resolution state (gfx createDynamicRes); the pipeline makes one
+ * of its own when none is given. `build()` allocates the targets (tier change or window resize only); `setScale(s)` is free.
+ */
+export function createPost(renderer, scene, camera, { dyn = createDynamicRes() } = {}) {
   const quad = new FullScreenQuad(null);
   const black = new DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, RGBAFormat, UnsignedByteType);
   black.needsUpdate = true;
   const white = new DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, RGBAFormat, UnsignedByteType);
   white.needsUpdate = true;
+  const mat = (fragmentShader, uniforms, extra = {}) =>
+    new ShaderMaterial({ vertexShader: VERT, fragmentShader, uniforms: { ...uniforms, ...dyn.uniforms }, depthTest: false, depthWrite: false, blending: NoBlending, ...extra });
 
   const U = {
     aoU: { tDepth: { value: null }, uProj: { value: new Vector2(1, 1) }, uInv: { value: new Vector2() }, uRadius: { value: 0.7 }, uTime: { value: 0 }, uNear: { value: 0.1 }, uFar: { value: 100 } },
@@ -312,19 +336,20 @@ export function createPost(renderer, scene, camera) {
       uHeat: { value: 0 }, uHorizon: { value: 0.5 }, uCA: { value: 0 }, uRes: { value: new Vector2(1, 1) }, uAspect: { value: 1 }, uTone: { value: 1 },
     },
   };
-  const mAO = mat(AO_FRAG, U.aoU, { name: 'ao' });
-  const mAOBlur = mat(AO_BLUR_FRAG, U.aoBlur, { name: 'aoBlur' });
-  const mDof = mat(DOF_FRAG, U.dof, { name: 'dof' });
-  const mPre = mat(BLOOM_PRE_FRAG, U.pre, { name: 'bloomPre' });
-  const mDown = mat(BLOOM_DOWN_FRAG, U.down, { name: 'bloomDown' });
-  const mUp = mat(BLOOM_UP_FRAG, U.up, { name: 'bloomUp', blending: AdditiveBlending, transparent: true });
-  const mFin = mat(FINAL_FRAG, U.fin, { name: 'final' });
+  const mAO = mat(POST_FRAGMENTS.ao, U.aoU, { name: 'ao' });
+  const mAOBlur = mat(POST_FRAGMENTS.aoBlur, U.aoBlur, { name: 'aoBlur' });
+  const mDof = mat(POST_FRAGMENTS.dof, U.dof, { name: 'dof' });
+  const mPre = mat(POST_FRAGMENTS.pre, U.pre, { name: 'bloomPre' });
+  const mDown = mat(POST_FRAGMENTS.down, U.down, { name: 'bloomDown' });
+  const mUp = mat(POST_FRAGMENTS.up, U.up, { name: 'bloomUp', blending: AdditiveBlending, transparent: true });
+  const mFin = mat(POST_FRAGMENTS.fin, U.fin, { name: 'final' });
   const fxU = { tDiffuse: { value: null }, resolution: { value: new Vector2(1, 1) } };
-  const mFxaa = mat(FXAA_FRAG, fxU, { name: 'fxaa' });
+  const mFxaa = mat(POST_FRAGMENTS.fxaa, fxU, { name: 'fxaa' });
 
   let cfg = null;
   let W = 2;
   let H = 2;
+  let builtKey = '';
   let sceneRT = null;
   let rtA = null;
   let aoA = null;
@@ -340,11 +365,20 @@ export function createPost(renderer, scene, camera) {
     pyramid = [];
   };
 
+  /**
+   * Allocates every target at the size the tier asks for (`w` x `h` css px at `pixelRatio`, NO render scale: that is dyn.setScale). Does nothing when the tier's pipeline
+   * and the size are the same as the last call (a resize event with an unchanged box, the second `resize` of the load).
+   */
   function build(nextCfg, w, h, pixelRatio) {
-    disposeTargets();
+    const nW = Math.max(2, Math.floor(w * pixelRatio));
+    const nH = Math.max(2, Math.floor(h * pixelRatio));
+    const key = `${nW}x${nH}|${nextCfg.msaa || 0}|${nextCfg.dof ? 1 : 0}${nextCfg.ao ? 1 : 0}${nextCfg.fxaa ? 1 : 0}${nextCfg.bloom ? 1 : 0}|${nextCfg.bloomScale || 0}`;
     cfg = nextCfg;
-    W = Math.max(2, Math.floor(w * pixelRatio));
-    H = Math.max(2, Math.floor(h * pixelRatio));
+    if (key === builtKey && sceneRT) return false;
+    disposeTargets();
+    builtKey = key;
+    W = nW;
+    H = nH;
     const needDepth = cfg.ao || cfg.dof;
     const depthTexture = needDepth ? new DepthTexture(W, H, UnsignedIntType) : undefined;
     if (depthTexture) depthTexture.format = DepthFormat;
@@ -368,17 +402,20 @@ export function createPost(renderer, scene, camera) {
         bh = bh >> 1;
       }
     }
-    fxU.resolution.value.set(1 / W, 1 / H);
-    U.fin.uRes.value.set(W, H);
     U.fin.uAspect.value = W / H;
-    U.dof.uMax.value = Math.max(2, H * 0.0036);
-    U.aoU.uInv.value.set(1 / Math.max(2, W >> 1), 1 / Math.max(2, H >> 1));
+    return true;
   }
 
   let probe = null; // (passName, begin: boolean) => void, for GPU timing (timer queries) in the benchmark tooling; null in play
-  const run = (m, target, clear = true) => {
+  /**
+   * One fullscreen pass: material `m` into `dst` (a target, or null = the canvas at full size), reading `src` (the target it mostly samples: its used / allocated ratio
+   * goes to the shared dynUv uniforms). The destination's viewport + scissor are set to its used sub-rect first.
+   */
+  const run = (m, dst, src, clear = true) => {
     quad.material = m;
-    renderer.setRenderTarget(target);
+    if (dst) dyn.apply(dst);
+    if (src) dyn.bind(src);
+    renderer.setRenderTarget(dst);
     const ac = renderer.autoClear;
     renderer.autoClear = clear;
     if (probe) probe(m.name, true);
@@ -390,69 +427,76 @@ export function createPost(renderer, scene, camera) {
   let time = 0;
   function render(dt) {
     time += dt;
-    // 1. the scene
+    // 1. the scene, into the used sub-rect of the HDR target
+    dyn.apply(sceneRT);
     renderer.setRenderTarget(sceneRT);
     if (probe) probe('scene', true);
     renderer.render(scene, camera);
     if (probe) probe('scene', false);
-    let cur = sceneRT.texture;
+    const used = dyn.sizeOf(sceneRT);
+    let curRT = sceneRT;
     const depth = sceneRT.depthTexture;
     const near = camera.near;
     const far = camera.far;
     // 2. depth of field (high)
     if (cfg.dof && depth) {
       look.focus += (look.focusTarget - look.focus) * Math.min(1, dt * 5);
-      U.dof.tColor.value = cur;
+      U.dof.tColor.value = curRT.texture;
       U.dof.tDepth.value = depth;
-      U.dof.uInv.value.set(1 / W, 1 / H);
+      U.dof.uInv.value.set(1 / used.w, 1 / used.h);
+      U.dof.uMax.value = Math.max(2, used.h * 0.0036);
       U.dof.uFocus.value = look.focus;
       U.dof.uNear.value = near;
       U.dof.uFar.value = far;
-      run(mDof, rtA);
-      cur = rtA.texture;
+      run(mDof, rtA, sceneRT);
+      curRT = rtA;
     }
     // 3. occlusion (high): half-res from depth, then a depth-aware blur both ways
     let aoTex = white;
     if (cfg.ao && depth) {
+      const ua = dyn.sizeOf(aoA);
       U.aoU.tDepth.value = depth;
       U.aoU.uProj.value.set(camera.projectionMatrix.elements[0], camera.projectionMatrix.elements[5]);
       U.aoU.uNear.value = near;
       U.aoU.uFar.value = far;
       U.aoU.uTime.value = time;
-      run(mAO, aoA);
+      U.aoU.uInv.value.set(1 / ua.w, 1 / ua.h);
+      run(mAO, aoA, sceneRT);
       U.aoBlur.tDepth.value = depth;
       U.aoBlur.uNear.value = near;
       U.aoBlur.uFar.value = far;
       U.aoBlur.tAO.value = aoA.texture;
-      U.aoBlur.uDir.value.set(1 / aoA.width, 0);
-      run(mAOBlur, aoB);
+      U.aoBlur.uDir.value.set(1 / ua.w, 0);
+      run(mAOBlur, aoB, aoA);
       U.aoBlur.tAO.value = aoB.texture;
-      U.aoBlur.uDir.value.set(0, 1 / aoA.height);
-      run(mAOBlur, aoA);
+      U.aoBlur.uDir.value.set(0, 1 / ua.h);
+      run(mAOBlur, aoA, aoB);
       aoTex = aoA.texture;
     }
     // 4. bloom
     let bloomTex = black;
     if (cfg.bloom && pyramid.length) {
-      U.pre.tColor.value = cur;
-      U.pre.uInv.value.set(1 / W, 1 / H);
-      run(mPre, pyramid[0]);
+      U.pre.tColor.value = curRT.texture;
+      U.pre.uInv.value.set(1 / used.w, 1 / used.h);
+      run(mPre, pyramid[0], curRT);
       for (let i = 1; i < pyramid.length; i++) {
+        const us = dyn.sizeOf(pyramid[i - 1]);
         U.down.tColor.value = pyramid[i - 1].texture;
-        U.down.uInv.value.set(1 / pyramid[i - 1].width, 1 / pyramid[i - 1].height);
-        run(mDown, pyramid[i]);
+        U.down.uInv.value.set(1 / us.w, 1 / us.h);
+        run(mDown, pyramid[i], pyramid[i - 1]);
       }
       for (let i = pyramid.length - 2; i >= 0; i--) {
+        const us = dyn.sizeOf(pyramid[i + 1]);
         U.up.tColor.value = pyramid[i + 1].texture;
-        U.up.uInv.value.set(1 / pyramid[i + 1].width, 1 / pyramid[i + 1].height);
+        U.up.uInv.value.set(1 / us.w, 1 / us.h);
         U.up.uGain.value = 1;
-        run(mUp, pyramid[i], false);
+        run(mUp, pyramid[i], pyramid[i + 1], false);
       }
       bloomTex = pyramid[0].texture;
     }
     // 5. final (+ FXAA)
     const f = U.fin;
-    f.tColor.value = cur;
+    f.tColor.value = curRT.texture;
     f.tBloom.value = bloomTex;
     f.tAO.value = aoTex;
     f.uAO.value = cfg.ao ? look.aoStrength : 0;
@@ -465,16 +509,80 @@ export function createPost(renderer, scene, camera) {
       f.uHorizon.value = 0.5 + Math.tan(pitch) / (2 * tanHalf);
     }
     if (cfg.fxaa && ldrRT) {
-      run(mFin, ldrRT);
+      run(mFin, ldrRT, curRT);
+      const ul = dyn.sizeOf(ldrRT);
+      fxU.resolution.value.set(1 / ul.w, 1 / ul.h);
       fxU.tDiffuse.value = ldrRT.texture;
-      run(mFxaa, null);
-    } else run(mFin, null);
+      run(mFxaa, null, ldrRT);
+    } else run(mFin, null, curRT);
     renderer.setRenderTarget(null);
   }
+
+  // the passes the current tier runs, with the target each one draws into (null = the canvas): what a pre-link has to compile (the output colour space is part of
+  // the program key, so a pass is only worth compiling against the target it will really use)
+  const passList = () => {
+    const out = [];
+    if (cfg?.dof) out.push([mDof, rtA]);
+    if (cfg?.ao) out.push([mAO, aoA], [mAOBlur, aoB]);
+    if (cfg?.bloom && pyramid.length) out.push([mPre, pyramid[0]], [mDown, pyramid[1] || pyramid[0]], [mUp, pyramid[0]]);
+    out.push([mFin, cfg?.fxaa ? ldrRT : null]);
+    if (cfg?.fxaa) out.push([mFxaa, null]);
+    return out;
+  };
+  let warmGeo = null;
+  let warmCam = null;
 
   return {
     build,
     render,
+    /** The dynamic-resolution state: scale steps are `post.setScale(s)` (viewport and uniforms only: nothing is re-allocated, nothing recompiles). */
+    dyn,
+    setScale(s) {
+      return dyn.setScale(s);
+    },
+    get scale() {
+      return dyn.scale;
+    },
+    /** The used (rendered) size of the HDR scene target at the current scale, in pixels. */
+    get usedSize() {
+      return sceneRT ? { w: Math.max(1, Math.round(sceneRT.width * dyn.scale)), h: Math.max(1, Math.round(sceneRT.height * dyn.scale)) } : { w: 0, h: 0 };
+    },
+    /** Every post-pass material of this pipeline (all tiers: only the ones the current tier runs ever draw). tf-prog's loader may link them during the load. */
+    getMaterials() {
+      return [mAO, mAOBlur, mDof, mPre, mDown, mUp, mFin, mFxaa];
+    },
+    /**
+     * Kicks the compile of every pass the CURRENT tier runs, each against the target it draws into, so the programs link on the browser's worker threads during the load
+     * (renderer.programsStatus-style polling sees them) instead of at the first frame. `compile(scene, camera)` is the renderer's own compile (the caller passes the
+     * unwrapped one: a wrapper that binds the scene target would give the canvas passes the wrong output colour space). Returns the number of passes handed over.
+     */
+    prelink(compile = (s, c) => renderer.compile(s, c)) {
+      if (!cfg) return 0;
+      if (!warmGeo) {
+        warmGeo = new BufferGeometry();
+        warmGeo.setAttribute('position', new BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3));
+        warmGeo.setAttribute('uv', new BufferAttribute(new Float32Array([0, 0, 2, 0, 0, 2]), 2));
+        warmCam = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
+      }
+      const prev = renderer.getRenderTarget();
+      let n = 0;
+      for (const [m, target] of passList()) {
+        const sc = new Scene();
+        const mesh = new Mesh(warmGeo, m);
+        mesh.frustumCulled = false;
+        sc.add(mesh);
+        try {
+          renderer.setRenderTarget(target);
+          compile(sc, warmCam);
+          n++;
+        } catch {
+          /* a pass that cannot be pre-linked is linked on its first draw */
+        } finally {
+          renderer.setRenderTarget(prev);
+        }
+      }
+      return n;
+    },
     /** Per-frame look from a lighting snapshot (lighting.js). */
     setLook(L, exposure, cfgNow) {
       const f = U.fin;
@@ -501,8 +609,17 @@ export function createPost(renderer, scene, camera) {
     setTone(id) {
       U.fin.uTone.value = id ? 1 : 0;
     },
+    /** The allocated size (the used size is `usedSize`). */
     get size() {
       return { w: W, h: H };
+    },
+    /** The render targets as allocated (tests and tooling: identity must not change on a scale step). */
+    get targets() {
+      return { scene: sceneRT, dof: rtA, aoA, aoB, ldr: ldrRT, pyramid: pyramid.slice() };
+    },
+    /** The texel-size uniforms of the passes (the used size, not the allocated one): tests. */
+    get uniforms() {
+      return U;
     },
     /** The HDR scene target (null before build / without post): programs compiled against it are the ones the frame really uses. */
     get sceneTarget() {
@@ -511,6 +628,7 @@ export function createPost(renderer, scene, camera) {
     dispose() {
       disposeTargets();
       for (const m of [mAO, mAOBlur, mDof, mPre, mDown, mUp, mFin, mFxaa]) m.dispose();
+      warmGeo?.dispose();
       black.dispose();
       white.dispose();
       quad.dispose();

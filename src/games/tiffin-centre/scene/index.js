@@ -4,6 +4,9 @@
 // Everything is procedural: no external assets. You see through the local cook's eyes; the cook's body is never drawn.
 import { Vector3 } from 'three';
 import { HOME_X } from '../../../../shared/tiffin-centre/movement.js';
+import {
+  CHANGE_NONE, classifyGpu, createAdaptiveQuality, createGpuTimer, createLoop, createTierMemory, probeGpu, runStandaloneCalibration, shouldCalibrate, viewportClass, watchDeviceHints,
+} from '../../../platform/gfx/index.js';
 import { createRenderer } from './renderer.js';
 import { createLightApplier } from './light-apply.js';
 import { lightingAt, makeLighting } from './lighting.js';
@@ -16,7 +19,8 @@ import { createSync } from './sync.js';
 import { makeArt } from './art.js';
 import { createTracker } from './tracker.js';
 import { whenFontsReady } from './textures.js';
-import { QUALITY, QUALITY_ORDER, pickQuality } from './quality.js';
+import { DRAW_CALL_BUDGET, GFX_GAME_KEY, GOVERNOR_OPTIONS, QUALITY, QUALITY_ORDER, SCALE_LADDER, SCALE_MIN, TIER_COST, TIFFIN_TIER_MODELS, pickQuality } from './quality.js';
+import { combineFpsCap, createGovernorFeed, startTier } from './adapt.js';
 import { describeCaps, getGfxPref, probeBrowser, resolveTier, setGfxPref } from './capabilities.js';
 import { LOAD_STEPS, applyModelTier, createBatcher, createProgramWarmer, programsStatus, runAsync, runSync, sleep } from './loader.js';
 import { DISH_IDS } from '../../../../shared/tiffin-centre/catalog.js';
@@ -64,22 +68,66 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     mark(`tc:step:${key}:${p}`);
     return { label: LOAD_STEPS[key] || key, p };
   };
-  // the tier: an explicit one wins; 'auto' follows the player's Graphics setting, then the device probe
+  // the tier: an explicit one wins; 'auto' follows the player's Graphics setting, then the device probe (capabilities.js: the capability gate and the legacy
+  // caps for phones / Safari), then the shared engine layer (src/platform/gfx): GPU class, what worked last time on this GPU + viewport, a start-up calibration
   const explicit = QUALITY_ORDER.includes(quality);
   const caps = probeBrowser();
   const verdict = explicit ? { tier: quality, reasons: ['requested'], pref: quality, auto: null } : resolveTier(getGfxPref(), caps);
   if (!verdict.tier) throw new WebglUnavailableError(verdict.reasons[0]);
-  const q0 = pickQuality(verdict.tier);
   const auto = !explicit && verdict.pref === 'auto';
+  const prefNow = QUALITY_ORDER.includes(verdict.pref) ? verdict.pref : 'auto';
   yield step('gpu', 0.02);
+  const vw = Math.max(2, initialSize?.w || (typeof window !== 'undefined' ? window.innerWidth : 0) || 1280);
+  const vh = Math.max(2, initialSize?.h || (typeof window !== 'undefined' ? window.innerHeight : 0) || 720);
+  const vdpr = Math.max(1, caps.dpr || (typeof devicePixelRatio === 'number' ? devicePixelRatio : 1) || 1);
+  let gpu0 = null;
+  try {
+    gpu0 = probeGpu() || classifyGpu({ renderer: caps.renderer, vendor: caps.vendor });
+  } catch {
+    gpu0 = classifyGpu({ renderer: caps.renderer || '' });
+  }
+  // the start-up benchmark (~250 ms on a throw-away context, the loading screen keeps animating): only when nothing is remembered for this GPU + viewport and the
+  // player did not choose a tier; the async build only (the synchronous build is for tests and screenshot tooling)
+  let calibration = null;
+  if (isAsync && auto) {
+    let mem = null;
+    try {
+      mem = createTierMemory({ game: GFX_GAME_KEY }).get(gpu0.key, viewportClass(vw, vh, vdpr));
+    } catch {
+      mem = null;
+    }
+    if (shouldCalibrate({ gpu: gpu0, memory: mem, pref: prefNow, tiers: QUALITY_ORDER }).run) {
+      yield runStandaloneCalibration({ width: vw, height: vh, dpr: vdpr, gpu: gpu0, tiers: TIFFIN_TIER_MODELS }).then((r) => {
+        calibration = r;
+      });
+    }
+  }
+  let gov = null; // the frame governor (below): the callbacks of createAdaptiveQuality reach it through this binding
+  let gfx = null;
+  const aq = createAdaptiveQuality({
+    game: GFX_GAME_KEY, tiers: QUALITY_ORDER, pref: prefNow, viewport: { w: vw, h: vh, dpr: vdpr }, gpu: gpu0, calibration,
+    callBudgets: DRAW_CALL_BUDGET, scaleMin: SCALE_MIN, ladder: SCALE_LADDER, tierCost: TIER_COST,
+    governor: { ...GOVERNOR_OPTIONS },
+    onScale: (s) => gfx?.setScale(s),
+    onTier: (tier, info) => switchTier(tier, info.reason, info.scale),
+  });
+  gov = aq.governor;
+  // the verdict above is a ceiling too (phones, Safari, no float targets: chooseTier): an Auto start never exceeds it and the governor never climbs past it
+  const q0 = pickQuality(startTier({ auto, initial: aq.initial.tier, ceiling: verdict.tier }));
+  if (auto) {
+    if (q0 !== aq.initial.tier) gov.setTier(q0, { scale: aq.initial.scale });
+    gov.setMaxTier(verdict.tier);
+  }
   applyModelTier(q0);
   // an aborted or failed build gives back what it already made (generator return() runs this finally)
   const undo = [];
   let built = false;
   try {
   const tr = createTracker();
-  const gfx = createRenderer(canvas, { quality: q0, auto, onContextLost, onContextRestored, onQuality });
+  gfx = createRenderer(canvas, { quality: q0, onContextLost, onContextRestored, onQuality });
   undo.push(() => gfx.dispose(), () => tr.dispose());
+  gfx.holdAdaptation = (sec = 2.5) => gov.hold(sec * 1000); // tf-shot, the bench and the tier switch hold the governor through this
+  if (aq.initial.scale < 1) gfx.setScale(aq.initial.scale);
   const { scene, camera } = gfx;
   // three.js reads three shader / link logs per program the first time it is drawn, and each read is a synchronous round trip to the GPU process:
   // 372 round trips for the 124 programs of this scene, measured at 6 s of the first frame on a shared GPU (17 s of a 20 s load before the programs were
@@ -135,10 +183,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
   let hourOverride = null;
   let disposed = false;
   const parked = []; // actors built once out of sight so their shaders are compiled (and stay cached) before the first customer walks up
-  let running = false;
   let firstFrame = false;
-  let raf = 0;
-  let last = 0;
   let t = 0;
   let lastTickAt = null;
   let pinnedTarget = null; // lookAt(target): the head stays on it (for PIN_HOLD_S, or until it is released / the player looks around)
@@ -159,10 +204,8 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
   const fontsDoc = typeof document !== 'undefined' ? document.fonts : null;
   fontsDoc?.addEventListener?.('loadingdone', repaint);
 
-  const tick = (nowMs, renderIt = true) => {
-    const rawDt = Math.max(0, (nowMs - last) / 1000);
-    last = nowMs;
-    const dt = Math.min(rawDt, 0.1);
+  const tick = (dtSec, renderIt = true) => {
+    const dt = Math.min(Math.max(dtSec, 0), 0.1);
     t += dt;
     const now = performance.now();
     const st = sync.state;
@@ -193,15 +236,41 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     rig.update(dt, t);
     sync.setSun(L.sunDir); // where a person's shadow falls (a person outside the view is hidden only when their shadow is outside it too)
     sync.update(dt, t, now, rig.lookDelta);
-    fx.update(dt, (size.h * gfx.renderer.getPixelRatio()) / (2 * Math.tan((camera.fov * Math.PI) / 360)), camera.position);
+    // the glow / particle sizes are in pixels of the PICTURE that is rendered (canvas ratio x the dynamic render scale)
+    fx.update(dt, (size.h * gfx.pixelRatio) / (2 * Math.tan((camera.fov * Math.PI) / 360)), camera.position);
     highlight.update(dt, t, sync.resolve, reduced, hlView);
-    if (renderIt) gfx.render(rawDt);
+    if (renderIt) gfx.render(dt);
   };
-  const frame = (nowMs) => {
-    if (!running) return;
-    raf = requestAnimationFrame(frame);
-    if (!gfx.shouldRender(nowMs)) return; // the tier's frame cap (30 fps on lite)
-    tick(nowMs);
+
+  // ---- the frame loop (gfx createLoop): rAF, the tier's frame cap, tab hidden / shown without a catch-up step, GPU timing, and the governor fed every frame ----
+  // A tier change is hidden behind a held frame (see switchTier): `switching` frames update the game but do not draw.
+  const timer = createGpuTimer(gfx.renderer.getContext());
+  let timerPaused = false; // the benchmark tooling times single passes itself (scripts/perf/tf-probe.mjs): one TIME_ELAPSED query at a time
+  const loopTimer = timer.supported
+    ? { supported: true, begin: () => !timerPaused && timer.begin(), end: () => timer.end(), get lastMs() { return timer.lastMs; } }
+    : null;
+  gfx.pauseTimer = (p) => {
+    timerPaused = !!p;
+  };
+  gfx.gpuTimer = timer;
+  // a frame within a compile storm (a program appeared in the last 0.6 s and the frame itself is a stall) says nothing about what the device renders
+  let sw = null; // the tier switch in flight (see switchTier)
+  const govFeed = createGovernorFeed(gov, () => (gfx.renderer.info.programs ? gfx.renderer.info.programs.length : 0), { none: CHANGE_NONE, paused: () => !!sw });
+  let appliedCap = -1;
+  const applyFpsCap = () => {
+    appliedCap = gov.fpsCap || 0;
+    loop.setMaxFps(combineFpsCap(gfx.cfg.fpsCap || 0, appliedCap));
+  };
+  const frame = (alpha, dt) => {
+    if (disposed) return;
+    if (gov.fpsCap !== appliedCap) applyFpsCap();
+    if (sw) {
+      // a tier switch is linking its shaders: the game keeps running, the picture holds its last frame; the frame that finishes the switch is the first one drawn
+      tick(dt, false);
+      if (stepSwitch()) gfx.render(Math.min(dt, 0.1));
+      return;
+    }
+    tick(dt);
     if (!firstFrame) {
       firstFrame = true;
       mark('tc:first-frame');
@@ -211,25 +280,81 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
       if (batcher.done) finishBatch();
     } else warmShaders();
   };
-  // the tab was hidden: nothing to draw, nothing to adapt to
-  let wantRun = false;
-  const onVisibility = () => {
-    if (disposed) return;
-    if (typeof document !== 'undefined' && document.hidden) {
-      if (running) {
-        cancelAnimationFrame(raf);
-        running = false;
-        wantRun = true;
-      }
-    } else if (wantRun) {
-      wantRun = false;
-      running = true;
-      last = performance.now();
-      gfx.holdAdaptation(2);
-      raf = requestAnimationFrame(frame);
+  const loop = createLoop({ render: frame, governor: govFeed, info: gfx.renderer.info, gpuTimer: loopTimer, maxFps: gfx.cfg.fpsCap || 0, maxDelta: 0.1 });
+  gov.setHints({ capFps: gfx.cfg.fpsCap || 0 }); // lite is capped at 30 fps: the governor's budget is that frame, not 16.7 ms
+  const stopHints = watchDeviceHints(gov); // data saver / low battery: 30 fps cap
+  // a tier change: the tier's own frame cap and the governor's budget follow it
+  gfx.onChange(() => {
+    gov.setHints({ capFps: gfx.cfg.fpsCap || 0 });
+    applyFpsCap();
+  });
+
+  /**
+   * The governor (or the Graphics setting) asks for tier `tier`. A new tier is a new set of shader programs (tone mapping, output colour space, shadows and the
+   * light set are all part of the program key): compiling them on the first draw froze the page for seconds (one 19 s task under load). So while the loop is running
+   * the switch happens BEHIND A HELD FRAME: the new tier's state is set at once (setQuality with `defer`: the canvas keeps its size and its last picture), every program
+   * is compiled through the browser's parallel link (the warm-up of the load, whole top-level groups), polled until ready, then primed in 25 ms slices (the first
+   * synchronous query of a program is its real cost on ANGLE), and only then is the first frame of the new tier drawn. The game keeps running, no frame is a long task,
+   * the picture holds for the length of the compile (a second or two on a warm shader cache). Not running (a test, a hidden tab): rebuilt at once.
+   * `scale` is the render scale to resume at.
+   */
+  const switchTier = (tier, reason, scale) => {
+    if (disposed || !gfx || tier === gfx.quality || sw) return; // (a request while one is in flight is dropped: the governor asks again if the problem is still there)
+    if (!loop.running || gfx.lost || !(typeof gfx.renderer.compile === 'function')) {
+      gfx.setQuality(tier, reason, scale);
+      gov.hold(GOVERNOR_OPTIONS.tierHoldMs ?? 2500);
+      return;
     }
+    mark(`tc:tier-switch-start:${tier}`);
+    const known = new Set((gfx.renderer.info.programs || []).map((p) => p.id));
+    gfx.setQuality(tier, reason, scale, { defer: true });
+    const warmer = createProgramWarmer({ renderer: gfx.renderer, scene: gfx.scene, camera: gfx.camera, post: !!gfx.cfg.post, hiddenLights: !!gfx.cfg.lights, extras: [], bigChunk: Infinity });
+    sw = { tier, stage: 'kick', known, warmer, progs: null, k: 0, t0: performance.now(), tLink: 0 };
   };
-  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibility, false);
+  /** One slice of the tier switch per frame. Returns true on the frame that finishes it (the caller draws that frame). */
+  const stepSwitch = () => {
+    const s = sw;
+    if (!s) return false;
+    const now = performance.now();
+    if (s.stage === 'kick') {
+      s.warmer.step(5);
+      if (s.warmer.done) {
+        try {
+          gfx.post.prelink(gfx.rawCompile);
+        } catch {
+          /* linked on first draw */
+        }
+        s.stage = 'link';
+        s.tLink = now;
+      }
+    } else if (s.stage === 'link') {
+      const { ready, total } = programsStatus(gfx.renderer);
+      if (ready >= total || now - s.tLink > 20000) {
+        s.progs = (gfx.renderer.info.programs || []).filter((p) => !s.known.has(p.id));
+        s.stage = 'prime';
+      }
+    } else if (s.stage === 'prime') {
+      const tp = performance.now();
+      while (s.k < s.progs.length && performance.now() - tp < 25) {
+        try {
+          s.progs[s.k].getUniforms();
+          s.progs[s.k].getAttributes();
+        } catch {
+          /* a program that failed to link: the draw will show it */
+        }
+        s.k++;
+      }
+      if (s.k >= s.progs.length) s.stage = 'commit';
+    }
+    if (s.stage !== 'commit') return false;
+    gfx.commitCanvas();
+    mark(`tc:tier-switch-done:${s.tier}:${Math.round(now - s.t0)}ms:${s.progs.length}programs`);
+    tierSwitches.push({ tier: s.tier, ms: Math.round(now - s.t0), programs: s.progs.length });
+    sw = null;
+    gov.hold(GOVERNOR_OPTIONS.tierHoldMs ?? 2500);
+    return true;
+  };
+  const tierSwitches = []; // [{ tier, ms, programs }]: what each tier switch of this session cost (scene.debug.tierSwitches)
 
   // batching of the static scenery (see loader.js): after the first state has arrived, spread over frames
   let batcher = null;
@@ -401,32 +526,33 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     speak: (id, ms, intensity) => sync.speak(id, ms, intensity),
     setSpeaking: (id, ms, intensity) => sync.speak(id, ms, intensity),
     resize(w, h) {
-      size.w = Math.max(2, w);
-      size.h = Math.max(2, h);
+      const nw = Math.max(2, w);
+      const nh = Math.max(2, h);
+      const changed = Math.abs(nw - size.w) > 0.5 || Math.abs(nh - size.h) > 0.5;
+      size.w = nw;
+      size.h = nh;
       gfx.resize(size.w, size.h);
       rig.setAspect(size.w / size.h, size.w, size.h);
+      if (changed) gov.discontinuity(500); // the canvas is re-allocated: that frame is not evidence about the load
     },
+    /** Starts (or resumes) the frame loop; the loop waits for the tab to be visible by itself, and its first frame has dt = 0 (no catch-up step). */
     start() {
-      if (running || disposed) return;
-      if (typeof document !== 'undefined' && document.hidden) {
-        wantRun = true; // starts when the tab comes back
-        return;
-      }
-      running = true;
-      last = performance.now();
-      raf = requestAnimationFrame(frame);
+      if (disposed) return;
+      loop.start();
     },
     stop() {
-      running = false;
-      wantRun = false;
-      cancelAnimationFrame(raf);
+      loop.stop();
     },
     dispose() {
       if (disposed) return;
       disposed = true;
       api.stop();
+      loop.dispose();
+      stopHints?.();
+      timer.dispose();
+      sw?.warmer?.cancel();
+      sw = null;
       fontsDoc?.removeEventListener?.('loadingdone', repaint);
-      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibility, false);
       warmer?.cancel();
       shadowProxy?.dispose();
       batcher?.dispose();
@@ -455,11 +581,20 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     },
     getQuality: () => gfx.quality,
     /** What the device probe saw and why this tier was chosen: { tier, start, pref, auto, reasons, caps, summary, scale }. */
-    getTierInfo: () => ({ tier: gfx.quality, start: q0, pref: verdict.pref, auto: verdict.auto, reasons: verdict.reasons, caps, summary: describeCaps(caps, verdict), scale: gfx.scale }),
+    getTierInfo: () => ({
+      tier: gfx.quality, start: q0, pref: verdict.pref, auto: verdict.auto, reasons: verdict.reasons, caps, summary: describeCaps(caps, verdict), scale: gfx.scale,
+      gfx: aq.describe(), governor: gov.lastReason,
+    }),
     /** The player's Graphics setting (auto | high | medium | low | lite). An explicit tier applies now (to what is built from now on) and in full next time. */
     setGraphics(pref) {
       const v = setGfxPref(pref);
-      if (QUALITY_ORDER.includes(v) && v !== gfx.quality) gfx.setQuality(v, 'Graphics setting');
+      if (QUALITY_ORDER.includes(v)) {
+        if (v !== gfx.quality) switchTier(v, 'Graphics setting', 1);
+        gov.setTier(v, { scale: 1, lock: true }); // an explicit tier: the governor only adapts the resolution
+      } else {
+        gov.setLock(false); // back to Auto: the governor owns the tier again (from where it stands)
+        aq.forget();
+      }
       return v;
     },
     getGraphics: () => getGfxPref(),
@@ -480,6 +615,15 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     debug: {
       setHour: (h) => { hourOverride = h; },
       get gfx() { return gfx; },
+      /** The shared frame governor, the loop and the adaptive-quality record (scripts/perf/tf-probe.mjs and the bench read their stats). */
+      get governor() { return gov; },
+      get loop() { return loop; },
+      get aq() { return aq; },
+      /** What each tier switch of this session cost: [{ tier, ms, programs }]. */
+      get tierSwitches() { return tierSwitches; },
+      get switching() { return !!sw; },
+      /** Force a tier change the way the governor asks for one (tooling and tests). */
+      switchTier: (tier, scale = 1) => switchTier(tier, 'debug', scale),
       /** What the load linked and what the first real frame still had to build (programs): see settleFirstFrame. */
       get settle() { return settleInfo; },
       stall,
@@ -490,8 +634,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
       camera,
       /** Render one frame synchronously (headless checks without rAF). */
       step(dtSec = 1 / 60) {
-        last = performance.now() - dtSec * 1000;
-        tick(performance.now());
+        tick(dtSec);
         if (batcher && !batcher.done && ++framesWithState > 40) {
           batcher.step(1000);
           if (batcher.done) finishBatch();
@@ -527,8 +670,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     api.setMe(meId);
     api.setState(initialState, initialTickAt ?? performance.now());
     mark('tc:state-applied');
-    last = performance.now() - 16;
-    tick(performance.now(), false); // clock light, env map (PMREM), the stall's lights, the actors: everything but the draw
+    tick(0.016, false); // clock light, env map (PMREM), the stall's lights, the actors: everything but the draw
     yield step('batch', 0.9);
     // the static scenery is merged now, so the merged meshes (not the originals they replace) are what gets compiled
     if (batcher) {
@@ -537,8 +679,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
         yield step('batch', 0.9 + 0.03 * (batcher.progress ?? 0));
       }
       finishBatch();
-      last = performance.now() - 16;
-      tick(performance.now(), false); // the batcher drove the light through a whole day: put the real one back
+      tick(0.016, false); // the batcher drove the light through a whole day: put the real one back
     }
     // whole top-level groups, not their children: every compile() call walks the whole scene to gather its lights, so ~230 small chunks cost 1.7 s of
     // traversals for 124 programs; behind the loading screen a chunk may take as long as it likes
@@ -546,6 +687,12 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     while (!w.done) {
       w.step(5);
       yield step('shaders', 0.93);
+    }
+    // the post passes (bloom, final, FXAA ...) link with the rest: each against the target it draws into (post.js prelink)
+    try {
+      gfx.post.prelink(gfx.rawCompile);
+    } catch {
+      /* they link on their first draw */
     }
     mark('tc:compile-kicked');
     // the links run on the browser's worker threads: poll (the page keeps painting the loading screen) until every program is ready
@@ -611,7 +758,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
     console.warn('[tiffin] shader pre-compile skipped', err);
   }
   yield step('ready', 1);
-  gfx.holdAdaptation(3);
+  gov.hold(GOVERNOR_OPTIONS.loadHoldMs ?? 3000); // the first seconds after the load (uploads, the last compiles) are not evidence about the device
   built = true;
   return api;
   } finally {
