@@ -41,7 +41,17 @@ const PAGE = `(async () => {
     time((pass ? 'warm ' : 'cold ') + 'avatar', () => m.buildAvatar({ color: '#ff8a1f', name: 'x' }));
     time((pass ? 'warm ' : 'cold ') + 'viewmodel', () => m.buildViewmodel());
   }
-  return rows;
+  // the stages of a sliced customer build (what one frame pays when somebody walks up mid-shift): ms of each generator step
+  const cs = await import(M + 'customers.js');
+  const stages = {};
+  for (const k of m.CUSTOMER_KIND_IDS) {
+    for (let s = 0; s < ${seeds}; s++) {
+      const g = cs.buildCustomerSteps(k, 31 + s * 7); const ms = [];
+      for (;;) { const t0 = performance.now(); const r = g.next(); ms.push(+(performance.now() - t0).toFixed(1)); if (r.done) { r.value.dispose(); break; } }
+      (stages[k] ||= []).push(ms.join('/'));
+    }
+  }
+  return { rows, stages };
 })()`;
 
 const c = await launch({ port, w: 800, h: 500, gl: GPU_FLAGS });
@@ -49,7 +59,10 @@ try {
   await c.goto(`${base}/`);
   await c.waitFor('document.readyState === "complete"', 60000);
   await c.sleep(1500);
-  const rows = await c.ev(PAGE);
+  const res = await c.ev(PAGE);
+  const rows = res.rows;
+  console.log('sliced customer build, ms per step (warm):');
+  for (const [k, v] of Object.entries(res.stages)) console.log(`  ${k.padEnd(9)} ${v.join('   ')}`);
   const by = {};
   for (const [n, ms] of rows) {
     const key = n.replace(/ #\d+$/, '');

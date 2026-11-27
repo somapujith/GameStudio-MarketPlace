@@ -5,7 +5,9 @@
 import { Group, Mesh, MeshBasicMaterial, PlaneGeometry, Vector3, Frustum, Matrix4, Sphere } from 'three';
 import { DISH_IDS, LAYOUT, STATIONS } from '../../../../shared/tiffin-centre/catalog.js';
 import { WORK_MS, standX } from '../../../../shared/tiffin-centre/movement.js';
-import { buildDish, buildCustomer, buildAvatar } from '../models/index.js';
+import { buildDish, buildAvatar } from '../models/index.js';
+import { buildCustomerSteps } from '../models/customers.js';
+import { runSteps } from '../models/person.js';
 import { buildInspector, buildDeliveryBoy } from '../models/inspector.js';
 import { buildParcelBag, buildRegularStar } from '../models/marks.js';
 import * as modelsAll from '../models/index.js';
@@ -170,14 +172,70 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
   const customers = new Map();
   const tmpA = { x: 0, z: 0 };
 
-  function makeCustomer(c, snap) {
-    let model;
-    try {
-      // the tiffin delivery rider has his own model (a red company tee, a big red bag); everybody else is a customer of their kind
-      model = c.delivery ? buildDeliveryBoy(hashSeed(`${c.id}:${c.name}`)) : buildCustomer(c.kind, hashSeed(`${c.id}:${c.name}`));
-    } catch (err) {
-      console.error('[tiffin] buildCustomer failed', err);
-      return null;
+  // Somebody who walks up mid-shift is BUILT A STAGE PER FRAME (models/customers.js buildCustomerSteps: head, body, hair, clothes, props, pose, packing; each a few ms)
+  // instead of in one 20 to 50 ms task that is a visible hitch; they appear a handful of frames after the state says so (the walk-in takes 1.5 s anyway). The first
+  // state of a scene and customers who are already standing there are built at once (the loading screen, or a late join).
+  const building = new Map(); // id -> { id, gen }
+  const BUILD_SLICE_MS = 5;
+  function customerSteps(c) {
+    const seed = hashSeed(`${c.id}:${c.name}`);
+    // the tiffin delivery rider has his own model (a red company tee, a big red bag); everybody else is a customer of their kind
+    if (c.delivery) {
+      return (function* rider() {
+        yield;
+        return buildDeliveryBoy(seed);
+      })();
+    }
+    return buildCustomerSteps(c.kind, seed);
+  }
+  function applyCustomer(e, c) {
+    e.c = c;
+    if ((c.parcel || c.regular) && c.st !== 'left') syncMarks(e, c);
+    if (c.st === 'left' && e.phase !== 'out') startLeave(e, c);
+    else if (e.phase !== 'out') syncPlates(e, c);
+  }
+  /** One slice of the pending customer builds (at most ~BUILD_SLICE_MS of work): called once per frame. */
+  function stepBuilds() {
+    if (!building.size) return;
+    const t0 = performance.now();
+    for (const [id, job] of building) {
+      for (;;) {
+        let r;
+        try {
+          r = job.gen.next();
+        } catch (err) {
+          console.error('[tiffin] buildCustomer failed', err);
+          building.delete(id);
+          break;
+        }
+        if (r.done) {
+          building.delete(id);
+          const model = r.value;
+          const c = (st?.customers || []).find((x) => x.id === id);
+          if (!model) break;
+          if (!c || c.st === 'left') {
+            model.dispose?.(); // they were gone before they were ready
+            break;
+          }
+          const e = makeCustomer(c, false, model);
+          if (e) applyCustomer(e, c);
+          break;
+        }
+        if (performance.now() - t0 >= BUILD_SLICE_MS) return;
+      }
+      if (performance.now() - t0 >= BUILD_SLICE_MS) return;
+    }
+  }
+
+  function makeCustomer(c, snap, built = null) {
+    let model = built;
+    if (!model) {
+      try {
+        model = runSteps(customerSteps(c));
+      } catch (err) {
+        console.error('[tiffin] buildCustomer failed', err);
+        return null;
+      }
     }
     const holder = new Group();
     holder.add(model.group);
@@ -761,14 +819,16 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
       let e = customers.get(c.id);
       if (!e) {
         if (c.st === 'left') continue; // never saw them: nothing to animate
+        if (building.has(c.id)) continue; // being built, a stage per frame (stepBuilds applies the latest state when they are ready)
         const old = st.tick - (c.arrivedAt ?? st.tick) >= 2;
-        e = makeCustomer(c, snap || old);
+        if (!snap && !old) {
+          building.set(c.id, { id: c.id, gen: customerSteps(c) }); // walks in: build it across the next frames
+          continue;
+        }
+        e = makeCustomer(c, true);
         if (!e) continue;
       }
-      e.c = c;
-      if ((c.parcel || c.regular) && c.st !== 'left') syncMarks(e, c);
-      if (c.st === 'left' && e.phase !== 'out') startLeave(e, c);
-      else if (e.phase !== 'out') syncPlates(e, c);
+      applyCustomer(e, c);
     }
     for (const e of customers.values()) if (!seen.has(e.id) && e.phase !== 'out') startLeave(e, e.c ? { outcome: e.c.outcome } : null);
     // players
@@ -867,6 +927,7 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
   /** Per frame, AFTER the camera rig: positions, animation of what is in view, the viewmodel. `look` = the head's change this frame. */
   function update(dt, t, now, look) {
     refreshView();
+    stepBuilds();
     const frac = tickFrac(now, tickAt);
     const tickF = (st?.tick || 0) + frac;
     updateStations(dt, tickF);
@@ -1175,10 +1236,10 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
   warmPark.name = 'warm-actors';
   warmPark.position.set(0, -55, 0);
   warmPark.visible = false;
-  root.add(warmPark);
   const warmParked = [];
   /** A generator of build steps (one per yield, with a label): run it through the loader's slicing driver. */
   function* preload() {
+    root.add(warmPark); // (only the load pays for it: a scene that never preloads has exactly the actors it has)
     ensureWorldFx(false);
     yield 'weather and events';
     inspector.prepare();
@@ -1211,6 +1272,7 @@ export function createSync({ scene, camera, stall, fx, art, tr, quality, reduced
     scene.remove(root);
     for (const o of warmParked) o.dispose?.();
     warmParked.length = 0;
+    building.clear();
     if (vm) {
       camera.remove(vm.group);
       vm.dispose?.();
