@@ -26,29 +26,40 @@ export const sourceScore = (intensity, distToEye) => (intensity > 0.02 ? intensi
 
 /**
  * Which source each slot serves. `scores[i]` is source i's score, `prev[s]` the source slot s served last frame (-1 = none). The k best live sources are chosen; a
- * slot keeps its source while it is still among them (so nothing swaps without cause), free slots take the best of the rest. Returns a new array of length k.
+ * slot keeps its source while it is still among them (so nothing swaps without cause), free slots take the best of the rest. Fills and returns `out` (a new array of
+ * length k when none is given): with a reusable `out` it allocates nothing (a handful of sources, so the ranks are counted by comparison, no sort, no Set).
  */
-export function assignSlots(scores, k, prev = []) {
-  const order = [];
-  for (let i = 0; i < scores.length; i++) if (scores[i] > 0) order.push(i);
-  order.sort((a, b) => scores[b] - scores[a] || a - b);
-  const keep = new Set(order.slice(0, k));
-  const out = new Array(k).fill(-1);
-  const used = new Set();
+export function assignSlots(scores, k, prev = [], out = new Array(k)) {
+  const n = scores.length;
+  for (let s = 0; s < k; s++) out[s] = -1;
+  // rank of a live source: how many live sources beat it (a higher score, or an equal one with a lower index)
+  const rankOf = (i) => {
+    let r = 0;
+    for (let j = 0; j < n; j++) if (scores[j] > 0 && (scores[j] > scores[i] || (scores[j] === scores[i] && j < i))) r++;
+    return r;
+  };
+  const taken = (i) => {
+    for (let s = 0; s < k; s++) if (out[s] === i) return true;
+    return false;
+  };
   for (let s = 0; s < k; s++) {
     const p = prev[s] ?? -1;
-    if (p >= 0 && keep.has(p) && !used.has(p)) {
-      out[s] = p;
-      used.add(p);
-    }
+    if (p >= 0 && p < n && scores[p] > 0 && rankOf(p) < k && !taken(p)) out[s] = p;
   }
-  let next = 0;
-  for (let s = 0; s < k; s++) {
-    if (out[s] >= 0) continue;
-    while (next < order.length && (used.has(order[next]) || !keep.has(order[next]))) next++;
-    if (next < order.length) {
-      out[s] = order[next];
-      used.add(order[next]);
+  for (let r = 0; r < k; r++) {
+    let slot = -1;
+    for (let s = 0; s < k; s++) {
+      if (out[s] < 0) {
+        slot = s;
+        break;
+      }
+    }
+    if (slot < 0) break;
+    for (let i = 0; i < n; i++) {
+      if (scores[i] > 0 && rankOf(i) === r && !taken(i)) {
+        out[slot] = i;
+        break;
+      }
     }
   }
   return out;
@@ -67,6 +78,8 @@ export function createLightPool({ scene, k = 3 }) {
   const sources = []; // { l: PointLight, layerMask }
   const slots = []; // { light: PointLight, src: -1, want: -1, w: 0 }
   const scores = [];
+  const prevBuf = []; // reused every frame: update() allocates nothing
+  const wantBuf = [];
   const tmp = new Vector3();
   const stats = { pooled: 0, active: 0 };
 
@@ -125,8 +138,8 @@ export function createLightPool({ scene, k = 3 }) {
         l.getWorldPosition(tmp);
         scores[i] = sourceScore(l.intensity, tmp.distanceTo(eye));
       }
-      const prev = slots.map((s) => s.want);
-      const want = assignSlots(scores, K, prev);
+      for (let s = 0; s < K; s++) prevBuf[s] = slots[s].want;
+      const want = assignSlots(scores, K, prevBuf, wantBuf);
       let active = 0;
       for (let s = 0; s < K; s++) {
         const slot = slots[s];

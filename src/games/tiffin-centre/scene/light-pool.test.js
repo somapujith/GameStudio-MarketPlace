@@ -28,6 +28,15 @@ describe('assignSlots', () => {
     // k = 2: source 0 (score 1) falls out of the best two: its slot goes to the next best source
     expect(assignSlots([1, 5, 9], 2, [0, 1])).toEqual([2, 1]);
   });
+  it('fills a reusable array in place (the per-frame path allocates nothing) and gives the same answer as a fresh one', () => {
+    const out = [9, 9, 9];
+    const r = assignSlots([0, 5, 0, 9, 2], 3, [-1, -1, -1], out);
+    expect(r).toBe(out);
+    expect(out).toEqual([3, 1, 4]);
+    expect(assignSlots([0, 5, 0, 9, 2], 3)).toEqual(out);
+    // ties go to the lower index
+    expect(assignSlots([4, 4, 4], 2)).toEqual([0, 1]);
+  });
   it('never serves one source in two slots', () => {
     for (let t = 0; t < 50; t++) {
       const scores = Array.from({ length: 8 }, (_, i) => ((i * 7 + t * 3) % 5) + (i % 2 ? 0 : 1));

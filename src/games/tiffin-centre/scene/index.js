@@ -22,7 +22,7 @@ import { makeArt } from './art.js';
 import { createTracker } from './tracker.js';
 import { whenFontsReady } from './textures.js';
 import { DRAW_CALL_BUDGET, GFX_GAME_KEY, GOVERNOR_OPTIONS, QUALITY, QUALITY_ORDER, SCALE_LADDER, SCALE_MIN, TIER_COST, TIFFIN_TIER_MODELS, pickQuality, recommendStart } from './quality.js';
-import { combineFpsCap, createGovernorFeed, startTier } from './adapt.js';
+import { combineFpsCap, createGovernorFeed, startTier, usableCalibration } from './adapt.js';
 import { describeCaps, getGfxPref, probeBrowser, resolveTier, setGfxPref } from './capabilities.js';
 import { LOAD_STEPS, applyModelTier, createBatcher, createProgramWarmer, programsStatus, runAsync, runSync, sleep } from './loader.js';
 import { DISH_IDS } from '../../../../shared/tiffin-centre/catalog.js';
@@ -112,7 +112,7 @@ function* buildScene(canvas, { quality = 'auto', reducedMotion = false, onContex
       // an INCOMPLETE benchmark (a test never got a slice: the machine was too busy, or no timer queries) fills the missing units with pessimistic sentinels (25 ns / pixel,
       // 60 us / call): reading those as a verdict put a perfectly good laptop on `low` for weeks through tier memory. Its verdict is not used at all: the class decides the
       // start and the governor corrects it from real frames. Only a COMPLETE, confident run may move the start tier.
-      if (calibration && (!calibration.ok || calibration.partial || calibration.missing?.length || calibration.recommended?.confident === false)) calibration = null;
+      if (calibration && !usableCalibration(calibration)) calibration = null;
       // the shared estimate is max(cpu, gpu) of generic tier models; Tiffin's frames are a fixed draw cost PLUS a pixel cost (quality.js TIER_REF): the measured
       // units (fill ns / pixel, call us) go through Tiffin's own table, and a post tier at a modest scale beats the plain tier at full resolution
       if (calibration?.ok && calibration.units && calibration.recommended) {

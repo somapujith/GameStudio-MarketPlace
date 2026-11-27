@@ -246,8 +246,9 @@ export function recommendStart({ units, viewport, capTier = 'high', budgetMs = 1
  * The governor's policy for this game (see docs/GFX_ENGINE.md section 6.2): `downRatio` how far over the frame budget the windowed mean may sit before the scale
  * steps down (a vsync-locked 60 Hz display reads 1.00, so 1.04 never trips on a held frame rate and keeps an unlocked benchmark within ~58 fps); `tierDownRatio` how
  * slow the frame must be before the TIER drops (1.6 x 16.7 = 27 ms, about 37 fps: a lower tier is a much bigger loss of picture than a slow-ish frame, and a CPU-bound
- * medium at 40 fps keeps its bloom, shadows and lights);
+ * medium at 40 fps keeps its bloom, shadows and lights); `stableSaveMs` how long a rung must hold before tier memory writes it down (30 s: the next session starts there
+ * without a benchmark, so a rung reached during a transient, a busy machine for a few seconds, must not be remembered);
  * `upRatio` how far under the budget a predicted frame must be before the scale steps up; `loadHoldMs` / `tierHoldMs` how long the governor ignores frames after the
  * load / after a tier change.
  */
-export const GOVERNOR_OPTIONS = { downRatio: 1.04, tierDownRatio: 1.6, loadHoldMs: 3000, tierHoldMs: 2500, warmHoldMs: 1500 };
+export const GOVERNOR_OPTIONS = { downRatio: 1.04, tierDownRatio: 1.6, stableSaveMs: 30000, loadHoldMs: 3000, tierHoldMs: 2500, warmHoldMs: 1500 };

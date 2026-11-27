@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { combineFpsCap, createGovernorFeed, startTier } from './adapt.js';
+import { combineFpsCap, createGovernorFeed, startTier, usableCalibration } from './adapt.js';
 import { createGovernor } from '../../../platform/gfx/governor.js';
 import { GOVERNOR_OPTIONS, QUALITY_ORDER, SCALE_LADDER, SCALE_MIN, TIER_COST } from './quality.js';
 
@@ -22,6 +22,24 @@ describe('startTier', () => {
     expect(startTier({ auto: true, initial: 'medium', ceiling: 'high' })).toBe('medium');
     expect(startTier({ auto: true, initial: 'high', ceiling: 'low' })).toBe('low'); // a phone: the legacy cap wins
     expect(startTier({ auto: true, initial: 'lite', ceiling: 'medium' })).toBe('lite');
+  });
+});
+
+describe('usableCalibration', () => {
+  const good = { ok: true, partial: false, missing: [], units: { fillNsPerPx: 0.5, callUs: 3 }, recommended: { tier: 'medium', scale: 0.75, confident: true } };
+  it('accepts a complete, confident run', () => {
+    expect(usableCalibration(good)).toBe(true);
+  });
+  it('rejects nothing-at-all, a failed or cancelled run, and a run that could not finish (the sentinel units must never be read as a verdict)', () => {
+    expect(usableCalibration(null)).toBe(false);
+    expect(usableCalibration(undefined)).toBe(false);
+    expect(usableCalibration({ ...good, ok: false })).toBe(false);
+    expect(usableCalibration({ ...good, cancelled: true })).toBe(false);
+    expect(usableCalibration({ ...good, partial: 'timeout' })).toBe(false);
+    expect(usableCalibration({ ...good, missing: ['calls'], units: { fillNsPerPx: 25, callUs: 60 } })).toBe(false);
+    expect(usableCalibration({ ...good, recommended: { tier: 'low', scale: 0.7, confident: false } })).toBe(false); // the dev laptop's saturated run: 25 / 60, "not confident"
+    expect(usableCalibration({ ...good, recommended: null })).toBe(false);
+    expect(usableCalibration({ ...good, units: null })).toBe(false);
   });
 });
 

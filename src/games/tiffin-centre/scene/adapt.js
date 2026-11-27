@@ -13,6 +13,18 @@ export function startTier({ auto, initial, ceiling }) {
 }
 
 /**
+ * Is a start-up calibration result complete enough to move the start tier? An INCOMPLETE run (a test never got a slice: a busy machine, no timer queries; cancelled; or
+ * flagged not confident) fills the units it could not measure with pessimistic sentinels (25 ns / pixel, 60 us / call): taken as a verdict it put a good laptop on `low`
+ * (and, through tier memory, kept it there). Such a run says nothing: the GPU class decides the start and the governor corrects it from real frames.
+ */
+export function usableCalibration(cal) {
+  if (!cal || cal.ok === false || cal.cancelled) return false;
+  if (cal.partial || (cal.missing && cal.missing.length)) return false;
+  if (!cal.units || !cal.recommended || cal.recommended.confident === false) return false;
+  return true;
+}
+
+/**
  * What stands between the loop and the governor. A frame that is a compile stall (a shader program appeared within the last 0.6 s and the frame itself took more than
  * three budgets) says nothing about what the device can render: it is not shown to the governor, the normal frames in between still are. Everything else passes through.
  * `gov` needs frame(dtMs, cpuMs, calls, gpuMs), discontinuity(ms) and budgetMs; `programs()` returns the number of compiled programs now. Returns { frame, discontinuity, stalls }.
