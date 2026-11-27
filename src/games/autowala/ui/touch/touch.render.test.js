@@ -125,11 +125,11 @@ describe('TouchControls', () => {
     expect(out).toContain('aria-label="Boost"');
     expect(out).not.toContain('Rotate your phone'); // landscape
   });
-  it('portrait reflows and shows the rotate hint on a phone', async () => {
+  it('portrait still reflows (a narrow desktop window; the shared gate covers upright phones)', async () => {
     const TouchControls = await load(true, 390, 844);
     const out = html(createElement(TouchControls, { game: fakeGame() }));
     expect(out).toContain('aw-ct is-port');
-    expect(out).toContain('Rotate your phone for the best view');
+    expect(out).not.toContain('Rotate your phone'); // the hub's orientation gate owns that message now
   });
   it('renders nothing on a mouse device, and nothing while a menu is open', async () => {
     const desktop = await load(false, 1280, 800);
