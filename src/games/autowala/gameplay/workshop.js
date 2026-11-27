@@ -8,6 +8,7 @@
 import { buy as shopBuy, previewLoadout, quote as shopQuote, statBars } from './workshop/shop.js';
 import { createOrbit } from './workshop/orbit.js';
 import { createEntryRing, createSet } from './workshop/showroom.js';
+import { borrowLights } from './workshop/light-bank.js';
 
 const PAVEMENT = 0.2; // the raised slab the bay stands on (world/roads.js)
 const ENTER_RADIUS = 9;
@@ -80,7 +81,8 @@ export function installWorkshop(ctx) {
     orbit.setView('front34');
     ownsCamera = (camera, dt) => orbit?.update(camera, dt);
     state.cameraOverride = ownsCamera;
-    set = createSet(scene, spot.x, heightAt(spot.x, spot.z) + PAVEMENT, spot.z, facing);
+    // the showroom's lights are borrowed from the street (the lamp pool and the auto's headlight): the workshop is not a new light set
+    set = createSet(scene, spot.x, heightAt(spot.x, spot.z) + PAVEMENT, spot.z, facing, borrowLights({ scene, auto: ctx.auto, props: world.props }));
     ctx.setPrompt('workshop', null);
     ctx.emit('workshop:enter', {});
     return true;

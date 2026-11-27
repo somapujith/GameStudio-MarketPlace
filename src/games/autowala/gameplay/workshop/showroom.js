@@ -72,8 +72,12 @@ export function createEntryRing(scene, x, y, z) {
   };
 }
 
-/** The showroom set around (x, y, z): a turntable disc and three lights. heading orients the key light to the auto's nose. */
-export function createSet(scene, x, y, z, heading) {
+/**
+ * The showroom set around (x, y, z): a turntable disc and three lights. heading orients the key light to the auto's nose.
+ * `bank` (light-bank.js `borrowLights`): the three lights are borrowed from the street (the pool and the auto's headlight) instead of added, so the
+ * workshop is not a new light set (new shader programs); without it the set adds its own, as before.
+ */
+export function createSet(scene, x, y, z, heading, bank = null) {
   const g = new Group();
   g.position.set(x, y, z);
   const fx = Math.sin(heading);
@@ -109,21 +113,45 @@ export function createSet(scene, x, y, z, heading) {
   }
   g.add(disc);
 
-  const key = new SpotLight(0xfff0dc, 120, 34, 0.62, 0.55, 2);
-  key.position.set(fx * 4.2 + rx * 3.2, 7.2, fz * 4.2 + rz * 3.2);
-  const keyTarget = new Object3D();
-  keyTarget.position.set(0, 0.6, 0);
-  g.add(keyTarget);
-  key.target = keyTarget;
-  key.castShadow = false;
-  g.add(key);
-
-  const pinkLight = new PointLight(PINK, 22, 14, 2);
-  pinkLight.position.set(-fx * 3.2 + rx * 3.6, 2.4, -fz * 3.2 + rz * 3.6);
-  g.add(pinkLight);
-  const cyanLight = new PointLight(CYAN, 22, 14, 2);
-  cyanLight.position.set(-fx * 3.2 - rx * 3.6, 2.4, -fz * 3.2 - rz * 3.6);
-  g.add(cyanLight);
+  const keyAt = [fx * 4.2 + rx * 3.2, 7.2, fz * 4.2 + rz * 3.2];
+  const pinkAt = [-fx * 3.2 + rx * 3.6, 2.4, -fz * 3.2 + rz * 3.6];
+  const cyanAt = [-fx * 3.2 - rx * 3.6, 2.4, -fz * 3.2 - rz * 3.6];
+  let key;
+  if (bank) {
+    // borrowed lights live in the scene, not in the group: world positions, the same numbers
+    key = bank.key;
+    key.color.setHex(0xfff0dc);
+    key.intensity = 120;
+    key.distance = 34;
+    key.angle = 0.62;
+    key.penumbra = 0.55;
+    key.decay = 2;
+    key.castShadow = false;
+    key.position.set(x + keyAt[0], y + keyAt[1], z + keyAt[2]);
+    key.target.position.set(x, y + 0.6, z);
+    for (const [light, color, at] of [[bank.pink, PINK, pinkAt], [bank.cyan, CYAN, cyanAt]]) {
+      light.color.setHex(color);
+      light.intensity = 22;
+      light.distance = 14;
+      light.decay = 2;
+      light.position.set(x + at[0], y + at[1], z + at[2]);
+    }
+  } else {
+    key = new SpotLight(0xfff0dc, 120, 34, 0.62, 0.55, 2);
+    key.position.set(...keyAt);
+    const keyTarget = new Object3D();
+    keyTarget.position.set(0, 0.6, 0);
+    g.add(keyTarget);
+    key.target = keyTarget;
+    key.castShadow = false;
+    g.add(key);
+    const pinkLight = new PointLight(PINK, 22, 14, 2);
+    pinkLight.position.set(...pinkAt);
+    g.add(pinkLight);
+    const cyanLight = new PointLight(CYAN, 22, 14, 2);
+    cyanLight.position.set(...cyanAt);
+    g.add(cyanLight);
+  }
 
   scene.add(g);
   return {
@@ -136,7 +164,8 @@ export function createSet(scene, x, y, z, heading) {
     dispose() {
       scene.remove(g);
       disposeTree(g);
-      key.dispose?.();
+      if (bank) bank.release();
+      else key.dispose?.();
     },
   };
 }

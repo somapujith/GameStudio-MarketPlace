@@ -117,6 +117,7 @@ export function createRenderer(canvas, { quality = 'medium', maxQuality = null, 
   let scale = clampScale(startScale); // the governor's scale
   let rendered = 1; // the share of the allocation that is drawn: the tier's share x the governor's scale
   let bloomT = 1.05; // the bright pass's threshold (the game follows the time of day, see post.bloomThreshold)
+  let bloomOn = true; // the bloom's passes are skipped by day (post.bloomWanted): the tier's levels are drawn only while this is on
   let width = 1;
   let height = 1;
   const canvasSize = new Vector2();
@@ -178,6 +179,8 @@ export function createRenderer(canvas, { quality = 'medium', maxQuality = null, 
   const view = () => ({ w: width, h: height, dpr: (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1.5 });
   /** The bloom levels a tier draws (0 = none). */
   const levelsOf = (name) => (tier(name).bloom ? tier(name).bloomLevels ?? 4 : 0);
+  /** The levels drawn right now: the tier's, or none while the bloom is off for the time of day. */
+  const drawnLevels = () => (bloomOn ? levelsOf(q) : 0);
   /** Tell the pipeline what share of its allocation to draw: this tier's share of it, times the governor's scale. */
   const applyScale = () => {
     rendered = effectiveScale(tierScale(q, maxQ, view(), QUALITY), scale);
@@ -210,7 +213,7 @@ export function createRenderer(canvas, { quality = 'medium', maxQuality = null, 
         shared: postShared,
       });
       post.setSize(width * pr, height * pr);
-      post.setLevels(levelsOf(q));
+      post.setLevels(drawnLevels());
       post.setThreshold(bloomT);
       applyScale();
       post.warm();
@@ -297,7 +300,7 @@ export function createRenderer(canvas, { quality = 'medium', maxQuality = null, 
       if (!lost) build();
       return q;
     }
-    post?.setLevels(levelsOf(q));
+    post?.setLevels(drawnLevels());
     applyScale();
     return q;
   };
@@ -366,6 +369,15 @@ export function createRenderer(canvas, { quality = 'medium', maxQuality = null, 
     post?.setThreshold(t);
   };
 
+  /** Draw the bloom's passes (the tier's levels) or skip them all (by day: post.bloomWanted). No allocation, no new program (the plain composite is built up front). */
+  const setBloomEnabled = (on) => {
+    on = !!on;
+    if (on === bloomOn) return bloomOn;
+    bloomOn = on;
+    post?.setLevels(drawnLevels());
+    return bloomOn;
+  };
+
   // loseContext: hand the GPU context back now (browsers allow only ~16 live ones). Not in dev: React StrictMode re-mounts onto the very same
   // canvas, and a context that was force-lost cannot be drawn with again. (A stale build that never drew anything passes false.)
   const dispose = ({ loseContext = !import.meta.env?.DEV } = {}) => {
@@ -385,6 +397,10 @@ export function createRenderer(canvas, { quality = 'medium', maxQuality = null, 
     render,
     setBloom,
     setBloomThreshold,
+    setBloomEnabled,
+    get bloomEnabled() {
+      return bloomOn;
+    },
     setScale,
     setTier,
     shrinkTo,

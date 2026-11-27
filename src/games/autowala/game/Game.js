@@ -3,7 +3,7 @@
 // ctx contract, the event bus and the snapshot shape.
 import { createLoop, runStandaloneCalibration, watchDeviceHints } from '@/platform/gfx';
 import { createRenderer } from '../render/renderer.js';
-import { bloomThreshold } from '../render/post.js';
+import { bloomThreshold, bloomWanted } from '../render/post.js';
 import { TIERS, fogFloorFor, prefOf } from '../render/quality.js';
 import { worldSteps } from '../world/world.js';
 import { drain, drainAsync } from './steps.js';
@@ -161,7 +161,7 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {}, claim = null
     ud.front.rotation.y = -v.steer * 0.55;
     for (const w of ud.wheels) w.rotation.x = v.wheelSpin;
     const night = world.sky.state.night;
-    if (ud.headlight) ud.headlight.intensity = clamp((night - 0.12) * 1.3, 0, 1) * 34;
+    if (ud.headlight && !ud.headlightLent) ud.headlight.intensity = clamp((night - 0.12) * 1.3, 0, 1) * 34; // (the workshop borrows it as its key light)
     ud.brakeM.color.setScalar(v.braking ? 2.6 : 0.0).multiply({ r: 1, g: 0.12, b: 0.16 });
     ud.tailM.color.setRGB(v.braking ? 2.4 : 0.9, v.braking ? 0.2 : 0.1, 0.15);
     // the driver leans with the auto
@@ -262,6 +262,7 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {}, claim = null
     if (Math.abs(night - sunNight) > 0.01) {
       sunNight = night;
       gfx.setBloomThreshold(bloomThreshold(night));
+      gfx.setBloomEnabled(bloomWanted(night, gfx.bloomEnabled)); // by day nothing reaches the threshold: the seven bloom passes are skipped (post.bloomWanted)
     }
     const tRender = performance.now();
     gfx.render(rawDt);
@@ -428,8 +429,9 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {}, claim = null
   // ~100 ms per program on an integrated GPU, 150-250 of them here. So every program the game will draw with is built before the first frame,
   // off the main thread (KHR_parallel_shader_compile), for the state the game really draws in: into the composer's render target, with the
   // light set of the first frame. It starts now, while the systems install (the driver compiles in the background while the main thread
-  // builds the rest of the game); what the systems add is compiled by a second, incremental call. The other light sets (night, the
-  // workshop) are built in the background once the game runs, and a quality change builds its own before it is applied.
+  // builds the rest of the game); what the systems add is compiled by a second, incremental call. A light set is the camera pass's programs AND the
+  // sun's shadow pass's (game/warm.js): day and night are both built here, the workshop is neither (it borrows the street's lights), and a quality
+  // change builds its own before it is applied.
   const bootStart = performance.now();
   // Objects that only appear during play have programs of their own: a waiting customer (people: lit, shadow-receiving, not instanced) is
   // the first of them, a minute into the first ride. One hidden person with luggage stands in the scene for the whole game so the warm-up
@@ -579,42 +581,17 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {}, claim = null
     },
   });
 
-  // the workshop adds a spot light and two point lights to the scene: another light set. It is built when the player is about to use it: while
-  // the start menu is up (the auto starts parked at the garage, nobody is playing), or when they stop at the garage for 3 s (not in the first
-  // 20 s of a session, and never while driving past), for the time of day they are in.
-  const garageFront = garage?.front;
+  // The workshop is NOT a light set of its own any more: its three lights are borrowed from the lamp pool and the auto's headlight
+  // (gameplay/workshop/light-bank.js), and while they are lent the day shows as many lights as the night, so it is always one of the two sets
+  // built above. It used to add a spot and two points: 2 x 75 programs that were built in play (a trickle of 700-850 ms frames at the garage).
   const bootEnd = performance.now();
-  let workshopWarming = false;
-  let garageClock = 0;
-  let parked = 0;
-  ctx.addSystem({
-    update(dt) {
-      if (!garageFront || !warmer.parallel || workshopWarming || !running) return;
-      garageClock -= dt;
-      if (garageClock > 0) return;
-      const step = 0.5 - garageClock; // time since the last check
-      garageClock = 0.5;
-      const atGarage = Math.hypot(v.x - garageFront.x, v.z - garageFront.z) < 40 && v.speed < 1;
-      parked = atGarage ? parked + step : 0;
-      const menuTime = state.menu === 'start' && performance.now() - bootEnd > 2000;
-      if (!menuTime && !(stable() && clock.time > 20 && parked >= 3)) return;
-      const set = lightSet(gfx.quality, { night: nightNow(), workshop: true, baseSpots });
-      if (warmer.has(set)) return;
-      workshopWarming = true;
-      warmer
-        .warm(set, idleOrTrickle)
-        .catch(warnWarm)
-        .then(() => { workshopWarming = false; });
-    },
-  });
 
   // ---- tier steps. The governor decides; a step never stalls: the new tier's light set (lamp count, shadows: a whole set of programs) is
   // built in the background first and the swap (renderer tier, world quality, draw distance) happens on a frame boundary, all at once.
   const warmTier = (q) => {
     stableSince = performance.now();
     warmer.cancel();
-    const workshop = state.menu === 'workshop';
-    const [first] = phases(q, { night: recipeOf(scene).points > (workshop ? 2 : 0), workshop });
+    const [first] = phases(q, { night: recipeOf(scene).points > 0 }); // (the workshop's lent lights make the day show the night's count: the same set)
     // a trickle, like the other in-play warm-ups (a few programs at a time, only while frames are healthy): the swap waits a little longer and
     // no frame takes the compile storm of building ~90 programs at once (frames of 250-520 ms when that was done in a burst)
     // (globalThis.__awTune.swapWarm overrides the options for experiments: aw-probe --tune '{"swapWarm":{"maxPending":3}}')

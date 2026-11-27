@@ -91,6 +91,15 @@ export function brightPass(luma, threshold, knee) {
  */
 export const bloomThreshold = (night) => 1.05 + (1 - Math.min(1, Math.max(0, night))) * 1.15;
 
+/**
+ * Is the bloom worth its seven passes (the bright pass, three downs, three ups: ~85 GL calls and a render-target switch each) at this time of day?
+ * By day the threshold is 2.2 and almost nothing in the picture reaches it: measured (aw-shots.mjs, paused world, same cameras, bloom on vs off at
+ * 12:00 / 11:00 / 17.9): mean difference 0.006-0.026 of 255, 0-0.01 % of the pixels over 2 levels, i.e. dither noise, at Charminar, the shops, the glass
+ * towers and the sunset. So it is skipped while `night` is under `on` (0.04, hour ~17.5 / ~7.7: the palette's `night` is 0.08 at 17.6) and comes back
+ * when it rises past it; a little hysteresis (`off`) keeps it from flickering at the boundary.
+ */
+export const bloomWanted = (night, wasOn = true, on = 0.04, off = 0.02) => night > (wasOn ? off : on);
+
 // ------------------------------------------------------------------------------------------------ support probes
 
 const probed = new Map();

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BackSide, BoxGeometry, DirectionalLight, DoubleSide, FogExp2, FrontSide, Group, HemisphereLight, InstancedMesh, Mesh, MeshBasicMaterial, MeshDepthMaterial, MeshStandardMaterial, PointLight, RGBADepthPacking, Scene, SkinnedMesh, SpotLight, Texture } from 'three';
 import { buildWarmScene, compileParts, createWarmer, depthParts, depthStandIn, passMaterials, recipeKey, recipeOf, shadowSideOf } from './warm.js';
-import { lightSet } from './light-sets.js';
+import { lightSet, visibleLights } from './light-sets.js';
 
 const geo = new BoxGeometry(1, 1, 1);
 
@@ -53,8 +53,26 @@ describe('lightSet', () => {
     expect(lightSet('medium')).toEqual({ points: 0, spots: 1, shadow: true });
     expect(lightSet('medium', { night: true })).toEqual({ points: 3, spots: 1, shadow: true }); // POOL_LIGHTS.medium
     expect(lightSet('low', { night: true })).toEqual({ points: 2, spots: 1, shadow: false });
-    expect(lightSet('high', { night: true, workshop: true })).toEqual({ points: 7, spots: 2, shadow: true }); // POOL_LIGHTS.high + 2
-    expect(lightSet('high', { workshop: true, baseSpots: 3 }).spots).toBe(4);
+    expect(lightSet('high', { night: true })).toEqual({ points: 5, spots: 1, shadow: true }); // POOL_LIGHTS.high
+    expect(lightSet('high', { baseSpots: 3 }).spots).toBe(3);
+  });
+  it('has no workshop set: the showroom borrows the street\'s lights, so there are two sets per tier, day and night', () => {
+    for (const q of ['low', 'medium', 'high']) {
+      expect(lightSet(q, { workshop: true })).toEqual(lightSet(q)); // (an old caller's flag changes nothing)
+      expect(new Set([recipeKey(lightSet(q)), recipeKey(lightSet(q, { night: true }))]).size).toBe(2);
+    }
+  });
+});
+
+describe('visibleLights', () => {
+  it('shows the pool at night, nothing by day, and the NIGHT count by day while the workshop has lent lights (the same light set)', () => {
+    expect(visibleLights(false, 3, 0)).toBe(0);
+    expect(visibleLights(true, 3, 0)).toBe(3);
+    expect(visibleLights(false, 3, 2)).toBe(3); // the workshop by day: the night's set, not a set of its own
+    expect(visibleLights(true, 3, 2)).toBe(3);
+    expect(visibleLights(true, 2, 2)).toBe(2);
+    expect(visibleLights(false, 0, 2)).toBe(2); // a pool smaller than the loan: at least the lent ones
+    expect(visibleLights(true, 5, 0)).toBe(5);
   });
 });
 

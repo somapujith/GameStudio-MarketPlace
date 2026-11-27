@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bloomGain, bloomSizes, bloomThreshold, bloomWeights, brightPass, clampScale, scaleRect } from './post.js';
+import { bloomGain, bloomSizes, bloomThreshold, bloomWanted, bloomWeights, brightPass, clampScale, scaleRect } from './post.js';
 import { opaqueByProgram, shadowDue } from './renderer.js';
 import { QUALITY } from '../game/config.js';
 
@@ -20,6 +20,22 @@ describe('render scale', () => {
     const full = scaleRect(1920, 1080, 1);
     expect(full).toMatchObject({ w: 1920, h: 1080, u: 1, v: 1 });
     expect(scaleRect(4, 4, 0.1).w).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('bloomWanted (the bloom is skipped by day)', () => {
+  it('is off through the day, on from dusk, and the palette\'s own numbers agree (noon 0, 17.6 h 0.08, 18.7 h 0.35)', () => {
+    for (const night of [0, 0.01, 0.03]) expect(bloomWanted(night, false)).toBe(false);
+    for (const night of [0.08, 0.35, 0.8, 1]) expect(bloomWanted(night, false)).toBe(true);
+    // the glow is skipped only where its threshold is out of reach of the picture: 2.2 at noon, still 2.1 at night 0.08
+    expect(bloomThreshold(0)).toBeGreaterThan(2.1);
+    expect(bloomThreshold(0.08)).toBeGreaterThan(2.0);
+  });
+  it('has hysteresis: it does not flicker around the boundary', () => {
+    expect(bloomWanted(0.03, false)).toBe(false); // off and rising: waits for 0.04
+    expect(bloomWanted(0.03, true)).toBe(true); // on and falling: keeps going until 0.02
+    expect(bloomWanted(0.015, true)).toBe(false);
+    expect(bloomWanted(0.045, false)).toBe(true);
   });
 });
 
