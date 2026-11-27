@@ -218,6 +218,21 @@ export function insuranceTier(initial, est, budgetMs, tiers = TIERS) {
 }
 
 /**
+ * The governor writes tier memory only after 8 s of STABLE play, which on a borderline machine can be a minute away (it was still settling after 40 s in the
+ * real page). A tier it just stepped DOWN to is already evidence for the next session ("the tier above does not hold the budget here"): remember it at once
+ * (the governor overwrites it with the settled tier later). Not for a tier the player chose (locked: never remembered).
+ */
+export function rememberStepDown(aq, tier, scale = 1) {
+  if (aq.initial.lock) return false;
+  try {
+    aq.memory.set(aq.gpu.key, aq.vp, { tier, scale });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * A GPU timer the loop can be told to leave alone: aw-probe's own timer queries must not nest inside the frame's, and a lost context kills
  * the queries (rebuild() makes new ones). `lastMs` is -1 while it is off.
  */

@@ -182,3 +182,28 @@ describe('governor + tier switch, closed loop', () => {
     expect(decisions).toEqual([]);
   });
 });
+
+describe('tier memory is written by the governor after stable play', () => {
+  it('a low tier holding the budget for 8 s is remembered, with the scale it settled on', async () => {
+    const storage = fakeStorage();
+    const handlers = {};
+    const gpu = integrated();
+    const gen = setupQuality({ pref: 'auto', view, gpu, storage, calibrate: async () => ({ recommended: { tier: 'low', scale: 1, confident: true, reasons: [] } }), handlers });
+    let r = gen.next();
+    while (!r.done) {
+      if (r.value && r.value.then) await r.value;
+      r = gen.next();
+    }
+    const { aq } = r.value;
+    const gov = aq.governor;
+    gov.hold(4000);
+    let now = 0;
+    while (now < 30000) {
+      const dt = 13 * (1 + 0.06 * (rnd() - 0.5));
+      now += dt;
+      gov.frame(dt, 1.5, 150, 9);
+    }
+    const saved = aq.memory.get(gpu.key, aq.vp);
+    expect(saved).toMatchObject({ tier: 'low', scale: 1 });
+  });
+});

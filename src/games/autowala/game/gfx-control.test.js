@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { classifyGpu, createTierMemory, viewportClass } from '@/platform/gfx';
 import { GFX } from './config.js';
-import { autoStartTier, createScaleFloors, createSwitchableTimer, decideStart, guardMemoryWrites, insuranceTier, memoryPlan, mergeMinUnits, suspiciousUnits, probeGameGpu, resolutionUseless, sanitizeUnits, setupQuality, sharpenStart, viewOf } from './gfx-control.js';
+import { autoStartTier, createScaleFloors, createSwitchableTimer, decideStart, guardMemoryWrites, insuranceTier, memoryPlan, mergeMinUnits, rememberStepDown, suspiciousUnits, probeGameGpu, resolutionUseless, sanitizeUnits, setupQuality, sharpenStart, viewOf } from './gfx-control.js';
 
 const fakeStorage = () => {
   const m = new Map();
@@ -355,5 +355,26 @@ describe('a suspicious benchmark is measured again', () => {
     const calibrate = vi.fn(async () => ({ units: quietish, viewport: view }));
     await drive(setupQuality({ pref: 'auto', view, gpu: integrated(), storage: fakeStorage(), calibrate }));
     expect(calibrate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('rememberStepDown', () => {
+  it('writes the tier the governor stepped down to, so the next session starts there', async () => {
+    const storage = fakeStorage();
+    const gpu = integrated();
+    const out = await drive(setupQuality({ pref: 'auto', view, gpu, storage, calibrate: async () => null }));
+    expect(rememberStepDown(out.aq, 'low', 1)).toBe(true);
+    const next = await drive(setupQuality({ pref: 'auto', view, gpu, storage, calibrate: async () => { throw new Error('must not run: memory hit'); } }));
+    expect(next.aq.initial).toMatchObject({ tier: 'low', source: 'memory' });
+  });
+  it('never writes for a tier the player chose, and respects the guard (not from the start screen)', async () => {
+    const storage = fakeStorage();
+    const gpu = integrated();
+    const chosen = await drive(setupQuality({ pref: 'high', view, gpu, storage, calibrate: async () => null }));
+    expect(rememberStepDown(chosen.aq, 'medium', 1)).toBe(false);
+    const auto = await drive(setupQuality({ pref: 'auto', view, gpu, storage, calibrate: async () => null }));
+    guardMemoryWrites(auto.aq, () => false);
+    rememberStepDown(auto.aq, 'low', 1);
+    expect(auto.aq.memory.get(gpu.key, auto.aq.vp)).toBe(null);
   });
 });

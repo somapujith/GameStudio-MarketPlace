@@ -16,7 +16,7 @@ const base = args.base || 'http://127.0.0.1:5866';
 const port = +(args.port || 9914);
 const SEC = +(args.seconds || 24);
 
-const STATE = `(() => { const g = window.__autowala; const a = g.adaptive; return { describe: a.describe(), source: a.aq.initial.source, tier: g.gfx.quality, scale: g.gfx.scale, calibrated: !!a.calibration, memory: localStorage.getItem('jalebi.gfx.v1.autowala'), menu: g.ctx.state.menu }; })()`;
+const STATE = `(() => { const g = window.__autowala; const a = g.adaptive; return { describe: a.describe(), source: a.aq.initial.source, tier: g.gfx.quality, scale: g.gfx.scale, calibrated: !!a.calibration, memory: localStorage.getItem('jalebi.gfx.v1.autowala'), menu: g.ctx.state.menu, gov: (() => { const st = a.governor.stats(); return { stableMs: Math.round(st.stableMs), locked: st.locked, last: st.lastWindow, counts: st.counts, history: st.history.map((h) => h.kind + ' ' + h.from + '->' + h.to + ' @' + h.t + ' ' + h.reason), tierFailures: st.tierFailures, elapsed: Math.round(st.elapsedMs) }; })() }; })()`;
 
 async function run() {
   const c = await launch({ port, w: 1536, h: 864, gl: args.soft ? SOFT_FLAGS : GPU_FLAGS });

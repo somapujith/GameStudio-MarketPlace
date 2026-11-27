@@ -13,7 +13,7 @@ import { createVehicle } from '../sim/vehicle.js';
 import { createInput } from './input.js';
 import { createChaseCamera } from './camera.js';
 import { DAY, GFX, QUALITY } from './config.js';
-import { autoStartTier, createSwitchableTimer, guardMemoryWrites, insuranceTier, memoryPlan, resolutionUseless, setupQuality, viewOf } from './gfx-control.js';
+import { autoStartTier, createSwitchableTimer, guardMemoryWrites, insuranceTier, memoryPlan, rememberStepDown, resolutionUseless, setupQuality, viewOf } from './gfx-control.js';
 import { createTierSwitch } from './tier-switch.js';
 import { abandonable, claimCanvas } from './claim.js';
 
@@ -660,6 +660,7 @@ export function* gameSteps({ canvas, seed = 1, quality, hooks = {}, claim = null
     if (info.kind === 'down') {
       gov.markTierFailed(info.from);
       tierFailedAt = performance.now();
+      rememberStepDown(aq, t, info.scale); // the next session starts here even if this one ends before the governor calls it stable
     }
     if (gfx.autoTier && !disposed) switcher.request(t, info.scale);
   };
