@@ -55,10 +55,14 @@ const BUILDING_FRAG_ROUGH = /* glsl */ `
   roughnessFactor = mix(roughnessFactor, 0.14, gWin * (1.0 - gLit));
 `;
 const BUILDING_FRAG_METAL = /* glsl */ `
-  metalnessFactor = mix(metalnessFactor, 0.55, gWin);
+  metalnessFactor = mix(metalnessFactor, 0.12, gWin); // the scene has no environment map: a metal pane reflects nothing and renders pure black
 `;
 const BUILDING_FRAG_EMIT = /* glsl */ `
   totalEmissiveRadiance += gLitCol * gLit * 1.0;
+  #ifdef USE_FOG
+    // an unlit pane would still mirror the sky, but there is no environment map: borrow the horizon colour (the fog colour) as a faint sheen
+    totalEmissiveRadiance += fogColor * (0.06 * gWin * (1.0 - gLit));
+  #endif
 `;
 
 /** Building facade material. `cell` = window module in metres, `ground` = shopfront height (no windows below it). */
